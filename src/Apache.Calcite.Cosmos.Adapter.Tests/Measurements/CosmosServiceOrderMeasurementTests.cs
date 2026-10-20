@@ -294,19 +294,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A range over one path whose bounds the two orders rank apart keeps nothing as a filter on Azure, though the
-        /// same predicate projected is true of rows between them by code point.
+        /// same predicate projected is true of rows between them by code point; the emulator keeps those rows, as it does
+        /// between bounds the orders rank alike.
         /// </summary>
-        [Fact]
+        /// <remarks>
+        /// Held in the spelling the translator writes and S reads, <c>&gt;= AND &lt;=</c>, and its <c>NOT</c>. Azure's
+        /// outcome was measured as <c>BETWEEN</c>, which keeps what that spelling keeps, here on either target.
+        /// </remarks>
+        [Fact, CosmosPins("Service.RangeOverPartedBoundsIsEmpty")]
         public async Task ARangeWhoseBoundsTheOrdersRankApartKeepsNothing()
         {
             var strings = Container("strings");
-            (string, object)[] bounds = [("@lo", ""), ("@hi", "\U0001F600")];
+            await CosmosOutcomeHarness.Holds(strings, CosmosAxioms.Get("Service.RangeOverPartedBoundsIsEmpty"));
 
-            var filtered = await Rows(strings, "SELECT VALUE c.id FROM c WHERE c.s BETWEEN @lo AND @hi", bounds);
-            if (filtered.Count > 0)
-                Assert.Skip("This service keeps the rows between the bounds by code point, as the emulator does.");
+            foreach (var (lo, hi) in new[] { ("\uE000", "\U0001F600"), ("B", "a") })
+                foreach (var not in new[] { "", "NOT " })
+                    (await Rows(strings, $"SELECT VALUE c.id FROM c WHERE {not}(c.s BETWEEN @lo AND @hi)", ("@lo", lo), ("@hi", hi)))
+                        .Should().BeEquivalentTo(await Rows(strings, $"SELECT VALUE c.id FROM c WHERE {not}(c.s >= @lo AND c.s <= @hi)", ("@lo", lo), ("@hi", hi)), $"{not}BETWEEN {lo} AND {hi}");
 
-            (await Rows(strings, "SELECT c.id, (c.s BETWEEN @lo AND @hi) AS r FROM c WHERE c.id = 'ff21'", bounds)).Single().Should().Contain("\"r\":true", "projected, the predicate is the code point one");
+            (await Rows(strings, "SELECT c.id, (c.s BETWEEN @lo AND @hi) AS r FROM c WHERE c.id = 'ff21'", ("@lo", "\uE000"), ("@hi", "\U0001F600"))).Single()
+                .Should().Contain("\"r\":true", "projected, the predicate is the code point one");
         }
 
         // ── Types and numbers ─────────────────────────────────────────────────────────────────
@@ -332,6 +339,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public async Task IntegersOrderExactly()
         {
             await CosmosOutcomeHarness.Holds(Container("numbers"), CosmosAxioms.Get("Service.IntegersOrderExactly"));
+        }
+
+        /// <summary>
+        /// A number held as no int64, a fraction or one past it, compares as its correctly rounded double, and against an
+        /// int64 by value: at 0.1, 2^53 + 1, 1e22 and 2^63 as a double, each value a double rounds lies where its double does.
+        /// </summary>
+        [Fact, CosmosPins("Service.NumbersBeyondLongCompareAsDoubles")]
+        public async Task NumbersBeyondLongCompareAsDoubles()
+        {
+            await CosmosOutcomeHarness.Holds(Container("numbers"), CosmosAxioms.Get("Service.NumbersBeyondLongCompareAsDoubles"), CosmosOutcomeWitnesses.RoundingEdges);
         }
 
         // ── What the service accepts ──────────────────────────────────────────────────────────

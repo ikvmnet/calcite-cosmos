@@ -305,6 +305,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// Within a type a comparison is true or false, never undefined, as the two values stand in the type's order: strings
+        /// either side of U+E000 by code point, integers either side of 2^53 + 1, a boolean against itself and the other.
+        /// </summary>
+        [Fact, CosmosPins("Service.ComparisonWithinAType")]
+        public async Task AComparisonWithinATypeIsTrueOrFalse()
+        {
+            await Holds(CosmosAxioms.Get("Service.ComparisonWithinAType"));
+        }
+
+        /// <summary>
         /// <c>NOT</c> over undefined is undefined: over an absent path, over a comparison across
         /// types, and over a value that is not a boolean.
         /// </summary>

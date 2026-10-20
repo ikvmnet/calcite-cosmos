@@ -112,9 +112,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceOutcomes.Widest.Should().HaveFlag(ServiceOutcomes.Fails);
 
             var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
-                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "no row measures <=");
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
+            var azure = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == RenderingTarget.Azure));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), strings, azure, ValueSet<string>.Empty).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "no row measures <= on Azure");
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, azure, ValueSet<string>.Empty).Outcomes
                 .Should().NotContain(o => o.Outcomes.HasFlag(ServiceOutcomes.Fails));
         }
 
@@ -166,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void MissingKeysAreNamed()
         {
             var missing = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
-            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target != RenderingTarget.Calcite && row.Key != missing));
+            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == RenderingTarget.Azure && row.Key != missing));
             var cells = PathCell.Split(S, PathValues.Anything, AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
 
             var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty);

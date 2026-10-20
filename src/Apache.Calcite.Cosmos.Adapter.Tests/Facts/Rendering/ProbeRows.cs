@@ -94,21 +94,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Service("EqualityAcrossTypesIsFalse", CosmosServiceTest.Equal, String, False, CosmosAnswer.False, RenderingTarget.Azure);
             Service("InequalityOverNullIsTrue", CosmosServiceTest.NotEqual, String, False, CosmosAnswer.True, RenderingTarget.Azure);
 
-            // A string either side of the literal under = and !=, which no row measures; and code point standing in for the
-            // emulator's comparator, which no answer names (it orders U+0000 as it stores it).
+            // On Azure, a string either side of the literal under = and !=, which the emulator alone has measured; and code
+            // point standing in for the emulator's comparator, which no answer names (it orders U+0000 as it stores it).
             foreach (var side in new[] { Below, Above })
             {
-                Service("StringOrderIsCodePoint", CosmosServiceTest.Equal, String, side, CosmosAnswer.False, RenderingTarget.Emulator, RenderingTarget.Azure);
-                Service("StringOrderIsCodePoint", CosmosServiceTest.NotEqual, String, side, CosmosAnswer.True, RenderingTarget.Emulator, RenderingTarget.Azure);
+                Service("ComparisonWithinAType", CosmosServiceTest.Equal, String, side, CosmosAnswer.False, RenderingTarget.Azure);
+                Service("ComparisonWithinAType", CosmosServiceTest.NotEqual, String, side, CosmosAnswer.True, RenderingTarget.Azure);
             }
 
             Service("StringOrderIsCodePoint", CosmosServiceTest.Order, String, None, CosmosAnswer.CodePoint, RenderingTarget.Emulator);
 
-            // The connectives are Kleene's expectations written as rows, not measurements, beside NOT over what a path holds,
-            // which is measured.
-            foreach (var (target, key, answer) in KleeneTables.Rows.Where(row => row.Item1 == RenderingTarget.Calcite || row.Item2.Test != CosmosServiceTest.Not || row.Item2.Cell == Undefined))
-                Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene"
-                    : key.Test == CosmosServiceTest.Not ? "Service.NotOverUndefinedIsUndefined" : "Service.ConnectivesReadNonBooleansAsUnknown", key, target, answer));
+            // Azure's connectives, which the emulator alone has measured, and Calcite's, which no outcome holds: Kleene's
+            // expectations written as rows, not measurements. A range stays as measured.
+            foreach (var (target, key, answer) in KleeneTables.Rows.Where(row => row.Item1 == RenderingTarget.Calcite
+                || row.Item1 == RenderingTarget.Azure && row.Item2.Test != CosmosServiceTest.Range && (row.Item2.Test != CosmosServiceTest.Not || row.Item2.Cell == Undefined)))
+                Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene" : "Service.ConnectivesAreKleene", key, target, answer));
 
             return rows;
         }

@@ -2640,9 +2640,6 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
-  orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
-  under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.
 - **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
   `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
   `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
@@ -2675,12 +2672,23 @@ across documents* and *A join of a container to itself* is the record.
   `=`, `!=` and ordering within strings widest. A comparator that reads the emulator's storage — exact where a cell
   holds neither U+0000 nor the high band, either side elsewhere, the equal cell above where the literal holds U+0000 —
   would give `=` and `!=` back whatever a path may hold; a parting row scoped to the emulator would give the orderings
-  back where it holds no U+0000. Until one lands the rendering tests' fixture stands code point in for it.
+  back where it holds no U+0000. Until one lands the rendering tests' fixture stands code point in for it, and S reads
+  `Service.ComparisonWithinAType`'s string cells nowhere.
 - **What the probe account owes at D7** — *small.* Its run of the measurement namespace should record the cells
   `Holds` measures that the record of 2026-10-16 does not: the `WHERE NOT` beside each `NotKept` (a bare path, the
   string order's `>`, the integers' `=`); the widened witnesses, `false`, 30.5, an object and an array; and each literal
   as a parameter, 2^53 + 1 among them, which that day's tests wrote inline. `CosmosAxiomRows.Owed` lists the cells left
-  owed on each target, those no row's test measures among them.
+  owed on each target, those no row's test measures among them. And the rows that claim the emulator alone:
+  `Service.ComparisonWithinAType`, `Service.ConnectivesAreKleene`, `Service.NumbersBeyondLongCompareAsDoubles` — whether
+  Azure compares an int64 with a double by value, as the emulator does, or as two doubles — the range between agreeing
+  bounds and its `NOT` in the `>= AND <=` spelling, and `Sql.CosmosFunctionBodiesTests` for
+  `Service.TypeTestBodiesMatchTheService`. `Service.RangeOverPartedBoundsIsEmpty`'s Azure outcome was measured as
+  `BETWEEN` with no `NOT`; `Holds` on Azure will read undefined or false there, and c09b rewrites it from the record.
+- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number exactly only within ±2^53 and
+  answers widest beyond, where `Service.NumbersBeyondLongCompareAsDoubles` says the service compares the value held: an
+  int64 as itself, anything else as its correctly rounded double, the two by value, never both rounded. c13's double
+  slots should place a cell by the value held and compare it with the literal's by value; an integer written as a
+  fraction is held as either, by target, so its cell answers both sides.
 
 ---
 

@@ -188,6 +188,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// <c>AND</c> and <c>OR</c> are Kleene's whichever side an operand stands on, a value that is no boolean read as
+        /// unknown, and <c>NOT</c> over undefined is undefined.
+        /// </summary>
+        /// <remarks>
+        /// Each operand at <c>c.u</c> beside each at <c>c.v</c>, undefined an ordering across types and not a path, which S
+        /// keys apart (<see cref="CosmosOutcomeWitnesses"/>). The constants on the right above left <c>false AND x</c>
+        /// with <c>false</c> on the left unmeasured.
+        /// </remarks>
+        [Fact, CosmosPins("Service.ConnectivesAreKleene")]
+        public async Task TheConnectivesAreKleenesInEitherOrder()
+        {
+            await Holds(CosmosAxioms.Get("Service.ConnectivesAreKleene"));
+        }
+
+        /// <summary>
         /// A comparison with a boolean is false over a null and over another type, and undefined over
         /// an absent path — so <c>NOT</c> above it keeps the first two and not the third.
         /// </summary>

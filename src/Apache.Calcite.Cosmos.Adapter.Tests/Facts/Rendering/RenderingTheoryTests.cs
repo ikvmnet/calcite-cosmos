@@ -110,8 +110,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheTargetsMergeIntoOneEntryForEachSettledKey()
         {
-            var once = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, Number, Below);
-            var twice = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, Number, Above);
+            // An ordering against a boolean, which no row measures.
+            var once = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, True);
+            var twice = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, False);
             var theory = RenderingTheory.Define(RenderingDefinition.Measured([.. ProbeRows.Rows,
                 new("Service.Planted", once, RenderingTarget.Emulator, CosmosAnswer.False),
                 new("Service.Planted", twice, RenderingTarget.Emulator, CosmosAnswer.False),

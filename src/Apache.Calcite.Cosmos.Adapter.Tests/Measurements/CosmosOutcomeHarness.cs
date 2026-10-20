@@ -27,7 +27,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <b>A truth is read off three statements.</b> A witness <c>WHERE</c> keeps is true, one <c>WHERE NOT</c> keeps is
     /// false, one neither keeps is undefined; the projection, where it is a boolean or nothing, says the same, and a value
     /// that is no boolean is read by the two filters alone. An order is the one comparator that sorts the witnesses as
-    /// <c>ORDER BY</c> does, <c>DESC</c> its exact reverse. A literal is a parameter, as the translator sends one.
+    /// <c>ORDER BY</c> does, <c>DESC</c> its exact reverse. A literal is a parameter, as the translator sends one, and a
+    /// range's two bounds are two. A connective's first operand is held beside the second, at <c>c.u</c>, each of its
+    /// witnesses beside each of the other's.
     /// </para>
     /// <para>
     /// <b>It never asks which endpoint answered</b> (<c>TODO.md</c>, the measurements): the answer must equal one a declared
@@ -44,17 +46,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static readonly object Log = new();
 
-        public static async Task Holds(Container container, CosmosAxiom axiom)
+        /// <summary>
+        /// Holds each outcome of a row over its operand's literal, or over each of <paramref name="edges"/> in its place,
+        /// every one with witnesses of its own (<see cref="CosmosOutcomeWitnesses.RoundingEdges"/>).
+        /// </summary>
+        public static async Task Holds(Container container, CosmosAxiom axiom, IReadOnlyList<string>? edges = null)
         {
             var keys = axiom.Outcomes!.GroupBy(o => o.Formula ?? o.Test + "/" + o.Operand);
+            IReadOnlyList<string?> literals = edges is null ? [null] : [.. edges];
 
-            // Keys over one operand share its witnesses; an order is measured over its own.
-            foreach (var group in keys.GroupBy(k => k.First() is var o && o.Formula is null ? (o.Test == CosmosServiceTest.Order, o.Operand) : (false, CosmosValueClass.None)))
+            // Keys over one operand share its witnesses, each read at its own cells; an order is measured over its own.
+            foreach (var shared in keys.GroupBy(k => k.First() is var o && o.Formula is null ? (o.Test == CosmosServiceTest.Order, o.Operand) : (false, CosmosValueClass.None)))
             {
-                var (order, operand) = group.Key;
-                var witnesses = (from cell in order ? [CosmosValueClass.None] : CosmosOutcomeWitnesses.Cells(operand)
-                                 from w in CosmosOutcomeWitnesses.Of(operand, cell).Select((json, i) => (Json: json, I: i))
-                                 select new Witness($"{cell}{w.I}", cell, w.Json)).ToList();
+                var (order, operand) = shared.Key;
+                // A connective's operand is its first side's class, held at c.u, and no literal.
+                var connective = shared.Any(k => k.First() is { Formula: null, Test: CosmosServiceTest.And or CosmosServiceTest.Or });
+                var operands = connective ? CosmosOutcomeWitnesses.Of(CosmosValueClass.None, operand) : [null];
+                var witnesses = (from edge in literals
+                                 from cell in shared.SelectMany(k => CosmosOutcomeWitnesses.Cells(k.First(), edge)).Distinct()
+                                 from json in CosmosOutcomeWitnesses.Of(connective ? CosmosValueClass.None : operand, cell, edge)
+                                 from u in operands
+                                 select (cell, json, u, Literal: connective ? null : edge ?? CosmosOutcomeWitnesses.Literal(operand)))
+                                .Select((w, n) => new Witness("w" + n, w.cell, w.json, w.u, w.Literal)).ToList();
 
                 var pk = Guid.NewGuid().ToString("N");
                 foreach (var witness in witnesses)
@@ -62,8 +75,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
                 try
                 {
-                    foreach (var key in group)
-                        Check(axiom, key, order ? await Order(container, pk, witnesses) : await Truths(container, pk, key.First(), witnesses));
+                    foreach (var key in shared)
+                    {
+                        var own = witnesses.Where(w => literals.Any(edge => CosmosOutcomeWitnesses.Cells(key.First(), edge).Contains(w.Cell))).ToList();
+                        Check(axiom, key, order ? await Order(container, pk, own) : await Truths(container, pk, key.First(), own));
+                    }
                 }
                 finally
                 {
@@ -73,27 +89,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        record Witness(string Id, CosmosValueClass Cell, string? Json);
+        // U is a connective's first operand, at c.u; Literal what a test compares with, a range's two bounds as an array.
+        record Witness(string Id, CosmosValueClass Cell, string? Json, string? U, string? Literal);
 
         static async Task<ILookup<CosmosValueClass, CosmosAnswer>> Truths(Container container, string pk, CosmosOutcome outcome, List<Witness> witnesses)
         {
-            var test = outcome.Formula ?? Formula(outcome.Test);
-            var literal = outcome.Formula is null ? CosmosOutcomeWitnesses.Literal(outcome.Operand) : null;
-            var projected = (await Query(container, pk, $"SELECT c.id, ({test}) AS r FROM c", literal)).ToDictionary(row => (string)row["id"]!, row => ((JObject)row).GetValue("r"));
-            var kept = (await Query(container, pk, $"SELECT VALUE c.id FROM c WHERE {test}", literal)).Select(id => (string)id!).ToHashSet();
-            var negated = (await Query(container, pk, $"SELECT VALUE c.id FROM c WHERE NOT ({test})", literal)).Select(id => (string)id!).ToHashSet();
-
             var answers = new List<(CosmosValueClass, CosmosAnswer)>();
-            foreach (var witness in witnesses)
+            foreach (var batch in witnesses.GroupBy(w => (Test: outcome.Formula ?? Formula(outcome, w.Cell), Literal: outcome.Formula is null ? w.Literal : null)))
             {
-                (kept.Contains(witness.Id) && negated.Contains(witness.Id)).Should().BeFalse($"{test} and its NOT do not both keep {witness.Json}");
-                var answer = kept.Contains(witness.Id) ? CosmosAnswer.True : negated.Contains(witness.Id) ? CosmosAnswer.False : CosmosAnswer.Undefined;
+                var (test, literal) = batch.Key;
+                var projected = (await Query(container, pk, $"SELECT c.id, ({test}) AS r FROM c", literal)).ToDictionary(row => (string)row["id"]!, row => ((JObject)row).GetValue("r"));
+                var kept = (await Query(container, pk, $"SELECT VALUE c.id FROM c WHERE {test}", literal)).Select(id => (string)id!).ToHashSet();
+                var negated = (await Query(container, pk, $"SELECT VALUE c.id FROM c WHERE NOT ({test})", literal)).Select(id => (string)id!).ToHashSet();
 
-                var r = projected[witness.Id];
-                if (r is null || r.Type == JTokenType.Boolean)
-                    (r is null ? CosmosAnswer.Undefined : (bool)r ? CosmosAnswer.True : CosmosAnswer.False).Should().Be(answer, $"{test} projected over {witness.Json}");
+                foreach (var witness in batch)
+                {
+                    (kept.Contains(witness.Id) && negated.Contains(witness.Id)).Should().BeFalse($"{test} and its NOT do not both keep {witness.Json}");
+                    var answer = kept.Contains(witness.Id) ? CosmosAnswer.True : negated.Contains(witness.Id) ? CosmosAnswer.False : CosmosAnswer.Undefined;
 
-                answers.Add((witness.Cell, answer));
+                    // A range is the one shape whose projection is not what a filter keeps (Service.RangeOverPartedBoundsIsEmpty).
+                    var r = projected[witness.Id];
+                    if (outcome.Test != CosmosServiceTest.Range && (r is null || r.Type == JTokenType.Boolean))
+                        (r is null ? CosmosAnswer.Undefined : (bool)r ? CosmosAnswer.True : CosmosAnswer.False).Should().Be(answer, $"{test} projected over {witness.Json}");
+
+                    answers.Add((witness.Cell, answer));
+                }
             }
 
             return answers.Distinct().ToLookup(a => a.Item1, a => a.Item2);
@@ -143,22 +163,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        static string Formula(CosmosServiceTest test) => test switch
+        static string Formula(CosmosOutcome outcome, CosmosValueClass cell) => outcome.Test switch
         {
             CosmosServiceTest.Bare => "c.v",
-            CosmosServiceTest.Not => "NOT c.v",
+            CosmosServiceTest.Not => "NOT " + CosmosOutcomeWitnesses.Side(cell, "c.v"),
+            CosmosServiceTest.And or CosmosServiceTest.Or => $"({CosmosOutcomeWitnesses.Side(outcome.Operand, "c.u")} {outcome.Test.ToString().ToUpperInvariant()} {CosmosOutcomeWitnesses.Side(cell, "c.v")})",
+            CosmosServiceTest.Range => "c.v >= @lo AND c.v <= @hi",
             CosmosServiceTest.Equal => "c.v = @l",
             CosmosServiceTest.NotEqual => "c.v != @l",
             CosmosServiceTest.Less => "c.v < @l",
             CosmosServiceTest.LessOrEqual => "c.v <= @l",
             CosmosServiceTest.Greater => "c.v > @l",
             CosmosServiceTest.GreaterOrEqual => "c.v >= @l",
-            _ => ServiceForm.TestOf(test, "c.v").Text,
+            var test => ServiceForm.TestOf(test, "c.v").Text,
         };
 
         static async Task Write(Container container, string pk, Witness witness)
         {
-            var json = $"{{\"id\":\"{witness.Id}\",\"pk\":\"{pk}\"" + (witness.Json is null ? "" : ",\"v\":" + witness.Json) + "}";
+            var json = $"{{\"id\":\"{witness.Id}\",\"pk\":\"{pk}\"" + (witness.Json is null ? "" : ",\"v\":" + witness.Json) + (witness.U is null ? "" : ",\"u\":" + witness.U) + "}";
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
             using var response = await container.CreateItemStreamAsync(stream, new PartitionKey(pk));
             response.EnsureSuccessStatusCode();
@@ -168,7 +190,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         {
             var query = new QueryDefinition(sql);
             if (literal is not null)
-                query = query.WithParameter("@l", ((JValue)JToken.Parse(literal)).Value);
+                query = JToken.Parse(literal) is JArray bounds ? query.WithParameter("@lo", ((JValue)bounds[0]).Value).WithParameter("@hi", ((JValue)bounds[1]).Value)
+                    : query.WithParameter("@l", ((JValue)JToken.Parse(literal)).Value);
 
             var rows = new List<JToken>();
             using var iterator = container.GetItemQueryIterator<JToken>(query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });

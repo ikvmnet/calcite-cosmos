@@ -41,18 +41,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             .. Cells(RenderingTarget.Azure, "IsDefined/None IsNull/None IsPrimitive/None IsString/None IsNumber/None IsBool/None IsObject/None IsArray/None", "False"),
             .. Cells(RenderingTarget.Azure, "Less/String Equal/String NotEqual/String Greater/Number NotEqual/Number", "False"),
             .. Cells(RenderingTarget.Azure, "Equal/True Bare/None", "Object Array"),
-            // A value of the literal's type at it or either side, and NOT over undefined, which no row's test measures.
-            .. Both("Less/String", "Equal Above"),
-            .. Both("Greater/Number", "Below Equal"),
-            .. Both("Equal/String NotEqual/String NotEqual/Number", "Below Above"),
-            .. Both("Not/None", "Undefined"),
-            // An order's row measures values of its type alone.
-            .. Both("Greater/String", "Absent Null True False Number Object Array"),
-            .. Both("Equal/Number", "Absent Null True False String Object Array"),
+            // What the emulator's rows of the family measure (Service.ComparisonWithinAType, Service.ConnectivesAreKleene)
+            // beside a key the probe account answered: a value of the literal's type at it or either side, one of another
+            // type against an order's literal, and NOT over undefined.
+            .. Cells(RenderingTarget.Azure, "Less/String", "Equal Above"),
+            .. Cells(RenderingTarget.Azure, "Greater/Number", "Below Equal"),
+            .. Cells(RenderingTarget.Azure, "Equal/String NotEqual/String NotEqual/Number", "Below Above"),
+            .. Cells(RenderingTarget.Azure, "Greater/String", "Absent Null True False Number Object Array"),
+            .. Cells(RenderingTarget.Azure, "Equal/Number", "Absent Null True False String Object Array"),
+            .. Cells(RenderingTarget.Azure, "Not/None", "Undefined"),
         ];
-
-        static IEnumerable<(MeasuredKey, RenderingTarget)> Both(string keys, string cells) =>
-            Cells(RenderingTarget.Emulator, keys, cells).Concat(Cells(RenderingTarget.Azure, keys, cells));
 
         /// <summary>Each cell of each key, spelled <c>test/operand</c>, owed on a target.</summary>
         static IEnumerable<(MeasuredKey, RenderingTarget)> Cells(RenderingTarget target, string keys, string cells) =>

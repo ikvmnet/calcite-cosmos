@@ -44,10 +44,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         static readonly Class[] Kinds = [Class.Absent, Class.Null, Class.True, Class.False, Class.Number, Class.String, Class.Object, Class.Array];
 
         /// <summary>
-        /// The keys whose targets answer apart, where both answered. The parted range's keys join it with its two
-        /// outcomes; two constants compared, the other known divergence, are no key S reads.
+        /// The keys whose targets answer apart, where both answered: a range between bounds the orders rank apart, which the
+        /// emulator keeps and Azure does not. Two constants compared, the other known divergence, are no key S reads.
         /// </summary>
-        static readonly MeasuredKey[] Disagreements = [];
+        static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between)];
 
         static IEnumerable<CosmosAxiom> WithOutcomes => CosmosAxioms.All.Where(a => a.Outcomes is not null);
 
@@ -212,7 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A composite's measured answers are what its atoms compose to: read by a copy of the reader's grammar and evaluated
         /// over each witness by <see cref="ServiceLeaf"/> and <see cref="ServiceCompound"/>, on each target it names the
         /// composition holds the answer, and on the emulator, whose every atom here was measured definite, is it. The rows
-        /// are the rendering tests', the probe's Kleene rows standing for the connectives no row measures yet.
+        /// are the rendering tests', the probe's Kleene rows standing for Azure's connectives until the probe account runs them.
         /// </summary>
         [Fact]
         public void EveryCompositeIsWhatItsAtomsCompose()

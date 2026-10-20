@@ -6252,7 +6252,7 @@ conjunction, nested conjunctions flattened, and a literal of one holds a charact
 one the import may hold, the service may answer the pair as a range, which Azure answers empty (N8). The conjunction is
 then evaluated on an atom's cells, or composed, only where the set licenses `Range`. The orderings read are the form's,
 not the IR's: the service is asked what was written, and a range written for one atom, or across arms whose own
-literals part nothing, is a range all the same. `KleeneTables` holds no `Range` row yet, so nothing licenses it.
+literals part nothing, is a range all the same. What licenses it is N8's rows (*The family's last rows*).
 
 **What holds it.** Plants a regression would meet: an `AND` row dropped under a pairing and under a regrouping, the
 non-boolean rows dropped, a member that differs in text dropped as the aligner did, a superset that narrows in its
@@ -6322,8 +6322,45 @@ as test data, so their verdicts are unmoved.
 **A composite is checked by composing its atoms.** `CosmosAxiomsTests` reads each formula by a copy of the reader's
 grammar and evaluates it over each witness through `ServiceLeaf` and `ServiceCompound`: on every target it names the
 composition holds the measured answer, and on the emulator, whose atoms are all measured definite, is it; Azure's
-`NotKept` atoms compose wider. The probe's Kleene rows stand for the connectives no row measures yet. The guarded
-accessor, `(IS_PRIMITIVE(c.v) ? c.v : null)`, answers values, not truths, so it stays its test's own assertion.
+`NotKept` atoms compose wider. The probe's Kleene rows stand for Azure's connectives, which the emulator alone has
+measured. The guarded accessor, `(IS_PRIMITIVE(c.v) ? c.v : null)`, answers values, not truths, so it stays its test's
+own assertion.
+
+### The family's last rows, and the range's licence
+
+**What S still lacked is measured on the emulator, and claims it alone until the probe account runs it (D7).**
+`Service.ComparisonWithinAType` (N1) answers each comparison of a string or a number against every kind, its own split
+by side, and `=` and `!=` against either boolean; `Service.ConnectivesAreKleene` (N3) answers `AND` and `OR` over each
+pair of the nine operands a connective is handed, both orders, and `NOT` over each;
+`Service.NumbersBeyondLongCompareAsDoubles` (N14) places what a double rounds; `Service.TypeTestBodiesMatchTheService`
+(N13) holds the in-process `IS_*` bodies to the service over the catalogue's kinds, `Sql.CosmosFunctionBodiesTests`
+staying the probe account's leg. Their keys settle under the emulator's set and answer widest under the portable one,
+which CI asserts only from c09b.
+
+**A connective's undefined is an ordering across types, not an absent path.** S keys a side written bare by the class of
+what it holds and any other side by its truth, so undefined and absent are two operands. The service holds one value
+for both, but serves a filter from its index, so each is witnessed in the shape that reaches S: a path, or a comparison
+over one. The first side is held at `c.u` beside the second at `c.v`, every witness of each beside every witness of the
+other, and both images answer Kleene's table, the projection agreeing with the filters throughout.
+
+**A range is licensed where its rows are pointwise.** `KleeneTables` expects a range of one path to keep a value between
+its bounds and `NOT` one outside, whether the bounds part the orders or not, and `licence` reads `Range` as it reads a
+connective. The emulator answers so for both kinds of bounds, in the `>= AND <=` spelling S reads and in `BETWEEN`,
+which keep alike; Azure keeps nothing between parted bounds (`NotKept` in the record of 2026-10-16). So `Range` is
+licensed under the emulator's set and under no set that serves Azure, and the parted range's between cell is the one
+declared divergence. Its truth is read off the two filters alone, since Azure's projection keeps what its filter does not.
+
+**Numbers compare by the value held, not as two doubles.** On both images a number written as a fraction or outside
+int64 compares as its correctly rounded double, an int64 as itself, and the two by value: 9007199254740992.5, which
+rounds to 2^53, is below 2^53 + 1, which as two doubles would be equal. The emulator keeps an integer written in [2^63,
+2^64) as written and compares it as its double, so that band needs no outcome of its own; an integer written as a
+fraction it holds as a double and Azure as an int64, so no witness is spelled so. The four literals are 0.1, 2^53 + 1,
+1e22 and 2^63 sent as a double. S places no number past ±2^53 until c13's double slots read this row.
+
+**The string cells stay unread on the emulator.** N1's comparisons within strings claim the emulator over witnesses
+holding no U+0000, placed by code point, which is its order wherever no string holds U+0000; no set that serves it names
+its comparator (*The rows' vectors*), so S reads them nowhere yet, and the rendering tests read them through the
+fixture's code point.
 
 ---
 
