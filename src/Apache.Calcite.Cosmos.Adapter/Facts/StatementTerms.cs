@@ -36,6 +36,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly JsonContexts? _contexts;
         readonly RunOptions _run = Default;
         readonly PredicateRules? _rules;
+        readonly PredicateWriter? _writer;
         readonly JsonFactVocabulary? _vocabulary;
         readonly JsonFactSet _declared = JsonFactSet.Empty;
         readonly HashSet<string> _held = new(StringComparer.Ordinal);
@@ -53,7 +54,9 @@ namespace Apache.Calcite.Cosmos.Facts
             _contexts = declaration.Generation.Contexts;
             _vocabulary = declaration.Vocabulary;
             _declared = declaration.Declared;
-            _rules = PredicateRules.Of(_contexts);
+            var rules = PredicateRules.Of(_contexts);
+            _rules = rules;
+            _writer = new PredicateWriter(rules.Ir, path => JsonFactEncoding.Path(path).ToTerm(rules.Json), Arms);
             _statement = statement;
 
             foreach (var conjunct in statement.Conjuncts)
@@ -177,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             try
             {
-                var term = Term(predicate, new List<Fact>());
+                var term = _writer!.Term(predicate, new List<Fact>());
                 return new OracleVerdict(
                     scope.IsContradictory,
                     scope.Check(_rules!.AlwaysTrue.Of(term)),
@@ -221,10 +224,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     facts.Add(json.Mentioned.Of(spec.ToTerm(json)));
 
                 foreach (var predicate in made)
-                    scope.Make(Term(predicate, facts));
+                    scope.Make(_writer!.Term(predicate, facts));
 
                 foreach (var predicate in assumed)
-                    facts.Add(rules.Holds.Of(Term(predicate, facts), true));
+                    facts.Add(rules.Holds.Of(_writer!.Term(predicate, facts), true));
 
                 if (facts.Count > 0)
                     scope.Assume(facts.ToArray());
@@ -264,84 +267,16 @@ namespace Apache.Calcite.Cosmos.Facts
             new(this, parent.Scope, parent, key, complete: false, holdsTerms: parent.HoldsTerms, contradictory: parent.Contradictory, report: report, assumed);
 
         /// <summary>
-        /// Builds a predicate's term, and states beside it the arms of every junction in it.
+        /// States the arms of a junction that decide it at a truth value, numbered, for the split over them
+        /// (<see cref="PredicateRules.ByArm"/>): a disjunction is decided by its arms where it is TRUE, a conjunction where
+        /// it is FALSE.
         /// </summary>
-        ConstructorTerm<Pred> Term(SqlPredicate predicate, List<Fact> bookkeeping)
+        IEnumerable<Fact> Arms(ConstructorTerm<Pred> junction, bool truth, IReadOnlyList<ConstructorTerm<Pred>> arms)
         {
-            var r = _rules!;
-            switch (predicate)
-            {
-                case SqlPredicate.Compare c:
-                {
-                    var compare = r.Compare.Of(c.Op, Value(c.Left), Value(c.Right));
-                    if (c.Right is SqlValue.Literal literal)
-                        bookkeeping.Add(r.Point.Of(compare, literal.Value));
-
-                    return compare;
-                }
-                case SqlPredicate.In i:
-                {
-                    var membership = r.In.Of(Value(i.Value), i.Points);
-                    foreach (var point in i.Points)
-                        bookkeeping.Add(r.Point.Of(membership, point));
-
-                    return membership;
-                }
-                case SqlPredicate.IsNull n:
-                    return r.IsNull.Of(Value(n.Value));
-                case SqlPredicate.IsDefined d:
-                    return r.IsDefined.Of(Value(d.Value));
-                case SqlPredicate.Not n:
-                    return r.Not.Of(Term(n.Operand, bookkeeping));
-                case SqlPredicate.Opaque o:
-                    return r.Opaque.Of(o.Id);
-                case SqlPredicate.And a:
-                    return Junction(Flatten(a.Arms, x => (x as SqlPredicate.And)?.Arms), r.And, truth: false, bookkeeping);
-                case SqlPredicate.Or o:
-                    return Junction(Flatten(o.Arms, x => (x as SqlPredicate.Or)?.Arms), r.Or, truth: true, bookkeeping);
-                default:
-                    throw new NotSupportedException(predicate.GetType().Name);
-            }
+            yield return _rules!.Arms.Of(junction, truth).Is(ValueSet.From(Enumerable.Range(0, arms.Count).Select(m => (long)m)));
+            for (var m = 0; m < arms.Count; m++)
+                yield return _rules.Arm.Of(junction, truth, (long)m, arms[m]);
         }
-
-        /// <summary>
-        /// Builds a junction right-nested, and states the arms of it and of each junction it nests: a disjunction is
-        /// decided by its arms where it is TRUE, a conjunction where it is FALSE.
-        /// </summary>
-        ConstructorTerm<Pred> Junction(IReadOnlyList<SqlPredicate> arms, Constructor<Pred, Pred, Pred> make, bool truth, List<Fact> bookkeeping)
-        {
-            var r = _rules!;
-            var terms = arms.Select(arm => Term(arm, bookkeeping)).ToArray();
-            var junction = terms[^1];
-
-            for (var k = terms.Length - 2; k >= 0; k--)
-            {
-                junction = make.Of(terms[k], junction);
-
-                var count = terms.Length - k;
-                bookkeeping.Add(r.Arms.Of(junction, truth).Is(ValueSet.From(Enumerable.Range(0, count).Select(m => (long)m))));
-                for (var m = 0; m < count; m++)
-                    bookkeeping.Add(r.Arm.Of(junction, truth, (long)m, terms[k + m]));
-            }
-
-            return junction;
-        }
-
-        static IReadOnlyList<SqlPredicate> Flatten(IReadOnlyList<SqlPredicate> arms, Func<SqlPredicate, IReadOnlyList<SqlPredicate>?> nested)
-        {
-            var flat = new List<SqlPredicate>();
-            foreach (var arm in arms)
-            {
-                if (nested(arm) is { } inner)
-                    flat.AddRange(Flatten(inner, nested));
-                else
-                    flat.Add(arm);
-            }
-
-            return flat;
-        }
-
-        ConstructorTerm<Val> Value(SqlValue value) => _rules!.Term(value);
 
         /// <summary>
         /// One context of the tree, or where its run did not complete, the one above it read in its place.

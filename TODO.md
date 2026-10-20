@@ -2605,6 +2605,63 @@ across documents* and *A join of a container to itself* is the record.
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed
   service response fails loudly or quietly.
+- **The plan digests leave out the parameterised statements** — *small.* `WriteDigests` plans what the rendering
+  check reads, and the check skips the differential's 33 statements with parameters whole, so a commit's "changes no
+  plan" is not compared over them. Planning them needs no values, and adding them is a line.
+- **The raw reading leaves out raises Calcite was measured to make** — *medium, and it touches plans.* A `VARCHAR`
+  column's reader fails over anything but a string, an ordering over a `VARIANT` fails to compile, and `ANY` raises on
+  an ordering across types (`Calcite.RawNullIsSqlNull`). `PredicateAtom`'s raw reading answers there without
+  `Raises`, which `NeverTrue` and `AlwaysFalse` read as leave to decide. `id` and `_etag` hold strings, so the first
+  needs a field typed `VARCHAR` and read as stored; whether a plan reaches any of the three is unchecked. `IrEval`
+  reads them through a named column alone, and unnamed stays inside the table, so population D does not yet hold the
+  table to them. Adding `Raises` changes verdicts; and the rendering graph's raw cells, which union the three columns,
+  meet the same raise outside the coarse answer.
+- **A `BIGINT` compared with a fraction raises near its limit** — *small.* Calcite raises comparing 2^63 − 1 in a
+  `BIGINT` column with `42.5`, where it compares 2^53 + 1. Neither mode of `IrEval` models it, and nothing it is held
+  to reaches it; the typed orderings over number cells should.
+- **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
+  in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
+  `c.pk = 42` is unchecked.
+- **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
+  `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,
+  `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
+  `RETURNING` does, which `NeverTrue` reads as leave to decide. Read from the code and modelled in `IrEval`'s column
+  mode; the column measurement holds no structure. The typed cells answer the raise.
+- **The typed `DOUBLE` reading compares numbers exactly** — *small, and it touches plans.* `Typed.Equal` decides a
+  stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE` compare the doubles they
+  round to: past 2^53 two integers a unit apart are one double, and `KeptEqual` establishes the literal of a row that
+  holds the other. The typed cells compare doubles, so a cell may answer TRUE there where its state does not.
+- **The cast readings rest on no row** — *small.* `NumberCast` answers from measurements the registry has no row for
+  (`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`,
+  `ReturningDecimalParsesTheRendering`), so `PredicateAtom.Rests` is empty for a numeric cast and `RETURNING DECIMAL`,
+  and a proof through one cites nothing on Calcite's side. The rows are owed before the casts' cells are.
+- **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
+  `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
+  a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
+  is owed if a written form carries a null literal.
+- **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
+  orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
+  under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.
+- **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
+  `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
+  `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
+  licence. The harness should write a statement's admitted conjuncts into the bundle as one IR junction and claim the
+  conjunction as built.
+- **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
+  two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
+  sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
+- **Only sibling properties are disjoint locations** — *small.* `$.a.b` and `$.c` lie apart in every document, but the
+  `disjoint` rule derives it only for two properties of one parent, so a refutation across them is unproven.
+- **A text cast of a raw value is read as its rendering, and over a `VARIANT` it is null** — *medium, a wrong answer,
+  and it touches plans.* Over a promoted path's `VARIANT` column Calcite casts every boolean and number to `NULL`
+  (measured in process through `MaterialisedTable`: `true`, `false`, `42`, `2.5` all read `NULL`; `ANY` renders them).
+  `PredicateAtom`'s cast reading (`cast:VARCHAR:raw`, `Text` over structures) answers a boolean or a number as its
+  rendering, and so does the translator (`CosmosRexTranslator.IsDocumentValueType`: "Calcite's cast over either is the
+  value's own rendering"). Over a present boolean the facts graph decides `NOT (CAST(raw(flag) AS VARCHAR) = 'x')`
+  `Always` and `CAST(raw(flag) AS VARCHAR) IS NULL` `Never`, where Calcite answers `UNKNOWN` and `TRUE`, and `WHERE NOT
+  (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")` keeps the booleans too. The reading
+  wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
+  `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
 
 ---
 

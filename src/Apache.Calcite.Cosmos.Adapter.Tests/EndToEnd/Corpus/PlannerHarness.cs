@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -137,6 +138,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
             planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
             return planner;
+        }
+
+        /// <summary>
+        /// Plans a statement over containers of its own to the CLR convention, every container's Cosmos rules beside the
+        /// way out, as a host registering several does: with the collation trait and the calc pass where the calling test
+        /// plans with them.
+        /// </summary>
+        internal static RelNode Plan(string sql, IEnumerable<CosmosContainerMetadata> containers, SqlOperatorTable operators, bool collations, bool calc)
+        {
+            var typeFactory = new JavaTypeFactoryImpl();
+            var tables = containers.Select(container => new CosmosTable(container)).ToList();
+
+            var rootSchema = CalciteSchema.createRootSchema(false);
+            foreach (var table in tables)
+                rootSchema.add(table.Container.Name, table);
+
+            var properties = new java.util.Properties();
+            properties.setProperty("caseSensitive", "true");
+
+            var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
+            var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
+            var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
+
+            var planner = collations ? CreatePlanner() : new VolcanoPlanner();
+            if (collations == false)
+                planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+
+            var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
+            var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
+
+            foreach (var table in tables)
+                foreach (var rule in CosmosRules.GetRules(table.Convention))
+                    planner.addRule(rule);
+
+            foreach (var rule in ClrCursorRules.Rules())
+                planner.addRule(rule);
+
+            planner.setRoot(planner.changeTraits(logical, logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify()));
+            if (calc == false)
+                return planner.findBestExp();
+
+            var program = new HepProgramBuilder();
+            foreach (var rule in ClrCursorRules.CalcRules())
+                program.addRuleInstance(rule);
+
+            var hep = new HepPlanner(program.build());
+            hep.setRoot(planner.findBestExp());
+            return hep.findBestExp();
         }
 
         /// <summary>

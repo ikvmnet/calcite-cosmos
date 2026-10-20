@@ -73,18 +73,24 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         public static implicit operator JsonPathSpec(string text) => Parse(text);
 
-        public Term<JPath> ToTerm(JsonRules rules)
+        public Term<JPath> ToTerm(JsonRules rules) => Hidden is not null ? rules.Ghost.Of(Hidden) : ToTerm(rules.Paths);
+
+        /// <summary>
+        /// The path's term in a graph that may hold no theory: a hidden discriminator is the theory's, and no path, so it is
+        /// refused.
+        /// </summary>
+        public Term<JPath> ToTerm(PathVocabulary paths)
         {
             if (Hidden is not null)
-                return rules.Ghost.Of(Hidden);
+                throw new InvalidOperationException($"'{this}' is a hidden discriminator, which is no place in any document.");
 
-            Term<JPath> term = rules.Root.Of();
+            Term<JPath> term = paths.Root.Of();
             foreach (var segment in Segments)
                 term = segment switch
                 {
-                    string name => rules.Prop.Of(term, name),
-                    long index => rules.Index.Of(term, index),
-                    _ => rules.Each.Of(term),
+                    string name => paths.Prop.Of(term, name),
+                    long index => paths.Index.Of(term, index),
+                    _ => paths.Each.Of(term),
                 };
 
             return term;

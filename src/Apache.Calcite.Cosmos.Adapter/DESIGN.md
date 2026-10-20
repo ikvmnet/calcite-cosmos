@@ -6006,6 +6006,260 @@ no request units at all. Its decisions:
 
 ---
 
+## The rendering graph in check mode
+
+The rendering graph, S, is a second e-graph that proves a written Cosmos form keeps the rows Calcite keeps for the
+predicate it was written from. Its first stage checks the SQL today's translator writes, in CI and with no service, and
+changes nothing the planner decides; every commit that says so is held to it by the plan digests.
+
+### Plan digests
+
+**"Changes no plan" is compared with the parent, not argued.** `Tests/Planning/PlanDigests.cs` plans every statement
+the check reads, and executes none: the planner corpus, the differential's 465 statements without parameters, the
+statements of the partition run's first 200 predicates (1,000 where `COSMOS_PARTITION_GATE=1`), and the definedness
+probe, whose operator the differential's validator does not know. `PlanDigestTests.WriteDigests` writes a line a
+statement, at the parent and at the commit, and the two files must be byte-equal. Each input is planned as the test
+that runs it plans it, off that test's own lists, so a statement added there is digested too.
+
+**A digest holds what a plan can change without changing its text.** Beside the plan's text: each statement it builds,
+with its parameters' values and where it is sent, since a partition key read under other facts routes a statement
+whose text is the same; and each pushed conjunct's IR digest and the round that admitted it. A conjunct admitted a round
+later renders from other facts, and often into the same SQL.
+
+**The round is read off the statement the implementor rendered from**, looked up by the condition and the binding the
+implementor holds once it has implemented the filter's input. A binding walked off the plan (`TryBindOutput`) leaves
+an array's element unbound where the implementor binds it to its alias, and read the filter over an `UNNEST` as an
+opaque conjunct no round admits: another statement than the one that was sent.
+
+**Two files compare only if planning is deterministic**, and the oracle remembers statements across a process.
+`TheDigestsAreDeterministic` plans the corpus twice in one process, per pull request, and requires the same lines.
+
+### Calcite's side, measured in process
+
+**A reading in the IR is several readers to Calcite, and each is measured where the reader fills it.** `typed` is a
+`RETURNING` and a column the reader types; `raw` is a promoted path's `VARIANT`, an `ANY` and a `VARCHAR` column. No
+expression over a JSON literal yields any of those columns, so `Tests/Measurements/MaterialisedTable.cs` scans rows
+through `CosmosJson.GetValue` itself. Five `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
+named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite on random predicates. What a cell
+answers is the union over the readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose
+`=` and null test never raise, which is what `PredicateAtom`'s raw reading answers for; the raises it leaves out are in
+`TODO.md`.
+
+**The column reader is not `RETURNING`** (`Calcite.ColumnReadsWholeNumbersAsItsType`). The column reads a whole number
+as its type whatever its spelling, `42.0` under `INTEGER` and `42` under `BIGINT`, where `RETURNING` raises over both,
+and fails the statement over a fraction, a number beyond the type, a string or a boolean.
+
+**The raw columns agree on strings and null, and part elsewhere** (`Calcite.RawStringEqualityIsOrdinal`,
+`Calcite.RawNullIsSqlNull`). A string is equal to the string of its UTF-16 units alone, and a null or an absent path is
+SQL null, so `NOT (raw = 'bikes')` keeps neither. A value of another type is unequal in `VARIANT` and `ANY`, and fails a
+`VARCHAR` column's read. `ANY` raises on an ordering across types. A `VARIANT` has no ordering at all, the statement
+failing to compile, and is equal to a number boxed with its own SQL type alone, `BIGINT` for a JSON integer and `DOUBLE`
+otherwise, which the IR does not keep: raw numeric `=` stays a coin in `IrEval`.
+
+**Text orders by UTF-16 code unit** (`Calcite.TextOrderIsByCodeUnit`) and the service by code point, so the two part
+where one string holds U+E000 or above and another a supplementary character.
+
+**The connectives are Kleene's, and evaluate both operands** (`Calcite.ConnectivesAreKleene`). A nullable `AND` beside
+FALSE raises where its other operand raises, in either order. `IrEval` answers the deciding arm and `Raises` marks the
+row, which is what the check against Calcite leaves out.
+
+### Cells, and Calcite on one
+
+**A cell is a set of the values one path may hold, cut so that each side of a pair answers one way on it.**
+`PathCell.Split` cuts one imported `PathValues`, with the classes of its strings' characters, at the values the pair
+compares with: absent, null, each structure and each boolean apart; a literal the import admits as a point, and one it
+excludes as a boundary; strings between two literals in Calcite's order, by UTF-16 unit; numbers of a kind between two
+by value. The cut points are handed in, for S's rules to choose. Every value the import admits lies in exactly one cell,
+and a value it refuses in none.
+
+**Every cell is inhabited, and the search for an inhabitant is complete.** A refutation names a cell, and a cell nothing
+lies in refutes nothing, so `Split` keeps an interval only where `Witness` finds a value in it. An interval's strings
+are tried from the least above its low end, then each next in order — the last with the least unit its classes allow
+appended, nothing lying between — until one is not excepted or one reaches the high end; its numbers from its bounds.
+So the strings below `""`, those between `l` and `l` + U+0000, and bounds that hold no number of the kind are dropped,
+and nothing the import admits is. Classes are read through `JsonValues.BandsOfText` a unit at a time, so classes the
+string fixes add come through unchanged.
+
+**`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
+its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
+literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell;
+a typed equality on a point reads its value as the column and as `RETURNING` read it; and `IN` is the `OR` of its
+points' equalities, each as its reading answers it on the cell. Making `On` exact on a scalar instead would change the
+facts graph's verdicts wherever a domain is known.
+
+**A reading on a cell is the union of the readers it stands for, raises included.** The coarse raw and typed readings
+leave out raises their readers make: a `VARCHAR` column's read of anything but a string, a raw ordering, and a typed
+column's read of a structure, which `RETURNING` answers null for. A cell answers them, and only there stands outside the
+coarse answer (`TODO.md`). Under decision 2 a raise beside a truth value constrains nothing, so the union only keeps a
+cell from refuting where Calcite may fail.
+
+**What holds it.** `PredicateAtomCellTests` holds every cell answer to `IrEval` through each reader; `PathCellTests`
+catches a split that drops the absent cell or keeps one below `""`.
+
+### Forms, rows, and the service on a cell
+
+**A written condition is a value, never a class.** `ServiceForm` is a test, a comparison or a membership of one path, a
+path written bare, a constant, or a connective. Its canonical text — fully parenthesised, a path spelled as
+`SqlValue.Spell` spells it, a literal quoted in `JsonValues`' spelling — is its equality, hash and order, and a junction
+keeps its members as written. `First`, `Rest`, `Without`, `Decomposes` and `Strip` only take a form apart, so that rules
+can pair a junction's members with the IR's children every way. A junction without its one member, however often
+written, is that member: `AND` and `OR` are idempotent.
+
+**The service's behaviour is rows, keyed by what was asked, of what operand, over what class of value.** An entry holds
+every answer the targets a set serves gave for its key, and the outcomes they mean through `AnswerMeanings`, host data:
+that `NotKept` is false or undefined is a row, not C#. `ServiceTable` views a set's entries and is equal by content.
+Eggnog interns a value by its equality, and the probe's table, equal by its size, would have let a bundle read another
+set's rows.
+
+**Four primitives evaluate on concrete cells and decide nothing else** (decision D1). `CutPoints` cuts at the literals
+and a reader's limits, `ServiceLeaf` reads one test's row on each cell, `ServiceCompound` maps one connective over two
+vectors by its rows, and `CellOutcomes` pairs Calcite's `OnCell` with the service's outcome on each cell. Which cuts,
+which literals part the orders, which subforms are evaluated, how verdicts compose and every verdict are S's rules.
+
+**A key no row settles answers everything, a failure included, and is named** `missing:test/operand/cell`. So no branch
+encodes a behaviour without a row — an empty table answers widest everywhere — and an unproven conjunct names the
+measurement that would decide it. A side that may fail lets its connective fail the statement where it is evaluated
+(decision 2), and never makes it: no row says the service evaluates a side its sibling decides the connective without,
+so beside its failure the side stands for every truth. A failure that refutes an atom composes, since a sibling that is
+the identity, or a `NOT`, decides nothing without it.
+
+**Strings are cut in Calcite's order and placed in the service's.** An interval of strings is cut by UTF-16 unit, so by
+code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
+decide that for every comparison with a string, `=` and `!=` as well as an ordering, since each reads the row of the
+side an interval lies on, and a parted interval answers both sides. A point is placed by each comparator the type's
+`Order` entry names, their answers unioned, beside whatever else the entry answers. A number is placed only within
+±2^53, where a double holds it exactly: the theory spells `30` and `30.0` alike, and the service may hold either as a
+double. A boolean and a null are keyed as their own classes, which no comparator orders.
+
+**A path written bare carries the class of a value that is no boolean**, and a connective over it reads that class's
+row, not unknown's. As a whole condition, where its row keeps it not, such a value is kept by neither `WHERE` nor
+`WHERE NOT` (`Service.BarePathKeepsOnlyTrue`, `Service.NotOverAPathKeepsOnlyFalse`): `means()` says it reads as
+undefined, and the `classes` rule hands that to `CellOutcomes`. What its row keeps stands, so a row that kept a number
+would refute; at `Pos` false and undefined are alike, and at `Neg` the reading is the licensed `NOT`'s.
+
+**What holds it.** The primitives' tests catch a table equal by its size and a `NOT` that drops a failure.
+
+### One vocabulary for both graphs
+
+**F and S read one conjunct as the same term, because they define it from the same code.** `PathVocabulary` holds the
+`Path` sort and its four constructors; `PredicateVocabulary` the `Val` and `Pred` sorts, the IR's fourteen constructors,
+`reads`, `atom` and `point`, and the `analyse` ruleset's nine rules. Each graph defines both, and `PredicateWriter`
+writes the loader's IR into them, a literal's `point` always beside its atom. `JsonRules` and `PredicateRules` forward
+to them, so the facts graph's callers read them where they did; what `PredicateRules` keeps — `possible`, `holds`,
+`chosen`, `arms`, `arm` and the two later rulesets — is F's alone.
+
+**A junction's arms are the caller's.** The writer hands each junction, with its arms flattened, to a callback: F's
+numbers them for its split over arms, as it did; S pairs written members with arms by its own rules. A hidden
+discriminator is the theory's and no path, so `JsonPathSpec.ToTerm(PathVocabulary)`, the overload a graph without the
+theory writes paths with, refuses one.
+
+**What holds it.** The plan digests, byte-equal at the parent and at the commit.
+
+### The theory, and the gate on an atom
+
+**S is a frozen theory and a bundle per statement round.** `RenderingTheory` loads the measured rows one batch per
+axiom, so a second row for one key and target that answers otherwise is refused whole and named, and then the host rows:
+the sets each target serves, what an answer means, the agreement's boxes, the 225 classes they range over, and each
+reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text and raw have
+one, and a text cast of the raw value has none, since over a `VARIANT` Calcite casts all but a string to null where its
+cells, modelled on the rendering, say otherwise (`TODO.md`). Its rules settle the rows and derive the classes each box
+allows and refutes; then it freezes, and every bundle is a child of it. A `RenderingBundle` holds one round's conjuncts
+as the shared vocabulary's terms, each path's import written once before the run, and the forms claimed for the
+conjuncts; it is run once, read, and disposed.
+
+**A key is settled in a set once every target the set serves has measured it.** `measure` gathers each key's answers and
+the targets that gave them per set; `tabulate`, a stratum later, when the gathering is whole, enters a key only where
+its targets cover the set's. So under `Portable` a key the emulator alone measured is no entry, and answers widest; a
+key the two targets answered differently is one entry holding both answers, whose outcomes are their union.
+
+**What a position keeps is rows, and the classes they allow are derived.** A cell's class pairs the truths Calcite may
+give on it with the outcomes the service may give; any of the one may meet any of the other on some document. Equal
+holds where every pair keeps alike, Implies where the service keeps whatever Calcite keeps, and a class refutes where
+every pair breaks the verdict and Calcite never raises. Decision 2 is two rows: `tolerated` sets a raise aside in an
+allowing box, and no allowing box admits a failure. `AgreementRows` writes these as boxes, and a brute-force test holds
+the sets the rules derive to the pairwise definition, class by class.
+
+**The universal over cells is a rule, and reads only complete inputs.** A candidate agrees where its cells' classes lie
+within the allowed ones, and is refuted where they meet the refuting ones. The bundle runs in strata — terms into atoms;
+cuts, partitions, the parts each form needs and the literals that part the string orders; the service on each part,
+leaves before connectives; the gate — so the classes a universal reads are whole when it reads them, and so is the set
+of parted literals a leaf reads as not holding a literal. The order test reads every rule's rendering and holds each
+universal, each lattice-free head and each superset to it; a plant after critic-validation F1, a set grown and tested in
+one stratum, is refused.
+
+**A proof and a refutation are packing.** The gate decides; the value says why. A proof carries the rows both sides read
+and the boxes' citations. A refutation names the least refuting cell by its text, so of the null, the object and the
+array that refute a bare `!=` it names the array. Both are ordered values under `Min`, so the value does not depend on
+which is found first.
+
+**Vacuity is a table.** An agreement is vacuous where every cell is one Calcite raises on alone, or there are none: the
+gate writes `set-subset(classes, raiseonly)` beside it, and a junction or a negation copies each side's. `raiseonly` is
+derived too: the classes whose truths of Calcite's the policy sets aside whole, so a plant of `tolerated` moves it.
+`vacuous` is a `Max` over booleans, so a claim holds of nothing where any of its proofs does, whichever `Min` keeps.
+
+**What the evaluation fills is held to one value a key.** `partition`, which cuts at the reader's edges, `svc` and
+`outcomes` have no lattice: each is computed once for each match of its rule, and a key two matches reach — a part two
+candidates sharing a partition both need — must come out one value, so a primitive that answered one key two ways faults
+the bundle rather than meeting silently. A form that reads any path but its atom's is never partitioned, so never
+evaluated.
+
+**An answer is read off a completed run, and a contradiction is loud.** The limits are counts, 64 iterations and 50,000
+rows, never time, and a run they stop answers `Incomplete`. An agreement and a refutation of one claim derive the
+contradiction, and `Read` answers `Conflict`, never either verdict. After every run the tripwire requires each term to
+be its class's one node, which a merge would break, and a run it trips answers `Conflict` too.
+
+**What holds it.** Plants a regression would meet: a merge (T7), a leaf that answers twice, a box that both allows and
+refutes, a form over another path, a contradicting row (T6), and a set grown and read in one stratum.
+
+### Composition through AND, OR and NOT
+
+**A connective composes in a set where its measured rows are Kleene's on every key Kleene's logic expects there.**
+`KleeneTables` writes what each target must answer: the service's targets over the three truths and the six classes of
+a value that is no boolean, which the service reads as unknown inside a connective; Calcite over the truths alone, since
+its connectives take booleans. `expected` gathers a set's keys from the targets it serves, `matched` those it settled as
+Kleene's, and `licence`, a stratum later, licenses a connective whose expected keys all matched. A key missing, answered
+apart by two targets, or not Kleene's leaves the connective unlicensed, and every step through it unproven. Each step
+reads the set's licence and Calcite's: `T(a∧b) = T(a) ∩ T(b)`, `F(a∧b) = F(a) ∪ F(b)`, their duals and `T(¬a) = F(a)`
+must hold on both sides. One expectation for every set, as first planned, would have asked Calcite for the six classes
+too, and licensed nothing under it.
+
+**On one atom's cells, a junction of three members or more is regrouped only under its licence.** It is evaluated as
+its first member and the rest, a junction rid of every copy of that member, which takes associativity and idempotence
+for granted; a missing row of the grouping as written was never read. So it is evaluated only where the set licenses
+its connective. Two members read their row as written, and a junction nested as written is evaluated as nested.
+
+**Positions and pairings are derived.** A junction of the IR has a `junction` row from each arm; a negation's operand is
+a candidate for the form stripped of a `NOT` at the opposite position. The first arm is offered each member of the form,
+and the second the form without it, whose members a rule states where three or more remain; so every pairing is tried,
+and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict and its form joins
+theirs by its own connective, in either order. A node may hold candidates from two parents, so the connective is read
+where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides the same candidates and
+must not compose. A written member that the IR merged is dropped once where its text matches, `AND` and `OR` being
+idempotent; where its text differs it is left over, unproven where it falls to the first arm, and proven only where the
+second arm, an atom, evaluates it with its own on its cells, which is a proof of what was written.
+
+**A refutation composes across locations a document sets apart.** A side refuted on a cell, beside a sibling that is
+the connective's identity on one of its own — `(T,t)` for `AND`, `(F,f)` for `OR` — refutes the junction on a document
+setting both; `disjoint` holds of two properties of one parent, never of an element against an index or a path against
+one beneath it. Only a refutation made on one atom's cells composes so: the gate writes the location it sets in
+`refutedat`, a negation passes it on unchanged, and a junction's, which sets two, has none, since its sibling's could be
+the other at another cell. The sibling's location is its atom's. Without that, `(kind = 'a' AND (label != 'bikes' OR
+kind = 'a'))` was refuted by a witness setting `kind` to `false` and to `'a'`, where both sides keep the documents whose
+`kind` is `'a'` and no others.
+
+**Two bounds that part the orders need `Range`.** Where two string orderings of one path stand in one written
+conjunction, nested conjunctions flattened, and a literal of one holds a character class that parts the orders against
+one the import may hold, the service may answer the pair as a range, which Azure answers empty (N8). The conjunction is
+then evaluated on an atom's cells, or composed, only where the set licenses `Range`. The orderings read are the form's,
+not the IR's: the service is asked what was written, and a range written for one atom, or across arms whose own
+literals part nothing, is a range all the same. `KleeneTables` holds no `Range` row yet, so nothing licenses it.
+
+**What holds it.** Plants a regression would meet: an `AND` row dropped under a pairing and under a regrouping, the
+non-boolean rows dropped, a member that differs in text dropped as the aligner did, a superset that narrows in its
+stratum, and a lambda filter.
+
+---
+
 ## Differential testing
 
 Every pushdown is checked against an oracle rather than an expected string: the same SQL is planned

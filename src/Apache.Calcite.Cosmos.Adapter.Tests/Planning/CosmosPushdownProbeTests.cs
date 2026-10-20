@@ -7,18 +7,8 @@ using System.Text;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 
-using org.apache.calcite.avatica.util;
-using org.apache.calcite.config;
-using org.apache.calcite.jdbc;
-using org.apache.calcite.plan;
-using org.apache.calcite.plan.volcano;
-using org.apache.calcite.prepare;
 using org.apache.calcite.rel;
-using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
-using org.apache.calcite.sql.parser;
-using org.apache.calcite.sql.validate;
-using org.apache.calcite.sql2rel;
 
 using Xunit;
 
@@ -270,42 +260,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Plans a statement over its containers to the CLR convention, every container's Cosmos rules beside the way
         /// out, as a host registering several does.
         /// </summary>
-        internal static RelNode Plan(string sql, params CosmosContainerMetadata[] containers)
-        {
-            var typeFactory = new JavaTypeFactoryImpl();
-            var tables = containers.Select(container => new CosmosTable(container)).ToArray();
-
-            var rootSchema = CalciteSchema.createRootSchema(false);
-            foreach (var table in tables)
-                rootSchema.add(table.Container.Name, table);
-
-            var properties = new java.util.Properties();
-            properties.setProperty("caseSensitive", "true");
-
-            var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
-            var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
-            var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Adapter.Sql.CosmosOperators.Instance);
-            var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
-
-            var planner = new VolcanoPlanner();
-            planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
-
-            var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
-            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
-            var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
-
-            foreach (var table in tables)
-                foreach (var rule in CosmosRules.GetRules(table.Convention))
-                    planner.addRule(rule);
-
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
-                planner.addRule(rule);
-
-            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
-            planner.setRoot(planner.changeTraits(logical, desired));
-
-            return planner.findBestExp();
-        }
+        internal static RelNode Plan(string sql, params CosmosContainerMetadata[] containers) =>
+            PlannerHarness.Plan(sql, containers, org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Adapter.Sql.CosmosOperators.Instance),
+                collations: false, calc: false);
 
     }
 

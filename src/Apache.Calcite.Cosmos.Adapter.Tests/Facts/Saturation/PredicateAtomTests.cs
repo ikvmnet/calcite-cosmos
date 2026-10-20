@@ -297,6 +297,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             PathValues.Lattice.Verify(samples);
         }
 
+        /// <summary>The grid's readings: each the loader builds, a cast over each reading it casts.</summary>
+        internal static readonly string[] Readers =
+        {
+            Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.TypedReader("DECIMAL"),
+            PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Raw), PredicateAtom.CastReader("DOUBLE", Text),
+            PredicateAtom.CastReader("VARCHAR", Raw),
+        };
+
+        internal static readonly string[] Literals = { Of("30"), Of("x"), Of("true"), Of("[1]"), Of("null"), Of(30m), Of(30.5m), Of(-3000000000m), Of(true), Of(1e30) };
+
+        internal static readonly string[] Stored = { Of("30"), Of("x"), Of("true"), Of("30.5"), Of(30m), Of(30.5m), Of(31m), Of(-1e30), Of(1e30), Of(true), Of(false), NullValue };
+
+        /// <summary>The grid's atoms over readings: a null test, a parameter, and each test and a membership with each literal.</summary>
+        internal static IEnumerable<PredicateAtom> Grid(IEnumerable<string> readers)
+        {
+            foreach (var reader in readers)
+            {
+                yield return PredicateAtom.IsNull(reader);
+                yield return PredicateAtom.CompareParameter(reader, "=");
+                foreach (var literal in Literals)
+                {
+                    foreach (var op in new[] { "=", "<>", "<", "<=", ">", ">=" })
+                        yield return PredicateAtom.Compare(reader, op, literal);
+                    yield return PredicateAtom.In(reader, ValueSet.Of(literal, Of("y")));
+                }
+            }
+        }
+
         /// <summary>
         /// Every truth value an atom may take on a stored value is one whose kept documents include that value: what a
         /// verdict is read from and what an assumption establishes cannot disagree, on any reading, test or value.
@@ -304,29 +332,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void WhatARowKeepsCoversEveryValueOnWhichItTakesThatTruthValue()
         {
-            var readers = new[]
-            {
-                Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.TypedReader("DECIMAL"),
-                PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Raw), PredicateAtom.CastReader("DOUBLE", Text),
-                PredicateAtom.CastReader("VARCHAR", Raw),
-            };
-            var literals = new[] { Of("30"), Of("x"), Of("true"), Of("[1]"), Of("null"), Of(30m), Of(30.5m), Of(-3000000000m), Of(true), Of(1e30) };
-            var stored = new[] { Of("30"), Of("x"), Of("true"), Of("30.5"), Of(30m), Of(30.5m), Of(31m), Of(-1e30), Of(1e30), Of(true), Of(false), NullValue };
-
-            var atoms = new List<PredicateAtom>();
-            foreach (var reader in readers)
-            {
-                atoms.Add(PredicateAtom.IsNull(reader));
-                atoms.Add(PredicateAtom.CompareParameter(reader, "="));
-                foreach (var literal in literals)
-                {
-                    foreach (var op in new[] { "=", "<>", "<", "<=", ">", ">=" })
-                        atoms.Add(PredicateAtom.Compare(reader, op, literal));
-                    atoms.Add(PredicateAtom.In(reader, ValueSet.Of(literal, Of("y"))));
-                }
-            }
-
-            var states = stored.Select(v => (Name: v, Values: v == NullValue ? PathValues.OfKinds(ValueSet.Of(NullType)) : Holding(v), Admits: (Func<PathValues, bool>)(k => k.Admits(v))))
+            var atoms = Grid(Readers).ToList();
+            var states = Stored.Select(v => (Name: v, Values: v == NullValue ? PathValues.OfKinds(ValueSet.Of(NullType)) : Holding(v), Admits: (Func<PathValues, bool>)(k => k.Admits(v))))
                 .Append((Name: "absent", Values: Absent, Admits: k => k.Kinds.Contains(PathValues.AbsentKind)))
                 .Append((Name: "object", Values: AnObject, Admits: k => k.Kinds.Contains(ObjectType) && k.Values is null))
                 .Append((Name: "array", Values: PathValues.OfKinds(ValueSet.Of(ArrayType)), Admits: k => k.Kinds.Contains(ArrayType) && k.Values is null))

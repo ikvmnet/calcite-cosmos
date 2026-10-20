@@ -37,13 +37,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public JsonRules(EGraph graph)
         {
             Graph = graph;
-            graph.DefineSort<JPath>("Path");
+            Paths = new PathVocabulary(graph);
             graph.Values.Register<Bound>("bound");
-
-            Root = graph.DefineConstructor<JPath>("Root");
-            Prop = graph.DefineConstructor<JPath, string, JPath>("Prop");
-            Index = graph.DefineConstructor<JPath, long, JPath>("Index");
-            Each = graph.DefineConstructor<JPath, JPath>("Each");
 
             Present = graph.DefineRelation<JPath>("present");
             Absent = graph.DefineRelation<JPath>("absent");
@@ -101,13 +96,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Gets the rules of JSON Schema: local to the JSON Schema context, so they hold in it and beneath it.</summary>
         public Ruleset JsonSchema { get; }
 
-        public Constructor<JPath> Root { get; }
+        /// <summary>Gets the terms of a path, which the rendering graph defines too; forwarded below.</summary>
+        public PathVocabulary Paths { get; }
 
-        public Constructor<JPath, string, JPath> Prop { get; }
-
-        public Constructor<JPath, long, JPath> Index { get; }
-
-        public Constructor<JPath, JPath> Each { get; }
+        public Constructor<JPath> Root => Paths.Root;
+        public Constructor<JPath, string, JPath> Prop => Paths.Prop;
+        public Constructor<JPath, long, JPath> Index => Paths.Index;
+        public Constructor<JPath, JPath> Each => Paths.Each;
 
         /// <summary>The path is there.</summary>
         public Relation<JPath> Present { get; }

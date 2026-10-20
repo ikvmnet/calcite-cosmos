@@ -210,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (h, f, c) = r.Vars<Val, string, ValueSet<string>>("h", "f", "c");
-                r.When(rules.Walk.Of(v, 0L, a), a.Is(rules.Operand.Of(h, t)), v.Is(rules.Call.Of(f, x)), c.Is(rules.ValueChars.Of(h)));
+                r.When(rules.Walk.Of(v, 0L, a), a.Is(rules.Ir.Operand.Of(h, t)), v.Is(rules.Ir.Call.Of(f, x)), c.Is(rules.ValueChars.Of(h)));
                 r.Where(f, function => function is "||" or "CONCAT" or "CASE");
                 r.Then(rules.ValueChars.Of(v).Is(c));
             })), "computed");
@@ -225,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var (v, a, t) = r.Vars<Val, Args, Args>("v", "a", "t");
                 var (h, c) = r.Vars<Val, ValueSet<string>>("h", "c");
-                r.When(v.Is(rules.Call.Of("UPPER", a)), a.Is(rules.Operand.Of(h, t)), c.Is(rules.ValueChars.Of(h)));
+                r.When(v.Is(rules.Ir.Call.Of("UPPER", a)), a.Is(rules.Ir.Operand.Of(h, t)), c.Is(rules.ValueChars.Of(h)));
                 r.Then(rules.ValueChars.Of(v).Is(c));
             })), "computed");
 

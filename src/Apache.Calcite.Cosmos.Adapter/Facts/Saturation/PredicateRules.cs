@@ -10,7 +10,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
     /// <summary>
     /// The rules of predicates over JSON documents, beside <see cref="JsonRules"/> in the same graph: what a filter that
-    /// holds says of the paths it reads, and what the facts say of a filter.
+    /// holds says of the paths it reads, and what the facts say of a filter. The terms and their analysis are
+    /// <see cref="PredicateVocabulary"/>'s, which the rendering graph defines too; the rest is the facts graph's alone.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -41,6 +42,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     {
 
         static readonly ConditionalWeakTable<JsonRules, PredicateRules> Defined = new();
+
+        readonly PredicateWriter _writer;
 
         /// <summary>
         /// Returns the rules of predicates in a graph, defining them the first time they are asked for.
@@ -74,58 +77,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             Graph = graph;
             Json = json;
+            Ir = new PredicateVocabulary(graph);
 
-            graph.DefineSort<Val>("Val");
-            graph.DefineSort<Pred>("Pred");
-            graph.Values.Register<PredicateAtom>("predicate atom");
-            graph.Values.Register<PathValues>("path values");
-
-            // Nothing here is ever extracted for execution: the host reads values back, never a term.
-            var term = new TableOptions { Extractable = false };
             var local = new TableOptions { Lift = false };
             var analysis = new TableOptions { Role = TableRole.Analysis };
-
-            Text = graph.DefineConstructor<JPath, Val>("text", options: term);
-            Raw = graph.DefineConstructor<JPath, Val>("raw", options: term);
-            Typed = graph.DefineConstructor<JPath, string, Val>("typed", options: term);
-            Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
-            Literal = graph.DefineConstructor<string, Val>("literal", options: term);
-            Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
-            Compare = graph.DefineConstructor<string, Val, Val, Pred>("compare", options: term);
-            In = graph.DefineConstructor<Val, ValueSet<string>, Pred>("in", options: term);
-            IsNull = graph.DefineConstructor<Val, Pred>("is null", options: term);
-            IsDefined = graph.DefineConstructor<Val, Pred>("is defined", options: term);
-            And = graph.DefineConstructor<Pred, Pred, Pred>("and", options: term);
-            Or = graph.DefineConstructor<Pred, Pred, Pred>("or", options: term);
-            Not = graph.DefineConstructor<Pred, Pred>("not", options: term);
-            Opaque = graph.DefineConstructor<long, Pred>("opaque", options: term);
 
             Holds = graph.DefineRelation<Pred, bool>("holds", local);
             Chosen = graph.DefineRelation<Pred, bool, long>("chosen", local);
             Arms = graph.DefineFunction<Pred, bool, ValueSet<long>>("arms", options: analysis);
             Arm = graph.DefineRelation<Pred, bool, long, Pred>("arm", analysis);
-            Point = graph.DefineRelation<Pred, string>("point", analysis);
-            Reads = graph.DefineRelation<Val, JPath, string>("reads", analysis);
-            Atom = graph.DefineRelation<Pred, JPath, PredicateAtom>("atom", analysis);
             Possible = graph.DefineFunction<JPath, PathValues>("possible", PathValues.Lattice, local);
             AlwaysTrue = graph.DefineRelation<Pred>("always true");
             AlwaysFalse = graph.DefineRelation<Pred>("always false");
             NeverTrue = graph.DefineRelation<Pred>("never true");
 
-            graph.DefineSort<Args>("Args");
-            Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
-            NoOperands = graph.DefineConstructor<Args>("no operands", options: term);
-            Operand = graph.DefineConstructor<Val, Args, Args>("operand", options: term);
+            // A value's characters: the facts graph's alone; the call terms they read are the vocabulary's.
             ValueChars = graph.DefineFunction<Val, ValueSet<string>>("value chars", ValueLattice.Intersect<string>());
             Walk = graph.DefineRelation<Val, long, Args>("walk", analysis);
             Drawn = graph.DefineFunction<Val, Args, ValueSet<string>>("drawn", ValueLattice.Intersect<string>());
+            _writer = new PredicateWriter(Ir, path => JsonFactEncoding.Path(path).ToTerm(json));
 
-            Analyse = graph.DefineRuleset("analyse");
             Establish = graph.DefineRuleset("establish");
             Decide = graph.DefineRuleset("decide");
             Characters = graph.DefineRuleset("characters");
 
-            DefineAnalysis();
             DefineEstablish();
             DefineSplit();
             DefineDecide();
@@ -168,47 +143,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Gets the rules of JSON the predicates read paths in.</summary>
         public JsonRules Json { get; }
 
-        /// <summary><c>JSON_VALUE(DOC, path)</c> read as text.</summary>
-        public Constructor<JPath, Val> Text { get; }
+        /// <summary>Gets the terms of a predicate and their analysis, which the rendering graph defines too.</summary>
+        public PredicateVocabulary Ir { get; }
 
-        /// <summary>The value the service holds at a path.</summary>
-        public Constructor<JPath, Val> Raw { get; }
-
-        /// <summary><c>JSON_VALUE(DOC, path RETURNING type)</c>.</summary>
-        public Constructor<JPath, string, Val> Typed { get; }
-
-        /// <summary>A cast of a value to a SQL type.</summary>
-        public Constructor<string, Val, Val> Cast { get; }
-
-        /// <summary>A literal, in <see cref="JsonValues"/>' spelling.</summary>
-        public Constructor<string, Val> Literal { get; }
-
-        /// <summary>A parameter: its ordinal and SQL type, and no value.</summary>
-        public Constructor<long, string, Val> Parameter { get; }
-
-        /// <summary>A comparison: an operator, the value read, and a literal or a parameter.</summary>
-        public Constructor<string, Val, Val, Pred> Compare { get; }
-
-        /// <summary>A membership in a set of literals.</summary>
-        public Constructor<Val, ValueSet<string>, Pred> In { get; }
-
-        /// <summary><c>IS NULL</c>.</summary>
-        public Constructor<Val, Pred> IsNull { get; }
-
-        /// <summary><c>IS_DEFINED</c> of the path the value reads.</summary>
-        public Constructor<Val, Pred> IsDefined { get; }
-
-        /// <summary>A conjunction, right-nested in digest order: there is no rule of commutativity.</summary>
-        public Constructor<Pred, Pred, Pred> And { get; }
-
-        /// <summary>A disjunction, right-nested in digest order.</summary>
-        public Constructor<Pred, Pred, Pred> Or { get; }
-
-        /// <summary>A negation.</summary>
-        public Constructor<Pred, Pred> Not { get; }
-
-        /// <summary>A predicate the loader does not read: it proves nothing and decides nothing.</summary>
-        public Constructor<long, Pred> Opaque { get; }
+        public Constructor<Pred, Pred, Pred> And => Ir.And;
+        public Constructor<Pred, Pred, Pred> Or => Ir.Or;
+        public Constructor<Pred, Pred> Not => Ir.Not;
+        public Relation<Pred, string> Point => Ir.Point;
+        public Relation<Pred, JPath, PredicateAtom> Atom => Ir.Atom;
+        public Ruleset Analyse => Ir.Analyse;
 
         /// <summary>
         /// The predicate takes this truth value on every row the context admits: TRUE for a conjunct the context assumes,
@@ -228,18 +171,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>One numbered arm of a junction.</summary>
         public Relation<Pred, bool, long, Pred> Arm { get; }
 
-        /// <summary>
-        /// A literal an atom compares its value with: a comparison's, or each of a membership's. Stated by the host beside
-        /// the term, as an arm is, because a rule cannot take the members of a set one at a time.
-        /// </summary>
-        public Relation<Pred, string> Point { get; }
-
-        /// <summary>The path a value reads, and how: an analysis of terms alone.</summary>
-        public Relation<Val, JPath, string> Reads { get; }
-
-        /// <summary>A predicate over one path, as the atom that says what it means: an analysis of terms alone.</summary>
-        public Relation<Pred, JPath, PredicateAtom> Atom { get; }
-
         /// <summary>What a path an atom reads may hold, gathered from the theory's tables into one value.</summary>
         public Function<JPath, PathValues> Possible { get; }
 
@@ -251,15 +182,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>The predicate is FALSE or UNKNOWN of every row the context admits: it keeps none.</summary>
         public Relation<Pred> NeverTrue { get; }
-
-        /// <summary>A function of values: its name, as the loader spells it, and its operands.</summary>
-        public Constructor<string, Args, Val> Call { get; }
-
-        /// <summary>The end of a call's operands.</summary>
-        public Constructor<Args> NoOperands { get; }
-
-        /// <summary>An operand of a call, and those after it.</summary>
-        public Constructor<Val, Args, Args> Operand { get; }
 
         /// <summary>
         /// If the value is a string, the classes its characters may be in: the theory's <c>chars</c>, said of a value
@@ -281,9 +203,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// paths it reads, and the rules of characters.
         /// </summary>
         public Schedule CharacterSaturation { get; }
-
-        /// <summary>Reads terms into atoms.</summary>
-        public Ruleset Analyse { get; }
 
         /// <summary>What a predicate that takes a truth value says of the paths it reads.</summary>
         public Ruleset Establish { get; }
@@ -308,73 +227,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// split, then the verdicts. A question asked of a frozen context is answered in one.
         /// </summary>
         public Schedule Answer { get; private set; } = null!;
-
-        void DefineAnalysis()
-        {
-            Analyse.DefineRule("text reads its path", r =>
-            {
-                var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Text.Of(p)));
-                r.Then(Reads.Of(v, p, PredicateAtom.TextReader));
-            });
-            Analyse.DefineRule("a raw value reads its path", r =>
-            {
-                var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)));
-                r.Then(Reads.Of(v, p, PredicateAtom.RawReader));
-            });
-            Analyse.DefineRule("a returning reads its path as its type", r =>
-            {
-                var (v, p, t) = r.Vars<Val, JPath, string>("v", "p", "t");
-                r.When(v.Is(Typed.Of(p, t)));
-                r.Then(Reads.Of(v, p, Compute.Of(t, PredicateAtom.TypedReader)));
-            });
-            Analyse.DefineRule("a cast reads what it converts", r =>
-            {
-                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
-                var (t, k) = r.Vars<string, string>("t", "k");
-                r.When(v.Is(Cast.Of(t, w)), Reads.Of(w, p, k));
-                r.Then(Reads.Of(v, p, Compute.Of(t, k, PredicateAtom.CastReader)));
-            });
-
-            Analyse.DefineRule("a comparison with a literal is an atom of what it reads", r =>
-            {
-                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
-                var (op, c, k) = r.Vars<string, string, string>("op", "c", "k");
-                var p = r.Var<JPath>("p");
-                r.When(e.Is(Compare.Of(op, v, w)), w.Is(Literal.Of(c)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
-            });
-            Analyse.DefineRule("a comparison with a parameter is an atom of what it reads", r =>
-            {
-                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
-                var (op, t, k) = r.Vars<string, string, string>("op", "t", "k");
-                var (n, p) = r.Vars<long, JPath>("n", "p");
-                r.When(e.Is(Compare.Of(op, v, w)), w.Is(Parameter.Of(n, t)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, op, PredicateAtom.CompareParameter)));
-            });
-            Analyse.DefineRule("a membership is an atom of what it reads", r =>
-            {
-                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
-                var (s, k) = r.Vars<ValueSet<string>, string>("s", "k");
-                r.When(e.Is(In.Of(v, s)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, s, PredicateAtom.In)));
-            });
-            Analyse.DefineRule("a null test is an atom of what it reads", r =>
-            {
-                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
-                var k = r.Var<string>("k");
-                r.When(e.Is(IsNull.Of(v)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
-            });
-            Analyse.DefineRule("a definedness test is an atom of what it reads", r =>
-            {
-                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
-                var k = r.Var<string>("k");
-                r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
-            });
-        }
 
         void DefineEstablish()
         {
@@ -505,18 +357,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         void DefineCharacters()
         {
             var json = Json;
+            var ir = Ir;
 
             Characters.DefineRule("a reading of a path as text holds the path's characters", r =>
             {
                 // The text of a number or a boolean is digits, signs and letters, which hold no class.
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
-                r.When(v.Is(Text.Of(p)), c.Is(json.Chars.Of(p)));
+                r.When(v.Is(ir.Text.Of(p)), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("the value a path holds holds the path's characters", r =>
             {
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
-                r.When(v.Is(Raw.Of(p)), c.Is(json.Chars.Of(p)));
+                r.When(v.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("the cast to text of a scalar a path holds holds the path's characters", r =>
@@ -525,21 +378,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 // or an array is the JSON text of everything in it, which nothing here bounds.
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
                 var (t, c, k) = r.Vars<string, ValueSet<string>, ValueSet<string>>("t", "c", "k");
-                r.When(v.Is(Cast.Of(t, w)), w.Is(Raw.Of(p)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
                 r.Where(t, k, (target, types) => target is "VARCHAR" or "CHAR" && types.IsSubsetOf(JsonValues.Scalars));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("a literal holds its own characters", r =>
             {
                 var (v, s) = r.Vars<Val, string>("v", "s");
-                r.When(v.Is(Literal.Of(s)));
+                r.When(v.Is(ir.Literal.Of(s)));
                 r.Then(ValueChars.Of(v).Is(Compute.Of(s, value => JsonValues.CharactersOf(value))));
             });
 
             Characters.DefineRule("a call of a function the theory reads walks its operands from the first", r =>
             {
                 var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
-                r.When(v.Is(Call.Of(f, a)));
+                r.When(v.Is(ir.Call.Of(f, a)));
                 r.Where(f, StringCalls.Knows);
                 r.Then(Walk.Of(v, 0L, a));
             });
@@ -547,21 +400,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             {
                 var (v, a, t) = r.Vars<Val, Args, Args>("v", "a", "t");
                 var (i, h) = r.Vars<long, Val>("i", "h");
-                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)));
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)));
                 r.Then(Walk.Of(v, Primitives.Add.Of(i, 1L), t));
             });
             Characters.DefineRule("a call draws nothing past its last operand", r =>
             {
                 var (v, a) = r.Vars<Val, Args>("v", "a");
                 var i = r.Var<long>("i");
-                r.When(Walk.Of(v, i, a), a.Is(NoOperands.Of()));
+                r.When(Walk.Of(v, i, a), a.Is(ir.NoOperands.Of()));
                 r.Then(Drawn.Of(v, a).Is(JsonValues.NoBand));
             });
             Characters.DefineRule("a call draws nothing from an operand it does not read characters of", r =>
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f, d) = r.Vars<long, Val, string, ValueSet<string>>("i", "h", "f", "d");
-                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)), v.Is(Call.Of(f, x)), d.Is(Drawn.Of(v, t)));
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), d.Is(Drawn.Of(v, t)));
                 r.Where(f, i, (function, operand) => StringCalls.Reads(function, operand) == false);
                 r.Then(Drawn.Of(v, a).Is(d));
             });
@@ -570,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
                 var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
-                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)), v.Is(Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)));
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)));
                 r.Where(f, i, StringCalls.Reads);
                 r.Then(Drawn.Of(v, a).Is(Compute.Of(f, c, d, StringCalls.Drawn)));
             });
@@ -578,30 +431,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             {
                 var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
                 var d = r.Var<ValueSet<string>>("d");
-                r.When(v.Is(Call.Of(f, a)), d.Is(Drawn.Of(v, a)));
+                r.When(v.Is(ir.Call.Of(f, a)), d.Is(Drawn.Of(v, a)));
                 r.Then(ValueChars.Of(v).Is(d));
             });
         }
 
-        /// <summary>
-        /// Builds a value's term: a reading of a path, a cast, a literal, a parameter, or a call over its operands' terms.
-        /// </summary>
-        public ConstructorTerm<Val> Term(SqlValue value) => value switch
-        {
-            SqlValue.Text t => Text.Of(Path(t.Path)),
-            SqlValue.Raw w => Raw.Of(Path(w.Path)),
-            SqlValue.Typed t => Typed.Of(Path(t.Path), t.Type),
-            SqlValue.Cast c => Cast.Of(c.Target, Term(c.Value)),
-            SqlValue.Literal l => Literal.Of(l.Value),
-            SqlValue.Parameter p => Parameter.Of(p.Ordinal, p.Type),
-            SqlValue.Call c => Call.Of(c.Function, Operands(c.Operands, 0)),
-            _ => throw new NotSupportedException(value.GetType().Name),
-        };
-
-        ConstructorTerm<Args> Operands(IReadOnlyList<SqlValue> operands, int from) =>
-            from == operands.Count ? NoOperands.Of() : Operand.Of(Term(operands[from]), Operands(operands, from + 1));
-
-        Term<JPath> Path(JsonDocumentPath path) => JsonFactEncoding.Path(path).ToTerm(Json);
+        /// <summary>Builds a value's term, as every conjunct's values are built (<see cref="PredicateWriter.Value"/>).</summary>
+        public ConstructorTerm<Val> Term(SqlValue value) => _writer.Value(value);
 
         void DefineDecide()
         {

@@ -7,9 +7,11 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
-using Apache.Calcite.Data;
+using Apache.Calcite.Cosmos.Adapter.Tests.Measurements;
 
 using Eggnog;
+
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -24,19 +26,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>No service and no adapter</b>: a <c>CalciteConnection</c> over a <c>VALUES</c> of JSON text, the way
-    /// <c>CalciteJsonValueMeasurementTests</c> measures one expression at a time. Each predicate is one statement,
-    /// <c>CASE WHEN p THEN 'T' WHEN NOT p THEN 'F' ELSE 'U' END</c> over every document on which <see cref="IrEval"/>
-    /// answers without reaching a raise; and a few documents it says Calcite raises on are asked one at a time, since a raise
-    /// fails the statement it is in. A document on which a raise is reached but a connective decides is skipped: which one
-    /// Calcite evaluates first is its own business.
+    /// <b>No service</b>: a <c>CalciteConnection</c> over a table of JSON documents, each beside the columns the adapter's
+    /// reader fills from it (<c>MaterialisedTable</c>). Each predicate is one statement over every document on which
+    /// <see cref="IrEval"/> answers without reaching a raise; and a few documents it says Calcite raises on are asked one at
+    /// a time, since a raise fails the statement it is in. A document on which a raise is reached but a connective decides
+    /// is skipped: Calcite raises there (<c>Calcite.ConnectivesAreKleene</c>).
     /// </para>
     /// <para>
-    /// <b>What is deferred</b>: the raw readings — a promoted <c>VARIANT</c>, the split rule's <c>ANY</c>, a cast over one —
-    /// and parameters. A raw value is what the adapter's reader materialises from the service's JSON, and no expression
-    /// Calcite evaluates over a JSON literal produces one; the evaluator draws it from what the oracle's table admits, and
-    /// holding those rows to Calcite needs the reader's materialisation, or the emulator. <see cref="LongPredicates"/>
-    /// runs on a Calcite or IKVM bump.
+    /// <b>A predicate's typed and raw readings are read one way each</b>, drawn with it: <c>typed</c> through
+    /// <c>RETURNING</c> or a column, <c>raw</c> through a <c>VARIANT</c>, an <c>ANY</c> or a <c>VARCHAR</c> column, against
+    /// the literals the loader reads beside each. A cast over a raw value and parameters are deferred: neither was measured.
+    /// <see cref="LongPredicates"/> runs on a Calcite or IKVM bump.
     /// </para>
     /// </remarks>
     public sealed class IrEvalCalciteTests
@@ -73,37 +73,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var documents = Enumerable.Range(0, DocumentCount).Select(_ => Document(random)).ToArray();
             var mismatches = new List<string>();
             int compared = 0, raised = 0, skipped = 0, statements = 0;
+            var columns = new SortedDictionary<string, int>(StringComparer.Ordinal);
             var clock = Stopwatch.StartNew();
 
-            using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
-            connection.Open();
+            using var connection = MaterialisedTable.Open();
 
             for (var n = 0; n < predicates; n++)
             {
-                var predicate = Predicate(random, 0);
-                var truths = documents.Select(d => IrEval.Truth(predicate, d, world)).ToArray();
-                var raising = documents.Select(d => IrEval.Raises(predicate, d, world)).ToArray();
+                // A VARIANT comparison takes a second or more to compile, so it is drawn a quarter of the time.
+                var typed = random.Next(2) == 0 ? IrEval.TypedAs.Returning : IrEval.TypedAs.Column;
+                var raw = random.Next(4) switch { 0 => IrEval.RawAs.Variant, 3 => IrEval.RawAs.Varchar, _ => IrEval.RawAs.Any };
+                var drawn = new Drawn(typed, raw);
+                var predicate = Predicate(random, 0, drawn, random.Next(3));
+                foreach (var column in predicate.Subterms.SelectMany(Readings).Select(r => Column(r, drawn)).OfType<(JsonDocumentPath Path, string Type)>())
+                    columns[column.Type] = columns.GetValueOrDefault(column.Type) + 1;
+                var truths = documents.Select(d => IrEval.Truth(predicate, d, world, typed, raw)).ToArray();
+                var raising = documents.Select(d => IrEval.Raises(predicate, d, world, typed, raw)).ToArray();
 
                 var answered = Enumerable.Range(0, documents.Length).Where(i => raising[i] == false).ToArray();
                 skipped += documents.Length - answered.Length - truths.Count(t => t == Truths.Raises);
 
                 // Every document the evaluator answers without a raise, in one statement.
                 statements++;
-                if (Ask(connection, predicate, answered.Select(i => documents[i]).ToArray()) is { } rows)
+                if (Ask(connection, predicate, drawn, answered.Select(i => documents[i]).ToArray()) is { } rows)
                 {
                     for (var k = 0; k < answered.Length; k++)
                     {
                         compared++;
                         var expected = Letter(truths[answered[k]]);
                         if (rows[k] != expected)
-                            mismatches.Add($"{predicate} is {rows[k]} of {Documents.Json(documents[answered[k]])} in Calcite, and {expected} to the evaluator");
+                            mismatches.Add($"{predicate} ({drawn}) is {rows[k]} of {Documents.Json(documents[answered[k]])} in Calcite, and {expected} to the evaluator");
                     }
                 }
                 else
                 {
                     // Find what raised, a half at a time.
-                    foreach (var i in Raising(connection, predicate, answered, documents, ref statements))
-                        mismatches.Add($"{predicate} raises over {Documents.Json(documents[i])} in Calcite, and is {truths[i]} to the evaluator");
+                    foreach (var i in Raising(connection, predicate, drawn, answered, documents, ref statements))
+                        mismatches.Add($"{predicate} ({drawn}) raises over {Documents.Json(documents[i])} in Calcite, and is {truths[i]} to the evaluator");
                 }
 
                 // And a few the evaluator says raise, alone.
@@ -111,13 +117,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 {
                     statements++;
                     raised++;
-                    if (Ask(connection, predicate, new[] { documents[i] }) is { } answer)
-                        mismatches.Add($"{predicate} is {answer[0]} of {Documents.Json(documents[i])} in Calcite, and raises to the evaluator");
+                    if (Ask(connection, predicate, drawn, new[] { documents[i] }) is { } answer)
+                        mismatches.Add($"{predicate} ({drawn}) is {answer[0]} of {Documents.Json(documents[i])} in Calcite, and raises to the evaluator");
                 }
             }
 
             TestContext.Current.TestOutputHelper?.WriteLine(
-                $"{predicates} predicates, {statements} statements in {clock.Elapsed.TotalSeconds:N1} s: {compared:N0} answers compared, {raised} raises confirmed, {skipped:N0} documents skipped where a connective decided past a raise");
+                $"{predicates} predicates, {statements} statements in {clock.Elapsed.TotalSeconds:N1} s: {compared:N0} answers compared, {raised} raises confirmed, {skipped:N0} documents skipped where a connective decided past a raise; readings of a column: {string.Join(", ", columns.Select(c => c.Key + " " + c.Value))}");
 
             if (mismatches.Count > 0)
                 Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(20)));
@@ -135,24 +141,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Evaluates a predicate over documents in one statement, and returns each one's truth value as a letter; or
         /// <c>null</c> where Calcite raised.
         /// </summary>
-        static string[]? Ask(DbConnection connection, SqlPredicate predicate, IReadOnlyList<J.Obj> documents)
+        static string[]? Ask(DbConnection connection, SqlPredicate predicate, Drawn drawn, IReadOnlyList<J.Obj> documents)
         {
             if (documents.Count == 0)
                 return Array.Empty<string>();
 
-            var p = Sql(predicate);
-            var rows = string.Join(", ", documents.Select((d, i) => $"({i}, '{Documents.Json(d).Replace("'", "''")}')"));
-            using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT k, CASE WHEN {p} THEN 'T' WHEN NOT ({p}) THEN 'F' ELSE 'U' END FROM (VALUES {rows}) AS t(k, d)";
+            var columns = predicate.Subterms.SelectMany(Readings).Select(r => Column(r, drawn)).OfType<(JsonDocumentPath Path, string Type)>().Distinct().ToArray();
+            var table = new MaterialisedTable(
+                columns.Select(c => (Name(c), SqlTypeName.valueOf(c.Type))).ToArray(),
+                documents.Select(d => (Documents.Json(d), columns.Select(c => IrEval.At(d, c.Path) is J value ? Documents.Json(value) : null).ToArray())).ToArray());
 
             try
             {
-                var answers = new string[documents.Count];
-                using var reader = command.ExecuteReader();
-                while (reader.Read())
-                    answers[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] = Convert.ToString(reader.GetValue(1), CultureInfo.InvariantCulture)!.Trim();
-
-                return answers;
+                return table.Ask(connection, Sql(predicate, drawn))[0].Select(c => c.ToString()).ToArray();
             }
             catch (Exception)
             {
@@ -160,10 +161,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
         }
 
+        /// <summary>The way a predicate's typed and raw readings reach Calcite.</summary>
+        sealed record Drawn(IrEval.TypedAs Typed, IrEval.RawAs Raw);
+
+        static IEnumerable<SqlValue> Readings(SqlPredicate predicate) => predicate switch
+        {
+            SqlPredicate.Compare c => new[] { c.Left },
+            SqlPredicate.In i => new[] { i.Value },
+            SqlPredicate.IsNull n => new[] { n.Value },
+            _ => Array.Empty<SqlValue>(),
+        };
+
+        /// <summary>The column a reading is read from, or <c>null</c> where it is read off the document.</summary>
+        static (JsonDocumentPath Path, string Type)? Column(SqlValue reading, Drawn drawn) => reading switch
+        {
+            SqlValue.Typed t when drawn.Typed == IrEval.TypedAs.Column => (t.Path, t.Type),
+            SqlValue.Raw r => (r.Path, drawn.Raw.ToString().ToUpperInvariant()),
+            _ => null,
+        };
+
+        static string Name((JsonDocumentPath Path, string Type) column) => string.Join(".", column.Path.Names) + ":" + column.Type;
+
         /// <summary>
         /// Finds the documents Calcite raises on among some, by halves.
         /// </summary>
-        static IEnumerable<int> Raising(DbConnection connection, SqlPredicate predicate, IReadOnlyList<int> among, IReadOnlyList<J.Obj> documents, ref int statements)
+        static IEnumerable<int> Raising(DbConnection connection, SqlPredicate predicate, Drawn drawn, IReadOnlyList<int> among, IReadOnlyList<J.Obj> documents, ref int statements)
         {
             var found = new List<int>();
             var pending = new Stack<IReadOnlyList<int>>();
@@ -172,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var part = pending.Pop();
                 statements++;
-                if (Ask(connection, predicate, part.Select(i => documents[i]).ToArray()) is not null)
+                if (Ask(connection, predicate, drawn, part.Select(i => documents[i]).ToArray()) is not null)
                     continue;
 
                 if (part.Count == 1)
@@ -207,29 +229,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             return new J.Obj(properties);
         }
 
-        static SqlPredicate Predicate(Random random, int depth)
+        static SqlPredicate Predicate(Random random, int depth, Drawn drawn, int kind)
         {
             var roll = random.Next(10);
             if (depth < 2 && roll < 2)
-                return new SqlPredicate.Not(Predicate(random, depth + 1));
+                return new SqlPredicate.Not(Predicate(random, depth + 1, drawn, kind));
             if (depth < 2 && roll < 4)
             {
-                var arms = Enumerable.Range(0, 2 + random.Next(2)).Select(_ => Predicate(random, depth + 1)).ToArray();
+                var arms = Enumerable.Range(0, 2 + random.Next(2)).Select(_ => Predicate(random, depth + 1, drawn, kind)).ToArray();
                 return random.Next(2) == 0 ? SqlPredicate.AllOf(arms) : SqlPredicate.AnyOf(arms);
             }
 
+            // DECIMAL is no column the reader was measured over.
+            var types = drawn.Typed == IrEval.TypedAs.Column ? new[] { "INTEGER", "BIGINT", "DOUBLE", "BOOLEAN" } : new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
             var path = Paths[random.Next(Paths.Length)];
-            SqlValue reading = random.Next(10) switch
+            SqlValue reading = random.Next(12) switch
             {
                 < 4 => new SqlValue.Text(path),
-                < 7 => new SqlValue.Typed(path, new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" }[random.Next(5)]),
-                _ => new SqlValue.Cast(new[] { "INTEGER", "BIGINT", "DOUBLE" }[random.Next(3)], new SqlValue.Text(path)),
+                < 7 => new SqlValue.Typed(path, types[random.Next(types.Length)]),
+                < 10 => new SqlValue.Cast(new[] { "INTEGER", "BIGINT", "DOUBLE" }[random.Next(3)], new SqlValue.Text(path)),
+                _ => new SqlValue.Raw(path),
             };
 
+            // Beside a raw value, the literals the loader reads as raw, of one type a predicate: a list of two types is
+            // cast to one, and a column compared with two fails the statement. A VARIANT takes no bare number, and the
+            // IR loses a boxed one's SQL type; a VARCHAR column beside anything but a string is cast.
             SqlValue.Literal Literal() => reading switch
             {
                 SqlValue.Text => SqlValue.Of(Texts[random.Next(Texts.Length)]),
                 SqlValue.Typed { Type: "BOOLEAN" } => SqlValue.Of(random.Next(2) == 0),
+                SqlValue.Raw => (drawn.Raw, kind) switch
+                {
+                    (IrEval.RawAs.Varchar, _) or (_, 0) => SqlValue.Of(Texts[random.Next(Texts.Length)]),
+                    (IrEval.RawAs.Variant, _) or (_, 1) => SqlValue.Of(random.Next(2) == 0),
+                    _ => SqlValue.Of(Numbers[random.Next(Numbers.Length)]),
+                },
                 _ => SqlValue.Of(Numbers[random.Next(Numbers.Length)]),
             };
 
@@ -242,26 +276,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// Writes a predicate as Calcite's SQL over a document column <c>d</c>.
+        /// Writes a predicate as Calcite's SQL over a document column <c>d</c> and the columns the reader fills.
         /// </summary>
-        static string Sql(SqlPredicate predicate) => predicate switch
+        static string Sql(SqlPredicate predicate, Drawn drawn) => predicate switch
         {
-            SqlPredicate.Compare c => $"({Sql(c.Left)} {c.Op} {Sql(c.Right)})",
-            SqlPredicate.In i => $"({Sql(i.Value)} IN ({string.Join(", ", i.Points.Select(p => Sql(new SqlValue.Literal(p))))}))",
-            SqlPredicate.IsNull n => $"({Sql(n.Value)} IS NULL)",
-            SqlPredicate.Not n => $"(NOT {Sql(n.Operand)})",
-            SqlPredicate.And a => "(" + string.Join(" AND ", a.Arms.Select(Sql)) + ")",
-            SqlPredicate.Or o => "(" + string.Join(" OR ", o.Arms.Select(Sql)) + ")",
+            SqlPredicate.Compare c => $"({Sql(c.Left, drawn)} {c.Op} {Sql(c.Right, drawn, c.Left)})",
+            SqlPredicate.In i => $"({Sql(i.Value, drawn)} IN ({string.Join(", ", i.Points.Select(p => Sql(new SqlValue.Literal(p), drawn, i.Value)))}))",
+            SqlPredicate.IsNull n => $"({Sql(n.Value, drawn)} IS NULL)",
+            SqlPredicate.Not n => $"(NOT {Sql(n.Operand, drawn)})",
+            SqlPredicate.And a => "(" + string.Join(" AND ", a.Arms.Select(arm => Sql(arm, drawn))) + ")",
+            SqlPredicate.Or o => "(" + string.Join(" OR ", o.Arms.Select(arm => Sql(arm, drawn))) + ")",
             _ => throw new NotSupportedException(predicate.ToString()),
         };
 
-        static string Sql(SqlValue value) => value switch
+        static string Sql(SqlValue value, Drawn drawn, SqlValue? beside = null) => value switch
         {
-            SqlValue.Text t => $"JSON_VALUE(d, '{Path(t.Path)}')",
-            SqlValue.Typed t => $"JSON_VALUE(d, '{Path(t.Path)}' RETURNING {t.Type})",
-            SqlValue.Cast { Value: SqlValue.Text text } c => $"CAST(JSON_VALUE(d, '{Path(text.Path)}') AS {c.Target})",
+            _ when Column(value, drawn) is { } column => "\"" + Name(column) + "\"",
+            SqlValue.Text t => $"JSON_VALUE(\"d\", '{Path(t.Path)}')",
+            SqlValue.Typed t => $"JSON_VALUE(\"d\", '{Path(t.Path)}' RETURNING {t.Type})",
+            SqlValue.Cast { Value: SqlValue.Text text } c => $"CAST(JSON_VALUE(\"d\", '{Path(text.Path)}') AS {c.Target})",
             SqlValue.Literal l when IsString(l.Value) => "'" + StringOf(l.Value).Replace("'", "''") + "'",
-            SqlValue.Literal l when TypeOf(l.Value) == BooleanType => l.Value == Of(true) ? "TRUE" : "FALSE",
+            SqlValue.Literal l when TypeOf(l.Value) == BooleanType => beside is SqlValue.Raw && drawn.Raw == IrEval.RawAs.Variant
+                ? $"CAST({(l.Value == Of(true) ? "TRUE" : "FALSE")} AS VARIANT)"
+                : l.Value == Of(true) ? "TRUE" : "FALSE",
             SqlValue.Literal l when TryNumberOf(l.Value, out var number) => number.ToString(CultureInfo.InvariantCulture),
             _ => throw new NotSupportedException(value.ToString()),
         };
