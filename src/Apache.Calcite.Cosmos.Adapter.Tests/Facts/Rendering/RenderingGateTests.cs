@@ -109,8 +109,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Each table the evaluation fills is computed once for each of its keys, and from nothing else: counted through
-        /// the definition's primitives, over two conjuncts of two paths.
+        /// Each table the evaluation fills is computed once a match, and from nothing else: counted through the definition's
+        /// primitives, over two conjuncts of two paths, which share no partition, so once a match is once a key there.
         /// </summary>
         [Fact]
         public void EachEvaluationIsComputedOncePerKey()

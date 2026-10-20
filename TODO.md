@@ -2530,8 +2530,8 @@ across documents* and *A join of a container to itself* is the record.
   licence. The harness should write a statement's admitted conjuncts into the bundle as one IR junction and claim the
   conjunction as built.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
-  two paths and names one, so composing it again would need each path it sets to lie apart from the next sibling's; a
-  refutation two junctions deep is unproven. The first family's wrong answers need one.
+  two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
+  sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
 - **Only sibling properties are disjoint locations** — *small.* `$.a.b` and `$.c` lie apart in every document, but the
   `disjoint` rule derives it only for two properties of one parent, so a refutation across them is unproven.
 - **A text cast of a raw value is read as its rendering, and over a `VARIANT` it is null** — *medium, a wrong answer,
