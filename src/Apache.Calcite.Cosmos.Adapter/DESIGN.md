@@ -3554,6 +3554,21 @@ elsewhere; `CosmosParameterList.Add`, which every value a statement carries pass
 the statement it stands, and the expression it stood in is computed in process. A parameter bound to one when the
 statement runs still fails at the encoder, unnamed (`TODO.md`).
 
+**What it costs, and what it gives back.** Timed against `702129b` in Release, interleaved, a fresh process a run,
+two passes of ten paired rounds after a dropped first. In the first another session's test run held the machine at
+about 100 % of its four cores, so every time is about twice a quiet run's: the corpus of 78 planned new in 9.38 s at
+`702129b` (7.56–10.63) and 9.22 s here (7.85–10.24), the paired difference −0.12 s (−1.65 to +1.99), here the higher
+in 4 of 10, p 0.56; planned again 4.03 and 4.04 s, p 0.92. In the second the machine was at 20–60 % but for three
+rounds: planned new in 5.46 s (4.86–9.12) and 5.37 s (4.65–8.38), −0.02 s, 5 of 10, p 0.63; planned again 2.46 and
+2.34 s, p 0.56; p90 157 and 166 ms; 1,017 and 1,015 MB allocated. In the four rounds both builds ran under 50 %, the
+differences were +0.05, 0.00, +0.22 and −0.03 s on 5.2 s. No statement moved at p < 0.01 in either pass. Nothing
+measurable was added. The corpus's 78 plans are the same at both builds. Over the 3,960 statements of the
+differential corpus, the partition generator and the adversarial set, 3,916 plan alike and 44 push less, every one
+a case mapping, a length or a trim over a path whose characters nothing proves: 20 send the presence a case fold
+under `LIKE` implies where they sent the case-insensitive match, and 24 compute a function in process they used to
+push. On the `ORDER BY` yardstick's gate one sort goes, beneath a case mapping of an `enum` holding é, and nothing
+fails.
+
 **How it is checked.**
 - `CosmosStringFunctionMeasurementTests` pins the service's six rows on a real account, each asserting what the
   emulator shares and skipping where it differs; on the probe account all six pass, and the trim test holds the
