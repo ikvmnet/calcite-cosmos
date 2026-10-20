@@ -5971,7 +5971,7 @@ any path but its atom's is never partitioned, so never evaluated.
 **An answer is read off a completed run, and a contradiction is loud.** The limits are counts, 64 iterations and 50,000
 rows, never time, and a run they stop answers `Incomplete`. An agreement and a refutation of one claim derive the
 contradiction, and `Read` answers `Conflict`, never either verdict. After every run the tripwire requires each term to
-be its class's one node, which a merge would break.
+be its class's one node, which a merge would break, and a run it trips answers `Conflict` too.
 
 **What holds it.** `RenderingGateTests` derives the probe's T1, T2 and T5 as verdicts on the probe's rows: the guarded
 form exact, the bare one implied and refuted for Equal. It holds the disciplines with plants — a merge (T7), a leaf that

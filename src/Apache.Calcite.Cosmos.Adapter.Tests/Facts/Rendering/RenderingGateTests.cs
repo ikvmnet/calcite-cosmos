@@ -92,23 +92,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void T2() => Check(Bare, DeclaredString).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
         /// <summary>
-        /// The tripwire: a planted rule that merges two atoms leaves a class with two nodes, which the run reports.
+        /// The tripwire: a planted rule that merges two atoms leaves a class with two nodes, which the run reports and the
+        /// read answers as a conflict, whatever the run derived.
         /// </summary>
         [Fact]
         public void T7_AMergeOfTwoTermsTripsTheWire()
         {
             var theory = RenderingTheory.Define(Measured);
-            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: two atoms are one", r =>
+            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: two atoms of one path are one", r =>
             {
-                var (e1, e2) = r.Vars<Pred, Pred>("e1", "e2");
-                var (p1, p2, a1, a2) = r.Vars<JPath, JPath, PredicateAtom, PredicateAtom>("p1", "p2", "a1", "a2");
-                r.When(theory.Ir.Atom.Of(e1, p1, a1), theory.Ir.Atom.Of(e2, p2, a2), e1.IsNot(e2));
+                var (e1, e2, p) = r.Vars<Pred, Pred, JPath>("e1", "e2", "p");
+                var (a1, a2) = r.Vars<PredicateAtom, PredicateAtom>("a1", "a2");
+                r.When(theory.Ir.Atom.Of(e1, p, a1), theory.Ir.Atom.Of(e2, p, a2), e1.IsNot(e2));
                 r.Then(e1.Is(e2));
             });
 
+            // The merged atoms are another path's, unclaimed, so the claim's own rows stand: the read refuses them.
             using var bundle = theory.Open(RenderingSet.Emulator);
-            bundle.Write(And(NotBikes, Eq(Text(P("kind")), "a")));
+            var root = bundle.Write(NotBikes);
+            bundle.Write(Eq(Text(P("kind")), "a"));
+            bundle.Write(Eq(Text(P("kind")), "b"));
+            bundle.Import("test", LabelPath, DeclaredString, AllBands);
+            bundle.Claim(root, Bare);
             bundle.Run().OneNodePerClass.Should().BeFalse();
+            bundle.Read(root, Bare, Verdict.Equal).Should().Be(new RenderingVerdict(RenderingVerdictKind.Conflict, null, null, "tripwire: a rule merged two terms"));
         }
 
         /// <summary>Bundles under the frozen theory on four threads answer as they do one at a time.</summary>

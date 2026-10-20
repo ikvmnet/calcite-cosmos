@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The run stopped short, so nothing it derived may be read.</summary>
         Incomplete,
 
-        /// <summary>The bundle derived an agreement and a refutation of one claim: the rows or the rules are wrong.</summary>
+        /// <summary>The bundle derived an agreement and a refutation of one claim, or merged two terms: the rows or the rules are wrong.</summary>
         Conflict,
 
     }

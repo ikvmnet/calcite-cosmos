@@ -106,6 +106,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_run is not { StopReason: RunStopReason.Completed })
                 return new(RenderingVerdictKind.Incomplete, null, null, _run is null ? "not run" : "stopped: " + _run.StopReason);
 
+            // A merge would let an agreement pass between two terms; no rule merges, so one is a rule that is wrong.
+            if (_run.OneNodePerClass == false)
+                return new(RenderingVerdictKind.Conflict, null, null, "tripwire: a rule merged two terms");
+
             if (_run.Contradicted)
                 return new(RenderingVerdictKind.Conflict, null, null, "agreed and refuted: " + string.Join("; ", Scope.Rows(_theory.Conflict)));
 
