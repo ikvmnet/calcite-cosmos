@@ -5863,6 +5863,51 @@ tosses where nothing was measured; each answer within the coarse one but for tho
 cell's, the probe's T9 as a gain. `PathCellTests` holds a split to covering the import exactly and every cell to an
 inhabitant, each with a plant it must catch.
 
+### Forms, rows, and the service on a cell
+
+**A written condition is a value, never a class.** `ServiceForm` is a test, a comparison or a membership of one path, a
+path written bare, a constant, or a connective. Its canonical text — fully parenthesised, a path spelled as
+`SqlValue.Spell` spells it, a literal quoted in `JsonValues`' spelling — is its equality, hash and order, and a junction
+keeps its members as written. `First`, `Rest`, `Without`, `Decomposes` and `Strip` only take a form apart, so that rules
+can pair a junction's members with the IR's children every way. A junction without its one member, however often
+written, is that member: `AND` and `OR` are idempotent.
+
+**The service's behaviour is rows, keyed by what was asked, of what operand, over what class of value.** An entry holds
+every answer the targets a set serves gave for its key, and the outcomes they mean through `AnswerMeanings`, host data:
+that `NotKept` is false or undefined is a row, not C#. `ServiceTable` views a set's entries and is equal by content.
+Eggnog interns a value by its equality, and the probe's table, equal by its size, would have let a bundle read another
+set's rows.
+
+**Four primitives evaluate on concrete cells and decide nothing else** (decision D1). `CutPoints` applies a reader's
+edges by arithmetic, `ServiceLeaf` reads one test's row on each cell, `ServiceCompound` maps one connective over two
+vectors by its rows, and `CellOutcomes` pairs Calcite's `OnCell` with the service's outcome on each cell. Which cuts,
+which literals part the orders, which subforms are evaluated, how verdicts compose and every verdict are S's rules.
+
+**A key no row settles answers everything, a failure included, and is named** `missing:test/operand/cell`. So no branch
+encodes a behaviour without a row — an empty table answers widest everywhere — and an unproven conjunct names the
+measurement that would decide it. A failure passes through every connective: it fails the statement whatever a sibling
+decides.
+
+**Strings are cut in Calcite's order and placed in the service's.** An interval of strings is cut by UTF-16 unit, so by
+code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
+decide that, and a parted interval answers both sides. A point is placed by each comparator the type's `Order` entry
+names, their answers unioned. A number is placed only within ±2^53, where a double holds it exactly: the theory spells
+`30` and `30.0` alike, and the service may hold either as a double. A boolean and a null are keyed as their own classes,
+which no comparator orders.
+
+**A path written bare carries the class of a value that is no boolean**, and a connective over it reads that class's
+row, not unknown's. As a whole condition such a value is kept by neither `WHERE` nor `WHERE NOT`
+(`Service.BarePathKeepsOnlyTrue`, `Service.NotOverAPathKeepsOnlyFalse`), and `CellOutcomes` reads it so.
+
+**A literal's double edge is the double's exact value.** A decimal's own conversion from a double keeps fifteen digits
+and moves 2^53 by two, so `CutPoints` reads the double's bits, and cuts nowhere where no decimal holds the value.
+
+**What holds it.** `CellOutcomesTests` checks the probe's T1, T2 and T5 as class sets on `ProbeRows`, the probe's rows
+completed: the guarded form is exact, and the bare one implied and refuted for Equal at the null, the object and the
+array. The primitives' tests hold them to answering nothing without a row, never nothing at all, the two orders apart
+where a literal parts them, a failure through every connective and a bare value's own keys; a table to equality by
+content, and the form's helpers to each other. Plants: a table equal by size, and a `NOT` that drops a failure.
+
 ---
 
 ## Differential testing

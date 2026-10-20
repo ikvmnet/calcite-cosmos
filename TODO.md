@@ -2517,6 +2517,13 @@ across documents* and *A join of a container to itself* is the record.
   (`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`,
   `ReturningDecimalParsesTheRendering`), so `PredicateAtom.Rests` is empty for a numeric cast and `RETURNING DECIMAL`,
   and a proof through one cites nothing on Calcite's side. The rows are owed before the casts' cells are.
+- **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
+  `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
+  a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
+  is owed if a written form carries a null literal.
+- **A double edge no decimal holds is not cut** — *small.* `CutPoints` cuts at a numeric literal's double only where a
+  decimal holds its exact value, which 0.1's needs 55 places for. Whether the double slots need a cut there, spelled
+  approximately, is for the numbers' cells to decide.
 
 ---
 

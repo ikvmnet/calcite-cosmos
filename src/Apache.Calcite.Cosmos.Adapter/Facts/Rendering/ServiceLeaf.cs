@@ -1,0 +1,175 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
+
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
+
+namespace Apache.Calcite.Cosmos.Facts.Rendering
+{
+
+    /// <summary>
+    /// The service on one path's cells: one test, read off the handed table cell by cell. A key the table does not hold
+    /// answers every outcome, a failure included, and is named among the rows, so nothing is concluded no row says.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A cell is keyed by what the service tells apart</b>: its kind, or, against a string or a number, where it lies
+    /// under each comparator the type's <see cref="CosmosServiceTest.Order"/> entry names, their answers unioned. A boolean
+    /// and a null are their own classes, which no comparator orders.
+    /// </para>
+    /// <para>
+    /// <b>An interval of strings is cut by UTF-16 unit</b>, Calcite's order, so it lies wholly to one side of a literal by
+    /// code point too, unless the literal parts the two orders over the path, as S's rules decide; then it answers both
+    /// sides. <b>A number lies exactly where a double does</b>: the theory spells <c>30</c> and <c>30.0</c> alike, the
+    /// service may hold either as a double, and a double is not yet measured against an int64 beyond 2^53.
+    /// </para>
+    /// <para>
+    /// <b>A path written bare</b> is keyed by the value it holds; where that is no boolean, its outcome carries the
+    /// value's class, which a connective over it keys its own row by. A membership, a constant and an opaque form have no
+    /// rows yet, and answer every outcome.
+    /// </para>
+    /// </remarks>
+    internal static class ServiceLeaf
+    {
+
+        /// <summary>The magnitude to which every integer is a double.</summary>
+        const decimal Exact = 1L << 53;
+
+        public static OutcomeVector On(ServiceForm leaf, CellPartition cells, ServiceTable table, ValueSet<string> parted)
+        {
+            if (leaf.Members.Count > 0)
+                throw new ArgumentException("A leaf tests one path; a connective is evaluated from its parts.", nameof(leaf));
+
+            var rows = new HashSet<string>(StringComparer.Ordinal);
+            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, cells.Path, table, parted, rows), NonBoolean(leaf, cell))).ToList();
+            return new OutcomeVector(cells, outcomes, ValueSet.From(rows));
+        }
+
+        static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, string path, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
+        {
+            // A kind the theory does not know, and a form of another path, say nothing of the cell.
+            if (ClassOf(cell) is not CosmosValueClass kind || leaf.Path != path)
+                return ServiceOutcomes.Widest;
+
+            switch (leaf.Kind)
+            {
+                case ServiceFormKind.Test or ServiceFormKind.Bare:
+                    return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
+
+                case ServiceFormKind.Compare:
+                    var operand = ClassOf(leaf.Literal!);
+                    return operand == kind && operand is CosmosValueClass.String or CosmosValueClass.Number
+                        ? Within(leaf, cell, operand, table, parted, rows)
+                        : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
+
+                default:
+                    return ServiceOutcomes.Widest;
+            }
+        }
+
+        /// <summary>A comparison with a literal of the cell's type: by the side or sides each comparator places the cell on.</summary>
+        static ServiceOutcomes Within(ServiceForm leaf, PathCell cell, CosmosValueClass operand, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
+        {
+            var order = MeasuredKey.Of(CosmosServiceTest.Order, operand, CosmosValueClass.None);
+            if (table.TryGet(order, out var comparators) == false)
+            {
+                rows.Add("missing:" + order);
+                return ServiceOutcomes.Widest;
+            }
+
+            rows.UnionWith(comparators.Evidence);
+            var outcomes = ServiceOutcomes.None;
+            foreach (var comparator in comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric))
+            {
+                if (Place(cell, leaf.Literal!, comparator, parted) is not { } sides)
+                    return ServiceOutcomes.Widest;
+
+                foreach (var side in sides)
+                    outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, operand, side), rows);
+            }
+
+            // An entry that names no comparator orders nothing.
+            return outcomes == ServiceOutcomes.None ? ServiceOutcomes.Widest : outcomes;
+        }
+
+        static CosmosValueClass NonBoolean(ServiceForm leaf, PathCell cell) =>
+            leaf.Kind == ServiceFormKind.Bare && ClassOf(cell) is CosmosValueClass kind and not (CosmosValueClass.True or CosmosValueClass.False) ? kind : CosmosValueClass.None;
+
+        /// <summary>
+        /// Where a cell's values lie against a literal under a comparator; <c>null</c> where the comparator does not order
+        /// them, or not exactly.
+        /// </summary>
+        static CosmosValueClass[]? Place(PathCell cell, string literal, CosmosAnswer comparator, ValueSet<string> parted)
+        {
+            switch (comparator, cell)
+            {
+                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16, PathCell.Point { Value: var v }) when IsString(v) && IsString(literal):
+                    return [Side(comparator == CosmosAnswer.Utf16 ? string.CompareOrdinal(StringOf(v), StringOf(literal)) : ByCodePoint(StringOf(v), StringOf(literal)))];
+
+                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16, PathCell.Strings s) when IsString(literal):
+                    var t = StringOf(literal);
+                    return Sides(cell, literal, parted.Contains(literal) == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
+                        parted.Contains(literal) == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0);
+
+                case (CosmosAnswer.Numeric, PathCell.Point { Value: var v }) when Whole(v) is decimal x && Whole(literal) is decimal c:
+                    return [Side(x.CompareTo(c))];
+
+                case (CosmosAnswer.Numeric, PathCell.Numbers { Integral: true, Lower: Bound lo, Upper: Bound hi }) when Whole(literal) is decimal c && Math.Abs(lo.Value) <= Exact && Math.Abs(hi.Value) <= Exact:
+                    return Sides(cell, literal, hi.Value < c || hi.Value == c && hi.Open, lo.Value > c || lo.Value == c && lo.Open);
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>One side where every value lies there; otherwise either, and the literal where the cell holds it.</summary>
+        static CosmosValueClass[] Sides(PathCell cell, string literal, bool below, bool above) =>
+            below ? [CosmosValueClass.Below] : above ? [CosmosValueClass.Above]
+            : cell.Contains(literal) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
+
+        static CosmosValueClass Side(int order) => order < 0 ? CosmosValueClass.Below : order > 0 ? CosmosValueClass.Above : CosmosValueClass.Equal;
+
+        /// <summary>Strings by code point, a lone surrogate read as U+FFFD, as the service stores one.</summary>
+        static int ByCodePoint(string a, string b)
+        {
+            var (x, y) = (a.EnumerateRunes(), b.EnumerateRunes());
+            while (true)
+            {
+                var (more, others) = (x.MoveNext(), y.MoveNext());
+                if (more == false || others == false)
+                    return more.CompareTo(others);
+
+                if (x.Current.Value.CompareTo(y.Current.Value) is var order and not 0)
+                    return order;
+            }
+        }
+
+        /// <summary>A whole number a double holds exactly, or <c>null</c>.</summary>
+        static decimal? Whole(string value) => TryNumberOf(value, out var x) && x == decimal.Truncate(x) && Math.Abs(x) <= Exact ? x : null;
+
+        static CosmosValueClass? ClassOf(PathCell cell) => cell switch
+        {
+            PathCell.Absent => CosmosValueClass.Absent,
+            PathCell.Null => CosmosValueClass.Null,
+            PathCell.Structure s => s.Type == ObjectType ? CosmosValueClass.Object : CosmosValueClass.Array,
+            PathCell.Strings => CosmosValueClass.String,
+            PathCell.Numbers => CosmosValueClass.Number,
+            PathCell.Point p => ClassOf(p.Value),
+            _ => null,
+        };
+
+        static CosmosValueClass ClassOf(string value) => TypeOf(value) switch
+        {
+            StringType => CosmosValueClass.String,
+            BooleanType => value == Of(true) ? CosmosValueClass.True : CosmosValueClass.False,
+            NullType => CosmosValueClass.Null,
+            _ => CosmosValueClass.Number,
+        };
+
+    }
+
+}
