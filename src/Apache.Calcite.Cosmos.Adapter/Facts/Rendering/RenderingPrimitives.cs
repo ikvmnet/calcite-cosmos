@@ -56,9 +56,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormDecomposes { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-decomposes", (f, l, m) =>
             ServiceForm.Decomposes(f, l, m) || ServiceForm.Decomposes(f, m, l));
 
-        /// <summary>A junction row takes the IR's first arm as its side: a rule over both sides reads each junction once by it.</summary>
-        public static Primitive<JunctionSide, bool> SideIsLeft { get; } = Primitive.Create<JunctionSide, bool>("side-is-left", d => d is JunctionSide.AndLeft or JunctionSide.OrLeft);
-
     }
 
 }

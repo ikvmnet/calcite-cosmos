@@ -41,7 +41,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [
             "outcome", "cites", "serves", "means", "answers", "measured", "evidence", "final", "table", "class", "raiseonly", "allowing",
             "refuting", "tolerated", "allowed", "allowedcites", "refutes", "edges", "parting", "kleene", "expected", "matched", "licensed",
-            "identity", "opposite", "connectiveof", "version", "spelling", "conjunct", "under", "imported", "importedchars",
+            "identity", "opposite", "spelling", "conjunct", "under", "imported", "importedchars",
         ];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];

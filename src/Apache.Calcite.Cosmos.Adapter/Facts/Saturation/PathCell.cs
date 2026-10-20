@@ -131,9 +131,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// Cuts a path's import into cells at the cut points. A string or a number cut at is a point where the import
         /// admits it and a boundary where not, and an interval between two is kept where something lies in it.
         /// </summary>
-        public static CellPartition Split(PathFacts facts, ValueSet<CutPoint> cuts)
+        /// <param name="path">The path, spelled as <c>SqlValue.Spell</c> spells it.</param>
+        /// <param name="x">What it may hold, as imported whole.</param>
+        /// <param name="classes">The classes its strings' characters may be in.</param>
+        /// <param name="cuts">Where to cut it.</param>
+        public static CellPartition Split(string path, PathValues x, ValueSet<string> classes, ValueSet<CutPoint> cuts)
         {
-            var (x, classes) = (facts.Values, facts.Classes);
             bool Admits(string value) => x.Admits(value) && Within(value, x.Lower, x.Upper) && CharactersOf(value).IsSubsetOf(classes);
 
             var cells = new List<PathCell>();
@@ -204,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 }
             }
 
-            return new CellPartition(facts.Path, ValueSet.From(cells.Where(c => c is not (Strings or Numbers) || c.Witness() is not null)), classes);
+            return new CellPartition(path, ValueSet.From(cells.Where(c => c is not (Strings or Numbers) || c.Witness() is not null)));
         }
 
         /// <summary>

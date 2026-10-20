@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var integers = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Meet(PathValues.Above(Bound.AtLeast(-10)), PathValues.Below(Bound.AtMost(100))));
             foreach (var classes in new[] { AllBands, NoBand })
                 foreach (var import in new[] { PathValues.Anything, PathValues.OfKinds(ValueSet.Of(StringType)), integers })
-                    yield return PathCell.Split(new PathFacts(S, import, classes), cuts);
+                    yield return PathCell.Split(S, import, classes, cuts);
         }
 
         static IEnumerable<ValueSet<string>> Parted() => [ValueSet<string>.Empty, ValueSet.From(Literals.Where(IsString))];
@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             ServiceOutcomes.Widest.Should().HaveFlag(ServiceOutcomes.Fails);
 
-            var strings = PathCell.Split(new PathFacts(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands), ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
+            var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
                 .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "the probe's rows hold no ordering");
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void PartedLiteralsAnswerBothOrders()
         {
             var table = Less(CosmosAnswer.CodePoint, CosmosAnswer.True);
-            var cells = PathCell.Split(new PathFacts(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands), ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
             var less = ServiceForm.CompareOf(CosmosServiceTest.Less, S, High);
 
             var whole = ServiceLeaf.On(less, cells, table, ValueSet<string>.Empty);
@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             table.TryGet(MeasuredKey.Of(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Below), out var below).Should().BeTrue();
             below!.Outcomes.Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
 
-            var cells = PathCell.Split(new PathFacts(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands), ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
             var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, table, ValueSet<string>.Empty);
             At(vector, Emoji).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined, "by code point it is above, by unit below");
             At(vector, new PathCell.Strings(null, Emoji, ValueSet<string>.Empty, AllBands).Text).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var missing = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
             var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target != RenderingTarget.Calcite && row.Key != missing));
-            var cells = PathCell.Split(new PathFacts(S, PathValues.Anything, AllBands), ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
+            var cells = PathCell.Split(S, PathValues.Anything, AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
 
             var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty);
             vector.Rows.Where(row => row.StartsWith("missing:")).Should().Equal("missing:NotEqual/String/Null");

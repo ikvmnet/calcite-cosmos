@@ -136,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
             (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
 
-            Probe.Value.Theory.Get(Probe.Value.Final.Of(key.Test, key.Operand, key.Cell, RenderingSet.Portable)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
+            Probe.Value.Theory.Get(Probe.Value.Final.Of(key, RenderingSet.Portable)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
         }
 
         /// <summary>

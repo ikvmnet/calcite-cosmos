@@ -279,10 +279,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             theory.Graph.Rulesets.Single(r => r.Name == "descend").DefineRule("planted: the rest without a member that differs in text", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
-                var (pos, d) = r.Vars<RenderPosition, JunctionSide>("pos", "d");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
                 var (f, g, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "g", "h");
-                r.When(theory.Candidate.Of(e, pos, f), theory.Junction.Of(e, x, y, d), theory.Member.Of(f, g), theory.Member.Of(f, h), h.IsNot(g));
-                r.Where(RenderingPrimitives.SideIsLeft.Of(d));
+                r.When(theory.Candidate.Of(e, pos, f), theory.First.Of(e, x), theory.Junction.Of(e, x, y, j), theory.Member.Of(f, g), theory.Member.Of(f, h), h.IsNot(g));
                 r.Where(Primitives.Greater.Of(Compute.Of(f, w => (long)w.Members.Count), 2L));
                 r.Then(theory.Candidate.Of(y, pos, Compute.Of(f, g, h, (w, a, b) => ServiceForm.Without(ServiceForm.Without(w, a), b))));
             });

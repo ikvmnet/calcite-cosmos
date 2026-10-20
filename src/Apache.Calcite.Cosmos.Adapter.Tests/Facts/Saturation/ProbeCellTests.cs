@@ -41,14 +41,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 (new PathCell.Numbers(true, null, null, none), T), (new PathCell.Numbers(false, null, null, none), T),
                 (new PathCell.Structure(ObjectType), U), (new PathCell.Structure(ArrayType), U),
             };
-            PathCell.Split(new PathFacts(label, PathValues.Anything, AllBands), cuts).Cells.Should().Equal(ValueSet.From(undeclared.Select(c => c.Cell)));
+            PathCell.Split(label, PathValues.Anything, AllBands, cuts).Cells.Should().Equal(ValueSet.From(undeclared.Select(c => c.Cell)));
             undeclared.Select(c => atom.OnCell(c.Cell)).Should().Equal(undeclared.Select(c => c.Answer));
 
             var declared = new (PathCell Cell, Truths Answer)[]
             {
                 (new PathCell.Strings(null, Of("bikes"), none, AllBands), T), (new PathCell.Point(Of("bikes")), F), (new PathCell.Strings(Of("bikes"), null, none, AllBands), T),
             };
-            PathCell.Split(new PathFacts(label, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands), cuts).Cells.Should().Equal(ValueSet.From(declared.Select(c => c.Cell)));
+            PathCell.Split(label, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, cuts).Cells.Should().Equal(ValueSet.From(declared.Select(c => c.Cell)));
             declared.Select(c => atom.OnCell(c.Cell)).Should().Equal(declared.Select(c => c.Answer));
         }
 

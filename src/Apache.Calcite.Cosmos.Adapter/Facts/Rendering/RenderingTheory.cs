@@ -1,8 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -18,23 +15,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// refuted, and carry both through the predicate's AND, OR and NOT.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>Every fact that is derived or combined is a rule here.</b> C# reads rows in and evaluates one atom, one test or
-    /// one connective on concrete cells (decision D1); which cuts, which literals part the orders, which subforms are
-    /// evaluated, which classes are allowed or refute, the universal over cells, the licences, which written member pairs
-    /// with which arm, which locations are apart and the verdicts are rules.
-    /// </para>
-    /// <para>
-    /// <b>A universal reads complete inputs.</b> Each stratum's universals (<c>set-subset</c>) read tables that are
-    /// lattice-free, the host's, the theory's, or written only in an earlier stratum, so a verdict never fires over a set
-    /// still growing; the order test reads every rule and holds them to it. A table the evaluation fills is lattice-free,
-    /// so a primitive that answers one key two ways faults the bundle rather than meeting silently.
-    /// </para>
+    /// Every fact that is derived or combined is a rule here, and every universal reads complete inputs (<c>DESIGN.md</c>,
+    /// <i>The rendering graph in check mode</i>).
     /// </remarks>
     internal sealed class RenderingTheory
     {
-
-        readonly Function<string> _version;
 
         RenderingTheory(RenderingDefinition definition)
         {
@@ -43,14 +28,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Ir = new PredicateVocabulary(Graph, Paths);
             Register(Graph.Values);
 
-            Outcome = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, CosmosAnswer>("outcome");
-            Cites = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, ValueSet<string>>("cites", ValueLattice.Union<string>());
+            Outcome = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("outcome");
+            Cites = Graph.DefineFunction<MeasuredKey, RenderingTarget, ValueSet<string>>("cites", ValueLattice.Union<string>());
             Serves = Graph.DefineFunction<RenderingSet, ValueSet<RenderingTarget>>("serves");
             Means = Graph.DefineFunction<AnswerMeanings>("means");
-            Answers = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<CosmosAnswer>>("answers", ValueLattice.Union<CosmosAnswer>());
-            Measured = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<RenderingTarget>>("measured", ValueLattice.Union<RenderingTarget>());
-            Evidence = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<string>>("evidence", ValueLattice.Union<string>());
-            Final = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<CosmosAnswer>>("final");
+            Answers = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>>("answers", ValueLattice.Union<CosmosAnswer>());
+            Measured = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<RenderingTarget>>("measured", ValueLattice.Union<RenderingTarget>());
+            Evidence = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<string>>("evidence", ValueLattice.Union<string>());
+            Final = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>>("final");
             Table = Graph.DefineFunction<RenderingSet, ValueSet<MeasuredEntry>>("table", ValueLattice.Union<MeasuredEntry>());
             Class = Graph.DefineRelation<CellClass>("class");
             RaiseOnly = Graph.DefineFunction<ValueSet<CellClass>>("raiseonly", ValueLattice.Union<CellClass>());
@@ -62,14 +47,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Refutes = Graph.DefineFunction<RenderPosition, Verdict, ValueSet<CellClass>>("refutes", ValueLattice.Union<CellClass>());
             Edges = Graph.DefineFunction<string, ReaderEdges>("edges");
             Parting = Graph.DefineRelation<string, string>("parting");
-            Kleene = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, CosmosAnswer>("kleene");
+            Kleene = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("kleene");
             Expected = Graph.DefineFunction<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>>("expected", ValueLattice.Union<MeasuredKey>());
             Matched = Graph.DefineFunction<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>>("matched", ValueLattice.Union<MeasuredKey>());
             Licensed = Graph.DefineFunction<RenderingSet, ValueSet<CosmosServiceTest>>("licensed", ValueLattice.Union<CosmosServiceTest>());
             Identity = Graph.DefineFunction<CosmosServiceTest, ValueSet<CellClass>>("identity");
             Opposite = Graph.DefineRelation<RenderPosition, RenderPosition>("opposite");
-            ConnectiveOf = Graph.DefineFunction<JunctionSide, CosmosServiceTest>("connectiveof");
-            _version = Graph.DefineFunction<string>("version");
 
             Spelling = Graph.DefineFunction<JPath, string>("spelling");
             Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
@@ -88,7 +71,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
             RefutedAt = Graph.DefineRelation<Refutation, JPath>("refutedat");
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
-            Junction = Graph.DefineRelation<Pred, Pred, Pred, JunctionSide>("junction", new TableOptions { Role = TableRole.Analysis });
+            var analysis = new TableOptions { Role = TableRole.Analysis };
+            Junction = Graph.DefineRelation<Pred, Pred, Pred, CosmosServiceTest>("junction", analysis);
+            First = Graph.DefineRelation<Pred, Pred>("first", analysis);
             Needs = Graph.DefineFunction<ServiceForm, ValueSet<CosmosServiceTest>>("needs", ValueLattice.Union<CosmosServiceTest>());
             Neutral = Graph.DefineFunction<Pred, ServiceForm, CosmosServiceTest, Witness>("neutral", ValueLattice.Min<Witness>());
             Disjoint = Graph.DefineRelation<JPath, JPath>("disjoint");
@@ -126,7 +111,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
 
-            Version = Digest(definition);
             Graph.Root.Freeze();
             Theory = Graph.Root.CreateChild();
             Load(definition);
@@ -141,13 +125,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         public PredicateVocabulary Ir { get; }
 
-        /// <summary>A digest of every host row, so that an answer remembered under one theory is not read under another.</summary>
-        public string Version { get; }
-
-        /// <summary>
-        /// The theory's schedule: the rows settled per set, the classes the boxes allow and refute, and the connectives each
-        /// set composes through.
-        /// </summary>
+        /// <summary>The theory's schedule: the rows settled per set, the classes the boxes allow and refute, and the licences.</summary>
         public Schedule Settle { get; }
 
         /// <summary>
@@ -158,14 +136,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         // The theory's tables: the rows as measured and as settled per set, and the agreement. `final` and `table` hold a
         // key once every target its set serves has measured it.
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, CosmosAnswer> Outcome { get; }
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, ValueSet<string>> Cites { get; }
+        public Function<MeasuredKey, RenderingTarget, CosmosAnswer> Outcome { get; }
+        public Function<MeasuredKey, RenderingTarget, ValueSet<string>> Cites { get; }
         public Function<RenderingSet, ValueSet<RenderingTarget>> Serves { get; }
         public Function<AnswerMeanings> Means { get; }
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<CosmosAnswer>> Answers { get; }
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<RenderingTarget>> Measured { get; }
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<string>> Evidence { get; }
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<CosmosAnswer>> Final { get; }
+        public Function<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>> Answers { get; }
+        public Function<MeasuredKey, RenderingSet, ValueSet<RenderingTarget>> Measured { get; }
+        public Function<MeasuredKey, RenderingSet, ValueSet<string>> Evidence { get; }
+        public Function<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>> Final { get; }
         public Function<RenderingSet, ValueSet<MeasuredEntry>> Table { get; }
         public Relation<CellClass> Class { get; }
         public Function<ValueSet<CellClass>> RaiseOnly { get; }
@@ -179,14 +157,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<string, string> Parting { get; }
 
         // Composition's: Kleene's answers, the keys each set is expected and matched on, the connectives it composes
-        // through, and what an identity, a negation and a side of a junction read as.
-        public Function<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingTarget, CosmosAnswer> Kleene { get; }
+        // through, an identity's class and the position beneath a negation.
+        public Function<MeasuredKey, RenderingTarget, CosmosAnswer> Kleene { get; }
         public Function<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>> Expected { get; }
         public Function<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>> Matched { get; }
         public Function<RenderingSet, ValueSet<CosmosServiceTest>> Licensed { get; }
         public Function<CosmosServiceTest, ValueSet<CellClass>> Identity { get; }
         public Relation<RenderPosition, RenderPosition> Opposite { get; }
-        public Function<JunctionSide, CosmosServiceTest> ConnectiveOf { get; }
 
         // A bundle's tables. The host writes a path's spelling beside its term (a merge of two paths would give one class
         // two spellings, and throw), the set, each import once and lattice-free, and the root's candidate with every
@@ -213,7 +190,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The one location a refutation on an atom's cells sets; a junction's sets two, and has none.</summary>
         public Relation<Refutation, JPath> RefutedAt { get; }
         public Relation<Pred, RenderPosition, ServiceForm, Verdict> Conflict { get; }
-        public Relation<Pred, Pred, Pred, JunctionSide> Junction { get; }
+
+        /// <summary>A junction of the IR, its connective, and each arm beside the other; <see cref="First"/> names its first.</summary>
+        public Relation<Pred, Pred, Pred, CosmosServiceTest> Junction { get; }
+        public Relation<Pred, Pred> First { get; }
         public Function<ServiceForm, ValueSet<CosmosServiceTest>> Needs { get; }
         public Function<Pred, ServiceForm, CosmosServiceTest, Witness> Neutral { get; }
         public Relation<JPath, JPath> Disjoint { get; }
@@ -241,7 +221,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<Verdict>();
             values.RegisterEnum<Truths>();
             values.RegisterEnum<ServiceOutcomes>();
-            values.RegisterEnum<JunctionSide>();
             values.Register<ServiceForm>("service form");
             values.Register<CellClass>("cell class");
             values.Register<Box>("box");
@@ -253,7 +232,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<ServiceTable>("service table");
             values.Register<ReaderEdges>("reader edges");
             values.Register<CutPoint>("cut point");
-            values.Register<PathFacts>("path facts");
             values.Register<CellPartition>("cell partition");
             values.Register<OutcomeVector>("outcome vector");
             values.Register<CellOutcomes>("cell outcomes");
@@ -271,13 +249,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             measure.DefineRule("a measured answer is one a set's service may give", r =>
             {
-                var (t, a, c) = r.Vars<CosmosServiceTest, CosmosValueClass, CosmosValueClass>("t", "a", "c");
-                var (x, s, o) = r.Vars<RenderingTarget, RenderingSet, CosmosAnswer>("x", "s", "o");
+                var (k, x, s, o) = r.Vars<MeasuredKey, RenderingTarget, RenderingSet, CosmosAnswer>("k", "x", "s", "o");
                 var (d, i) = r.Vars<ValueSet<RenderingTarget>, ValueSet<string>>("d", "i");
-                r.When(o.Is(Outcome.Of(t, a, c, x)), d.Is(Serves.Of(s)), i.Is(Cites.Of(t, a, c, x)));
+                r.When(o.Is(Outcome.Of(k, x)), d.Is(Serves.Of(s)), i.Is(Cites.Of(k, x)));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
-                r.Then(Answers.Of(t, a, c, s).Is(Primitives.Singleton<CosmosAnswer>().Of(o)),
-                    Measured.Of(t, a, c, s).Is(Primitives.Singleton<RenderingTarget>().Of(x)), Evidence.Of(t, a, c, s).Is(i));
+                r.Then(Answers.Of(k, s).Is(Primitives.Singleton<CosmosAnswer>().Of(o)), Measured.Of(k, s).Is(Primitives.Singleton<RenderingTarget>().Of(x)),
+                    Evidence.Of(k, s).Is(i));
             });
 
             allowed.DefineRule("a class within an allowing box is allowed", r =>
@@ -317,40 +294,37 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // Measured is complete when this stratum runs, so a key is settled once and its answers are all of them.
             tabulate.DefineRule("a settled key is an entry of its set's table", r =>
             {
-                var (t, a, c, s) = r.Vars<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet>("t", "a", "c", "s");
+                var (k, s) = r.Vars<MeasuredKey, RenderingSet>("k", "s");
                 var (m, d) = r.Vars<ValueSet<RenderingTarget>, ValueSet<RenderingTarget>>("m", "d");
                 var (v, i, mn) = r.Vars<ValueSet<CosmosAnswer>, ValueSet<string>, AnswerMeanings>("v", "i", "mn");
-                r.When(m.Is(Measured.Of(t, a, c, s)), d.Is(Serves.Of(s)), v.Is(Answers.Of(t, a, c, s)), i.Is(Evidence.Of(t, a, c, s)), mn.Is(Means.Of()));
+                r.When(m.Is(Measured.Of(k, s)), d.Is(Serves.Of(s)), v.Is(Answers.Of(k, s)), i.Is(Evidence.Of(k, s)), mn.Is(Means.Of()));
                 r.Where(Primitives.IsSubsetOf<RenderingTarget>().Of(d, m));
-                r.Then(Table.Of(s).Is(Primitives.Singleton<MeasuredEntry>().Of(Compute.Of(Compute.Of(t, a, c, MeasuredKey.Of), v, i, mn, MeasuredEntry.Of))),
-                    Final.Of(t, a, c, s).Is(v));
+                r.Then(Table.Of(s).Is(Primitives.Singleton<MeasuredEntry>().Of(Compute.Of(k, v, i, mn, MeasuredEntry.Of))), Final.Of(k, s).Is(v));
             });
         }
 
         // A connective composes in a set where every key Kleene's logic expects of the set's targets is settled there as
-        // Kleene's: a missing key, a key the targets answer apart, and a value that is no boolean read otherwise each leave
-        // it unlicensed. Calcite composes only where its own rows hold too, which every composition reads beside the set's.
+        // Kleene's; Calcite composes only where its own rows hold too, which every composition reads beside the set's.
         void DefineLicences(Ruleset expected, Ruleset matched, Ruleset licence)
         {
             expected.DefineRule("every Kleene cell of a connective is expected of a set that serves a target it is Kleene's for", r =>
             {
-                var (t, a, c) = r.Vars<CosmosServiceTest, CosmosValueClass, CosmosValueClass>("t", "a", "c");
-                var (y, s, x, d) = r.Vars<RenderingTarget, RenderingSet, CosmosAnswer, ValueSet<RenderingTarget>>("y", "s", "x", "d");
-                r.When(x.Is(Kleene.Of(t, a, c, y)), d.Is(Serves.Of(s)));
+                var (k, y, s, x) = r.Vars<MeasuredKey, RenderingTarget, RenderingSet, CosmosAnswer>("k", "y", "s", "x");
+                var d = r.Var<ValueSet<RenderingTarget>>("d");
+                r.When(x.Is(Kleene.Of(k, y)), d.Is(Serves.Of(s)));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, y));
-                r.Then(Expected.Of(t, s).Is(Primitives.Singleton<MeasuredKey>().Of(Compute.Of(t, a, c, MeasuredKey.Of))));
+                r.Then(Expected.Of(Compute.Of(k, w => w.Test), s).Is(Primitives.Singleton<MeasuredKey>().Of(k)));
             });
 
             // A settled answer is never empty, so one within Kleene's single answer is that answer.
             matched.DefineRule("a settled answer that is Kleene's matches", r =>
             {
-                var (t, a, c) = r.Vars<CosmosServiceTest, CosmosValueClass, CosmosValueClass>("t", "a", "c");
-                var (y, s, x, d) = r.Vars<RenderingTarget, RenderingSet, CosmosAnswer, ValueSet<RenderingTarget>>("y", "s", "x", "d");
-                var v = r.Var<ValueSet<CosmosAnswer>>("v");
-                r.When(v.Is(Final.Of(t, a, c, s)), x.Is(Kleene.Of(t, a, c, y)), d.Is(Serves.Of(s)));
+                var (k, y, s, x) = r.Vars<MeasuredKey, RenderingTarget, RenderingSet, CosmosAnswer>("k", "y", "s", "x");
+                var (d, v) = r.Vars<ValueSet<RenderingTarget>, ValueSet<CosmosAnswer>>("d", "v");
+                r.When(v.Is(Final.Of(k, s)), x.Is(Kleene.Of(k, y)), d.Is(Serves.Of(s)));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, y));
                 r.Where(Primitives.IsSubsetOf<CosmosAnswer>().Of(v, Primitives.Singleton<CosmosAnswer>().Of(x)));
-                r.Then(Matched.Of(t, s).Is(Primitives.Singleton<MeasuredKey>().Of(Compute.Of(t, a, c, MeasuredKey.Of))));
+                r.Then(Matched.Of(Compute.Of(k, w => w.Test), s).Is(Primitives.Singleton<MeasuredKey>().Of(k)));
             });
 
             licence.DefineRule("a connective every expected cell of which matched composes in the set", r =>
@@ -363,32 +337,31 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        // Positions and pairings are derived, never carried: a junction's left side is proposed each member of its form and
-        // its right side the rest, so the gate, not C#, decides which pairing holds, and a negation's operand the form
-        // stripped of a NOT at the opposite position.
+        // Positions and pairings are derived, never carried: a junction's first arm is proposed each member of its form and
+        // its second the rest, so the gate decides which pairing holds; a negation's operand takes the form stripped of a
+        // NOT at the opposite position.
         void DefineDescent(Ruleset structure, Ruleset descend, Ruleset disjoint)
         {
             structure.DefineRule("a conjunction's arms are its junction's sides", r =>
             {
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 r.When(e.Is(Ir.And.Of(a, b)));
-                r.Then(Junction.Of(e, a, b, JunctionSide.AndLeft), Junction.Of(e, b, a, JunctionSide.AndRight));
+                r.Then(Junction.Of(e, a, b, CosmosServiceTest.And), Junction.Of(e, b, a, CosmosServiceTest.And), First.Of(e, a));
             });
 
             structure.DefineRule("a disjunction's arms are its junction's sides", r =>
             {
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 r.When(e.Is(Ir.Or.Of(a, b)));
-                r.Then(Junction.Of(e, a, b, JunctionSide.OrLeft), Junction.Of(e, b, a, JunctionSide.OrRight));
+                r.Then(Junction.Of(e, a, b, CosmosServiceTest.Or), Junction.Of(e, b, a, CosmosServiceTest.Or), First.Of(e, a));
             });
 
-            descend.DefineRule("a junction's left side takes each member of its form, and its right side the rest", r =>
+            descend.DefineRule("a junction's first arm takes each member of its form, and its second the rest", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
-                var (pos, d, j) = r.Vars<RenderPosition, JunctionSide, CosmosServiceTest>("pos", "d", "j");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
                 var (f, g) = r.Vars<ServiceForm, ServiceForm>("f", "g");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), j.Is(ConnectiveOf.Of(d)), Member.Of(f, g));
-                r.Where(RenderingPrimitives.SideIsLeft.Of(d));
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Junction.Of(e, x, y, j), Member.Of(f, g));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Then(Candidate.Of(x, pos, g), Candidate.Of(y, pos, Compute.Of(f, g, ServiceForm.Without)), Needs.Of(f).Is(ValueSet<CosmosServiceTest>.Empty));
             });
@@ -405,12 +378,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // of the others; with two, it is the other, whose members are its own.
             descend.DefineRule("the rest of a junction's form has every member it was not stripped of", r =>
             {
-                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
-                var (pos, d, n) = r.Vars<RenderPosition, JunctionSide, long>("pos", "d", "n");
+                var (e, x, n) = r.Vars<Pred, Pred, long>("e", "x", "n");
+                var pos = r.Var<RenderPosition>("pos");
                 var (f, g, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "g", "h");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), Member.Of(f, g), Member.Of(f, h), h.IsNot(g),
-                    n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Members).Count)));
-                r.Where(RenderingPrimitives.SideIsLeft.Of(d));
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Members).Count)));
                 r.Where(Primitives.Greater.Of(n, 2L));
                 r.Then(Member.Of(Compute.Of(f, g, ServiceForm.Without), h));
             });
@@ -435,7 +406,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), n.Is(Spelling.Of(p)),
                     rd.Is(Compute.Of(a, y => y.Reader)), g.Is(Edges.Of(rd)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, y => y.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, (q, y, z) => new PathFacts(q, y, z)), Compute.Of(a, f, g, definition.Cut), definition.Split)));
+                r.Then(Partition.Of(e, f).Is(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>
@@ -473,8 +444,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
 
             // The service may answer two bounds of one path as a range, not each bound, where they part (N8). What it is
-            // asked is the conjunction as written, so its own orderings are read, not the IR's: a form evaluated on one
-            // atom's cells and a junction composed alike hold only where the set licenses Range.
+            // asked is the conjunction as written, so its own orderings are read, not the IR's.
             parted.DefineRule("two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range", r =>
             {
                 var (f, h1, h2, p) = r.Vars<ServiceForm, ServiceForm, ServiceForm, JPath>("f", "h1", "h2", "p");
@@ -573,24 +543,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        // Each identity a step rests on holds for the set's service and for Calcite alike, by the licence: T(a∧b) = T(a) ∩
-        // T(b), F(a∧b) = F(a) ∪ F(b), their duals for OR, and T(¬a) = F(a), on either side. So an agreement of the sides
-        // is one of a junction whose form joins theirs by the junction's own connective, in either order, the members
-        // being a set under AND's and OR's laws; and a refutation of one side is one of the junction on a document that
-        // also sets its sibling, on a location apart, to the connective's identity. A node may hold candidates from more
+        // Each step holds by the identities the licence makes Kleene's on both sides. A node may hold candidates from more
         // than one parent, so the connective is checked where the step is taken, not only where the sides were offered.
         void DefineComposition(Ruleset compose)
         {
             compose.DefineRule("a junction agrees where both sides agree on one verdict and its form is exactly their join", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
-                var (pos, d, j, v) = r.Vars<RenderPosition, JunctionSide, CosmosServiceTest, Verdict>("pos", "d", "j", "v");
+                var (pos, j, v) = r.Vars<RenderPosition, CosmosServiceTest, Verdict>("pos", "j", "v");
                 var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
                 var (pl, pr) = r.Vars<Proof, Proof>("pl", "pr");
                 var (vl, vr) = r.Vars<bool, bool>("vl", "vr");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)), j.Is(ConnectiveOf.Of(d)),
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Junction.Of(e, x, y, j), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)),
                     vl.Is(Vacuous.Of(x, pos, l, v)), vr.Is(Vacuous.Of(y, pos, m, v)));
-                r.Where(RenderingPrimitives.SideIsLeft.Of(d));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
                 Composes(r, j, f);
@@ -611,11 +576,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             compose.DefineRule("a junction is refuted where one side is refuted and the other is its identity on another location", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
-                var (pos, d, j, v) = r.Vars<RenderPosition, JunctionSide, CosmosServiceTest, Verdict>("pos", "d", "j", "v");
+                var (pos, j, v) = r.Vars<RenderPosition, CosmosServiceTest, Verdict>("pos", "j", "v");
                 var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
                 var (z, w) = r.Vars<Refutation, Witness>("z", "w");
                 var (p1, p2, a2) = r.Vars<JPath, JPath, PredicateAtom>("p1", "p2", "a2");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), z.Is(Disagrees.Of(x, pos, l, v)), j.Is(ConnectiveOf.Of(d)), w.Is(Neutral.Of(y, m, j)),
+                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, j), z.Is(Disagrees.Of(x, pos, l, v)), w.Is(Neutral.Of(y, m, j)),
                     RefutedAt.Of(z, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
@@ -665,8 +630,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 {
                     Theory.Write(w =>
                     {
-                        foreach (var (_, (t, a, c), x, answer) in axiom)
-                            w.Assume(Outcome.Of(t, a, c, x).Is(answer), Cites.Of(t, a, c, x).Is(ValueSet.Of(axiom.Key)));
+                        foreach (var row in axiom)
+                            w.Assume(Outcome.Of(row.Key, row.Target).Is(row.Answer), Cites.Of(row.Key, row.Target).Is(ValueSet.Of(axiom.Key)));
                     });
                 }
                 catch (FactConflictException e)
@@ -698,8 +663,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (u, v) in definition.Parting)
                     w.Assume(Parting.Of(u, v));
 
-                foreach (var (target, (t, a, c), answer) in definition.Kleene)
-                    w.Assume(Kleene.Of(t, a, c, target).Is(answer));
+                foreach (var (target, key, answer) in definition.Kleene)
+                    w.Assume(Kleene.Of(key, target).Is(answer));
 
                 foreach (var (connective, classes) in definition.Identity)
                     w.Assume(Identity.Of(connective).Is(classes));
@@ -707,10 +672,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (pos, q) in KleeneTables.Opposite)
                     w.Assume(Opposite.Of(pos, q));
 
-                foreach (var (side, connective) in KleeneTables.ConnectiveOf)
-                    w.Assume(ConnectiveOf.Of(side).Is(connective));
-
-                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated), _version.Of().Is(Version));
+                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated));
             });
 
             var report = Theory.Run(Settle);
@@ -718,25 +680,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 throw new InvalidOperationException($"The rendering theory stopped {report.StopReason} after {report.Iterations} iterations.");
 
             Theory.Freeze();
-        }
-
-        static string Digest(RenderingDefinition d)
-        {
-            static string Set<T>(IEnumerable<T> items) => string.Join(",", items);
-            var rows = d.Rows.Select(r => $"outcome {r.AxiomId} {r.Key} {r.Target} {r.Answer}")
-                .Concat(d.Serves.Select(s => $"serves {s.Key} {Set(s.Value)}"))
-                .Concat(d.Allowing.Select(a => $"allowing {a.Item1} {a.Item2} {a.Item3.Calcite} {a.Item3.Service} {Set(a.Item3.Cites)}"))
-                .Concat(d.Refuting.Select(a => $"refuting {a.Item1} {a.Item2} {a.Item3.Calcite} {a.Item3.Service} {Set(a.Item3.Cites)}"))
-                .Concat(d.Edges.Select(e => $"edges {e.Key} {Set(e.Value.Edges)} {Set(e.Value.Boundaries)}"))
-                .Concat(d.Parting.Select(p => $"parting {p.Item1} {p.Item2}"))
-                .Concat(d.Kleene.Select(k => $"kleene {k.Item1} {k.Item2} {k.Item3}"))
-                .Concat(d.Identity.Select(i => $"identity {i.Key} {Set(i.Value)}"))
-                .Concat(KleeneTables.Opposite.Select(o => $"opposite {o.Item1} {o.Item2}"))
-                .Concat(KleeneTables.ConnectiveOf.Select(c => $"connectiveof {c.Key} {c.Value}"))
-                .Concat(AgreementRows.Classes.Select(k => $"class {k}"))
-                .Append($"means {d.Means}").Append($"tolerated {d.Tolerated}")
-                .OrderBy(row => row, StringComparer.Ordinal);
-            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", rows))));
         }
 
     }

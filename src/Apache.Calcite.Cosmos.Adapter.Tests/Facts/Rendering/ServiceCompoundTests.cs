@@ -26,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly string S = SqlValue.Spell(JsonDocumentPath.Root.Property("s"));
 
-        static readonly CellPartition Cells = PathCell.Split(new PathFacts(S, PathValues.Anything, AllBands), ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
+        static readonly CellPartition Cells = PathCell.Split(S, PathValues.Anything, AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
 
         static readonly ServiceForm Leaf = ServiceForm.BareOf(S);
 

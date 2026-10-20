@@ -13,6 +13,8 @@ using Xunit;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
+using Import = (string Path, Apache.Calcite.Cosmos.Facts.Saturation.PathValues Values, Eggnog.ValueSet<string> Classes);
+
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
@@ -47,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var faults = new List<string>();
             foreach (var (facts, cuts) in Cases())
             {
-                var cells = PathCell.Split(facts, cuts).Cells;
+                var cells = PathCell.Split(facts.Path, facts.Values, facts.Classes, cuts).Cells;
                 foreach (var value in Values(cuts))
                 {
                     var holding = cells.Where(c => c.Contains(Encode(value))).ToList();
@@ -63,16 +65,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void SplitDropsNothingTheImportAdmits()
         {
-            static List<string> Dropped(Func<PathFacts, ValueSet<CutPoint>, CellPartition> split) => Cases().SelectMany(c =>
+            static List<string> Dropped(Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> split) => Cases().SelectMany(c =>
             {
-                var cells = split(c.Facts, c.Cuts).Cells;
+                var cells = split(c.Facts.Path, c.Facts.Values, c.Facts.Classes, c.Cuts).Cells;
                 return Values(c.Cuts).Where(v => Admitted(c.Facts, v) && cells.Any(cell => cell.Contains(Encode(v))) == false).Select(v => $"{Show(v)} of {Show(c.Facts, c.Cuts)}");
             }).ToList();
 
             Dropped(PathCell.Split).Should().BeEmpty();
-            Dropped((facts, cuts) =>
+            Dropped((path, values, classes, cuts) =>
             {
-                var planted = PathCell.Split(facts, cuts);
+                var planted = PathCell.Split(path, values, classes, cuts);
                 return planted with { Cells = planted.Cells.Where(c => c is not PathCell.Absent) };
             }).Should().NotBeEmpty("the plant drops the absent path's cell");
         }
@@ -81,23 +83,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void EveryCellIsInhabited()
         {
-            static List<string> Uninhabited(Func<PathFacts, ValueSet<CutPoint>, CellPartition> split) => Cases()
-                .SelectMany(c => split(c.Facts, c.Cuts).Cells.Where(cell => cell.Contains(cell.Witness()) == false || Admitted(c.Facts, Decode(cell.Witness())) == false)
+            static List<string> Uninhabited(Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> split) => Cases()
+                .SelectMany(c => split(c.Facts.Path, c.Facts.Values, c.Facts.Classes, c.Cuts).Cells.Where(cell => cell.Contains(cell.Witness()) == false || Admitted(c.Facts, Decode(cell.Witness())) == false)
                     .Select(cell => $"{cell}'s witness {cell.Witness() ?? "absent"}, of {Show(c.Facts, c.Cuts)}"))
                 .ToList();
 
             Uninhabited(PathCell.Split).Should().BeEmpty();
-            Uninhabited((facts, cuts) =>
+            Uninhabited((path, values, classes, cuts) =>
             {
-                var planted = PathCell.Split(facts, cuts);
-                return facts.Values.Kinds.Contains(StringType) && facts.Values.Values is null
-                    ? planted with { Cells = planted.Cells.Add(new PathCell.Strings(null, Of(""), ValueSet<string>.Empty, facts.Classes)) }
+                var planted = PathCell.Split(path, values, classes, cuts);
+                return values.Kinds.Contains(StringType) && values.Values is null
+                    ? planted with { Cells = planted.Cells.Add(new PathCell.Strings(null, Of(""), ValueSet<string>.Empty, classes)) }
                     : planted;
             }).Should().NotBeEmpty("the plant keeps the interval below the empty string");
         }
 
         /// <summary>Imports, classes and cuts, drawn as population D draws a declaration: from its values and edges.</summary>
-        static IEnumerable<(PathFacts Facts, ValueSet<CutPoint> Cuts)> Cases()
+        static IEnumerable<(Import Facts, ValueSet<CutPoint> Cuts)> Cases()
         {
             var random = new Random(20261020);
             T[] Some<T>(T[] from, int about) => from.Where(_ => random.Next(from.Length) < about).ToArray();
@@ -115,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     x = PathValues.Meet(x, PathValues.Below(new Bound(Edges[random.Next(Edges.Length)], random.Next(2) == 0)));
 
                 var classes = ValueSet.From(AllBands.Where(_ => random.Next(2) == 0));
-                yield return (new PathFacts("$[\"a\"]", x, classes), ValueSet.From(Some(Cuts, 4).Select(c => new CutPoint(c, CutKind.Literal))));
+                yield return (("$[\"a\"]", x, classes), ValueSet.From(Some(Cuts, 4).Select(c => new CutPoint(c, CutKind.Literal))));
             }
         }
 
@@ -162,12 +164,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         };
 
         /// <summary>Whether an import admits a value: one its path may hold, and a string whose characters its classes allow.</summary>
-        internal static bool Admitted(PathFacts facts, J? value) =>
+        internal static bool Admitted(Import facts, J? value) =>
             PopulationD.Admits(facts.Values, value) && (value is not J.Str s || BandsOfText(s.Value).IsSubsetOf(facts.Classes));
 
         internal static string Show(J? value) => value is null ? "absent" : value.ToString();
 
-        static string Show(PathFacts facts, ValueSet<CutPoint> cuts) =>
+        static string Show(Import facts, ValueSet<CutPoint> cuts) =>
             $"{facts.Values} in [{string.Join(",", facts.Classes.AsEnumerable())}] cut at {string.Join(", ", cuts.Select(c => c.Value))}";
 
     }

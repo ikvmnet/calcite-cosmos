@@ -13,21 +13,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// The logic composition rests on, as host data: what Kleene's connectives answer on every operand a target can be
-    /// handed, which a set's measured connective rows must match for S to compose through that connective; the class of a
-    /// cell on which an atom leaves a junction to its sibling; and what a position and a side of a junction read as.
+    /// handed — the service values, among them the six classes of one that is no boolean, Calcite truths alone — which a
+    /// set's measured connective rows must match for S to compose through that connective; the class of a cell on which an
+    /// atom leaves a junction to its sibling, exactly; and the position beneath a negation. <c>Range</c> has no rows yet.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The service is handed values, Calcite truths alone.</b> The service reads a path that holds no boolean as unknown
-    /// inside a connective (<c>Service.ConnectivesReadNonBooleansAsUnknown</c>), so each service target is expected to
-    /// answer Kleene's over the six classes of such a value as well as the three truths; Calcite's connectives take
-    /// booleans, so it is expected over the truths. A set is expected what every target it serves is.
-    /// </para>
-    /// <para>
-    /// <b>An identity is exact.</b> A side whose cell is <c>(T,t)</c> leaves a conjunction to its sibling on both sides, and
-    /// <c>(F,f)</c> a disjunction: nothing else may be given there. <c>Range</c> has no rows yet, so it is never licensed.
-    /// </para>
-    /// </remarks>
     internal static class KleeneTables
     {
 
@@ -48,15 +37,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The position beneath a negation.</summary>
         public static IReadOnlyList<(RenderPosition, RenderPosition)> Opposite { get; } = [(RenderPosition.Pos, RenderPosition.Neg), (RenderPosition.Neg, RenderPosition.Pos)];
-
-        /// <summary>The connective each side of a junction stands under.</summary>
-        public static IReadOnlyDictionary<JunctionSide, CosmosServiceTest> ConnectiveOf { get; } = new Dictionary<JunctionSide, CosmosServiceTest>
-        {
-            [JunctionSide.AndLeft] = And,
-            [JunctionSide.AndRight] = And,
-            [JunctionSide.OrLeft] = Or,
-            [JunctionSide.OrRight] = Or,
-        };
 
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Over(RenderingTarget target, CosmosValueClass[] operands) =>
             operands.SelectMany(x => operands.SelectMany(y => new[] { And, Or }.Select(c => (target, MeasuredKey.Of(c, x, y), Answer(c, x, y))))

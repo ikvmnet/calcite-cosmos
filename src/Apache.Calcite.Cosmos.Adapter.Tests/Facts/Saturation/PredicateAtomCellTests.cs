@@ -128,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var wider = new List<string>();
             foreach (var atom in Atoms())
-                foreach (var (_, coarse, fine) in Partitions(atom))
+                foreach (var (coarse, fine) in Partitions(atom))
                     foreach (var cell in fine.Cells)
                     {
                         var within = coarse.Cells.Single(c => c.Contains(cell.Witness()));
@@ -161,15 +161,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static IEnumerable<string> Literals(PredicateAtom atom) => new[] { atom.Operand }.OfType<string>().Concat(atom.Points ?? ValueSet<string>.Empty);
 
         /// <summary>Each import, with either set of classes, cut at nothing and at the atom's literals.</summary>
-        static IEnumerable<(PathFacts Facts, CellPartition Coarse, CellPartition Fine)> Partitions(PredicateAtom atom)
+        static IEnumerable<(CellPartition Coarse, CellPartition Fine)> Partitions(PredicateAtom atom)
         {
             var literals = ValueSet.From(Literals(atom).Select(l => new CutPoint(l, CutKind.Literal)));
             foreach (var values in Imports)
                 foreach (var classes in new[] { AllBands, NoBand })
-                {
-                    var facts = new PathFacts(SqlValue.Spell(A), values, classes);
-                    yield return (facts, PathCell.Split(facts, ValueSet<CutPoint>.Empty), PathCell.Split(facts, literals));
-                }
+                    yield return (PathCell.Split(SqlValue.Spell(A), values, classes, ValueSet<CutPoint>.Empty), PathCell.Split(SqlValue.Spell(A), values, classes, literals));
         }
 
         /// <summary>The values a cell holds of its witness and the pool, each whole number in both its spellings.</summary>

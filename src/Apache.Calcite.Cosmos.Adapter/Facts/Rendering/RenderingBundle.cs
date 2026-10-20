@@ -96,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();
-            return _run = new RenderingRun(report.StopReason, report.Iterations, terms.Select(row => row.Output).Distinct().Count() == terms.Count,
+            return _run = new RenderingRun(report.StopReason, terms.Select(row => row.Output).Distinct().Count() == terms.Count,
                 Scope.Check(_theory.Graph.Contradiction.Of()));
         }
 
