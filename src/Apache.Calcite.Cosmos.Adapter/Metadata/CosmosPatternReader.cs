@@ -201,8 +201,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static IReadOnlyList<JsonCharacterBand> Bands(JsonCharacterBand held)
         {
-            var absent = new List<JsonCharacterBand>(4);
-            foreach (var band in new[] { JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii, JsonCharacterBand.Trimmed })
+            var absent = new List<JsonCharacterBand>();
+            foreach (var band in JsonFactEncoding.Classes)
                 if ((held & band) == JsonCharacterBand.None)
                     absent.Add(band);
 

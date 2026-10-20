@@ -174,19 +174,51 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string TrimmedClass = "trimmed";
 
         /// <summary>
+        /// The classes, each once: the adapter's flag for it and the theory's member. Every other spelling of a class — a
+        /// set of members, a mask of flags, the classes a pattern leaves out — is read off this table, so that a class is
+        /// added here and nowhere else.
+        /// </summary>
+        public static readonly IReadOnlyList<(JsonCharacterBand Flag, string Member)> CharacterClasses =
+        [
+            (JsonCharacterBand.Surrogates, SurrogateBand),
+            (JsonCharacterBand.HighBmp, HighBand),
+            (JsonCharacterBand.NonAscii, NonAsciiBand),
+            (JsonCharacterBand.Trimmed, TrimmedClass),
+        ];
+
+        /// <summary>
+        /// Every set of classes, by its mask of flags, so that reading a value's characters allocates nothing.
+        /// </summary>
+        static readonly ValueSet<string>[] ClassSets = Enumerable.Range(0, (int)JsonCharacterBand.Any + 1)
+            .Select(mask => ValueSet.From(CharacterClasses.Where(c => (mask & (int)c.Flag) != 0).Select(c => c.Member)))
+            .ToArray();
+
+        /// <summary>
         /// Every class: what a string nothing states the characters of may hold. A string of ASCII characters none of
         /// which the service trims beside U+0020 holds <see cref="NoBand"/>.
         /// </summary>
-        public static readonly ValueSet<string> AllBands = ValueSet.Of(SurrogateBand, HighBand, NonAsciiBand, TrimmedClass);
+        public static readonly ValueSet<string> AllBands = ClassSet(JsonCharacterBand.Any);
 
         /// <summary>No class: every character ASCII, and none the service trims beside U+0020.</summary>
-        public static readonly ValueSet<string> NoBand = ValueSet.Of<string>();
+        public static readonly ValueSet<string> NoBand = ClassSet(JsonCharacterBand.None);
 
         /// <summary>
-        /// Every set of classes, by a mask of the four, so that reading a value's characters allocates nothing.
+        /// Returns the theory's members for a mask of the adapter's flags.
         /// </summary>
-        static readonly ValueSet<string>[] ClassSets = Enumerable.Range(0, 16).Select(mask => mask == 0 ? NoBand : ValueSet.From(
-            new[] { SurrogateBand, HighBand, NonAsciiBand, TrimmedClass }.Where((_, i) => (mask & 1 << i) != 0))).ToArray();
+        public static ValueSet<string> ClassSet(JsonCharacterBand classes) => ClassSets[(int)(classes & JsonCharacterBand.Any)];
+
+        /// <summary>
+        /// Returns the adapter's flags for a set of the theory's members.
+        /// </summary>
+        public static JsonCharacterBand ClassMask(ValueSet<string> members)
+        {
+            var mask = JsonCharacterBand.None;
+            foreach (var (flag, member) in CharacterClasses)
+                if (members.Contains(member))
+                    mask |= flag;
+
+            return mask;
+        }
 
         /// <summary>
         /// The characters the service's <c>TRIM</c>, <c>LTRIM</c> and <c>RTRIM</c> remove beside U+0020, as ranges of code
@@ -203,15 +235,42 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         ];
 
         /// <summary>
-        /// Returns the band a UTF-16 code unit is in, or <c>null</c> for an ASCII one, which is in none.
+        /// Returns the classes one UTF-16 code unit is in, as a mask: its band — none for an ASCII unit — and the trimmed
+        /// class where the service trims it.
         /// </summary>
         /// <remarks>
-        /// The one place a unit's band is decided: a value's characters, a pattern's ranges, a parameter's at run time
-        /// and a row's as it arrives are each read through it, or through <see cref="BandsOf"/>, which reads a range by
-        /// the same bounds.
+        /// The one place a unit's classes are decided: a value's characters, a pattern's ranges, a parameter's at run time
+        /// and a row's as it arrives are each read through it, or through <see cref="MaskOf(int, int)"/>, which reads a
+        /// range by the same bounds.
         /// </remarks>
-        public static string? BandOf(char unit) =>
-            unit < '\u0080' ? null : unit < '\uD800' ? NonAsciiBand : unit <= '\uDFFF' ? SurrogateBand : HighBand;
+        public static JsonCharacterBand MaskOf(char unit) =>
+            (unit < '\u0080' ? JsonCharacterBand.None : unit < '\uD800' ? JsonCharacterBand.NonAscii : unit <= '\uDFFF' ? JsonCharacterBand.Surrogates : JsonCharacterBand.HighBmp)
+            | (IsTrimmed(unit) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
+
+        /// <summary>
+        /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point, as a mask:
+        /// a code point past U+FFFF is written in surrogates.
+        /// </summary>
+        /// <param name="lo">The first character.</param>
+        /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
+        public static JsonCharacterBand MaskOf(int lo, int hi) =>
+            (lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
+            | (lo <= 0xFFFF && hi >= 0xE000 ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
+            | (lo <= 0xD7FF && hi >= 0x0080 ? JsonCharacterBand.NonAscii : JsonCharacterBand.None)
+            | (TrimmedWithin(lo, hi) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
+
+        /// <summary>
+        /// Returns the classes a text's units are in, as a mask: <see cref="JsonCharacterBand.None"/> where every one is
+        /// ASCII and none is trimmed.
+        /// </summary>
+        public static JsonCharacterBand MaskOf(string text)
+        {
+            var mask = JsonCharacterBand.None;
+            foreach (var unit in text)
+                mask |= MaskOf(unit);
+
+            return mask;
+        }
 
         /// <summary>
         /// Determines whether the service's <c>TRIM</c> removes a character that Calcite's keeps: one of the measured
@@ -221,43 +280,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static bool IsTrimmed(int point) => TrimmedWithin(point, point);
 
         /// <summary>
-        /// Returns the classes one UTF-16 unit is in: its band, and the trimmed class where the service trims it.
-        /// </summary>
-        public static ValueSet<string> ClassesOf(char unit)
-        {
-            var band = BandOf(unit);
-            return Classes(band == SurrogateBand, band == HighBand, band == NonAsciiBand, IsTrimmed(unit));
-        }
-
-        /// <summary>
-        /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point: a code
-        /// point past U+FFFF is written in surrogates.
-        /// </summary>
-        /// <param name="lo">The first character.</param>
-        /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
-        public static ValueSet<string> BandsOf(int lo, int hi) => Classes(
-            lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF,
-            lo <= 0xFFFF && hi >= 0xE000,
-            lo <= 0xD7FF && hi >= 0x0080,
-            TrimmedWithin(lo, hi));
-
-        /// <summary>
         /// Returns the classes a text's units are in: <see cref="NoBand"/> where every one is ASCII and none is trimmed.
         /// </summary>
-        public static ValueSet<string> BandsOfText(string text)
-        {
-            bool surrogates = false, high = false, nonAscii = false, trimmed = false;
-            foreach (var unit in text)
-            {
-                var band = BandOf(unit);
-                surrogates |= band == SurrogateBand;
-                high |= band == HighBand;
-                nonAscii |= band == NonAsciiBand;
-                trimmed |= IsTrimmed(unit);
-            }
-
-            return Classes(surrogates, high, nonAscii, trimmed);
-        }
+        public static ValueSet<string> BandsOfText(string text) => ClassSet(MaskOf(text));
 
         /// <summary>
         /// Returns the classes a value holds characters of: a string's own, and none for any other value, which holds no
@@ -270,17 +295,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public static ValueSet<string> CharactersOf(ValueSet<string> values)
         {
-            bool surrogates = false, high = false, nonAscii = false, trimmed = false;
+            var mask = JsonCharacterBand.None;
             foreach (var value in values)
-            {
-                var classes = CharactersOf(value);
-                surrogates |= classes.Contains(SurrogateBand);
-                high |= classes.Contains(HighBand);
-                nonAscii |= classes.Contains(NonAsciiBand);
-                trimmed |= classes.Contains(TrimmedClass);
-            }
+                if (IsString(value))
+                    mask |= MaskOf(StringOf(value));
 
-            return Classes(surrogates, high, nonAscii, trimmed);
+            return ClassSet(mask);
         }
 
         /// <summary>
@@ -304,9 +324,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             return false;
         }
-
-        static ValueSet<string> Classes(bool surrogates, bool high, bool nonAscii, bool trimmed) =>
-            ClassSets[(surrogates ? 1 : 0) | (high ? 2 : 0) | (nonAscii ? 4 : 0) | (trimmed ? 8 : 0)];
 
     }
 

@@ -225,36 +225,28 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns the theory's members for a set of classes: <see cref="Saturation.JsonValues.SurrogateBand"/>,
-        /// <see cref="Saturation.JsonValues.HighBand"/>, <see cref="Saturation.JsonValues.NonAsciiBand"/> and
-        /// <see cref="Saturation.JsonValues.TrimmedClass"/>.
+        /// Returns the theory's members for a set of classes, by the theory's one table of them
+        /// (<see cref="Saturation.JsonValues.CharacterClasses"/>).
         /// </summary>
-        public static ValueSet<string> Members(JsonCharacterBand bands)
-        {
-            if (bands == JsonCharacterBand.None)
-                return NoBand;
-
-            var members = new List<string>(4);
-            if ((bands & JsonCharacterBand.Surrogates) != JsonCharacterBand.None)
-                members.Add(SurrogateBand);
-            if ((bands & JsonCharacterBand.HighBmp) != JsonCharacterBand.None)
-                members.Add(HighBand);
-            if ((bands & JsonCharacterBand.NonAscii) != JsonCharacterBand.None)
-                members.Add(NonAsciiBand);
-            if ((bands & JsonCharacterBand.Trimmed) != JsonCharacterBand.None)
-                members.Add(TrimmedClass);
-
-            return ValueSet.From(members);
-        }
+        public static ValueSet<string> Members(JsonCharacterBand bands) => ClassSet(bands);
 
         /// <summary>
         /// Reads the theory's members back as a set of classes.
         /// </summary>
-        public static JsonCharacterBand Bands(ValueSet<string> members) =>
-            (members.Contains(SurrogateBand) ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
-            | (members.Contains(HighBand) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
-            | (members.Contains(NonAsciiBand) ? JsonCharacterBand.NonAscii : JsonCharacterBand.None)
-            | (members.Contains(TrimmedClass) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
+        public static JsonCharacterBand Bands(ValueSet<string> members) => ClassMask(members);
+
+        /// <summary>
+        /// Gets every class, one flag each, in the theory's order: what a reader that names classes one at a time, such as
+        /// the reader of a pattern, iterates.
+        /// </summary>
+        public static IEnumerable<JsonCharacterBand> Classes
+        {
+            get
+            {
+                foreach (var (flag, _) in CharacterClasses)
+                    yield return flag;
+            }
+        }
 
         /// <summary>
         /// Returns the classes a value holds characters of, as the theory reads a value's characters when it reasons with
@@ -270,20 +262,20 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Returns the classes a text's units are in.
         /// </summary>
-        public static JsonCharacterBand Characters(string text) => Bands(BandsOfText(text));
+        public static JsonCharacterBand Characters(string text) => MaskOf(text);
 
         /// <summary>
         /// Returns the classes one UTF-16 unit is in: <see cref="JsonCharacterBand.None"/> for an ASCII unit the service
         /// does not trim.
         /// </summary>
-        public static JsonCharacterBand Characters(char unit) => Bands(ClassesOf(unit));
+        public static JsonCharacterBand Characters(char unit) => MaskOf(unit);
 
         /// <summary>
         /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point, a code
         /// point past U+FFFF being written in surrogates: what a pattern's reader reads a range as, and a grammar a
         /// standard fixes.
         /// </summary>
-        public static JsonCharacterBand Characters(int lo, int hi) => Bands(BandsOf(lo, hi));
+        public static JsonCharacterBand Characters(int lo, int hi) => MaskOf(lo, hi);
 
     }
 
