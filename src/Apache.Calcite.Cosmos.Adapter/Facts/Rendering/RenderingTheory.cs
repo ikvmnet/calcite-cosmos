@@ -72,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _version = Graph.DefineFunction<string>("version");
 
             Spelling = Graph.DefineFunction<JPath, string>("spelling");
-            Arm = Graph.DefineRelation<Pred, Pred>("arm");
+            Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
             Under = Graph.DefineRelation<RenderingSet>("under");
             Imported = Graph.DefineFunction<JPath, PathValues>("imported");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
@@ -88,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
             Junction = Graph.DefineRelation<Pred, Pred, Pred, JunctionSide>("junction", new TableOptions { Role = TableRole.Analysis });
-            Needs = Graph.DefineFunction<Pred, ValueSet<CosmosServiceTest>>("needs", ValueLattice.Union<CosmosServiceTest>());
+            Needs = Graph.DefineFunction<ServiceForm, ValueSet<CosmosServiceTest>>("needs", ValueLattice.Union<CosmosServiceTest>());
             Neutral = Graph.DefineFunction<Pred, ServiceForm, CosmosServiceTest, Witness>("neutral", ValueLattice.Min<Witness>());
             Disjoint = Graph.DefineRelation<JPath, JPath>("disjoint");
 
@@ -189,11 +189,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<JunctionSide, CosmosServiceTest> ConnectiveOf { get; }
 
         // A bundle's tables. The host writes a path's spelling beside its term (a merge of two paths would give one class
-        // two spellings, and throw), each arm of a junction, the set, each import once and lattice-free, and the root's
-        // candidate with every member of its junctions as written; the rules write the rest, the candidates beneath the
-        // root and the members of a junction's rest among them.
+        // two spellings, and throw), the set, each import once and lattice-free, and the root's candidate with every
+        // member of its junctions as written and each conjunction's members, nested ones flattened; the rules write the
+        // rest, the candidates beneath the root and the members of a junction's rest among them.
         public Function<JPath, string> Spelling { get; }
-        public Relation<Pred, Pred> Arm { get; }
+        public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
         public Function<JPath, PathValues> Imported { get; }
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
@@ -209,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Refutation> Disagrees { get; }
         public Relation<Pred, RenderPosition, ServiceForm, Verdict> Conflict { get; }
         public Relation<Pred, Pred, Pred, JunctionSide> Junction { get; }
-        public Function<Pred, ValueSet<CosmosServiceTest>> Needs { get; }
+        public Function<ServiceForm, ValueSet<CosmosServiceTest>> Needs { get; }
         public Function<Pred, ServiceForm, CosmosServiceTest, Witness> Neutral { get; }
         public Relation<JPath, JPath> Disjoint { get; }
 
@@ -359,14 +359,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 r.When(e.Is(Ir.And.Of(a, b)));
-                r.Then(Junction.Of(e, a, b, JunctionSide.AndLeft), Junction.Of(e, b, a, JunctionSide.AndRight), Needs.Of(e).Is(ValueSet<CosmosServiceTest>.Empty));
+                r.Then(Junction.Of(e, a, b, JunctionSide.AndLeft), Junction.Of(e, b, a, JunctionSide.AndRight));
             });
 
             structure.DefineRule("a disjunction's arms are its junction's sides", r =>
             {
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 r.When(e.Is(Ir.Or.Of(a, b)));
-                r.Then(Junction.Of(e, a, b, JunctionSide.OrLeft), Junction.Of(e, b, a, JunctionSide.OrRight), Needs.Of(e).Is(ValueSet<CosmosServiceTest>.Empty));
+                r.Then(Junction.Of(e, a, b, JunctionSide.OrLeft), Junction.Of(e, b, a, JunctionSide.OrRight));
             });
 
             descend.DefineRule("a junction's left side takes each member of its form, and its right side the rest", r =>
@@ -377,7 +377,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), j.Is(ConnectiveOf.Of(d)), Member.Of(f, g));
                 r.Where(RenderingPrimitives.SideIsLeft.Of(d));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
-                r.Then(Candidate.Of(x, pos, g), Candidate.Of(y, pos, Compute.Of(f, g, ServiceForm.Without)));
+                r.Then(Candidate.Of(x, pos, g), Candidate.Of(y, pos, Compute.Of(f, g, ServiceForm.Without)), Needs.Of(f).Is(ValueSet<CosmosServiceTest>.Empty));
             });
 
             descend.DefineRule("a negation's operand is a candidate for the form's operand at the opposite position", r =>
@@ -437,7 +437,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, z) = r.Vars<RenderPosition, CellPartition>("pos", "z");
                 r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)));
-                r.Then(Need.Of(z, f));
+                r.Then(Need.Of(z, f), Needs.Of(f).Is(ValueSet<CosmosServiceTest>.Empty));
             });
 
             // Every value a body computes is total: body calls are unordered, so a filter beside one guards nothing. A
@@ -449,7 +449,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Need.Of(z, g));
                 r.Where(RenderingPrimitives.FormIsCompound.Of(g));
                 r.When(h1.Is(Compute.Of(g, ServiceForm.First)), h2.Is(Compute.Of(g, ServiceForm.Rest)));
-                r.Then(Need.Of(z, h1), Need.Of(z, h2));
+                r.Then(Need.Of(z, h1), Need.Of(z, h2), Needs.Of(h1).Is(ValueSet<CosmosServiceTest>.Empty), Needs.Of(h2).Is(ValueSet<CosmosServiceTest>.Empty));
             });
 
             parted.DefineRule("a string literal parts the orders over a path whose strings may hold the other band", r =>
@@ -466,21 +466,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
             });
 
-            // The service may answer two bounds of one path as a range, not each bound, where they part (N8): a junction
-            // composes through them only where the set licenses Range.
-            parted.DefineRule("two string orderings of one path under a junction, one of whose literals parts the orders there, need Range", r =>
+            // The service may answer two bounds of one path as a range, not each bound, where they part (N8). What it is
+            // asked is the conjunction as written, so its own orderings are read, not the IR's: a form evaluated on one
+            // atom's cells and a junction composed alike hold only where the set licenses Range.
+            parted.DefineRule("two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range", r =>
             {
-                var (e, t1, t2, p) = r.Vars<Pred, Pred, Pred, JPath>("e", "t1", "t2", "p");
-                var (a1, a2) = r.Vars<PredicateAtom, PredicateAtom>("a1", "a2");
+                var (f, h1, h2, p) = r.Vars<ServiceForm, ServiceForm, ServiceForm, JPath>("f", "h1", "h2", "p");
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
-                var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
-                r.When(Arm.Of(e, t1), Arm.Of(e, t2), t1.IsNot(t2), Ir.Atom.Of(t1, p, a1), Ir.Atom.Of(t2, p, a2));
-                r.Where(RenderingPrimitives.AtomStringOrdering.Of(a1));
-                r.Where(RenderingPrimitives.AtomStringOrdering.Of(a2));
-                r.When(k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(a1, x => x.Operand ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                var (n, u, w, l) = r.Vars<string, string, string, string>("n", "u", "w", "l");
+                r.When(Conjunct.Of(f, h1), Conjunct.Of(f, h2), h1.IsNot(h2), n.Is(Compute.Of(h1, x => x.Path ?? "")), n.Is(Compute.Of(h2, x => x.Path ?? "")),
+                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(h1, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                r.Where(RenderingPrimitives.StringOrdering.Of(h1));
+                r.Where(RenderingPrimitives.StringOrdering.Of(h2));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));
-                r.Then(Needs.Of(e).Is(Primitives.Singleton<CosmosServiceTest>().Of(CosmosServiceTest.Range)));
+                r.Then(Needs.Of(f).Is(Primitives.Singleton<CosmosServiceTest>().Of(CosmosServiceTest.Range)));
             });
         }
 
@@ -504,12 +504,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var z = r.Var<CellPartition>("z");
                 var (g, h1, h2, s) = r.Vars<ServiceForm, ServiceForm, ServiceForm, RenderingSet>("g", "h1", "h2", "s");
                 var (v, w, t) = r.Vars<OutcomeVector, OutcomeVector, ValueSet<MeasuredEntry>>("v", "w", "t");
-                var lic = r.Var<ValueSet<CosmosServiceTest>>("lic");
+                var (lic, nd) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>>("lic", "nd");
                 r.When(Need.Of(z, g));
                 r.Where(RenderingPrimitives.FormIsCompound.Of(g));
                 r.When(h1.Is(Compute.Of(g, ServiceForm.First)), h2.Is(Compute.Of(g, ServiceForm.Rest)), v.Is(Svc.Of(z, h1)), w.Is(Svc.Of(z, h2)),
-                    Under.Of(s), t.Is(Table.Of(s)), lic.Is(Licensed.Of(s)));
+                    Under.Of(s), t.Is(Table.Of(s)), lic.Is(Licensed.Of(s)), nd.Is(Needs.Of(g)));
                 r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(RenderingPrimitives.FormRegroups.Of(g), lic));
+                r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(nd, lic));
                 r.Then(Svc.Of(z, g).Is(Compute.Of(g, v, w, Compute.Of(t, ServiceTable.Of), definition.Compound)));
             });
         }
@@ -583,7 +584,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(RenderingPrimitives.SideIsLeft.Of(d));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
-                Composes(r, j, e);
+                Composes(r, j, f);
                 r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(pl, pr, Proof.Join)));
             });
 
@@ -609,7 +610,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
                 r.Where(RenderingPrimitives.RefutesOnePath.Of(z));
                 r.When(n1.Is(Compute.Of(z, c => c.Path)), n1.Is(Spelling.Of(p1)), n2.Is(Compute.Of(w, c => c.Path)), n2.Is(Spelling.Of(p2)), Disjoint.Of(p1, p2));
-                Composes(r, j, e);
+                Composes(r, j, f);
                 r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(z, w, Refutation.With)));
             });
 
@@ -625,10 +626,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Holds a step to a connective the set under which the bundle runs licenses and Calcite does, and a junction to a
-        /// set that licenses whatever its arms need.
+        /// Holds a step to a connective the set under which the bundle runs licenses and Calcite does, and a junction's
+        /// form to a set that licenses whatever it needs.
         /// </summary>
-        void Composes(RuleBuilder r, Term<CosmosServiceTest> connective, Var<Pred>? junction)
+        void Composes(RuleBuilder r, Term<CosmosServiceTest> connective, Var<ServiceForm>? junction)
         {
             var s = r.Var<RenderingSet>("s");
             var (lic, cal) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>>("lic", "cal");

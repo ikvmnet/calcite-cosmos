@@ -235,6 +235,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Composed(theory, RenderingSet.Portable, AllBands).Should().Be(RenderingVerdictKind.Unproven);
             Composed(theory, RenderingSet.Portable, NoBand).Should().Be(RenderingVerdictKind.Proven);
             Composed(RenderingTheory.Define(planted with { Kleene = Measured.Kleene }), RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Unproven);
+
+            // What is read is the conjunction as written: the same two bounds claimed for one atom, evaluated on its cells.
+            RenderingVerdictKind OnOneAtom(RenderingSet set, ValueSet<string> classes) =>
+                Check(Cmp(Text(LabelPath), ">=", Lit(high)), form, theory, set, LabelPath, strings, classes).Equal.Kind;
+            (OnOneAtom(RenderingSet.Emulator, AllBands), OnOneAtom(RenderingSet.Portable, AllBands), OnOneAtom(RenderingSet.Portable, NoBand))
+                .Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
         }
 
         /// <summary>

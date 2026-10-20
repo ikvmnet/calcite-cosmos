@@ -36,10 +36,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The bundle's scope, for its tests.</summary>
         public Scope Scope { get; }
 
-        /// <summary>
-        /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads and each arm of
-        /// each junction in it.
-        /// </summary>
+        /// <summary>Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads.</summary>
         public Pred Write(SqlPredicate predicate)
         {
             var theory = _theory;
@@ -49,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var term = JsonFactEncoding.Path(path).ToTerm(theory.Paths);
                 facts.Add(theory.Spelling.Of(term).Is(SqlValue.Spell(path)));
                 return term;
-            }, (junction, _, arms) => arms.Select(arm => theory.Arm.Of(junction, arm)));
+            });
 
             var term = writer.Term(predicate, facts);
             var root = default(Pred);
@@ -82,7 +79,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Claims a written form for a conjunct at the root, and states every member of every junction in it as written.
+        /// Claims a written form for a conjunct at the root, and states every member of every junction in it as written,
+        /// and of every conjunction its members with nested conjunctions' flattened in, as the service may read a range.
         /// </summary>
         public void Claim(Pred root, ServiceForm form)
         {
@@ -132,7 +130,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 Members(member, facts);
             }
+
+            if (form.Kind == ServiceFormKind.And)
+                facts.AddRange(Conjuncts(form).Select(member => _theory.Conjunct.Of(form, member)));
         }
+
+        static IEnumerable<ServiceForm> Conjuncts(ServiceForm and) => and.Members.SelectMany(m => m.Kind == ServiceFormKind.And ? Conjuncts(m) : [m]);
 
     }
 

@@ -2527,6 +2527,11 @@ across documents* and *A join of a container to itself* is the record.
 - **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
   orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
   under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.
+- **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
+  `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
+  `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
+  licence. The harness should write a statement's admitted conjuncts into the bundle as one IR junction and claim the
+  conjunction as built.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and names one, so composing it again would need each path it sets to lie apart from the next sibling's; a
   refutation two junctions deep is unproven. The first family's wrong answers need one.

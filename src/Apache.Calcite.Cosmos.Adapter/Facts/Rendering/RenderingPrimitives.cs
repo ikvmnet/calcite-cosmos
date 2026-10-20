@@ -48,10 +48,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             f.Kind == ServiceFormKind.Compare && f.Test is CosmosServiceTest.Less or CosmosServiceTest.LessOrEqual or CosmosServiceTest.Greater or CosmosServiceTest.GreaterOrEqual
             && JsonValues.IsString(f.Literal!));
 
-        /// <summary>An atom orders its path against a string literal.</summary>
-        public static Primitive<PredicateAtom, bool> AtomStringOrdering { get; } = Primitive.Create<PredicateAtom, bool>("atom-string-ordering", a =>
-            a.Test is PredicateAtom.Less or PredicateAtom.LessOrEqual or PredicateAtom.Greater or PredicateAtom.GreaterOrEqual && a.Operand is { } c && JsonValues.IsString(c));
-
         /// <summary>A form is a junction of the connective.</summary>
         public static Primitive<ServiceForm, CosmosServiceTest, bool> FormHeads { get; } = Primitive.Create<ServiceForm, CosmosServiceTest, bool>("form-heads", (f, j) =>
             f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Test == j);

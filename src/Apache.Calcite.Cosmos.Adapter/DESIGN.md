@@ -5919,7 +5919,7 @@ so the facts graph's callers read them where they did; what `PredicateRules` kee
 `arms`, `arm` and the two later rulesets — is F's alone.
 
 **A junction's arms are the caller's.** The writer hands each junction, with its arms flattened, to a callback: F's
-numbers them for its split over arms, as it did, and S's will record each one for pairing. A hidden discriminator is the
+numbers them for its split over arms, as it did; S pairs written members with arms by its own rules. A hidden discriminator is the
 theory's and no path, so `JsonPathSpec.ToTerm(PathVocabulary)`, the overload a graph without the theory writes paths
 with, refuses one.
 
@@ -6014,10 +6014,12 @@ its sibling's could be the other, at another cell. Without that, `(kind = 'a' AN
 was refuted by a witness setting `kind` to `false` and to `'a'`, where both sides keep the documents whose `kind` is
 `'a'` and no others.
 
-**Two bounds that part the orders need `Range`.** Where two string orderings of one path stand under one junction, a
-literal of one holds a character class that parts the orders against one the import may hold, and the service may answer
-the pair as a range, which Azure answers empty (N8). The junction then composes only where the set licenses `Range`.
-`KleeneTables` holds no `Range` row yet, so nothing licenses it.
+**Two bounds that part the orders need `Range`.** Where two string orderings of one path stand in one written
+conjunction, nested conjunctions flattened, and a literal of one holds a character class that parts the orders against
+one the import may hold, the service may answer the pair as a range, which Azure answers empty (N8). The conjunction is
+then evaluated on an atom's cells, or composed, only where the set licenses `Range`. The orderings read are the form's,
+not the IR's: the service is asked what was written, and a range written for one atom, or across arms whose own
+literals part nothing, is a range all the same. `KleeneTables` holds no `Range` row yet, so nothing licenses it.
 
 **What holds it.** `RenderingComposeTests` proves the probe's T3 in both written orders, refutes the eight readable wrong
 answers of the first family as 4b65754 wrote them at a structure, P5 and P6 through a two-path witness, and holds each
