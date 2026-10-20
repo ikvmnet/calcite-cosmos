@@ -5052,7 +5052,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // StripTextCoercion then WriteCast's VARIANT branch took it down to the bare path:
             // measured, `CAST(CAST(label AS VARIANT) AS VARCHAR) LIKE '3%'` pushed as
             // STARTSWITH(c.label, '3') and lost the stored 30.
-            if (IsRenderingBeneathCoercion(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsRenderingBeneathCoercion(folded))
+            //
+            // Not over a path declared a string, whose rendering is the string: there is no other type for the service's
+            // functions to be undefined over, as there is not for any operator over one (RequireRenderingsReadAsRenderings).
+            // Refused over one too, the filter read whole documents where the same LIKE over a path declared nothing of
+            // pushed as a weakening.
+            if (IsUndeclaredRendering(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsUndeclaredRendering(folded))
                 throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, and the service's string functions are undefined over a value that is not a string.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
@@ -5084,13 +5089,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether an expression is a rendering, or one boxed as a <c>VARIANT</c> and cast
-        /// back to text — the two coercions a string operator's subject is unwrapped from before it is
-        /// written.
+        /// Determines whether an expression is a rendering of a path not declared a string, one whose text may be a
+        /// number's or a boolean's — itself, or one boxed as a <c>VARIANT</c> and cast back to text, the two coercions a
+        /// string operator's subject is unwrapped from before it is written.
         /// </summary>
-        bool IsRenderingBeneathCoercion(RexNode node)
+        bool IsUndeclaredRendering(RexNode node)
         {
-            return IsTextRendering(node) || IsTextRendering(StripVariantCoercion(StripTextCoercion(node)));
+            if (IsTextRendering(node))
+                return IsDeclaredString(node) == false;
+
+            var stripped = StripVariantCoercion(StripTextCoercion(node));
+            return IsTextRendering(stripped) && IsDeclaredString(stripped) == false;
         }
 
         /// <summary>

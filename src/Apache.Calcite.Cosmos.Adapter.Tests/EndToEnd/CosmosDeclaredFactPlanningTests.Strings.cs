@@ -108,8 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// Over a path proved ASCII it is the service's own case-insensitive <c>CONTAINS</c>, exact
-        /// (<c>CosmosPlannerTests.ACaseFoldedContainsIsTheServicesCaseInsensitiveContains</c>) — where the path is not
-        /// declared a string. Declared one, no <c>LIKE</c> over it is pushed yet, a missed pushdown <c>TODO.md</c> records.
+        /// (<see cref="ALikeOverAPathDeclaredAStringPushesExactly"/>).
         /// </para>
         /// </remarks>
         [Fact]
@@ -119,6 +118,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             weak.Should().NotContain("CONTAINS(").And.NotContain("UPPER(").And.Contain("IS_DEFINED(c.s)");
             above.Should().Contain("ClrCursorFilter", "the fold and the pattern are Calcite's to apply: " + above);
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A path declared a string renders as the string, so <c>LIKE</c> over its rendering is <c>LIKE</c> over the
+        /// value, and is pushed exactly as every other operator over one is: a prefix as <c>STARTSWITH</c>, any other
+        /// pattern as the service's <c>LIKE</c>, and a fold beneath one as its case-insensitive match where the path is
+        /// proved ASCII. It was refused as a rendering whatever was declared, and the filter read whole documents.
+        /// </para>
+        /// <para>
+        /// A pattern the service answers as a <c>CONTAINS</c> reads the string only up to its first U+0000, so it asks the
+        /// path to hold none: <c>a</c>, printable ASCII, holds none, and <c>s</c>, declared nothing more, may.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ALikeOverAPathDeclaredAStringPushesExactly()
+        {
+            Filtered($"{Of("s")} LIKE 'a%'", out var prefix).Should().Contain("WHERE STARTSWITH(c.s, @p0)");
+            prefix.Should().NotContain("ClrCursorFilter", "the prefix is exact: " + prefix);
+
+            Filtered($"{Of("a")} LIKE '%b%'", out var contains).Should().Contain("WHERE (c.a LIKE @p0)");
+            contains.Should().NotContain("ClrCursorFilter");
+            Filtered($"{Of("s")} LIKE 'a_b'", out _).Should().Contain("WHERE (c.s LIKE @p0)");
+
+            Filtered($"UPPER({Of("a")}) LIKE '%X%'", out var fold).Should().Contain("WHERE CONTAINS(c.a, @p0, true)");
+            fold.Should().NotContain("ClrCursorFilter");
+
+            Filtered($"{Of("s")} LIKE '%b%'", out var nul).Should().NotContain("LIKE");
+            nul.Should().Contain("ClrCursorFilter", "s may hold U+0000, which the service's containment stops at: " + nul);
         }
 
         /// <remarks>
