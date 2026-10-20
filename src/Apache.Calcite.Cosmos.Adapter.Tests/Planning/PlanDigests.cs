@@ -10,22 +10,10 @@ using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 
-using Apache.Calcite.Extensions.Adapter.Cursor;
-
-using org.apache.calcite.avatica.util;
-using org.apache.calcite.config;
-using org.apache.calcite.jdbc;
-using org.apache.calcite.plan;
-using org.apache.calcite.plan.hep;
-using org.apache.calcite.prepare;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
-using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.util;
-using org.apache.calcite.sql.validate;
-using org.apache.calcite.sql2rel;
-
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 {
@@ -86,47 +74,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// The planning half of <c>CosmosDifferentialTests.Run</c> with the pushdown rules: the same schema, operators,
         /// traits, rules and calc pass, and nothing executed.
         /// </summary>
-        static RelNode Differential(string sql)
-        {
-            var typeFactory = new JavaTypeFactoryImpl();
-            var tables = CosmosDifferentialTests.Containers.Select(c => new CosmosTable(c)).ToList();
-
-            var rootSchema = CalciteSchema.createRootSchema(false);
-            foreach (var table in tables)
-                rootSchema.add(table.Container.Name, table);
-
-            var properties = new java.util.Properties();
-            properties.setProperty("caseSensitive", "true");
-
-            var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
-            var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
-            var operators = SqlOperatorTables.chain(
-                SqlStdOperatorTable.instance(),
-                SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(java.util.EnumSet.of(SqlLibrary.MYSQL, SqlLibrary.SPARK, SqlLibrary.HIVE, SqlLibrary.BIG_QUERY)));
-            var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
-
-            var planner = PlannerHarness.CreatePlanner();
-            var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
-            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
-            var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
-
-            foreach (var table in tables)
-                foreach (var rule in CosmosRules.GetRules(table.Convention))
-                    planner.addRule(rule);
-
-            foreach (var rule in ClrCursorRules.Rules())
-                planner.addRule(rule);
-
-            planner.setRoot(planner.changeTraits(logical, logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify()));
-
-            var program = new HepProgramBuilder();
-            foreach (var rule in ClrCursorRules.CalcRules())
-                program.addRuleInstance(rule);
-
-            var hep = new HepPlanner(program.build());
-            hep.setRoot(planner.findBestExp());
-            return hep.findBestExp();
-        }
+        static RelNode Differential(string sql) => PlannerHarness.Plan(sql, CosmosDifferentialTests.Containers, SqlOperatorTables.chain(SqlStdOperatorTable.instance(),
+            SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(java.util.EnumSet.of(SqlLibrary.MYSQL, SqlLibrary.SPARK, SqlLibrary.HIVE, SqlLibrary.BIG_QUERY))),
+            collations: true, calc: true);
 
         /// <summary>
         /// Plans a statement and digests the plan: its text, each Cosmos subtree implemented, and each pushed filter's
