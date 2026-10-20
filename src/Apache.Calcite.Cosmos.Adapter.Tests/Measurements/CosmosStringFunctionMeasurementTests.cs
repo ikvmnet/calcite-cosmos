@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts.Saturation;
+using Apache.Calcite.Data;
 
 using FluentAssertions;
 
@@ -113,6 +114,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static async Task Initialize()
         {
+            // A model names its schema factory by type name, resolved through IKVM, and only finds it if the assembly is
+            // loaded.
+            _ = new CosmosSchemaFactory();
+
             var options = new CosmosClientOptions
             {
                 ConnectionMode = ConnectionMode.Gateway,
@@ -243,6 +248,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : "<" + value.ValueKind + ">";
 
+        /// <summary>
+        /// The container as a caller names it: <c>s</c> declared a string, which lets a function over it reach the
+        /// service where its characters allow, and nothing said of its characters.
+        /// </summary>
+        static string Model => $$"""
+        {
+          "version": "1.0",
+          "defaultSchema": "COSMOS",
+          "schemas": [
+            {
+              "name": "COSMOS",
+              "type": "custom",
+              "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
+              "operand": {
+                "endpoint": "{{CosmosEmulator.Endpoint}}",
+                "key": "{{CosmosEmulator.Key}}",
+                "database": "{{DatabaseName}}",
+                "containers": [ { "name": "strings", "schema": { "type": "object", "properties": { "s": { "type": "string" } } } } ],
+                "connectionMode": "gateway"
+              }
+            }
+          ]
+        }
+        """;
+
+        /// <summary>
+        /// Runs a statement through a connection and answers its rows, each column as text and the row's columns joined
+        /// by a bar, sorted.
+        /// </summary>
+        static async Task<List<string>> QueryAsync(string sql)
+        {
+            await using var connection = new CalciteConnection(new CalciteConnectionStringBuilder
+            {
+                Model = "inline:" + Model,
+                CaseSensitive = true,
+            }.ConnectionString);
+
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+
+            var rows = new List<string>();
+
+            await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+            while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+                rows.Add(string.Join("|", Enumerable.Range(0, reader.FieldCount).Select(i =>
+                    reader.IsDBNull(i) ? "" : Convert.ToString(reader.GetValue(i), System.Globalization.CultureInfo.InvariantCulture))));
+
+            rows.Sort(StringComparer.Ordinal);
+            return rows;
+        }
+
         // ── Counting ──────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -372,6 +430,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             removed.Should().Equal(AzureTrims);
             TrimCandidates.Where(c => c != 0x20 && JsonValues.IsTrimmed(c)).Should().Equal(AzureTrims.Where(c => c != 0x20),
                 "the theory's trimmed class is what Azure removes beside a space");
+        }
+
+        // ── What the adapter answers ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Through a connection, over a path declared a string and nothing more, each function answers Calcite's value:
+        /// what the service would compute otherwise is computed in process (<c>CosmosStringFunctions</c>). Where these
+        /// pushed, Azure answered 3 for the length, <c>AßB</c> for the case, the trimmed string for the trim, and the
+        /// case-insensitive match lost <c>aßb</c>.
+        /// </summary>
+        /// <remarks>
+        /// <c>POSITION</c> is pushed over any string, Azure's <c>INDEX_OF</c> counting units as Calcite does; the
+        /// emulator counts code points, so its answer there is asserted only where the service counts as Azure does.
+        /// </remarks>
+        [Fact]
+        public async Task TheAdapterAnswersCalcitesStringsWhereTheServicePartsFromThem()
+        {
+            Strings_();
+
+            const string S = """JSON_VALUE(c."DOC", '$.s')""";
+
+            (await QueryAsync($"""SELECT c."id", CHAR_LENGTH({S}) FROM "strings" AS c WHERE c."id" IN ('sup', 'sharp')"""))
+                .Should().Equal("sharp|3", "sup|4");
+            (await QueryAsync($"""SELECT c."id", UPPER({S}), LOWER({S}) FROM "strings" AS c WHERE c."id" IN ('sharp', 'kelvin')"""))
+                .Should().Equal("kelvin|A\u212AB|akb", "sharp|ASSB|a\u00DFb");
+            (await QueryAsync($"""SELECT c."id", SUBSTRING({S} FROM 2 FOR 1) FROM "strings" AS c WHERE c."id" = 'sup'"""))
+                .Should().Equal("sup|\uD83D");
+            (await QueryAsync($"""SELECT c."id", TRIM({S}) FROM "strings" AS c WHERE c."id" IN ('t0009', 't3000', 't0020')"""))
+                .Should().Equal("t0009|\ta\t", "t0020|a", "t3000|\u3000a\u3000");
+            (await QueryAsync($"""SELECT c."id" FROM "strings" AS c WHERE UPPER({S}) LIKE '%SS%'"""))
+                .Should().Equal("sharp");
+
+            var position = await QueryAsync($"""SELECT c."id", POSITION('b' IN {S}) FROM "strings" AS c WHERE c."id" = 'sup'""");
+            if (position.SequenceEqual(["sup|3"]))
+                Assert.Skip("This service counts code points in INDEX_OF, as the emulator does, so POSITION pushed answers 3 where Calcite answers 4; Azure counts units.");
+
+            position.Should().Equal("sup|4");
         }
 
         // ── What the client sends ─────────────────────────────────────────────────────────────

@@ -3557,7 +3557,9 @@ statement runs still fails at the encoder, unnamed (`TODO.md`).
 **How it is checked.**
 - `CosmosStringFunctionMeasurementTests` pins the service's six rows on a real account, each asserting what the
   emulator shares and skipping where it differs; on the probe account all six pass, and the trim test holds the
-  theory's trimmed class to what Azure removed. `CalciteStringFunctionMeasurementTests` pins Calcite's three.
+  theory's trimmed class to what Azure removed. Its seventh asks the adapter through a connection, over a path
+  declared a string and nothing more, and answers Calcite's length, case, window, trim and match there, and
+  `POSITION`'s 4, pushed. `CalciteStringFunctionMeasurementTests` pins Calcite's three.
 - Population D draws strings from every class — ß, the Kelvin sign, a tab, U+00A0 and U+3000 beside the bands — and
   checks every class fact it derives against them, read unit by unit apart from the theory's table. Two plants are the
   new classes' own, a value's characters read without its N or without its W, and each is caught within a run's trials.
