@@ -3597,8 +3597,13 @@ name with MySQL's, which, as `||` is, is null over a null as the service's is un
 (`Service.LoneSurrogateParameterIsNeverSent`), so a statement carrying one failed on both targets where Calcite
 answers. Only a `U&` literal can hold one, inside `POSITION` or `REPLACE`, Calcite refusing one against a column
 elsewhere; `CosmosParameterList.Add`, which every value a statement carries passes through, refuses it, wherever in
-the statement it stands, and the expression it stood in is computed in process. A parameter bound to one when the
-statement runs still fails at the encoder, unnamed (`TODO.md`).
+the statement it stands, and the expression it stood in is computed in process. A parameter's value arrives only when
+the statement runs. A column computed from parameters alone is never sent — the service would only hand back what it
+was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter as a column for the function above to compute — so the
+translator refuses one in a projection and Calcite computes it above. A parameter the service reads, in a comparison,
+is refused by name when it is bound (`CosmosQueries.Bind`), before the encoder throws: the check is
+`Client/CosmosEncodable`'s, asked at both ends, a property of the value as the encoder is handed it and no class of the
+theory's, a stored string never holding a lone surrogate.
 
 **What it costs, and what it gives back.** Timed against `702129b` in Release, interleaved, a fresh process a run,
 two passes of ten paired rounds after a dropped first. In the first another session's test run held the machine at

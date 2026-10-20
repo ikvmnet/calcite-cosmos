@@ -1353,10 +1353,12 @@ the distribution the gate is sized for.
     same statement over an undeclared path pushes as a weakening; over the declared path the whole filter stays
     in process and the scan reads whole documents. Plain `LIKE`'s `_` and `%` agree everywhere, so the exact
     `LIKE` and its `STARTSWITH` should push there.
-  - **A bound parameter holding a lone surrogate** fails at the SDK's encoder when the statement runs, with an
-    unnamed `EncoderFallbackException`; a literal is refused when the plan is made
-    (`Service.LoneSurrogateParameterIsNeverSent`). A named error at the bind (`CosmosQueries.Bind`) is cheap; a
-    plan that reads a fallback for such a value is the answer.
+  - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
+    *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
+    from parameters alone is computed above the statement and never sent; and a parameter the service reads is
+    refused by name when it is bound (`CosmosQueries.Bind`, `Client/CosmosEncodable.cs`), where Calcite would have
+    answered. A plan that reads a fallback for such a value — the filter's rows unfiltered, Calcite's filter above —
+    is what would answer it.
   - **`POSITION` over a supplementary character differs on the emulator**, whose `INDEX_OF` counts code points;
     Azure's counts units as Calcite does, and the function is pushed (`Service.IndexOfCountsUnits`). The
     differential corpus asks it only over strings without one, and the `ORDER BY` yardstick names it as the

@@ -51,9 +51,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             var bound = new CosmosParameter[parameters.Count];
 
             for (var i = 0; i < parameters.Count; i++)
-                bound[i] = parameters[i].Value is CosmosDynamicValue slot
-                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) }
-                    : parameters[i];
+            {
+                if (parameters[i].Value is not CosmosDynamicValue slot)
+                {
+                    bound[i] = parameters[i];
+                    continue;
+                }
+
+                bound[i] = parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
+
+                // The SDK's UTF-8 encoder refuses an unpaired surrogate while it writes the statement, unnamed and before
+                // anything is sent (Service.LoneSurrogateParameterIsNeverSent). A literal holding one is refused when the
+                // plan is made, and computed in process; a parameter's value arrives only now, and a column computed from
+                // parameters alone is never sent, so what is left is a value the service had to read, and the statement
+                // cannot run as it was planned.
+                if (CosmosEncodable.IsEncodable(bound[i].Value) == false)
+                    throw new CosmosExecutionException($"Parameter {slot.VariableName} holds a lone surrogate, which the Cosmos DB SDK cannot encode as UTF-8, so the statement cannot be sent; a string holding a surrogate pair, or none, can.");
+            }
 
             return query with { Parameters = bound };
         }

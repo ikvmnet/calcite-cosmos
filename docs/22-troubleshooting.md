@@ -151,12 +151,15 @@ You are on the emulator, which does not implement full text search. Use a real a
 Should not happen through the adapter — it never sends an expression sort other than a geodesic
 distance. If you see it, report the query.
 
-**`EncoderFallbackException: Unable to translate Unicode character \uD83D …` when a statement runs.**
+**"Parameter ?0 holds a lone surrogate, which the Cosmos DB SDK cannot encode as UTF-8, so the statement
+cannot be sent" (`CosmosExecutionException`) when a statement runs.**
 A parameter was bound to a string holding a lone surrogate — half of a character beyond U+FFFF, such as one
-cut from an emoji by a substring in the application. The Cosmos SDK encodes a statement as UTF-8 and
-cannot encode one, so nothing is sent. A literal holding one, `U&'\D83D'`, is computed in process instead;
-a parameter's value is not known until it is bound. Bind a whole character, or compare in the
-application. Chapter 8.
+cut from an emoji by a substring in the application — and the statement sends it for the service to read: a
+comparison, say. The Cosmos SDK encodes a statement as UTF-8 and cannot encode one, so nothing is sent; the
+adapter refuses the value by name before the SDK's encoder throws `EncoderFallbackException`. A literal holding
+one, `U&'\D83D'`, is computed in process instead, and so is a column computed from parameters alone,
+`UPPER(CAST(? AS VARCHAR))`, which is never sent; a parameter the service reads is not known until it is
+bound. Bind a whole character, or compare in the application. Chapter 8.
 
 **400 on a query with `SQRT`, `ASIN` or `ACOS`.**
 Cosmos fails the whole statement for an out-of-domain argument. Guard the input. Chapter 8.

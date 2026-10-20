@@ -61,7 +61,8 @@ parameter may hold anything, so a function over one stays in process.
 | `INSTR`, `STRPOS`, `SUBSTR`, `LEN` (*library*) | via the standard forms | as the form each becomes |
 
 A `U&` literal holding a lone surrogate, `U&'\D83D'`, is never sent: the SDK cannot encode it. The
-expression it stands in is computed in process.
+expression it stands in is computed in process. A parameter bound to one is refused by name when the statement
+runs (Chapter 22).
 | `REGEXMATCH(s, pattern[, modifiers])` | `REGEXMATCH` | Cosmos's own; PCRE with documented exceptions |
 | `ToString`, `StringToNumber`, `StringToBoolean`, `StringToArray`, `StringToObject`, `ObjectToArray` | the same | Cosmos's own; no in-process body |
 

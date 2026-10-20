@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <b>And what cannot be sent at all.</b> A value holding a lone surrogate is refused by the SDK's UTF-8 encoder
     /// before the statement leaves (<c>Service.LoneSurrogateParameterIsNeverSent</c>): only a <c>U&amp;</c> literal can
     /// hold one, and Calcite answers the statement in process. <see cref="CosmosParameterList.Add"/> asks
-    /// <see cref="IsEncodable"/> of every value the statement would carry.
+    /// <see cref="Client.CosmosEncodable.IsEncodable"/> of every value the statement would carry.
     /// </para>
     /// </remarks>
     internal static class CosmosStringFunctions
@@ -202,45 +202,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="text">The text.</param>
         public static bool FoldsAlike(string text) =>
             (JsonFactEncoding.Characters(text) & CaseMapped) == JsonCharacterBand.None;
-
-        /// <summary>
-        /// Determines whether a value can be sent: whether every string in it, at any depth, holds no unpaired surrogate,
-        /// which the SDK's UTF-8 encoder refuses.
-        /// </summary>
-        /// <param name="value">The value a statement would carry.</param>
-        public static bool IsEncodable(object? value)
-        {
-            switch (value)
-            {
-                case string text:
-                    for (var i = 0; i < text.Length; i++)
-                    {
-                        if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-                            i++;
-                        else if (char.IsSurrogate(text[i]))
-                            return false;
-                    }
-
-                    return true;
-
-                case IDictionary<string, object?> members:
-                    foreach (var (name, member) in members)
-                        if (IsEncodable(name) == false || IsEncodable(member) == false)
-                            return false;
-
-                    return true;
-
-                case System.Collections.IEnumerable items:
-                    foreach (var item in items)
-                        if (IsEncodable(item) == false)
-                            return false;
-
-                    return true;
-
-                default:
-                    return true;
-            }
-        }
 
     }
 

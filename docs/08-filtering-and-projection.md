@@ -483,6 +483,7 @@ documents it has to read.
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | `UPPER`, `LOWER` and the case-insensitive `LIKE` rewrite over a string not proved ASCII; `CHAR_LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` over one that may hold a character beyond U+FFFF; `TRIM` over one that may hold a tab or other white space | Calcite's functions are Java's and the service's its own, and they part over those characters (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
+| a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |

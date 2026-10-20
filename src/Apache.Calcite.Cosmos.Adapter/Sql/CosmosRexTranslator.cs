@@ -2823,6 +2823,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
 
+            // A column computed from parameters alone reads nothing of the document, and the service would only hand
+            // back what it was sent: computed above, it costs the service nothing it would save, and it is never sent. Sent,
+            // a parameter holding a lone surrogate when the statement runs fails at the SDK's UTF-8 encoder
+            // (Service.LoneSurrogateParameterIsNeverSent) where Calcite answers: UPPER(CAST(? AS VARCHAR)) echoed the
+            // parameter as a column, for the function above it to compute. A literal is sent as a parameter too, and is
+            // refused by the parameter list where it holds one (CosmosParameterList.Add).
+            if (IsOfParametersAlone(node))
+                throw new CosmosTranslationException("A column computed from parameters alone is computed in process: the service would hand back what it was sent, and a parameter that cannot be encoded would fail the statement.");
+
             var expression = TranslateProjectionCore(node, out reading);
 
             // A column the reader has no reading for must not go down. The statement would be right
@@ -2839,6 +2848,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     $"A projection typed '{node.getType()}' has no Cosmos JSON reading, so pushing it would render a column that cannot be read back.");
 
             return expression;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is computed from parameters alone: one at least, beside literals, and nothing
+        /// read of a row — no field, no input, no variable.
+        /// </summary>
+        static bool IsOfParametersAlone(RexNode node)
+        {
+            var parameter = false;
+            return Walk(node) && parameter;
+
+            bool Walk(RexNode inner)
+            {
+                switch (inner)
+                {
+                    case org.apache.calcite.rex.RexDynamicParam:
+                        parameter = true;
+                        return true;
+
+                    case RexLiteral:
+                        return true;
+
+                    case RexCall call:
+                        for (var i = 0; i < call.getOperands().size(); i++)
+                            if (Walk(Operand(call, i)) == false)
+                                return false;
+
+                        return true;
+
+                    default:
+                        return false;
+                }
+            }
         }
 
         /// <inheritdoc cref="TranslateProjection(RexNode, out CosmosReading)" />
