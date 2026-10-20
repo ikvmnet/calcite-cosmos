@@ -100,6 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
                 .ToArray();
             var conjuncts = Statements.Draw(random, declaration).Concat(Statements.Banded(bands, declaration)).ToList();
+            var computed = Statements.Computed(new Random(unchecked(seed * 104729 + 31)), declaration);
             var report = new PopulationReport(seed, declaration, conjuncts);
 
             foreach (var document in documents)
@@ -136,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             // The questions: every term of every conjunct, and two predicates the statement does not hold.
             var questions = conjuncts.SelectMany(c => c.Subterms).Concat(Enumerable.Range(0, 2).Select(_ => Statements.Predicate(random, declaration, 0, new List<SqlPredicate>())))
                 .GroupBy(p => p.ToString(), StringComparer.Ordinal).Select(g => g.First()).ToArray();
-            var check = new Check(report, world, documents, questions);
+            var check = new Check(report, world, documents, questions, computed);
 
             // The licence table, read from the strata the oracle admitted in, and never from what it says it assumed.
             var stratum = Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf).ToArray();
@@ -240,15 +241,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             readonly World _world;
             readonly IReadOnlyList<J.Obj> _documents;
             readonly IReadOnlyList<SqlPredicate> _questions;
+            readonly IReadOnlyList<SqlValue> _computed;
             readonly HashSet<(Scope, string)> _read = new();
             readonly HashSet<Scope> _validated = new();
 
-            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions)
+            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions, IReadOnlyList<SqlValue> computed)
             {
                 _report = report;
                 _world = world;
                 _documents = documents;
                 _questions = questions;
+                _computed = computed;
             }
 
             Truths Truth(SqlPredicate predicate, J.Obj document) => IrEval.Truth(predicate, document, _world);
@@ -323,6 +326,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             }
                     }
                 }
+
+                // What the theory derives of a computed string's characters, as a string function's rule asks it: held to
+                // the string Calcite computes, unit by unit and not as the theory reads one.
+                foreach (var value in _computed)
+                {
+                    var classes = facts.CharactersOf(value);
+                    if (classes == JsonCharacterBand.Any)
+                        continue;
+
+                    _report.Computed++;
+                    foreach (var document in keeping)
+                        if (IrEval.Read(value, document, _world) is SqlDatum.Text text && Documents.Within(text.Value, JsonFactEncoding.Members(classes)) == false)
+                        {
+                            _report.Fail("computed", $"{name} says {value} holds characters of {classes}, and of {Documents.Json(document)} it is {Documents.Json(new J.Str(text.Value))}, which the conjuncts {which} ({string.Join(", ", assumed)}) keep");
+                            break;
+                        }
+                }
             }
 
             /// <summary>
@@ -389,7 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var fact in JsonFacts(context, json, graph))
                 {
                     _report.Facts++;
-                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters { Bands.Count: < 2 })
+                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters c && c.Bands.Count < Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.AllBands.Count)
                         _report.Characters++;
 
                     foreach (var document in keeping)

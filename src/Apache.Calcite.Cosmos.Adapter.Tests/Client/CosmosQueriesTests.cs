@@ -70,6 +70,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <remarks>
+        /// <para>
+        /// A string holding a lone surrogate cannot be sent: the SDK's UTF-8 encoder refuses it while it writes the
+        /// statement, and threw <c>EncoderFallbackException</c>, which names nothing a caller wrote
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>). Bound when the statement runs, the parameter is refused by
+        /// name before the encoder is reached. A pair is a character and is sent.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AParameterHoldingALoneSurrogateIsRefusedByName()
+        {
+            var query = new CosmosQuery("SELECT VALUE c.id FROM c WHERE (c.s = @p0)", new[] { new CosmosParameter("@p0", new CosmosDynamicValue(0)) });
+
+            var act = () => CosmosQueries.Bind(query, new Context(("?0", "a\uD83D")));
+            act.Should().Throw<CosmosExecutionException>().WithMessage("Parameter ?0 holds a lone surrogate*cannot be sent*");
+
+            CosmosQueries.Bind(query, new Context(("?0", "a😀"))).Parameters[0].Value.Should().Be("a😀");
+        }
+
+        /// <remarks>
         /// The widths Calcite boxes a number in are collapsed to the two a statement carries, so that
         /// a value arriving late is indistinguishable from one written into the statement.
         /// </remarks>

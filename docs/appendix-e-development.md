@@ -27,6 +27,15 @@ statements Azure rejects and to reject features Azure implements:
 | `ORDER BY` over a computed property no included path names | computed properties dropped on create | rejected (400) |
 | `ORDER BY RANK … ASC` or `DESC` | rejected (`SC2005`) | rejected — no direction is taken |
 | two string constants compared, `'\uE000' < '\uD83D\uDE00'` | by code point | by UTF-16 code unit |
+| an integer written in [2^63, 2^64) | kept as written, and printed projected as another integer: 2^63 as `9223372036854775800` | stored as a double, printed one way: `9.223372036854776E+18` |
+| a document holding bytes that are not UTF-8 | rejected (403, or 400) | stored and returned as written |
+| a lone surrogate written as a JSON escape | rejected (403, or 400) | stored as U+FFFD |
+| `SUBSTRING`, `LEFT`, `RIGHT` and `INDEX_OF` over a character beyond U+FFFF | count code points | count UTF-16 units, as Calcite does, and send half of a split pair as U+FFFD |
+| `UPPER('\u017F')`, `LOWER('\u0130')`, `LOWER('\u212A')` | `S`, `i`, `k` | left as they are |
+| `TRIM`, `LTRIM`, `RTRIM` | remove white space but U+0085, U+00A0, U+180E, U+2007 and U+202F | remove those too |
+| a string holding U+0000 | stored as U+FDD0 followed by `0`, so `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
+| `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500 `PostgresError(E22P05)`; so does a `CONCAT` of one | replaces with it as written |
+| `REPLICATE` past 10,000 code points | repeats on | undefined |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 
@@ -134,7 +143,7 @@ more than a 400 RU/s container takes in the time the seed writes them: the seed 
 document again after the interval the service asks for, and a statement the service throttles still fails.
 
 It runs with the class, and fails on any answer Calcite does not allow. Two families of wrong answer
-that are no order's — a projected double printed two ways, and `CHAR_LENGTH` pushed as `LENGTH` — are
+that are no order's, both the emulator's — a projected integer printed two ways, and `INDEX_OF` counting code points — are
 findings of their own, recorded in `TODO.md`, and are reported apart where the statement sent no order.
 It also holds a floor for how many statements push each kind of order — sorts, extremes, pages and
 comparisons a parameter decides — in every container and in each, so that a change declining more than it

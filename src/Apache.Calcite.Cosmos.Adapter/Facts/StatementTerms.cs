@@ -341,22 +341,7 @@ namespace Apache.Calcite.Cosmos.Facts
             return flat;
         }
 
-        ConstructorTerm<Val> Value(SqlValue value)
-        {
-            var r = _rules!;
-            return value switch
-            {
-                SqlValue.Text t => r.Text.Of(Path(t.Path)),
-                SqlValue.Raw w => r.Raw.Of(Path(w.Path)),
-                SqlValue.Typed t => r.Typed.Of(Path(t.Path), t.Type),
-                SqlValue.Cast c => r.Cast.Of(c.Target, Value(c.Value)),
-                SqlValue.Literal l => r.Literal.Of(l.Value),
-                SqlValue.Parameter p => r.Parameter.Of(p.Ordinal, p.Type),
-                _ => throw new NotSupportedException(value.GetType().Name),
-            };
-        }
-
-        Term<JPath> Path(JsonDocumentPath path) => JsonFactEncoding.Path(path).ToTerm(_rules!.Json);
+        ConstructorTerm<Val> Value(SqlValue value) => _rules!.Term(value);
 
         /// <summary>
         /// One context of the tree, or where its run did not complete, the one above it read in its place.
@@ -526,7 +511,25 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
             }
 
+            public override bool TryMinLength(JsonDocumentPath path, out long length)
+            {
+                length = 0;
+                return false;
+            }
+
+            public override bool TryMaxLength(JsonDocumentPath path, out long length)
+            {
+                length = 0;
+                return false;
+            }
+
             public override bool Form(JsonDocumentPath path, string token) => false;
+
+            public override bool TryValueChars(SqlValue value, out ValueSet<string> classes)
+            {
+                classes = ValueSet<string>.Empty;
+                return false;
+            }
 
             public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands)
             {

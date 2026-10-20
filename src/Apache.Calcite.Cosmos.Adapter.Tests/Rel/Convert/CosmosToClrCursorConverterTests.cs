@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Text.Json;
 using System.Threading;
@@ -62,10 +63,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
 
             readonly string[] _documents;
+            readonly JsonElement[]? _elements;
 
             public StubExecutor(params string[] documents)
             {
                 _documents = documents;
+            }
+
+            /// <summary>
+            /// Answers with documents given as the bytes the service sent, which a string cannot carry where they are
+            /// not UTF-8.
+            /// </summary>
+            public StubExecutor(IEnumerable<byte[]> documents)
+            {
+                _documents = [];
+                _elements = documents.Select(d => JsonDocument.Parse(d).RootElement.Clone()).ToArray();
             }
 
             public CosmosQuery? Executed { get; private set; }
@@ -90,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 // genuinely asynchronous cursor rather than one that happens to complete synchronously.
                 await Task.Yield();
 
-                return Cursor = ListCursor.Documents(_documents);
+                return Cursor = _elements is null ? ListCursor.Documents(_documents) : new ListCursor<JsonElement>(_elements);
             }
 
         }
@@ -1053,6 +1065,107 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             list.get(2).Should().Be(java.lang.Integer.valueOf(2));
         }
 
+        // ── Text that is not UTF-8 ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Exposes a table whose container holds documents given as JSON text in which each <c>&lt;HH HH&gt;</c> stands
+        /// for those raw bytes, as Azure stores and returns what a client wrote that way.
+        /// </summary>
+        void GivenBytes(params string[] templates)
+        {
+            static byte[] Bytes(string template)
+            {
+                var bytes = new List<byte>();
+
+                for (var at = 0; at < template.Length;)
+                {
+                    var open = template.IndexOf('<', at);
+                    if (open < 0)
+                        open = template.Length;
+
+                    bytes.AddRange(System.Text.Encoding.UTF8.GetBytes(template[at..open]));
+                    if (open == template.Length)
+                        break;
+
+                    var close = template.IndexOf('>', open);
+                    foreach (var hex in template[(open + 1)..close].Split(' '))
+                        bytes.Add(System.Convert.ToByte(hex, 16));
+
+                    at = close + 1;
+                }
+
+                return bytes.ToArray();
+            }
+
+            _executor = new StubExecutor(templates.Select(Bytes));
+            Register(new CosmosTable(Products, _executor));
+        }
+
+        /// <summary>
+        /// A pushed projection over a value holding text a client wrote that is not UTF-8 fails naming the column, the
+        /// document and the bytes, the document by the column the plan bound to its <c>id</c>.
+        /// </summary>
+        /// <remarks>
+        /// What failed with <c>System.Text.Json</c>'s <em>"Cannot transcode invalid UTF-8 JSON text to UTF-16 string"</em>,
+        /// which named none of them (<c>reports/verify-bytes.md</c>, L7). The rows are what the service sent the
+        /// statement, measured on the probe account.
+        /// </remarks>
+        [Fact]
+        public async Task ShouldRefuseTextThatIsNotUtf8NamingTheColumnAndTheDocument()
+        {
+            GivenBytes("""{ "id": "good", "s": "ok" }""", """{ "id": "raw", "s": "x<ED A0 80>y" }""");
+
+            var act = () => Execute(PlanToClr("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.s') AS \"s\" FROM products AS c"));
+
+            await act.Should().ThrowAsync<CosmosMaterializationException>()
+                .WithMessage("""Column 's' of document "raw" holds text that is not UTF-8 at $: the bytes ED A0 80 in "x\xED\xA0\x80y". Cosmos DB stores*""");
+        }
+
+        /// <summary>
+        /// The document column names the document by its own <c>id</c> where the statement keeps <c>DOC</c> and drops the
+        /// column, and says where in the document the bytes are.
+        /// </summary>
+        [Fact]
+        public async Task ShouldNameTheDocumentFromTheDocumentColumn()
+        {
+            GivenBytes("""{ "DOC": { "id": "raw", "category": "a", "o": { "t": "<FF>" } } }""");
+
+            var act = () => Execute(PlanToClr("SELECT c.\"DOC\" FROM products AS c"));
+
+            await act.Should().ThrowAsync<CosmosMaterializationException>()
+                .WithMessage("""Column 'DOC' of document "raw" holds text that is not UTF-8 at $.o.t: the bytes FF in "\xFF".*""");
+        }
+
+        /// <summary>
+        /// A column the plan only names <c>id</c> is not the document's: the document is named by the binding, not the
+        /// name, and here there is none to name.
+        /// </summary>
+        [Fact]
+        public async Task ShouldNotTakeAColumnNamedIdForTheDocuments()
+        {
+            GivenBytes("""{ "id": "Widget", "s": "<C0 AF>" }""");
+
+            var act = () => Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.name') AS \"id\", JSON_VALUE(c.\"DOC\", '$.s') AS \"s\" FROM products AS c"));
+
+            await act.Should().ThrowAsync<CosmosMaterializationException>()
+                .WithMessage("""Column 's' holds text that is not UTF-8 at $: the bytes C0 AF in "\xC0\xAF".*""");
+        }
+
+        /// <summary>
+        /// A projected <c>JSON_QUERY</c> refuses the bytes as every other reading does, where it answered each as an
+        /// escaped U+FFFD without a word (<c>reports/verify-bytes.md</c>, L15).
+        /// </summary>
+        [Fact]
+        public async Task ShouldRefuseAJsonQueryOverTextThatIsNotUtf8RatherThanReplaceIt()
+        {
+            GivenBytes("""{ "q": { "k<FF>": 1 } }""");
+
+            var act = () => Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.o') AS \"q\" FROM products AS c"));
+
+            await act.Should().ThrowAsync<CosmosMaterializationException>()
+                .WithMessage("""Column 'q' holds text that is not UTF-8 at $, in a property name: the bytes FF in "k\xFF".*""");
+        }
+
         /// <remarks>
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.
@@ -1202,6 +1315,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             plan.Should().NotContain("CosmosProject(DOC=[$0])", plan);
             plan.Should().Contain("JSON_VALUE($0, '$.data.ref')]", "the residual's path is carried as a column: " + plan);
             plan.Should().Contain("b=[JSON_VALUE($0, '$.data.name')]", plan);
+        }
+
+        /// <summary>
+        /// Not a projection with a reading that can refuse a value: beneath the conjunct it is read for
+        /// rows the conjunct drops, where Calcite never reads them.
+        /// </summary>
+        /// <remarks>
+        /// A stored 1E+19 read as a <c>BIGINT</c> is refused, and over a document the conjunct drops the
+        /// statement failed where Calcite answers. A <c>DOUBLE</c> refuses no number, and still moves.
+        /// </remarks>
+        [Fact]
+        public void ShouldNotPushAReadingThatCanRefuseUnderAResidualFilter()
+        {
+            const string Residual = "WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park' AND CAST(JSON_VALUE(c.\"DOC\", '$.data.ref') AS UUID) = UUID'3a900000-0000-4000-8000-000000000001'";
+
+            var refusing = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\", JSON_VALUE(c.\"DOC\", '$.data.count' RETURNING BIGINT) AS \"n\" FROM products AS c " + Residual));
+            var total = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\", JSON_VALUE(c.\"DOC\", '$.data.count' RETURNING DOUBLE) AS \"n\" FROM products AS c " + Residual));
+
+            refusing.Should().NotContain("CosmosProject", "the BIGINT is read above the conjunct, by Calcite: " + refusing);
+            refusing.Should().Contain("ClrCursorProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')])", refusing);
+            refusing.Should().Contain("CosmosFilter", "what renders of the filter still reaches the service: " + refusing);
+
+            total.Should().Contain("CosmosProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')]", "the DOUBLE moves beneath: " + total);
         }
 
         // ── What a point read can read ────────────────────────────────────────────

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -104,6 +105,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosJson.CanRead(SqlTypeName.MULTISET, SqlTypeName.INTERVAL_DAY).Should().BeFalse();
 
             CosmosJson.CanRead(SqlTypeName.ARRAY).Should().BeTrue("an element type nobody named is read by its own JSON type");
+        }
+
+        /// <summary>
+        /// <c>CanRefuse</c> says of every readable type what the reader does: whether some value of the
+        /// kind it reads is refused.
+        /// </summary>
+        /// <remarks>
+        /// A refusal of the kind — <c>"x"</c> read as an <c>INTEGER</c>, "Expected a JSON number" — is
+        /// not one: the service's guard sends such a value as null. A refusal of the value is the rest,
+        /// and the values tried are the ones each reading has a refusal for: 2^63 written whole, 1E+19
+        /// and 42.5 for the integral widths, text that is no date, UUID, GeoJSON or base64.
+        /// </remarks>
+        [Fact]
+        public void EveryTypeAgreesWithWhatCanRefuseSays()
+        {
+            string[] values =
+            [
+                "9223372036854775808", "1e19", "42.5", "1e308", "-0.0", "0",
+                "\"x\"", "\"!!\"", "\"\"", "\"2026-10-20\"", "\"12:00:00\"",
+                "true", "{}", "{\"type\":\"Point\"}", "[]", "[1.5]", "[\"x\"]",
+            ];
+
+            foreach (var type in (SqlTypeName[])SqlTypeName.values())
+            {
+                if (CosmosJson.CanRead(type) == false)
+                {
+                    CosmosJson.CanRefuse(type).Should().BeTrue("a type with no reading refuses everything: " + type.name());
+                    continue;
+                }
+
+                var refused = values.Where(json => RefusesTheValue(json, type, null)).ToList();
+                CosmosJson.CanRefuse(type).Should().Be(refused.Count > 0, $"for {type.name()}, which refused {string.Join(", ", refused)}");
+            }
+
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue();
+            RefusesTheValue("[1.5]", SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue("an element is read as its type");
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.VARCHAR).Should().BeFalse();
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY).Should().BeFalse("an element type nobody named is read by its own JSON type");
+
+            static bool RefusesTheValue(string json, SqlTypeName type, SqlTypeName? component)
+            {
+                try
+                {
+                    CosmosJson.GetValue(Value(json), type, component);
+                    return false;
+                }
+                catch (CosmosMaterializationException e)
+                {
+                    return e.Message.StartsWith("Expected a", StringComparison.Ordinal) == false;
+                }
+            }
         }
 
         /// <remarks>
@@ -266,6 +318,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var act = () => Read("2147483648", SqlTypeName.INTEGER);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*outside the range*");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// What a document written with 2^63 or 2^63 + 1 reads back as: Azure stores an integer outside
+        /// int64 as a double and prints it <c>9.223372036854776E+18</c>, and the emulator returns the
+        /// document whole as it was written. Neither is a <c>BIGINT</c>. The double 2^63 used to pass the
+        /// range check, which compared with <c>(double)long.MaxValue</c> — 2^63 itself — and the cast
+        /// then saturated it to <c>9223372036854775807</c>, a number the document does not hold.
+        /// </para>
+        /// <para>
+        /// The same bound holds for every reading that comes through it, a <c>TIMESTAMP</c> stored as a
+        /// number among them.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("9.223372036854776E+18", "BIGINT")]
+        [InlineData("9223372036854775808", "BIGINT")]
+        [InlineData("9223372036854775809", "BIGINT")]
+        [InlineData("9223372036854775808.0", "BIGINT")]
+        [InlineData("1E+19", "BIGINT")]
+        [InlineData("1.8446744073709552E+19", "BIGINT")]
+        [InlineData("-9.223372036854778E+18", "BIGINT")]
+        [InlineData("9.223372036854776E+18", "TIMESTAMP")]
+        [InlineData("2147483648.0", "INTEGER")]
+        [InlineData("-2147483649.0", "INTEGER")]
+        [InlineData("2147483648.0", "DATE")]
+        [InlineData("32768.0", "SMALLINT")]
+        [InlineData("128.0", "TINYINT")]
+        public void ShouldRefuseAWholeDoubleOutsideTheRangeOfItsType(string json, string typeName)
+        {
+            var act = () => Read(json, SqlTypeName.valueOf(typeName));
+            act.Should().Throw<CosmosMaterializationException>().WithMessage($"*'{json}' is outside the range of {typeName}*");
+        }
+
+        /// <remarks>
+        /// And each width's own extremes still read, written as a double or as an integer. The least is
+        /// -2^(k-1), which a double holds exactly: Azure prints -9223372036854775809, written, as
+        /// <c>-9.223372036854776E+18</c>, which is <c>long.MinValue</c> exactly, so that reads.
+        /// </remarks>
+        [Theory]
+        [InlineData("9223372036854775807", "BIGINT", 9223372036854775807L)]
+        [InlineData("-9223372036854775808", "BIGINT", -9223372036854775808L)]
+        [InlineData("-9.223372036854776E+18", "BIGINT", -9223372036854775808L)]
+        [InlineData("9.223372036854775E+18", "BIGINT", 9223372036854774784L)]
+        [InlineData("2147483647.0", "INTEGER", 2147483647L)]
+        [InlineData("-2147483648.0", "INTEGER", -2147483648L)]
+        [InlineData("32767.0", "SMALLINT", 32767L)]
+        [InlineData("-128.0", "TINYINT", -128L)]
+        public void ShouldReadAWholeNumberAtTheExtremesOfItsType(string json, string typeName, long expected)
+        {
+            var read = Read(json, SqlTypeName.valueOf(typeName));
+            ((java.lang.Number)read!).longValue().Should().Be(expected);
         }
 
         /// <remarks>
@@ -608,6 +713,166 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var act = () => CosmosJson.GetValue(Value("30"), SqlTypeName.VARCHAR);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
+        }
+
+        // ── Text that is not UTF-8 ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Parses JSON text in which each <c>&lt;HH HH&gt;</c> stands for those raw bytes, as Azure stores and
+        /// returns what a client wrote that way (<c>Service.MalformedTextIsStoredAsWritten</c>).
+        /// </summary>
+        static JsonElement Bytes(string template)
+        {
+            var bytes = new List<byte>();
+
+            // Text between the groups is encoded a run at a time, so that a pair of surrogates is one character.
+            for (var at = 0; at < template.Length;)
+            {
+                var open = template.IndexOf('<', at);
+                if (open < 0)
+                    open = template.Length;
+
+                bytes.AddRange(System.Text.Encoding.UTF8.GetBytes(template[at..open]));
+                if (open == template.Length)
+                    break;
+
+                var close = template.IndexOf('>', open);
+                foreach (var hex in template[(open + 1)..close].Split(' '))
+                    bytes.Add(Convert.ToByte(hex, 16));
+
+                at = close + 1;
+            }
+
+            // Parsing does not decode, so the document is accepted as the service's page is.
+            return JsonDocument.Parse(bytes.ToArray()).RootElement.Clone();
+        }
+
+        /// <summary>
+        /// The document column, read as the text the service sent, refuses a document holding bytes that are not
+        /// UTF-8, and says which column, which document, where in it, and which bytes: the decoder's own error named
+        /// none of them.
+        /// </summary>
+        [Fact]
+        public void TheDocumentColumnRefusesTextThatIsNotUtf8ByName()
+        {
+            var row = Bytes("""{"DOC":{"id":"raw","pk":"a","s":"x<ED A0 80>y"},"id":"raw"}""");
+
+            var act = () => CosmosJson.GetJsonProperty(row, "DOC", ["id"]);
+
+            act.Should().Throw<CosmosMaterializationException>()
+                .WithMessage("""Column 'DOC' of document "raw" holds text that is not UTF-8 at $.s: the bytes ED A0 80 in "x\xED\xA0\x80y". Cosmos DB stores the bytes*""")
+                .WithInnerException<InvalidOperationException>();
+        }
+
+        /// <summary>
+        /// Where the row holds no column bound to the <c>id</c>, the document column's own <c>id</c> names it.
+        /// </summary>
+        [Fact]
+        public void TheDocumentIsNamedFromInsideTheDocumentColumn()
+        {
+            var row = Bytes("""{"DOC":{"id":"raw","s":"<FF>"}}""");
+
+            var act = () => CosmosJson.GetJsonProperty(row, "DOC", ["DOC", "id"]);
+
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("""Column 'DOC' of document "raw" holds text that is not UTF-8 at $.s: the bytes FF in "\xFF".*""");
+        }
+
+        /// <summary>
+        /// Every invalid sequence Azure was measured to store as written is refused, by every reading that decodes a
+        /// string: a WTF-8 surrogate of either half, a CESU-8 pair, a byte no sequence begins with, an overlong form
+        /// and a lone continuation byte (<c>reports/verify-bytes.md</c> §2.1). A lenient decoder reads each as one to
+        /// six U+FFFD, which compares nothing like the bytes the service compares.
+        /// </summary>
+        [Theory]
+        [InlineData("x<ED A0 80>y", "ED A0 80")]
+        [InlineData("<ED B0 80>", "ED B0 80")]
+        [InlineData("<ED A0 BD ED B8 80>", "ED A0 BD ED B8 80")]
+        [InlineData("x<FF>y", "FF")]
+        [InlineData("<C0 AF>", "C0 AF")]
+        [InlineData("<80>", "80")]
+        [InlineData("é<80>", "80")]
+        public void EveryReadingRefusesEveryInvalidSequenceByName(string text, string invalid)
+        {
+            var row = Bytes("{\"id\":\"bad\",\"s\":\"" + text + "\"}");
+            var expected = $"Column 's' of document \"bad\" holds text that is not UTF-8 at $: the bytes {invalid} in *";
+
+            ((Action)(() => CosmosJson.GetProperty(row, "s", SqlTypeName.VARCHAR, null, ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+            ((Action)(() => CosmosJson.GetProperty(row, "s", SqlTypeName.ANY, null, ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+            ((Action)(() => CosmosJson.GetProperty(row, "s", SqlTypeName.VARIANT, null, ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+            ((Action)(() => CosmosJson.GetProperty(row, "s", SqlTypeName.TIMESTAMP, null, ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+            ((Action)(() => CosmosJson.GetTextProperty(row, "s", ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+            ((Action)(() => CosmosJson.GetJsonProperty(row, "s", ["id"]))).Should().Throw<CosmosMaterializationException>().WithMessage(expected);
+        }
+
+        /// <summary>
+        /// A property name is text too, and reading an object as a map decodes its names.
+        /// </summary>
+        [Fact]
+        public void AnObjectRefusesANameThatIsNotUtf8()
+        {
+            var row = Bytes("""{"o":{"ok":1,"k<FF>":2}}""");
+
+            var act = () => CosmosJson.GetProperty(row, "o", SqlTypeName.MAP, null);
+
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("""Column 'o' holds text that is not UTF-8 at $, in a property name: the bytes FF in "k\xFF".*""");
+        }
+
+        /// <summary>
+        /// A projected <c>JSON_QUERY</c> is written out rather than decoded, and the writer replaces what it cannot
+        /// read with an escaped U+FFFD: it answered <c>{"t":"x\uFFFD\uFFFD\uFFFDy"}</c> where the in-process plan raised.
+        /// It refuses as every other reading does now, and a fragment of valid text is written as before.
+        /// </summary>
+        [Fact]
+        public void AJsonFragmentRefusesTextThatIsNotUtf8RatherThanReplacingIt()
+        {
+            var row = Bytes("""{"id":"nested","o":{"n":[1,{"t":"x<ED A0 80>y"}]},"p":{"t":"é"}}""");
+
+            var act = () => CosmosJson.GetJsonTextProperty(row, "o", ["id"]);
+
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("""Column 'o' of document "nested" holds text that is not UTF-8 at $.n[1].t: the bytes ED A0 80 in "x\xED\xA0\x80y".*""");
+            CosmosJson.GetJsonTextProperty(row, "p", ["id"]).Should().NotContain("\uFFFD");
+        }
+
+        /// <summary>
+        /// A point read's row is the document, so its <c>id</c> is known whatever the statement selects, and the path
+        /// read is what is named.
+        /// </summary>
+        [Fact]
+        public void APointReadNamesThePathAndTheDocument()
+        {
+            var document = Bytes("""{"id":"cesu","o":{"a b":["ok","<ED A0 BD ED B8 80>"]}}""");
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment[] path = [Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Property("o"), Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Property("a b")];
+
+            var act = () => CosmosJson.GetPath(document, path, SqlTypeName.ARRAY, SqlTypeName.VARCHAR);
+
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("""The path '$.o['a b']' of document "cesu" holds text that is not UTF-8 at $[1]: the bytes ED A0 BD ED B8 80 in*""");
+        }
+
+        /// <summary>
+        /// Text that is UTF-8 everywhere still reads, its escapes decoded, and a value that holds no text at all is not
+        /// searched for any.
+        /// </summary>
+        [Fact]
+        public void TextThatIsUtf8StillReads()
+        {
+            var row = Bytes("""{"s":"a\u00e9\ud83d\ude00<C3 A9>","n":42}""");
+
+            CosmosJson.GetProperty(row, "s", SqlTypeName.VARCHAR).Should().Be("aé\U0001F600é");
+            CosmosJson.GetProperty(row, "n", SqlTypeName.INTEGER).Should().Be(java.lang.Integer.valueOf(42));
+            CosmosJson.IsDecodable(row).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A long text is shown around its first invalid byte, cut where a sequence starts.
+        /// </summary>
+        [Fact]
+        public void ALongTextIsShownAroundItsFirstInvalidByte()
+        {
+            var row = Bytes("{\"s\":\"" + new string('a', 100) + "<FF>" + new string('é', 100) + "\"}");
+
+            var act = () => CosmosJson.GetProperty(row, "s", SqlTypeName.VARCHAR);
+
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*the bytes FF in \"…" + new string('a', 32) + "\\xFF" + new string('é', 16) + "…\"*");
         }
 
     }

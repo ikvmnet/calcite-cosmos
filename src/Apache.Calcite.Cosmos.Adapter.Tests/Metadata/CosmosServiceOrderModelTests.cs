@@ -434,8 +434,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 if (type is JsonType declared)
                     yield return new JsonClaim.OfType(declared, orNull && declared != JsonType.Null);
 
+                // The model's bands are the two an order reads; what else its strings hold is left open, as a pattern
+                // that says nothing of it leaves it.
                 var held = (facts.Characters.HasFlag(Bands.Supplementary) ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
-                    | (facts.Characters.HasFlag(Bands.High) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None);
+                    | (facts.Characters.HasFlag(Bands.High) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
+                    | JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed;
                 if (admitted.HasFlag(Types.String) && held != JsonCharacterBand.Any)
                     yield return new JsonClaim.Characters(held);
 

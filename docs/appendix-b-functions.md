@@ -18,8 +18,8 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
 | `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |
 | `IN (…)`, `NOT IN (…)`, `BETWEEN` | comparisons | same cost as the native forms |
-| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, literal pattern only |
-| `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text, one leading and/or trailing `%` |
+| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, literal pattern only. A pattern that is one run of text between two `%`, which the service answers as a `CONTAINS`, only over a string proved to hold no U+0000: Azure's `CONTAINS` stops at the first (B.2) |
+| `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text, one leading and/or trailing `%`, and `x` proved ASCII as `UPPER` asks (B.2), and for `CONTAINS` to hold no U+0000; otherwise in process |
 | `CASE` | nested `? :` | |
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |
 | `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only, in both: a length truncates |
@@ -36,20 +36,46 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 Over `JSON_VALUE`, each of these pushes only where the container declares the path a string: the
 function reads the text, which for a stored number or boolean is not what the service has (Chapter 8).
 
+**And some push only where the characters are proved.** Calcite's string functions are Java's and the
+service's are its own, and they part over some characters: Calcite counts UTF-16 units where the
+service's `LENGTH` counts code points, maps case by Java's full mapping where the service leaves `ß` and
+`ﬀ` as they are, trims spaces where the service trims white space, and reads past a U+0000 where Azure's
+`REPLACE` and `CONTAINS` stop at the first. Each such function pushes only where what is known of its
+argument — a `pattern`, an `enum`, a stored form, or the statement's own `WHERE … IN (…)` (Chapter 14.4)
+— says it holds none of the characters the two part over; otherwise Calcite computes it over the value
+the service sends. In a projection the path is still read at the service, alone, and the rest of the
+statement pushes; in a filter the comparison is Calcite's, made over the documents the rest of the filter
+keeps, which are read whole. Every input counts: in `CHAR_LENGTH(s || t)` both `s` and `t`, and a
+literal by its own characters. A parameter may hold anything, so a function over one stays in process.
+
+**And some ask something that is not a character.** Where the service answers a window, a repetition or
+a search otherwise than Calcite, the function pushes only where the operand is proved to be one they
+agree over, and the table says which.
+
+| SQL | Cosmos | pushes where |
+| --- | --- | --- |
+| `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone |
+| `CHAR_LENGTH`, `CHARACTER_LENGTH`, `LENGTH` | `LENGTH` | its argument holds no character beyond U+FFFF (an emoji is one; Calcite counts it as two) |
+| `SUBSTRING(s FROM i FOR n)` | `SUBSTRING(s, i - 1, n)` | `s` holds no character beyond U+FFFF: Azure returns half of one as U+FFFD. A start not proved at least one — a column, a parameter, a `POSITION` that may find nothing — is written with Calcite's clip to the string, `SUBSTRING(s, (i < 1 ? 0 : (i - 1)), …)`, since the service answers a negative start with the empty string. The form without a length stays in process |
+| `POSITION(a IN b)` | `(INDEX_OF(b, a) + 1)` | anything: Azure counts as Calcite does. The emulator counts an emoji as one, so there the position after one differs |
+| `TRIM`, `LTRIM`, `RTRIM` (spaces) | `TRIM`, `LTRIM`, `RTRIM` | its argument holds nothing the service trims beside a space: U+0009–U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000. Trimming other characters stays in process |
+| `REPLACE(s, a, b)` | `REPLACE` | `s` and `a` hold no U+0000, which Azure's reads up to and no further; and `a` holds something — a literal that does, or a path whose `enum` lists no empty string — since the service's is undefined for an empty search, where Calcite's is `s` |
+| `CONCAT`, `\|\|` | `CONCAT` | anything. The `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries reads a null as the empty string, where the service's is undefined, and stays in process |
+| `LEFT`, `RIGHT` (*library*) | `LEFT`, `RIGHT` | no character beyond U+FFFF, as `SUBSTRING` |
+| `REVERSE` (*library*) | `REVERSE` | anything |
+| `REPEAT(s, n)` (*library*) | `REPLICATE` | `n` is a literal: 0, or a positive count with `s` short enough — a literal, or a path whose `enum` bounds its length — that the result stays within 10,000 code points. Azure's is undefined for a negative count, where Calcite's is the empty string, and past that length; the emulator's has no limit |
+| `INSTR`, `STRPOS`, `SUBSTR`, `LEN` (*library*) | via the standard forms | as the form each becomes |
+
+A `U&` literal holding a lone surrogate, `U&'\D83D'`, is never sent: the SDK cannot encode it. The
+expression it stands in is computed in process. A parameter bound to one is refused by name when the statement
+runs (Chapter 22).
+
+These are the service's own, with nothing of Calcite's to agree with, and are written as they are:
+
 | SQL | Cosmos | notes |
 | --- | --- | --- |
-| `UPPER`, `LOWER` | `UPPER`, `LOWER` | |
-| `CHAR_LENGTH`, `CHARACTER_LENGTH`, `LENGTH` | `LENGTH` | |
-| `SUBSTRING(s FROM i FOR n)` | `SUBSTRING(s, i - 1, n)` | the form without a length stays in process |
-| `POSITION(a IN b)` | `(INDEX_OF(b, a) + 1)` | SQL positions are one-based |
-| `TRIM`, `LTRIM`, `RTRIM` (spaces) | `TRIM`, `LTRIM`, `RTRIM` | trimming other characters stays in process |
-| `REPLACE` | `REPLACE` | |
-| `CONCAT` | `CONCAT` | |
-| `LEFT`, `RIGHT`, `REVERSE` (*library*) | `LEFT`, `RIGHT`, `REVERSE` | |
-| `REPEAT` (*library*) | `REPLICATE` | |
-| `INSTR`, `STRPOS`, `SUBSTR`, `LEN` (*library*) | via the standard forms | |
-| `REGEXMATCH(s, pattern[, modifiers])` | `REGEXMATCH` | Cosmos's own; PCRE with documented exceptions |
-| `ToString`, `StringToNumber`, `StringToBoolean`, `StringToArray`, `StringToObject`, `ObjectToArray` | the same | Cosmos's own; no in-process body |
+| `REGEXMATCH(s, pattern[, modifiers])` | `REGEXMATCH` | PCRE with documented exceptions |
+| `ToString`, `StringToNumber`, `StringToBoolean`, `StringToArray`, `StringToObject`, `ObjectToArray` | the same | no in-process body |
 
 ## B.3 Numeric functions
 

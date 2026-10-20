@@ -15,10 +15,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public partial class CosmosDeclaredFactPlanningTests
     {
 
+        /// <summary>
+        /// <c>label</c> a string, and printable ASCII: the type is what these tests are about, and the characters are
+        /// what a case fold asks besides (<c>CosmosDeclaredFactPlanningTests.Strings</c>).
+        /// </summary>
         const string Labels = """
         {
           "type": "object",
-          "properties": { "label": { "type": "string" } }
+          "properties": { "label": { "type": "string", "pattern": "^[ -~]*$" } }
         }
         """;
 

@@ -30,6 +30,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     internal sealed class CosmosKeyComparer : IComparer<JsonElement>
     {
 
+        /// <summary>
+        /// What a key's value is, to the error a value that is not UTF-8 is refused with. A key is a member the
+        /// statement selects under a name no column has, so there is no column to name.
+        /// </summary>
+        internal const string Ordered = "A value the statement orders or compares by";
+
         readonly IReadOnlyList<CosmosOrderedKey> _keys;
 
         /// <summary>
@@ -126,7 +132,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             switch (kind)
             {
                 case CosmosOrderedKeyKind.Text:
-                    return Math.Sign(string.CompareOrdinal(a.GetString(), b.GetString()));
+                    // Decoded strictly: text that is not UTF-8 has no place in Calcite's order, and the
+                    // service ranked it by its bytes, so the order cannot be completed over it.
+                    return Math.Sign(string.CompareOrdinal(CosmosJson.Decode(a, Ordered), CosmosJson.Decode(b, Ordered)));
 
                 case CosmosOrderedKeyKind.Boolean:
                     return a.GetBoolean().CompareTo(b.GetBoolean());

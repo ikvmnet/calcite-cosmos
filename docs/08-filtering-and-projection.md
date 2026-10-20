@@ -44,8 +44,8 @@ is sent, and the disjunction is rechecked in process.
 | `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))`, likewise |
 | `x IN (a, b, c)`, `x BETWEEN a AND b` | equivalent comparisons — measured to cost exactly what the native forms cost |
 | `x LIKE 'abc%'` | `STARTSWITH(x, 'abc')` |
-| `x LIKE '%abc%'`, other patterns | Cosmos `LIKE` |
-| `UPPER(x) LIKE '%ABC%'` (ASCII) | `CONTAINS(x, 'ABC', true)` — case-insensitive at the service |
+| `x LIKE '%abc%'` (over `x` proved to hold no U+0000), other patterns | Cosmos `LIKE` |
+| `UPPER(x) LIKE '%ABC%'` (ASCII, over `x` proved ASCII and to hold no U+0000) | `CONTAINS(x, 'ABC', true)` — case-insensitive at the service |
 | `CASE WHEN … THEN … ELSE … END` | nested `(cond ? a : b)` |
 | `COALESCE`, `NULLIF`, `NVL`, `IFNULL` | the `CASE` Calcite expands them to |
 | `SUBSTRING`, `POSITION`, `TRIM` (spaces), string, math and array functions | Cosmos functions — [Appendix B](appendix-b-functions.md) |
@@ -56,10 +56,23 @@ character range, SQL reads it literally. `LIKE … ESCAPE` is declined. And a pa
 literal is declined, because only a literal can be checked for brackets.
 
 The case-insensitive rewrite applies when the pattern is one leading and one trailing `%` around plain
-text, the text is already in the case `UPPER` (or `LOWER`) produces, and the text is ASCII. `LIKE
-'abc%'` and `LIKE '%abc'` under `UPPER` become `STARTSWITH(x, 'ABC', true)` and `ENDSWITH(x, 'ABC',
-true)`. This is the shape an ORM writes for a case-insensitive "contains", and it is served by the
-index.
+text, the text is already in the case `UPPER` (or `LOWER`) produces, the text is ASCII, and so is what
+it folds: what is known of `x` — a `pattern` such as `^[ -~]*$`, an `enum`, a sibling `x IN (…)` —
+says it holds ASCII alone (Chapter 14.4), and no U+0000, at which Azure's `CONTAINS` stops reading.
+`LIKE 'abc%'` and `LIKE '%abc'` under `UPPER` become `STARTSWITH(x, 'ABC', true)` and
+`ENDSWITH(x, 'ABC', true)`, which read past a U+0000 and ask only ASCII. This is the shape an ORM
+writes for a case-insensitive "contains", and it is served by the index.
+
+A plain `LIKE` whose pattern is one run of text between two `%` is answered by the service as a
+`CONTAINS` too, and stops at the same U+0000: `'%b%'` does not find the `b` of `a`U+0000`b`. So that
+shape pushes where `x` is proved to hold none, and every other — `'a%'`, `'%a'`, `'a_b'`, `'%a%b%'` —
+wherever `LIKE` does; `_` is one code point to both engines.
+
+The value matters as much as the pattern. Calcite's `UPPER` is Java's, which writes `ß` as `SS`; the
+service's case-insensitive match leaves `ß` as it is, so `UPPER(x) LIKE '%SS%'` keeps `aßb` in Calcite
+and the rewrite loses it, and no check of the rows that come back can bring back a row that never
+arrives. Where nothing proves `x` ASCII, the fold and the pattern run in process, over the strings the
+service sends.
 
 ## 8.3 Comparisons over document values
 
@@ -117,7 +130,8 @@ is rechecked — which also lets a row limit travel with it. An array's element,
 and rechecked whatever the container declares: a declaration states what a property holds, and none
 reaches an element (Chapter 11.3).
 
-**A function over `JSON_VALUE` runs in process unless the path is declared a string.** `UPPER`,
+**A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
+that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,
 `LOWER`, `||`, `CHAR_LENGTH`, `SUBSTRING` and the rest read the *text*, so `UPPER(JSON_VALUE(…))` is
 `'TRUE'` for a stored boolean and `'30'` for a stored number. The service's string functions are
 undefined over a number or a boolean, so the two would disagree for exactly those documents. The same
@@ -130,8 +144,12 @@ WHERE UPPER(JSON_VALUE(c."DOC", '$.status')) = 'OPEN'
   In process: UPPER(status) = 'OPEN'
 ```
 
-Declaring the path a string (Chapter 14) sends the whole comparison: `WHERE (UPPER(c.status) = @p0)`.
-`UPPER(…) LIKE '%ABC%'` keeps its own rewrite (8.2), restricted to the strings and rechecked.
+Declaring the path a string of ASCII characters (Chapter 14.4) sends the whole comparison:
+`WHERE (UPPER(c.status) = @p0)`. Declared a string and nothing more, the fold still runs in process:
+Calcite writes `ß` as `SS` and the service leaves it. `UPPER(…) LIKE '%ABC%'` takes its own rewrite
+(8.2) under the same proof, where it rules out U+0000 too: over `^[ -~]*$` it is sent as
+`WHERE CONTAINS(c.status, @p0, true)`, and nothing is rechecked. A `LIKE` with no function beneath it
+needs only the type: `LIKE 'Trail%'` over a declared string is `WHERE STARTSWITH(c.name, @p0)`.
 
 ### `RETURNING`: exact
 
@@ -357,7 +375,8 @@ is read, by the same code Calcite would have used in process. The result is iden
 projection still pushes.
 
 **A function over `JSON_VALUE`, or a `COALESCE` or `CASE` passing one out, is computed in process
-unless the path is declared a string** (8.3). The property is still extracted at the service and
+unless the path is declared a string** (8.3), and a function that counts, maps case or trims unless its
+characters are proved too (Appendix B.2). The property is still extracted at the service and
 rendered as text on the way back, so the document is not shipped:
 
 ```sql
@@ -470,6 +489,11 @@ documents it has to read.
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
+| `UPPER`, `LOWER` and the case-insensitive `LIKE` rewrite over a string not proved ASCII; `CHAR_LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` over one that may hold a character beyond U+FFFF; `TRIM` over one that may hold a tab or other white space | Calcite's functions are Java's and the service's its own, and they part over those characters (Appendix B.2) |
+| `REPLACE`, and a `LIKE` of the `'%abc%'` shape, over a string that may hold U+0000 | Azure reads the string only up to its first U+0000 in those (Appendix B.2) |
+| `REPLACE` whose search may be empty; `REPEAT` without a literal count, or over a subject not proved short enough; the `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries | the service answers undefined where Calcite answers the subject, the repetition, or the string beside a null (Appendix B.2) |
+| a `U&` literal holding a lone surrogate | the SDK cannot encode it |
+| a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
