@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var rules = PredicateRules.Of(new JsonContexts());
 
-            new Eggnog.ConstructorHandle[] { rules.Text, rules.Raw, rules.Typed, rules.Cast, rules.Literal, rules.Parameter, rules.Compare, rules.In, rules.IsNull, rules.And, rules.Or, rules.Not, rules.Opaque }
+            new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
             (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(45);

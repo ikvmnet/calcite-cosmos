@@ -47,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
-            var cuts = CutPoints.Of(Atom, form, new ReaderEdges(ValueSet<CutKind>.Empty, ValueSet<string>.Empty));
+            var cuts = CutPoints.Of(Atom, form, new ReaderEdges(ValueSet<string>.Empty));
             return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured);
         }
 

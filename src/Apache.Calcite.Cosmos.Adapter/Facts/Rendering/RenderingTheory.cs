@@ -25,7 +25,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             Graph = new EGraph();
             Paths = new PathVocabulary(Graph);
-            Ir = new PredicateVocabulary(Graph, Paths);
+            Ir = new PredicateVocabulary(Graph);
             Register(Graph.Values);
 
             Outcome = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("outcome");

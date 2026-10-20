@@ -51,9 +51,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 }
         }
 
-        IEnumerable<ConstructorHandle> Predicates => new ConstructorHandle[] { _rules.Compare, _rules.In, _rules.IsNull, _rules.And, _rules.Or, _rules.Not, _rules.Opaque };
+        IEnumerable<ConstructorHandle> Predicates => new ConstructorHandle[] { _rules.Ir.Compare, _rules.Ir.In, _rules.Ir.IsNull, _rules.Ir.And, _rules.Ir.Or, _rules.Ir.Not, _rules.Ir.Opaque };
 
-        IEnumerable<ConstructorHandle> Values => new ConstructorHandle[] { _rules.Text, _rules.Raw, _rules.Typed, _rules.Cast, _rules.Literal, _rules.Parameter };
+        IEnumerable<ConstructorHandle> Values => new ConstructorHandle[] { _rules.Ir.Text, _rules.Ir.Raw, _rules.Ir.Typed, _rules.Ir.Cast, _rules.Ir.Literal, _rules.Ir.Parameter };
 
         IEnumerable<ConstructorHandle> PathHeads => new ConstructorHandle[] { _rules.Json.Root, _rules.Json.Prop, _rules.Json.Index, _rules.Json.Each, _rules.Json.Ghost };
 
@@ -110,19 +110,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var k = node.Keys;
             var head = node.Head;
 
-            if (head == _rules.Compare)
+            if (head == _rules.Ir.Compare)
                 return Value((ClassId)k[1]) is SqlValue left && Value((ClassId)k[2]) is SqlValue right ? new SqlPredicate.Compare((string)k[0], left, right) : null;
-            if (head == _rules.In)
+            if (head == _rules.Ir.In)
                 return Value((ClassId)k[0]) is SqlValue member ? new SqlPredicate.In(member, (ValueSet<string>)k[1]) : null;
-            if (head == _rules.IsNull)
+            if (head == _rules.Ir.IsNull)
                 return Value((ClassId)k[0]) is SqlValue tested ? new SqlPredicate.IsNull(tested) : null;
-            if (head == _rules.And)
+            if (head == _rules.Ir.And)
                 return Predicate((ClassId)k[0]) is SqlPredicate a && Predicate((ClassId)k[1]) is SqlPredicate b ? new SqlPredicate.And(new[] { a, b }) : null;
-            if (head == _rules.Or)
+            if (head == _rules.Ir.Or)
                 return Predicate((ClassId)k[0]) is SqlPredicate c && Predicate((ClassId)k[1]) is SqlPredicate d ? new SqlPredicate.Or(new[] { c, d }) : null;
-            if (head == _rules.Not)
+            if (head == _rules.Ir.Not)
                 return Predicate((ClassId)k[0]) is SqlPredicate operand ? new SqlPredicate.Not(operand) : null;
-            if (head == _rules.Opaque)
+            if (head == _rules.Ir.Opaque)
                 return new SqlPredicate.Opaque((long)k[0]);
 
             return null;
@@ -133,17 +133,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var k = node.Keys;
             var head = node.Head;
 
-            if (head == _rules.Text)
+            if (head == _rules.Ir.Text)
                 return DocumentPath((ClassId)k[0]) is JsonDocumentPath text ? new SqlValue.Text(text) : null;
-            if (head == _rules.Raw)
+            if (head == _rules.Ir.Raw)
                 return DocumentPath((ClassId)k[0]) is JsonDocumentPath raw ? new SqlValue.Raw(raw) : null;
-            if (head == _rules.Typed)
+            if (head == _rules.Ir.Typed)
                 return DocumentPath((ClassId)k[0]) is JsonDocumentPath typed ? new SqlValue.Typed(typed, (string)k[1]) : null;
-            if (head == _rules.Cast)
+            if (head == _rules.Ir.Cast)
                 return Value((ClassId)k[1]) is SqlValue converted ? new SqlValue.Cast((string)k[0], converted) : null;
-            if (head == _rules.Literal)
+            if (head == _rules.Ir.Literal)
                 return new SqlValue.Literal((string)k[0]);
-            if (head == _rules.Parameter)
+            if (head == _rules.Ir.Parameter)
                 return new SqlValue.Parameter((long)k[0], (string)k[1]);
 
             return null;

@@ -5878,8 +5878,8 @@ that `NotKept` is false or undefined is a row, not C#. `ServiceTable` views a se
 Eggnog interns a value by its equality, and the probe's table, equal by its size, would have let a bundle read another
 set's rows.
 
-**Four primitives evaluate on concrete cells and decide nothing else** (decision D1). `CutPoints` applies a reader's
-edges by arithmetic, `ServiceLeaf` reads one test's row on each cell, `ServiceCompound` maps one connective over two
+**Four primitives evaluate on concrete cells and decide nothing else** (decision D1). `CutPoints` cuts at the literals
+and a reader's limits, `ServiceLeaf` reads one test's row on each cell, `ServiceCompound` maps one connective over two
 vectors by its rows, and `CellOutcomes` pairs Calcite's `OnCell` with the service's outcome on each cell. Which cuts,
 which literals part the orders, which subforms are evaluated, how verdicts compose and every verdict are S's rules.
 
@@ -5903,9 +5903,6 @@ row, not unknown's. As a whole condition, where its row keeps it not, such a val
 `WHERE NOT` (`Service.BarePathKeepsOnlyTrue`, `Service.NotOverAPathKeepsOnlyFalse`): `means()` says it reads as
 undefined, and the `classes` rule hands that to `CellOutcomes`. What its row keeps stands, so a row that kept a number
 would refute; at `Pos` false and undefined are alike, and at `Neg` the reading is the licensed `NOT`'s.
-
-**A literal's double edge is the double's exact value.** A decimal's own conversion from a double keeps fifteen digits
-and moves 2^53 by two, so `CutPoints` reads the double's bits, and cuts nowhere where no decimal holds the value.
 
 **What holds it.** `CellOutcomesTests` checks the probe's T1, T2 and T5 as class sets on `ProbeRows`, the probe's rows
 completed: the guarded form is exact, and the bare one implied and refuted for Equal at the null, the object and the

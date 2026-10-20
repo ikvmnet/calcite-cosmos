@@ -2521,9 +2521,6 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A double edge no decimal holds is not cut** — *small.* `CutPoints` cuts at a numeric literal's double only where a
-  decimal holds its exact value, which 0.1's needs 55 places for. Whether the double slots need a cut there, spelled
-  approximately, is for the numbers' cells to decide.
 - **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
   orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
   under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.

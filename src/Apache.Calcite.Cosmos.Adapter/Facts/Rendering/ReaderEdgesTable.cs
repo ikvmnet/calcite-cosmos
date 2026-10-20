@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal static class ReaderEdgesTable
     {
 
-        static readonly ReaderEdges AtTheLiterals = new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty);
+        static readonly ReaderEdges AtTheLiterals = new(ValueSet<string>.Empty);
 
         public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = new Dictionary<string, ReaderEdges>
         {

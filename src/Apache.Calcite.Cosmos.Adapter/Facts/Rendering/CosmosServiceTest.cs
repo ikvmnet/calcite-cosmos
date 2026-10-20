@@ -5,9 +5,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// What the service is asked of one path, against at most one operand: the first column of a measured row's key.
     /// </summary>
     /// <remarks>
-    /// The <c>IS_*</c> tests and the comparisons are their Cosmos SQL. <see cref="In"/>, <see cref="StartsWith"/>,
-    /// <see cref="EndsWith"/>, <see cref="Contains"/> and <see cref="Like"/> are read once their rows are entered. A
-    /// connective's rows are keyed by its operands' outcomes.
+    /// The <c>IS_*</c> tests and the comparisons are their Cosmos SQL; <see cref="In"/> is read once its rows are entered.
+    /// A connective's rows are keyed by its operands' outcomes.
     /// </remarks>
     internal enum CosmosServiceTest
     {
@@ -27,10 +26,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Greater,
         GreaterOrEqual,
         In,
-        StartsWith,
-        EndsWith,
-        Contains,
-        Like,
 
         /// <summary>A path written as a whole condition, read as a <c>WHERE</c> reads the value it holds.</summary>
         Bare,
@@ -47,9 +42,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>Which comparator a type's values are ordered by: the answer names it.</summary>
         Order,
-
-        /// <summary>Which matcher an affix or a pattern is matched by.</summary>
-        Match,
 
     }
 

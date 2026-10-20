@@ -11,10 +11,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class PredicateVocabulary
     {
 
-        public PredicateVocabulary(EGraph graph, PathVocabulary paths)
+        public PredicateVocabulary(EGraph graph)
         {
-            Paths = paths;
-
             graph.DefineSort<Val>("Val");
             graph.DefineSort<Pred>("Pred");
             graph.Values.Register<PredicateAtom>("predicate atom");
@@ -46,9 +44,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Analyse = graph.DefineRuleset("analyse");
             DefineAnalysis();
         }
-
-        /// <summary>Gets the terms the readings' paths are written in.</summary>
-        public PathVocabulary Paths { get; }
 
         /// <summary><c>JSON_VALUE(DOC, path)</c> read as text.</summary>
         public Constructor<JPath, Val> Text { get; }

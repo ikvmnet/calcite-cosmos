@@ -30,9 +30,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Object,
         Array,
 
-        /// <summary>The string <c>""</c>, below which there is no string.</summary>
-        EmptyString,
-
         /// <summary>A value of the literal's type ordered before it.</summary>
         Below,
 
@@ -41,12 +38,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A value of the literal's type ordered after it.</summary>
         Above,
-
-        /// <summary>A string an affix or a pattern matches.</summary>
-        Matches,
-
-        /// <summary>A string an affix or a pattern does not match.</summary>
-        Misses,
 
         /// <summary>Two bounds the service's order and Calcite's rank alike.</summary>
         Agreeing,

@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             Graph = graph;
             Json = json;
-            Ir = new PredicateVocabulary(graph, json.Paths);
+            Ir = new PredicateVocabulary(graph);
 
             var local = new TableOptions { Lift = false };
             var analysis = new TableOptions { Role = TableRole.Analysis };
@@ -126,22 +126,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Gets the terms of a predicate and their analysis, which the rendering graph defines too.</summary>
         public PredicateVocabulary Ir { get; }
 
-        public Constructor<JPath, Val> Text => Ir.Text;
-        public Constructor<JPath, Val> Raw => Ir.Raw;
-        public Constructor<JPath, string, Val> Typed => Ir.Typed;
-        public Constructor<string, Val, Val> Cast => Ir.Cast;
-        public Constructor<string, Val> Literal => Ir.Literal;
-        public Constructor<long, string, Val> Parameter => Ir.Parameter;
-        public Constructor<string, Val, Val, Pred> Compare => Ir.Compare;
-        public Constructor<Val, ValueSet<string>, Pred> In => Ir.In;
-        public Constructor<Val, Pred> IsNull => Ir.IsNull;
-        public Constructor<Val, Pred> IsDefined => Ir.IsDefined;
         public Constructor<Pred, Pred, Pred> And => Ir.And;
         public Constructor<Pred, Pred, Pred> Or => Ir.Or;
         public Constructor<Pred, Pred> Not => Ir.Not;
-        public Constructor<long, Pred> Opaque => Ir.Opaque;
         public Relation<Pred, string> Point => Ir.Point;
-        public Relation<Val, JPath, string> Reads => Ir.Reads;
         public Relation<Pred, JPath, PredicateAtom> Atom => Ir.Atom;
         public Ruleset Analyse => Ir.Analyse;
 

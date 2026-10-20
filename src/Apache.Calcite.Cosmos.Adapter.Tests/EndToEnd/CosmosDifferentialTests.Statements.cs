@@ -31,12 +31,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// The statements run with parameters, and the values each is run with.
-        /// </summary>
-        internal static IReadOnlyList<(string Sql, object?[] Parameters)> ParameterisedStatements =>
-            WithParameters.Select(s => (s.Sql, s.Parameters)).ToArray();
-
-        /// <summary>
         /// The statements ternary logic partitioning pushes for the first <paramref name="count"/> predicates, each once,
         /// in the order the run first asks them.
         /// </summary>
