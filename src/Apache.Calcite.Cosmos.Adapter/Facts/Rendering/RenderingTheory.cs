@@ -86,6 +86,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Agrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Proof>("agrees", ValueLattice.Min<Proof>());
             Vacuous = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, bool>("vacuous", ValueLattice.Max<bool>());
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
+            RefutedAt = Graph.DefineRelation<Refutation, JPath>("refutedat");
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
             Junction = Graph.DefineRelation<Pred, Pred, Pred, JunctionSide>("junction", new TableOptions { Role = TableRole.Analysis });
             Needs = Graph.DefineFunction<ServiceForm, ValueSet<CosmosServiceTest>>("needs", ValueLattice.Union<CosmosServiceTest>());
@@ -208,6 +209,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Whether an agreement holds of nothing: by any of its proofs, Calcite raises on every row (a disjunction, by its lattice).</summary>
         public Function<Pred, RenderPosition, ServiceForm, Verdict, bool> Vacuous { get; }
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Refutation> Disagrees { get; }
+
+        /// <summary>The one location a refutation on an atom's cells sets; a junction's sets two, and has none.</summary>
+        public Relation<Refutation, JPath> RefutedAt { get; }
         public Relation<Pred, RenderPosition, ServiceForm, Verdict> Conflict { get; }
         public Relation<Pred, Pred, Pred, JunctionSide> Junction { get; }
         public Function<ServiceForm, ValueSet<CosmosServiceTest>> Needs { get; }
@@ -543,12 +547,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             gate.DefineRule("a candidate is refuted where a class of its cells is a definite counterexample", r =>
             {
                 var (e, pos, f, v) = r.Vars<Pred, RenderPosition, ServiceForm, Verdict>("e", "pos", "f", "v");
-                var o = r.Var<CellOutcomes>("o");
+                var (o, p, a) = r.Vars<CellOutcomes, JPath, PredicateAtom>("o", "p", "a");
                 var (kk, y, m) = r.Vars<ValueSet<CellClass>, ValueSet<CellClass>, ValueSet<CellClass>>("kk", "y", "m");
-                r.When(Candidate.Of(e, pos, f), o.Is(Outcomes.Of(e, f)), kk.Is(Compute.Of(o, x => x.Classes)), y.Is(Refutes.Of(pos, v)),
+                r.When(Candidate.Of(e, pos, f), o.Is(Outcomes.Of(e, f)), Ir.Atom.Of(e, p, a), kk.Is(Compute.Of(o, x => x.Classes)), y.Is(Refutes.Of(pos, v)),
                     m.Is(Primitives.Intersect<CellClass>().Of(kk, y)));
                 r.Where(RenderingPrimitives.SetNonempty.Of(m));
-                r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(o, m, Refutation.Of)));
+                r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(o, m, Refutation.Of)), RefutedAt.Of(Compute.Of(o, m, Refutation.Of), p));
             });
 
             gate.DefineRule("an atom is a connective's identity on some cell", r =>
@@ -610,12 +614,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (pos, d, j, v) = r.Vars<RenderPosition, JunctionSide, CosmosServiceTest, Verdict>("pos", "d", "j", "v");
                 var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
                 var (z, w) = r.Vars<Refutation, Witness>("z", "w");
-                var (p1, p2, n1, n2) = r.Vars<JPath, JPath, string, string>("p1", "p2", "n1", "n2");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), z.Is(Disagrees.Of(x, pos, l, v)), j.Is(ConnectiveOf.Of(d)), w.Is(Neutral.Of(y, m, j)));
+                var (p1, p2, a2) = r.Vars<JPath, JPath, PredicateAtom>("p1", "p2", "a2");
+                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), z.Is(Disagrees.Of(x, pos, l, v)), j.Is(ConnectiveOf.Of(d)), w.Is(Neutral.Of(y, m, j)),
+                    RefutedAt.Of(z, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
-                r.Where(RenderingPrimitives.RefutesOnePath.Of(z));
-                r.When(n1.Is(Compute.Of(z, c => c.Path)), n1.Is(Spelling.Of(p1)), n2.Is(Compute.Of(w, c => c.Path)), n2.Is(Spelling.Of(p2)), Disjoint.Of(p1, p2));
                 Composes(r, j, f);
                 r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(z, w, Refutation.With)));
             });

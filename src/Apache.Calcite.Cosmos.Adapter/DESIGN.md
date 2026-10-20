@@ -6019,8 +6019,9 @@ second arm, an atom, evaluates it with its own on its cells, which is a proof of
 **A refutation composes across locations a document sets apart.** A side refuted on a cell, beside a sibling that is
 the connective's identity on one of its own — `(T,t)` for `AND`, `(F,f)` for `OR` — refutes the junction on a document
 setting both; `disjoint` holds of two properties of one parent, never of an element against an index or a path against
-one beneath it. Only a refutation that sets one path composes so: one that already sets two names a single `Path`, and
-its sibling's could be the other, at another cell. Without that, `(kind = 'a' AND (label != 'bikes' OR kind = 'a'))`
+one beneath it. Only a refutation made on one atom's cells composes so: the gate writes the location it sets in
+`refutedat`, a negation passes it on unchanged, and a junction's, which sets two, has none, since its sibling's could be
+the other at another cell. The sibling's location is its atom's. Without that, `(kind = 'a' AND (label != 'bikes' OR kind = 'a'))`
 was refuted by a witness setting `kind` to `false` and to `'a'`, where both sides keep the documents whose `kind` is
 `'a'` and no others.
 

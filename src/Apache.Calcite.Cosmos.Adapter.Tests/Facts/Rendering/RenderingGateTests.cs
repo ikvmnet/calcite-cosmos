@@ -82,8 +82,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 Cells = ValueSet.Of(Label + "=" + ArrayType),
                 Class = new CellClass(Truths.Unknown, ServiceOutcomes.True),
-                Path = Label,
-                MultiPath = false,
             });
         }
 

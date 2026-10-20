@@ -59,12 +59,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A junction row takes the IR's first arm as its side: a rule over both sides reads each junction once by it.</summary>
         public static Primitive<JunctionSide, bool> SideIsLeft { get; } = Primitive.Create<JunctionSide, bool>("side-is-left", d => d is JunctionSide.AndLeft or JunctionSide.OrLeft);
 
-        /// <summary>
-        /// A refutation sets one path alone. Its sibling is checked disjoint from that path, so a refutation that already
-        /// sets another composes no further: the other might be the sibling's, at another cell.
-        /// </summary>
-        public static Primitive<Refutation, bool> RefutesOnePath { get; } = Primitive.Create<Refutation, bool>("refutes-one-path", z => z.MultiPath == false);
-
     }
 
 }

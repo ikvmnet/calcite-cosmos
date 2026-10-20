@@ -118,11 +118,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     implied.Kind.Should().Be(RenderingVerdictKind.Refuted, name + " keeps less than Calcite");
 
                 var refutation = equal.Refutation!;
-                refutation.Path.Should().Be(path, name);
                 refutation.Cells.Should().Contain(cell => cell == path + "=" + ArrayType || cell == path + "=" + ObjectType, name);
                 if (name is "P5" or "P6")
                 {
-                    refutation.MultiPath.Should().BeTrue(name);
                     refutation.Cells.Should().HaveCount(2).And.Contain(cell => cell.StartsWith(Category + "="), name);
                 }
                 else
