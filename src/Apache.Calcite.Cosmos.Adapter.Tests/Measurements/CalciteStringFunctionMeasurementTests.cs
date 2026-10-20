@@ -34,7 +34,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static object? Ask(string expression)
         {
-            using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
+            // Every library, so that REPEAT and the rest of what a caller's Fun setting brings resolve.
+            using var connection = new CalciteConnection(new CalciteConnectionStringBuilder { Fun = "all" }.ConnectionString);
             connection.Open();
 
             using var command = connection.CreateCommand();
@@ -94,6 +95,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Text("TRIM(JSON_VALUE('{\"s\":\"\\u00A0a\\u3000\"}', '$.s'))").Should().Be("\u00A0a\u3000");
             Text("TRIM(LEADING FROM JSON_VALUE('{\"s\":\"\\u3000a\"}', '$.s'))").Should().Be("\u3000a");
             Text("TRIM(JSON_VALUE('{\"s\":\"  a  \"}', '$.s'))").Should().Be("a");
+        }
+
+        /// <summary>
+        /// A window that starts before the first character is clipped to the string, so <c>SUBSTRING(s FROM 0 FOR 2)</c> is
+        /// the first character, and one that ends there too is empty; where the service answers every negative start with
+        /// the empty string.
+        /// </summary>
+        [Fact]
+        public void AWindowBeforeTheFirstCharacterIsClipped()
+        {
+            Text("SUBSTRING('abc' FROM 0 FOR 2)").Should().Be("a");
+            Text("SUBSTRING('abc' FROM -1 FOR 3)").Should().Be("a");
+            Text("SUBSTRING('abc' FROM -5 FOR 2)").Should().Be("");
+            Text("SUBSTRING('abc' FROM 1 FOR 2)").Should().Be("ab");
+        }
+
+        /// <summary>
+        /// <c>REPEAT</c> of a count below one is the empty string, where the service's <c>REPLICATE</c> is undefined for a
+        /// negative one; and nothing bounds its length.
+        /// </summary>
+        [Fact]
+        public void ARepetitionOfANegativeCountIsEmpty()
+        {
+            Text("REPEAT('ab', -1)").Should().Be("");
+            Text("REPEAT('ab', 0)").Should().Be("");
+            Number("CHAR_LENGTH(REPEAT('abc', 4000))").Should().Be(12000, "nothing bounds the length Calcite repeats to");
+        }
+
+        /// <summary>
+        /// <c>REPLACE</c> of an empty search is its subject, where the service's is undefined.
+        /// </summary>
+        [Fact]
+        public void AReplacementOfAnEmptySearchIsTheSubject()
+        {
+            Text("REPLACE('ab', '', '-')").Should().Be("ab");
+            Text("REPLACE('', '', '-')").Should().Be("");
         }
 
     }

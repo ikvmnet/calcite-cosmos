@@ -57,6 +57,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     {
 
         /// <summary>
+        /// The classes a case mapping asks its argument to be free of: everything outside ASCII, where Java's full mapping
+        /// and the service's simple ones part. Named once, for the mapping and for the case-insensitive match a fold
+        /// beneath a pattern is written as (<see cref="FoldsAlike"/>).
+        /// </summary>
+        const JsonCharacterBand CaseMapped = JsonCharacterBand.BeyondAscii;
+
+        const string Surrogate = "surrogate";
+
+        const string OutsideAscii = "character outside ASCII";
+
+        const string Trimmed = "character the service trims beside a space";
+
+        const string Nul = "U+0000";
+
+        /// <summary>
         /// The counts that agree with Calcite's only where no counted string holds a surrogate.
         /// </summary>
         const string Counts = "the service counts code points (LENGTH) or, on Azure, UTF-16 units with a split pair sent as U+FFFD (SUBSTRING, LEFT, RIGHT), where Calcite counts units and keeps a lone surrogate";
@@ -72,23 +87,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         const string Trims = "the service's trim removes white space and Calcite's U+0020 alone";
 
         /// <summary>
+        /// The searches that read a string only up to its first U+0000, and match anywhere with one in what they seek.
+        /// </summary>
+        const string Searches = "the service's REPLACE, CONTAINS and the LIKE it answers as a CONTAINS read a string only up to its first U+0000, and a search holding one matches every string";
+
+        /// <summary>
         /// Returns what a function asks of its arguments' characters for the service's answer to be Calcite's, or
         /// <c>null</c> where it asks nothing.
         /// </summary>
         /// <param name="call">The function.</param>
-        /// <returns>The classes no counted argument's input may hold, the operands counted, and why.</returns>
-        public static (JsonCharacterBand Refused, int[] Counted, string Why)? RuleOf(RexCall call)
+        /// <returns>The classes no counted argument's input may hold and what they are called, the operands counted, and
+        /// why.</returns>
+        public static (JsonCharacterBand Refused, string Named, int[] Counted, string Why)? RuleOf(RexCall call)
         {
-            if (call.getKind().name() == "TRIM")
-                return (JsonCharacterBand.Trimmed, [2], Trims);
+            switch (call.getKind().name())
+            {
+                case "TRIM":
+                    return (JsonCharacterBand.Trimmed, Trimmed, [2], Trims);
+
+                // The service answers one run of text between two `%` as a CONTAINS, which reads the subject only up to its
+                // first U+0000 and, seeking one, matches everything; every other pattern was measured to read past it.
+                // Whatever the pattern is written as — the case-insensitive CONTAINS of a fold beneath it among them — the
+                // subject's characters, and the pattern's own, are asked here.
+                case "LIKE" when call.getOperands().size() == 2 && call.getOperands().get(1) is RexLiteral { } literal && literal.getValue() is org.apache.calcite.util.NlsString pattern && IsContainment(pattern.getValue()):
+                    return (JsonCharacterBand.Nul, Nul, [0, 1], Searches);
+            }
 
             return call.getOperator().getName() switch
             {
-                "CHAR_LENGTH" or "CHARACTER_LENGTH" or "LENGTH" or "SUBSTRING" or "LEFT" or "RIGHT" => (JsonCharacterBand.Surrogates, [0], Counts),
-                "UPPER" or "LOWER" => (JsonCharacterBand.BeyondAscii, [0], Cases),
-                "LTRIM" or "RTRIM" or "BTRIM" => (JsonCharacterBand.Trimmed, [0], Trims),
+                "CHAR_LENGTH" or "CHARACTER_LENGTH" or "LENGTH" or "SUBSTRING" or "LEFT" or "RIGHT" => (JsonCharacterBand.Surrogates, Surrogate, [0], Counts),
+                "UPPER" or "LOWER" => (CaseMapped, OutsideAscii, [0], Cases),
+                "LTRIM" or "RTRIM" or "BTRIM" => (JsonCharacterBand.Trimmed, Trimmed, [0], Trims),
+                "REPLACE" => (JsonCharacterBand.Nul, Nul, [0, 1], Searches),
                 _ => null,
             };
+        }
+
+        /// <summary>
+        /// Determines whether a <c>LIKE</c> pattern is one the service answers as a <c>CONTAINS</c>: one run of text with no
+        /// wildcard, after one or more <c>%</c> and before one or more. Measured on the probe account, <c>%b%</c>,
+        /// <c>%%b%</c> and <c>%b%%</c> lose <c>a</c>U+0000<c>b</c> and <c>%</c>U+0000<c>%</c> keeps every string, where
+        /// <c>%a%b%</c>, <c>%_b%</c>, <c>%b_%</c>, <c>%b</c>, <c>a%</c>, <c>a%b</c> and <c>a_b</c> answer as Calcite's.
+        /// </summary>
+        internal static bool IsContainment(string pattern)
+        {
+            var start = 0;
+            while (start < pattern.Length && pattern[start] == '%')
+                start++;
+
+            var end = pattern.Length;
+            while (end > start && pattern[end - 1] == '%')
+                end--;
+
+            return start > 0 && end < pattern.Length && end > start && pattern.IndexOfAny(['%', '_'], start, end - start) < 0;
         }
 
         /// <summary>
@@ -141,7 +192,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="text">The text.</param>
         public static bool FoldsAlike(string text) =>
-            (JsonFactEncoding.Characters(text) & JsonCharacterBand.BeyondAscii) == JsonCharacterBand.None;
+            (JsonFactEncoding.Characters(text) & CaseMapped) == JsonCharacterBand.None;
 
         /// <summary>
         /// Determines whether a value can be sent: whether every string in it, at any depth, holds no unpaired surrogate,

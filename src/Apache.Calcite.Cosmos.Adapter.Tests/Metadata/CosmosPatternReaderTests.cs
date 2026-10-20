@@ -37,6 +37,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static readonly JsonCharacterBand W = JsonCharacterBand.Trimmed;
 
+        static readonly JsonCharacterBand Z = JsonCharacterBand.Nul;
+
         static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternReader.Absent(pattern)?.ToArray();
 
         static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
@@ -51,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var stored = new JsonFactTheory(CosmosPatternReader.Claims(pattern).Select(claim => JsonFactRule.Unconditional(new JsonFact(at, claim))).ToList())
                 .Derive(null).CharactersOf(at);
 
-            return new[] { S, H, N, W }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
+            return new[] { S, H, N, W, Z }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
         }
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────
@@ -65,9 +67,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             const string uuid = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
-            Absent(uuid, unicode: false).Should().Equal(S, H, N, W);
-            Absent(uuid, unicode: true).Should().Equal(S, H, N, W);
-            Claimed(uuid).Should().Equal(S, H, N, W);
+            Absent(uuid, unicode: false).Should().Equal(S, H, N, W, Z);
+            Absent(uuid, unicode: true).Should().Equal(S, H, N, W, Z);
+            Claimed(uuid).Should().Equal(S, H, N, W, Z);
         }
 
         /// <remarks>
@@ -82,8 +84,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^(?:order|invoice)-\\d{6}$")]
         public void AnIdentifierHoldsNeitherBand(string identifier)
         {
-            Absent(identifier).Should().Equal(S, H, N, W);
-            Claimed(identifier).Should().Equal(S, H, N, W);
+            Absent(identifier).Should().Equal(S, H, N, W, Z);
+            Claimed(identifier).Should().Equal(S, H, N, W, Z);
         }
 
         /// <remarks>
@@ -108,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ASpaceIsACharacter()
         {
-            Claimed("^[a-z]+ [a-z]+$").Should().Equal(S, H, N, W);
+            Claimed("^[a-z]+ [a-z]+$").Should().Equal(S, H, N, W, Z);
         }
 
         // ── Bands, read by every character a span holds ───────────────────────────────────────
@@ -124,9 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^[a-z\U0001F600]+$")]
         public void ASupplementaryCharacterIsASurrogatePair(string pattern)
         {
-            Absent(pattern, unicode: false).Should().Equal(H, N, W);
-            Absent(pattern, unicode: true).Should().Equal(H, N, W);
-            Claimed(pattern).Should().Equal(new[] { N, W }, "what is stored may hold a high unit, and holds nothing else outside ASCII");
+            Absent(pattern, unicode: false).Should().Equal(H, N, W, Z);
+            Absent(pattern, unicode: true).Should().Equal(H, N, W, Z);
+            Claimed(pattern).Should().Equal(new[] { N, W, Z }, "what is stored may hold a high unit, and holds nothing else outside ASCII");
         }
 
         /// <remarks>
@@ -137,11 +139,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ASurrogateAdmittedIsAHighUnitStored()
         {
-            Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H, N, W);
+            Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H, N, W, Z);
             CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S) },
                 "the reader states what was written, a surrogate and nothing from U+E000");
-            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new[] { N, W }, "and the theory derives that what is stored may hold a high unit");
-            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S, N, W }, "one written without a surrogate is stored as it was written");
+            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new[] { N, W, Z }, "and the theory derives that what is stored may hold a high unit");
+            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S, N, W, Z }, "one written without a surrogate is stored as it was written");
         }
 
         /// <remarks>
@@ -150,14 +152,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// surrogates holds nothing from U+D800, and U+3000 and the spaces from U+2000 lie in this one, which the service
         /// trims. Nothing the service trims lies from U+3001 up, and a tab is ASCII and trimmed.
         /// </remarks>
+        /// <remarks>
+        /// U+0000 is ASCII, and a class of its own: the service's <c>REPLACE</c> and <c>CONTAINS</c> read a string only up
+        /// to it. Every ASCII character but it is how printable text is declared, and a range from U+0000 holds it, as does
+        /// <c>\0</c> and a class that does not leave it out.
+        /// </remarks>
+        [Fact]
+        public void NulIsAClassOfItsOwn()
+        {
+            Absent("^[ -~]*$").Should().Equal(S, H, N, W, Z);
+            Absent("^[\\u0000-\\u007F]*$").Should().Equal(S, H, N);
+            Absent("^[\\x01-\\x7F]*$").Should().Equal(S, H, N, Z);
+            Absent("^[a\\0]+$").Should().Equal(S, H, N, W);
+            Absent("^[^a]$", unicode: false).Should().BeEmpty();
+            Claimed("^[\\u0000-\\u007F]*$").Should().Equal(S, H, N);
+        }
+
         [Fact]
         public void ARangeIsReadByEveryCharacterItSpans()
         {
-            Absent("^[\\uD000-\\uE100]$").Should().Equal(W);
-            Absent("^[\\u0100-\\uD000]$").Should().Equal(S, H);
-            Absent("^[\\uE000-\\uFFFF]+$").Should().Equal(S, N, W);
-            Absent("^[\\u3001-\\uD7FF]+$").Should().Equal(S, H, W);
-            Absent("^[a-z\\t]+$").Should().Equal(S, H, N);
+            Absent("^[\\uD000-\\uE100]$").Should().Equal(W, Z);
+            Absent("^[\\u0100-\\uD000]$").Should().Equal(S, H, Z);
+            Absent("^[\\uE000-\\uFFFF]+$").Should().Equal(S, N, W, Z);
+            Absent("^[\\u3001-\\uD7FF]+$").Should().Equal(S, H, W, Z);
+            Absent("^[a-z\\t]+$").Should().Equal(S, H, N, Z);
         }
 
         /// <remarks>
@@ -198,9 +216,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent("^[^\\uD800-\\uDFFF]*$", unicode: true).Should().BeEmpty();
             Absent("^[^\\uD800-\\uDFFF]*$").Should().BeEmpty();
 
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: false).Should().Equal(H, N, W);
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: true).Should().Equal(N, W);
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$").Should().Equal(N, W);
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: false).Should().Equal(H, N, W, Z);
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: true).Should().Equal(N, W, Z);
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$").Should().Equal(N, W, Z);
         }
 
         /// <remarks>
@@ -284,7 +302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^(?:[a-z]+$|[0-9]+$)")]
         public void AnchoringInsideAGroupIsRead(string pattern)
         {
-            Absent(pattern).Should().Equal(S, H, N, W);
+            Absent(pattern).Should().Equal(S, H, N, W, Z);
             Strings(pattern).Should().NotBeNull();
         }
 
@@ -378,7 +396,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent(pattern).Should().NotBeNull("it is read for its characters, for " + pattern);
 
             if (neitherBand)
-                Absent(pattern).Should().Equal(S, H, N, W);
+                Absent(pattern).Should().Equal(S, H, N, W, Z);
         }
 
         // ── Read off a schema ─────────────────────────────────────────────────────────────────

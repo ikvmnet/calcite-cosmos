@@ -75,6 +75,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Chars("$.s", Is("$.s", "a\u200Bb")).Should().Equal(NonAscii, "a zero-width space is no space the service trims");
         }
 
+        /// <summary>
+        /// U+0000 is ASCII and a class of its own, which the service's <c>REPLACE</c> and <c>CONTAINS</c> read a string only
+        /// up to: a domain holding it says so, and one of ASCII beside it does not.
+        /// </summary>
+        [Fact]
+        public void NulIsAClassOfItsOwn()
+        {
+            Chars("$.s", Is("$.s", "a\0b")).Should().Equal(ValueSet.Of(NulClass));
+            Chars("$.s", Is("$.s", "a\0b", "\u00A0")).Should().Equal(ValueSet.Of(NonAsciiBand, TrimmedClass, NulClass));
+            Chars("$.s", Is("$.s", "a0b")).Should().Equal(NoBand);
+        }
+
         [Fact]
         public void ADomainOfNoStringHoldsNoCharacter()
         {

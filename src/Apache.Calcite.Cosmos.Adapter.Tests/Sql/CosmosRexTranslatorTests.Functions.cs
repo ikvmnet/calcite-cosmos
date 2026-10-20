@@ -360,10 +360,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void WhatAgreesEverywherePushesWhateverTheStringHolds()
             {
                 Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Lit("b"), Str()).Should().BeTrue();
-                Pushes(Undeclared(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue();
                 Pushes(Undeclared(), SqlLibraryOperators.REVERSE, Str()).Should().BeTrue();
                 Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeTrue();
                 Pushes(Undeclared(), SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
+            }
+
+            /// <remarks>
+            /// Azure's <c>REPLACE</c> reads its subject only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves
+            /// <c>a</c>U+0000<c>b</c> as it is — and a search holding one replaces every byte; a replacement holding one is
+            /// written as it is. So the subject and the search are asked to hold none, and the replacement nothing.
+            /// </remarks>
+            [Fact]
+            public void AReplacementPushesWhereNeitherTheSubjectNorTheSearchHoldsNul()
+            {
+                const JsonCharacterBand Z = JsonCharacterBand.Nul;
+
+                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue("the subject holds no U+0000");
+                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeTrue("the replacement is written as it is");
+                Pushes(Translator(Z), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("the subject may hold U+0000");
+                Pushes(Undeclared(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("nothing is known of the subject");
+                Pushes(Translator(JsonCharacterBand.None), SqlStdOperatorTable.REPLACE, Str(), Lit("\0"), Lit("b")).Should().BeFalse("the search holds U+0000");
             }
 
             /// <remarks>

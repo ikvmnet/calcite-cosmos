@@ -9,10 +9,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Three bands that partition what is outside ASCII, and one class beside them.</b> Every UTF-16 unit outside
+    /// <b>Three bands that partition what is outside ASCII, and two classes beside them.</b> Every UTF-16 unit outside
     /// ASCII is in one of three bands — U+0080 to U+D7FF, the surrogates, or from U+E000 up — and a string holding none
     /// of them is ASCII. Separately, a character is or is not one the service's <c>TRIM</c> removes beside U+0020, which
-    /// cuts across the bands: a tab is ASCII, U+00A0 and U+3000 are in the first band.
+    /// cuts across the bands: a tab is ASCII, U+00A0 and U+3000 are in the first band. And U+0000, which is ASCII, is a
+    /// class of its own.
     /// </para>
     /// <para>
     /// <b>What each decides.</b>
@@ -30,13 +31,17 @@ namespace Apache.Calcite.Cosmos.Facts
     /// by simpler ones that leave more unmapped; over ASCII the three are one (<see cref="BeyondAscii"/>).</description></item>
     /// <item><description><b>The trimmed class, a trim.</b> Calcite's <c>TRIM</c> removes U+0020 alone, and the service's
     /// removes the characters of <see cref="Trimmed"/> too.</description></item>
+    /// <item><description><b>U+0000, a search.</b> Azure's <c>REPLACE</c>, <c>CONTAINS</c> and the <c>LIKE</c> it
+    /// answers as a <c>CONTAINS</c> read a string only up to its first U+0000, and a search holding one matches anywhere
+    /// (<see cref="Nul"/>).</description></item>
     /// </list>
     /// <para>
     /// <b>The adapter's spelling of a fact of the theory.</b> What characters a path's strings hold is the theory's
     /// <c>chars</c>, a set of these classes per path, as a type is a set of JSON types; <see cref="JsonClaim.Characters"/>
-    /// states it and <see cref="JsonFactSet.CharactersOf"/> reads it back. ASCII outside the trimmed class has no member:
-    /// a string all of whose characters lie there holds <see cref="None"/>. Which classes a unit is in is decided in one
-    /// place, the theory's own (<c>JsonValues.ClassesOf</c>).
+    /// states it and <see cref="JsonFactSet.CharactersOf(JsonDocumentPath)"/> reads it back. ASCII outside the trimmed class
+    /// and other than U+0000 has no member: a string all of whose characters lie there holds <see cref="None"/>. Which
+    /// classes a unit is in is decided in one place, the theory's own (<c>JsonValues.MaskOf</c>), and each class is named
+    /// once, its flag beside its member (<c>JsonValues.CharacterClasses</c>).
     /// </para>
     /// </remarks>
     [Flags]
@@ -44,7 +49,8 @@ namespace Apache.Calcite.Cosmos.Facts
     {
 
         /// <summary>
-        /// None of them: every character ASCII, and none the service's <c>TRIM</c> removes beside U+0020.
+        /// None of them: every character ASCII other than U+0000, and none the service's <c>TRIM</c> removes beside
+        /// U+0020.
         /// </summary>
         None = 0,
 
@@ -73,6 +79,17 @@ namespace Apache.Calcite.Cosmos.Facts
         Trimmed = 8,
 
         /// <summary>
+        /// U+0000. Measured on the probe account, Azure's <c>REPLACE</c> and <c>CONTAINS</c>, both modes, read a string
+        /// only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves <c>a</c>U+0000<c>b</c> as it is and
+        /// <c>CONTAINS</c> finds no <c>b</c> in it — and so does a <c>LIKE</c> whose pattern is one run of text between two
+        /// <c>%</c>, which the service answers as a <c>CONTAINS</c>; a search holding U+0000 matches every string
+        /// (<c>Service.NulEndsWhatReplaceAndContainsRead</c>). <c>INDEX_OF</c>, <c>STARTSWITH</c>, <c>ENDSWITH</c>, every
+        /// other <c>LIKE</c>, the comparisons and the order read past it. The emulator stores it as U+FDD0 followed by
+        /// <c>0</c>.
+        /// </summary>
+        Nul = 16,
+
+        /// <summary>
         /// The surrogates and the high band: every unit from U+D800, the two whose meeting parts the service's order from
         /// Calcite's. A set without either holds only units below U+D800.
         /// </summary>
@@ -86,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Every class: what a string nothing states the characters of may hold.
         /// </summary>
-        Any = Surrogates | HighBmp | NonAscii | Trimmed,
+        Any = Surrogates | HighBmp | NonAscii | Trimmed | Nul,
 
     }
 

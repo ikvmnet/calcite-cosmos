@@ -174,6 +174,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string TrimmedClass = "trimmed";
 
         /// <summary>
+        /// The class of U+0000, which the service's <c>REPLACE</c> and <c>CONTAINS</c> read a string only up to: see
+        /// <see cref="JsonCharacterBand.Nul"/>.
+        /// </summary>
+        public const string NulClass = "nul";
+
+        /// <summary>
         /// The classes, each once: the adapter's flag for it and the theory's member. Every other spelling of a class — a
         /// set of members, a mask of flags, the classes a pattern leaves out — is read off this table, so that a class is
         /// added here and nowhere else.
@@ -184,6 +190,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             (JsonCharacterBand.HighBmp, HighBand),
             (JsonCharacterBand.NonAscii, NonAsciiBand),
             (JsonCharacterBand.Trimmed, TrimmedClass),
+            (JsonCharacterBand.Nul, NulClass),
         ];
 
         /// <summary>
@@ -194,12 +201,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             .ToArray();
 
         /// <summary>
-        /// Every class: what a string nothing states the characters of may hold. A string of ASCII characters none of
-        /// which the service trims beside U+0020 holds <see cref="NoBand"/>.
+        /// Every class: what a string nothing states the characters of may hold. A string of ASCII characters other than
+        /// U+0000, none of which the service trims beside U+0020, holds <see cref="NoBand"/>.
         /// </summary>
         public static readonly ValueSet<string> AllBands = ClassSet(JsonCharacterBand.Any);
 
-        /// <summary>No class: every character ASCII, and none the service trims beside U+0020.</summary>
+        /// <summary>No class: every character ASCII other than U+0000, and none the service trims beside U+0020.</summary>
         public static readonly ValueSet<string> NoBand = ClassSet(JsonCharacterBand.None);
 
         /// <summary>
@@ -235,8 +242,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         ];
 
         /// <summary>
-        /// Returns the classes one UTF-16 code unit is in, as a mask: its band — none for an ASCII unit — and the trimmed
-        /// class where the service trims it.
+        /// Returns the classes one UTF-16 code unit is in, as a mask: its band — none for an ASCII unit — the trimmed
+        /// class where the service trims it, and the class of U+0000.
         /// </summary>
         /// <remarks>
         /// The one place a unit's classes are decided: a value's characters, a pattern's ranges, a parameter's at run time
@@ -245,7 +252,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </remarks>
         public static JsonCharacterBand MaskOf(char unit) =>
             (unit < '\u0080' ? JsonCharacterBand.None : unit < '\uD800' ? JsonCharacterBand.NonAscii : unit <= '\uDFFF' ? JsonCharacterBand.Surrogates : JsonCharacterBand.HighBmp)
-            | (IsTrimmed(unit) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
+            | (IsTrimmed(unit) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None)
+            | (unit == '\0' ? JsonCharacterBand.Nul : JsonCharacterBand.None);
 
         /// <summary>
         /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point, as a mask:
@@ -257,7 +265,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             (lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
             | (lo <= 0xFFFF && hi >= 0xE000 ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
             | (lo <= 0xD7FF && hi >= 0x0080 ? JsonCharacterBand.NonAscii : JsonCharacterBand.None)
-            | (TrimmedWithin(lo, hi) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
+            | (TrimmedWithin(lo, hi) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None)
+            | (lo <= 0 && hi >= 0 ? JsonCharacterBand.Nul : JsonCharacterBand.None);
 
         /// <summary>
         /// Returns the classes a text's units are in, as a mask: <see cref="JsonCharacterBand.None"/> where every one is

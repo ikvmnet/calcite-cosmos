@@ -29,9 +29,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <para>
     /// The six of Stage 1's plan, and a seventh that only C5 sees: a union of two predicates, which is the trap a
     /// property of a context written as a property of a term becomes under congruence. An eighth is a declaration's
-    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind. Four more are the
-    /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them, or
-    /// those the service trims left out — and an arm's stated of its disjunction. And two are the
+    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind. Five more are the
+    /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them,
+    /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
     /// one value in every document without the path's presence.
     /// </para>
@@ -183,6 +183,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
                 r.When(d.Is(rules.Json.Dom.Of(p)));
                 r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(TrimmedClass))));
+            })), "fact");
+
+        /// <summary>
+        /// A value's characters read without U+0000: a domain holding one stated of a path as holding none, which would let
+        /// a <c>REPLACE</c>, or a <c>LIKE</c> the service answers as a <c>CONTAINS</c>, push over a string they read only
+        /// part of.
+        /// </summary>
+        [Fact]
+        public void AValuesCharactersReadWithoutItsNulAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a value's characters hold no U+0000", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(NulClass))));
             })), "fact");
 
         /// <summary>

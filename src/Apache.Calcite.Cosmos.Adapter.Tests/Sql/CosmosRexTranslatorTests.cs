@@ -517,8 +517,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void LikeRenders()
         {
-            Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("%bike%")))
+            Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("b_ke%")))
                 .Should().Be("(c.name LIKE @p0)");
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("%bike%")))
+                .Should().Be("(c.name LIKE @p0)");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// Azure answers one run of text between two <c>%</c> as a <c>CONTAINS</c>, which reads a string only up to its
+        /// first U+0000: measured on the probe account, <c>LIKE '%b%'</c> loses <c>a</c>U+0000<c>b</c>, and so does the
+        /// case-insensitive <c>CONTAINS</c> a fold beneath one is written as, where Calcite keeps it; and a pattern holding
+        /// U+0000 there keeps every string. Every other shape measured reads past it, so only that one asks the string,
+        /// and the pattern, to hold none.
+        /// </para>
+        /// <para>
+        /// Over a path nothing is declared of, a contains is computed in process; over one declared free of U+0000 it
+        /// pushes, as every other shape does over either.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ALikeTheServiceAnswersAsAContainsAsksThatTheStringHoldNoNul()
+        {
+            foreach (var pattern in new[] { "%bike%", "%%bike%", "%bike%%" })
+            {
+                CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeFalse(pattern + " over a string that may hold U+0000");
+                CanTranslate(Translator(Holding(JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeFalse(pattern);
+                CanTranslate(Translator(Holding(JsonCharacterBand.Any & ~JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeTrue(pattern + " over a string holding no U+0000");
+            }
+
+            foreach (var pattern in new[] { "%a%b%", "%_ke%", "%ke", "bi%", "b_ke", "bi%ke" })
+                CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeTrue(pattern + " reads past U+0000");
+
+            CanTranslate(Translator(Holding(JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%SS%")))
+                .Should().BeFalse("the case-insensitive CONTAINS reads up to U+0000 as the LIKE it stands for does");
+            Translator(Holding(JsonCharacterBand.Nul)).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("SS%")))
+                .Should().Be("STARTSWITH(c.name, @p0, true)", "STARTSWITH reads past it");
         }
 
         /// <remarks>

@@ -30,14 +30,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// Strings a document holds, among them those whose text a number or a boolean also renders as, those that only
         /// look like a number, and those holding characters of each class a string's characters are known by: a high unit,
-        /// a supplementary character, both, a character below U+D800 that is no ASCII, and characters the service trims
-        /// beside a space — a tab, which is ASCII, and U+00A0 and U+3000, which are not.
+        /// a supplementary character, both, a character below U+D800 that is no ASCII, characters the service trims beside
+        /// a space — a tab, which is ASCII, and U+00A0 and U+3000, which are not — and U+0000.
         /// </summary>
         static readonly string[] StringsSeen =
         {
             "", "x", "yy", "abc", "30", "30.0", "true", "1e30",
             "\uE000", "a\uD83D\uDE00", "\uFF21\uD83D\uDE00", "\u4E2D",
-            "a\tb", "\u00A0x", "\u00DF", "\u3000",
+            "a\tb", "\u00A0x", "\u00DF", "\u3000", "a\0b",
         };
 
         /// <summary>
@@ -54,7 +54,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             (char.IsSurrogate(unit) == false || classes.Contains(SurrogateBand))
             && (unit < 0xE000 || classes.Contains(HighBand))
             && (unit < 0x80 || unit >= 0xD800 || classes.Contains(NonAsciiBand))
-            && (Trimmed.IndexOf(unit) < 0 || classes.Contains(TrimmedClass)));
+            && (Trimmed.IndexOf(unit) < 0 || classes.Contains(TrimmedClass))
+            && (unit != '\0' || classes.Contains(NulClass)));
 
         /// <summary>Numbers beyond a decimal's range and below its precision, which the theory holds approximately.</summary>
         static readonly double[] HugeSeen = { 1e30, -1e30, 1.5e-30 };
@@ -162,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 JsonFact.NotEqual f => v.IsScalar == false || v.Encoded != f.Value,
                 JsonFact.Lower f => v is J.Huge h ? Above(h.Value, f.Bound) : v is not J.Num n || f.Bound.AdmitsAbove(n.Value),
                 JsonFact.Upper f => v is J.Huge h ? Below(h.Value, f.Bound) : v is not J.Num n || f.Bound.AdmitsBelow(n.Value),
-                JsonFact.Form f => v is J.Null || v is J.Str s && (f.Name != "short" || s.Value.Length <= 1) && (f.Name != "ascii" || s.Value.All(c => c < 0x80 && Trimmed.IndexOf(c) < 0)),
+                JsonFact.Form f => v is J.Null || v is J.Str s && (f.Name != "short" || s.Value.Length <= 1) && (f.Name != "ascii" || s.Value.All(c => c is > '\0' and < '\u0080' && Trimmed.IndexOf(c) < 0)),
                 JsonFact.Characters f => v is not J.Str s || Within(s.Value, f.Bands),
                 // A document here is as written and as stored: none holds a lone surrogate the service would replace.
                 JsonFact.Written f => v is not J.Str s || Within(s.Value, f.Bands),

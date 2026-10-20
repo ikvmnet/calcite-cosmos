@@ -906,10 +906,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || TryResolvePath(call, out _))
                 return;
 
-            if (CosmosStringFunctions.RuleOf(call) is var (refused, counted, why))
+            if (CosmosStringFunctions.RuleOf(call) is var (refused, named, counted, why))
                 foreach (var ordinal in counted)
                     if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), refused) is string input)
-                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}, and nothing proves {input} holds no {Spell(refused)}.");
+                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}, and nothing proves {input} holds no {named}.");
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
@@ -958,14 +958,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ? null
                 : "a computed value";
         }
-
-        static string Spell(JsonCharacterBand refused) => refused switch
-        {
-            JsonCharacterBand.Surrogates => "surrogate",
-            JsonCharacterBand.BeyondAscii => "character outside ASCII",
-            JsonCharacterBand.Trimmed => "character the service trims beside a space",
-            _ => "character of " + refused,
-        };
 
         /// <summary>
         /// Determines whether an expression is the rendering of a document value as text: a

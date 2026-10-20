@@ -78,12 +78,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Strings from every class a <see cref="JsonClaim.Characters"/> claim speaks of: a high unit; a supplementary
         /// character, which is two surrogates; both; characters of the basic plane below U+D800 that are no ASCII, ß and
         /// the Kelvin sign among them, which Calcite's case mapping and the service's part over; a tab, ASCII and trimmed by
-        /// the service; and U+00A0 and U+3000, trimmed and no ASCII.
+        /// the service; U+00A0 and U+3000, trimmed and no ASCII; and U+0000, ASCII, which the service's searches stop at.
         /// </summary>
         public static readonly string[] BandedStrings =
         {
             char.ConvertFromUtf32(0xE000), "a" + char.ConvertFromUtf32(0x1F600), char.ConvertFromUtf32(0xFF21) + char.ConvertFromUtf32(0x1F600), "\u4E2D",
-            "a\u00DFb", "\u212A", "a\tb", "\u00A0a\u3000",
+            "a\u00DFb", "\u212A", "a\tb", "\u00A0a\u3000", "a\0b",
         };
 
         static readonly J[] Banded = BandedStrings.Select(text => (J)new J.Str(text)).ToArray();
@@ -243,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static IEnumerable<JsonClaim> Characters(Random bands, bool outright)
         {
             if (bands.Next(outright ? 6 : 12) == 0)
-                yield return new JsonClaim.Characters((JsonCharacterBand)bands.Next(16));
+                yield return new JsonClaim.Characters((JsonCharacterBand)bands.Next((int)JsonCharacterBand.Any + 1));
         }
 
         IEnumerable<JsonClaim> Claims(Random random, JsonDocumentPath path, bool outright)
@@ -444,7 +444,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     (char.IsSurrogate(unit) == false || c.Bands.HasFlag(JsonCharacterBand.Surrogates))
                     && (unit < 0xE000 || c.Bands.HasFlag(JsonCharacterBand.HighBmp))
                     && (unit < 0x80 || unit >= 0xD800 || c.Bands.HasFlag(JsonCharacterBand.NonAscii))
-                    && (Documents.Trimmed.IndexOf(unit) < 0 || c.Bands.HasFlag(JsonCharacterBand.Trimmed))),
+                    && (Documents.Trimmed.IndexOf(unit) < 0 || c.Bands.HasFlag(JsonCharacterBand.Trimmed))
+                    && (unit != '\0' || c.Bands.HasFlag(JsonCharacterBand.Nul))),
                 _ => throw new NotSupportedException(claim.GetType().Name),
             };
         }

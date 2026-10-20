@@ -65,8 +65,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         const string Emoji = "\U0001F600";
 
         /// <summary>
-        /// The strings the counts and the case mappings are asked of, by id: a supplementary character between two ASCII
-        /// letters; ASCII; and the characters Java's full case mapping and the services' part over.
+        /// The strings the counts, the case mappings and the searches are asked of, by id: a supplementary character
+        /// between two ASCII letters; ASCII; the characters Java's full case mapping and the services' part over; and
+        /// U+0000 within a string and leading one.
         /// </summary>
         static readonly (string Id, string Text)[] Strings =
         [
@@ -77,6 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             ("idot", "aİb"),
             ("kelvin", "aKb"),
             ("longs", "aſb"),
+            ("nul", "a\0b"),
+            ("nullead", "\0ab"),
         ];
 
         /// <summary>
@@ -244,6 +247,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             return values;
+        }
+
+        /// <summary>
+        /// Runs a statement and answers its rows as they came: an array the service built leaves out each member that was
+        /// undefined, which is how an undefined value is seen.
+        /// </summary>
+        static async Task<List<JsonElement>> Rows(Container container, string sql, params (string Name, object Value)[] parameters)
+        {
+            var query = new QueryDefinition(sql);
+            foreach (var (name, value) in parameters)
+                query = query.WithParameter(name, value);
+
+            var rows = new List<JsonElement>();
+
+            using var iterator = container.GetItemQueryStreamIterator(query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey("a") });
+            while (iterator.HasMoreResults)
+            {
+                using var response = await iterator.ReadNextAsync(TestContext.Current.CancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                using var page = await JsonDocument.ParseAsync(response.Content, cancellationToken: TestContext.Current.CancellationToken);
+                foreach (var row in page.RootElement.GetProperty("Documents").EnumerateArray())
+                    rows.Add(row.Clone());
+            }
+
+            return rows;
         }
 
         static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : "<" + value.ValueKind + ">";
@@ -430,6 +459,114 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             removed.Should().Equal(AzureTrims);
             TrimCandidates.Where(c => c != 0x20 && JsonValues.IsTrimmed(c)).Should().Equal(AzureTrims.Where(c => c != 0x20),
                 "the theory's trimmed class is what Azure removes beside a space");
+        }
+
+        // ── Searching ─────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// On Azure <c>REPLACE</c> and <c>CONTAINS</c>, both modes, read a string only up to its first U+0000, and so does
+        /// a <c>LIKE</c> whose pattern is one run of text between two <c>%</c>: <c>b</c> is not found in
+        /// <c>a</c>U+0000<c>b</c>, nor <c>a</c> in U+0000<c>ab</c>. A search holding U+0000 matches every string, and
+        /// replaces every byte. <c>INDEX_OF</c>, <c>STARTSWITH</c>, <c>ENDSWITH</c>, <c>LENGTH</c>, a <c>LIKE</c> of any other
+        /// shape and a replacement holding U+0000 read past it. The emulator stores U+0000 as U+FDD0 followed by
+        /// <c>0</c>, and there the test skips.
+        /// </summary>
+        [Fact]
+        public async Task NulEndsWhatReplaceAndContainsRead()
+        {
+            var strings = Strings_();
+
+            var lengths = await Values(strings, "SELECT VALUE [c.id, LENGTH(c.s)] FROM c WHERE c.id IN (\"nul\", \"nullead\")");
+            if (lengths["nul"].GetInt32() != 3)
+                Assert.Skip($"This service stores U+0000 as more than one character (LENGTH of a, U+0000, b is {lengths["nul"].GetInt32()}), as the emulator stores it as U+FDD0 and 0; Azure stores it as written.");
+
+            lengths["nullead"].GetInt32().Should().Be(3);
+
+            var read = await Values(strings,
+                "SELECT VALUE [c.id, [REPLACE(c.s, \"b\", \"!\"), CONTAINS(c.s, \"b\"), CONTAINS(c.s, \"B\", true), c.s LIKE \"%b%\", " +
+                "INDEX_OF(c.s, \"b\"), STARTSWITH(c.s, \"A\", true), ENDSWITH(c.s, \"B\", true), c.s LIKE \"%a%b%\", c.s LIKE \"%b\", REPLACE(c.s, \"b\", @nul)]] " +
+                "FROM c WHERE c.id IN (\"nul\", \"nullead\")", ("@nul", "\0"));
+
+            var nul = read["nul"].EnumerateArray().ToList();
+            Text(nul[0]).Should().Be("a\0b", "REPLACE leaves the b after U+0000, which Calcite replaces");
+            nul[1].GetBoolean().Should().BeFalse("CONTAINS finds no b after U+0000");
+            nul[2].GetBoolean().Should().BeFalse("nor does the case-insensitive one");
+            nul[3].GetBoolean().Should().BeFalse("nor LIKE '%b%', which the service answers as a CONTAINS");
+            nul[4].GetInt32().Should().Be(2, "INDEX_OF reads past U+0000");
+            nul[5].GetBoolean().Should().BeTrue();
+            nul[6].GetBoolean().Should().BeTrue("ENDSWITH reads past U+0000");
+            nul[7].GetBoolean().Should().BeTrue("a LIKE of two runs reads past it");
+            nul[8].GetBoolean().Should().BeTrue();
+            Text(nul[9]).Should().Be("a\0b", "a replacement holding U+0000 is written as it is, the subject read as far as before");
+
+            var lead = read["nullead"].EnumerateArray().ToList();
+            Text(lead[0]).Should().Be("\0ab");
+            lead[1].GetBoolean().Should().BeFalse();
+            lead[3].GetBoolean().Should().BeFalse();
+            lead[4].GetInt32().Should().Be(2);
+            lead[7].GetBoolean().Should().BeTrue();
+
+            var sought = await Values(strings, "SELECT VALUE [c.id, [CONTAINS(c.s, @nul), REPLACE(c.s, @nul, \"!\"), INDEX_OF(c.s, @nul), REPLACE(c.s, \"B\", @nul)]] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0"));
+            var ascii = sought["ascii"].EnumerateArray().ToList();
+            ascii[0].GetBoolean().Should().BeTrue("a search holding U+0000 matches a string that holds none");
+            Text(ascii[1]).Should().Be("!!!", "and REPLACE of one replaces every byte");
+            ascii[2].GetInt32().Should().Be(-1, "where INDEX_OF finds none");
+            Text(ascii[3]).Should().Be("a\0c", "a replacement holding U+0000 is written as it is");
+        }
+
+        /// <summary>
+        /// <c>REPLACE</c> of an empty search is undefined for every string, on Azure and on the emulator, where Calcite's is
+        /// the subject.
+        /// </summary>
+        [Fact]
+        public async Task AReplacementOfAnEmptySearchIsUndefined()
+        {
+            var replaced = await Rows(Strings_(), "SELECT VALUE [c.id, REPLACE(c.s, @empty, \"-\"), REPLACE(c.s, \"\", \"-\")] FROM c WHERE c.id IN (\"ascii\", \"sup\")", ("@empty", ""));
+
+            replaced.Should().HaveCount(2);
+            replaced.Should().OnlyContain(row => row.GetArrayLength() == 1, "neither form answers a value, so the array holds the id alone");
+        }
+
+        /// <summary>
+        /// A <c>SUBSTRING</c> whose start is below 0 answers the empty string projected, on Azure and on the emulator,
+        /// where Calcite's clips the window to the string; one starting at 0 of length 0 is the empty string, projected and
+        /// in a <c>WHERE</c>, which is what the clip is written as.
+        /// </summary>
+        [Fact]
+        public async Task AWindowStartingBeforeTheStringIsEmpty()
+        {
+            var strings = Strings_();
+
+            var windows = await Values(strings, "SELECT VALUE [c.id, [SUBSTRING(c.s, -1, 2), SUBSTRING(c.s, -2, 4), SUBSTRING(c.s, 0, 0), SUBSTRING(c.s, 0, 1)]] FROM c WHERE c.id = \"ascii\"");
+            windows["ascii"].EnumerateArray().Select(Text).Should().Equal("", "", "", "a");
+
+            var kept = await Values(strings, "SELECT VALUE [c.id, c.id] FROM c WHERE SUBSTRING(c.s, 0, 0) = \"\" AND c.id IN (\"ascii\", \"sup\")");
+            kept.Keys.Should().BeEquivalentTo(["ascii", "sup"]);
+        }
+
+        /// <summary>
+        /// <c>REPLICATE</c> is undefined for a negative count, on Azure and on the emulator, where Calcite's <c>REPEAT</c>
+        /// is the empty string; a count of 0 is the empty string at both. On Azure it is undefined past 10,000 code points,
+        /// and defined up to them: <c>ab</c> 5,000 times is, 5,001 times is not, and a, U+1F600, b 3,333 times, 13,332
+        /// UTF-16 units, is. The emulator has no such limit, and there the test skips.
+        /// </summary>
+        [Fact]
+        public async Task ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints()
+        {
+            var strings = Strings_();
+
+            var repeated = await Rows(strings, "SELECT VALUE [REPLICATE(c.s, 0), REPLICATE(c.s, 2), REPLICATE(c.s, -1)] FROM c WHERE c.id = \"ascii\"");
+            repeated.Single().EnumerateArray().Select(Text).Should().Equal(["", "aBcaBc"], "a negative count answers nothing, so the array ends before it");
+
+            var limits = await Rows(strings, "SELECT VALUE [LENGTH(REPLICATE(\"ab\", 5000)), LENGTH(REPLICATE(c.s, 3333)), LENGTH(REPLICATE(\"ab\", 5001)), LENGTH(REPLICATE(c.s, 3334))] FROM c WHERE c.id = \"sup\"");
+            var sup = limits.Single().EnumerateArray().ToList();
+            sup[0].GetInt32().Should().Be(10000);
+            sup[1].GetInt32().Should().Be(9999, "a, U+1F600, b is three code points and four units");
+
+            if (sup.Count > 2)
+                Assert.Skip($"This service repeats past 10,000 code points ({sup[2].GetInt32()}), as the emulator does; Azure answers nothing there.");
+
+            sup.Should().HaveCount(2, "ab 5,001 times is 10,002 code points, and a, U+1F600, b 3,334 times is too, though 3,333 times is 13,332 units");
         }
 
         // ── What the adapter answers ──────────────────────────────────────────────────────────
