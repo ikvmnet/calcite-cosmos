@@ -40,6 +40,11 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- What a service answered on a run, as CosmosAxiomsTests reads it wherever the tests are unpacked. -->
+        <EmbeddedResource Include="Measurements\Runs\*.tsv" LogicalName="Runs/%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\Apache.Calcite.Cosmos.Adapter\Apache.Calcite.Cosmos.Adapter.csproj" />
     </ItemGroup>
 

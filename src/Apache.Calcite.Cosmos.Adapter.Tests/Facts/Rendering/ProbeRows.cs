@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -16,10 +17,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The rendering tests' fixture: the probe's rows (<c>probes/rcore/Program.cs</c>), completed for the cells and
-    /// connectives the first checks read, each written for the emulator and Azure so that both service sets settle it; the
-    /// theory defined from them, once; the probe's label forms; and a bundle that checks one claim. Test data, until the
-    /// registry replaces it.
+    /// The rendering tests' fixture: the registry's rows as S reads them (<see cref="CosmosAxiomRows"/>), beside the probe's
+    /// (<c>probes/rcore/Program.cs</c>), completed for the cells and connectives the first checks read, each written for
+    /// the emulator and Azure so that both service sets settle it; the theory defined from them, once; the probe's label
+    /// forms; and a bundle that checks one claim. The probe's rows are test data, each to go as the registry answers its
+    /// key.
     /// </summary>
     internal static class ProbeRows
     {
@@ -76,11 +78,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static List<MeasuredOutcome> Build()
         {
-            var rows = new List<MeasuredOutcome>();
+            // A probe row for a key and target the registry answers is refused, so none outlives the outcome that replaces it.
+            var rows = CosmosAxiomRows.Read(CosmosAxioms.All).ToList();
+            var registry = rows.Select(row => (row.Key, row.Target)).ToHashSet();
+            void Add(MeasuredOutcome row) =>
+                rows.Add(registry.Contains((row.Key, row.Target)) ? throw new System.InvalidOperationException($"The registry answers {row.Key} on {row.Target}: drop the probe's row.") : row);
+
             void Service(string id, CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer)
             {
-                rows.Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Emulator, answer));
-                rows.Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Azure, answer));
+                Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Emulator, answer));
+                Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Azure, answer));
             }
 
             foreach (var kind in Kinds)
@@ -104,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             // The connectives are Kleene's expectations written as rows, not measurements, until c07–c09 measure them.
             foreach (var (target, key, answer) in KleeneTables.Rows)
-                rows.Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene"
+                Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene"
                     : key.Test == CosmosServiceTest.Not ? "Service.NotOverUndefinedIsUndefined" : "Service.ConnectivesReadNonBooleansAsUnknown", key, target, answer));
 
             return rows;

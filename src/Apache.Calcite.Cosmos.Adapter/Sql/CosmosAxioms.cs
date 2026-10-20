@@ -20,20 +20,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// consult one place.
     /// </para>
     /// <para>
-    /// <b>For now it is a registry, and nothing reads it.</b> Each row names the test that measures
-    /// it, and <c>CosmosAxiomsTests</c> requires that test to exist, so a row cannot outlive its
-    /// evidence. Making the translator read the rows is later work. Until then a rendering that rests
-    /// on an axiom should name the row's id beside the measurement it already cites.
+    /// <b>The rendering graph reads a row's outcomes; the translator reads none yet.</b> A row may
+    /// carry what its measurement answered, key by key (<see cref="CosmosOutcome"/>), which
+    /// <see cref="CosmosAxiomRows"/> reads into S's measured rows. Each row names the test that
+    /// measures it, and <c>CosmosAxiomsTests</c> requires that test to exist and, where the row carries
+    /// outcomes, to say it pins the row, so a row cannot outlive its evidence. Making the translator
+    /// read the rows is later work. Until then a rendering that rests on an axiom should name the
+    /// row's id beside the measurement it already cites.
     /// </para>
     /// <para>
-    /// <b>The targets are a record of what was run, not of what is believed.</b> A row measured on
-    /// the emulator alone is owed on Azure. Every row that was is now measured on both: the probe
-    /// account ran each pinning test on 2026-10-16 and each passed unchanged. The emulator has
-    /// differed from the service before (<c>DESIGN.md</c>, <em>Verified against the emulator</em>),
-    /// and where the two disagree the conservative reading is the one to encode: a capability holds
-    /// only where both accept it. A row the emulator does not hold — an <c>ORDER BY</c> over an
+    /// <b>The targets are a record of what was run; what a statement must hold on is a declared
+    /// set.</b> <c>MeasuredOn</c>, and an outcome's <c>On</c>, name the targets that ran the
+    /// measurement and passed. S declares the sets a statement may be checked under — Azure alone,
+    /// Azure and the emulator, the emulator alone as CI runs — and a key answers in a set once every
+    /// target the set serves has answered it, the union of their answers where they differ. So a
+    /// capability holds under both only where both accept it, the emulator having differed from the
+    /// service before (<c>DESIGN.md</c>, <em>Verified against the emulator</em>), and a key one target
+    /// never ran answers anything. A row the emulator does not hold — an <c>ORDER BY</c> over an
     /// excluded path accepted there and refused on Azure — names Azure alone, and its test detects
     /// the emulator's answer and skips.
+    /// </para>
+    /// <para>
+    /// <b>An outcome claims Azure only where a run record holds its answer</b>
+    /// (<c>Measurements/Runs</c> in the tests). The probe account ran the pinning tests of the
+    /// <c>IS_*</c> family, the comparisons and the connectives, first measured on the emulator, on
+    /// 2026-10-16, each passing unchanged, and measured the order's rows the same day; the record of
+    /// that day holds what they answered on each key S reads. The Azure targets of the string
+    /// functions and the stored values rest on a run of 2026-10-19, which has no record.
     /// </para>
     /// </remarks>
     internal static class CosmosAxioms

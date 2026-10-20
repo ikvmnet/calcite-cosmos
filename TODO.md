@@ -2520,8 +2520,9 @@ across documents* and *A join of a container to itself* is the record.
   `Sql/CosmosAxioms.cs` that was measured on the emulator alone is now measured on the probe account
   too, and the order's own rows — code point order, the constants, the excluded path, the composite
   index, the rank's direction, the merge across partitions — are pinned by tests that skip where the
-  account in hand cannot show them. The translator still encodes each fact where it uses it; reading
-  the registry, and refusing where a row names only one target, is the step after.
+  account in hand cannot show them. The rendering graph reads a row's outcomes (`CosmosAxiomRows`); the
+  translator still encodes each fact where it uses it, and reading the registry, refusing where a row
+  names only one target, is the step after.
 - **Ternary logic partitioning passes over the fixes** — *done; what it found is kept below.*
   `EveryPredicatePartitionsTheRows` (`DESIGN.md`, *Differential testing*) fails on main: 131 of
   1,000 predicates. Over the fixes for A to K it failed two, both L, and with L closed the gate's
@@ -2662,6 +2663,12 @@ across documents* and *A join of a container to itself* is the record.
   (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")` keeps the booleans too. The reading
   wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
   `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
+- **The probe account's run of 2026-10-19 has no record** — *small.* The Azure targets of the string functions' and the
+  stored values' rows rest on it, and `Tests/Measurements/Runs/` holds only 2026-10-16's, so an outcome on one of those
+  rows cannot claim Azure until a run of its witnesses is recorded.
+- **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
+  unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
+  constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
 
 ---
 

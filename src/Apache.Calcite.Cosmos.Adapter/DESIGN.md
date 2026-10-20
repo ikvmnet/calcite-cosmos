@@ -6258,6 +6258,35 @@ literals part nothing, is a range all the same. `KleeneTables` holds no `Range` 
 non-boolean rows dropped, a member that differs in text dropped as the aligner did, a superset that narrows in its
 stratum, and a lambda filter.
 
+### The registry, read into S
+
+**A row carries what its measurement answered, and one reader makes it S's rows.** A `CosmosOutcome` on a
+`CosmosAxiom` names a test, an operand's class, the targets that ran its own witnesses, and the truth a `WHERE` reads on
+each class of cell, `absent=false null=true …`, parsed as the registry is initialised. `CosmosAxiomRows.Read` writes a
+row per cell and per target, citing the axiom, and merges nothing: which targets settle a key, and what two that answer
+apart mean together, are `measure` and `tabulate`. A composite, `NOT IS_DEFINED(c.v)` say, carries its formula and is a
+check of composition through the atomic rows, never a row; one that disagreed would say the service is not pointwise
+there.
+
+**An outcome says no more than was run.** Its targets lie within its row's, two outcomes of a row name no target for one
+cell, and the row's pinning test names the row back (`[CosmosPins]`). A cell no outcome covers for a target is declared
+in `CosmosAxiomRows.Owed`, so it answers widest on purpose, and a key the emulator and Azure answer apart is declared
+too, since a divergence is data, not a conflict, and would pass unseen. Two constants compared, the divergence known
+beside the parted range, is no key S reads.
+
+**Azure is claimed only on a recorded run.** `Tests/Measurements/Runs/` holds what the probe account answered, per row,
+key and cell, as each pinning test asserted it, and an outcome naming Azure must find each cell's answer there. A test
+that ran a `WHERE` and no `WHERE NOT` is recorded `NotKept`, and a projected value that is no truth as itself, so no
+outcome reads more into a run than it measured. The record of 2026-10-16 covers the `IS_*` family, the comparisons, the
+connectives and the order's rows; the string functions' Azure targets rest on a run that has none.
+
+**The fixture reads the registry first.** `ProbeRows` starts from `CosmosAxiomRows` and adds the probe's rows only for a
+key and target the registry does not answer; a probe row the registry answers refuses the fixture, so each goes as its
+outcome lands, and a verdict moves only where a row answers otherwise than the probe's did.
+
+**What holds it.** `CosmosAxiomsTests`: the reader on a planted row, S defined from the registry, and a test for each
+declaration above.
+
 ---
 
 ## Differential testing
