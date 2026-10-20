@@ -15,6 +15,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             graph.DefineSort<Val>("Val");
             graph.DefineSort<Pred>("Pred");
+            graph.DefineSort<Args>("Args");
             graph.Values.Register<PredicateAtom>("predicate atom");
             graph.Values.Register<PathValues>("path values");
 
@@ -28,6 +29,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
+            Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
+            NoOperands = graph.DefineConstructor<Args>("no operands", options: term);
+            Operand = graph.DefineConstructor<Val, Args, Args>("operand", options: term);
             Compare = graph.DefineConstructor<string, Val, Val, Pred>("compare", options: term);
             In = graph.DefineConstructor<Val, ValueSet<string>, Pred>("in", options: term);
             IsNull = graph.DefineConstructor<Val, Pred>("is null", options: term);
@@ -62,6 +66,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>A parameter: its ordinal and SQL type, and no value.</summary>
         public Constructor<long, string, Val> Parameter { get; }
+
+        /// <summary>A function of values: its name, as the loader spells it, and its operands.</summary>
+        public Constructor<string, Args, Val> Call { get; }
+
+        /// <summary>The end of a call's operands.</summary>
+        public Constructor<Args> NoOperands { get; }
+
+        /// <summary>An operand of a call, and those after it.</summary>
+        public Constructor<Val, Args, Args> Operand { get; }
 
         /// <summary>A comparison: an operator, the value read, and a literal or a parameter.</summary>
         public Constructor<string, Val, Val, Pred> Compare { get; }

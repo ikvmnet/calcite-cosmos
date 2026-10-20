@@ -100,9 +100,9 @@ A comparison over `JSON_VALUE` is normally sent weakened — `NOT IS_STRING(c.ca
 text (Chapter 8). Where the schema says the path holds a string, there is no second type to disagree
 over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can travel with it. A
 `type` declaration earns its keep on its own. It also lets a string function over the path push —
-`UPPER(JSON_VALUE(c."DOC", '$.carrier'))`, a concatenation, a length, a `COALESCE` — in a filter and in
-a projection, which over an undeclared path run in process, the accessor reading a stored number as
-text.
+a concatenation, a `REPLACE`, a `COALESCE` — in a filter and in a projection, which over an undeclared
+path run in process, the accessor reading a stored number as text. A case mapping, a length and a trim
+ask the characters too, which a `pattern` proves (14.4).
 
 The same declaration is what lets the text column be **sorted, grouped or joined on at the service**.
 Each of those acts on the stored value in the column's place — `ORDER BY c.carrier`, `GROUP BY` the
@@ -272,7 +272,7 @@ cannot vouch for.
 
 Instants and dates are covered in Chapter 15, which also explains which *query* spellings reach them.
 
-## 14.4 Characters: what a `pattern` proves about order
+## 14.4 Characters: what a `pattern` proves about order and string functions
 
 The service orders strings by code point and Calcite by UTF-16 code unit. The two agree everywhere
 except where a character above U+FFFF — an emoji, say, which UTF-16 writes as two surrogates — meets
@@ -330,6 +330,44 @@ two paths drops never arrive to be checked.
 A literal compares exactly in every row because, under the default charset, it holds nothing at or
 above U+0100 (Chapter 8.3).
 
+**And about string functions.** Calcite's string functions are Java's and the service's are its own,
+and they part over four things. Calcite counts UTF-16 units and the service's `LENGTH` code points, so
+an emoji is 2 to one and 1 to the other, and Azure's `SUBSTRING` returns half of one as U+FFFD. Calcite
+maps case by Java's full mapping, `ß` to `SS` and `ﬀ` to `FF`, and the service leaves both, and on
+Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree. Calcite's `TRIM` removes spaces
+where the service's removes white space: a tab, a line break, U+00A0, U+3000 and the rest of Appendix
+B.2's list. And Azure's `REPLACE` and `CONTAINS` read a string only up to its first U+0000, as does a
+`LIKE` the service answers as a `CONTAINS` — a pattern that is one run of text between two `%` — so
+each loses what lies past one. So what a pattern says of the characters also decides which functions
+push over the path:
+
+| the strings may hold | `UPPER`, `LOWER` | `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT` | `TRIM`, `LTRIM`, `RTRIM` | `REPLACE`, `LIKE '%a%'` |
+| --- | --- | --- | --- | --- |
+| printable ASCII: `^[ -~]*$` | ✔ | ✔ | ✔ | ✔ |
+| ASCII with a tab: `^[\t -~]*$` | ✔ | ✔ | in process | ✔ |
+| nothing beyond U+FFFF: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | in process | ✔ | in process | in process |
+| anything but white space: `^[^\t\n\u000B\f\r\u0085\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]*$` | in process | in process | ✔ | in process |
+| anything: no pattern, or one not read | in process | in process | in process | in process |
+
+`UPPER(x) LIKE '%A%'` asks both its columns: the service's case-insensitive `CONTAINS` folds the
+service's way, so the string has to be ASCII, and it stops at a U+0000, so it has to hold none. The
+first two rows prove both, and it is sent as `CONTAINS(c.x, @p0, true)`; a `LIKE` of any other shape —
+`'a%'`, `'a_b'`, `'%a%b%'` — pushes over any declared string, `_` being one code point to both.
+
+Proved when the plan is made, with nothing checked as the rows arrive. In process means Calcite computes
+the function over the string the service sends: in a projection the path alone is still read at the
+service, and the rest of the statement pushes as it would; in a filter the comparison is Calcite's, made
+over the documents the rest of the filter keeps, and those are read whole. A stored form is ASCII and holds no white space and no U+0000, so a UUID, a date or a number written as a
+string pushes every one of them; so does a path whose `enum` or `const` lists only such strings, and so
+does a statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A computed argument needs
+every input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is
+proved of nothing. `POSITION`, `CONCAT`, `||` and `REVERSE` push over any string. Three ask something
+other than a character, where the service answers otherwise than Calcite: `REPLACE` needs its search
+proved to hold something, a literal that does or a path whose `enum` lists no empty string; `REPEAT` a literal
+count, and a subject short enough that the result stays within Azure's 10,000 code points, which only an
+`enum`, a `const` or a literal proves yet (`maxLength` is not read); and a `SUBSTRING` whose start is not
+proved at least one is written with Calcite's clip to the string (Appendix B.2).
+
 **How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
 whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one
 UTF-16 unit at a time; with it, one code point at a time; and the two can disagree:
@@ -367,7 +405,9 @@ them. If your writers validate that way, spell the classes out: `[0-9]`, `[A-Za-
 
 A pattern is a promise like the rest of a schema (14.7). A document holding an emoji where the
 pattern says none can is given a page from the wrong place, a wrong `MIN` or `MAX`, and comparisons
-that keep the wrong rows.
+that keep the wrong rows. It is given the service's string functions too, where it holds what the
+pattern rules out: a length counting an emoji as one, `ß` left as it is by `UPPER`, a tab left by `TRIM`,
+and a `REPLACE` or a `LIKE '%a%'` that stops at a U+0000.
 
 ## 14.5 Containers that hold several kinds of document
 
@@ -419,7 +459,7 @@ property above the `oneOf`.
 | `required` | presence, for children of an object that is itself present |
 | `const`, `enum` | the value, or its domain (scalars only) |
 | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | a bound on the value **if it is a number**; the exclusive forms as numbers (2019-09 on) or as flags beside `minimum` and `maximum` (Draft 4, OpenAPI 3.0) |
-| `pattern` | a stored form, where the strings it admits are a recognised form's (14.3); and, beside any type, the characters a string may hold (14.4). Both are read under both of its readings |
+| `pattern` | a stored form, where the strings it admits are a recognised form's (14.3); and, beside any type, the characters a string may hold, for an order and for a string function (14.4). Both are read under both of its readings |
 | `format` | nothing |
 | `allOf` | every branch |
 | `oneOf`, `anyOf` with a discriminating `const` | each branch, for documents that have the discriminator and its value; and what every branch implies, for every document |

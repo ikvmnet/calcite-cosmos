@@ -855,7 +855,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (TryTextEqualityAlternatives(node, translator, rexBuilder, rootAlias) is RexNode alternatives)
                 return alternatives;
 
-            if (TryTextComparisonWeakening(node, translator, rexBuilder, rootAlias) is RexNode weakened)
+            // A guarded comparison the facts do not let render is no weakening, and the presence the comparison implies
+            // still is: a case fold under LIKE over a string nothing proves ASCII is refused with the fold
+            // (CosmosStringFunctions), where it used to push the case-insensitive match and lose the rows it folds
+            // otherwise than Calcite.
+            if (TryTextComparisonWeakening(node, translator, rexBuilder, rootAlias) is RexNode weakened && translator.TryTranslate(weakened, out _))
                 return weakened;
 
             var paths = CollectPaths(node, Reading.Truth, translator, rootAlias);

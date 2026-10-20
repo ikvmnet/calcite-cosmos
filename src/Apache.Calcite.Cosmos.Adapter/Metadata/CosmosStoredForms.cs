@@ -98,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             System.Linq.Enumerable.Concat(System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered), CosmosNumericForms.Registered);
 
         /// <summary>
-        /// Returns the bands a form's strings hold units of beside those below U+D800, read off what defines the form —
+        /// Returns the classes a form's strings hold characters of, read off what defines the form —
         /// a language the one reader of a pattern parsed, or a shape's alphabet — by the reader's own reading of a
         /// range's bands; <see cref="Facts.JsonCharacterBand.Any"/> for a form no family defines, which says nothing.
         /// </summary>

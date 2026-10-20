@@ -53,8 +53,9 @@ in the document tells apart.
 | `containsAtLeast(p, v)`, `containsAtMost(p, v)` | **if** an array, this many of its elements equal `v` (`contains`, `minContains`, `maxContains`) |
 | `nameMinLength(p)`, `nameMaxLength(p)` | **if** an object, its property names are within these lengths (`propertyNames`) |
 | `form(p, f)` | **if** a string, it is spelled in the stored form `f`: a token the theory reads nothing of but its characters |
-| `chars(p) = S` | **if** a string, its UTF-16 units are below U+D800 or in the bands `S`, over `surrogate` and `high` (U+E000 up) |
-| `formChars(f) = S` | a string in the stored form `f` holds units below U+D800 or in `S`: about how a form is written, and no document |
+| `chars(p) = S` | **if** a string, its characters are of the classes `S` alone, over `surrogate` (U+D800 to U+DFFF), `high` (U+E000 up), `nonascii` (U+0080 to U+D7FF), `trimmed` (what the service's `TRIM` removes beside U+0020) and `nul` (U+0000); none for ASCII other than U+0000 that the service trims as Calcite does |
+| `written(p) = S` | **if** a string, it was written with characters of `S` alone: what a declared `pattern` says, from which `chars` is derived |
+| `formChars(f) = S` | a string in the stored form `f` holds characters of `S` alone: about how a form is written, and no document |
 | `extension(p, k)` | the path holds what a host's claim `k` says; what that entails in JSON's terms is stated beside it |
 | `p ≡ q` | the two paths hold one value, or are both absent: a union of the two path terms |
 
@@ -95,6 +96,7 @@ saturation terminates.
 **Strings**
 - A minimum length narrows a domain.
 - A maximum length narrows a domain.
+- A domain's strings bound the lengths of the path's, in UTF-16 units, where it holds a string.
 - No string has crossed lengths.
 - † A stored form is a string or null.
 - A value's characters are its own: a domain's `chars` are the bands its strings hold, and a domain of no string's
@@ -269,10 +271,11 @@ the last 256 sets' contexts.
 - **Equalities checked too.** A third of the generated documents hold one value at two places. Every pair of
   concrete paths the theory proves equal must hold one value in the document.
 - **Forms, extensions, characters and numbers held approximately.** A document may hold `1e30`, `-1e30` or
-  `1.5e-30`, and strings of all three bands: a high unit, a supplementary character, both, and a character below
-  U+D800 that is no ASCII. A fact may name a stored form — any string, a string of at most one character, or an ASCII
-  one, whose characters every trial states — the extension "an object", or the bands a string's characters lie in;
-  a conditional rule may state any of them. A proposed fact false of the document is drawn again.
+  `1.5e-30`, and strings of every class: a high unit, a supplementary character, both, a character below U+D800 that
+  is no ASCII, a tab, U+00A0 and U+3000, and U+0000. A fact may name a stored form — any string, a string of at most
+  one character, or an ASCII one, whose characters every trial states — the extension "an object", or the classes a
+  string's characters lie in; a conditional rule may state any of them. A proposed fact false of the document is
+  drawn again.
 - **The oracle is shown to catch unsound rules.** Each planted bug fails it. Among them:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
@@ -334,6 +337,7 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
 | `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
 | `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
+| `call(f, a)`, over `operand(v, a)` and `no operands` | a function of values, its name as the loader spells it — a `TRIM`'s flag in it, a `CASE` read as its arms — and its operands as a list |
 | `compare(op, v, w)`, `in(v, S)`, `is null(v)`, `is defined(v)` | the atoms; `is defined` asks of the document, whatever the reading |
 | `and`, `or`, `not`, `opaque(n)` | the connectives, right-nested in digest order; what the loader does not read |
 
@@ -344,6 +348,8 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `point(e, s)` | a literal an atom compares with; stated by the host |
 | `reads(v, p, k)`, `atom(e, p, a)` | analyses of terms alone: the path a value reads and how, and the atom a test is |
 | `possible(p)` | what a path an atom reads may hold, gathered into one value (`PathValues`) |
+| `value chars(v) = S` | **if** the value is a string, its characters are of the classes `S`: `chars` said of a value |
+| `walk(v, i, a)`, `drawn(v, a) = S` | a call's operands from position `i` on, an analysis of terms alone; the classes the call draws from them |
 | `always true(e)`, `always false(e)`, `never true(e)` | the verdicts |
 
 **What an atom means is `PredicateAtom`'s, in one place**, and no rule names a reading or an operator. It answers two
@@ -373,9 +379,19 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
   - twelve connectives in Kleene's logic. What is always false is never true; nothing reads never-true beneath a
     `NOT`, because UNKNOWN is not FALSE there.
 
+**What a computed string's characters are** (10 rules, ruleset `characters`), asked by a string function's rule of its
+argument (`JsonFactSet.CharactersOf`), in a context made for the question beneath the one the facts are read from:
+- a reading of a path as text, and the value a path holds, hold the path's `chars`; the cast to text of that value
+  holds them where the path holds scalars alone, an object cast to text being the JSON of whatever it holds;
+- a literal holds its own characters;
+- a call of a function `StringCalls` names walks its operands from the first, and draws from the last: from an operand
+  it reads, the image of that operand's classes — its own, and for `UPPER` from U+E000 also those below U+D800, U+FB13
+  upper-casing to Armenian — and nothing from one it does not; a call holds what it draws. A parameter, and a call of a
+  function the table does not name, are given no row: they may hold anything.
+
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
 then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the
-verdicts.
+verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value's characters, for a question of one.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
@@ -393,18 +409,22 @@ verdicts.
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, one in eight with no
   conditional rule as a container that declares no schema has, random filters over their paths, and 64 documents drawn
   from each declaration and not from its filter; from a stream of their own, patterns, `enum`s and `const`s of strings
-  from all three bands, filters comparing paths with them, and 16 documents holding them. Every fact a context holds,
-  row by row, `chars` among them; every claim and verdict each licence's scope answers; every `holds`, verdict and
-  `possible` row; every `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath`
-  classes; the facts each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run,
-  5,000 on request;
+  of every class, filters comparing paths with them, and 16 documents holding them; and, from a third, strings
+  computed from the paths and from strings of every class, nested two deep. Every fact a context holds, row by row,
+  `chars` among them; every claim and verdict each licence's scope answers; what each scope says of each computed
+  string's characters, against the string Calcite's runtime computes; every `holds`, verdict and `possible` row; every
+  `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
+  each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
 - `CharactersTests` and `CosmosOracleCharactersTests`: what the theory derives of a path's characters, by the rules
-  and through the oracle's strata;
-- `PlantedBugTests`: ten faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
-  never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the measurement, a
-  stratum handing a conjunct its own facts, a union of two predicates, one kind's characters read of every kind, a
-  value's characters read without its surrogates, and an arm's characters stated of its disjunction — each caught
-  within a run's trials;
+  and through the oracle's strata; `ComputedCharactersTests`, of a computed string's, and `StringCallsTests`, the
+  table of what each function draws held to Calcite's runtime over every code point;
+- `PlantedBugTests`: seventeen faults planted in graphs of their own — a too-wide preimage, establishing from a
+  weakening, never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the
+  measurement, a stratum handing a conjunct its own facts, a union of two predicates, one kind's characters read of
+  every kind, a value's characters read without its surrogates, its characters outside ASCII below them, those the
+  service trims or its U+0000, an arm's characters stated of its disjunction, a domain's numbers bounding it above its
+  least, a domain of one read as present, a call's characters read off its first operand alone, and an upper-case
+  mapping read as keeping its classes — each caught within a run's trials;
 - `IrEvalCalciteTests`: the evaluator those are checked against, held to Calcite's runtime over the readings that
   were measured. The raw readings are drawn from what the table admits, and nothing holds those rows to Calcite yet.
 

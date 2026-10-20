@@ -197,12 +197,14 @@ namespace Apache.Calcite.Cosmos.Facts
         public sealed record Represents(IJsonStoredForm Form) : JsonClaim;
 
         /// <summary>
-        /// The value at the path, where it is a string, holds UTF-16 units only below U+D800 and in these bands.
+        /// The value at the path, where it is a string, holds characters of these classes alone
+        /// (<see cref="JsonCharacterBand"/>): the three bands outside ASCII, what the service trims beside a space, and
+        /// U+0000.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>A fact of JSON's like a type</b>, and the theory reasons with it as one: per path, the bands a string there
-        /// may hold units of, which a conjunction narrows and a disjunction, a case split or a union widens, per branch
+        /// <b>A fact of JSON's like a type</b>, and the theory reasons with it as one: per path, the classes a string there
+        /// may hold characters of, which a conjunction narrows and a disjunction, a case split or a union widens, per branch
         /// and per scope. A declared <c>pattern</c> states it, read as the characters it admits; so does a service fact,
         /// of a property whose grammar a standard fixes. And the theory derives it, from a value or a domain a
         /// declaration or a filter states — each value's characters being its own — and from a stored form, which
@@ -213,17 +215,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// character, and satisfies every claim of this kind.
         /// </para>
         /// </remarks>
-        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        /// <param name="Bands">The classes; <see cref="JsonCharacterBand.None"/> for a string of ASCII other than U+0000 that
+        /// the service trims as Calcite does.</param>
         public sealed record Characters(JsonCharacterBand Bands) : JsonClaim;
 
         /// <summary>
-        /// The value at the path, where it is a string, was written with UTF-16 units only below U+D800 and in these bands.
+        /// The value at the path, where it is a string, was written with characters of these classes alone.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>What a validator saw, which is not always what the service stores.</b> A declared <c>pattern</c> constrains
         /// a document as it was written, and measured on the probe account a lone surrogate written as a JSON escape is
-        /// stored as U+FFFD, a unit of the high band. So the pattern's reader states this, the bands its strings were
+        /// stored as U+FFFD, a unit of the high band. So the pattern's reader states this, the classes its strings were
         /// written in, and the theory derives what the stored strings hold from it by a rule that reads the service's
         /// measured behaviour as data (<c>JsonRules</c>, "a string is stored as it was written, a lone surrogate as
         /// U+FFFD"). Nothing reads it but that rule.
@@ -232,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>Silent about anything but a string</b>, as <see cref="Characters"/> is.
         /// </para>
         /// </remarks>
-        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        /// <param name="Bands">The classes; <see cref="JsonCharacterBand.None"/> for none.</param>
         public sealed record Written(JsonCharacterBand Bands) : JsonClaim;
 
     }

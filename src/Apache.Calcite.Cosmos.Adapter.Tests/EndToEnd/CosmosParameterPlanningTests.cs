@@ -213,6 +213,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The plan reasons from the type and never from the value.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// A column computed from parameters alone reads nothing of the document, and is computed above the statement
+        /// rather than echoed through it: the service would hand back what it was sent, and a parameter holding a lone
+        /// surrogate when the statement runs fails at the SDK's encoder, where Calcite answers. Measured, a function over a
+        /// parameter that stays in process — <c>UPPER(CAST(? AS VARCHAR))</c> — sent <c>"$f1": @p0</c> for it to compute.
+        /// A comparison that reads the document sends its parameter, which the service has to read.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("""UPPER(CAST(? AS VARCHAR))""")]
+        [InlineData("""TRIM(CAST(? AS VARCHAR))""")]
+        [InlineData("""CAST(? AS VARCHAR)""")]
+        public void AColumnComputedFromParametersAloneIsNeverSent(string expression)
+        {
+            var query = Query($"""SELECT {expression} AS "v", c."id" FROM items AS c""");
+
+            query.Sql.Should().NotContain("@p", "the column is computed above the statement: " + query.Sql);
+            query.Parameters.Should().BeEmpty();
+
+            Query("""SELECT c."id" FROM items AS c WHERE c."id" = ?""").Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "a parameter the service reads is sent");
+        }
+
+        /// <remarks>
         /// Which is the whole of the fix. Nothing here has a value to record, and the ordinal is what
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL
         /// should, gives it the type as well.

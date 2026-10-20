@@ -34,8 +34,8 @@ namespace Apache.Calcite.Cosmos.Facts
         string Name { get; }
 
         /// <summary>
-        /// Gets the bands a string spelled in the form may hold UTF-16 units of beside those below U+D800:
-        /// <see cref="JsonCharacterBand.None"/> for a form written in ASCII.
+        /// Gets the classes a string spelled in the form may hold characters of: <see cref="JsonCharacterBand.None"/> for a
+        /// form written in ASCII other than U+0000, none of which the service trims beside a space.
         /// </summary>
         /// <remarks>
         /// Data about the form, which its owner reads off what defines it, and which the theory reads into a rule: a

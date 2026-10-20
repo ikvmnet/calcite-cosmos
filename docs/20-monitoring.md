@@ -166,7 +166,7 @@ Is a join a `CosmosLookupJoin`, or an in-process join over two converters — tw
 | exception | meaning |
 | --- | --- |
 | `CosmosExecutionException` | a request failed — a write was refused (`409 Conflict` on insert, a rejected replace), or a compiled plan could not reach the schema or client that executes it |
-| `CosmosMaterializationException` | a document did not hold what the query said it would — a fraction where `RETURNING INTEGER` was declared, text that is not a UUID under a UUID cast |
+| `CosmosMaterializationException` | a document did not hold what the query said it would — a fraction where `RETURNING INTEGER` was declared, a number past a `BIGINT`'s range, text that is not a UUID under a UUID cast — or held text that is not UTF-8, which nothing can read |
 | `CosmosException` (SDK) | anything the service itself refused — throttling beyond the retry policy, authorisation, a statement the service rejects |
 | errors from `OpenAsync` | the model or an operand is wrong; the useful message is usually a cause or two down |
 

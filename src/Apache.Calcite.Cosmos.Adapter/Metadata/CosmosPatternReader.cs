@@ -21,7 +21,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// the service orders a document's strings by code point and Calcite by UTF-16 code unit, and the two part only
     /// where a surrogate meets a unit from U+E000 (<see cref="JsonCharacterBand"/>), so a path whose strings are known to
     /// lack either band is one whose sorts, extremes and comparisons the service can be handed
-    /// (<see cref="CosmosServiceOrder"/>). <see cref="Strings"/> reads the language, for a stored form
+    /// (<see cref="CosmosServiceOrder"/>); and for a string function, which counts, maps case or trims as Calcite's does
+    /// only over strings lacking a surrogate, outside ASCII, or holding a character the service trims
+    /// (<c>Sql.CosmosStringFunctions</c>). <see cref="Strings"/> reads the language, for a stored form
     /// (<see cref="CosmosStoredForms"/>): a form is recognised where what the pattern admits is the form's language, which
     /// only a parse can say — matching the text against spellings could not, and was a second reader of the keyword that
     /// read some of it differently.
@@ -30,8 +32,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>A reader of an input, and nothing more.</b> What it reads becomes a declared fact of the path: the characters
     /// as <see cref="JsonClaim.Characters"/>, and a form as <see cref="JsonClaim.Represents"/> once a family has said
     /// which form the strings are. The theory meets each with what else is known of the path, and derives the
-    /// characters of a form from the form (<see cref="IJsonStoredForm.Characters"/>), not from this. Which band a range's
-    /// units are in is the theory's to say (<c>JsonValues.BandsOf</c>).
+    /// characters of a form from the form (<see cref="IJsonStoredForm.Characters"/>), not from this. Which classes a
+    /// range's characters are in is the theory's to say (<c>JsonValues.BandsOf</c>), the trimmed class among them, which
+    /// a control escape such as <c>\t</c> or a range over U+00A0 holds.
     /// </para>
     /// <para>
     /// <b>Two readings, and the answer has to be right under both.</b> JSON Schema names ECMA-262's dialect and no flag.
@@ -119,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// A <see cref="JsonClaim.Written"/> naming the bands the strings the pattern admits may hold units of, which the
+        /// A <see cref="JsonClaim.Written"/> naming the classes the strings the pattern admits may hold characters of, which the
         /// theory states of the path as declared: an input read into a fact, and nothing decided here about what the fact
         /// is for. Like the pattern, it is about a string if there is one, and holds of anything else.
         /// </para>
@@ -130,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// </remarks>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
-        /// <returns>The claim, or none where the pattern is refused or its strings may hold both bands.</returns>
+        /// <returns>The claim, or none where the pattern is refused or its strings may hold every class.</returns>
         public static IReadOnlyList<JsonClaim> Claims(string? pattern)
         {
             if (pattern is null || Absent(pattern) is not { Count: > 0 } absent)
@@ -171,10 +174,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the bands no string a pattern matches holds a unit of, under both readings.
+        /// Returns the classes no string a pattern matches holds a character of, under both readings.
         /// </summary>
         /// <param name="pattern">The pattern.</param>
-        /// <returns>The bands, or <c>null</c> where either reading refuses the pattern.</returns>
+        /// <returns>The classes, or <c>null</c> where either reading refuses the pattern.</returns>
         internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern)
         {
             if (Read(pattern, unicode: false, strings: false) is not { } units || Read(pattern, unicode: true, strings: false) is not { } points)
@@ -184,25 +187,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the bands no string a pattern matches holds a unit of, under one reading: a hook for the tests, which hold
-        /// each reading apart, and read by nothing else.
+        /// Returns the classes no string a pattern matches holds a character of, under one reading: a hook for the tests,
+        /// which hold each reading apart, and read by nothing else.
         /// </summary>
         /// <param name="pattern">The pattern.</param>
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
-        /// <returns>The bands, or <c>null</c> where the reading refuses the pattern.</returns>
+        /// <returns>The classes, or <c>null</c> where the reading refuses the pattern.</returns>
         internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern, bool unicode) =>
             Read(pattern, unicode, strings: false) is { } read ? Bands(read.Bands) : null;
 
         /// <summary>
-        /// Returns the bands a set does not hold, one by one.
+        /// Returns the classes a set does not hold, one by one.
         /// </summary>
         static IReadOnlyList<JsonCharacterBand> Bands(JsonCharacterBand held)
         {
-            var absent = new List<JsonCharacterBand>(2);
-            if ((held & JsonCharacterBand.Surrogates) == JsonCharacterBand.None)
-                absent.Add(JsonCharacterBand.Surrogates);
-            if ((held & JsonCharacterBand.HighBmp) == JsonCharacterBand.None)
-                absent.Add(JsonCharacterBand.HighBmp);
+            var absent = new List<JsonCharacterBand>();
+            foreach (var band in JsonFactEncoding.Classes)
+                if ((held & band) == JsonCharacterBand.None)
+                    absent.Add(band);
 
             return absent;
         }

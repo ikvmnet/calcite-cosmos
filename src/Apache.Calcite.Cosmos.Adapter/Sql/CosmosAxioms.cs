@@ -43,6 +43,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         static readonly DateOnly Orders = new(2026, 10, 16);
 
+        static readonly DateOnly Stored = new(2026, 10, 19);
+
+        static readonly DateOnly Strings = new(2026, 10, 19);
+
         /// <summary>
         /// Every row, grouped by what relies on it.
         /// </summary>
@@ -227,6 +231,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.ValidityIsDefinedness",
                 "ST_ISVALID is true for exactly the documents ST_DISTANCE is defined over.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.ValidityAgreesWithDefinedness"),
+            // ── What a string function computes (CosmosStringFunctions) ─────────────────────
+
+            new("Service.LengthCountsCodePoints",
+                "LENGTH counts code points: a, U+1F600, b is 3, where Calcite's CHAR_LENGTH counts 4 UTF-16 units. Without a surrogate the two counts are one.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.LengthCountsCodePoints"),
+            new("Service.SubstringCountsUnits",
+                "SUBSTRING, LEFT and RIGHT count UTF-16 units, and a window whose edge splits a surrogate pair returns the half as U+FFFD, where Calcite returns a lone surrogate; without a surrogate they answer as Calcite's. The emulator counts code points.",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.SubstringLeftAndRightCountUnitsAndSendASplitPairAsReplacement"),
+            new("Service.IndexOfCountsUnits",
+                "INDEX_OF counts UTF-16 units, so INDEX_OF + 1 is Calcite's POSITION over every string: b in a, U+1F600, b is at 3. The emulator counts code points and answers 2.",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.IndexOfCountsUnits"),
+            new("Service.CaseMappingIsSimple",
+                "UPPER, LOWER and the case-insensitive CONTAINS, STARTSWITH and ENDSWITH map case by a simple mapping, which agrees with Java's full one over ASCII and leaves ß, U+FB00, U+017F, U+0130 and U+212A as they are. The emulator maps the last three.",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii"),
+            new("Service.TrimRemovesWhiteSpace",
+                "TRIM, LTRIM and RTRIM remove U+0020 and U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000, and nothing else in the basic plane, plane 1 or U+E0000 to U+E01EF, at either end. The emulator removes neither U+0085, U+00A0, U+180E, U+2007 nor U+202F. Read as data by the theory's trimmed class (JsonValues.IsTrimmed).",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.TrimRemovesWhiteSpace"),
+            new("Service.LoneSurrogateParameterIsNeverSent",
+                "A parameter holding a lone surrogate fails the statement before it is sent: the SDK's UTF-8 encoder refuses the unit (EncoderFallbackException), so it fails on either target where Calcite answers.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ALoneSurrogateParameterFailsBeforeItIsSent"),
+            new("Service.NulEndsWhatReplaceAndContainsRead",
+                "REPLACE and CONTAINS, both modes, read a string only up to its first U+0000, and so does a LIKE whose pattern is one run of text between two %, which the service answers as a CONTAINS: b is not found in a, U+0000, b. A search holding U+0000 matches every string, and REPLACE of one replaces every byte. INDEX_OF, STARTSWITH, ENDSWITH, LENGTH, a LIKE of any other shape and a replacement holding U+0000 read past it. The emulator stores U+0000 as U+FDD0 followed by 0. Read by the theory's class of U+0000 (JsonCharacterBand.Nul).",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.NulEndsWhatReplaceAndContainsRead"),
+            new("Service.ReplaceOfAnEmptySearchIsUndefined",
+                "REPLACE with an empty search is undefined for every string, where Calcite's is the subject.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.AReplacementOfAnEmptySearchIsUndefined"),
+            new("Service.SubstringOfANegativeStartIsEmpty",
+                "SUBSTRING with a start below 0 answers the empty string, projected, where Calcite clips the window to the string; SUBSTRING(s, 0, 0) is the empty string, projected and in a WHERE.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.AWindowStartingBeforeTheStringIsEmpty"),
+            new("Service.ReplicateStopsAtTenThousandCodePoints",
+                "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
+                CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
+            new("Calcite.StringCountsAreInUnits",
+                "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.TheCountsAreInUnits"),
+            new("Calcite.CaseMappingIsJavasFullMapping",
+                "UPPER and LOWER are Java's full case mapping: ß is SS, U+FB00 is FF, U+017F is S, U+0130 is i and U+0307, U+212A is k.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.CaseMappingIsJavasFullMapping"),
+            new("Calcite.TrimRemovesSpacesAlone",
+                "TRIM with no character named, and LTRIM and RTRIM, remove U+0020 alone: a tab, U+00A0 and U+3000 stay.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.TrimRemovesSpacesAlone"),
+            new("Calcite.SubstringClipsAWindowBeforeTheString",
+                "SUBSTRING clips a window that starts before the first character to the string: FROM 0 FOR 2 of abc is a, FROM -5 FOR 2 the empty string.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.AWindowBeforeTheFirstCharacterIsClipped"),
+            new("Calcite.RepeatOfANegativeCountIsEmpty",
+                "REPEAT of a count below one is the empty string, and nothing bounds the length of what it repeats.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.ARepetitionOfANegativeCountIsEmpty"),
+            new("Calcite.ReplaceOfAnEmptySearchIsTheSubject",
+                "REPLACE of an empty search is its subject.",
+                CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.AReplacementOfAnEmptySearchIsTheSubject"),
+
+            // ── What a document holds, read back (CosmosJson) ─────────────────────────────
+
+            new("Service.IntegerOutsideLongIsStoredAsADouble",
+                "An integer written outside int64 is stored as a double, which every query prints one way, the document read whole and the value projected alike: 9223372036854775808 comes back 9.223372036854776E+18, no BIGINT. The emulator keeps one written in [2^63, 2^64) as written, and prints it projected to 17 digits.",
+                CosmosAxiomTarget.Azure, Stored, "Measurements.CosmosStoredValueMeasurementTests.AnIntegerOutsideLongIsStoredAsADouble"),
+            new("Service.MalformedTextIsStoredAsWritten",
+                "Bytes that are not UTF-8 in a document body, in a value or in a name, are stored as a client wrote them, returned as written by every query and by a point read, and compared as bytes: a WTF-8 surrogate, CESU-8, an overlong form, a stray byte. The emulator refuses the write.",
+                CosmosAxiomTarget.Azure, Stored, "Measurements.CosmosStoredValueMeasurementTests.MalformedTextIsStoredAsWritten"),
+
             // ── The service's order (CosmosServiceOrder, CosmosContainerMetadata.IsSortSupported) ───
 
             new("Service.StringOrderIsCodePoint",

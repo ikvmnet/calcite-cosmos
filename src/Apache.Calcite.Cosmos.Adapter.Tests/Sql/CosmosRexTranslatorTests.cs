@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -36,21 +37,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             };
         }
 
-        CosmosRexTranslator Translator()
+        CosmosRexTranslator Translator() => Translator(JsonFactSet.Empty);
+
+        CosmosRexTranslator Translator(JsonFactSet facts)
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters, JsonFactSet.Empty);
+            return new CosmosRexTranslator(_rex, _fields, _parameters, facts);
         }
 
         /// <summary>
         /// A translator told that field 0 is a text rendering — a view's column, bound to the path by
         /// the projection beneath and read as text.
         /// </summary>
-        CosmosRexTranslator TranslatorOverARendering()
+        CosmosRexTranslator TranslatorOverARendering() => TranslatorOverARendering(JsonFactSet.Empty);
+
+        CosmosRexTranslator TranslatorOverARendering(JsonFactSet facts)
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters, JsonFactSet.Empty, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
+            return new CosmosRexTranslator(_rex, _fields, _parameters, facts, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
         }
+
+        /// <summary>
+        /// What a declaration says of field 0's path, <c>name</c>: that its strings hold characters of these classes
+        /// alone, which is what a string function over it asks (<c>CosmosStringFunctions</c>).
+        /// </summary>
+        static JsonFactSet Holding(JsonCharacterBand characters) =>
+            new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), new JsonClaim.Characters(characters))) }).Derive(null);
+
+        /// <summary>What a declaration says of field 0's path, <c>name</c>: these claims, outright.</summary>
+        static JsonFactSet Declaring(params JsonClaim[] claims) =>
+            new JsonFactTheory(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim))).ToArray()).Derive(null);
+
+        /// <summary>A declaration of ASCII strings holding nothing the service trims beside a space.</summary>
+        static readonly JsonFactSet Ascii = Holding(JsonCharacterBand.None);
 
         RexNode Any(RexNode node) => _rex.makeCast(_types.createSqlType(SqlTypeName.ANY), node);
 
@@ -458,10 +477,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.EQUALS, fold, Str("TRUE"))).Should().BeFalse();
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.CHAR_LENGTH, Ref(0, SqlTypeName.VARCHAR))).Should().BeFalse();
 
-            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))))
+            TranslatorOverARendering(Ascii).Translate(Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))))
                 .Should().Be("UPPER(c.name)");
 
-            Translate(fold).Should().Be("UPPER(c.name)", "and a field read as its own type is not a rendering");
+            Translator(Ascii).Translate(fold).Should().Be("UPPER(c.name)", "and a field read as its own type is not a rendering");
         }
 
         /// <remarks>
@@ -503,8 +522,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void LikeRenders()
         {
-            Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("%bike%")))
+            Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("b_ke%")))
                 .Should().Be("(c.name LIKE @p0)");
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("%bike%")))
+                .Should().Be("(c.name LIKE @p0)");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// Azure answers one run of text between two <c>%</c> as a <c>CONTAINS</c>, which reads a string only up to its
+        /// first U+0000: measured on the probe account, <c>LIKE '%b%'</c> loses <c>a</c>U+0000<c>b</c>, and so does the
+        /// case-insensitive <c>CONTAINS</c> a fold beneath one is written as, where Calcite keeps it; and a pattern holding
+        /// U+0000 there keeps every string. Every other shape measured reads past it, so only that one asks the string,
+        /// and the pattern, to hold none.
+        /// </para>
+        /// <para>
+        /// Over a path nothing is declared of, a contains is computed in process; over one declared free of U+0000 it
+        /// pushes, as every other shape does over either.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ALikeTheServiceAnswersAsAContainsAsksThatTheStringHoldNoNul()
+        {
+            foreach (var pattern in new[] { "%bike%", "%%bike%", "%bike%%" })
+            {
+                CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeFalse(pattern + " over a string that may hold U+0000");
+                CanTranslate(Translator(Holding(JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeFalse(pattern);
+                CanTranslate(Translator(Holding(JsonCharacterBand.Any & ~JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeTrue(pattern + " over a string holding no U+0000");
+            }
+
+            foreach (var pattern in new[] { "%a%b%", "%_ke%", "%ke", "bi%", "b_ke", "bi%ke" })
+                CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeTrue(pattern + " reads past U+0000");
+
+            CanTranslate(Translator(Holding(JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%SS%")))
+                .Should().BeFalse("the case-insensitive CONTAINS reads up to U+0000 as the LIKE it stands for does");
+            Translator(Holding(JsonCharacterBand.Nul)).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("SS%")))
+                .Should().Be("STARTSWITH(c.name, @p0, true)", "STARTSWITH reads past it");
         }
 
         /// <remarks>
@@ -564,7 +617,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void ACaseFoldUnderASubstringPatternRendersAsCaseInsensitiveContains()
         {
-            var t = Translator();
+            var t = Translator(Ascii);
             t.Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%ACADIA%")))
                 .Should().Be("CONTAINS(c.name, @p0, true)");
 
@@ -574,10 +627,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void ACaseFoldUnderAPrefixOrSuffixPatternRendersAsCaseInsensitiveStartsOrEndsWith()
         {
-            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("acadia%")))
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("acadia%")))
                 .Should().Be("STARTSWITH(c.name, @p0, true)");
 
-            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%PARK")))
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%PARK")))
                 .Should().Be("ENDSWITH(c.name, @p0, true)");
         }
 
@@ -592,11 +645,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void ACaseFoldUnderAnyOtherPatternStaysLike()
         {
             foreach (var pattern in new[] { "%acadia%", "%ACA_IA%", "%ACA%IA%", "%ÄCADIA%", "ACADIA" })
-                Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str(pattern)))
+                Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str(pattern)))
                     .Should().Be("(UPPER(c.name) LIKE @p0)", "for the pattern " + pattern);
 
-            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("%Acadia%")))
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("%Acadia%")))
                 .Should().Be("(LOWER(c.name) LIKE @p0)");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// The case-insensitive match folds under the service's mapping, and so does the service's <c>UPPER</c>; both
+        /// agree with Calcite's over ASCII alone. Measured, <c>UPPER(s) LIKE '%SS%'</c> rewritten as
+        /// <c>CONTAINS(s, 'SS', true)</c> lost <c>aßb</c>, which Calcite keeps, on both targets. So a fold under a pattern
+        /// asks what the fold asks, of the value as of the pattern's text, and over a path whose strings nothing proves
+        /// ASCII it is not pushed at all, in either spelling.
+        /// </para>
+        /// <para>
+        /// A tab is ASCII: a string the service would trim differently still folds alike.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACaseFoldUnderAPatternAsksThatTheValueBeAscii()
+        {
+            var contains = Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%SS%"));
+            var pattern = Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("A__B"));
+
+            CanTranslate(Translator(), contains).Should().BeFalse("nothing says what the path holds");
+            CanTranslate(Translator(Holding(JsonCharacterBand.NonAscii)), contains).Should().BeFalse("ß is below U+D800 and no ASCII");
+            CanTranslate(Translator(Holding(JsonCharacterBand.NonAscii)), pattern).Should().BeFalse("nor is UPPER(s) LIKE pushed as written");
+            CanTranslate(Translator(Holding(JsonCharacterBand.HighBmp)), contains).Should().BeFalse();
+
+            Translator(Holding(JsonCharacterBand.Trimmed)).Translate(contains).Should().Be("CONTAINS(c.name, @p0, true)");
+            Translator(Holding(JsonCharacterBand.Trimmed)).Translate(pattern).Should().Be("(UPPER(c.name) LIKE @p0)");
         }
 
         // ── A field bound to a text rendering ─────────────────────────────────────
@@ -646,7 +726,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void ACastOfARenderedFieldToAnyIsTheRawValue()
         {
-            var t = TranslatorOverARendering();
+            var t = TranslatorOverARendering(Ascii);
 
             t.Translate(Call(SqlStdOperatorTable.GREATER_THAN, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes")))
                 .Should().Be("(c.name > @p0)");
@@ -661,17 +741,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         // ── Scalar functions ──────────────────────────────────────────────────────
 
         /// <remarks>
-        /// Spelled alike at both ends, and meaning alike: the count is a character count and both
-        /// clamp rather than fail where it exceeds the string.
+        /// Spelled alike at both ends, and meaning alike where the string holds no surrogate: the count
+        /// is a character count and both clamp rather than fail where it exceeds the string. Azure counts
+        /// UTF-16 units and sends half a pair as U+FFFD, so a declaration of everything but the surrogates
+        /// is what lets them push.
         /// </remarks>
         [Fact]
         public void LeftAndRightRenderUnchanged()
         {
-            Translate(Call(SqlLibraryOperators.LEFT, Ref(0, SqlTypeName.VARCHAR), Num(3)))
+            var noSurrogate = Holding(JsonCharacterBand.HighBmp | JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed);
+
+            Translator(noSurrogate).Translate(Call(SqlLibraryOperators.LEFT, Ref(0, SqlTypeName.VARCHAR), Num(3)))
                 .Should().Be("LEFT(c.name, @p0)");
 
-            Translate(Call(SqlLibraryOperators.RIGHT, Ref(0, SqlTypeName.VARCHAR), Num(3)))
+            Translator(noSurrogate).Translate(Call(SqlLibraryOperators.RIGHT, Ref(0, SqlTypeName.VARCHAR), Num(3)))
                 .Should().Be("RIGHT(c.name, @p0)");
+
+            CanTranslate(Translator(), Call(SqlLibraryOperators.LEFT, Ref(0, SqlTypeName.VARCHAR), Num(3))).Should().BeFalse();
         }
 
         [Fact]
@@ -683,12 +769,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <remarks>
         /// The one string function whose name differs: SQL repeats with <c>REPEAT</c> and Cosmos
-        /// with <c>REPLICATE</c>, same arguments in the same order.
+        /// with <c>REPLICATE</c>, same arguments in the same order — over a string whose length the
+        /// facts bound, the service's repeating no further than 10,000 code points.
         /// </remarks>
         [Fact]
         public void RepeatBecomesReplicate()
         {
-            Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
+            Translator(Declaring(new JsonClaim.OneOf(new JsonScalar[] { "bikes", "cars" }))).Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
                 .Should().Be("REPLICATE(c.name, @p0)");
         }
 
@@ -711,8 +798,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void SubstringIsStillShifted()
         {
-            Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(1), Num(3)))
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(1), Num(3)))
                 .Should().Be("SUBSTRING(c.name, (@p0 - 1), @p1)");
+        }
+
+        /// <remarks>
+        /// Calcite clips a window that starts before the string — <c>SUBSTRING('abc' FROM 0 FOR 2)</c> is <c>'a'</c> — and
+        /// the service answers a negative start with the empty string, projected on both targets and against
+        /// <c>''</c> in a <c>WHERE</c> on Azure for nothing but the empty string. So a start not proved at least one is
+        /// written with the clip: from 0, for <c>start + length - 1</c> and no less than 0. A literal start of one or
+        /// more, or a path the facts bound there, is shifted alone.
+        /// </remarks>
+        [Fact]
+        public void ASubstringStartNotProvedAtLeastOneIsClippedAsCalciteClipsIt()
+        {
+            var t = Translator(Ascii);
+            var zero = t.Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(0), Num(2)));
+            zero.Should().Be("SUBSTRING(c.name, (@p0 < 1 ? 0 : (@p0 - 1)), (@p0 < 1 ? (((@p0 + @p1) < 1) ? 0 : ((@p0 + @p1) - 1)) : @p1))",
+                "the start and the length are written once each and read where the clip needs them");
+            _parameters.Parameters.Select(p => p.Value).Should().Equal(0L, 2L);
+
+            var parameter = _rex.makeDynamicParam(_types.createSqlType(SqlTypeName.INTEGER), 0);
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), parameter, Num(2)))
+                .Should().StartWith("SUBSTRING(c.name, (", "a parameter may be anything until it is bound").And.Contain("< 1 ? 0 :");
+
+            var position = Call(SqlStdOperatorTable.POSITION, Str("x"), Ref(0, SqlTypeName.VARCHAR));
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), position, Num(2)))
+                .Should().Contain("((INDEX_OF(c.name, @p0) + 1) < 1 ? 0 : ", "a POSITION is 0 where nothing is found");
         }
 
         [Fact]
@@ -1006,15 +1118,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>LIKE</c> over a <c>VARIANT</c> column is over the raw path, as it was over the bare
         /// <c>ANY</c> column: the coercion to <c>VARCHAR</c> the operator forces is unwrapped and the
         /// prefix pushes as <c>STARTSWITH</c>, the case-folded suffix as <c>ENDSWITH</c>, needing no
-        /// rendering guard. See <c>CosmosRexTranslator.StripTextCoercion</c>.
+        /// rendering guard. See <c>CosmosRexTranslator.StripTextCoercion</c>. The fold asks its
+        /// argument to be ASCII, and the cast to text of the value the path holds is what the path's
+        /// characters say only where it holds scalars: an object cast to text is the JSON of what it
+        /// holds.
         /// </remarks>
         [Fact]
         public void LikeOverAVariantColumnPushesOverTheRawPath()
         {
             Translate(Call(SqlStdOperatorTable.LIKE, Cast(Variant(0), SqlTypeName.VARCHAR), Str("bi%")))
                 .Should().Be("STARTSWITH(c.name, @p0)");
-            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Cast(Variant(0), SqlTypeName.VARCHAR)), Str("%KES")))
+
+            var fold = Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Cast(Variant(0), SqlTypeName.VARCHAR)), Str("%KES"));
+            Translator(Declaring(new JsonClaim.Characters(JsonCharacterBand.None), new JsonClaim.OfType(JsonType.String, OrNull: true))).Translate(fold)
                 .Should().Be("ENDSWITH(c.name, @p0, true)");
+            CanTranslate(Translator(Ascii), fold).Should().BeFalse("ASCII if a string, and nothing says it is not an object");
         }
 
     }

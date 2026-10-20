@@ -282,8 +282,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Parameter p:
                     return world.Parameter(p);
 
+                case SqlValue.Call c:
+                    return Call(c, document, world);
+
                 default:
                     throw new NotSupportedException(value.ToString());
+            }
+        }
+
+        /// <summary>
+        /// A string function of values, as Calcite computes it in process: by its runtime's own functions
+        /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise. A
+        /// <c>CASE</c>, read as its arms, takes the arm a coin chooses, the conditions not being read.
+        /// </summary>
+        static SqlDatum Call(SqlValue.Call call, J.Obj document, World world)
+        {
+            if (call.Function == "CASE")
+                return Read(call.Operands[world.Pick(call.Operands.Count, call + " @ " + Documents.Json(document))], document, world);
+
+            var operands = call.Operands.Select(operand => Read(operand, document, world)).ToArray();
+            if (operands.Any(operand => operand is SqlDatum.Raised))
+                return SqlDatum.Raise;
+
+            if (operands.Any(operand => operand is SqlDatum.NullDatum))
+                return SqlDatum.Null;
+
+            string Text(int i) => operands[i] is SqlDatum.Text t ? t.Value : throw new InvalidOperationException($"{call} reads no text at {i}: the generator built a call the loader never does.");
+            int Count(int i) => operands[i] is SqlDatum.Exact e ? (int)e.Value : throw new InvalidOperationException($"{call} reads no count at {i}.");
+
+            try
+            {
+                return new SqlDatum.Text(call.Function switch
+                {
+                    "||" or "CONCAT" => string.Concat(Enumerable.Range(0, operands.Length).Select(Text)),
+                    "UPPER" => org.apache.calcite.runtime.SqlFunctions.upper(Text(0)),
+                    "LOWER" => org.apache.calcite.runtime.SqlFunctions.lower(Text(0)),
+                    "SUBSTRING" => org.apache.calcite.runtime.SqlFunctions.substring(Text(0), Count(1), Count(2)),
+                    "LEFT" => org.apache.calcite.runtime.SqlFunctions.left(Text(0), Count(1)),
+                    "RIGHT" => org.apache.calcite.runtime.SqlFunctions.right(Text(0), Count(1)),
+                    "REVERSE" => org.apache.calcite.runtime.SqlFunctions.reverse(Text(0)),
+                    "REPEAT" => org.apache.calcite.runtime.SqlFunctions.repeat(Text(0), Count(1)),
+                    "REPLACE" => org.apache.calcite.runtime.SqlFunctions.replace(Text(0), Text(1), Text(2), true),
+                    "TRIM BOTH" => org.apache.calcite.runtime.SqlFunctions.trim(true, true, Text(0), Text(1)),
+                    "TRIM LEADING" => org.apache.calcite.runtime.SqlFunctions.trim(true, false, Text(0), Text(1)),
+                    "TRIM TRAILING" => org.apache.calcite.runtime.SqlFunctions.trim(false, true, Text(0), Text(1)),
+                    _ => throw new NotSupportedException(call.Function),
+                });
+            }
+            catch (java.lang.RuntimeException)
+            {
+                return SqlDatum.Raise;
             }
         }
 

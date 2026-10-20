@@ -1332,16 +1332,73 @@ the distribution the gate is sized for.
   binds such a column to the bare path as text, which is why #181's boolean cast refuses a field. The
   sound answer is to address no path for a clause that substitutes a value; rendering `DEFAULT … ON
   EMPTY` as an `IS_DEFINED` ternary is the cheaper one, once Calcite's own answers are measured.
-- **Pushed string functions count characters their own way** — *a wrong answer, outside the sort work,
-  and the two services differ.* Measured on the probe account: `SUBSTRING`, `LEFT`, `RIGHT` and
-  `INDEX_OF` count UTF-16 code units on Azure and code points on the emulator, and `LENGTH` counts code
-  points on both. Calcite counts UTF-16 code units. So `CHAR_LENGTH` rendered as `LENGTH` is wrong on
-  both wherever a string holds a character beyond U+FFFF, and the other four are right on Azure and
-  wrong on the emulator the suite runs on. The `ORDER BY` yardstick meets it with `CHAR_LENGTH` as a
-  key (`DESIGN.md`, *Differential testing*: the family *a string function counts code points*). The
-  measurement belongs in `Sql/CosmosAxioms.cs` as two rows, one per target; `LENGTH` then pushes only
-  where the path's characters are declared below U+D800, and the four only where the target is
-  Azure or the characters are so declared.
+- **A string function pushes only where its characters are proved, and could push more** — *medium; what
+  is left of a wrong answer closed.* `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `UPPER`, `LOWER`, the
+  case-insensitive `LIKE` rewrites and the trims were pushed exactly over any declared string, and were wrong
+  where a string held a character beyond U+FFFF, ß or the Kelvin sign, or white space at an end
+  (`reports/verify-strings.md`). Each now pushes only where the facts prove the classes of character it needs
+  absent, and is computed in process otherwise (`Sql/CosmosStringFunctions.cs`; `DESIGN.md`, *What a string
+  function computes, asked of its characters*). What is left:
+  - **A weakening that would push them anyway** — *not built.* A filter could be sent as `(<pushed>) OR
+    RegexMatch(c.s, "[\\x{10000}-\\x{10FFFF}]")` for a count, `"[^\\x00-\\x7F]"` for a case mapping, a test of
+    the trimmed class at either end for a trim, with Calcite's filter kept above: the rows without the class are
+    exact, and the rows with it are shipped and Calcite decides them. A projection would select a fallback
+    member under a name no column has, keyed on the same test, and the reader would compute Calcite's value
+    from it. **The warning:** a pattern `RegexMatch` cannot compile answers undefined, not an error, and an
+    `OR` arm that is undefined drops the row it was there to keep — `RegexMatch(c.s, "(")` keeps nothing, and
+    neither does its `NOT` (`reports/azure-axioms.md` 3.4). Each disjunct has to be one measured to compile on
+    Azure and the emulator alike, as `[\x{10000}-\x{10FFFF}]` is. For `CHAR_LENGTH(s) = n` an index-friendly
+    form exists, units lying between code points and twice them: `LENGTH(c.s) BETWEEN ceil(n/2) AND n`.
+  - **`LIKE` over a declared string** — *done.* It was refused as a rendering whatever was declared, and the
+    filter read whole documents where the same statement over an undeclared path pushed as a weakening. A path
+    declared a string renders as the string, so it is pushed exactly as every other operator over one is: a
+    prefix as `STARTSWITH`, another pattern as the service's `LIKE`, the containment shape only where the
+    subject holds no U+0000, and a fold beneath one as the case-insensitive match where it is proved ASCII too
+    (`CosmosDeclaredFactPlanningTests.ALikeOverAPathDeclaredAStringPushesExactly`).
+  - **A declined function in a filter reads whole documents** — *a missed pushdown, small.* In a projection a
+    function the service does not compute over a plain column now sends the column alone, `{"$f0": c.id}`
+    (`CosmosProjectSplitRule.Narrows`), as it sends an accessor. In a filter, `WHERE UPPER(c."id") = 'AB'` over
+    an `id` nothing proves ASCII is Calcite's, above a scan with no projection, and every document arrives whole
+    though one property is read; beside a conjunct that pushes, the same, over fewer. Calcite's
+    `PROJECT_FILTER_TRANSPOSE` would put the columns the filter and the projection read beneath the filter,
+    where the split sends them; it is not in the rule set, and moving every residual filter's projection
+    reshapes plans across the corpus, so it wants its own measurement.
+  - **`_etag` declines what Azure's etags would push** — *decided, not a defect.* RFC 9110's grammar admits
+    `obs-text`, 0x80 to 0xFF, read as U+0080 to U+00FF, so the theory gives `_etag` N and two of W (U+0085,
+    U+00A0), and `UPPER`, `LOWER` and `TRIM` over it are computed in process, the property alone sent
+    (`Metadata/CosmosServiceFacts.cs`). The etags Azure issues are a quoted GUID, ASCII; stating that would be a
+    fact measured on Azure and not the grammar, which no axiom row pins. Measured and pinned, it would narrow
+    the grammar to `"`, `!` and 0x23 to 0x7E.
+  - **`REPEAT` and `REPLACE` read a length, and only a domain states one** — *small.* `REPEAT` pushes where its
+    subject's length keeps the result within Azure's 10,000 code points, and `REPLACE` where its search holds
+    something; a literal knows its own length, and a domain — an `enum`, a `const` — bounds a path's
+    (`JsonValues.LengthsOf`). The schema reader does not read `minLength` or `maxLength`, which count code
+    points: a `minLength` of n bounds the UTF-16 units from below by n and a `maxLength` of n from above by 2n,
+    which is all the theory's units need of them (below, *The other bounds*).
+  - **The emulator's U+0000, `REPLICATE` and `REPLACE` are not Azure's** — *recorded.* It stores U+0000 as
+    U+FDD0 followed by `0`, so every function over such a string differs; its `REPLICATE` has no limit; and a
+    parameter holding U+0000 in `REPLACE`'s replacement or a `CONCAT` fails the statement with 500
+    `PostgresError(E22P05)` (Appendix E). Azure is the target, so none of them is declined. The differential
+    corpus holds no U+0000 and no repetition near the limit, and the measurement tests that pin Azure's rows
+    skip on the emulator's.
+  - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
+    *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
+    from parameters alone is computed above the statement and never sent; and a parameter the service reads is
+    refused by name when it is bound (`CosmosQueries.Bind`, `Client/CosmosEncodable.cs`), where Calcite would have
+    answered. A plan that reads a fallback for such a value — the filter's rows unfiltered, Calcite's filter above —
+    is what would answer it.
+  - **`POSITION` over a supplementary character differs on the emulator**, whose `INDEX_OF` counts code points;
+    Azure's counts units as Calcite does, and the function is pushed (`Service.IndexOfCountsUnits`). The
+    differential corpus asks it only over strings without one, and the `ORDER BY` yardstick names it as the
+    family it meets (`Findings`).
+  - **A function over a parameter, or over an array's element,** is computed in process: a parameter may hold
+    anything until it is bound, and an element is no path a fact is about (below). Deciding a parameter's
+    characters as its value arrives, as the anchored read does, would push the first. **What it would reach
+    first:** on Azure, `WHERE REVERSE(c.s) = @p` keeps nothing where `@p` holds a character beyond U+FFFF,
+    though the same comparison projected is true, and the ternary the adapter writes behaves the same
+    (`reports/verify-strings.md` §4.4). `REVERSE` asks nothing because it is measured to agree projected; a
+    filter comparing it with such a parameter is not measured to, and would have to ask S of the parameter, or
+    be measured, before it pushes.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
@@ -1986,7 +2043,9 @@ holds. Three bugs planted in what was added were each caught by it.
 - **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
-  rest, and the adapter has no claim for them, so the reader states none.
+  rest, and the adapter has no claim for them, so the reader states none. The lengths have a reader waiting:
+  `REPEAT` and `REPLACE` ask one of their operands (above, *A string function pushes only where its characters are
+  proved*).
 - **Gap 1 spelled per kind** — *done.* `(type = 'park' AND …) OR (type = 'map' AND …)` proves what both kinds
   declare, by the predicate oracle's split over the arms, which the rewriter asks; a UUID comparison beside it is
   lowered (`CosmosPushdownProbeTests`' "each kind spelled per arm", held to Calcite by `CosmosDifferentialTests`).
@@ -2334,25 +2393,87 @@ across documents* and *A join of a container to itself* is the record.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
   numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
   so the basis is asked of the service per row.
-- **A lone surrogate is stored on Azure and cannot be read back** — *small, and the decision is what to
-  answer.* Measured on the probe account: a `\ud800` escape is stored as U+FFFD, and the raw bytes
-  `ED A0 80` (WTF-8 for U+D800) are stored verbatim and come back as invalid UTF-8, which
-  `JsonElement.GetString()` refuses (*"Cannot transcode invalid UTF-8 JSON text to UTF-16 string"*).
-  The emulator refuses both writes with a 403. A document another client wrote that way fails every
-  statement whose rows reach it. Either the failure names the document, or the reader reads the
-  sequence as U+FFFD, which is what the service itself did with the escape. Nothing orders them
-  wrongly meanwhile: U+FFFD and a surrogate both lie at or above U+D800, which R1 already refuses to rank
-  against a high unit, and what a declared `pattern` that admits a surrogate proves of the stored strings'
-  high band is nothing, by the theory's rule of what is stored (`Service.LoneSurrogateIsStoredAsReplacement`,
-  `DESIGN.md`, *Reading a pattern as characters*).
-- **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
-  returns a document read whole as it was written, and prints a projected number to 17 significant
-  digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and
-  `9223372036854775800` through `c.v`, so a pushed projection answers another number than the plan
-  that reads the document, and `RETURNING BIGINT` raises over the first and reads the second. The
-  `ORDER BY` yardstick meets it (`DESIGN.md`, *Differential testing*: the family *a double printed two
-  ways*). Azure reads 2^63 back as `9.223372036854776E+18`; whether a projection and a document read
-  whole agree there is unmeasured, and decides whether this is the emulator's alone.
+- **Text that is not UTF-8 is refused by name** — *done; a lenient reading of a lone surrogate is the
+  option left.* Measured on the probe account (`reports/verify-bytes.md` §2): Azure validates nothing about
+  UTF-8 in a document body. Any sequence a client writes raw is stored, returned by every query and by a
+  point read, and compared as written — a WTF-8 surrogate, a CESU-8 pair, `FF`, the overlong `C0 AF`, a
+  lone continuation byte, in a value or in a property name (`Service.MalformedTextIsStoredAsWritten`). A
+  lone surrogate written as a JSON escape is the exception, stored as U+FFFD
+  (`Service.LoneSurrogateIsStoredAsReplacement`). The emulator refuses every such write, with a 403 or, on
+  the image CI runs, a 400.
+
+  Every reading refuses such a value with a `CosmosMaterializationException` naming the column or path,
+  the document where the row says which, where in the value the bytes lie, and the bytes
+  (`CosmosJson.Undecodable`; `docs/22-troubleshooting.md`). It used to fail with *"Cannot transcode invalid
+  UTF-8 JSON text to UTF-16 string"*, which names nothing, mid-stream; and a projected `JSON_QUERY`, which
+  writes the value out rather than decoding it, answered each byte as an escaped U+FFFD without a word. It
+  looks for the bytes first now. So does the reader completing an order, over its text keys, and a
+  `DISTINCT`'s repeat is told apart by the bytes. The failure is per decoded value, not per row or per
+  partition: a statement fails exactly where a row carries the bytes into a reading, and one whose rows
+  leave the value out is answered, in the same logical partition too. Every plan that is not pushed in full
+  reads `DOC` for every document it scans, though, so one such document fails all of those over its
+  container.
+
+  **U+FFFD is no reading of them**, and was dropped as a candidate. The service compares the bytes as they
+  are and counts a sequence by its lead byte: it ranks `80` and `C0 AF` below U+00E9, and says the raw
+  document is not the one U+FFFD would make of it. Calcite would rank the replacement above every unit
+  below U+D800, and call the two equal. The document column would stop being the text the service sent.
+
+  **The option left, only if raw lone surrogates from other clients turn out to matter:** read a WTF-8
+  surrogate (`ED A0`–`BF 80`–`BF`) as the lone UTF-16 unit it encodes, and go on refusing every other
+  invalid sequence. It is the one lenient reading that agrees with the service: Azure ranks `ED A0 80`
+  between U+D7FF and U+E000, where Calcite's UTF-16 order puts U+D800; `LENGTH` counts it as 1, as
+  `CHAR_LENGTH` counts one unit; R1 already places a string holding a unit at or above U+D800 in the high
+  band; and a Java string can hold one. A CESU-8 pair read so becomes the UTF-16 pair, which the service
+  ranks as two surrogates and counts as 2. It needs a transcoder of its own, `System.Text.Json` having
+  none, so it is not small. `FF`, `C0 AF` and a lone `80` have no such reading and must still fail.
+- **A projected `JSON_QUERY` is written out by another writer than Calcite's** — *small, a wrong answer, found
+  beside the work on bytes and not yet fixed.* `CosmosJson.GetJsonTextProperty` writes the fragment with
+  `Utf8JsonWriter`'s default encoder, which escapes every character outside ASCII and the HTML-sensitive ones,
+  and copies a number's text as stored. Calcite's own `JSON_QUERY` writes through Jackson, which escapes
+  neither and re-renders a number from what it parsed. Measured in process on 2026-10-19: over
+  `{"t":"é","u":"<>&"}` Calcite answers `{"t":"é","u":"<>&"}`, and the reader answers
+  `{"t":"\u00E9","u":"\u003C\u003E\u0026"}`. So the pushed column is another string than the in-process one
+  wherever a fragment holds such a character, and by the same token wherever it holds a number Jackson would
+  print otherwise (`1.50` as `1.5`). The rendering should be delegated as `GetText`'s is, to the function
+  Calcite writes the fragment with, over the value built as Calcite would hold it: a number past int64 is a
+  `BigInteger` to Jackson and a `Double` to `GetNatural`, so that reading needs care too.
+- **An integer written in [2^63, 2^64) reads back two ways on the emulator** — *the emulator's alone,
+  measured.* The emulator keeps such an integer as written and returns it so in a document read whole,
+  but prints it projected as the double nearest it, to 17 significant digits: 2^63 reads
+  `9223372036854775808` through `SELECT VALUE c` and `9223372036854775800` through `c.v`. So a pushed
+  projection answers another number than the plan that reads the document. Nothing else prints two ways
+  on it: 2^53 + 1, 2^63 - 1, -2^63 - 1 and 2^64 each read back one way. Azure stores every integer
+  written outside int64 as a double and prints it one way, whole or projected
+  (`Service.IntegerOutsideLongIsStoredAsADouble`), so there the two plans agree (`reports/verify-bytes.md`
+  §1). The `ORDER BY` yardstick's family *a double printed two ways* is exactly this now: it is named only
+  where reading each printing as the double it stands for leaves the rows agreeing (`DESIGN.md`,
+  *Differential testing*). It used to be named wherever a differing row held any number past 2^53, which
+  could have hidden a real difference anywhere in [2^53, 2^63).
+
+  The adapter's own wrong value beside it is fixed: `RETURNING BIGINT` over Azure's
+  `9.223372036854776E+18` answered `9223372036854775807`, `CosmosJson.GetInteger` letting the double 2^63
+  past a bound that was 2^63 itself and then saturating. It refuses now, as Calcite does in process. The
+  emulator's `9223372036854775800` is valid int64 text, which no reader can tell from a stored integer;
+  that one stays the emulator's.
+- **Whether a reading can refuse is asked by its type alone** — *small; it decides how often a filter in
+  process reads whole documents.* A typed reading that can refuse a value (`CosmosJson.CanRefuse`: an
+  integral width, a date or time, a UUID, GeoJSON, base64) is no longer moved beneath a filter that stays in
+  process, since there it was read for rows the filter drops and failed the statement where Calcite answers.
+  The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
+  (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
+  did before #210. A path the schema declares an integer within the width's bounds, or a `date-time`
+  string, cannot be refused, and could move. That is a fact about documents, so the question belongs to
+  the theory rather than to a second list in C#.
+- **A refusing reading under a branch Calcite does not take** — *small, a failure where Calcite answers;
+  found beside the fix above, and not yet fixed.* `CosmosProjectSplitRule` pushes the sub-expressions of a
+  projection it cannot push whole, and each is read for every row the service sends. Calcite computes a
+  `CASE` branch only where its condition holds, so
+  `CASE WHEN LOWER(JSON_VALUE(c."DOC", '$.e')) = 'x' THEN JSON_VALUE(c."DOC", '$.w' RETURNING BIGINT) END`
+  sends `(IS_NUMBER(c.w) ? c.w : null)` as a column, planned on 2026-10-20, and a 1E+19 at `w` would fail
+  the statement where the condition is false and Calcite answers null. `COALESCE`'s later operands, and the
+  right side of an `AND` or `OR` Calcite short-circuits, are the same question. The fix is the one above:
+  such a fragment, where a branch guards it and its reading can refuse, is not pushed.
 
 ---
 
@@ -2452,8 +2573,9 @@ across documents* and *A join of a container to itself* is the record.
   expected: text across U+D800, undefined and null on a leading key, 2^63 read back, and `_etag`, which
   Azure refuses to order by. Since the anchored read neither fails, the floors (`PushedFloors`) hold what
   each container pushes, and the model asks the one place by default. Two families of wrong answer that
-  are no order's are reported apart where the statement sent no order (`Findings`): `CHAR_LENGTH` pushed
-  as `LENGTH` (section 4) and the emulator's double printed two ways (section 7). Owed:
+  are no order's, both the emulator's, are reported apart where the statement sent no order (`Findings`):
+  `INDEX_OF` counting code points (section 4; `CHAR_LENGTH` pushed as `LENGTH` was here, and no longer pushes
+  over text of any character) and the integer in [2^63, 2^64) printed two ways (section 7). Owed:
   - **The merge, on Azure.** `CosmosOrderMergeMeasurementTests` has not run, no container with two
     physical partitions existing now; it runs against one the caller names (appendix E), and runs the
     reader itself over the merge beside measuring it.
@@ -2494,10 +2616,6 @@ across documents* and *A join of a container to itself* is the record.
   reads them through a named column alone, and unnamed stays inside the table, so population D does not yet hold the
   table to them. Adding `Raises` changes verdicts; and the rendering graph's raw cells, which union the three columns,
   meet the same raise outside the coarse answer.
-- **A `BIGINT` column reads 2^63 as a number it does not hold** — *small.* `CosmosJson.GetInteger` checks a number
-  read as a double against the type's bounds widened to double, where 2^63 is not above `long.MaxValue`, and the cast
-  that follows reads 2^63 as 2^63 − 1 on net10.0 and as −2^63 on net8.0. Found while measuring the column reader; the
-  measurement leaves 2^63 out, and `IrEval`'s column mode refuses it as the reader should.
 - **A `BIGINT` compared with a fraction raises near its limit** — *small.* Calcite raises comparing 2^63 − 1 in a
   `BIGINT` column with `42.5`, where it compares 2^53 + 1. Neither mode of `IrEval` models it, and nothing it is held
   to reaches it; the typed orderings over number cells should.

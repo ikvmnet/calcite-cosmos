@@ -29,8 +29,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <para>
     /// The six of Stage 1's plan, and a seventh that only C5 sees: a union of two predicates, which is the trap a
     /// property of a context written as a property of a term becomes under congruence. An eighth is a declaration's
-    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind. Two more are the
-    /// characters' own: a value's read narrower than it is, and an arm's stated of its disjunction. And two are the
+    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind. Five more are the
+    /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them,
+    /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
     /// one value in every document without the path's presence.
     /// </para>
@@ -157,6 +158,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 r.When(d.Is(rules.Json.Dom.Of(p)));
                 r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(SurrogateBand))));
             })), "fact");
+
+        /// <summary>
+        /// A value's characters read without those outside ASCII below the surrogates: what a domain says of a path stated
+        /// narrower than the strings it names, ß or the Kelvin sign read as ASCII, which would let a case mapping push.
+        /// </summary>
+        [Fact]
+        public void AValuesCharactersReadAsAsciiBelowTheSurrogatesAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a value's characters below U+D800 are ASCII", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(NonAsciiBand))));
+            })), "fact");
+
+        /// <summary>
+        /// A value's characters read without those the service trims: a tab or U+00A0 in a domain left out of what it says
+        /// of a path, which would let a trim push.
+        /// </summary>
+        [Fact]
+        public void AValuesCharactersReadWithoutWhatTheServiceTrimsAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a value's characters are none the service trims", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(TrimmedClass))));
+            })), "fact");
+
+        /// <summary>
+        /// A value's characters read without U+0000: a domain holding one stated of a path as holding none, which would let
+        /// a <c>REPLACE</c>, or a <c>LIKE</c> the service answers as a <c>CONTAINS</c>, push over a string they read only
+        /// part of.
+        /// </summary>
+        [Fact]
+        public void AValuesCharactersReadWithoutItsNulAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a value's characters hold no U+0000", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(NulClass))));
+            })), "fact");
+
+        /// <summary>
+        /// A call's characters read off its first operand alone: a concatenation said to hold what its left side holds, as
+        /// a C# conjunction of questions that stopped at the first would, which the theory's join over every operand does
+        /// not.
+        /// </summary>
+        [Fact]
+        public void ACallsCharactersReadOffItsFirstOperandAloneAreCaught() => Caught(Planted(rules =>
+            rules.Characters.DefineRule("planted: a call holds what its first operand holds", r =>
+            {
+                var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
+                var (h, f, c) = r.Vars<Val, string, ValueSet<string>>("h", "f", "c");
+                r.When(rules.Walk.Of(v, 0L, a), a.Is(rules.Ir.Operand.Of(h, t)), v.Is(rules.Ir.Call.Of(f, x)), c.Is(rules.ValueChars.Of(h)));
+                r.Where(f, function => function is "||" or "CONCAT" or "CASE");
+                r.Then(rules.ValueChars.Of(v).Is(c));
+            })), "computed");
+
+        /// <summary>
+        /// An upper-case mapping read as keeping every class where it was: Java's full mapping takes U+FB13, from U+E000,
+        /// to Armenian letters below U+D800, which a string from the high band then holds.
+        /// </summary>
+        [Fact]
+        public void AnUpperCaseMappingReadAsKeepingItsClassesIsCaught() => Caught(Planted(rules =>
+            rules.Characters.DefineRule("planted: an upper-case mapping holds what it maps", r =>
+            {
+                var (v, a, t) = r.Vars<Val, Args, Args>("v", "a", "t");
+                var (h, c) = r.Vars<Val, ValueSet<string>>("h", "c");
+                r.When(v.Is(rules.Ir.Call.Of("UPPER", a)), a.Is(rules.Ir.Operand.Of(h, t)), c.Is(rules.ValueChars.Of(h)));
+                r.Then(rules.ValueChars.Of(v).Is(c));
+            })), "computed");
 
         /// <summary>
         /// A domain's numbers read as bounding the path from above their least: the rule that bounds a path by its

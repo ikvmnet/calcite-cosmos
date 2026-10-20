@@ -331,9 +331,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case RexCall call when IsDocumentValue(call) && Document(call) is JsonDocumentPath item:
                         return new SqlValue.Raw(item);
 
+                    case RexCall call:
+                        return Computed(call);
+
                     default:
                         return null;
                 }
+            }
+
+            /// <summary>
+            /// Reads a value, for a question of what it holds rather than of what a filter keeps: a reading of a path, a
+            /// literal, a parameter, or a function of values; <c>null</c> where it is none of these.
+            /// </summary>
+            /// <remarks>
+            /// What a string function asks of its argument's characters is asked of the value this reads
+            /// (<c>JsonFactSet.CharactersOf</c>), so the translator's question and the oracle's terms are read by one
+            /// reader of a <see cref="RexNode"/>.
+            /// </remarks>
+            public SqlValue? ReadValue(RexNode node)
+            {
+                lock (_lock)
+                    return Value(node);
+            }
+
+            /// <summary>
+            /// Reads a function of values: its operator's name, and each operand read as a value; <c>null</c> where one is
+            /// not read.
+            /// </summary>
+            /// <remarks>
+            /// Spelled as the operator is, so that what the theory knows of a function is what it knows of that name. Two
+            /// operators carry symbols beside their values, and the symbols are spelled into the name: a <c>TRIM</c>'s flag,
+            /// <c>TRIM BOTH</c>, and a <c>CASE</c>'s conditions, which choose an arm and are no part of its value, so that it
+            /// is read as its arms. A cast is read only from text to text, a conversion being a function of its own.
+            /// </remarks>
+            SqlValue.Call? Computed(RexCall call)
+            {
+                var operands = Operands(call).ToList();
+                string function;
+                IEnumerable<RexNode> read;
+
+                switch (call.getKind().name())
+                {
+                    case nameof(SqlKind.__Enum.TRIM) when operands.Count == 3 && operands[0] is RexLiteral { } specification && specification.getValue() is org.apache.calcite.sql.fun.SqlTrimFunction.Flag flag:
+                        function = "TRIM " + flag.name();
+                        read = operands.Skip(1);
+                        break;
+
+                    case nameof(SqlKind.__Enum.CASE) when operands.Count % 2 == 1:
+                        function = "CASE";
+                        read = operands.Where((_, i) => i % 2 == 1 || i == operands.Count - 1);
+                        break;
+
+                    case nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST):
+                        if (operands.Count != 1 || IsCharacter(call.getType()?.getSqlTypeName()) == false || IsCharacter(operands[0].getType()?.getSqlTypeName()) == false)
+                            return null;
+
+                        function = "CAST";
+                        read = operands;
+                        break;
+
+                    default:
+                        function = call.getOperator().getName();
+                        read = operands;
+                        break;
+                }
+
+                var values = new List<SqlValue>();
+                foreach (var operand in read)
+                {
+                    if (Value(operand) is not SqlValue value)
+                        return null;
+
+                    values.Add(value);
+                }
+
+                return new SqlValue.Call(function, values);
             }
 
             /// <summary>

@@ -340,14 +340,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 if (_tie is JsonElement tie && _comparer.Compare(tie, row) == 0)
                 {
-                    if (_tied.Add(row.GetRawText()) == false)
+                    if (_tied.Add(Identity(row)) == false)
                         return null;
                 }
                 else
                 {
                     _tie = row;
                     _tied.Clear();
-                    _tied.Add(row.GetRawText());
+                    _tied.Add(Identity(row));
                 }
             }
 
@@ -518,12 +518,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var row in rows)
-                    if (seen.Add(row.GetRawText()) == false)
+                    if (seen.Add(Identity(row)) == false)
                         return false;
 
                 return true;
             }
         }
+
+        /// <summary>
+        /// Says what a row is, for telling a repeat of a <c>DISTINCT</c>'s from another row: the bytes the service sent,
+        /// one character each.
+        /// </summary>
+        /// <remarks>
+        /// The same equality as the row's text, the bytes being UTF-8 wherever there is text, and the one that holds
+        /// where they are not: decoding a row to tell it apart failed, unnamed, over text a client wrote that is not
+        /// UTF-8 — before the row's reader could refuse it by name (<see cref="CosmosJson.Undecodable"/>).
+        /// </remarks>
+        static string Identity(JsonElement row) =>
+            System.Text.Encoding.Latin1.GetString(System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(row));
 
         /// <summary>
         /// Reads the aggregate's row, and replaces each extreme that is no anchor by its argument's extreme read again.
@@ -588,6 +600,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <summary>
         /// Returns a row with one member's value replaced, or left out where the value is undefined.
         /// </summary>
+        /// <remarks>
+        /// The values are copied as the service sent them, byte for byte. Written out instead, a value holding text a
+        /// client wrote that is not UTF-8 came back with each such byte an escaped U+FFFD, and the row's reader read the
+        /// replacement without a word, where every other reading refuses the bytes by name
+        /// (<see cref="CosmosJson.Undecodable"/>). The names are the statement's own.
+        /// </remarks>
         static JsonElement Replace(JsonElement row, string member, JsonElement value)
         {
             using var buffer = new MemoryStream();
@@ -596,13 +614,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 writer.WriteStartObject();
 
                 foreach (var property in row.EnumerateObject())
-                    if (string.Equals(property.Name, member, StringComparison.Ordinal) == false)
-                        property.WriteTo(writer);
+                    if (property.NameEquals(member) == false)
+                    {
+                        writer.WritePropertyName(property.Name);
+                        writer.WriteRawValue(System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(property.Value), skipInputValidation: true);
+                    }
 
                 if (value.ValueKind != JsonValueKind.Undefined)
                 {
                     writer.WritePropertyName(member);
-                    value.WriteTo(writer);
+                    writer.WriteRawValue(System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(value), skipInputValidation: true);
                 }
 
                 writer.WriteEndObject();

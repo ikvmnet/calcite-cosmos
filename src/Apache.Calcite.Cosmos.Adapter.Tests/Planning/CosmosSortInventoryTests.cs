@@ -381,8 +381,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     return domain.Values.All(v => v.ToClrValue() is not string s || BelowSurrogates(s));
             }
 
-            var held = claims.OfType<JsonClaim.Characters>().Select(c => c.Bands).DefaultIfEmpty(JsonCharacterBand.Any).First();
-            return againstAnything ? held == JsonCharacterBand.None : held != JsonCharacterBand.Any;
+            var held = claims.OfType<JsonClaim.Characters>().Select(c => c.Bands & JsonCharacterBand.FromD800).DefaultIfEmpty(JsonCharacterBand.FromD800).First();
+            return againstAnything ? held == JsonCharacterBand.None : held != JsonCharacterBand.FromD800;
         }
 
         /// <summary>

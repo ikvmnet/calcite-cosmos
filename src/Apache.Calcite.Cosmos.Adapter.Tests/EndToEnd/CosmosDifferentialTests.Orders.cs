@@ -326,6 +326,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             public IReadOnlyDictionary<(string, string), JsonElement> ById { get; } = Documents
                 .Select(d => JsonDocument.Parse(d).RootElement)
                 .ToDictionary(d => (d.GetProperty("category").GetString()!, d.GetProperty("id").GetString()!));
+
+            /// <summary>
+            /// The integers the documents hold written in [2^63, 2^64), each by its value and by the emulator's printing of
+            /// it projected, to the double both stand for: the one number that reads back two ways, and only on the
+            /// emulator (<c>TODO.md</c>, section 7). The emulator keeps such an integer as written, and returns it so in a
+            /// document read whole, but prints it projected as the double nearest it, to 17 significant digits: 2^63 as
+            /// 9223372036854775800. Azure stores it as that double and prints it one way, and nothing else on either
+            /// target prints a number two ways: 2^53 + 1, 2^63 - 1, -2^63 - 1 and 2^64 each read back one way on both
+            /// (<c>reports/verify-bytes.md</c> 1.1).
+            /// </summary>
+            public IReadOnlyDictionary<decimal, double> PrintedTwoWays { get; } = Documents
+                .SelectMany(d => JsonDocument.Parse(d).RootElement.EnumerateObject())
+                .Where(p => p.Value.ValueKind == JsonValueKind.Number)
+                .Select(p => decimal.TryParse(p.Value.GetRawText(), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0m)
+                .Where(n => n >= 9223372036854775808m && n < 18446744073709551616m)
+                .Distinct()
+                .SelectMany(n => new[] { n, decimal.Parse(((double)n).ToString("G17", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture) }.Select(v => (Printed: v, Stands: (double)n)))
+                .DistinctBy(p => p.Printed)
+                .ToDictionary(p => p.Printed, p => p.Stands);
         }
 
         static readonly OrderContainer[] OrderContainers =
@@ -736,8 +755,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>A top-level accessor in a generated statement.</summary>
         static readonly Regex Accessor = new(@"'\$\.(?<path>[A-Za-z_]+)'", RegexOptions.Compiled);
 
-        /// <summary>The service's string functions that count code points, where Calcite's count UTF-16 units.</summary>
-        static readonly Regex CodePointFunctions = new(@"\b(LENGTH|SUBSTRING|LEFT|RIGHT|INDEX_OF|REVERSE)\(", RegexOptions.Compiled);
+        /// <summary>
+        /// The service's one pushed string function that counts code points where Calcite counts UTF-16 units, on the
+        /// emulator alone: <c>INDEX_OF</c>, which Azure counts in units (<c>Service.IndexOfCountsUnits</c>). <c>LENGTH</c>,
+        /// <c>SUBSTRING</c>, <c>LEFT</c> and <c>RIGHT</c> were here, and push now only where no string they count holds a
+        /// surrogate (<c>CosmosStringFunctions</c>), so a difference one of them makes is a failure like any other.
+        /// </summary>
+        static readonly Regex CodePointFunctions = new(@"\bINDEX_OF\(", RegexOptions.Compiled);
 
         static readonly Regex OrderBySent = new(@" ORDER BY (?!RANK )(?<items>.*?)(?= OFFSET |$)", RegexOptions.Compiled);
 
@@ -833,6 +857,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             public Task<OrderJudgement> Judge(OrderDraft draft) => _judged.GetOrAdd(draft.ToString(), _ => new(() => JudgeCore(draft))).Value;
 
+            /// <summary>
+            /// Whether the service the yardstick runs on counts code points in <c>INDEX_OF</c>, as the emulator does,
+            /// where Azure counts UTF-16 units as Calcite does (<c>Service.IndexOfCountsUnits</c>): asked once, of
+            /// <c>b</c> in <c>a</c>U+1F600<c>b</c>, which is 2 on such a service and 3 on Azure.
+            /// </summary>
+            Task<bool> IndexOfCountsCodePoints => _indexOfCountsCodePoints.Value;
+
+            readonly Lazy<Task<bool>> _indexOfCountsCodePoints = new(async () =>
+            {
+                var query = new QueryDefinition("SELECT VALUE INDEX_OF(@s, \"b\")").WithParameter("@s", "a\U0001F600b");
+                using var iterator = containers[0].Container.GetItemQueryIterator<int>(query);
+                while (iterator.HasMoreResults)
+                    foreach (var position in await iterator.ReadNextAsync())
+                        return position == 2;
+
+                throw new InvalidOperationException("INDEX_OF answered nothing.");
+            });
+
             async Task<OrderJudgement> JudgeCore(OrderDraft draft)
             {
                 var parameters = draft.Parameters;
@@ -849,7 +891,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     if (pushed.Rows is { } rows && draft.Shown is { } shown
                         && OrderAllowability.Judge(rows, rows, draft.Width, shown, 0, null, ordered: true) is { Failed: true } own)
                     {
-                        var judged = new OrderJudgement(draft, true, "out of its own order, where Calcite raises over the input: " + own.Failure, OwnFamily(own, shown), false, pushed.Sent, rows);
+                        var judged = new OrderJudgement(draft, true, "out of its own order, where Calcite raises over the input: " + own.Failure, OwnFamily(draft.Container, own, shown), false, pushed.Sent, rows);
                         return judged.Pushed ? judged : judged with { Family = Runtime, Runtime = true };
                     }
 
@@ -904,9 +946,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             /// <summary>
             /// The family of an answer out of its own order, by the key values it holds out of order:
-            /// text from both sides of U+D800, or a number past 2^53.
+            /// text from both sides of U+D800, or an integer the container holds written in [2^63, 2^64), as
+            /// written or as the emulator prints it.
             /// </summary>
-            static string OwnFamily(OrderAllowability.Verdict own, IReadOnlyList<CalciteSortKey> shown)
+            static string OwnFamily(OrderContainer container, OrderAllowability.Verdict own, IReadOnlyList<CalciteSortKey> shown)
             {
                 if (own.Inversion is not (var before, var after))
                     return "out of its own order";
@@ -915,13 +958,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 if (HasBothBands(values))
                     return "text across U+D800";
 
-                return values.Any(IsLarge) ? "a double read back as another integer" : "out of its own order";
+                return values.Any(v => PrintedTwoWays(container, v) is not null) ? "a double read back as another integer" : "out of its own order";
             }
 
-            /// <summary>Whether a value, a number or the text of one, lies past 2^53.</summary>
-            static bool IsLarge(object? value) => value is not null
+            /// <summary>
+            /// The double a value stands for where it is one of the container's integers printed two ways, as written
+            /// or as the emulator prints it projected; <c>null</c> for any other value.
+            /// </summary>
+            static double? PrintedTwoWays(OrderContainer container, object? value) => value is not null
                 && decimal.TryParse(value is string s ? s : CalciteOrder.Canonical(value).Split(':')[^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var n)
-                && Math.Abs(n) >= 9007199254740992m;
+                && container.PrintedTwoWays.TryGetValue(n, out var stands) ? stands : null;
 
             static OrderAllowability.Verdict Verdict(OrderDraft draft, List<object?[]> input, List<object?[]> answer) => draft.Form switch
             {
@@ -939,16 +985,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             /// <b>Rows a comparison lost or gained</b> — an answer missing rows of its input, or holding
             /// rows it does not — are classified by what the rows that differ hold: a pushed string
             /// function, which counts code points where Calcite counts UTF-16 units; text from both
-            /// sides of U+D800, in the rows, their documents or a parameter; or a double past 2^53, which
-            /// the emulator prints to 17 digits in a projection where the document it returns whole keeps
-            /// what was written — which is not an order's doing, and is named apart.
+            /// sides of U+D800, in the rows, their documents or a parameter; or an integer written in
+            /// [2^63, 2^64), which the emulator prints to 17 digits in a projection where the document it
+            /// returns whole keeps what was written — which is not an order's doing, and is named apart.
+            /// That one is named only where it is the whole of the difference: read as the double each
+            /// printing stands for, the rows must agree. It used to be named wherever a row that differed held
+            /// any number past 2^53, which would have hidden a real difference over one, or beside one.
             /// </para>
             /// <para>
             /// <b>An order is asked again under another comparator.</b> An answer that would be
             /// allowable had Calcite compared text by code point, as a partition does, is the string
             /// order's. Otherwise the keys say: a key before the last whose path one document leaves
             /// absent and another holds null, which Calcite ties and the service does not; a path
-            /// holding a double the service prints as another integer; a null where Calcite does not put
+            /// holding an integer the emulator prints as another; a null where Calcite does not put
             /// it. A window that holds the wrong rows for none of those reasons is classified by the same
             /// statement unpaged, where a filter beneath the page lost them.
             /// </para>
@@ -959,14 +1008,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 if (draft.Form == OrderForm.Rows || IsOrderOnly(verdict) == false && (unpaged || verdict.Failure!.StartsWith("(A0)", StringComparison.Ordinal)))
                 {
-                    if (sent.Any(s => CodePointFunctions.IsMatch(s)))
-                        return "a string function counts code points";
-
                     var differing = Differing(draft, input, answer, lost: unpaged);
 
-                    // Not an order: a projection of a double past 2^53 is printed to 17 digits, where a
-                    // document read whole comes back as it was written, on the emulator.
-                    if (differing.SelectMany(r => r.Take(draft.Width)).Any(IsLarge))
+                    // Not an order: an integer written in [2^63, 2^64), which the emulator prints projected as the
+                    // double nearest it, to 17 digits, where a document read whole keeps it as written. Only where
+                    // that parts the rows and nothing else does: read as the double each printing stands for, the
+                    // rows agree. A difference anywhere else in them, or over any other number, is not this.
+                    if (differing.Count > 0 && Differing(draft, input, answer, lost: unpaged, draft.Container).Count == 0)
                         return "a double printed two ways";
 
                     // What the filter compared, in the rows that differ, and what a parameter was bound
@@ -977,6 +1025,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         .Concat(documents.SelectMany(d => Strings(d, compared)))
                         .Concat(draft.Parameters)
                         .ToList();
+
+                    // INDEX_OF's count, the emulator's alone: only on a service that counts code points, and only where
+                    // a character beyond U+FFFF is among what differs — or, where the statement shows no document, among
+                    // what the container holds. On Azure, or over rows that hold none, a difference is a failure.
+                    if (sent.Any(s => CodePointFunctions.IsMatch(s)) && await IndexOfCountsCodePoints
+                        && (HasSupplementary(values) || draft.Identified == false && HasSupplementary(draft.Container.Strings)))
+                        return "INDEX_OF counts code points on the emulator";
 
                     if (HasBothBands(values) || draft.Parameters.OfType<string>().Any() && HasBothBands(draft.Parameters.Concat(draft.Container.Strings)))
                         return "text across U+D800";
@@ -998,7 +1053,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                             && documents.Any(d => KindAt(d, path) == JsonValueKind.Undefined) && documents.Any(d => KindAt(d, path) == JsonValueKind.Null))
                             return "undefined and null on a leading key";
 
-                    if (draft.Terms.Any(t => t.Expression.Path is string path && documents.Any(d => d.TryGetValue(path, out var v) && v.Kind == JsonValueKind.Number && IsPrintedAsAnother(v.Text))))
+                    if (draft.Terms.Any(t => t.Expression.Path is string path && documents.Any(d => d.TryGetValue(path, out var v) && v.Kind == JsonValueKind.Number && PrintedTwoWays(draft.Container, v.Text) is not null)))
                         return "a double read back as another integer";
                 }
 
@@ -1020,9 +1075,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             /// The rows an answer holds more often than its input does, and, where the answer should be
             /// all of its input, the rows of the input it holds less often: by what the answer selects.
             /// </summary>
-            static List<object?[]> Differing(OrderDraft draft, List<object?[]> input, List<object?[]> answer, bool lost)
+            /// <param name="draft">The statement.</param>
+            /// <param name="input">Its input's rows.</param>
+            /// <param name="answer">Its answer's rows.</param>
+            /// <param name="lost">Whether rows the answer lacks count.</param>
+            /// <param name="printed">
+            /// A container whose integers printed two ways are read as the double each printing stands for, so that
+            /// only what else parts the rows is left; <c>null</c> to read every value as it is.
+            /// </param>
+            static List<object?[]> Differing(OrderDraft draft, List<object?[]> input, List<object?[]> answer, bool lost, OrderContainer? printed = null)
             {
-                string Row(object?[] row) => string.Join(" | ", row.Take(draft.Width).Select(CalciteOrder.Canonical));
+                string Value(object? value) => printed is not null && PrintedTwoWays(printed, value) is double stands
+                    ? "printed two ways:" + stands.ToString("R", CultureInfo.InvariantCulture)
+                    : CalciteOrder.Canonical(value);
+
+                string Row(object?[] row) => string.Join(" | ", row.Take(draft.Width).Select(Value));
 
                 var held = input.GroupBy(Row).ToDictionary(g => g.Key, g => g.ToList());
                 var differing = new List<object?[]>();
@@ -1043,10 +1110,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             static JsonValueKind KindAt(Dictionary<string, (JsonValueKind Kind, string Text)> stored, string path) =>
                 stored.TryGetValue(path, out var value) ? value.Kind : JsonValueKind.Undefined;
-
-            /// <summary>Whether a number as written is a double the service prints as another integer.</summary>
-            static bool IsPrintedAsAnother(string text) =>
-                decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && Math.Abs(n) > long.MaxValue;
 
             /// <summary>The stored values of a row's document, by top-level property, absent ones absent.</summary>
             static Dictionary<string, (JsonValueKind Kind, string Text)> Stored(OrderContainer container, object?[] row)
@@ -1076,6 +1139,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             static int Bands(string s) => s.Aggregate(0, (b, c) => b | (char.IsSurrogate(c) ? 4 : c >= '\uE000' ? 2 : 1));
 
             static bool HasBothBands(IEnumerable<object?> values) => (values.OfType<string>().Aggregate(0, (b, s) => b | Bands(s)) & 6) == 6;
+
+            /// <summary>Whether any of the values is a string holding a character beyond U+FFFF, a surrogate pair.</summary>
+            static bool HasSupplementary(IEnumerable<object?> values) => values.OfType<string>().Any(s => (Bands(s) & 4) != 0);
 
             /// <summary>
             /// The smallest part of a failing statement that fails too, adapter failures only: the first
@@ -1289,16 +1355,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The families of wrong answer that are no order's, each a finding of its own that <c>TODO.md</c>
-        /// records, and held apart where the statement sent the service no order: a string function the
-        /// service counts by code point where Calcite counts UTF-16 units (section 4, <em>Pushed string
-        /// functions count characters their own way</em>), and a double past 2^53 the emulator prints one
-        /// way in a projection and another in a document read whole (section 7). Each leaves a statement
+        /// records, and held apart where the statement sent the service no order, both the emulator's alone:
+        /// <c>INDEX_OF</c>, which it counts by code point where Azure and Calcite count UTF-16 units (section 4,
+        /// <em>A string function pushes only where its characters are proved</em>) — named only on a service
+        /// measured to count so, and where the rows that differ hold a character it counts otherwise — and an integer written in
+        /// [2^63, 2^64), which it prints one way in a projection and another in a document read whole (section 7). Each leaves a statement
         /// that orders nothing at the service answering another value, which the yardstick meets because
         /// its keys are drawn from every reading; one that sent an order is judged as any other.
         /// </summary>
         static readonly HashSet<string> Findings = new(StringComparer.Ordinal)
         {
-            "a string function counts code points",
+            "INDEX_OF counts code points on the emulator",
             "a double printed two ways",
         };
 
@@ -1333,19 +1400,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// to 91. Each container's floors are its own, so that losing what the rows complete shows where it
         /// was lost.
         /// </para>
+        /// <para>
+        /// The string functions' rule took one of those 91 (<c>CosmosStringFunctions</c>): a sort beneath
+        /// <c>UPPER(e) &lt;&gt; 'a'</c>, <c>e</c> an <c>enum</c> holding é and U+4E00, whose case mapping stays in
+        /// process, ASCII being where Java's mapping and the service's are known to agree. With it the code-point
+        /// family's three findings went: <c>CHAR_LENGTH</c> no longer pushes over text of any character.
+        /// </para>
+        /// <para>
+        /// <c>LIKE</c> over a path declared a string, pushed exactly where it was refused as a rendering, raised the
+        /// gate's sorts from 219 to 225 — <c>orders_declared</c> 102 to 107, <c>orders_ascii</c> 90 to 91 — and its pages
+        /// from 2 to 3, and the default run's sorts to 35: a sort beneath <c>t LIKE 'a%'</c> was Calcite's, with the
+        /// filter, and is the service's with <c>STARTSWITH(c.t, @p0)</c> beside it. One
+        /// comparison with a parameter went to the sorts, which a statement counts first: <c>id &lt; ?</c> beside
+        /// <c>t LIKE 'a%'</c>, its sort now pushed too, so the gate's comparisons are 25, <c>orders_declared</c>'s 21.
+        /// </para>
         /// </remarks>
         static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
-            (null, "sort", 31, 217),
+            (null, "sort", 35, 225),
             (null, "extreme", 5, 25),
-            (null, "page", 0, 2),
-            (null, "comparison", 5, 26),
+            (null, "page", 0, 3),
+            (null, "comparison", 5, 25),
             ("orders_plain", "sort", 5, 27),
             ("orders_plain", "extreme", 0, 4),
-            ("orders_declared", "sort", 16, 99),
+            ("orders_declared", "sort", 19, 107),
             ("orders_declared", "extreme", 3, 8),
-            ("orders_declared", "comparison", 3, 22),
-            ("orders_ascii", "sort", 10, 91),
+            ("orders_declared", "comparison", 3, 21),
+            ("orders_ascii", "sort", 11, 91),
             ("orders_ascii", "extreme", 2, 13),
         ];
 

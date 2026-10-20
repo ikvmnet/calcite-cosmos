@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -37,6 +38,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly Func<JsonDocumentPath, Scope?>? _mention;
         readonly object? _keep;
         readonly ConcurrentDictionary<JsonDocumentPath, Lazy<Scope>>? _told;
+        readonly ConcurrentDictionary<SqlValue, (bool Found, ValueSet<string> Classes)> _values = new();
 
         /// <summary>
         /// Initializes a new instance.
@@ -81,10 +83,61 @@ namespace Apache.Calcite.Cosmos.Facts
         public override bool TryHi(JsonDocumentPath path, out Bound bound) => TryGet(path, r => r.Hi, out bound);
 
         /// <inheritdoc />
+        public override bool TryMinLength(JsonDocumentPath path, out long length) => TryGet(path, r => r.MinLength, out length);
+
+        /// <inheritdoc />
+        public override bool TryMaxLength(JsonDocumentPath path, out long length) => TryGet(path, r => r.MaxLength, out length);
+
+        /// <inheritdoc />
         public override bool Form(JsonDocumentPath path, string token) => Read(path, false, (scope, r, p) => scope.Check(r.Form.Of(p, token)));
 
         /// <inheritdoc />
         public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => TryGet(path, r => r.Chars, out bands);
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// <para>
+        /// <b>Asked in a context made for the question</b>, as a path the context was never told of is
+        /// (<see cref="Told"/>): a child that mentions the paths the value reads, makes the value's term, and runs the
+        /// rules of JSON and of a value's characters (<see cref="PredicateRules.CharacterSaturation"/>). It assumes
+        /// nothing, so it narrows no document the context admits; it is released once read, and the answer is remembered
+        /// by the value.
+        /// </para>
+        /// <para>
+        /// A run that does not complete, or a context that cannot be opened, answers nothing, which loses a fact and
+        /// invents none; a context that admits no document answers nothing either, there being no row to ask about.
+        /// </para>
+        /// </remarks>
+        public override bool TryValueChars(SqlValue value, out ValueSet<string> classes)
+        {
+            var (found, read) = _values.GetOrAdd(value, asked => Read((false, JsonValues.NoBand), (scope, rules) => Ask(scope, rules, asked)));
+
+            classes = read;
+            return found;
+        }
+
+        /// <summary>
+        /// Opens a child of a context for a value's characters, reads them and releases it.
+        /// </summary>
+        static (bool Found, ValueSet<string> Classes) Ask(Scope scope, JsonRules json, SqlValue value)
+        {
+            var rules = PredicateRules.Of(json);
+
+            using var child = scope.CreateChild();
+            JsonContexts.Mention(json, child, value.PathsRead.Distinct().Select(JsonFactEncoding.Path));
+
+            var term = rules.Term(value);
+            child.Make(term);
+
+            var report = child.Run(rules.CharacterSaturation, Asking);
+            if (report.StopReason != RunStopReason.Completed || child.IsContradictory)
+                return (false, JsonValues.NoBand);
+
+            return child.TryGet(rules.ValueChars.Of(term), out ValueSet<string> held) ? (true, held) : (false, JsonValues.NoBand);
+        }
+
+        /// <summary>How a question of a value's characters runs: to the end, unless what it is asked beneath admits nothing.</summary>
+        static readonly RunOptions Asking = new() { StopOnContradiction = true };
 
         /// <inheritdoc />
         public override bool Extension(JsonDocumentPath path, string key) => Read(path, false, (scope, r, p) => scope.Check(r.Extension.Of(p, key)));

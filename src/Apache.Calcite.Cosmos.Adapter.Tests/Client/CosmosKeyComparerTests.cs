@@ -40,6 +40,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static string Json(string text) => JsonSerializer.Serialize(text);
 
         /// <summary>
+        /// Text a client wrote that is not UTF-8, which Azure stores and returns as written and ranks by its bytes, has no
+        /// place in Calcite's order: the comparison and the anchor's test each refuse it by name rather than with the
+        /// decoder's error, which named nothing.
+        /// </summary>
+        [Fact]
+        public void TextThatIsNotUtf8IsRefusedByName()
+        {
+            var comparer = new CosmosKeyComparer([new CosmosOrderedKey("v", CosmosOrderedKeyKind.Text, false, false, CosmosOrderAnchor.Text)]);
+            var bad = JsonDocument.Parse(new byte[] { (byte)'{', (byte)'"', (byte)'v', (byte)'"', (byte)':', (byte)'"', (byte)'x', 0xFF, (byte)'y', (byte)'"', (byte)'}' }).RootElement.Clone();
+            const string Refused = "A value the statement orders or compares by holds text that is not UTF-8 at $: the bytes FF in \"x\\xFFy\".*";
+
+            ((System.Action)(() => comparer.Compare(Row("v", Json("a")), bad))).Should().Throw<CosmosMaterializationException>().WithMessage(Refused);
+            ((System.Action)(() => comparer.IsAnchor(bad))).Should().Throw<CosmosMaterializationException>().WithMessage(Refused);
+        }
+
+        /// <summary>
         /// S1: <c>String.compareTo</c>, by UTF-16 code unit, with no collator.
         /// </summary>
         [Fact]

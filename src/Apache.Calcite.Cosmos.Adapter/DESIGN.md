@@ -1652,6 +1652,9 @@ documentation.
 > | `ORDER BY t0` over `JOIN t0 IN c.tags` | accepted | **400** |
 > | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
+> | `SUBSTRING`, `LEFT`, `RIGHT`, `INDEX_OF` past U+FFFF | code points | **UTF-16 units**, a split pair sent as U+FFFD |
+> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped | **left** |
+> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept | **removed** |
 >
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
@@ -3375,8 +3378,10 @@ other sessions kept at 90–100% of its four cores (main's corpus took 8.2 s her
 
 **What characters a path's strings hold is a fact about the documents like any other** (*The theory of JSON, in
 layers*, for the rule). So it is the theory's `chars(p)`: the
-set of bands — a surrogate, a unit from U+E000 — that a string at the path may hold units of, beside those below
-U+D800, which matter to no order. It is a fact like a type, and reasoned with as one. It is said of the value if it
+set of classes a string at the path may hold characters of — the two bands an order reads, a surrogate unit and a
+unit from U+E000; the rest of what lies outside ASCII, U+0080 to U+D7FF; what the service's `TRIM` removes beside a
+space; and U+0000, which the service's searches stop at (*What a string function computes, asked of its characters*,
+below) — a string holding none of them being ASCII that the service trims and searches as Calcite does. It is a fact like a type, and reasoned with as one. It is said of the value if it
 is a string, so a number, a null or an absent path satisfies every such fact. It lies on the intersect lattice the
 types use: a conjunction meets two sets, and a case join — a discriminator's split, the split over a disjunction's
 arms, the lift of what every case proves — unites them. It holds per branch, a conditional rule stating it as a head,
@@ -3401,7 +3406,9 @@ union of a branch lacking both bands with one lacking one keeps the one.
   pattern parsed, or a UUID spelling's alphabet — by the reader's own reading of a range's bands
   (`CosmosStoredForms.CharactersOf`). It used to be a constant beside the definition, a third encoding of one fact.
   Every registered form comes out ASCII, and `CosmosStoredFormsTests` checks what the definitions read.
-- **A service fact.** `_etag`'s characters are stated as data, of the grammar RFC 9110 fixes, as `id`'s type is.
+- **A service fact.** `_etag`'s characters are stated as data, of the grammar RFC 9110 fixes, as `id`'s type is: read
+  as the theory reads a range, the grammar's 0x80 to 0xFF giving characters outside ASCII and two the service trims, and
+  nothing from U+D800.
 
 **Stated of every domain, a domain of no string saying none.** The first version derived a row only from a domain
 holding a string. The engine states a row of every domain a run passes through, and a domain only narrows, so a
@@ -3414,7 +3421,9 @@ the one its last domain says, whichever domains it passed through.
 **Who reads it.** `JsonFactSet.CharactersOf` is what R1 asks (*The service's order, asked once*), and `Knows` and
 `ClaimsFor` answer it as a claim, each off a context the engine ran. A literal's characters and type, and a
 parameter's characters once it is bound, are read by the theory's own reader of a value (`JsonFactEncoding.Characters`,
-`JsonValues.TypesOf`), so what a consumer asks of a value is what the theory knows of it.
+`JsonValues.TypesOf`), so what a consumer asks of a value is what the theory knows of it. A computed string's are the
+theory's too, said of the value rather than a path, `value chars`, by rules over the call's term
+(*What a string function computes*).
 
 **What is left in C#,** every fact about the documents still derived or combined outside the theory, each with why it
 has not moved and its `TODO.md` entry. Everything else C# does with a fact reads it, decides what is legal, or writes.
@@ -3486,6 +3495,180 @@ corpus took 4.9 s here, where the orders measurement took 4.3 s.
   overlapping. It allocates 1,087 MB a plan here, as at `d00c0df` (main 1,081).
 - **Population D's long run.** 5,000 trials took 945 s, two other sessions' long runs sharing the machine. It
   checked 4.8 million facts, 249,259 of them about characters, and nothing was false.
+
+#### What a string function computes, asked of its characters
+
+**Calcite's string functions are Java's, and the service's are its own.** Measured on Calcite in process, the emulator
+and Azure, over sixteen strings and every function the translator pushes (`reports/verify-strings.md`), they part over
+three things; a review measured a fourth, and three functions that part over something other than a character:
+- **A count, over the surrogates.** Calcite counts UTF-16 units. `LENGTH` counts code points on both targets; Azure's
+  `SUBSTRING`, `LEFT` and `RIGHT` count units and send the half of a pair a window splits back as U+FFFD, where Calcite
+  keeps a lone surrogate; the emulator's count code points. Without a surrogate a unit is a code point, and every
+  string measured without one agreed — U+E000, U+FFFD and a combining sequence among them.
+- **A case mapping, outside ASCII.** Calcite maps by Java's full mapping: ß to `SS`, U+FB00 to `FF`, U+0130 to `i` and
+  U+0307. Both services map by simple ones that leave ß and U+FB00; Azure's leaves U+017F, U+0130 and U+212A too, which
+  the emulator maps. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and `ENDSWITH` fold the
+  service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb` under `UPPER(s) LIKE
+  '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared path: a recheck sees
+  only the rows that arrive.
+- **A trim, over white space.** Calcite's `TRIM` removes U+0020 alone. The service's removes white space: measured on
+  Azure over every unit of the basic plane, every code point of plane 1 and U+E0000 to U+E01EF, each first and last,
+  projected and in a `WHERE`, it removes U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028,
+  U+2029, U+202F, U+205F and U+3000 beside the space, the three functions alike — an older Unicode's white space,
+  U+180E in it and U+200B and U+FEFF not. The emulator removes a subset: not U+0085, U+00A0, U+180E, U+2007 or U+202F.
+- **A search, over U+0000.** Azure's `REPLACE` and `CONTAINS`, both modes, read a string only up to its first U+0000:
+  `REPLACE(s, 'b', '!')` leaves `a`U+0000`b` as it is, and `CONTAINS` finds no `b` in it. So does a `LIKE` whose pattern
+  is one run of text between two `%`, which the service answers as a `CONTAINS`: `%b%`, `%%b%` and `%b%%` lose the
+  string, where `%a%b%`, `%_b%`, `%b`, `a%b` and `a_b` keep it. A search holding U+0000 matches every string, and
+  `REPLACE` of one replaces every byte. `INDEX_OF`, `STARTSWITH`, `ENDSWITH`, `LENGTH`, the comparisons, the order and a
+  replacement holding U+0000 read past it (`Service.NulEndsWhatReplaceAndContainsRead`). The emulator stores U+0000 as
+  U+FDD0 followed by `0`, so there every function over one differs, and nothing is learned of the service.
+- **Not a character: a window's start, a repetition's count, a replacement's search.** Calcite clips a window that
+  starts before the string, `SUBSTRING('abc' FROM 0 FOR 2)` being `a`, and the service answers a negative start with the
+  empty string projected (`Service.SubstringOfANegativeStartIsEmpty`) — in a `WHERE` on Azure, compared with `''`, for
+  nothing but the empty string. The service's `REPLICATE` is undefined for a negative count, where Calcite's `REPEAT`
+  is the empty string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on
+  (`Service.ReplicateStopsAtTenThousandCodePoints`); the emulator has no limit. And the service's `REPLACE` of an
+  empty search is undefined, where Calcite's is the subject (`Service.ReplaceOfAnEmptySearchIsUndefined`).
+
+`POSITION` parts on the emulator alone. Azure's `INDEX_OF` counts units, as Calcite does, so `INDEX_OF + 1` is
+Calcite's answer over every string; the emulator's counts code points. Azure is the target, so it stays pushed, the
+emulator's difference recorded (`Service.IndexOfCountsUnits`). `REVERSE` and `CONCAT` agree everywhere projected, plain
+`LIKE` — `_` is one code point everywhere — in every shape but the containment over U+0000, and `STARTSWITH`
+everywhere. Azure's `REVERSE` compared in a `WHERE` with a parameter holding a supplementary character keeps nothing,
+where projected the comparison is true (`reports/verify-strings.md` §4.4); nothing pushes a function compared with a
+parameter, so nothing reaches it, and `TODO.md` holds it beside the item that would. Until this, over a path declared
+a string, every function was pushed exactly with nothing rechecked, and every family above was a wrong answer a user
+could reach in a projection and in a filter.
+
+**So the characters fact gains three classes, and each part is a class.** Beside the surrogates S and the high band H,
+which an order reads (*Characters, a fact of the theory*), the theory's `chars` holds N, a unit from U+0080 to U+D7FF,
+so that a string with none of S, H and N is ASCII; W, a character the service's trim removes beside U+0020, which cuts
+across the bands — a tab is ASCII, U+00A0 is in N; and Z, U+0000, which is ASCII. Each is reached as S and H are, and
+combined by the lattice that combines them: the one reader of a unit and of a range (`JsonValues.MaskOf`) says which
+classes a character is in, W read off the measured table as data (`Service.TrimRemovesWhiteSpace`,
+`JsonValues.IsTrimmed`); so the pattern reader computes them under both readings, a literal's are known when it is
+read, a stored form's alphabet gives its own — every registered form is ASCII with no W and no Z — and `_etag`'s are
+read off its grammar. Each class is named once, its flag beside its member (`JsonValues.CharacterClasses`), and every
+other spelling of a set of them is read off that table. A conjunction narrows them and a case join widens them. No C#
+derives or combines one. R1 reads S and H alone (`JsonCharacterBand.FromD800`), so no order moved.
+
+**Each function asks one question of its arguments, in one place.** `Sql/CosmosStringFunctions` says what each
+needs: a count — `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT` — that no string it counts hold S; a case mapping that it
+hold none of S, H and N; a trim that it hold no W; `REPLACE` that its subject and its search hold no Z, and a `LIKE` of
+the containment shape that its subject and its pattern hold none; everything else nothing of the characters. Every
+string function the translator writes has a verdict there, the ones that ask nothing among them, and one written by
+name with none is refused, so a function added to the translator's table is computed in process until what it asks has
+been said. `CosmosRexTranslator.RequireStringFunctionsAgree` asks it once of the whole expression, before anything is
+written, as a rendering is asked, of the facts the translation was licensed (*Which facts may justify what*). Asked at a
+writer it would miss the case-insensitive rewrite, which writes the folded value and not the fold: asked of the `LIKE`
+it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the fold beneath it S, H and N. The rewrite
+asks the same of its pattern's text (`FoldsAlike`), the case mapping's class named once for both. Where one is not
+proved the translation is refused, and the function stays in process over the value the service sends, which is what a
+path declared nothing of always did; the rest of the statement pushes.
+
+**What stays in process still reads only what it needs, in a projection.** A declined function over a path's reading
+sends the reading, `{"$f0": (IS_PRIMITIVE(c.s) ? c.s : null)}`, the projection split putting the accessor beneath the
+function. Over a plain column there was no accessor to push, and the split was not made where nothing else beside it
+rendered: `UPPER(c."id")` over an `id` nothing proves ASCII, which pushed before the characters were asked, sent
+every document whole for Calcite to read one property of. The split now also counts a narrowing as worth a node —
+only references, none of them the document itself, fewer than the input's columns (`CosmosProjectSplitRule.Narrows`)
+— and sends `{"$f0": c.id}`. It terminates as the guard beside it does: the projection it makes reads exactly its
+inner one's columns, which split again would be no narrower. In a filter it does not reach: a declined comparison
+is Calcite's, above a scan with no projection, and the documents arrive whole (`TODO.md`).
+
+**`LIKE` over a declared string is `LIKE` over the string.** A path declared a string renders as the string, so the
+service's functions have no other type to be undefined over, as no operator over one has
+(`RequireRenderingsReadAsRenderings`); refusing `LIKE` over its rendering whatever was declared sent the filter to
+Calcite over whole documents, where the same statement over an undeclared path pushed as a weakening. It is pushed
+exactly now: a prefix as `STARTSWITH`, another pattern as the service's `LIKE` — `_` one code point at both ends — the
+containment shape where the subject and the pattern hold no Z, and a fold beneath it as the case-insensitive match
+where the fold's classes are proved too (`CosmosRexTranslator.IsUndeclaredRendering`). On the `ORDER BY` yardstick's gate
+it gives back six sorts and a page that a `LIKE 'a%'` beside them kept in process.
+
+**What an argument holds is the theory's, a computed one's too.** The argument is read by the one reader of a
+`RexNode` into the theory's terms (`CosmosPredicateLoader.Loading.ReadValue`): a path's reading, a literal, a
+parameter, or a call — the operator's name and its operands, a `TRIM`'s flag spelled in the name, a `CASE` read as its
+arms. The fact set answers what classes it may hold (`JsonFactSet.CharactersOf(SqlValue)`): a path its `chars`, a
+literal its own, and a call what the theory derives in a context made for the question beneath the licensed one, which
+mentions the paths the call reads, makes its term and runs the rules of a value's characters
+(`PredicateRules.Characters`). There a reading of a path holds the path's `chars`, the cast to text of the value a path
+holds them where the path holds scalars alone, and a call of a function `StringCalls` names draws from each operand it
+reads the image of that operand's classes: its own for a concatenation, a window, a reversal, a repetition, a trim, a
+replacement's subject and replacement and a conditional's arms; for `UPPER` also N where it was given H, Java's full
+mapping taking U+FB13 to Armenian letters below U+D800, the one class any case mapping adds over every code point. A
+parameter, and a call of a function the table does not name — a conversion such as `ToString` — hold anything. Before,
+C# asked each operand in turn through a table of its own and called that a conjunction of questions; it was the theory's
+join over the operands, written beside the theory, and the oracle and population D never saw it.
+
+**And what is not a character is asked by the function's writer.** `SUBSTRING` is shifted alone only where its start
+is proved at least one — a literal, or a path the facts bound there — and is otherwise written with Calcite's clip, from
+0 for `start + length - 1` and no less than 0: a `POSITION` that finds nothing, a column, a parameter.
+`REPEAT` pushes for a literal count of 0, or a positive one whose subject's length — a literal's own, or what the facts
+bound a path's strings to — keeps it within 10,000 code points; a UTF-16 length bounds a code-point one from above. A
+domain's strings now bound the path's lengths, a rule of JSON, and nothing else states a length yet: the schema reader
+does not read `minLength` or `maxLength`, which count code points where the theory's count units. `REPLACE` pushes
+where its search is a literal holding something or a path bound to a length of one or more. And `CONCAT` is matched by
+operator, not by name: the PostgreSQL, SQL Server and Oracle `CONCAT`s read a null as the empty string and share the
+name with MySQL's, which, as `||` is, is null over a null as the service's is undefined over one.
+
+**A lone surrogate is never sent.** The SDK's UTF-8 encoder refuses one while it writes the statement
+(`Service.LoneSurrogateParameterIsNeverSent`), so a statement carrying one failed on both targets where Calcite
+answers. Only a `U&` literal can hold one, inside `POSITION` or `REPLACE`, Calcite refusing one against a column
+elsewhere; `CosmosParameterList.Add`, which every value a statement carries passes through, refuses it, wherever in
+the statement it stands, and the expression it stood in is computed in process. A parameter's value arrives only when
+the statement runs. A column computed from parameters alone is never sent — the service would only hand back what it
+was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter as a column for the function above to compute — so the
+translator refuses one in a projection and Calcite computes it above. A parameter the service reads, in a comparison,
+is refused by name when it is bound (`CosmosQueries.Bind`), before the encoder throws: the check is
+`Client/CosmosEncodable`'s, asked at both ends, a property of the value as the encoder is handed it and no class of the
+theory's, a stored string never holding a lone surrogate.
+
+**What it costs, and what it gives back.** Timed against `702129b` in Release, interleaved, a fresh process a run,
+two passes of ten paired rounds after a dropped first. In the first another session's test run held the machine at
+about 100 % of its four cores, so every time is about twice a quiet run's: the corpus of 78 planned new in 9.38 s at
+`702129b` (7.56–10.63) and 9.22 s here (7.85–10.24), the paired difference −0.12 s (−1.65 to +1.99), here the higher
+in 4 of 10, p 0.56; planned again 4.03 and 4.04 s, p 0.92. In the second the machine was at 20–60 % but for three
+rounds: planned new in 5.46 s (4.86–9.12) and 5.37 s (4.65–8.38), −0.02 s, 5 of 10, p 0.63; planned again 2.46 and
+2.34 s, p 0.56; p90 157 and 166 ms; 1,017 and 1,015 MB allocated. In the four rounds both builds ran under 50 %, the
+differences were +0.05, 0.00, +0.22 and −0.03 s on 5.2 s. No statement moved at p < 0.01 in either pass. Nothing
+measurable was added. The corpus's 78 plans are the same at both builds. Over the 3,960 statements of the
+differential corpus, the partition generator and the adversarial set, 3,916 plan alike and 44 push less, every one
+a case mapping, a length or a trim over a path whose characters nothing proves: 20 send the presence a case fold
+under `LIKE` implies where they sent the case-insensitive match, and 24 compute a function in process they used to
+push. On the `ORDER BY` yardstick's gate one sort goes, beneath a case mapping of an `enum` holding é, and nothing
+fails.
+
+**How it is checked.**
+- `CosmosStringFunctionMeasurementTests` pins the service's ten rows on a real account, each asserting what the
+  emulator shares and skipping where it differs; on the probe account all ten pass, and the trim test holds the
+  theory's trimmed class to what Azure removed. One asks the adapter through a connection, over a path declared a
+  string and nothing more, and answers Calcite's length, case, window, trim and match there, and `POSITION`'s 4,
+  pushed. `CalciteStringFunctionMeasurementTests` pins Calcite's six.
+- Population D draws strings from every class — ß, the Kelvin sign, a tab, U+00A0, U+3000, U+0000 and U+FB13 beside
+  the bands — and checks every class fact it derives against them, read unit by unit apart from the theory's table;
+  and, from a stream of its own, strings computed from the declaration's paths and from those strings, nested two
+  deep, whose characters each scope is asked as a string function's rule asks them and held to the string Calcite's
+  runtime computes. Five plants are the classes' own, a value's characters read without its S, N, W or Z and an arm's
+  stated of its disjunction; two are a computed string's, a call's characters read off its first operand alone and an
+  upper-case mapping read as keeping its classes. Each is caught within a run's trials. `StringCallsTests` holds the
+  table of what each function draws to Calcite's runtime over every code point.
+- The translator's tests ask every function proved and unproved, a computed argument and a literal; the planner's
+  (`CosmosDeclaredFactPlanningTests`, *what a declared pattern changes about a string function*) ask each over a path
+  declared nothing of its characters, printable ASCII, every unit but the surrogates, and everything but white space.
+- The differential corpus's `strings` container holds a supplementary character, ß, U+212A, a tab, U+00A0 and U+3000 at
+  each path its declaration admits them, and its statements agree with Calcite on the emulator; four state Calcite's
+  answers outright, so that an oracle agreeing with the service would be seen, a window starting before the string
+  among them. `POSITION` over a supplementary character is the one statement it leaves out, the emulator counting it
+  otherwise, and U+0000 is in none of its documents, the emulator storing it as two characters.
+
+**What is not done.** A weakening would push a function wherever it is not proved: a filter sent as `(<pushed>) OR
+RegexMatch(c.s, "[\x{10000}-\x{10FFFF}]")` and rechecked above, exact over the rows without the class and shipping the
+rows with it; a projection with a fallback member keyed on the same test. A pattern `RegexMatch` cannot compile
+answers undefined, which drops the row its arm was to keep, so each would need one measured to compile on both
+targets. A declined comparison over a plain column reads whole documents in a filter, as above. And the lengths
+`REPEAT` and `REPLACE` ask come from a domain alone, the schema's `minLength` and `maxLength` unread. All three are in
+`TODO.md`.
 
 #### The anchored read: a proof completed as the rows arrive
 
@@ -4233,10 +4416,21 @@ every character — and ASCII is where that is known. Java's `toUpperCase` maps 
 ligature to its letters, which no case-insensitive comparison of the stored text reproduces, so
 outside ASCII the plain form stands and folds at the service under its own rules as it did.
 
+**The text was not the whole of it: the value folded has to be ASCII too.** This section used to call the rewrite
+exact on the pattern's text alone, and the measurement said otherwise (`reports/verify-strings.md`): `UPPER(s) LIKE
+'%SS%'` keeps `aßb` in Calcite, which folds ß to `SS`, and the case-insensitive `CONTAINS` keeps nothing, on both
+targets; Azure loses U+212A under `LOWER … '%k%'` and U+0130 under `'%i%'` as well. So the fold is held to what `UPPER`
+and `LOWER` are held to — its value's inputs proved ASCII (*What a string function computes, asked of its
+characters*) — and over a path nothing proves ASCII the fold and the pattern stay in process, in either spelling, the
+plain `UPPER(c.s) LIKE @p` folding at the service as wrongly as the flag does.
+
 Over a text accessor the fold has the gap `LIKE` has — `UPPER(30)` is `30` in Calcite, having folded
 the rendering, and undefined at the service — so `UPPER(JSON_VALUE(…)) LIKE '%ACADIA%'` is declined
 and weakened like `LIKE`: the split rule rebuilds the fold over the raw value, and the guard's own
-comparison is what renders as `CONTAINS(c.name, 'ACADIA', true)`, under `NOT IS_STRING(c.name) OR`.
+comparison is what renders as `CONTAINS(c.name, 'ACADIA', true)`, under `NOT IS_STRING(c.name) OR`, where the
+path is proved ASCII. Where it is not, the guarded comparison is refused with the fold, and the weakening is the
+presence it implies; it used to push the rewrite there, rechecked above, and the recheck could not restore the rows
+the service dropped.
 The case-*sensitive* `'%abc%'` and `'%abc'` still render as `LIKE`; whether the named functions are
 priced differently is the measurement `TODO.md` still asks for before they change.
 
@@ -4720,6 +4914,47 @@ identifier or a count does not surface as `42.0`; the choice is the value's, the
 consult. And a document that disagrees with the declared type is **refused**, not coerced — reading
 `42` as `VARCHAR` throws rather than yielding `"42"`, because a row type that bends to the data is a
 suggestion rather than a declaration.
+
+**A whole number is read within its type's range, and refused outside it, never saturated.** Every
+integral reading — `TINYINT` to `BIGINT`, and a `DATE`, `TIME` or `TIMESTAMP` stored as a number — goes
+through `CosmosJson.GetInteger`, and a number arrives as a double where it is not integer text: `42.0`, or
+an integer Azure stored as a double because it was written outside int64
+(`Service.IntegerOutsideLongIsStoredAsADouble`). The range is checked in doubles, and the bounds have to be
+exact there. The least value, -2^(k-1), is. The greatest is not, past 2^53: `(double)long.MaxValue` rounds
+up to 2^63, which is no `long`, and testing against it let a stored 2^63 through to a cast that saturated
+it, so `RETURNING BIGINT` answered `9223372036854775807` over Azure's `9.223372036854776E+18`, where Calcite
+raises. One past the greatest, 2^(k-1), is exact in every width, so the refusal is "at or above max + 1"
+and "below min" (the mirror of the first, "at or below min - 1", rounds to -2^63 and would refuse
+`long.MinValue` itself). The emulator prints 2^63 projected as `9223372036854775800`, which is valid int64
+text that no reader can tell from a stored integer; that one is the emulator's (`TODO.md`, section 7).
+
+**Text that is not UTF-8 is refused by name, by every reading alike.** Azure validates nothing about UTF-8
+in a document body: whatever bytes a client writes are stored, returned and compared as written, in a value
+or in a name (`Service.MalformedTextIsStoredAsWritten`; a lone surrogate written as an escape is stored as
+U+FFFD instead). Calcite holds a string as UTF-16 units, and nothing it can hold compares as the service
+compares those bytes. U+FFFD, which a lenient decoder makes of them, is not that: the service ranks `80` and
+`C0 AF` below U+00E9 and says the raw document is not the replaced one, where Calcite would rank U+FFFD above
+every unit below U+D800 and call them equal; and the document column would stop being the text the service
+sent. So failing is the one reading that is not wrong, and it is made to say what it failed over:
+`CosmosJson.Undecodable` raises a `CosmosMaterializationException` naming the column or path, the document
+where the row says which, where in the value the bytes lie, and the bytes. `System.Text.Json`'s own refusal
+named none of them and arrived mid-stream, after earlier rows had been handed out.
+
+- **Each reading of a row's column catches the decoder's refusal and names it.** The document is named from
+  the plan's bindings, not from a column's name: the column bound to the path `id`, or the `id` inside the
+  column bound to the document. A point read's row is the document, so its own `id` names it.
+- **The JSON fragment has to look.** A projected `JSON_QUERY` writes its value out rather than decoding it,
+  and the writer replaces each byte it cannot read with an escaped U+FFFD, so it answered without a word
+  where the in-process plan raised. It searches the value's strings and names first, one validation of each
+  string's bytes.
+- **The reader completing an order decodes its text keys strictly too**, tells a `DISTINCT`'s repeat apart
+  by the bytes the service sent, and copies an extreme's row byte for byte, so it neither fails unnamed nor
+  replaces in silence.
+
+The failure is per value: a statement fails exactly where a row carries the bytes into a reading, and one
+whose rows leave the value out is answered, in the same logical partition too. Reading a WTF-8 surrogate as
+the lone unit it encodes is the one lenient reading that would agree with the service, and `TODO.md`
+(section 7) keeps it as an option.
 
 Nesting is not truncated: the document column carries the document and the value goes as deep as the
 document does. Addressing is not limited either — `JSON_VALUE(c."DOC", '$.a.b.c')` folds the whole
@@ -6252,7 +6487,8 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
     a predicate is, and named by its family. The family is read from what the failure holds. Strings
     from both sides of U+D800, or an answer that would be allowable had Calcite compared text by code
     point, are the string order's. A leading key that one document leaves absent and another holds null
-    is the null class's. A double past 2^53 is the read-back's. Where the service was handed no order and
+    is the null class's. An integer the container holds written in [2^63, 2^64), as written or as the
+    emulator prints it, is the read-back's. Where the service was handed no order and
     the answer still fails, the CLR runtime's own order is to blame — two or more keys by culture — and
     the failure is reported apart, as `calcite-dotnet`'s.
 
@@ -6276,7 +6512,10 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   order failure at all: its failures are the null class's, `_etag`'s and the 2^63 sort's. Two families
   are not orders', and `TODO.md` records them: `CHAR_LENGTH` pushed as `LENGTH`, which counts code
   points, and the emulator printing a projected double past 2^53 to 17 digits where a document read
-  whole keeps what was written. A third finding came from an earlier draw of the generator and is in
+  whole keeps what was written — since measured to be the emulator's alone, and only an integer written in
+  [2^63, 2^64); the family is now named only where it is the whole of the difference, reading each printing
+  as the double it stands for leaving the rows agreeing, so it can hide nothing beside it. A third finding
+  came from an earlier draw of the generator and is in
   `TODO.md` too: a comparison of two nullable declared strings keeps the rows where both are null. 94
   answers were the CLR runtime's own, every one of them a sort of two keys or more done in process.
 
@@ -6302,12 +6541,16 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   The gain is in the containers that declare no characters — `orders_plain`'s judged sorts from 12 to 27 and
   `orders_declared`'s from 14 to 99, with their extremes 3 to 4 and 4 to 8: sorts over `id` and over text of any
   character, their pages and three-page keysets, `RETURNING BIGINT` over an integer nothing bounds, `MAX(c."id")` —
-  and `orders_ascii` gains its unbounded integers, 84 to 91. About 117 or 118 answers were the CLR runtime's own — the
+  and `orders_ascii` gains its unbounded integers, 84 to 91, of which the string functions' rule took one back, a
+  sort beneath a case mapping of an `enum` holding é (*What a string function computes, asked of its characters*).
+  About 117 or 118 answers were the CLR runtime's own — the
   count follows the order the service returns tied rows in, which the in-process multi-key sort is sensitive to, and
   not the build: a Release build gave 118 on the probe account. The two families
   that are not orders' are findings of their own (`Findings`), recorded in `TODO.md` and reported apart where the
   statement sent no order — every one of the 8 does — so the test holds every order it judges and runs with the
-  class. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
+  class. Both are the emulator's alone now: the code-point family, three of the 8, was `CHAR_LENGTH` pushed as
+  `LENGTH`, which no longer pushes over text of any character, and is narrowed to `INDEX_OF`, which Azure counts as
+  Calcite does; the gate meets none of it, and the five left are the integers printed two ways. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
   it, per container, the comparisons among them.
 
   **What it costs.** On the emulator, on a workstation running other work, the default's 200 items took
@@ -6443,6 +6686,17 @@ narrow on purpose, and each limit was measured:
 - **It declines where the document itself would have to be carried.** That saves nothing, and
   carrying it looped: the carried reference was pushed as a column on the next firing and carried
   again beside it.
+- **It declines a projection with a reading that can refuse a value.** The two commute in what they
+  answer, not in what they raise. Beneath the filter, the projection is read for every row the service
+  sends, and Calcite computes it only for the rows the filter keeps. So a value the reader refuses
+  (2^63 or 42.5 as a `BIGINT`, text that is no date) failed the statement over a row the filter would
+  drop, where Calcite answers, which the error refinement order never allows. The ORDER BY yardstick
+  found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does,
+  `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`
+  says which typed readings can refuse, beside the reader's switch, and a test holds the two together.
+  A projection holding one stays above, and the statement selects the document. The filter's own
+  paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
+  path declared within bounds pays too (`TODO.md`, section 7).
 
 The split, for its part, no longer weakens a filter over a projection. `FILTER_PROJECT_TRANSPOSE`
 gives that filter an equivalent beneath the projection, where its weakenings are derived against what

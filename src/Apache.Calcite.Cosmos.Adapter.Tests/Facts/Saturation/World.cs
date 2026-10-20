@@ -64,6 +64,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// Picks one of so many, the same each time this world is asked the same question: which arm a condition nobody
+        /// has written chooses.
+        /// </summary>
+        public int Pick(int count, string question) => (int)(Hash(question) % (ulong)count);
+
+        /// <summary>
         /// Returns the value a parameter holds in this world: a SQL null a fifth of the time, and otherwise a value of its
         /// type.
         /// </summary>

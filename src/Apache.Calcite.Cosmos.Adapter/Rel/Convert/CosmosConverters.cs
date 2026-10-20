@@ -27,19 +27,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     static class CosmosConverters
     {
 
-        static readonly System.Reflection.MethodInfo GetPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetProperty), [typeof(JsonElement), typeof(string), typeof(SqlTypeName), typeof(SqlTypeName)])
+        static readonly System.Reflection.MethodInfo GetPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetProperty), [typeof(JsonElement), typeof(string), typeof(SqlTypeName), typeof(SqlTypeName), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetProperty)}' is missing from {nameof(CosmosJson)}.");
 
         static readonly System.Reflection.MethodInfo GetPathMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetPath), [typeof(JsonElement), typeof(IReadOnlyList<CosmosPathSegment>), typeof(SqlTypeName), typeof(SqlTypeName)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetPath)}' is missing from {nameof(CosmosJson)}.");
 
-        static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string)])
+        static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetTextProperty)}' is missing from {nameof(CosmosJson)}.");
 
-        static readonly System.Reflection.MethodInfo GetJsonPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonProperty), [typeof(JsonElement), typeof(string)])
+        static readonly System.Reflection.MethodInfo GetJsonPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonProperty), [typeof(JsonElement), typeof(string), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetJsonProperty)}' is missing from {nameof(CosmosJson)}.");
 
-        static readonly System.Reflection.MethodInfo GetJsonTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonTextProperty), [typeof(JsonElement), typeof(string)])
+        static readonly System.Reflection.MethodInfo GetJsonTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonTextProperty), [typeof(JsonElement), typeof(string), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetJsonTextProperty)}' is missing from {nameof(CosmosJson)}.");
 
         static readonly System.Reflection.MethodInfo GetExecutorMethod = typeof(CosmosSchemas).GetMethod(nameof(CosmosSchemas.GetExecutor), [typeof(org.apache.calcite.DataContext), typeof(string[])])
@@ -369,8 +369,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// A list shorter than the row type, or none at all, leaves every remaining ordinal
         /// <see cref="CosmosReading.Typed"/> — which is every statement that dropped no cast.
         /// </param>
+        /// <param name="paths">
+        /// The path each output field addresses, where the caller has them; read for nothing but where
+        /// the row holds its document's <c>id</c>, which the error a value that is not UTF-8 is refused
+        /// with names (<see cref="IdentityOf"/>).
+        /// </param>
         /// <returns>The lambda.</returns>
-        public static LambdaExpression RowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosReading>? readings = null)
+        public static LambdaExpression RowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosReading>? readings = null, IReadOnlyList<CosmosPath?>? paths = null)
         {
             // Refused here rather than discovered at the first row -- see
             // CosmosImplementor.RequireReadableRow, which is also what the lookup join's own row
@@ -380,17 +385,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var row = Expression.Parameter(typeof(JsonElement), "row");
             var fields = rowType.getFieldList();
             var fieldCount = fields.size();
+            var identity = IdentityOf(rowType, paths);
 
             Expression body;
             if (fieldCount == 0)
                 body = Expression.Constant(null, typeof(object));
             else if (fieldCount == 1)
-                body = ReadField(row, (RelDataTypeField)fields.get(0), ReadingOf(readings, 0));
+                body = ReadField(row, (RelDataTypeField)fields.get(0), ReadingOf(readings, 0), identity);
             else
             {
                 var values = new Expression[fieldCount];
                 for (var i = 0; i < fieldCount; i++)
-                    values[i] = ReadField(row, (RelDataTypeField)fields.get(i), ReadingOf(readings, i));
+                    values[i] = ReadField(row, (RelDataTypeField)fields.get(i), ReadingOf(readings, i), identity);
 
                 body = Expression.NewArrayInit(typeof(object), values);
             }
@@ -510,15 +516,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// value is undefined, so the properties present in a row are a subset of the output fields and
         /// their positions are not the fields' positions.
         /// </remarks>
-        static Expression ReadField(ParameterExpression row, RelDataTypeField field, CosmosReading reading)
+        static Expression ReadField(ParameterExpression row, RelDataTypeField field, CosmosReading reading, string[]? identity)
         {
+            var identifies = Expression.Constant(identity, typeof(string[]));
+
             // A rendered column carries whatever JSON the document held, so it is read by rendering it
             // rather than by the declared type — which for VARCHAR refuses anything but a string, and
             // deliberately. Converted to object because that is what every other field reads as, the
             // wider row being an object[].
             if (reading == CosmosReading.Text)
                 return Expression.Convert(
-                    Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName())),
+                    Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName()), identifies),
                     typeof(object));
 
             // A JSON fragment, written out as Calcite writes one. The declared VARCHAR would refuse
@@ -526,7 +534,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // before it had a rendering of its own.
             if (reading == CosmosReading.JsonText)
                 return Expression.Convert(
-                    Expression.Call(null, GetJsonTextPropertyMethod, row, Expression.Constant(field.getName())),
+                    Expression.Call(null, GetJsonTextPropertyMethod, row, Expression.Constant(field.getName()), identifies),
                     typeof(object));
 
             // The document column, read as the text the service sent rather than as the declared
@@ -534,7 +542,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // a wrong RETURNING clause an error rather than a wrong answer.
             if (reading == CosmosReading.Json)
                 return Expression.Convert(
-                    Expression.Call(null, GetJsonPropertyMethod, row, Expression.Constant(field.getName())),
+                    Expression.Call(null, GetJsonPropertyMethod, row, Expression.Constant(field.getName()), identifies),
                     typeof(object));
 
             return Expression.Call(null,
@@ -542,7 +550,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 row,
                 Expression.Constant(field.getName()),
                 Expression.Constant(field.getType().getSqlTypeName()),
-                Expression.Constant(ComponentTypeNameOf(field.getType()), typeof(SqlTypeName)));
+                Expression.Constant(ComponentTypeNameOf(field.getType()), typeof(SqlTypeName)),
+                identifies);
+        }
+
+        /// <summary>
+        /// Says where a row holds its document's <c>id</c>, for the error a value that is not UTF-8 is
+        /// refused with: the member of a field bound to the <c>id</c>, or else the <c>id</c> inside the
+        /// member the whole document is.
+        /// </summary>
+        /// <remarks>
+        /// Asked of the bindings rather than of the names. A column named <c>id</c> is the document's only
+        /// where it is bound to the path, an alias being free to name anything so; and the document
+        /// column is the document wherever it is bound to the root — a statement keeping <c>DOC</c> and
+        /// dropping <c>id</c> still says which document it read.
+        /// </remarks>
+        /// <param name="rowType">The row type, whose field names are the row's members.</param>
+        /// <param name="paths">The path each field addresses, or <c>null</c> where the caller has none.</param>
+        /// <returns>The members leading to the <c>id</c>, or <c>null</c> where the row does not hold it.</returns>
+        static string[]? IdentityOf(RelDataType rowType, IReadOnlyList<CosmosPath?>? paths)
+        {
+            if (paths is null)
+                return null;
+
+            var fields = rowType.getFieldList();
+            string[]? whole = null;
+
+            for (var i = 0; i < Math.Min(paths.Count, fields.size()); i++)
+            {
+                if (paths[i] is not CosmosPath path)
+                    continue;
+
+                var name = ((RelDataTypeField)fields.get(i)).getName();
+
+                if (path.Segments is [{ IsIndex: false, Name: Apache.Calcite.Cosmos.Adapter.Metadata.CosmosContainerMetadata.IdPropertyName }])
+                    return [name];
+
+                if (path.IsRoot)
+                    whole ??= [name, Apache.Calcite.Cosmos.Adapter.Metadata.CosmosContainerMetadata.IdPropertyName];
+            }
+
+            return whole;
         }
 
         /// <summary>

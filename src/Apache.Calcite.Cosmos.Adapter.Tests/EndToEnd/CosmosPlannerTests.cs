@@ -60,6 +60,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             fullTextPaths: new[] { "/name", "/tags" },
             vectorPaths: new[] { "/a" });
 
+        /// <summary>
+        /// The same container with <c>name</c> and <c>category</c> declared printable ASCII and nothing more: what a case
+        /// fold asks of the characters it folds, beside the rendering it reads, which stays undeclared.
+        /// </summary>
+        static readonly CosmosContainerMetadata AsciiProducts = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "type": "object", "properties": { "name": { "pattern": "^[ -~]*$" }, "category": { "pattern": "^[ -~]*$" } } }""")));
+
+        /// <summary>
+        /// The same with <c>category</c> declared a string too: what the value the service holds there, cast to text, is
+        /// the characters of.
+        /// </summary>
+        static readonly CosmosContainerMetadata AsciiStringProducts = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "type": "object", "properties": { "category": { "type": "string", "pattern": "^[ -~]*$" } } }""")));
+
         CosmosTable _table = null!;
 
         public CosmosPlannerTests()
@@ -141,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         string Render(RelNode rel)
         {
-            var implementor = new CosmosImplementor(rel.getCluster().getRexBuilder(), Products);
+            var implementor = new CosmosImplementor(rel.getCluster().getRexBuilder(), _table.Container);
             implementor.Visit(rel);
             return implementor.Build().Sql;
         }
@@ -153,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         CosmosQuery Query(RelNode rel)
         {
-            var implementor = new CosmosImplementor(rel.getCluster().getRexBuilder(), Products);
+            var implementor = new CosmosImplementor(rel.getCluster().getRexBuilder(), _table.Container);
             implementor.Visit(rel);
             return implementor.Build();
         }
@@ -1319,9 +1333,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void SortOnAPlainColumnPushesPastAComputedProjection()
         {
-            var best = PlanToCosmos("SELECT UPPER(c.\"id\") AS \"u\", c.\"_ts\" AS \"i\" FROM products AS c ORDER BY c.\"_ts\"");
+            var best = PlanToCosmos("SELECT c.\"id\" || '!' AS \"u\", c.\"_ts\" AS \"i\" FROM products AS c ORDER BY c.\"_ts\"");
 
             Render(best).Should().Contain("ORDER BY c._ts ASC");
+        }
+
+        /// <remarks>
+        /// A function the service does not compute over a plain column stays in process, and the column goes down alone:
+        /// <c>UPPER</c> over <c>id</c>, whose characters nothing proves ASCII, reads <c>{"id": c.id}</c> rather than every
+        /// document whole, as a declined function over an accessor reads the accessor. With the sort, the key is read
+        /// beside it. A sort over the plain column still pushes.
+        /// </remarks>
+        [Fact]
+        public void APlainColumnBeneathADeclinedFunctionIsStillSent()
+        {
+            var best = PlanToAsync("SELECT UPPER(c.\"id\") AS \"u\" FROM products AS c");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("c.id").And.NotContain("\"DOC\"").And.NotContain("VALUE c FROM", "the documents are not read whole: " + sql);
+            Plan(best).Should().Contain("UPPER(", "Calcite maps the case: " + Plan(best));
+
+            var sorted = PlanToAsync("SELECT UPPER(c.\"id\") AS \"u\" FROM products AS c ORDER BY c.\"_ts\"");
+            Render(FindCosmos(sorted)).Should().Contain("ORDER BY c._ts ASC").And.NotContain("\"DOC\"");
         }
 
         /// <remarks>
@@ -3284,11 +3317,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // `UPPER(x) LIKE '%STEEL%'` is what an ORM writes for a case-insensitive contains, and the
         // service has one natively (#84). Over the accessor it has the rendering gap LIKE has, so it
         // is declined and weakened like LIKE; the guard's own comparison is the one rendered as the
-        // native function.
+        // native function. The fold folds as Calcite's does only over ASCII — Calcite writes ß as SS,
+        // and the service's case-insensitive match leaves it — so each of these is over a container
+        // declaring the path printable ASCII, and the last says what becomes of it where nothing does.
 
         [Fact]
         public void ACaseFoldedContainsIsTheServicesCaseInsensitiveContains()
         {
+            _table = new CosmosTable(AsciiProducts);
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%'");
             var sql = Render(FindCosmos(best));
 
@@ -3301,6 +3337,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ACaseFoldedPrefixOverAViewsColumnIsACaseInsensitiveStartsWith()
         {
+            _table = new CosmosTable(AsciiProducts);
+
             foreach (var hostRewrites in new[] { false, true })
             {
                 var sql = Render(FindCosmos(PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE LOWER(p.\"Name\") LIKE 'st%'", hostRewrites)));
@@ -3312,14 +3350,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
-        /// fold renders as the native function directly.
+        /// fold renders as the native function directly. What it folds is the value the service holds
+        /// there cast to text, whose characters are the path's only where it holds a scalar: an object
+        /// cast to text is the JSON of what it holds, which no pattern bounds. So the path is declared a
+        /// string beside its characters, and declared only its characters it is folded in process.
         /// </summary>
         [Fact]
         public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
         {
+            _table = new CosmosTable(AsciiStringProducts);
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
 
             Render(best).Should().Contain("ENDSWITH(c.category, @p0, true)").And.NotContain("IS_STRING");
+
+            _table = new CosmosTable(AsciiProducts);
+            var unproved = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+            Render(FindCosmos(unproved)).Should().NotContain("ENDSWITH", "the path may hold an object");
+            Plan(unproved).Should().Contain("ClrCursorFilter");
+        }
+
+        /// <summary>
+        /// Where nothing proves the path ASCII the fold and the pattern stay in process, under the guard and without it:
+        /// measured, <c>UPPER(s) LIKE '%SS%'</c> rewritten as <c>CONTAINS(s, 'SS', true)</c> lost <c>aßb</c> on both
+        /// targets, and the weakening could not bring it back. What goes down is the presence the comparison implies.
+        /// </summary>
+        [Fact]
+        public void ACaseFoldOverAPathNotProvedAsciiStaysInProcess()
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("CONTAINS(").And.NotContain("UPPER(");
+            sql.Should().Contain("IS_DEFINED(c.name)");
+            Plan(best).Should().Contain("ClrCursorFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
+
+            var raw = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+            Render(FindCosmos(raw)).Should().NotContain("ENDSWITH(").And.NotContain("UPPER(");
         }
 
         // ── A comparison through RETURNING ────────────────────────────────────────────

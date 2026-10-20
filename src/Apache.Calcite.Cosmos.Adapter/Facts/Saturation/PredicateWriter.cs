@@ -106,7 +106,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return flat;
         }
 
-        ConstructorTerm<Val> Value(SqlValue value)
+        /// <summary>
+        /// Builds a value's term: a reading of a path, a cast, a literal, a parameter, or a call over its operands' terms.
+        /// </summary>
+        public ConstructorTerm<Val> Value(SqlValue value)
         {
             var r = _ir;
             return value switch
@@ -117,9 +120,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 SqlValue.Cast c => r.Cast.Of(c.Target, Value(c.Value)),
                 SqlValue.Literal l => r.Literal.Of(l.Value),
                 SqlValue.Parameter p => r.Parameter.Of(p.Ordinal, p.Type),
+                SqlValue.Call c => r.Call.Of(c.Function, Operands(c.Operands, 0)),
                 _ => throw new NotSupportedException(value.GetType().Name),
             };
         }
+
+        ConstructorTerm<Args> Operands(IReadOnlyList<SqlValue> operands, int from) =>
+            from == operands.Count ? _ir.NoOperands.Of() : _ir.Operand.Of(Value(operands[from]), Operands(operands, from + 1));
 
     }
 

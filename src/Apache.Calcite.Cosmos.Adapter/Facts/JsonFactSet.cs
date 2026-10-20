@@ -141,8 +141,8 @@ namespace Apache.Calcite.Cosmos.Facts
         });
 
         /// <summary>
-        /// Returns the bands of UTF-16 units the strings at a path may hold beside those below U+D800:
-        /// <see cref="JsonCharacterBand.Any"/> where nothing is known.
+        /// Returns the classes the strings at a path may hold characters of: <see cref="JsonCharacterBand.Any"/> where
+        /// nothing is known.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -162,6 +162,47 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns>The bands.</returns>
         public JsonCharacterBand CharactersOf(JsonDocumentPath path) =>
             Read(JsonCharacterBand.Any, t => t.TryChars(path, out var bands) ? JsonFactEncoding.Bands(bands) : JsonCharacterBand.Any);
+
+        /// <summary>
+        /// Returns the classes the characters of a value may be in, if it is a string: <see cref="JsonCharacterBand.Any"/>
+        /// where nothing is known.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A fact of the theory, of a value as of a path.</b> A reading of a path holds the path's characters, read as
+        /// <see cref="CharactersOf(JsonDocumentPath)"/> reads them, and a literal its own, read by the theory's reader of a
+        /// value. A call — a concatenation, a case mapping, a window over a computed string — the theory derives, from
+        /// what its function draws from each operand (<c>StringCalls</c>) and what each operand holds, in a context made
+        /// for the question beneath this one; nothing here combines one operand's with another's. So it derives a cast to
+        /// text of the value a path holds, where the path holds scalars alone. A parameter, and a call of a function the
+        /// theory does not read, may hold anything.
+        /// </para>
+        /// <para>
+        /// Silent, as a path's are, about whether a string is there.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The value, as the loader reads one.</param>
+        /// <returns>The classes.</returns>
+        internal JsonCharacterBand CharactersOf(SqlValue value) => value switch
+        {
+            SqlValue.Text or SqlValue.Raw => CharactersOf(value.PathRead!.Value),
+            SqlValue.Literal literal => JsonFactEncoding.Bands(Saturation.JsonValues.CharactersOf(literal.Value)),
+            SqlValue.Parameter => JsonCharacterBand.Any,
+            _ => Read(JsonCharacterBand.Any, t => t.TryValueChars(value, out var classes) ? JsonFactEncoding.Bands(classes) : JsonCharacterBand.Any),
+        };
+
+        /// <summary>
+        /// Returns the fewest and the most UTF-16 units a path's string may hold, each where it is known.
+        /// </summary>
+        /// <remarks>
+        /// The theory's <c>minLength</c> and <c>maxLength</c>, which a domain's strings state and a rule meets with any
+        /// other; silent, as characters are, about whether a string is there. A code point is one unit or two, so a
+        /// count of units bounds a count of code points from above.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <returns>The bounds, either <c>null</c> where nothing bounds it.</returns>
+        public (long? Least, long? Most) LengthsOf(JsonDocumentPath path) => Read<(long?, long?)>((null, null), t =>
+            (t.TryMinLength(path, out var least) ? least : null, t.TryMaxLength(path, out var most) ? most : null));
 
         /// <summary>
         /// Returns every stored form known for a path, which may be none.
