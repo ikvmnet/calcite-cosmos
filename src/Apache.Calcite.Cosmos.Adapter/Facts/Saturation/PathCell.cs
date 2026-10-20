@@ -13,28 +13,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
-    /// One cell of a path's import: a set of the values it may hold, inside one <see cref="PredicateAtom.State"/>, and never
-    /// empty. <see cref="Split"/> cuts an import at the values a pair compares with, so that each side answers one way on
-    /// as many cells as it can.
+    /// One cell of a path's import: a set of the values it may hold, inside one <see cref="PredicateAtom.State"/>, never
+    /// empty. A value is <see cref="JsonValues"/>' spelling, a structure its type and <c>|</c>, and <c>null</c> the absent
+    /// path. Strings are cut by UTF-16 unit, numbers by value, and every cell kept has an inhabitant (<c>DESIGN.md</c>,
+    /// <i>Cells, and Calcite on one</i>).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>A value is <see cref="JsonValues"/>' spelling</b>, a structure its type and <c>|</c> (<c>object|</c>), and
-    /// <c>null</c> the absent path. A number is its value, so no cell parts a stored <c>30</c> from <c>30.0</c>.
-    /// </para>
-    /// <para>
-    /// <b>Strings are cut in Calcite's order, by UTF-16 unit</b> (<c>Calcite.TextOrderIsByCodeUnit</c>), and an interval
-    /// holds only strings whose classes the path's allow, read through <see cref="BandsOfText"/>: a string's classes are its
-    /// units'. Numbers are cut by value; the double a number rounds to is not yet a cut.
-    /// </para>
-    /// <para>
-    /// <b>Every cell has an inhabitant</b> (<see cref="Witness"/>), and <see cref="Split"/> keeps no interval without one: a
-    /// refutation names a cell, and a cell nothing lies in refutes nothing. The search is complete — an interval's strings are
-    /// tried from its least, in order, and its numbers from its bounds — so an interval is dropped only where the import
-    /// admits nothing in it: below <c>""</c>, between <c>l</c> and <c>l</c> + U+0000, where no number of the kind lies
-    /// between the bounds.
-    /// </para>
-    /// </remarks>
     internal abstract record PathCell : IComparable<PathCell>
     {
 

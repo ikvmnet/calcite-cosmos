@@ -10,12 +10,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// A set's table as the evaluation primitives read it: its entries, indexed by key.
+    /// A set's table as the evaluation primitives read it: its entries, indexed by key; equal by content, since Eggnog
+    /// interns a value by its equality.
     /// </summary>
-    /// <remarks>
-    /// <b>Equal by content.</b> Eggnog interns a value by its equality, so two tables equal by anything less would be one
-    /// value, and a bundle could read another set's rows.
-    /// </remarks>
     internal sealed class ServiceTable : IEquatable<ServiceTable>
     {
 
@@ -36,7 +33,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The view of a set's entries; two entries for one key throw.</summary>
         public static ServiceTable Of(ValueSet<MeasuredEntry> entries) => Views.GetValue(entries, e => new ServiceTable(e));
 
-        /// <summary>Looks a key's entry up.</summary>
         public bool TryGet(MeasuredKey key, [MaybeNullWhen(false)] out MeasuredEntry entry) => _index.TryGetValue(key, out entry);
 
         /// <summary>

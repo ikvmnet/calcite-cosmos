@@ -212,15 +212,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// The truth values the atom may take on one cell of a path's import: <see cref="On"/>'s, through the reading's cell
-        /// methods, which answer on the state the cell lies in where they know no better.
+        /// methods. The rendering check's Calcite side, which the facts graph never reads (<c>DESIGN.md</c>).
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>The rendering check's Calcite side, which the facts graph never reads</b>, so it changes no plan. A reading
-        /// narrower on a cell than on its state is what proves a form exact; one wider is a raise the coarse reading leaves
-        /// out (<c>TODO.md</c>): a reading is the union of the readers it stands for, each as measured.
-        /// </para>
-        /// </remarks>
         internal Truths OnCell(PathCell cell)
         {
             if (Test == DefinedTest || Reads is not Reading reading || cell is PathCell.Unknown)
@@ -434,13 +427,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>The rows the cell methods rest on.</summary>
             public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
 
-            /// <summary>The truth values of an equality on a cell: by default, on the state it lies in.</summary>
+            // A reading's answers on a cell: by default, its answers on the state the cell lies in.
             public virtual Truths EqualOn(PathCell cell, string literal) => Equal(cell.Coarse, literal);
 
-            /// <summary>The truth values of an ordering on a cell: by default, on the state it lies in.</summary>
             public virtual Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal);
 
-            /// <summary>The truth values of <c>IS NULL</c> on a cell: by default, on the state it lies in.</summary>
             public virtual Truths NullOn(PathCell cell) => Null(cell.Coarse);
 
             /// <summary>Whether an ordering holds of a value that compares with the literal as the sign says.</summary>

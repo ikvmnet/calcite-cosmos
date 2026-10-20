@@ -10,21 +10,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// A Cosmos SQL condition as a value: a test, a comparison or a membership of one path, a path written bare, a
-    /// constant, or a connective over others. S evaluates one on cells and never makes it a class, so no rule can merge
-    /// two.
+    /// A Cosmos SQL condition as a value, never a class, so no rule can merge two: a test, a comparison or a membership of
+    /// one path, a path written bare, a constant, or a connective over others, its members as written. Its canonical text
+    /// is its equality, hash and order; the structural helpers take it apart and decide nothing (<c>DESIGN.md</c>).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Its text is canonical</b> — fully parenthesised, a path spelled as <see cref="SqlValue.Spell"/> spells it, a
-    /// literal quoted in <see cref="JsonValues"/>' spelling — and is its equality, hash and order. A junction keeps its
-    /// members as written: in order, repeats included.
-    /// </para>
-    /// <para>
-    /// <b>The structural helpers decide nothing</b> about documents or the service. They take a form apart, so that
-    /// rules can pair a written junction's members with the IR's children every way.
-    /// </para>
-    /// </remarks>
     internal sealed class ServiceForm : IEquatable<ServiceForm>, IComparable<ServiceForm>
     {
 

@@ -11,14 +11,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// One statement round in S: a child of the frozen theory holding the round's conjuncts as terms, the import they were
-    /// rendered from, and the forms claimed for them; run once, read, and disposed.
+    /// rendered from, and the forms claimed for them; run once, read off a completed run alone, and disposed.
     /// </summary>
-    /// <remarks>
-    /// <b>An answer is read only off a completed run.</b> A run stopped by a limit derived fewer facts, and an agreement
-    /// absent for want of an iteration reads as a refutation's absence too, so <see cref="Read"/> answers
-    /// <see cref="RenderingVerdictKind.Incomplete"/> for anything but <see cref="RunStopReason.Completed"/>. The limits are
-    /// counts, never time, so an answer depends on content alone.
-    /// </remarks>
     internal sealed class RenderingBundle : IDisposable
     {
 
@@ -89,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Scope.Assume([.. facts]);
         }
 
-        /// <summary>Runs the check, within 64 iterations and 50,000 rows, and the tripwire after it.</summary>
+        /// <summary>Runs the check within count limits, never time, and the tripwire after it.</summary>
         public RenderingRun Run(int iterationLimit = 64)
         {
             var report = Scope.Run(_theory.Check, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });

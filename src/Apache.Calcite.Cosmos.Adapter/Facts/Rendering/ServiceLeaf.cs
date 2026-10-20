@@ -12,27 +12,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The service on one path's cells: one test, read off the handed table cell by cell. A key the table does not hold
-    /// answers every outcome, a failure included, and is named among the rows, so nothing is concluded no row says.
+    /// The service on one path's cells: one test, read off the handed table cell by cell, a cell keyed by its kind or by
+    /// the side each comparator places it on. A key the table does not hold answers every outcome, a failure included,
+    /// and is named (<c>DESIGN.md</c>, <i>Forms, rows, and the service on a cell</i>).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>A cell is keyed by what the service tells apart</b>: its kind, or, against a string or a number, where it lies
-    /// under each comparator the type's <see cref="CosmosServiceTest.Order"/> entry names, their answers unioned. A boolean
-    /// and a null are their own classes, which no comparator orders.
-    /// </para>
-    /// <para>
-    /// <b>An interval of strings is cut by UTF-16 unit</b>, Calcite's order, so it lies wholly to one side of a literal by
-    /// code point too, unless the literal parts the two orders over the path, as S's rules decide; then it answers both
-    /// sides. <b>A number lies exactly where a double does</b>: the theory spells <c>30</c> and <c>30.0</c> alike, the
-    /// service may hold either as a double, and a double is not yet measured against an int64 beyond 2^53.
-    /// </para>
-    /// <para>
-    /// <b>A path written bare</b> is keyed by the value it holds; where that is no boolean, its outcome carries the
-    /// value's class, which a connective over it keys its own row by. A membership, a constant and an opaque form have no
-    /// rows yet, and answer every outcome.
-    /// </para>
-    /// </remarks>
     internal static class ServiceLeaf
     {
 

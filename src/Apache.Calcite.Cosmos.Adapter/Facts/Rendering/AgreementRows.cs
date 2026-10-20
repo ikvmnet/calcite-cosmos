@@ -9,25 +9,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// What a position keeps, as data: the boxes a class of a cell must lie in for each verdict, the boxes in which it
-    /// definitely refutes one, and the space of classes they range over. S's rules derive which classes are allowed and
-    /// which refute from these rows; a brute-force test holds them to the definition.
+    /// What a position keeps, as data: the boxes a class of a cell must lie in for each verdict under decision 2, the boxes
+    /// in which it definitely refutes one, and the space of classes they range over. At <see cref="RenderPosition.Pos"/>
+    /// K = {T}, N = {F, U}, Ks = {t}, Ns = {f, u}; at <see cref="RenderPosition.Neg"/> K = {F}, N = {T, U}, Ks = {f},
+    /// Ns = {t, u}. A brute-force test holds the derived classes to the definition (<c>DESIGN.md</c>).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The definition.</b> At <see cref="RenderPosition.Pos"/> Calcite keeps K = {T} and drops N = {F, U}; the service
-    /// keeps Ks = {t} and drops Ns = {f, u}. At <see cref="RenderPosition.Neg"/> K = {F}, N = {T, U}, Ks = {f}, Ns = {t, u}.
-    /// A cell's class is a set of each: any pair of them may meet on some document of the cell. <see cref="Verdict.Equal"/>
-    /// holds on it where every pair keeps alike, <see cref="Verdict.Implies"/> where the service keeps every row Calcite
-    /// keeps.
-    /// </para>
-    /// <para>
-    /// <b>Decision 2.</b> A row Calcite raises on fails its query, so nothing written for it is wrong: an allowing box tests
-    /// Calcite's truths with the raise set aside (<c>tolerated</c>), and a cell it raises on alone allows anything but a
-    /// failure. A failure of the service fails the statement, so no allowing box admits <c>E</c>, and one where Calcite
-    /// answers refutes. A refuting box tests Calcite's truths as they are: a cell that may raise refutes nothing.
-    /// </para>
-    /// </remarks>
     internal static class AgreementRows
     {
 
