@@ -5799,6 +5799,35 @@ opaque conjunct no round admits: another statement than the one that was sent.
 **Two files compare only if planning is deterministic**, and the oracle remembers statements across a process.
 `TheDigestsAreDeterministic` plans the corpus twice in one process, per pull request, and requires the same lines.
 
+### Calcite's side, measured in process
+
+**A reading in the IR is several readers to Calcite, and each is measured where the reader fills it.** `typed` is a
+`RETURNING` and a column the reader types; `raw` is a promoted path's `VARIANT`, an `ANY` and a `VARCHAR` column. No
+expression over a JSON literal yields any of those columns, so `Tests/Measurements/MaterialisedTable.cs` scans rows
+through `CosmosJson.GetValue` itself. Five `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
+named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite on random predicates. What a cell
+answers is the union over the readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose
+`=` and null test never raise, which is what `PredicateAtom`'s raw reading answers for; the raises it leaves out are in
+`TODO.md`.
+
+**The column reader is not `RETURNING`** (`Calcite.ColumnReadsWholeNumbersAsItsType`). The column reads a whole number as
+its type whatever its spelling, `42.0` under `INTEGER` and `42` under `BIGINT`, where `RETURNING` raises over both, and
+fails the statement over a fraction, a number beyond the type, a string or a boolean.
+
+**The raw columns agree on strings and null, and part elsewhere** (`Calcite.RawStringEqualityIsOrdinal`,
+`Calcite.RawNullIsSqlNull`). A string is equal to the string of its UTF-16 units alone, and a null or an absent path is
+SQL null, so `NOT (raw = 'bikes')` keeps neither. A value of another type is unequal in `VARIANT` and `ANY`, and fails a
+`VARCHAR` column's read. `ANY` raises on an ordering across types. A `VARIANT` has no ordering at all, the statement
+failing to compile, and is equal to a number boxed with its own SQL type alone, `BIGINT` for a JSON integer and `DOUBLE`
+otherwise, which the IR does not keep: raw numeric `=` stays a coin in `IrEval`.
+
+**Text orders by UTF-16 code unit** (`Calcite.TextOrderIsByCodeUnit`) and the service by code point, so the two part
+where one string holds U+E000 or above and another a supplementary character.
+
+**The connectives are Kleene's, and evaluate both operands** (`Calcite.ConnectivesAreKleene`). A nullable `AND` beside
+FALSE raises where its other operand raises, in either order. `IrEval` answers the deciding arm and `Raises` marks the
+row, which is what the check against Calcite leaves out.
+
 ---
 
 ## Differential testing

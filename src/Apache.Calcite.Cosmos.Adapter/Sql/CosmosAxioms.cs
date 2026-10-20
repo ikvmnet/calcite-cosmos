@@ -153,6 +153,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "A cast of the accessor to BOOLEAN parses the rendering: a stored boolean reads as itself, a null and an absent path as null, a string spelling a boolean parses, trimmed and in any case, and a number raises.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 9), "Measurements.CalciteJsonValueMeasurementTests.ACastToBooleanParsesTheRendering"),
 
+            // ── What Calcite compares, in the columns the reader fills: the rendering check's Calcite side ──
+
+            new("Calcite.ColumnReadsWholeNumbersAsItsType",
+                "A column typed BIGINT or INTEGER reads a stored number whose value is whole and in the type's range as the type, 42.0 included, and fails the statement over a fraction, a number beyond the type, a string and a boolean; DOUBLE reads every number, BOOLEAN a boolean alone, and each compares and orders as its type. RETURNING raises over 42.0 under INTEGER and over an int-sized number under BIGINT.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteColumnReadingMeasurementTests.EachColumnReadsAndComparesAsItsType"),
+            new("Calcite.RawStringEqualityIsOrdinal",
+                "A raw value in a VARIANT, an ANY or a VARCHAR column is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not another case, not a trailing space, not a number, a boolean or a structure.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawValueIsEqualToTheStringOfItsUnitsAlone"),
+            new("Calcite.RawNullIsSqlNull",
+                "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal"),
+            new("Calcite.TextOrderIsByCodeUnit",
+                "Text compares by UTF-16 code unit, as String.compareTo does: U+E000 and U+FFFD above U+1F600, which code point order puts above both, and 'true' and 'false' above 'bikes', '30' below.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
+            new("Calcite.ConnectivesAreKleene",
+                "AND, OR and NOT are Kleene's over TRUE, FALSE and UNKNOWN, in either order; an operand that raises raises AND beside FALSE and OR beside TRUE, in either order, both operands of a nullable connective being evaluated.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteConnectiveMeasurementTests.TheConnectivesAreKleenesAndEvaluateBothOperands"),
+
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 
             new("Calcite.TemporalCastReadsFewShapes",

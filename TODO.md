@@ -2486,6 +2486,24 @@ across documents* and *A join of a container to itself* is the record.
 - **The plan digests leave out the parameterised statements** — *small.* `WriteDigests` plans what the rendering
   check reads, and the check skips the differential's 33 statements with parameters whole, so a commit's "changes no
   plan" is not compared over them. Planning them needs no values, and adding them is a line.
+- **The raw reading leaves out raises Calcite was measured to make** — *medium, and it touches plans.* A `VARCHAR`
+  column's reader fails over anything but a string, an ordering over a `VARIANT` fails to compile, and `ANY` raises on
+  an ordering across types (`Calcite.RawNullIsSqlNull`). `PredicateAtom`'s raw reading answers there without
+  `Raises`, which `NeverTrue` and `AlwaysFalse` read as leave to decide. `id` and `_etag` hold strings, so the first
+  needs a field typed `VARCHAR` and read as stored; whether a plan reaches any of the three is unchecked. `IrEval`
+  reads them through a named column alone, and unnamed stays inside the table, so population D does not yet hold the
+  table to them. Adding `Raises` changes verdicts; and the rendering graph's raw cells, which union the three columns,
+  meet the same raise outside the coarse answer.
+- **A `BIGINT` column reads 2^63 as a number it does not hold** — *small.* `CosmosJson.GetInteger` checks a number
+  read as a double against the type's bounds widened to double, where 2^63 is not above `long.MaxValue`, and the cast
+  that follows reads 2^63 as 2^63 − 1 on net10.0 and as −2^63 on net8.0. Found while measuring the column reader; the
+  measurement leaves 2^63 out, and `IrEval`'s column mode refuses it as the reader should.
+- **A `BIGINT` compared with a fraction raises near its limit** — *small.* Calcite raises comparing 2^63 − 1 in a
+  `BIGINT` column with `42.5`, where it compares 2^53 + 1. Neither mode of `IrEval` models it, and nothing it is held
+  to reaches it; the typed orderings over number cells should.
+- **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
+  in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
+  `c.pk = 42` is unchecked.
 
 ---
 
