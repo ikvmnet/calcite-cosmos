@@ -16,6 +16,7 @@ using FluentAssertions;
 using Xunit;
 
 using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.OracleFixture;
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ProbeRows;
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
@@ -30,37 +31,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingGateTests
     {
 
-        static readonly JsonDocumentPath LabelPath = P("label");
-
-        static readonly string Label = SqlValue.Spell(LabelPath);
-
         static readonly SqlPredicate NotBikes = Ne(Text(LabelPath), "bikes");
 
-        static readonly ServiceForm Bare = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Label, Of("bikes"));
-
-        static readonly ServiceForm Guarded = ServiceForm.JunctionOf(CosmosServiceTest.And,
-            [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
-
         static readonly PathValues DeclaredString = PathValues.OfKinds(ValueSet.Of(StringType));
-
-        static readonly RenderingDefinition Measured = RenderingDefinition.Measured(ProbeRows.Rows);
-
-        static readonly Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
-
-        /// <summary>
-        /// Checks a form claimed for a conjunct over <c>label</c>, in a bundle of its own under the emulator, and reads both
-        /// claims; the run must complete with one node per class.
-        /// </summary>
-        static (RenderingVerdict Equal, RenderingVerdict Implies) Check(ServiceForm form, PathValues import, SqlPredicate? conjunct = null, RenderingTheory? theory = null)
-        {
-            using var bundle = (theory ?? Probe.Value).Open(RenderingSet.Emulator);
-            var root = bundle.Write(conjunct ?? NotBikes);
-            bundle.Import("test", LabelPath, import, AllBands);
-            bundle.Claim(root, form);
-            var run = bundle.Run();
-            (run.StopReason, run.OneNodePerClass, run.Contradicted).Should().Be((RunStopReason.Completed, true, false));
-            return (bundle.Read(root, form, Verdict.Equal), bundle.Read(root, form, Verdict.Implies));
-        }
 
         /// <summary>
         /// Text <c>label &lt;&gt; 'bikes'</c> over an undeclared path: the guarded form the translator writes is exact; the
@@ -70,13 +43,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void T1_T5()
         {
-            var guarded = Check(Guarded, PathValues.Anything);
+            var guarded = Check(NotBikes, Guarded);
             (guarded.Equal.Kind, guarded.Implies.Kind).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
             (guarded.Equal.Proof!.Cells, guarded.Equal.Vacuous).Should().Be((11, false));
             guarded.Equal.Proof!.Rows.Should().Contain(new[] { "Service.IsNull", "Service.IsPrimitive", "Service.BarePathKeepsOnlyTrue" })
                 .And.NotContain(row => row.StartsWith("missing:"));
 
-            var bare = Check(Bare, PathValues.Anything);
+            var bare = Check(NotBikes, Bare);
             (bare.Equal.Kind, bare.Implies.Kind).Should().Be((RenderingVerdictKind.Refuted, RenderingVerdictKind.Proven));
             bare.Equal.Refutation.Should().Be(bare.Equal.Refutation! with
             {
@@ -87,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>Over a declared, required string the bare form is exact.</summary>
         [Fact]
-        public void T2() => Check(Bare, DeclaredString).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
+        public void T2() => Check(NotBikes, Bare, path: LabelPath, values: DeclaredString).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
         /// <summary>
         /// The tripwire: a planted rule that merges two atoms leaves a class with two nodes, which the run reports and the
@@ -125,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var literal = "bikes" + k;
                 var bare = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Label, Of(literal));
                 var form = k % 2 == 0 ? bare : ServiceForm.JunctionOf(CosmosServiceTest.And, [Guarded.Members[0], Guarded.Members[1], bare]);
-                return Check(form, k % 4 < 2 ? PathValues.Anything : DeclaredString, Ne(Text(LabelPath), literal));
+                return Check(Ne(Text(LabelPath), literal), form, path: LabelPath, values: k % 4 < 2 ? PathValues.Anything : DeclaredString);
             }
 
             var serial = Enumerable.Range(0, 16).Select(One).ToArray();
@@ -206,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ReadWaitsForCompleted()
         {
-            using var bundle = Probe.Value.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
             bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, Guarded);
@@ -242,13 +215,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AFormOverAnotherPathIsNotEvaluated()
         {
             var lable = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, SqlValue.Spell(P("lable")), Of("bikes"));
-            using var bundle = Probe.Value.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
             bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, lable);
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
             (bundle.Read(root, lable, Verdict.Equal).Kind, bundle.Read(root, lable, Verdict.Implies).Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
-            (bundle.Scope.CountRows(Probe.Value.Partition), bundle.Scope.CountRows(Probe.Value.Svc)).Should().Be((0, 0));
+            (bundle.Scope.CountRows(ProbeTheory.Partition), bundle.Scope.CountRows(ProbeTheory.Svc)).Should().Be((0, 0));
         }
 
         /// <summary>
@@ -259,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ACastToTextOverARawValueIsNeverEvaluated()
         {
             var form = ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
-            var (equal, implies) = Check(form, PathValues.Anything, Not(Eq(Cast("VARCHAR", Raw(LabelPath)), "b")));
+            var (equal, implies) = Check(Not(Eq(Cast("VARCHAR", Raw(LabelPath)), "b")), form);
             (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
         }
 
@@ -275,12 +248,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (chars, parted, op) in from c in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) } from op in new[] { "<", "<>" } select (c.Item1, c.Item2, op))
             {
                 var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
-                using var bundle = Probe.Value.Open(RenderingSet.Emulator);
+                using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
                 var root = bundle.Write(Cmp(Text(LabelPath), op, Lit(high)));
                 bundle.Import("test", LabelPath, PathValues.Anything, chars);
                 bundle.Claim(root, form);
                 bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
-                bundle.Scope.Rows(Probe.Value.PartedLiterals).Single().Output.Should().Be(parted ? ValueSet.Of(Of(high)) : ValueSet<string>.Empty, string.Join(",", chars.AsEnumerable()));
+                bundle.Scope.Rows(ProbeTheory.PartedLiterals).Single().Output.Should().Be(parted ? ValueSet.Of(Of(high)) : ValueSet<string>.Empty, string.Join(",", chars.AsEnumerable()));
             }
         }
 

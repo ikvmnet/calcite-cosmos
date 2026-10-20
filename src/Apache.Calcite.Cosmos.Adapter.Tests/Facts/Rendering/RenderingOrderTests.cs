@@ -37,23 +37,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingOrderTests
     {
 
-        static readonly string[] HostAndTheory =
-        [
-            "outcome", "cites", "serves", "means", "answers", "measured", "evidence", "final", "table", "class", "raiseonly", "allowing",
-            "refuting", "tolerated", "allowed", "allowedcites", "refutes", "edges", "parting", "kleene", "expected", "matched", "licensed",
-            "identity", "opposite", "spelling", "conjunct", "under", "imported", "importedchars",
-        ];
+        /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars"];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
 
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 
         [Fact]
-        public void TheScheduleReadsNoUniversalOverADomainThatMoves()
-        {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
-            Violations(theory).Should().BeEmpty();
-        }
+        public void TheScheduleReadsNoUniversalOverADomainThatMoves() => Violations(ProbeRows.ProbeTheory).Should().BeEmpty();
 
         /// <summary>
         /// The plant after F1: a stratum grows a set of classes and reads it with <c>set-subset</c>, so the universal may
@@ -129,6 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static List<string> Violations(RenderingTheory theory)
         {
             var tables = theory.Graph.Tables.ToDictionary(t => t.Name);
+            var owned = theory.Graph.Tables.Where(t => theory.Theory.CountRows(t) > 0).Select(t => t.Name).Concat(BundleHost).ToHashSet();
             var settle = Strata(theory.Settle);
             var check = Strata(theory.Check);
             var violations = settle.Keys.Intersect(check.Keys).Select(name => $"the theory's {name} runs in a bundle").ToList();
@@ -169,7 +162,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     if (read.Writes.Contains("contradiction") && read.Ruleset != "conflict")
                         violations.Add($"{name}: derives the contradiction");
                     if (bundle)
-                        violations.AddRange(read.Writes.Intersect(HostAndTheory).Select(table => $"{name}: writes {table}, which the host or the theory owns"));
+                        violations.AddRange(read.Writes.Intersect(owned).Select(table => $"{name}: writes {table}, which the host or the theory owns"));
                 }
             }
 

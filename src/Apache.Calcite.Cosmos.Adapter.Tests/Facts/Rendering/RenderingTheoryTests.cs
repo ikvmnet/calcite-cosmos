@@ -13,6 +13,8 @@ using Xunit;
 
 using static Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
 
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ProbeRows;
+
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
@@ -23,20 +25,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingTheoryTests
     {
 
-        static readonly Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows)));
+        static ValueSet<CellClass> Allowed(RenderPosition pos, Verdict v) => ProbeTheory.Theory.Get(ProbeTheory.Allowed.Of(pos, v));
 
-        static ValueSet<CellClass> Allowed(RenderPosition pos, Verdict v) => Probe.Value.Theory.Get(Probe.Value.Allowed.Of(pos, v));
-
-        static ValueSet<CellClass> Refutes(RenderPosition pos, Verdict v) => Probe.Value.Theory.Get(Probe.Value.Refutes.Of(pos, v));
+        static ValueSet<CellClass> Refutes(RenderPosition pos, Verdict v) => ProbeTheory.Theory.Get(ProbeTheory.Refutes.Of(pos, v));
 
         [Fact]
-        public void TheTheoryHasAtMostFortyRules() => Probe.Value.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(40);
+        public void TheTheoryHasAtMostFortyRules() => ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(40);
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
         [Fact]
         public void TheRaiseOnlyClassesAreTheOnesThePolicySetsAside()
         {
-            Probe.Value.Theory.Get(Probe.Value.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises));
+            ProbeTheory.Theory.Get(ProbeTheory.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises));
             var strict = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows) with { Tolerated = Truths.None });
             strict.Theory.Get(strict.RaiseOnly.Of()).Should().BeEmpty();
         }
@@ -136,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
             (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
 
-            Probe.Value.Theory.Get(Probe.Value.Final.Of(key, RenderingSet.Portable)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
+            ProbeTheory.Theory.Get(ProbeTheory.Final.Of(key, RenderingSet.Portable)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
         }
 
         /// <summary>
@@ -155,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var covered = built.Take(2).ToList();
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
-            covered.Should().OnlyContain(reader => Probe.Value.Theory.Check(Fact.Exists(Probe.Value.Edges.Of(reader))));
+            covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }
 
     }

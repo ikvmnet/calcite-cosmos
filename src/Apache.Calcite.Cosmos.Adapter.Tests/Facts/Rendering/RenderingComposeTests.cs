@@ -14,6 +14,7 @@ using Xunit;
 using Op = Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest;
 
 using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.OracleFixture;
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ProbeRows;
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
@@ -28,23 +29,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingComposeTests
     {
 
-        static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
-
-        static readonly string Label = SqlValue.Spell(LabelPath), Kind = SqlValue.Spell(KindPath), Category = SqlValue.Spell(CategoryPath), Metadata = SqlValue.Spell(MetadataPath);
-
-        /// <summary>The bare comparison, refuted for Equal where the service keeps a null, an object or an array (T5).</summary>
-        static readonly ServiceForm Bare = Compare(Op.NotEqual, Label, "bikes");
-
-        /// <summary>The guarded comparison the translator writes for text <c>label &lt;&gt; 'bikes'</c>, exact (T1).</summary>
-        static readonly ServiceForm Guarded = All(Is(Op.IsPrimitive, Label), Negated(Is(Op.IsNull, Label)), Bare);
+        static readonly string Kind = SqlValue.Spell(KindPath), Category = SqlValue.Spell(CategoryPath), Metadata = SqlValue.Spell(MetadataPath);
 
         static readonly ServiceForm KindIsA = Compare(Op.Equal, Kind, "a");
 
         static readonly SqlPredicate LabelAndKind = And(Ne(Text(LabelPath), "bikes"), Eq(Text(KindPath), "a"));
-
-        static readonly RenderingDefinition Measured = RenderingDefinition.Measured(ProbeRows.Rows);
-
-        static readonly Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
         static ServiceForm Is(Op test, string path) => ServiceForm.TestOf(test, path);
 
@@ -58,24 +47,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>What 4b65754 wrote beneath a NOT for an equality: kept where Calcite's would be unknown too.</summary>
         static ServiceForm EqualOrUnknown(string path, string literal) => Any(Compare(Op.Equal, path, literal), Is(Op.IsNull, path), Negated(Is(Op.IsDefined, path)));
-
-        /// <summary>
-        /// Checks a form claimed for a conjunct in a bundle of its own, every path imported as anything unless given, and
-        /// reads both claims; the run must complete with one node per class and no contradiction.
-        /// </summary>
-        static (RenderingVerdict Equal, RenderingVerdict Implies) Check(SqlPredicate conjunct, ServiceForm form, RenderingTheory? theory = null,
-            RenderingSet set = RenderingSet.Emulator, JsonDocumentPath? path = null, PathValues? values = null, ValueSet<string>? classes = null)
-        {
-            using var bundle = (theory ?? Probe.Value).Open(set);
-            var root = bundle.Write(conjunct);
-            foreach (var each in new[] { LabelPath, KindPath, CategoryPath, MetadataPath, FlagPath })
-                bundle.Import("test", each, each == path ? values! : PathValues.Anything, each == path ? classes ?? AllBands : AllBands);
-
-            bundle.Claim(root, form);
-            var run = bundle.Run();
-            (run.StopReason, run.OneNodePerClass, run.Contradicted).Should().Be((RunStopReason.Completed, true, false), form.Text);
-            return (bundle.Read(root, form, Verdict.Equal), bundle.Read(root, form, Verdict.Implies));
-        }
 
         /// <summary>The probe's T3: a conjunction of two exact forms is exact, whichever order the written members take.</summary>
         [Fact]
@@ -142,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var dropped = MeasuredKey.Of(Op.And, CosmosValueClass.True, CosmosValueClass.False);
             var theory = RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows.Where(row => row.Key != dropped || row.Target != RenderingTarget.Emulator)] });
-            Probe.Value.Theory.Get(Probe.Value.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not });
+            ProbeTheory.Theory.Get(ProbeTheory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not });
             theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.Or, Op.Not });
 
             var conjunct = And(Eq(Text(KindPath), "a"), Eq(Text(CategoryPath), "b"));
@@ -257,7 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             // A disjunction of the same members, claimed beside the conjunction, offers its sides the same candidates, and
             // is still no join of a conjunction's sides.
-            using (var both = Probe.Value.Open(RenderingSet.Emulator))
+            using (var both = ProbeTheory.Open(RenderingSet.Emulator))
             {
                 var conjunct = both.Write(LabelAndKind);
                 both.Import("test", LabelPath, PathValues.Anything, AllBands);
