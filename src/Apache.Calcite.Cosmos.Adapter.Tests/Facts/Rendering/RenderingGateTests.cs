@@ -259,18 +259,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// An ordering against U+E000 parts the two string orders where the path's strings may hold a surrogate, and only
-        /// there: the literal holds the high band, so the import must hold the other.
+        /// A comparison with U+E000, an ordering or an equality alike, parts the two string orders where the path's strings
+        /// may hold a surrogate, and only there: the literal holds the high band, so the import must hold the other. An
+        /// interval below it by unit may lie above it by code point, where <c>!=</c> reads the other side's row.
         /// </summary>
         [Fact]
-        public void AnOrderingPartsTheOrdersWhereTheImportMayHoldTheOtherBand()
+        public void AComparisonPartsTheOrdersWhereTheImportMayHoldTheOtherBand()
         {
             var high = "";
-            var form = ServiceForm.CompareOf(CosmosServiceTest.Less, Label, Of(high));
-            foreach (var (chars, parted) in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) })
+            foreach (var (chars, parted, op) in from c in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) } from op in new[] { "<", "<>" } select (c.Item1, c.Item2, op))
             {
+                var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
                 using var bundle = Probe.Value.Open(RenderingSet.Emulator);
-                var root = bundle.Write(Cmp(Text(LabelPath), "<", Lit(high)));
+                var root = bundle.Write(Cmp(Text(LabelPath), op, Lit(high)));
                 bundle.Import("test", LabelPath, PathValues.Anything, chars);
                 bundle.Claim(root, form);
                 bundle.Run().StopReason.Should().Be(RunStopReason.Completed);

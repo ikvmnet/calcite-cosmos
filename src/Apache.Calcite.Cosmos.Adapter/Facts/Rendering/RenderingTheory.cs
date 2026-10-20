@@ -459,7 +459,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
                 var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
                 r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Parting.Of(u, w));
-                r.Where(RenderingPrimitives.StringOrdering.Of(g));
+                r.Where(RenderingPrimitives.StringComparison.Of(g));
                 r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));

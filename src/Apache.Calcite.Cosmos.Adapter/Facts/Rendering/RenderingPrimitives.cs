@@ -36,6 +36,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, ValueSet<CosmosServiceTest>> FormRegroups { get; } = Primitive.Create<ServiceForm, ValueSet<CosmosServiceTest>>("form-regroups", f =>
             f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Members.Count > 2 ? ValueSet.Of(f.Test) : ValueSet<CosmosServiceTest>.Empty);
 
+        /// <summary>
+        /// A form compares a path with a string, which places an interval by the side it lies on, and the service's order
+        /// and Calcite's may rank that side apart.
+        /// </summary>
+        public static Primitive<ServiceForm, bool> StringComparison { get; } = Primitive.Create<ServiceForm, bool>("string-comparison", f =>
+            f.Kind == ServiceFormKind.Compare && JsonValues.IsString(f.Literal!));
+
         /// <summary>A form orders a path against a string, which the service's order and Calcite's may rank apart.</summary>
         public static Primitive<ServiceForm, bool> StringOrdering { get; } = Primitive.Create<ServiceForm, bool>("string-ordering", f =>
             f.Kind == ServiceFormKind.Compare && f.Test is CosmosServiceTest.Less or CosmosServiceTest.LessOrEqual or CosmosServiceTest.Greater or CosmosServiceTest.GreaterOrEqual

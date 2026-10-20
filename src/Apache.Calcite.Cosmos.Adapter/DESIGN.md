@@ -5890,7 +5890,8 @@ decides.
 
 **Strings are cut in Calcite's order and placed in the service's.** An interval of strings is cut by UTF-16 unit, so by
 code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
-decide that, and a parted interval answers both sides. A point is placed by each comparator the type's `Order` entry
+decide that for every comparison with a string, `=` and `!=` as well as an ordering, since each reads the row of the
+side an interval lies on, and a parted interval answers both sides. A point is placed by each comparator the type's `Order` entry
 names, their answers unioned. A number is placed only within ±2^53, where a double holds it exactly: the theory spells
 `30` and `30.0` alike, and the service may hold either as a double. A boolean and a null are keyed as their own classes,
 which no comparator orders.
