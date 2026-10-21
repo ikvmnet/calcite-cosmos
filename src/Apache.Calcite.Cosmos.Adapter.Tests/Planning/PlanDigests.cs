@@ -12,6 +12,8 @@ using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts;
 
+using FluentAssertions;
+
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
 
@@ -49,8 +51,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// The digests of the statements given, one line a statement.
         /// </summary>
-        public static IEnumerable<string> Lines(IEnumerable<(string Input, string Name, string Sql, Func<RelNode> Plan)> statements) =>
+        public static IEnumerable<string> Lines(IEnumerable<RenderingInputs.Statement> statements) =>
             statements.Select(s => Line(s.Input, s.Name, s.Sql, Of(s.Plan)));
+
+        /// <summary>
+        /// Plans the statements twice, each time in generations of their own, the second under a switch; holds that the
+        /// switch reached the planner, and that every digest is the same.
+        /// </summary>
+        public static void Unchanged(Func<IDisposable> arm, Func<JsonFactGenerations, IEnumerable<RenderingInputs.Statement>> statements, Action<JsonFactGenerations> reached)
+        {
+            var off = Lines(statements(new JsonFactGenerations())).ToList();
+            var armed = new JsonFactGenerations();
+            List<string> on;
+            using (arm())
+                on = Lines(statements(armed)).ToList();
+
+            reached(armed);
+            on.Should().Equal(off);
+        }
 
         static string Line(string input, string name, string sql, PlanDigest digest) =>
             $"{input}\t{name}\t{PlanDigest.Escape(sql)}\t{digest}";
@@ -110,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// The nodes a predicate holds of, in a walk from the root, left to right; beneath one only where asked.
         /// </summary>
-        static IEnumerable<RelNode> Subtrees(RelNode node, Func<RelNode, bool> match, bool descend = false)
+        internal static IEnumerable<RelNode> Subtrees(RelNode node, Func<RelNode, bool> match, bool descend = false)
         {
             if (match(node))
             {
@@ -153,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             _ => value.GetType().Name + " " + value,
         };
 
-        static string Failure(Exception e) => e.GetType().Name + ": " + e.Message.Split('\n')[0].TrimEnd('\r');
+        internal static string Failure(Exception e) => e.GetType().Name + ": " + e.Message.Split('\n')[0].TrimEnd('\r');
 
     }
 

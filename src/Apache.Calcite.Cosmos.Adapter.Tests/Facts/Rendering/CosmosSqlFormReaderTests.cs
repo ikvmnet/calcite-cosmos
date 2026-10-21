@@ -10,6 +10,7 @@ using FluentAssertions;
 using Xunit;
 
 using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.OracleFixture;
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ProbeRows;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -30,18 +31,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         internal static readonly (string Text, ServiceForm Tree)[] Pinned =
         [
-            ("NOT IS_DEFINED(c.a) AND IS_DEFINED(c.b)", And(Not(D("a")), D("b"))),
-            ("IS_DEFINED(c.a) OR IS_DEFINED(c.b) AND IS_DEFINED(c.c)", Or(D("a"), And(D("b"), D("c")))),
-            ("IS_DEFINED(c.a) AND IS_DEFINED(c.b) OR IS_DEFINED(c.c)", Or(And(D("a"), D("b")), D("c"))),
-            ("NOT IS_DEFINED(c.a) OR IS_NULL(c.a)", Or(Not(D("a")), N("a"))),
-            ("IS_DEFINED(c.a) AND NOT IS_NULL(c.a) AND (c.a != @p0)", And(D("a"), Not(N("a")), ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S("a"), JsonValues.Of("x")))),
-            ("NOT NOT IS_DEFINED(c.a) AND IS_NULL(c.b)", And(Not(Not(D("a"))), N("b"))),
-            ("IS_NULL(c.a) OR NOT IS_DEFINED(c.b) AND IS_DEFINED(c.c)", Or(N("a"), And(Not(D("b")), D("c")))),
-            ("NOT IS_DEFINED(c.a) AND NOT IS_DEFINED(c.b) OR IS_NULL(c.c)", Or(And(Not(D("a")), Not(D("b"))), N("c"))),
-            ("IS_DEFINED(c.a) AND (IS_DEFINED(c.b) OR IS_NULL(c.c))", And(D("a"), Or(D("b"), N("c")))),
-            ("NOT (IS_DEFINED(c.a) AND IS_NULL(c.b)) OR IS_DEFINED(c.c)", Or(Not(And(D("a"), N("b"))), D("c"))),
-            ("(IS_DEFINED(c.a) AND IS_NULL(c.b)) AND IS_DEFINED(c.c)", And(And(D("a"), N("b")), D("c"))),
-            ("IS_NULL(c.a) OR NOT IS_NULL(c.b) AND NOT IS_DEFINED(c.c) OR IS_DEFINED(c.a)", Or(N("a"), And(Not(N("b")), Not(D("c"))), D("a"))),
+            ("NOT IS_DEFINED(c.a) AND IS_DEFINED(c.b)", All(Negated(D("a")), D("b"))),
+            ("IS_DEFINED(c.a) OR IS_DEFINED(c.b) AND IS_DEFINED(c.c)", Any(D("a"), All(D("b"), D("c")))),
+            ("IS_DEFINED(c.a) AND IS_DEFINED(c.b) OR IS_DEFINED(c.c)", Any(All(D("a"), D("b")), D("c"))),
+            ("NOT IS_DEFINED(c.a) OR IS_NULL(c.a)", Any(Negated(D("a")), N("a"))),
+            ("IS_DEFINED(c.a) AND NOT IS_NULL(c.a) AND (c.a != @p0)", All(D("a"), Negated(N("a")), ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S("a"), JsonValues.Of("x")))),
+            ("NOT NOT IS_DEFINED(c.a) AND IS_NULL(c.b)", All(Negated(Negated(D("a"))), N("b"))),
+            ("IS_NULL(c.a) OR NOT IS_DEFINED(c.b) AND IS_DEFINED(c.c)", Any(N("a"), All(Negated(D("b")), D("c")))),
+            ("NOT IS_DEFINED(c.a) AND NOT IS_DEFINED(c.b) OR IS_NULL(c.c)", Any(All(Negated(D("a")), Negated(D("b"))), N("c"))),
+            ("IS_DEFINED(c.a) AND (IS_DEFINED(c.b) OR IS_NULL(c.c))", All(D("a"), Any(D("b"), N("c")))),
+            ("NOT (IS_DEFINED(c.a) AND IS_NULL(c.b)) OR IS_DEFINED(c.c)", Any(Negated(All(D("a"), N("b"))), D("c"))),
+            ("(IS_DEFINED(c.a) AND IS_NULL(c.b)) AND IS_DEFINED(c.c)", All(All(D("a"), N("b")), D("c"))),
+            ("IS_NULL(c.a) OR NOT IS_NULL(c.b) AND NOT IS_DEFINED(c.c) OR IS_DEFINED(c.a)", Any(N("a"), All(Negated(N("b")), Negated(D("c"))), D("a"))),
         ];
 
         /// <summary>
@@ -79,12 +80,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static ServiceForm D(string name) => ServiceForm.TestOf(CosmosServiceTest.IsDefined, S(name));
 
         static ServiceForm N(string name) => ServiceForm.TestOf(CosmosServiceTest.IsNull, S(name));
-
-        static ServiceForm Not(ServiceForm operand) => ServiceForm.NotOf(operand);
-
-        static ServiceForm And(params ServiceForm[] members) => ServiceForm.JunctionOf(CosmosServiceTest.And, members);
-
-        static ServiceForm Or(params ServiceForm[] members) => ServiceForm.JunctionOf(CosmosServiceTest.Or, members);
 
     }
 

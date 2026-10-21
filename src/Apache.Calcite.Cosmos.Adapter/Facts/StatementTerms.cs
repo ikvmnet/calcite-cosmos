@@ -90,11 +90,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// declaration mentions may hold is a row: what the rendering check imports for a conjunct round 1 renders from.
         /// Production arms nothing.
         /// </summary>
-        /// <remarks>
-        /// No verdict, fact set or plan changes: <c>D0</c>'s row for a path is no narrower than what a stratum beneath it
-        /// computes there, so their meet is the stratum's own, and the root's view is the declaration's fact set
-        /// (<see cref="ViewOf"/>).
-        /// </remarks>
+        /// <remarks>Why no verdict, fact set or plan changes: <c>DESIGN.md</c>, <i>The declaration's <c>possible</c> rows</i>.</remarks>
         internal static IDisposable ArmDeclaredPossible()
         {
             var arming = new Arming(Armed.Value);

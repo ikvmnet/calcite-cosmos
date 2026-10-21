@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -146,34 +145,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (Keys("cuts"), Keys("partition"), Keys("svc"), Keys("outcomes")).Should().Be(
                 ((int)bundle.Scope.CountRows(theory.Partition), (int)bundle.Scope.CountRows(theory.Partition), (int)bundle.Scope.CountRows(theory.Svc), (int)bundle.Scope.CountRows(theory.Outcomes)));
             Keys("svc").Should().Be(7, "the guarded form's six parts and the comparison of kind");
-        }
-
-        /// <summary>
-        /// A leaf that answers one key two ways faults the bundle: two conjuncts cut at one literal share a partition, so
-        /// the leaf their forms share is evaluated for each, and <c>svc</c> holds one value a key.
-        /// </summary>
-        [Fact]
-        public void ANondeterministicLeafFaultsTheBundle()
-        {
-            var calls = 0;
-            var theory = RenderingTheory.Define(Measured with
-            {
-                Leaf = (f, z, t, q) =>
-                {
-                    var v = Measured.Leaf(f, z, t, q);
-                    return v with { Rows = v.Rows.Add("call " + Interlocked.Increment(ref calls)) };
-                },
-            });
-
-            using var bundle = theory.Open(RenderingSet.Emulator);
-            var unequal = bundle.Write(NotBikes);
-            var equal = bundle.Write(Eq(Text(LabelPath), "bikes"));
-            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
-            bundle.Claim(unequal, Bare);
-            bundle.Claim(equal, Bare);
-            bundle.Run().StopReason.Should().BeNull();
-            bundle.Failure.Should().BeOfType<RuleEvaluationException>().Which.Message.Should().Match("*function svc*");
-            bundle.Scope.IsFaulted.Should().BeTrue();
         }
 
         /// <summary>A run stopped by its limit answers nothing, though it derived something before it stopped.</summary>

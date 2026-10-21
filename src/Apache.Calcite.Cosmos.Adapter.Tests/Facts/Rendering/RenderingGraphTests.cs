@@ -45,9 +45,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using var second = graph.Open(RenderingSet.Emulator);
             forced = false;
             using var third = graph.Open(RenderingSet.Emulator);
-            (graph.Started, ReferenceEquals(second.Theory, first.Theory), ReferenceEquals(third.Theory, second.Theory)).Should().Be((2, false, true));
-            second.Theory.Digest.Should().Be(first.Theory.Digest, "generations defined alike share memo entries");
-            RenderingTheory.Define(Measured with { Tolerated = Truths.None }).Digest.Should().NotBe(first.Theory.Digest, "a planted row shares none");
+            (ReferenceEquals(second.Theory, first.Theory), ReferenceEquals(third.Theory, second.Theory)).Should().Be((false, true));
+            RenderingMemo.DigestOf(second.Theory).Should().Be(RenderingMemo.DigestOf(first.Theory), "generations defined alike share memo entries");
+            RenderingMemo.DigestOf(RenderingTheory.Define(Measured with { Tolerated = Truths.None })).Should().NotBe(RenderingMemo.DigestOf(first.Theory), "a planted row shares none");
 
             first.Run().StopReason.Should().Be(RunStopReason.Completed);
             first.Read(root, Guarded, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Proven, "a retired generation serves the bundles open on it");
@@ -57,12 +57,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             second.Read(second.Write(NotBikes), Guarded, Verdict.Equal).Should().Match<RenderingVerdict>(v =>
                 v.Kind == RenderingVerdictKind.Unproven && v.Reason == "declined: OverflowException: planted");
             using var fourth = graph.Open(RenderingSet.Emulator);
-            (graph.Started, ReferenceEquals(fourth.Theory, third.Theory), third.Failure).Should().Be((3, false, (Exception?)null));
+            (ReferenceEquals(fourth.Theory, third.Theory), third.Failure).Should().Be((false, (Exception?)null));
         }
 
         /// <summary>
-        /// A bundle whose run the engine failed, here on a leaf that answers one key two ways, declines: every claim reads
-        /// Unproven and names the failure. The fault is the bundle's own, so its generation serves the next.
+        /// A bundle whose run the engine failed declines: every claim reads Unproven and names the failure. Here a leaf
+        /// answers one key two ways: two conjuncts cut at one literal share a partition, so the leaf their forms share is
+        /// evaluated for each, and <c>svc</c> holds one value a key. The fault is the bundle's own, so its generation
+        /// serves the next.
         /// </summary>
         [Fact]
         public void AFaultedBundleMakesItsConjunctsUnproven()
@@ -84,7 +86,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bundle.Claim(unequal, Bare);
             bundle.Claim(equal, Bare);
             bundle.Run().Should().Be(new RenderingRun(null, true, false));
-            bundle.Failure.Should().BeOfType<RuleEvaluationException>();
+            bundle.Failure.Should().BeOfType<RuleEvaluationException>().Which.Message.Should().Match("*function svc*");
+            bundle.Scope.IsFaulted.Should().BeTrue();
 
             foreach (var root in new[] { unequal, equal })
                 foreach (var claim in new[] { Verdict.Equal, Verdict.Implies })
@@ -95,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             next.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
             next.Claim(alone, Bare);
             next.Run().StopReason.Should().Be(RunStopReason.Completed);
-            (graph.Started, ReferenceEquals(next.Theory, bundle.Theory), next.Read(alone, Bare, Verdict.Equal).Kind).Should().Be((1, true, RenderingVerdictKind.Refuted));
+            (ReferenceEquals(next.Theory, bundle.Theory), next.Read(alone, Bare, Verdict.Equal).Kind).Should().Be((true, RenderingVerdictKind.Refuted));
         }
 
     }

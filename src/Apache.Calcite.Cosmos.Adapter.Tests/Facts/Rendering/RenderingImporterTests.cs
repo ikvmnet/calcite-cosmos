@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     narrowed += possible is null || possible == PathValues.Anything ? 0 : 1;
                 }
 
-                report.DefaultedOpen.Should().Be(paths.Count - paths.Count(p => node.TryGet(rules!.Possible.Of(JsonFactEncoding.Path(p).ToTerm(rules.Json)), out _)));
+                report.DefaultedOpen.Should().Be(paths.Count - paths.Count(p => node!.TryGet(rules!.Possible.Of(JsonFactEncoding.Path(p).ToTerm(rules.Json)), out _)));
                 GC.KeepAlive(scope);
             }
 

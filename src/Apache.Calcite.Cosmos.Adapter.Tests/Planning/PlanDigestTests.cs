@@ -1,11 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
@@ -48,26 +46,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <c>COSMOS_PARTITION_GATE=1</c>, which plans the partition run's 1,000 predicates rather than 200.
         /// </remarks>
         [Fact(Explicit = true)]
-        public void TheDeclarationsPossibleRowsChangeNoPlan()
-        {
-            var off = PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates, new JsonFactGenerations()).ToList();
-            var armed = new JsonFactGenerations();
-            List<string> on;
-            using (StatementTerms.ArmDeclaredPossible())
-                on = PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates, armed).ToList();
-
+        public void TheDeclarationsPossibleRowsChangeNoPlan() => PlanDigests.Unchanged(StatementTerms.ArmDeclaredPossible,
+            generations => RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, generations),
             // The switch reached the planner: the statements it remembers over the declared container lie beneath D0.
-            var declared = armed.Bind(CosmosDifferentialTests.Containers.Single(c => c.Name == "declared").Facts).Declaration()!;
-            declared.DeclaredPossible()!.Children.Should().NotBeEmpty();
-
-            var differing = off.Zip(on).Where(p => p.First != p.Second).Select(p => "off: " + p.First + "\non:  " + p.Second).ToList();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{off.Count} statements, {differing.Count} differing; sha256 {Hash(off)} off, {Hash(on)} on");
-            on.Count.Should().Be(off.Count);
-            differing.Should().BeEmpty();
-        }
-
-        static string Hash(IEnumerable<string> lines) =>
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", lines) + "\n"))).ToLowerInvariant();
+            armed => armed.Bind(CosmosDifferentialTests.Containers.Single(c => c.Name == "declared").Facts).Declaration()!.DeclaredPossible()!.Children.Should().NotBeEmpty());
 
         /// <summary>
         /// The corpus planned twice in one process digests alike: what a planning run leaves behind in the oracle's

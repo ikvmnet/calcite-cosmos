@@ -39,12 +39,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ServiceForm Compare(Op op, string path, string literal) => ServiceForm.CompareOf(op, path, Of(literal));
 
-        static ServiceForm All(params ServiceForm[] members) => ServiceForm.JunctionOf(Op.And, members);
-
-        static ServiceForm Any(params ServiceForm[] members) => ServiceForm.JunctionOf(Op.Or, members);
-
-        static ServiceForm Negated(ServiceForm operand) => ServiceForm.NotOf(operand);
-
         /// <summary>What 4b65754 wrote beneath a NOT for an equality: kept where Calcite's would be unknown too.</summary>
         static ServiceForm EqualOrUnknown(string path, string literal) => Any(Compare(Op.Equal, path, literal), Is(Op.IsNull, path), Negated(Is(Op.IsDefined, path)));
 

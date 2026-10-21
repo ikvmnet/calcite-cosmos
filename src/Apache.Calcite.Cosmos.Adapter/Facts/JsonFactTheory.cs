@@ -248,7 +248,6 @@ namespace Apache.Calcite.Cosmos.Facts
                     Outright = JsonFactSet.Empty;
                 }
 
-                // Built when an armed statement first asks, once however many planning threads ask together.
                 var d0 = new Lazy<Scope?>(() => OpenDeclaredPossible(theory, contexts), LazyThreadSafetyMode.ExecutionAndPublication);
                 DeclaredPossible = () => d0.Value;
             }
@@ -262,9 +261,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (_schema is not Scope schema)
                     return null;
 
-                // Only a path the context holds a term of: D0 runs no rule of JSON, and a term made here would put into every
-                // stratum beneath a path the unarmed one never holds. A body atom of a rule the theory cannot read is
-                // mentioned and never made.
+                // Only paths the context holds a term of: a term D0 made would enter every stratum beneath it.
                 var rules = PredicateRules.Of(contexts);
                 var declared = theory._mentionedPaths.Select(path => JsonFactEncoding.Path(path).ToTerm(rules.Json))
                     .Where(term => schema.TryGet(term, out _)).Select(term => rules.Declared.Of(term)).ToArray();

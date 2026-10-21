@@ -25,10 +25,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class RenderingInputs
     {
 
-        /// <summary>Every input statement: which input, its name or index, its text, and how to plan it.</summary>
+        /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
         /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<(string Input, string Name, string Sql, Func<RelNode> Plan)> All(int partitionedPredicates, JsonFactGenerations? generations = null)
+        public static IEnumerable<Statement> All(int partitionedPredicates, JsonFactGenerations? generations = null)
         {
             foreach (var statement in Corpus(generations))
                 yield return statement;
@@ -44,21 +44,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (name, where) in CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal)))
             {
                 var sql = $"SELECT c.\"id\" FROM kinds AS c WHERE {where}";
-                yield return ("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds));
+                yield return new("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds));
             }
         }
 
         /// <summary>The planner corpus, planned through one harness.</summary>
         /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<(string Input, string Name, string Sql, Func<RelNode> Plan)> Corpus(JsonFactGenerations? generations = null)
+        public static IEnumerable<Statement> Corpus(JsonFactGenerations? generations = null)
         {
             var harness = new PlannerHarness(generations);
             foreach (var query in PlannerQueries.All)
-                yield return ("corpus", query.Name, query.Sql, () => harness.PlanToAsync(query.Sql));
+                yield return new("corpus", query.Name, query.Sql, () => harness.PlanToAsync(query.Sql));
         }
 
-        static IEnumerable<(string Input, string Name, string Sql, Func<RelNode> Plan)> Differential(string input, IReadOnlyList<string> statements, CosmosContainerMetadata[] containers) =>
-            statements.Select((sql, i) => (input, i.ToString(CultureInfo.InvariantCulture), sql, (Func<RelNode>)(() => Differential(sql, containers))));
+        static IEnumerable<Statement> Differential(string input, IReadOnlyList<string> statements, CosmosContainerMetadata[] containers) =>
+            statements.Select((sql, i) => new Statement(input, i.ToString(CultureInfo.InvariantCulture), sql, () => Differential(sql, containers)));
 
         /// <summary>
         /// The planning half of <c>CosmosDifferentialTests.Run</c> with the pushdown rules: the same schema, operators,
@@ -67,6 +67,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static RelNode Differential(string sql, IReadOnlyList<CosmosContainerMetadata> containers) => PlannerHarness.Plan(sql, containers, SqlOperatorTables.chain(SqlStdOperatorTable.instance(),
             SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(java.util.EnumSet.of(SqlLibrary.MYSQL, SqlLibrary.SPARK, SqlLibrary.HIVE, SqlLibrary.BIG_QUERY))),
             collations: true, calc: true);
+
+        /// <summary>An input statement: which input, its name or index, its text, and how to plan it.</summary>
+        internal sealed record Statement(string Input, string Name, string Sql, Func<RelNode> Plan);
 
     }
 

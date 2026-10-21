@@ -40,6 +40,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         public static readonly string Label = SqlValue.Spell(LabelPath);
 
+        public static ServiceForm All(params ServiceForm[] members) => ServiceForm.JunctionOf(CosmosServiceTest.And, members);
+
+        public static ServiceForm Any(params ServiceForm[] members) => ServiceForm.JunctionOf(CosmosServiceTest.Or, members);
+
+        public static ServiceForm Negated(ServiceForm operand) => ServiceForm.NotOf(operand);
+
         /// <summary>The one source a test's bundle imports from.</summary>
         public static readonly ImportSource Source = new("test", "test", 0);
 

@@ -28,36 +28,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
     {
 
         /// <summary>
-        /// Every path a declaration mentions is already a term of its context, so <c>D0</c> makes none, and each is a
-        /// <c>declared</c> row of it; a declaration that mentions nothing has no <c>D0</c>.
-        /// </summary>
-        [Fact]
-        public void EveryMentionedPathIsATermOfTheContextAndADeclaredRowOfD0()
-        {
-            var generations = new JsonFactGenerations(long.MaxValue);
-            generations.Bind(Theory()).Declaration()!.DeclaredPossible().Should().BeNull();
-
-            foreach (var (name, theory) in Declarations(generations))
-            {
-                var declaration = theory.Declaration()!;
-                var rules = PredicateRules.Of(declaration.Generation.Contexts);
-                var d0 = declaration.DeclaredPossible();
-                d0.Should().NotBeNull(name);
-                d0!.IsFrozen.Should().BeTrue(name);
-
-                foreach (var path in theory.MentionedPaths)
-                {
-                    var term = JsonFactEncoding.Path(path).ToTerm(rules.Json);
-                    declaration.Context.TryGet(term, out _).Should().BeTrue($"{name} mentions {SqlValue.Spell(path)}");
-                    d0.Check(rules.Declared.Of(term)).Should().BeTrue($"{name} mentions {SqlValue.Spell(path)}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// What <c>D0</c> says a path may hold is what a stratum holding an atom over the path computes from the same
-        /// declaration, assuming nothing that speaks of it: the same documents, and met with the stratum's row, the
-        /// stratum's row, which is what an armed stratum holds.
+        /// Every path a declaration mentions is already a term of its context, so <c>D0</c>, frozen, makes none, and is a
+        /// <c>declared</c> row of it; and what <c>D0</c> says it may hold is what a stratum holding an atom over the path
+        /// computes from the same declaration, assuming nothing that speaks of it: the same documents, and met with the
+        /// stratum's row, the stratum's row, which is what an armed stratum holds. A declaration that mentions nothing has
+        /// no <c>D0</c>.
         /// </summary>
         /// <remarks>
         /// Not always the same spelling. A domain stated beside narrower types keeps only its values of those types for a
@@ -72,6 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 x.Values is null ? x : x with { Values = ValueSet.From(x.Values.Where(v => x.Kinds.Contains(JsonValues.TypeOf(v)))) };
 
             var generations = new JsonFactGenerations(long.MaxValue);
+            generations.Bind(Theory()).Declaration()!.DeclaredPossible().Should().BeNull();
             var (compared, respelled) = (0, 0);
 
             foreach (var (name, theory) in Declarations(generations))
@@ -79,10 +55,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 var declaration = theory.Declaration()!;
                 var rules = PredicateRules.Of(declaration.Generation.Contexts);
                 var d0 = declaration.DeclaredPossible()!;
+                d0.IsFrozen.Should().BeTrue(name);
 
                 foreach (var path in theory.MentionedPaths)
                 {
-                    var term = rules.Possible.Of(JsonFactEncoding.Path(path).ToTerm(rules.Json));
+                    var at = JsonFactEncoding.Path(path).ToTerm(rules.Json);
+                    (declaration.Context.TryGet(at, out _), d0.Check(rules.Declared.Of(at))).Should().Be((true, true), $"{name} mentions {SqlValue.Spell(path)}");
+                    var term = rules.Possible.Of(at);
                     var nothing = Opaque(0);
                     var terms = new StatementTerms(declaration, new PredicateStatement(new[] { new SqlPredicate.IsDefined(Raw(path)), nothing }), null);
                     var stratum = terms.Child(terms.Root, new[] { nothing });

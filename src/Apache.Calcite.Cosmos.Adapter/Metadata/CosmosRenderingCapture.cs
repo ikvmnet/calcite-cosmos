@@ -8,10 +8,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// The rendering check's hook into the filter's two writing sites: inert unless a test arms it, which production never
     /// does (<c>DESIGN.md</c>, <i>The rendering graph in check mode</i>).
     /// </summary>
-    /// <remarks>
-    /// Unarmed, each site reads <see cref="Armed"/> and nothing else. Armed, the observer is the flow's own, so a test
-    /// planning beside it, or planning on several threads, is told only of its own statements.
-    /// </remarks>
     internal static class CosmosRenderingCapture
     {
 

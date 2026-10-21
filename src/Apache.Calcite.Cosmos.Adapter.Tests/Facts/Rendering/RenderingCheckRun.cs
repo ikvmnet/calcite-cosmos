@@ -82,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<(string Input, string Name, string Sql, Func<RelNode> Plan)> inputs)
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs)
         {
             var run = new RenderingCheckRun();
             var all = inputs.ToList();
@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var ir = conjuncts.Count == 1 ? conjuncts[0] : new SqlPredicate.And(conjuncts);
             RenderingMemoKey key;
             using (var probe = _graph.Open(AssertedSet))
-                key = new RenderingMemoKey(ir.Digest, import(probe).Digest, form.Text, claim, AssertedSet, probe.Theory.Digest);
+                key = new RenderingMemoKey(ir.Digest, import(probe).Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(probe.Theory));
 
             return Memo.GetOrAdd(key, id =>
             {
@@ -126,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
         }
 
-        void Plan((string Input, string Name, string Sql, Func<RelNode> Plan) input)
+        void Plan(RenderingInputs.Statement input)
         {
             var recorder = new RenderingRecorder();
             var queries = new List<(string? Where, int From, int To)>();
@@ -175,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             GC.KeepAlive(records);
         }
 
-        void CheckStatement((string Input, string Name, string Sql, Func<RelNode> Plan) input, int k, CosmosFilterStatement statement, List<CaptureRecord> records)
+        void CheckStatement(RenderingInputs.Statement input, int k, CosmosFilterStatement statement, List<CaptureRecord> records)
         {
             var ir = statement.Statement.Conjuncts;
             var texts = new CaptureRecord?[ir.Count];
@@ -225,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>Holds each <c>WHERE</c> built to the conjunction of the texts its statements sent, as <c>Translate</c> writes one.</summary>
-        void Account((string Input, string Name, string Sql, Func<RelNode> Plan) input, string? where, List<CaptureRecord> sent)
+        void Account(RenderingInputs.Statement input, string? where, List<CaptureRecord> sent)
         {
             var rest = where ?? "";
             foreach (var group in sent.GroupBy(r => r.Statement))
