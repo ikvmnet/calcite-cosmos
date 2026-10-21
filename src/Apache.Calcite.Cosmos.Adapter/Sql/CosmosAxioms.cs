@@ -46,11 +46,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// </para>
     /// <para>
     /// <b>An outcome claims Azure only where a run record holds its answer</b>
-    /// (<c>Measurements/Runs</c> in the tests). The probe account ran the pinning tests of the
-    /// <c>IS_*</c> family, the comparisons and the connectives, first measured on the emulator, on
-    /// 2026-10-16, each passing unchanged, and measured the order's rows the same day; the record of
-    /// that day holds what they answered on each key S reads. The Azure targets of the string
-    /// functions and the stored values rest on a run of 2026-10-19, which has no record.
+    /// (<c>Measurements/Runs</c> in the tests), read by the statements its pinning test runs, over
+    /// every witness the test holds the cell to. The probe account ran the pinning tests of the
+    /// <c>IS_*</c> family, the comparisons and the connectives on 2026-10-16, and the order's rows;
+    /// what it projected, wrote inline or only ordered backs no claim, since its filter has answered
+    /// apart from its projection. The Azure targets of the string functions and the stored values
+    /// rest on a run of 2026-10-19, which has no record.
     /// </para>
     /// </remarks>
     internal static class CosmosAxioms
@@ -85,52 +86,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.IsPrimitive",
                 "IS_PRIMITIVE is true of a string, a number, a boolean and a null, and false of an object, an array and an absent path: false, not undefined. So (IS_PRIMITIVE(p) ? p : null) is null over an absent path.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsPrimitiveIsFalseOverAnAbsentPath",
-                [
-                    new(Test.IsPrimitive, Class.None, Both, "absent=false null=true true=true number=true string=true object=false array=false"),
-                    new(Test.IsPrimitive, Class.None, Emulator, "false=true"),
-                ]),
+                [new(Test.IsPrimitive, Class.None, Emulator, "absent=false null=true true=true false=true number=true string=true object=false array=false")]),
             new("Service.IsDefined",
                 "IS_DEFINED is false over an absent path and true over every value, a null, an object and an array included.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsDefinedIsFalseOnlyOverAnAbsentPath",
-                [
-                    new(Test.IsDefined, Class.None, Both, "absent=false null=true true=true number=true string=true object=true array=true"),
-                    new(Test.IsDefined, Class.None, Emulator, "false=true"),
-                ]),
+                [new(Test.IsDefined, Class.None, Emulator, "absent=false null=true true=true false=true number=true string=true object=true array=true")]),
             new("Service.IsNull",
                 "IS_NULL is true of a null alone, and false over an absent path, an object and an array.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsNullIsTrueOnlyOfANull",
-                [
-                    new(Test.IsNull, Class.None, Both, "absent=false null=true true=false number=false string=false object=false array=false"),
-                    new(Test.IsNull, Class.None, Emulator, "false=false"),
-                ]),
+                [new(Test.IsNull, Class.None, Emulator, "absent=false null=true true=false false=false number=false string=false object=false array=false")]),
             new("Service.KindTests",
                 "IS_STRING, IS_NUMBER, IS_BOOL, IS_OBJECT and IS_ARRAY are each true of their kind alone, and false over an absent path.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.EachKindTestIsTrueOfItsKindAlone",
                 [
-                    new(Test.IsString, Class.None, Both, "absent=false null=false true=false number=false string=true object=false array=false"),
-                    new(Test.IsString, Class.None, Emulator, "false=false"),
-                    new(Test.IsNumber, Class.None, Both, "absent=false null=false true=false number=true string=false object=false array=false"),
-                    new(Test.IsNumber, Class.None, Emulator, "false=false"),
-                    new(Test.IsBool, Class.None, Both, "absent=false null=false true=true number=false string=false object=false array=false"),
-                    new(Test.IsBool, Class.None, Emulator, "false=true"),
-                    new(Test.IsObject, Class.None, Both, "absent=false null=false true=false number=false string=false object=true array=false"),
-                    new(Test.IsObject, Class.None, Emulator, "false=false"),
-                    new(Test.IsArray, Class.None, Both, "absent=false null=false true=false number=false string=false object=false array=true"),
-                    new(Test.IsArray, Class.None, Emulator, "false=false"),
+                    new(Test.IsString, Class.None, Emulator, "absent=false null=false true=false false=false number=false string=true object=false array=false"),
+                    new(Test.IsNumber, Class.None, Emulator, "absent=false null=false true=false false=false number=true string=false object=false array=false"),
+                    new(Test.IsBool, Class.None, Emulator, "absent=false null=false true=true false=true number=false string=false object=false array=false"),
+                    new(Test.IsObject, Class.None, Emulator, "absent=false null=false true=false false=false number=false string=false object=true array=false"),
+                    new(Test.IsArray, Class.None, Emulator, "absent=false null=false true=false false=false number=false string=false object=false array=true"),
                 ]),
             new("Service.NotOfAKindTest",
                 "NOT over any IS_* test is a real boolean over an absent path, true wherever the test is false; the family never answers undefined.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOfATypeTestIsTrueOverAnAbsentPath",
                 [
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_PRIMITIVE(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_STRING(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_NUMBER(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_BOOL(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_NULL(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_OBJECT(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true", "NOT IS_ARRAY(c.v)"),
-                    new(Test.Not, Class.None, Both, "absent=true null=false true=false number=false string=false object=false array=false", "NOT IS_DEFINED(c.v)"),
-                    new(Test.Not, Class.None, Emulator, "false=false", "NOT IS_DEFINED(c.v)"),
+                    .. new[] { "PRIMITIVE", "STRING", "NUMBER", "BOOL", "NULL", "OBJECT", "ARRAY" }.Select(test => new CosmosOutcome(Test.Not, Class.None, Emulator, "absent=true", $"NOT IS_{test}(c.v)")),
+                    new(Test.Not, Class.None, Emulator, "absent=true null=false true=false false=false number=false string=false object=false array=false", "NOT IS_DEFINED(c.v)"),
                 ]),
 
             // ── Comparisons and NOT, where undefined and SQL's unknown part company ───────
@@ -139,43 +119,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "An ordering comparison between values of different types is undefined, as is one over an absent path: \"bikes\" < \"zzz\" is true, and 30 < \"zzz\" is undefined.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnOrderingAcrossTypesIsUndefined",
                 [
-                    new(Test.Less, Class.String, Both, "below=true absent=undefined null=undefined true=undefined number=undefined object=undefined array=undefined"),
-                    new(Test.Less, Class.String, Emulator, "false=undefined"),
-                    new(Test.Greater, Class.Number, Both, "above=true absent=undefined null=undefined true=undefined string=undefined object=undefined array=undefined"),
-                    new(Test.Greater, Class.Number, Emulator, "false=undefined"),
+                    new(Test.Less, Class.String, Emulator, "below=true absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.Greater, Class.Number, Emulator, "above=true absent=undefined null=undefined true=undefined false=undefined string=undefined object=undefined array=undefined"),
                 ]),
             new("Service.EqualityAcrossTypesIsFalse",
                 "An equality between values of different types is false, not undefined, a null against anything but null included; only over an absent path is it undefined.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue",
-                [
-                    new(Test.Equal, Class.String, Both, "equal=true absent=undefined null=false true=false number=false object=false array=false"),
-                    new(Test.Equal, Class.String, Emulator, "false=false"),
-                ]),
+                [new(Test.Equal, Class.String, Emulator, "equal=true absent=undefined null=false true=false false=false number=false object=false array=false")]),
             new("Service.InequalityOverNullIsTrue",
                 "!= is true over a null and over a value of another type, where SQL's <> over a null is unknown; over an absent path it is undefined (#32).",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue",
                 [
-                    new(Test.NotEqual, Class.String, Both, "equal=false absent=undefined null=true true=true number=true object=true array=true"),
-                    new(Test.NotEqual, Class.String, Emulator, "false=true"),
-                    new(Test.NotEqual, Class.Number, Both, "equal=false absent=undefined null=true true=true string=true object=true array=true"),
-                    new(Test.NotEqual, Class.Number, Emulator, "false=true"),
+                    new(Test.NotEqual, Class.String, Emulator, "equal=false absent=undefined null=true true=true false=true number=true object=true array=true"),
+                    new(Test.NotEqual, Class.Number, Emulator, "equal=false absent=undefined null=true true=true false=true string=true object=true array=true"),
                 ]),
             new("Service.NotOverUndefinedIsUndefined",
                 "NOT over undefined is undefined: over an absent path, over an ordering across types, and over a value that is not a boolean.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOverUndefinedIsUndefined",
                 [
-                    new(Test.Not, Class.None, Both, "absent=undefined null=undefined true=false number=undefined string=undefined object=undefined array=undefined"),
-                    new(Test.Not, Class.None, Emulator, "false=true"),
-                    new(Test.Not, Class.None, Both, "absent=undefined null=undefined true=undefined number=undefined string=false object=undefined array=undefined", "NOT (c.v < \"zzz\")"),
+                    new(Test.Not, Class.None, Emulator, "absent=undefined null=undefined true=false false=true number=undefined string=undefined object=undefined array=undefined"),
+                    new(Test.Not, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined string=false object=undefined array=undefined", "NOT (c.v < \"zzz\")"),
                     // Its string cell is "bikes" itself, which not every string witness is.
-                    new(Test.Not, Class.None, Both, "absent=undefined null=true true=true number=true object=true array=true", "NOT (c.v = \"bikes\")"),
+                    new(Test.Not, Class.None, Emulator, "absent=undefined null=true true=true false=true number=true object=true array=true", "NOT (c.v = \"bikes\")"),
                 ]),
             new("Service.BooleanEqualityIsUndefinedOnlyOverAbsent",
                 "A comparison with a boolean is false over a null and over a value of another type, and undefined over an absent path, so NOT above it keeps the first two and not the third.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.AComparisonIsUndefinedOnlyOverAnAbsentPath",
                 [
-                    new(Test.Equal, Class.True, Both, "true=true false=false null=false absent=undefined string=false number=false"),
-                    new(Test.Equal, Class.True, Emulator, "object=false array=false"),
+                    new(Test.Equal, Class.True, Both, "true=true false=false null=false absent=undefined"),
+                    new(Test.Equal, Class.True, Emulator, "string=false number=false object=false array=false"),
                 ]),
 
             // ── A stored boolean written bare (TryStoredBoolean, WriteTruthTest) ──────────
@@ -185,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.ABarePathKeepsOnlyTrue",
                 [
                     new(Test.Bare, Class.None, Both, "true=true"),
-                    new(Test.Bare, Class.None, Azure, "false=notkept null=notkept absent=notkept string=notkept number=notkept"),
+                    new(Test.Bare, Class.None, Azure, "false=notkept null=notkept absent=notkept"),
                     new(Test.Bare, Class.None, Emulator, "false=false null=undefined absent=undefined string=undefined number=undefined object=undefined array=undefined"),
                 ]),
             new("Service.NotOverAPathKeepsOnlyFalse",
@@ -193,18 +165,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.NotOverAPathKeepsOnlyFalse",
                 [
                     new(Test.Not, Class.None, Both, "false=true"),
-                    // Azure ran a WHERE alone over the rest, which NotOverUndefinedIsUndefined answers finer there.
+                    new(Test.Not, Class.None, Azure, "true=notkept null=notkept absent=notkept"),
                     new(Test.Not, Class.None, Emulator, "true=false null=undefined absent=undefined string=undefined number=undefined object=undefined array=undefined"),
                 ]),
             new("Service.ConnectivesReadNonBooleansAsUnknown",
                 "AND and OR treat a value that is not a boolean, a null and an absent path as SQL treats unknown: OR true keeps it, NOT (... AND false) keeps it, NOT (... OR false) does not.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.TheConnectivesTreatEverythingButABooleanAsUnknown",
                 [
-                    new(Test.Or, Class.None, Both, "true=true false=true null=true absent=true string=true number=true", "(c.v OR true)"),
-                    new(Test.Or, Class.None, Emulator, "object=true array=true", "(c.v OR true)"),
-                    new(Test.Not, Class.None, Both, "true=true false=true null=true absent=true string=true number=true", "NOT (c.v AND false)"),
-                    new(Test.Not, Class.None, Emulator, "object=true array=true", "NOT (c.v AND false)"),
+                    new(Test.Or, Class.None, Both, "true=true false=true null=true absent=true", "(c.v OR true)"),
+                    new(Test.Or, Class.None, Emulator, "string=true number=true object=true array=true", "(c.v OR true)"),
+                    new(Test.Not, Class.None, Both, "true=true false=true null=true absent=true", "NOT (c.v AND false)"),
+                    new(Test.Not, Class.None, Emulator, "string=true number=true object=true array=true", "NOT (c.v AND false)"),
                     new(Test.Not, Class.None, Both, "false=true", "NOT (c.v OR false)"),
+                    new(Test.Not, Class.None, Azure, "true=notkept null=notkept absent=notkept", "NOT (c.v OR false)"),
                     new(Test.Not, Class.None, Emulator, "true=false null=undefined absent=undefined string=undefined number=undefined object=undefined array=undefined", "NOT (c.v OR false)"),
                 ]),
 
@@ -214,17 +187,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "A comparison of a string with a string, or of a number with a number, is true or false as the two stand in the type's order, never undefined; against a value of another type = is false, != true and an ordering undefined, and over an absent path each is undefined. = and != against true or false are true or false over every value but an absent path.",
                 CosmosAxiomTarget.Emulator, Family, "Measurements.CosmosJsonTypeMeasurementTests.AComparisonWithinATypeIsTrueOrFalse",
                 [
-                    new(Test.Equal, Class.String, Emulator, "below=false equal=true above=false absent=undefined null=false true=false false=false number=false object=false array=false"),
-                    new(Test.NotEqual, Class.String, Emulator, "below=true equal=false above=true absent=undefined null=true true=true false=true number=true object=true array=true"),
-                    new(Test.Less, Class.String, Emulator, "below=true equal=false above=false absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    // Another type's cells, where an earlier row of the family answers them, are its.
+                    new(Test.Equal, Class.String, Emulator, "below=false equal=true above=false"),
+                    new(Test.NotEqual, Class.String, Emulator, "below=true equal=false above=true"),
+                    new(Test.Less, Class.String, Emulator, "below=true equal=false above=false"),
                     new(Test.LessOrEqual, Class.String, Emulator, "below=true equal=true above=false absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
                     new(Test.Greater, Class.String, Emulator, "below=false equal=false above=true absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
                     new(Test.GreaterOrEqual, Class.String, Emulator, "below=false equal=true above=true absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
                     new(Test.Equal, Class.Number, Emulator, "below=false equal=true above=false absent=undefined null=false true=false false=false string=false object=false array=false"),
-                    new(Test.NotEqual, Class.Number, Emulator, "below=true equal=false above=true absent=undefined null=true true=true false=true string=true object=true array=true"),
+                    new(Test.NotEqual, Class.Number, Emulator, "below=true equal=false above=true"),
                     new(Test.Less, Class.Number, Emulator, "below=true equal=false above=false absent=undefined null=undefined true=undefined false=undefined string=undefined object=undefined array=undefined"),
                     new(Test.LessOrEqual, Class.Number, Emulator, "below=true equal=true above=false absent=undefined null=undefined true=undefined false=undefined string=undefined object=undefined array=undefined"),
-                    new(Test.Greater, Class.Number, Emulator, "below=false equal=false above=true absent=undefined null=undefined true=undefined false=undefined string=undefined object=undefined array=undefined"),
+                    new(Test.Greater, Class.Number, Emulator, "below=false equal=false above=true"),
                     new(Test.GreaterOrEqual, Class.Number, Emulator, "below=false equal=true above=true absent=undefined null=undefined true=undefined false=undefined string=undefined object=undefined array=undefined"),
                     new(Test.Equal, Class.True, Emulator, "true=true false=false absent=undefined null=false number=false string=false object=false array=false"),
                     new(Test.NotEqual, Class.True, Emulator, "true=false false=true absent=undefined null=true number=true string=true object=true array=true"),
@@ -242,6 +216,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Or, Class.False, Emulator, "true=true false=false undefined=undefined absent=undefined null=undefined number=undefined string=undefined object=undefined array=undefined"),
                     .. NoTruth.Select(x => new CosmosOutcome(Test.Or, x, Emulator, "true=true false=undefined undefined=undefined absent=undefined null=undefined number=undefined string=undefined object=undefined array=undefined")),
                     new(Test.Not, Class.None, Emulator, "true=false false=true undefined=undefined absent=undefined null=undefined number=undefined string=undefined object=undefined array=undefined"),
+                ]),
+            new("Service.AConstantIsItsOwnTruth",
+                "true written as a condition keeps every document and NOT true none, and false the reverse, whatever a path holds or lacks.",
+                CosmosAxiomTarget.Emulator, Family, "Measurements.CosmosBooleanLogicMeasurementTests.AConstantIsItsOwnTruth",
+                [
+                    new(Test.Constant, Class.True, Emulator, "absent=true null=true true=true false=true number=true string=true object=true array=true"),
+                    new(Test.Constant, Class.False, Emulator, "absent=false null=false true=false false=false number=false string=false object=false array=false"),
                 ]),
             new("Service.TypeTestBodiesMatchTheService",
                 "The in-process bodies of the IS_* tests (CosmosFunctionBodies) answer what the service answers over a path holding each kind of value, false and a fraction among them, and over an absent one; so IS_DEFINED's Calcite side, which is its body, is the service's.",
@@ -331,7 +312,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
             new("Calcite.ConnectivesAreKleene",
                 "AND, OR and NOT are Kleene's over TRUE, FALSE and UNKNOWN, in either order; an operand that raises raises AND beside FALSE and OR beside TRUE, in either order, both operands of a nullable connective being evaluated.",
-                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteConnectiveMeasurementTests.TheConnectivesAreKleenesAndEvaluateBothOperands"),
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteConnectiveMeasurementTests.TheConnectivesAreKleenesAndEvaluateBothOperands",
+                [
+                    new(Test.And, Class.True, CosmosAxiomTarget.Calcite, "true=true false=false undefined=undefined"),
+                    new(Test.And, Class.False, CosmosAxiomTarget.Calcite, "true=false false=false undefined=false"),
+                    new(Test.And, Class.Undefined, CosmosAxiomTarget.Calcite, "true=undefined false=false undefined=undefined"),
+                    new(Test.Or, Class.True, CosmosAxiomTarget.Calcite, "true=true false=true undefined=true"),
+                    new(Test.Or, Class.False, CosmosAxiomTarget.Calcite, "true=true false=false undefined=undefined"),
+                    new(Test.Or, Class.Undefined, CosmosAxiomTarget.Calcite, "true=true false=undefined undefined=undefined"),
+                    new(Test.Not, Class.None, CosmosAxiomTarget.Calcite, "true=false false=true undefined=undefined"),
+                ]),
 
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 
@@ -452,11 +442,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ── The service's order (CosmosServiceOrder, CosmosContainerMetadata.IsSortSupported) ───
 
             new("Service.StringOrderIsCodePoint",
-                "A document's strings are ordered, compared and extremed by code point, which is UTF-8 byte order, with no collation and no normalisation: U+E000 below U+1F600, which UTF-16 order puts above. The emulator stores U+0000 as U+FDD0 followed by 0 and orders and compares what it stores, a parameter as written, so it puts U+0000 above U+E000, and unequal to itself sent as a parameter.",
+                "A document's strings are ordered, compared and extremed by code point, which is UTF-8 byte order, with no collation and no normalisation: U+E000 below U+1F600, which UTF-16 order puts above. The emulator stores U+0000 as U+FDD0 followed by 0 and orders and compares what it stores, so it puts U+0000 above U+E000; what Azure does with U+0000 is unmeasured.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ADocumentsStringsOrderByCodePoint",
                 [
-                    // The emulator's comparator is no CosmosAnswer, so S reads none of its comparisons within strings.
-                    new(Test.Order, Class.String, Azure, "none=codepoint"),
+                    new(Test.Order, Class.String, Emulator, "none=storedcodepoint"),
                     new(Test.Greater, Class.String, Both, "above=true"),
                     new(Test.Greater, Class.String, Azure, "below=notkept equal=notkept"),
                     new(Test.Greater, Class.String, Emulator, "below=false equal=false"),
@@ -468,13 +457,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "Two constants are compared by UTF-16 code unit on Azure, @a < @b false for U+E000 and U+1F600, where the emulator compares them by code point.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.TwoConstantsCompareByUtf16"),
             new("Service.RangeOverPartedBoundsIsEmpty",
-                "A filter c.s BETWEEN @lo AND @hi, or c.s >= @lo AND c.s <= @hi, whose bounds the two orders rank apart, U+E000 and U+1F600, keeps nothing on Azure, while the same predicate projected is true of the rows between them by code point. The emulator keeps the rows between them by code point, and NOT the rest, as it does between bounds the orders rank alike.",
+                "A filter c.s BETWEEN @lo AND @hi, or c.s >= @lo AND c.s <= @hi, whose bounds the two orders rank apart, U+E000 and U+1F600, keeps nothing on Azure, while the same predicate projected is true of the rows between them by code point. The emulator keeps the rows between them by what it stores, which is code point wherever no string holds U+0000, and NOT the rest, as it does between bounds the orders rank alike; over a value of another type, or none, the range is undefined.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ARangeWhoseBoundsTheOrdersRankApartKeepsNothing",
                 [
                     // Azure's is BETWEEN's, with no NOT run; the emulator's the spelling S reads, >= AND <=, which keeps what BETWEEN does.
-                    new(Test.Range, Class.Parted, Azure, "between=notkept outside=notkept"),
-                    new(Test.Range, Class.Parted, Emulator, "between=true outside=false"),
-                    new(Test.Range, Class.Agreeing, Emulator, "between=true outside=false"),
+                    new(Test.Range, Class.Parted, Azure, "between=notkept"),
+                    .. new[] { Class.Parted, Class.Agreeing }.Select(bounds => new CosmosOutcome(Test.Range, bounds, Emulator,
+                        "between=true outside=false absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined")),
                 ]),
             new("Service.OrderByTypeOrder",
                 "ORDER BY orders undefined, null, false, true, numbers, strings, arrays, objects, over every path, and DESC is the exact reverse.",
@@ -483,10 +472,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "An int64 is held, compared and ordered exactly, past 2^53 where a double ties its neighbours, up to 2^63 - 1.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.IntegersOrderExactly",
                 [
-                    new(Test.Order, Class.Number, Both, "none=numeric"),
-                    new(Test.Equal, Class.Number, Both, "equal=true"),
-                    new(Test.Equal, Class.Number, Azure, "below=notkept above=notkept"),
-                    new(Test.Equal, Class.Number, Emulator, "below=false above=false"),
+                    new(Test.Order, Class.Number, Emulator, "none=numeric"),
+                    new(Test.Equal, Class.Number, Emulator, "below=false equal=true above=false"),
                 ]),
             new("Service.OrderByOverAnExcludedPathFails",
                 "ORDER BY over a path the indexing policy excludes is a 400, _etag among them under the default policy; a filter and MIN or MAX over it still answer.",

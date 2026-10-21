@@ -20,14 +20,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// could matter: <c>false</c> and a fraction.
     /// </para>
     /// <para>
-    /// <b>Below, at and above a literal are by code point,</b> the comparator Azure's order names, and every witness either
-    /// side lies there by UTF-16 unit as well or tells the two apart. None holds U+0000: the emulator orders it as it
-    /// stores it, so its side would hang on the target, which a catalogue that never asks cannot know. The order's
-    /// pinning test measures that apart.
-    /// </para>
-    /// <para>
-    /// <b>A connective's undefined is no path:</b> an ordering across types (<see cref="Side"/>), as a comparison over a
-    /// path answers, since S keys a path written bare by the class of what it holds and anything else by its truth.
+    /// <b>Below, at and above a literal are by code point,</b> and every witness either side lies there by UTF-16 unit as
+    /// well or tells the two apart. Only the order's hold U+0000, whose side hangs on the target (<c>DESIGN.md</c>, <i>The
+    /// rows' vectors</i>).
     /// </para>
     /// </remarks>
     internal static class CosmosOutcomeWitnesses
@@ -47,17 +42,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Each literal's sides, and under <see cref="None"/> the values an order is measured over: strings either side of
-        /// U+D800, which the two orders rank apart; integers past 2^53, where a double ties neighbours, up to 2^63 - 1. A
-        /// range's are by code point: between and outside bounds the two orders rank apart, and two they rank alike.
+        /// U+D800, which the two orders rank apart, and two holding U+0000; integers past 2^53, where a double ties
+        /// neighbours, up to 2^63 - 1. A range's are by code point: between and outside bounds the two orders rank apart, and
+        /// two they rank alike.
         /// </summary>
         static readonly Dictionary<CosmosValueClass, Dictionary<CosmosValueClass, string?[]>> Sides = new()
         {
             [String] = new()
             {
-                [Below] = ["\"\"", "\"B\"", "\"a\"", "\"bikes\"", "\"\\ud7ff\""],
+                [Below] = ["\"\"", "\"B\"", "\"a\"", "\"\\ud7ff\""],
                 [Equal] = ["\"\\ue000\""],
                 [Above] = ["\"\\uff21\"", "\"\\ud83d\\ude00\""],
-                [None] = ["\"\\ud7ff\"", "\"a\"", "\"B\"", "\"\\ue000\"", "\"\\uff21\"", "\"\\ud83d\\ude00\"", "\"\""],
+                [None] = ["\"\\ud7ff\"", "\"a\"", "\"B\"", "\"\\ue000\"", "\"\\uff21\"", "\"\\ud83d\\ude00\"", "\"\"", "\"\\u0000\"", "\"a\\u0000b\""],
             },
             [Number] = new()
             {
@@ -120,18 +116,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             : Sides.TryGetValue(operand, out var sides) ? sides.GetValueOrDefault(cell) ?? (cell != operand ? Kinds.GetValueOrDefault(cell) : null) ?? []
             : Kinds.GetValueOrDefault(cell) ?? [];
 
+        /// <summary>Every cell an outcome is witnessed at: an edge's sides, a composite's kinds, or its key's on the emulator.</summary>
+        public static IEnumerable<CosmosValueClass> Cells(CosmosOutcome outcome, string? edge = null) =>
+            edge is not null ? Edges[edge].Keys : outcome.Formula is not null ? Kinds.Keys : Cells(outcome.Test, outcome.Operand, RenderingTarget.Emulator);
+
         /// <summary>
-        /// Every cell an outcome is witnessed at: an edge's sides; an order whole; a range's by where a value lies; a
-        /// connective's every operand, undefined among them; a comparison's kinds, its literal's own split into sides.
+        /// The cells a key is read at on a target: a connective's and a range's, Kleene's expectations there; an order,
+        /// whole; a comparison with a string or a number, a value of its type by its side; the rest, by kind.
         /// </summary>
-        public static IEnumerable<CosmosValueClass> Cells(CosmosOutcome outcome, string? edge = null) => outcome switch
+        public static IEnumerable<CosmosValueClass> Cells(CosmosServiceTest test, CosmosValueClass operand, RenderingTarget target) => test switch
         {
-            _ when edge is not null => Edges[edge].Keys,
-            { Formula: not null } => Kinds.Keys,
-            { Test: CosmosServiceTest.Order } => [None],
-            { Test: CosmosServiceTest.Not or CosmosServiceTest.And or CosmosServiceTest.Or } => [.. Kinds.Keys, Undefined],
-            { Test: CosmosServiceTest.Range } => Sides[outcome.Operand].Keys,
-            _ when Sides.TryGetValue(outcome.Operand, out var sides) => Kinds.Keys.Where(kind => kind != outcome.Operand).Concat(sides.Keys.Where(cell => cell != None)),
+            CosmosServiceTest.Not or CosmosServiceTest.And or CosmosServiceTest.Or or CosmosServiceTest.Range =>
+                KleeneTables.Rows.Where(k => k.Item1 == target && k.Item2.Test == test && k.Item2.Operand == operand).Select(k => k.Item2.Cell),
+            CosmosServiceTest.Order => [None],
+            _ when operand is String or Number => [.. Kinds.Keys.Where(kind => kind != operand), Below, Equal, Above],
             _ => Kinds.Keys,
         };
 

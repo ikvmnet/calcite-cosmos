@@ -129,13 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>Holds a row's outcomes against the service, over witnesses of their own.</summary>
-        static Task Holds(CosmosAxiom axiom)
-        {
-            if (_container is null)
-                Assert.Skip("These need a service. " + _unavailable);
-
-            return CosmosOutcomeHarness.Holds(_container!, axiom);
-        }
+        static Task Holds(string id) => CosmosOutcomeHarness.Holds(_container, id, _unavailable);
 
         /// <summary>
         /// The ids of the documents a <c>WHERE</c> keeps.
@@ -163,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.BarePathKeepsOnlyTrue")]
         public async Task ABarePathKeepsOnlyTrue()
         {
-            await Holds(CosmosAxioms.Get("Service.BarePathKeepsOnlyTrue"));
+            await Holds("Service.BarePathKeepsOnlyTrue");
         }
 
         /// <summary>
@@ -174,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.NotOverAPathKeepsOnlyFalse")]
         public async Task NotOverAPathKeepsOnlyFalse()
         {
-            await Holds(CosmosAxioms.Get("Service.NotOverAPathKeepsOnlyFalse"));
+            await Holds("Service.NotOverAPathKeepsOnlyFalse");
         }
 
         /// <summary>
@@ -184,22 +178,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.ConnectivesReadNonBooleansAsUnknown")]
         public async Task TheConnectivesTreatEverythingButABooleanAsUnknown()
         {
-            await Holds(CosmosAxioms.Get("Service.ConnectivesReadNonBooleansAsUnknown"));
+            await Holds("Service.ConnectivesReadNonBooleansAsUnknown");
         }
 
         /// <summary>
         /// <c>AND</c> and <c>OR</c> are Kleene's whichever side an operand stands on, a value that is no boolean read as
         /// unknown, and <c>NOT</c> over undefined is undefined.
         /// </summary>
-        /// <remarks>
-        /// Each operand at <c>c.u</c> beside each at <c>c.v</c>, undefined an ordering across types and not a path, which S
-        /// keys apart (<see cref="CosmosOutcomeWitnesses"/>). The constants on the right above left <c>false AND x</c>
-        /// with <c>false</c> on the left unmeasured.
-        /// </remarks>
         [Fact, CosmosPins("Service.ConnectivesAreKleene")]
         public async Task TheConnectivesAreKleenesInEitherOrder()
         {
-            await Holds(CosmosAxioms.Get("Service.ConnectivesAreKleene"));
+            await Holds("Service.ConnectivesAreKleene");
+        }
+
+        /// <summary>
+        /// <c>true</c> written as a condition keeps every document and <c>false</c> none, whatever the path holds: what
+        /// the connectives above are composed with.
+        /// </summary>
+        [Fact, CosmosPins("Service.AConstantIsItsOwnTruth")]
+        public async Task AConstantIsItsOwnTruth()
+        {
+            await Holds("Service.AConstantIsItsOwnTruth");
         }
 
         /// <summary>
@@ -209,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.BooleanEqualityIsUndefinedOnlyOverAbsent")]
         public async Task AComparisonIsUndefinedOnlyOverAnAbsentPath()
         {
-            await Holds(CosmosAxioms.Get("Service.BooleanEqualityIsUndefinedOnlyOverAbsent"));
+            await Holds("Service.BooleanEqualityIsUndefinedOnlyOverAbsent");
         }
 
         /// <summary>

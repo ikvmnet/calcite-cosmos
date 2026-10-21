@@ -145,13 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>Holds a row's outcomes against the service, over witnesses of their own.</summary>
-        static Task Holds(CosmosAxiom axiom)
-        {
-            if (_container is null)
-                Assert.Skip("These need a service. " + _unavailable);
-
-            return CosmosOutcomeHarness.Holds(_container!, axiom);
-        }
+        static Task Holds(string id) => CosmosOutcomeHarness.Holds(_container, id, _unavailable);
 
         /// <summary>
         /// What an expression over <c>c.v</c> answers for each document, written
@@ -187,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.IsPrimitive")]
         public async Task IsPrimitiveIsFalseOverAnAbsentPath()
         {
-            await Holds(CosmosAxioms.Get("Service.IsPrimitive"));
+            await Holds("Service.IsPrimitive");
             (await Answers("(IS_PRIMITIVE(c.v) ? c.v : null)")).Should().Be("string=\"bikes\" number=30 boolean=true null=null object=null array=null absent=null",
                 "so the guarded accessor is null over an absent path, as JSON_VALUE is");
         }
@@ -199,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.IsDefined")]
         public async Task IsDefinedIsFalseOnlyOverAnAbsentPath()
         {
-            await Holds(CosmosAxioms.Get("Service.IsDefined"));
+            await Holds("Service.IsDefined");
         }
 
         /// <summary>
@@ -209,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.IsNull")]
         public async Task IsNullIsTrueOnlyOfANull()
         {
-            await Holds(CosmosAxioms.Get("Service.IsNull"));
+            await Holds("Service.IsNull");
         }
 
         /// <summary>
@@ -219,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.KindTests")]
         public async Task EachKindTestIsTrueOfItsKindAlone()
         {
-            await Holds(CosmosAxioms.Get("Service.KindTests"));
+            await Holds("Service.KindTests");
         }
 
         /// <summary>
@@ -233,7 +227,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.NotOfAKindTest")]
         public async Task NotOfATypeTestIsTrueOverAnAbsentPath()
         {
-            await Holds(CosmosAxioms.Get("Service.NotOfAKindTest"));
+            await Holds("Service.NotOfAKindTest");
         }
 
         /// <summary>
@@ -282,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.OrderingAcrossTypesIsUndefined")]
         public async Task AnOrderingAcrossTypesIsUndefined()
         {
-            await Holds(CosmosAxioms.Get("Service.OrderingAcrossTypesIsUndefined"));
+            await Holds("Service.OrderingAcrossTypesIsUndefined");
         }
 
         /// <summary>
@@ -300,8 +294,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.EqualityAcrossTypesIsFalse"), CosmosPins("Service.InequalityOverNullIsTrue")]
         public async Task AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue()
         {
-            await Holds(CosmosAxioms.Get("Service.EqualityAcrossTypesIsFalse"));
-            await Holds(CosmosAxioms.Get("Service.InequalityOverNullIsTrue"));
+            await Holds("Service.EqualityAcrossTypesIsFalse");
+            await Holds("Service.InequalityOverNullIsTrue");
         }
 
         /// <summary>
@@ -311,7 +305,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.ComparisonWithinAType")]
         public async Task AComparisonWithinATypeIsTrueOrFalse()
         {
-            await Holds(CosmosAxioms.Get("Service.ComparisonWithinAType"));
+            await Holds("Service.ComparisonWithinAType");
         }
 
         /// <summary>
@@ -326,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.NotOverUndefinedIsUndefined")]
         public async Task NotOverUndefinedIsUndefined()
         {
-            await Holds(CosmosAxioms.Get("Service.NotOverUndefinedIsUndefined"));
+            await Holds("Service.NotOverUndefinedIsUndefined");
         }
 
     }

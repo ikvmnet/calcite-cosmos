@@ -37,18 +37,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } =
         [
-            // The emulator's widened witnesses, which the probe account has not run.
-            .. Cells(RenderingTarget.Azure, "IsDefined/None IsNull/None IsPrimitive/None IsString/None IsNumber/None IsBool/None IsObject/None IsArray/None", "False"),
-            .. Cells(RenderingTarget.Azure, "Less/String Equal/String NotEqual/String Greater/Number NotEqual/Number", "False"),
-            .. Cells(RenderingTarget.Azure, "Equal/True Bare/None", "Object Array"),
-            // What the emulator's rows of the family measure (Service.ComparisonWithinAType, Service.ConnectivesAreKleene)
-            // beside a key the probe account answered: a value of the literal's type at it or either side, one of another
-            // type against an order's literal, and NOT over undefined.
-            .. Cells(RenderingTarget.Azure, "Less/String", "Equal Above"),
-            .. Cells(RenderingTarget.Azure, "Greater/Number", "Below Equal"),
-            .. Cells(RenderingTarget.Azure, "Equal/String NotEqual/String NotEqual/Number", "Below Above"),
-            .. Cells(RenderingTarget.Azure, "Greater/String", "Absent Null True False Number Object Array"),
-            .. Cells(RenderingTarget.Azure, "Equal/Number", "Absent Null True False String Object Array"),
+            // What the emulator measures beside a key the probe account answered: the witnesses Azure ran none of, a string
+            // beside "true" and a number beside 1 among them; another type against an order's literal; a range outside its
+            // bounds, above them included, and over another type; and NOT over undefined.
+            .. Cells(RenderingTarget.Azure, "Equal/True Bare/None Not/None", "String Number Object Array"),
+            .. Cells(RenderingTarget.Azure, "Greater/String Range/Parted", "Absent Null True False Number Object Array"),
+            .. Cells(RenderingTarget.Azure, "Range/Parted", "Outside"),
             .. Cells(RenderingTarget.Azure, "Not/None", "Undefined"),
         ];
 

@@ -12,6 +12,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// the truth a <c>WHERE</c> reads, established by the row it keeps and the row <c>NOT</c> keeps, spelled
     /// <c>absent=false null=true …</c> in the names of <see cref="CosmosValueClass"/> and <see cref="CosmosAnswer"/>.
     /// </summary>
+    /// <param name="Test">What was asked.</param>
+    /// <param name="Operand">The class of the literal compared with, or of a connective's first side.</param>
+    /// <param name="Answers">The vector, a cell's class beside its answer.</param>
     /// <param name="On">The targets that ran this outcome's own witnesses; a target that answered otherwise, or a cell one
     /// ran and another did not, is an outcome of its own.</param>
     /// <param name="Formula">A composite's Cosmos SQL over <c>c.v</c>, whose answers are a check of composition through
@@ -19,11 +22,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     internal sealed record CosmosOutcome(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAxiomTarget On, string Answers, string? Formula = null)
     {
 
+        string answers = Answers;
+
+        (CosmosValueClass, CosmosAnswer)[] cells = Parse(Answers);
+
+        /// <summary>The vector, parsed as it is set, so a copy made <c>with</c> other answers carries its own cells.</summary>
+        public string Answers { get => answers; init => (answers, cells) = (value, Parse(value)); }
+
         /// <summary>
         /// The answers, parsed as the registry is initialised, so a malformed vector — a name no enum holds, a class
         /// twice — fails every test that reads the registry.
         /// </summary>
-        public IReadOnlyList<(CosmosValueClass Cell, CosmosAnswer Answer)> Cells { get; } = Parse(Answers);
+        public IReadOnlyList<(CosmosValueClass Cell, CosmosAnswer Answer)> Cells => cells;
 
         static (CosmosValueClass, CosmosAnswer)[] Parse(string answers)
         {

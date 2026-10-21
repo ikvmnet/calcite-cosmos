@@ -237,6 +237,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The emulator orders a string holding U+0000 as it stores it, so over strings an ordering is proven only where
+        /// none may hold one, and nothing is proven against a literal holding one; an equality with ASCII is, whatever
+        /// they hold (T1).
+        /// </summary>
+        [Fact]
+        public void AStringHoldingU0000IsReadAsTheEmulatorStoresIt()
+        {
+            var strings = PathValues.OfKinds(ValueSet.Of(StringType));
+            var withoutNul = ValueSet.From(AllBands.Where(c => c != NulClass));
+            RenderingVerdictKind Compared(string op, string literal, ValueSet<string> classes) => Check(Cmp(Text(LabelPath), op, Lit(literal)),
+                ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.Equal, Label, Of(literal)), path: LabelPath, values: strings, classes: classes).Equal.Kind;
+
+            (Compared("<", "b", AllBands), Compared("<", "b", withoutNul), Compared("<", "a\0", withoutNul), Compared("=", "\0", AllBands))
+                .Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
+        }
+
+        /// <summary>
         /// A comparison with U+E000, an ordering or an equality alike, parts the two string orders where the path's strings
         /// may hold a surrogate, and only there: the literal holds the high band, so the import must hold the other. An
         /// interval below it by unit may lie above it by code point, where <c>!=</c> reads the other side's row.

@@ -44,10 +44,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             operands.SelectMany(x => operands.SelectMany(y => new[] { And, Or }.Select(c => (target, MeasuredKey.Of(c, x, y), Answer(c, x, y))))
                 .Prepend((target, MeasuredKey.Of(Not, None, x), Answer(Not, x, x))));
 
-        /// <summary>A range kept where a value lies between its bounds and kept by <c>NOT</c> where outside, whether they part the orders or not.</summary>
+        /// <summary>
+        /// A range kept where a value lies between its bounds and kept by <c>NOT</c> where outside, whether they part the
+        /// orders or not, and undefined over a value of another type or none, as both its orderings are.
+        /// </summary>
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Pointwise(RenderingTarget target) =>
             from bounds in new[] { Parted, Agreeing }
             from cell in new[] { (Between, CosmosAnswer.True), (Outside, CosmosAnswer.False) }
+                .Concat(new[] { Absent, Null, True, False, Number, Object, CosmosValueClass.Array }.Select(kind => (kind, CosmosAnswer.Undefined)))
             select (target, MeasuredKey.Of(CosmosServiceTest.Range, bounds, cell.Item1), cell.Item2);
 
         /// <summary>Kleene's connectives, an operand that is no truth read as unknown.</summary>

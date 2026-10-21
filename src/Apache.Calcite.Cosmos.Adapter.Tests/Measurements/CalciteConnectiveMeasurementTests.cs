@@ -1,6 +1,10 @@
 using System;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using FluentAssertions;
 
 using Xunit;
@@ -31,10 +35,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// connective beside FALSE under <c>AND</c> and beside TRUE under <c>OR</c>, in either order.
         /// </summary>
         /// <remarks>
-        /// Calcite evaluates both operands of a nullable connective before combining them, so the arm that decides it
-        /// does not keep the other from being evaluated.
+        /// What each answers is the row's (<c>Calcite.ConnectivesAreKleene</c>), the first operand its key and the second
+        /// its cell, so either order reads it. Calcite evaluates both operands of a nullable connective before combining
+        /// them, so the arm that decides it does not keep the other from being evaluated.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.ConnectivesAreKleene")]
         public void TheConnectivesAreKleenesAndEvaluateBothOperands()
         {
             using var connection = MaterialisedTable.Open();
@@ -44,8 +49,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var pairs = MaterialisedTable.Of(values.SelectMany(a => values.Select(b =>
                 "{" + string.Join(",", new[] { a is null ? null : "\"a\":" + a, b is null ? null : "\"b\":" + b }.Where(p => p is not null)) + "}")));
 
+            var row = CosmosAxioms.Get("Calcite.ConnectivesAreKleene").Outcomes!.ToDictionary(o => (o.Test, o.Operand), o => o.Cells.ToDictionary(c => c.Cell, c => c.Answer.ToString()[0]));
+            CosmosValueClass[] truths = [CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Undefined];
+            string Each(Func<CosmosValueClass, CosmosValueClass, char> answer) => string.Concat(from a in truths from b in truths select answer(a, b));
             pairs.Ask(connection, $"{A} AND {B}", $"{B} AND {A}", $"{A} OR {B}", $"{B} OR {A}", $"NOT {A}").Should().Equal(
-                "TFUFFFUFU", "TFUFFFUFU", "TTTTFUTUU", "TTTTFUTUU", "FFFTTTUUU");
+                Each((a, b) => row[(CosmosServiceTest.And, a)][b]), Each((a, b) => row[(CosmosServiceTest.And, b)][a]),
+                Each((a, b) => row[(CosmosServiceTest.Or, a)][b]), Each((a, b) => row[(CosmosServiceTest.Or, b)][a]), Each((a, _) => row[(CosmosServiceTest.Not, CosmosValueClass.None)][a]));
 
             var falseBeside = MaterialisedTable.Of(new[] { "{\"a\":false,\"r\":\"x\"}" });
             foreach (var p in new[] { $"{A} AND {Raising}", $"{Raising} AND {A}", $"NOT {Raising}" })

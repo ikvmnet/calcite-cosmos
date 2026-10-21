@@ -14,6 +14,7 @@ using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 
 using FluentAssertions;
+using FluentAssertions.Execution;
 
 using Microsoft.Azure.Cosmos;
 
@@ -227,27 +228,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A document's strings are ordered, compared and extremed by code point, with no collation: U+E000 below
-        /// U+1F600, where Calcite's UTF-16 order puts it above.
+        /// U+1F600, where Calcite's UTF-16 order puts it above; and on the emulator a string holding U+0000 as it stores it.
         /// </summary>
-        /// <remarks>
-        /// U+0000 where it decides is no outcome's witness, since its side hangs on the target: Azure reads past it, and the
-        /// emulator, which stores it as U+FDD0 followed by 0, orders and compares what it stores, a parameter as written. So
-        /// it is measured here, and must be one of the two.
-        /// </remarks>
         [Fact, CosmosPins("Service.StringOrderIsCodePoint")]
         public async Task ADocumentsStringsOrderByCodePoint()
         {
             var strings = Container("strings");
-            await CosmosOutcomeHarness.Holds(strings, CosmosAxioms.Get("Service.StringOrderIsCodePoint"));
+            await CosmosOutcomeHarness.Holds(strings, "Service.StringOrderIsCodePoint");
             (await Rows(strings, "SELECT VALUE MAX(c.s) FROM c")).Should().Equal("\U0001F600");
-
-            var nul = await Fresh(new ContainerProperties("nul", "/pk"), TestContext.Current.CancellationToken);
-            foreach (var (id, s) in new[] { ("nul", "\0"), ("a", "a"), ("e000", "\uE000") })
-                await Write(nul, new JObject { ["id"] = id, ["pk"] = "a", ["s"] = s }.ToString(Newtonsoft.Json.Formatting.None), TestContext.Current.CancellationToken);
-
-            var order = string.Join(" ", await Rows(nul, "SELECT VALUE c.id FROM c ORDER BY c.s"));
-            var equal = string.Join(" ", await Rows(nul, "SELECT VALUE c.id FROM c WHERE c.s = @p", ("@p", "\0")));
-            $"{order}; {equal}".Should().BeOneOf(["nul a e000; nul", "a e000 nul; "], "by code point, as on Azure, or by what the emulator stores");
         }
 
         /// <summary>
@@ -299,13 +287,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         /// <remarks>
         /// Held in the spelling the translator writes and S reads, <c>&gt;= AND &lt;=</c>, and its <c>NOT</c>. Azure's
-        /// outcome was measured as <c>BETWEEN</c>, which keeps what that spelling keeps, here on either target.
+        /// outcome was measured as <c>BETWEEN</c>, which keeps what that spelling keeps, here on either target. Every
+        /// assertion is read before any fails, so one run records them all.
         /// </remarks>
         [Fact, CosmosPins("Service.RangeOverPartedBoundsIsEmpty")]
         public async Task ARangeWhoseBoundsTheOrdersRankApartKeepsNothing()
         {
             var strings = Container("strings");
-            await CosmosOutcomeHarness.Holds(strings, CosmosAxioms.Get("Service.RangeOverPartedBoundsIsEmpty"));
+            using var all = new AssertionScope();
+            await CosmosOutcomeHarness.Holds(strings, "Service.RangeOverPartedBoundsIsEmpty");
 
             foreach (var (lo, hi) in new[] { ("\uE000", "\U0001F600"), ("B", "a") })
                 foreach (var not in new[] { "", "NOT " })
@@ -338,7 +328,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.IntegersOrderExactly")]
         public async Task IntegersOrderExactly()
         {
-            await CosmosOutcomeHarness.Holds(Container("numbers"), CosmosAxioms.Get("Service.IntegersOrderExactly"));
+            await CosmosOutcomeHarness.Holds(Container("numbers"), "Service.IntegersOrderExactly");
         }
 
         /// <summary>
@@ -348,7 +338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.NumbersBeyondLongCompareAsDoubles")]
         public async Task NumbersBeyondLongCompareAsDoubles()
         {
-            await CosmosOutcomeHarness.Holds(Container("numbers"), CosmosAxioms.Get("Service.NumbersBeyondLongCompareAsDoubles"), CosmosOutcomeWitnesses.RoundingEdges);
+            await CosmosOutcomeHarness.Holds(Container("numbers"), "Service.NumbersBeyondLongCompareAsDoubles", edges: CosmosOutcomeWitnesses.RoundingEdges);
         }
 
         // ── What the service accepts ──────────────────────────────────────────────────────────

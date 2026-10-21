@@ -6265,102 +6265,75 @@ stratum, and a lambda filter.
 each class of cell, `absent=false null=true …`, parsed as the registry is initialised. `CosmosAxiomRows.Read` writes a
 row per cell and per target, citing the axiom, and merges nothing: which targets settle a key, and what two that answer
 apart mean together, are `measure` and `tabulate`. A composite, `NOT IS_DEFINED(c.v)` say, carries its formula and is a
-check of composition through the atomic rows, never a row; one that disagreed would say the service is not pointwise
-there.
+check of composition through the atomic rows, never a row.
 
 **An outcome says no more than was run.** Its targets lie within its row's, two outcomes of a row name no target for one
 cell, and the row's pinning test names the row back (`[CosmosPins]`). A cell no outcome covers for a target is declared
 in `CosmosAxiomRows.Owed`, so it answers widest on purpose, and a key the emulator and Azure answer apart is declared
-too, since a divergence is data, not a conflict, and would pass unseen. Two constants compared, the divergence known
-beside the parted range, is no key S reads.
+too, since a divergence is data, not a conflict, and would pass unseen.
 
-**Azure is claimed only on a recorded run.** `Tests/Measurements/Runs/` holds what the probe account answered, per row,
-key and cell, as each pinning test asserted it, and an outcome naming Azure must find each cell's answer there. A test
-that ran a `WHERE` and no `WHERE NOT` is recorded `NotKept`, and a projected value that is no truth as itself, so no
-outcome reads more into a run than it measured. The record of 2026-10-16 covers the `IS_*` family, the comparisons, the
-connectives and the order's rows; the string functions' Azure targets rest on a run that has none.
+**Azure is claimed only where a run read the cell as its pinning test does.** `Tests/Measurements/Runs/` holds what the
+probe account answered, and an outcome naming Azure must find each cell's answer there, read by the same statements —
+a `WHERE`, a `WHERE NOT` beside it where one ran, the literal sent as a parameter — over every witness the test holds
+the cell to. A projection is no evidence of a filter on Azure, whose parted range projects true where its filter keeps
+nothing; nor is a literal written inline, nor an `ORDER BY` with no filter beside it. Such lines are recorded for what
+they are and back nothing. The check runs both ways, so a line read as the test reads it is claimed, by its answer or a
+later run's that means no more: evidence is neither stretched nor dropped by hand. On the record of 2026-10-16 that
+leaves Azure the boolean rows' filtered cells, the string order's `>` and the parted range's between cell, so the
+portable and production sets settle little until the probe account runs `Holds` (D7).
 
-**The fixture reads the registry first.** `ProbeRows` starts from `CosmosAxiomRows` and adds the probe's rows only for a
-key and target the registry does not answer; a probe row the registry answers refuses the fixture, so each goes as its
-outcome lands, and a verdict moves only where a row answers otherwise than the probe's did.
-
-**What holds it.** `CosmosAxiomsTests`: the reader on a planted row, S defined from the registry, and a test for each
-declaration above.
+**The rendering tests read the registry and nothing else.** `ProbeRows` is `CosmosAxiomRows.Read` of the registry, its
+table the one S settles for the emulator's set; a test that needs Azure to answer as the emulator does plants it under
+an id no row holds. Calcite's connectives are a row like the service's, `Calcite.ConnectivesAreKleene`, its measurement
+reading its expectations off the row, so the registry alone licenses `AND`, `OR` and `NOT` under Calcite and the
+emulator.
 
 ### The rows' vectors, held by their tests
 
-**The `IS_*` family, the comparisons, the connectives and the order's two exact rows carry vectors, and each pinning
-test is `Holds` of its row.** `CosmosOutcomeHarness` writes the catalogue's witnesses (`CosmosOutcomeWitnesses`) under a
-partition of their own and reads each cell off three statements: a witness `WHERE` keeps is true, one `WHERE NOT` keeps
-is false, one neither keeps is undefined, and a projection that is a boolean or nothing says the same. An order is the
-one comparator that sorts its witnesses as `ORDER BY` does. Each declared cell's witnesses must answer alike, and as one
-target the outcome names declared; the harness never asks which endpoint it reached, and appends every cell it observed,
-the owed ones too, to `TestResults/measurements/runs.tsv`, which is what a run record is made of.
+**Each pinning test is `Holds` of its row.** `CosmosOutcomeHarness` writes the catalogue's witnesses under a partition
+of their own and reads each cell off a `WHERE`, a `WHERE NOT` and the projection. It never asks which endpoint it
+reached: an answer must mean nothing a target the outcome names did not declare, so `NotKept` is matched by false or
+undefined, and a declared divergence is held as far as a blind check can hold one, each target answering one of the
+two. Every cell is written to `runs.tsv` before any is asserted, so one run of the probe account records them all.
 
 **The catalogue has one literal per class of operand,** so a cell's witnesses are a function of the operand and the
-cell: U+E000, where the two string orders part; 2^53 + 1, where a double and an int64 part; `true`. It is bound as a
-parameter, as the translator binds one, where the type tests wrote theirs inline; both images answer the two alike. The
-kinds are witnessed as the measurements that first ran them were, a string spelling a boolean and a number that might
-read as one beside the plain ones, and widened where a type might matter: `false` and a fraction, and an object and an
-array for the boolean rows.
+cell: U+E000, where the two string orders part; 2^53 + 1, where a double and an int64 part; `true`.
 
-**An outcome claims what its targets ran.** The witnesses the probe account ran on 2026-10-16 claim both targets with
-the answer its record holds; the widened ones claim the emulator. A cell the record holds as `NotKept`, a `WHERE` with no
-`WHERE NOT`, is that on Azure beside the emulator's definite answer, so the portable set reads false or undefined where
-the emulator set reads the one measured — except where another row's record answers the key on Azure finer, as the
-projected `NOT c.v` does for `NOT` over a path: `outcome` is lattice-free, and a `NotKept` beside a `False` would refuse
-S's load. Two such answers are no divergence, so a declared divergence is two answers that mean nothing in common.
+**The emulator orders a string holding U+0000 as it stores it,** U+FDD0 then `0`: measured on both images, it puts
+U+0000 above U+E000 and keeps it under `>` U+E000. `StoredCodePoint` names that comparator, and `ServiceLeaf` places a
+point by what is stored, a range that may hold U+0000 on either side — equal only where it holds the literal, or the
+literal holds the high band U+FDD0 lies in — and a literal holding one nowhere. So `=` and `!=` with ASCII stay exact
+whatever a path holds, and an ordering is proven only where the import holds no U+0000. The order's witnesses hold
+U+0000, and an order is the comparator that sorts them as `ORDER BY` does and places them as `>` beside each does,
+which also parts code point from a comparator that stops reading at U+0000, as Azure's `CONTAINS` does. Azure's order
+over U+0000 is unmeasured, so it claims no order until D7.
 
-**The emulator's string comparator is not claimed.** It stores U+0000 as U+FDD0 followed by `0` and orders and compares
-what it stores, a parameter as written: measured on both images, U+0000 sorts above U+E000 and is unequal to itself sent
-as a parameter. No `CosmosAnswer` names that comparator, and the side a string holding U+0000 lies on hangs on the
-target, so `Order/String` claims Azure alone, its witnesses hold no U+0000, and the order's pinning test measures U+0000
-apart, requiring one of the two answers. So the registry settles no comparison within strings under the emulator set or
-the portable set, which read it as unknown; the rendering tests' fixture keeps code point standing in for the emulator,
-as test data, so their verdicts are unmoved.
-
-**A composite is checked by composing its atoms.** `CosmosAxiomsTests` reads each formula by a copy of the reader's
-grammar and evaluates it over each witness through `ServiceLeaf` and `ServiceCompound`: on every target it names the
-composition holds the measured answer, and on the emulator, whose atoms are all measured definite, is it; Azure's
-`NotKept` atoms compose wider. The probe's Kleene rows stand for Azure's connectives, which the emulator alone has
-measured. The guarded accessor, `(IS_PRIMITIVE(c.v) ? c.v : null)`, answers values, not truths, so it stays its test's
-own assertion.
+**A composite is checked by composing its atoms** through `ServiceLeaf` and `ServiceCompound` on the table S settles for
+each target it names: the composition holds the measured answer, and on the emulator, whose atoms are all measured
+definite, is it. A constant is read by its row (`Service.AConstantIsItsOwnTruth`), as S reads it, and an atom Azure has
+not measured answers widest there. The guarded accessor answers values, not truths, so it stays its test's assertion.
 
 ### The family's last rows, and the range's licence
 
-**What S still lacked is measured on the emulator, and claims it alone until the probe account runs it (D7).**
-`Service.ComparisonWithinAType` (N1) answers each comparison of a string or a number against every kind, its own split
-by side, and `=` and `!=` against either boolean; `Service.ConnectivesAreKleene` (N3) answers `AND` and `OR` over each
-pair of the nine operands a connective is handed, both orders, and `NOT` over each;
-`Service.NumbersBeyondLongCompareAsDoubles` (N14) places what a double rounds; `Service.TypeTestBodiesMatchTheService`
-(N13) holds the in-process `IS_*` bodies to the service over the catalogue's kinds, `Sql.CosmosFunctionBodiesTests`
-staying the probe account's leg. Their keys settle under the emulator's set and answer widest under the portable one,
-which CI asserts only from c09b.
+**What S still lacked is measured on the emulator, and claims it alone until the probe account runs it (D7):**
+`Service.ComparisonWithinAType` (N1), `Service.ConnectivesAreKleene` (N3), `Service.TypeTestBodiesMatchTheService`
+(N13), `Service.NumbersBeyondLongCompareAsDoubles` (N14) and the constants.
 
 **A connective's undefined is an ordering across types, not an absent path.** S keys a side written bare by the class of
-what it holds and any other side by its truth, so undefined and absent are two operands. The service holds one value
-for both, but serves a filter from its index, so each is witnessed in the shape that reaches S: a path, or a comparison
-over one. The first side is held at `c.u` beside the second at `c.v`, every witness of each beside every witness of the
-other, and both images answer Kleene's table, the projection agreeing with the filters throughout.
+what it holds and any other side by its truth, so undefined and absent are two operands, each witnessed in the shape
+that reaches S. The first side is held at `c.u` beside the second at `c.v`, every witness of each beside every one of
+the other.
 
 **A range is licensed where its rows are pointwise.** `KleeneTables` expects a range of one path to keep a value between
-its bounds and `NOT` one outside, whether the bounds part the orders or not, and `licence` reads `Range` as it reads a
-connective. The emulator answers so for both kinds of bounds, in the `>= AND <=` spelling S reads and in `BETWEEN`,
-which keep alike; Azure keeps nothing between parted bounds (`NotKept` in the record of 2026-10-16). So `Range` is
-licensed under the emulator's set and under no set that serves Azure, and the parted range's between cell is the one
-declared divergence. Its truth is read off the two filters alone, since Azure's projection keeps what its filter does not.
+its bounds, `NOT` one outside, and neither one of another type or none, whether the bounds part the orders or not; and
+`licence` reads `Range` as it reads a connective. The emulator answers so for both kinds of bounds, in the `>= AND <=`
+spelling S reads and in `BETWEEN`, which keep alike; Azure keeps nothing between parted bounds. So `Range` is licensed
+under the emulator's set and under no set that serves Azure, and the parted range's between cell is the one declared
+divergence.
 
-**Numbers compare by the value held, not as two doubles.** On both images a number written as a fraction or outside
-int64 compares as its correctly rounded double, an int64 as itself, and the two by value: 9007199254740992.5, which
-rounds to 2^53, is below 2^53 + 1, which as two doubles would be equal. The emulator keeps an integer written in [2^63,
-2^64) as written and compares it as its double, so that band needs no outcome of its own; an integer written as a
-fraction it holds as a double and Azure as an int64, so no witness is spelled so. The four literals are 0.1, 2^53 + 1,
-1e22 and 2^63 sent as a double. S places no number past ±2^53 until c13's double slots read this row.
-
-**The string cells stay unread on the emulator.** N1's comparisons within strings claim the emulator over witnesses
-holding no U+0000, placed by code point, which is its order wherever no string holds U+0000; no set that serves it names
-its comparator (*The rows' vectors*), so S reads them nowhere yet, and the rendering tests read them through the
-fixture's code point.
+**Numbers compare by the value compared:** an int64 as itself, anything else as its correctly rounded double, the two by
+value, never both rounded. That is what `Numeric` means; S places a number only within ±2^53, where the two agree,
+until c13's double slots read N14.
 
 ---
 

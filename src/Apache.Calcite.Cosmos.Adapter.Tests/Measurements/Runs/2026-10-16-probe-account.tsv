@@ -7,155 +7,151 @@
 # run, and the tests landed with the rows (70a0916).
 #
 # Columns: the row; the key's test and operand, empty for a composite; the cell, the witness's class (Below, Equal,
-# Above against a literal of its type, under the service's comparator); the answer, a CosmosAnswer, or the value a
-# projection gave where it is no truth; a composite's formula over c.v; the witnesses, as JSON, absent for none.
+# Above against a literal of its type, under the service's comparator); the answer; a composite's formula over c.v; the
+# witnesses, as JSON, absent for none.
 #
-# A projection reads True, False or undefined directly. A WHERE that keeps a witness is True, and a WHERE NOT that
-# keeps one is False; one a WHERE keeps not, with no WHERE NOT run in the same test, is NotKept.
+# An answer is a CosmosAnswer where it was read as the row's pinning test reads it: a WHERE that keeps a witness is True,
+# a WHERE NOT that keeps one is False, and one a WHERE keeps not, with no WHERE NOT run in the same test, is NotKept, the
+# literal sent as a parameter. One read otherwise is prefixed by how, and backs no claim: projected, which Azure's
+# filter has answered apart from (Service.RangeOverPartedBoundsIsEmpty); inline, a literal written into the text; and
+# ordered, an ORDER BY with no filter beside it.
 row	test	operand	cell	answer	formula	witnesses
 #
 # Measurements.CosmosJsonTypeMeasurementTests, projected: SELECT c.id, <e> AS r FROM c
-# IsPrimitiveIsFalseOverAnAbsentPath: IS_PRIMITIVE(c.v), and the guarded accessor
-Service.IsPrimitive	IsPrimitive	None	String	True		"bikes"
-Service.IsPrimitive	IsPrimitive	None	Number	True		30
-Service.IsPrimitive	IsPrimitive	None	True	True		true
-Service.IsPrimitive	IsPrimitive	None	Null	True		null
-Service.IsPrimitive	IsPrimitive	None	Object	False		{"x":1}
-Service.IsPrimitive	IsPrimitive	None	Array	False		[1]
-Service.IsPrimitive	IsPrimitive	None	Absent	False		absent
-Service.IsPrimitive			String	"bikes"	(IS_PRIMITIVE(c.v) ? c.v : null)	"bikes"
-Service.IsPrimitive			Number	30	(IS_PRIMITIVE(c.v) ? c.v : null)	30
-Service.IsPrimitive			True	True	(IS_PRIMITIVE(c.v) ? c.v : null)	true
-Service.IsPrimitive			Null	null	(IS_PRIMITIVE(c.v) ? c.v : null)	null
-Service.IsPrimitive			Object	null	(IS_PRIMITIVE(c.v) ? c.v : null)	{"x":1}
-Service.IsPrimitive			Array	null	(IS_PRIMITIVE(c.v) ? c.v : null)	[1]
-Service.IsPrimitive			Absent	null	(IS_PRIMITIVE(c.v) ? c.v : null)	absent
+# IsPrimitiveIsFalseOverAnAbsentPath: IS_PRIMITIVE(c.v)
+Service.IsPrimitive	IsPrimitive	None	String	projected:True		"bikes"
+Service.IsPrimitive	IsPrimitive	None	Number	projected:True		30
+Service.IsPrimitive	IsPrimitive	None	True	projected:True		true
+Service.IsPrimitive	IsPrimitive	None	Null	projected:True		null
+Service.IsPrimitive	IsPrimitive	None	Object	projected:False		{"x":1}
+Service.IsPrimitive	IsPrimitive	None	Array	projected:False		[1]
+Service.IsPrimitive	IsPrimitive	None	Absent	projected:False		absent
 # IsDefinedIsFalseOnlyOverAnAbsentPath: IS_DEFINED(c.v)
-Service.IsDefined	IsDefined	None	String	True		"bikes"
-Service.IsDefined	IsDefined	None	Number	True		30
-Service.IsDefined	IsDefined	None	True	True		true
-Service.IsDefined	IsDefined	None	Null	True		null
-Service.IsDefined	IsDefined	None	Object	True		{"x":1}
-Service.IsDefined	IsDefined	None	Array	True		[1]
-Service.IsDefined	IsDefined	None	Absent	False		absent
+Service.IsDefined	IsDefined	None	String	projected:True		"bikes"
+Service.IsDefined	IsDefined	None	Number	projected:True		30
+Service.IsDefined	IsDefined	None	True	projected:True		true
+Service.IsDefined	IsDefined	None	Null	projected:True		null
+Service.IsDefined	IsDefined	None	Object	projected:True		{"x":1}
+Service.IsDefined	IsDefined	None	Array	projected:True		[1]
+Service.IsDefined	IsDefined	None	Absent	projected:False		absent
 # IsNullIsTrueOnlyOfANull: IS_NULL(c.v)
-Service.IsNull	IsNull	None	String	False		"bikes"
-Service.IsNull	IsNull	None	Number	False		30
-Service.IsNull	IsNull	None	True	False		true
-Service.IsNull	IsNull	None	Null	True		null
-Service.IsNull	IsNull	None	Object	False		{"x":1}
-Service.IsNull	IsNull	None	Array	False		[1]
-Service.IsNull	IsNull	None	Absent	False		absent
+Service.IsNull	IsNull	None	String	projected:False		"bikes"
+Service.IsNull	IsNull	None	Number	projected:False		30
+Service.IsNull	IsNull	None	True	projected:False		true
+Service.IsNull	IsNull	None	Null	projected:True		null
+Service.IsNull	IsNull	None	Object	projected:False		{"x":1}
+Service.IsNull	IsNull	None	Array	projected:False		[1]
+Service.IsNull	IsNull	None	Absent	projected:False		absent
 # EachKindTestIsTrueOfItsKindAlone: IS_STRING, IS_NUMBER, IS_BOOL, IS_OBJECT, IS_ARRAY (c.v)
-Service.KindTests	IsString	None	String	True		"bikes"
-Service.KindTests	IsString	None	Number	False		30
-Service.KindTests	IsString	None	True	False		true
-Service.KindTests	IsString	None	Null	False		null
-Service.KindTests	IsString	None	Object	False		{"x":1}
-Service.KindTests	IsString	None	Array	False		[1]
-Service.KindTests	IsString	None	Absent	False		absent
-Service.KindTests	IsNumber	None	String	False		"bikes"
-Service.KindTests	IsNumber	None	Number	True		30
-Service.KindTests	IsNumber	None	True	False		true
-Service.KindTests	IsNumber	None	Null	False		null
-Service.KindTests	IsNumber	None	Object	False		{"x":1}
-Service.KindTests	IsNumber	None	Array	False		[1]
-Service.KindTests	IsNumber	None	Absent	False		absent
-Service.KindTests	IsBool	None	String	False		"bikes"
-Service.KindTests	IsBool	None	Number	False		30
-Service.KindTests	IsBool	None	True	True		true
-Service.KindTests	IsBool	None	Null	False		null
-Service.KindTests	IsBool	None	Object	False		{"x":1}
-Service.KindTests	IsBool	None	Array	False		[1]
-Service.KindTests	IsBool	None	Absent	False		absent
-Service.KindTests	IsObject	None	String	False		"bikes"
-Service.KindTests	IsObject	None	Number	False		30
-Service.KindTests	IsObject	None	True	False		true
-Service.KindTests	IsObject	None	Null	False		null
-Service.KindTests	IsObject	None	Object	True		{"x":1}
-Service.KindTests	IsObject	None	Array	False		[1]
-Service.KindTests	IsObject	None	Absent	False		absent
-Service.KindTests	IsArray	None	String	False		"bikes"
-Service.KindTests	IsArray	None	Number	False		30
-Service.KindTests	IsArray	None	True	False		true
-Service.KindTests	IsArray	None	Null	False		null
-Service.KindTests	IsArray	None	Object	False		{"x":1}
-Service.KindTests	IsArray	None	Array	True		[1]
-Service.KindTests	IsArray	None	Absent	False		absent
+Service.KindTests	IsString	None	String	projected:True		"bikes"
+Service.KindTests	IsString	None	Number	projected:False		30
+Service.KindTests	IsString	None	True	projected:False		true
+Service.KindTests	IsString	None	Null	projected:False		null
+Service.KindTests	IsString	None	Object	projected:False		{"x":1}
+Service.KindTests	IsString	None	Array	projected:False		[1]
+Service.KindTests	IsString	None	Absent	projected:False		absent
+Service.KindTests	IsNumber	None	String	projected:False		"bikes"
+Service.KindTests	IsNumber	None	Number	projected:True		30
+Service.KindTests	IsNumber	None	True	projected:False		true
+Service.KindTests	IsNumber	None	Null	projected:False		null
+Service.KindTests	IsNumber	None	Object	projected:False		{"x":1}
+Service.KindTests	IsNumber	None	Array	projected:False		[1]
+Service.KindTests	IsNumber	None	Absent	projected:False		absent
+Service.KindTests	IsBool	None	String	projected:False		"bikes"
+Service.KindTests	IsBool	None	Number	projected:False		30
+Service.KindTests	IsBool	None	True	projected:True		true
+Service.KindTests	IsBool	None	Null	projected:False		null
+Service.KindTests	IsBool	None	Object	projected:False		{"x":1}
+Service.KindTests	IsBool	None	Array	projected:False		[1]
+Service.KindTests	IsBool	None	Absent	projected:False		absent
+Service.KindTests	IsObject	None	String	projected:False		"bikes"
+Service.KindTests	IsObject	None	Number	projected:False		30
+Service.KindTests	IsObject	None	True	projected:False		true
+Service.KindTests	IsObject	None	Null	projected:False		null
+Service.KindTests	IsObject	None	Object	projected:True		{"x":1}
+Service.KindTests	IsObject	None	Array	projected:False		[1]
+Service.KindTests	IsObject	None	Absent	projected:False		absent
+Service.KindTests	IsArray	None	String	projected:False		"bikes"
+Service.KindTests	IsArray	None	Number	projected:False		30
+Service.KindTests	IsArray	None	True	projected:False		true
+Service.KindTests	IsArray	None	Null	projected:False		null
+Service.KindTests	IsArray	None	Object	projected:False		{"x":1}
+Service.KindTests	IsArray	None	Array	projected:True		[1]
+Service.KindTests	IsArray	None	Absent	projected:False		absent
 # NotOfATypeTestIsTrueOverAnAbsentPath: NOT over each test; over all but IS_DEFINED only absent is asserted
-Service.NotOfAKindTest			Absent	True	NOT IS_PRIMITIVE(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_STRING(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_NUMBER(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_BOOL(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_NULL(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_OBJECT(c.v)	absent
-Service.NotOfAKindTest			Absent	True	NOT IS_ARRAY(c.v)	absent
-Service.NotOfAKindTest			String	False	NOT IS_DEFINED(c.v)	"bikes"
-Service.NotOfAKindTest			Number	False	NOT IS_DEFINED(c.v)	30
-Service.NotOfAKindTest			True	False	NOT IS_DEFINED(c.v)	true
-Service.NotOfAKindTest			Null	False	NOT IS_DEFINED(c.v)	null
-Service.NotOfAKindTest			Object	False	NOT IS_DEFINED(c.v)	{"x":1}
-Service.NotOfAKindTest			Array	False	NOT IS_DEFINED(c.v)	[1]
-Service.NotOfAKindTest			Absent	True	NOT IS_DEFINED(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_PRIMITIVE(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_STRING(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_NUMBER(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_BOOL(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_NULL(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_OBJECT(c.v)	absent
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_ARRAY(c.v)	absent
+Service.NotOfAKindTest			String	projected:False	NOT IS_DEFINED(c.v)	"bikes"
+Service.NotOfAKindTest			Number	projected:False	NOT IS_DEFINED(c.v)	30
+Service.NotOfAKindTest			True	projected:False	NOT IS_DEFINED(c.v)	true
+Service.NotOfAKindTest			Null	projected:False	NOT IS_DEFINED(c.v)	null
+Service.NotOfAKindTest			Object	projected:False	NOT IS_DEFINED(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	projected:False	NOT IS_DEFINED(c.v)	[1]
+Service.NotOfAKindTest			Absent	projected:True	NOT IS_DEFINED(c.v)	absent
 # AnOrderingAcrossTypesIsUndefined: c.v < "zzz", c.v > 0
-Service.OrderingAcrossTypesIsUndefined	Less	String	Below	True		"bikes"
-Service.OrderingAcrossTypesIsUndefined	Less	String	Number	Undefined		30
-Service.OrderingAcrossTypesIsUndefined	Less	String	True	Undefined		true
-Service.OrderingAcrossTypesIsUndefined	Less	String	Null	Undefined		null
-Service.OrderingAcrossTypesIsUndefined	Less	String	Object	Undefined		{"x":1}
-Service.OrderingAcrossTypesIsUndefined	Less	String	Array	Undefined		[1]
-Service.OrderingAcrossTypesIsUndefined	Less	String	Absent	Undefined		absent
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	String	Undefined		"bikes"
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	Above	True		30
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	True	Undefined		true
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	Null	Undefined		null
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	Object	Undefined		{"x":1}
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	Array	Undefined		[1]
-Service.OrderingAcrossTypesIsUndefined	Greater	Number	Absent	Undefined		absent
+Service.OrderingAcrossTypesIsUndefined	Less	String	Below	projected:True		"bikes"
+Service.OrderingAcrossTypesIsUndefined	Less	String	Number	projected:Undefined		30
+Service.OrderingAcrossTypesIsUndefined	Less	String	True	projected:Undefined		true
+Service.OrderingAcrossTypesIsUndefined	Less	String	Null	projected:Undefined		null
+Service.OrderingAcrossTypesIsUndefined	Less	String	Object	projected:Undefined		{"x":1}
+Service.OrderingAcrossTypesIsUndefined	Less	String	Array	projected:Undefined		[1]
+Service.OrderingAcrossTypesIsUndefined	Less	String	Absent	projected:Undefined		absent
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	String	projected:Undefined		"bikes"
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Above	projected:True		30
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	True	projected:Undefined		true
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Null	projected:Undefined		null
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Object	projected:Undefined		{"x":1}
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Array	projected:Undefined		[1]
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Absent	projected:Undefined		absent
 # AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue: c.v = "bikes" for the one row; c.v != "bikes" and c.v != 30 for the other
-Service.EqualityAcrossTypesIsFalse	Equal	String	Equal	True		"bikes"
-Service.EqualityAcrossTypesIsFalse	Equal	String	Number	False		30
-Service.EqualityAcrossTypesIsFalse	Equal	String	True	False		true
-Service.EqualityAcrossTypesIsFalse	Equal	String	Null	False		null
-Service.EqualityAcrossTypesIsFalse	Equal	String	Object	False		{"x":1}
-Service.EqualityAcrossTypesIsFalse	Equal	String	Array	False		[1]
-Service.EqualityAcrossTypesIsFalse	Equal	String	Absent	Undefined		absent
-Service.InequalityOverNullIsTrue	NotEqual	String	Equal	False		"bikes"
-Service.InequalityOverNullIsTrue	NotEqual	String	Number	True		30
-Service.InequalityOverNullIsTrue	NotEqual	String	True	True		true
-Service.InequalityOverNullIsTrue	NotEqual	String	Null	True		null
-Service.InequalityOverNullIsTrue	NotEqual	String	Object	True		{"x":1}
-Service.InequalityOverNullIsTrue	NotEqual	String	Array	True		[1]
-Service.InequalityOverNullIsTrue	NotEqual	String	Absent	Undefined		absent
-Service.InequalityOverNullIsTrue	NotEqual	Number	String	True		"bikes"
-Service.InequalityOverNullIsTrue	NotEqual	Number	Equal	False		30
-Service.InequalityOverNullIsTrue	NotEqual	Number	True	True		true
-Service.InequalityOverNullIsTrue	NotEqual	Number	Null	True		null
-Service.InequalityOverNullIsTrue	NotEqual	Number	Object	True		{"x":1}
-Service.InequalityOverNullIsTrue	NotEqual	Number	Array	True		[1]
-Service.InequalityOverNullIsTrue	NotEqual	Number	Absent	Undefined		absent
+Service.EqualityAcrossTypesIsFalse	Equal	String	Equal	projected:True		"bikes"
+Service.EqualityAcrossTypesIsFalse	Equal	String	Number	projected:False		30
+Service.EqualityAcrossTypesIsFalse	Equal	String	True	projected:False		true
+Service.EqualityAcrossTypesIsFalse	Equal	String	Null	projected:False		null
+Service.EqualityAcrossTypesIsFalse	Equal	String	Object	projected:False		{"x":1}
+Service.EqualityAcrossTypesIsFalse	Equal	String	Array	projected:False		[1]
+Service.EqualityAcrossTypesIsFalse	Equal	String	Absent	projected:Undefined		absent
+Service.InequalityOverNullIsTrue	NotEqual	String	Equal	projected:False		"bikes"
+Service.InequalityOverNullIsTrue	NotEqual	String	Number	projected:True		30
+Service.InequalityOverNullIsTrue	NotEqual	String	True	projected:True		true
+Service.InequalityOverNullIsTrue	NotEqual	String	Null	projected:True		null
+Service.InequalityOverNullIsTrue	NotEqual	String	Object	projected:True		{"x":1}
+Service.InequalityOverNullIsTrue	NotEqual	String	Array	projected:True		[1]
+Service.InequalityOverNullIsTrue	NotEqual	String	Absent	projected:Undefined		absent
+Service.InequalityOverNullIsTrue	NotEqual	Number	String	projected:True		"bikes"
+Service.InequalityOverNullIsTrue	NotEqual	Number	Equal	projected:False		30
+Service.InequalityOverNullIsTrue	NotEqual	Number	True	projected:True		true
+Service.InequalityOverNullIsTrue	NotEqual	Number	Null	projected:True		null
+Service.InequalityOverNullIsTrue	NotEqual	Number	Object	projected:True		{"x":1}
+Service.InequalityOverNullIsTrue	NotEqual	Number	Array	projected:True		[1]
+Service.InequalityOverNullIsTrue	NotEqual	Number	Absent	projected:Undefined		absent
 # NotOverUndefinedIsUndefined: NOT (c.v < "zzz"), NOT c.v, NOT (c.v = "bikes"); NOT over a path reads the class it holds
-Service.NotOverUndefinedIsUndefined			String	False	NOT (c.v < "zzz")	"bikes"
-Service.NotOverUndefinedIsUndefined			Number	Undefined	NOT (c.v < "zzz")	30
-Service.NotOverUndefinedIsUndefined			True	Undefined	NOT (c.v < "zzz")	true
-Service.NotOverUndefinedIsUndefined			Null	Undefined	NOT (c.v < "zzz")	null
-Service.NotOverUndefinedIsUndefined			Object	Undefined	NOT (c.v < "zzz")	{"x":1}
-Service.NotOverUndefinedIsUndefined			Array	Undefined	NOT (c.v < "zzz")	[1]
-Service.NotOverUndefinedIsUndefined			Absent	Undefined	NOT (c.v < "zzz")	absent
-Service.NotOverUndefinedIsUndefined	Not	None	String	Undefined		"bikes"
-Service.NotOverUndefinedIsUndefined	Not	None	Number	Undefined		30
-Service.NotOverUndefinedIsUndefined	Not	None	True	False		true
-Service.NotOverUndefinedIsUndefined	Not	None	Null	Undefined		null
-Service.NotOverUndefinedIsUndefined	Not	None	Object	Undefined		{"x":1}
-Service.NotOverUndefinedIsUndefined	Not	None	Array	Undefined		[1]
-Service.NotOverUndefinedIsUndefined	Not	None	Absent	Undefined		absent
-Service.NotOverUndefinedIsUndefined			String	False	NOT (c.v = "bikes")	"bikes"
-Service.NotOverUndefinedIsUndefined			Number	True	NOT (c.v = "bikes")	30
-Service.NotOverUndefinedIsUndefined			True	True	NOT (c.v = "bikes")	true
-Service.NotOverUndefinedIsUndefined			Null	True	NOT (c.v = "bikes")	null
-Service.NotOverUndefinedIsUndefined			Object	True	NOT (c.v = "bikes")	{"x":1}
-Service.NotOverUndefinedIsUndefined			Array	True	NOT (c.v = "bikes")	[1]
-Service.NotOverUndefinedIsUndefined			Absent	Undefined	NOT (c.v = "bikes")	absent
+Service.NotOverUndefinedIsUndefined			String	projected:False	NOT (c.v < "zzz")	"bikes"
+Service.NotOverUndefinedIsUndefined			Number	projected:Undefined	NOT (c.v < "zzz")	30
+Service.NotOverUndefinedIsUndefined			True	projected:Undefined	NOT (c.v < "zzz")	true
+Service.NotOverUndefinedIsUndefined			Null	projected:Undefined	NOT (c.v < "zzz")	null
+Service.NotOverUndefinedIsUndefined			Object	projected:Undefined	NOT (c.v < "zzz")	{"x":1}
+Service.NotOverUndefinedIsUndefined			Array	projected:Undefined	NOT (c.v < "zzz")	[1]
+Service.NotOverUndefinedIsUndefined			Absent	projected:Undefined	NOT (c.v < "zzz")	absent
+Service.NotOverUndefinedIsUndefined	Not	None	String	projected:Undefined		"bikes"
+Service.NotOverUndefinedIsUndefined	Not	None	Number	projected:Undefined		30
+Service.NotOverUndefinedIsUndefined	Not	None	True	projected:False		true
+Service.NotOverUndefinedIsUndefined	Not	None	Null	projected:Undefined		null
+Service.NotOverUndefinedIsUndefined	Not	None	Object	projected:Undefined		{"x":1}
+Service.NotOverUndefinedIsUndefined	Not	None	Array	projected:Undefined		[1]
+Service.NotOverUndefinedIsUndefined	Not	None	Absent	projected:Undefined		absent
+Service.NotOverUndefinedIsUndefined			String	projected:False	NOT (c.v = "bikes")	"bikes"
+Service.NotOverUndefinedIsUndefined			Number	projected:True	NOT (c.v = "bikes")	30
+Service.NotOverUndefinedIsUndefined			True	projected:True	NOT (c.v = "bikes")	true
+Service.NotOverUndefinedIsUndefined			Null	projected:True	NOT (c.v = "bikes")	null
+Service.NotOverUndefinedIsUndefined			Object	projected:True	NOT (c.v = "bikes")	{"x":1}
+Service.NotOverUndefinedIsUndefined			Array	projected:True	NOT (c.v = "bikes")	[1]
+Service.NotOverUndefinedIsUndefined			Absent	projected:Undefined	NOT (c.v = "bikes")	absent
 #
 # Measurements.CosmosBooleanLogicMeasurementTests, filtered: SELECT c.id FROM c WHERE <e>, over c.flag, @t true
 # AComparisonIsUndefinedOnlyOverAnAbsentPath: (c.flag = @t) and NOT (c.flag = @t)
@@ -201,15 +197,15 @@ Service.ConnectivesReadNonBooleansAsUnknown			Number	NotKept	NOT (c.v OR false)	
 #
 # Measurements.CosmosServiceOrderMeasurementTests, over c.s or c.v
 # ADocumentsStringsOrderByCodePoint: ORDER BY c.s, ASC and DESC, is code point order; WHERE c.s > @p, @p U+E000, keeps U+FF21 and U+1F600
-Service.StringOrderIsCodePoint	Order	String	None	CodePoint		"\ud7ff" "a" "B" "\ue000" "\uff21" "\ud83d\ude00" ""
+Service.StringOrderIsCodePoint	Order	String	None	ordered:CodePoint		"\ud7ff" "a" "B" "\ue000" "\uff21" "\ud83d\ude00" ""
 Service.StringOrderIsCodePoint	Greater	String	Below	NotKept		"\ud7ff" "a" "B" ""
 Service.StringOrderIsCodePoint	Greater	String	Equal	NotKept		"\ue000"
 Service.StringOrderIsCodePoint	Greater	String	Above	True		"\uff21" "\ud83d\ude00"
 # IntegersOrderExactly: ORDER BY c.v, ASC and DESC, is exact; WHERE c.v = 9007199254740993 keeps it alone
-Service.IntegersOrderExactly	Order	Number	None	Numeric		9007199254740992 9007199254740993 9007199254740994 9223372036854775806 9223372036854775807
-Service.IntegersOrderExactly	Equal	Number	Below	NotKept		9007199254740992
-Service.IntegersOrderExactly	Equal	Number	Equal	True		9007199254740993
-Service.IntegersOrderExactly	Equal	Number	Above	NotKept		9007199254740994 9223372036854775806 9223372036854775807
+Service.IntegersOrderExactly	Order	Number	None	ordered:Numeric		9007199254740992 9007199254740993 9007199254740994 9223372036854775806 9223372036854775807
+Service.IntegersOrderExactly	Equal	Number	Below	inline:NotKept		9007199254740992
+Service.IntegersOrderExactly	Equal	Number	Equal	inline:True		9007199254740993
+Service.IntegersOrderExactly	Equal	Number	Above	inline:NotKept		9007199254740994 9223372036854775806 9223372036854775807
 # ARangeWhoseBoundsTheOrdersRankApartKeepsNothing: WHERE c.s BETWEEN @lo AND @hi, U+E000 and U+1F600, keeps nothing;
 # Between is by code point. Projected, the predicate is true of U+FF21, which is no answer of a WHERE.
 Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Between	NotKept		"\ue000" "\uff21" "\ud83d\ude00"

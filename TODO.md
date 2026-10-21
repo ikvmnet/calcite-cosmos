@@ -2666,29 +2666,31 @@ across documents* and *A join of a container to itself* is the record.
 - **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
   unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
   constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
-- **S reads no comparison within strings on the emulator** — *large, for the gains preview and coverage lines.* The
-  emulator orders and compares a string holding U+0000 as it stores it, U+FDD0 then `0`, a parameter as written, so
-  `Service.StringOrderIsCodePoint` claims its comparator on Azure alone, and the emulator and portable sets answer every
-  `=`, `!=` and ordering within strings widest. A comparator that reads the emulator's storage — exact where a cell
-  holds neither U+0000 nor the high band, either side elsewhere, the equal cell above where the literal holds U+0000 —
-  would give `=` and `!=` back whatever a path may hold; a parting row scoped to the emulator would give the orderings
-  back where it holds no U+0000. Until one lands the rendering tests' fixture stands code point in for it, and S reads
-  `Service.ComparisonWithinAType`'s string cells nowhere.
-- **What the probe account owes at D7** — *small.* Its run of the measurement namespace should record the cells
-  `Holds` measures that the record of 2026-10-16 does not: the `WHERE NOT` beside each `NotKept` (a bare path, the
-  string order's `>`, the integers' `=`); the widened witnesses, `false`, 30.5, an object and an array; and each literal
-  as a parameter, 2^53 + 1 among them, which that day's tests wrote inline. `CosmosAxiomRows.Owed` lists the cells left
-  owed on each target, those no row's test measures among them. And the rows that claim the emulator alone:
-  `Service.ComparisonWithinAType`, `Service.ConnectivesAreKleene`, `Service.NumbersBeyondLongCompareAsDoubles` — whether
-  Azure compares an int64 with a double by value, as the emulator does, or as two doubles — the range between agreeing
-  bounds and its `NOT` in the `>= AND <=` spelling, and `Sql.CosmosFunctionBodiesTests` for
-  `Service.TypeTestBodiesMatchTheService`. `Service.RangeOverPartedBoundsIsEmpty`'s Azure outcome was measured as
-  `BETWEEN` with no `NOT`; `Holds` on Azure will read undefined or false there, and c09b rewrites it from the record.
-- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number exactly only within ±2^53 and
-  answers widest beyond, where `Service.NumbersBeyondLongCompareAsDoubles` says the service compares the value held: an
-  int64 as itself, anything else as its correctly rounded double, the two by value, never both rounded. c13's double
-  slots should place a cell by the value held and compare it with the literal's by value; an integer written as a
-  fraction is held as either, by target, so its cell answers both sides.
+- **Orderings over strings that may hold U+0000 are unproven on the emulator** — *small, for the coverage line (c12).*
+  The emulator orders a string holding U+0000 as U+FDD0 then `0` (`CosmosAnswer.StoredCodePoint`), so S proves `<`,
+  `<=`, `>` and `>=` over strings only where the import says they hold no U+0000; `=` and `!=` with ASCII are exact
+  whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
+  finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
+  comparator as code point.
+- **What the probe account owes at D7** — *small.* Its run of the measurement namespace records every cell `Holds`
+  measures, `runs.tsv` written before any assertion fails, and c09b widens `On` to Azure where the record holds a cell
+  read as the pinning test reads it. Azure claims little now (`DESIGN.md`, *The registry, read into S*), so it owes:
+  the `IS_*` family, the comparisons and `NOT` over undefined filtered rather than projected; the `WHERE NOT` beside
+  each `NotKept`, which a later line's finer answer then claims; every literal as a parameter, 2^53 + 1 among them; the
+  catalogue's wider witnesses, a string beside `"true"`, a number beside 1, `false`, an object and an array; both orders
+  with their `>` filters, U+0000 among the strings, where code point is claimed only if Azure's `>` reads past it as
+  its `ORDER BY` does; the range outside its parted bounds, above them included, between agreeing bounds and over
+  another type, and its `>= AND <=` spelling beside `BETWEEN`; the rows that claim the emulator alone — N1, N3, the
+  constants, N14, whether Azure compares an int64 with a double by value — and `Sql.CosmosFunctionBodiesTests` for
+  N13. N8's Azure cell, `NotKept`, is matched by false or undefined, so its test passes there if Azure keeps nothing;
+  a cell Azure answers otherwise than the emulator's declared answer fails after the run is recorded, and c09b
+  declares it as a divergence.
+- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number only within ±2^53 and answers
+  widest beyond, where `Numeric` means the value compared (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as
+  itself, anything else as its correctly rounded double, the two by value. c13's double slots should place a cell by
+  the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
+  its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
+  as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
 
 ---
 

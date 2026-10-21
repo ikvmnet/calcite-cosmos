@@ -20,6 +20,8 @@ using Newtonsoft.Json.Linq;
 
 using Xunit;
 
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ProbeRows;
+
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
 using Test = Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest;
 
@@ -40,8 +42,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     {
 
         const string Root = "Apache.Calcite.Cosmos.Adapter.Tests.";
-
-        static readonly Class[] Kinds = [Class.Absent, Class.Null, Class.True, Class.False, Class.Number, Class.String, Class.Object, Class.Array];
 
         /// <summary>
         /// The keys whose targets answer apart, where both answered: a range between bounds the orders rank apart, which the
@@ -128,26 +128,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// An atomic outcome is a row per cell and per target it names, citing its axiom; a composite is none, and a
-        /// vector that names a class twice, or one no enum holds, is refused as the registry is read.
+        /// A vector that names a class twice, one no enum holds, or none, is refused as the registry is read, and a copy with
+        /// other answers reads its own.
         /// </summary>
         [Fact]
-        public void TheReaderWritesARowForEachCellAndTarget()
+        public void AMalformedVectorIsRefused()
         {
-            const CosmosAxiomTarget both = CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure;
-            var axiom = new CosmosAxiom("Service.Planted", "Planted.", both, new(2026, 10, 20), "Planted",
-                [new(Test.IsNull, Class.None, both, "absent=false null=true"), new(Test.Not, Class.None, both, "absent=true", "NOT IS_DEFINED(c.v)")]);
-
-            CosmosAxiomRows.Read([axiom]).Should().BeEquivalentTo(
-                from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
-                from cell in new[] { (Class.Absent, CosmosAnswer.False), (Class.Null, CosmosAnswer.True) }
-                select new MeasuredOutcome("Service.Planted", MeasuredKey.Of(Test.IsNull, Class.None, cell.Item1), target, cell.Item2));
-
             foreach (var vector in new[] { "absent=false absent=true", "nul=true", "absent=1", "absent=True,False", "absent", "" })
-                FluentActions.Invoking(() => new CosmosOutcome(Test.IsNull, Class.None, both, vector)).Should().Throw<FormatException>(vector);
+                FluentActions.Invoking(() => new CosmosOutcome(Test.IsNull, Class.None, CosmosAxiomTarget.Emulator, vector)).Should().Throw<FormatException>(vector);
+
+            (new CosmosOutcome(Test.IsNull, Class.None, CosmosAxiomTarget.Emulator, "absent=false") with { Answers = "null=true" }).Cells.Should().Equal((Class.Null, CosmosAnswer.True));
         }
 
-        /// <summary>The registry's rows define S, which a contradiction across rows would refuse, and each reads back as written.</summary>
+        /// <summary>
+        /// The registry's rows define S, which a contradiction across rows would refuse, and each reads back as written; and
+        /// alone they license the connectives under Calcite and under the emulator, so S composes from the registry.
+        /// </summary>
         [Fact]
         public void TheRowsLoadIntoS()
         {
@@ -157,25 +153,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var row in rows)
                 theory.Theory.Get(theory.Outcome.Of(row.Key, row.Target)).Should().Be(row.Answer, $"{row.AxiomId} at {row.Key} on {row.Target}");
 
+            foreach (var set in new[] { RenderingSet.Calcite, RenderingSet.Emulator })
+                theory.Theory.Get(theory.Licensed.Of(set)).Should().Contain([Test.And, Test.Or, Test.Not], set.ToString());
+
             GC.KeepAlive(theory);
         }
 
         /// <summary>
         /// A new divergence between the emulator and Azure is data, not a conflict, so it is declared, or it would pass unseen:
-        /// answers that differ and mean nothing in common. What a <c>WHERE</c> alone measured on one, beside an answer within
-        /// it on the other, is no divergence.
+        /// a key S settles for each, whose answers differ and mean nothing in common. What a <c>WHERE</c> alone measured on
+        /// one, beside an answer within it on the other, is no divergence.
         /// </summary>
         [Fact]
         public void TheKeysTheTargetsDisagreeOnAreDeclared()
         {
-            var answers = CosmosAxiomRows.Read(CosmosAxioms.All).ToLookup(r => (r.Key, r.Target), r => r.Answer);
-            ServiceOutcomes Meaning(IEnumerable<CosmosAnswer> each) => each.Aggregate(ServiceOutcomes.None, (m, a) => m | AnswerMeanings.Measured.Of(a));
-            var disagreeing = answers.Select(g => g.Key.Key).Distinct().Where(key =>
-                answers[(key, RenderingTarget.Emulator)].Any() && answers[(key, RenderingTarget.Azure)].Any()
-                && answers[(key, RenderingTarget.Emulator)].ToHashSet().SetEquals(answers[(key, RenderingTarget.Azure)]) == false
-                && (Meaning(answers[(key, RenderingTarget.Emulator)]) & Meaning(answers[(key, RenderingTarget.Azure)])) == ServiceOutcomes.None);
+            var means = ProbeTheory.Theory.Get(ProbeTheory.Means.Of());
+            ValueSet<CosmosAnswer>? Final(MeasuredKey key, RenderingSet set) => ProbeTheory.Theory.TryGet(ProbeTheory.Final.Of(key, set), out var answers) ? answers : null;
+            ServiceOutcomes Meaning(ValueSet<CosmosAnswer> answers) => answers.Aggregate(ServiceOutcomes.None, (m, a) => m | means.Of(a));
+            var disagreeing = from key in ProbeRows.Rows.Select(r => r.Key).Distinct()
+                              let azure = Final(key, RenderingSet.Production)
+                              let emulator = Final(key, RenderingSet.Emulator)
+                              where azure is not null && emulator is not null && azure.Equals(emulator) == false && (Meaning(azure) & Meaning(emulator)) == ServiceOutcomes.None
+                              select key.ToString();
 
-            disagreeing.Select(k => k.ToString()).Should().BeEquivalentTo(Disagreements.Select(k => k.ToString()));
+            disagreeing.Should().BeEquivalentTo(Disagreements.Select(k => k.ToString()));
         }
 
         /// <summary>
@@ -186,53 +187,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void TheOwedCellsAreDeclared()
         {
             var rows = CosmosAxiomRows.Read(CosmosAxioms.All);
-            rows.Where(r => CellsOf(r.Key.Test, r.Key.Operand, r.Target).Contains(r.Key.Cell) == false).Should().BeEmpty();
+            rows.Where(r => CosmosOutcomeWitnesses.Cells(r.Key.Test, r.Key.Operand, r.Target).Contains(r.Key.Cell) == false).Should().BeEmpty();
 
             var uncovered = from key in rows.GroupBy(r => (r.Key.Test, r.Key.Operand, r.Target))
-                            from cell in CellsOf(key.Key.Test, key.Key.Operand, key.Key.Target).Except(key.Select(r => r.Key.Cell))
+                            from cell in CosmosOutcomeWitnesses.Cells(key.Key.Test, key.Key.Operand, key.Key.Target).Except(key.Select(r => r.Key.Cell))
                             select $"{MeasuredKey.Of(key.Key.Test, key.Key.Operand, cell)} on {key.Key.Target}";
 
             uncovered.Should().BeEquivalentTo(CosmosAxiomRows.Owed.Select(o => $"{o.Key} on {o.Target}"));
         }
 
         /// <summary>
-        /// The cells a key is read at: a connective's, Kleene's expectations for the target; a comparison with a string or a
-        /// number, a value of its type by its side; an order, whole; a range, by where a value lies; the rest, by kind.
-        /// </summary>
-        static IEnumerable<Class> CellsOf(Test test, Class operand, RenderingTarget target) => test switch
-        {
-            Test.Not or Test.And or Test.Or => KleeneTables.Rows.Where(k => k.Item1 == target && k.Item2.Test == test && k.Item2.Operand == operand).Select(k => k.Item2.Cell),
-            Test.Order => [Class.None],
-            Test.Range => [Class.Between, Class.Outside],
-            _ when operand is Class.String or Class.Number => [.. Kinds.Where(k => k != operand), Class.Below, Class.Equal, Class.Above],
-            _ => Kinds,
-        };
-
-        /// <summary>
         /// A composite's measured answers are what its atoms compose to: read by a copy of the reader's grammar and evaluated
-        /// over each witness by <see cref="ServiceLeaf"/> and <see cref="ServiceCompound"/>, on each target it names the
-        /// composition holds the answer, and on the emulator, whose every atom here was measured definite, is it. The rows
-        /// are the rendering tests', the probe's Kleene rows standing for Azure's connectives until the probe account runs them.
+        /// over each witness through S's primitives on the table S settles for the target, on each target it names the
+        /// composition holds the answer, and on the emulator, whose every atom here was measured definite, is it. An atom
+        /// Azure has not measured, its connectives among them, answers widest there.
         /// </summary>
         [Fact]
         public void EveryCompositeIsWhatItsAtomsCompose()
         {
             var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
-            var wrong = new List<string>();
-            foreach (var axiom in WithOutcomes)
-                foreach (var outcome in axiom.Outcomes!.Where(o => o.Formula is not null))
-                    foreach (var (_, target) in new[] { (CosmosAxiomTarget.Emulator, RenderingTarget.Emulator), (CosmosAxiomTarget.Azure, RenderingTarget.Azure) }.Where(t => outcome.On.HasFlag(t.Item1)))
-                    {
-                        var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == target));
-                        foreach (var (cell, answer) in outcome.Cells)
-                        {
-                            var measured = AnswerMeanings.Measured.Of(answer);
-                            var cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell).Select(CellOf)));
-                            foreach (var composed in Evaluate(Read(outcome.Formula!, path), cells, table).Outcomes.Select(o => o.Outcomes))
-                                if ((composed & measured) != measured || target == RenderingTarget.Emulator && composed != measured)
-                                    wrong.Add($"{axiom.Id}: {outcome.Formula} at {cell} on {target} is {measured}, composed {composed}");
-                        }
-                    }
+            var tables = new[] { (CosmosAxiomTarget.Emulator, RenderingSet.Emulator), (CosmosAxiomTarget.Azure, RenderingSet.Production) }
+                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2))));
+            var wrong = from axiom in WithOutcomes
+                        from outcome in axiom.Outcomes!
+                        where outcome.Formula is not null
+                        from target in tables.Keys
+                        where outcome.On.HasFlag(target)
+                        from cell in outcome.Cells
+                        let measured = AnswerMeanings.Measured.Of(cell.Answer)
+                        let cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell.Cell).Select(CellOf)))
+                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], ValueSet<string>.Empty).Outcomes.Select(o => o.Outcomes)
+                        where (composed & measured) != measured || target == CosmosAxiomTarget.Emulator && composed != measured
+                        select $"{axiom.Id}: {outcome.Formula} at {cell.Cell} on {target} is {measured}, composed {composed}";
 
             wrong.Should().BeEmpty();
         }
@@ -286,14 +272,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             return form;
         }
 
-        /// <summary>A form over one partition: a constant by its value, a leaf and a connective by the primitives.</summary>
-        static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table) => form.Kind switch
-        {
-            ServiceFormKind.Constant => new(cells, [.. cells.Cells.Select(_ => new CellOutcome(form.Literal == JsonValues.Of(true) ? ServiceOutcomes.True : ServiceOutcomes.False, Class.None))], ValueSet<string>.Empty),
-            ServiceFormKind.Not or ServiceFormKind.And or ServiceFormKind.Or => ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table), Evaluate(ServiceForm.Rest(form), cells, table), table),
-            _ => ServiceLeaf.On(form, cells, table, ValueSet<string>.Empty),
-        };
-
         static PathCell CellOf(string? json) => json is null ? new PathCell.Absent() : JToken.Parse(json) switch
         {
             { Type: JTokenType.Null } => new PathCell.Null(),
@@ -305,8 +283,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         };
 
         /// <summary>
-        /// Every cell of every outcome that names Azure is in a committed run record with the same answer, so an outcome
-        /// cannot claim Azure for a witness only the emulator ran; and the records name rows and keys the registry knows.
+        /// Azure is claimed exactly where a committed run record holds the cell's answer, read by the statements the row's
+        /// pinning test runs over every witness it holds the cell to: so no outcome claims a witness, a literal or a
+        /// statement only the emulator ran, and no such line goes unclaimed. A line read otherwise — projected, a literal
+        /// written inline, an order alone — is recorded as what it is, and backs nothing.
         /// </summary>
         [Fact]
         public void EveryAzureClaimHasARecordedRun()
@@ -316,20 +296,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             records.Select(r => r.Row).Should().BeSubsetOf(CosmosAxioms.All.Select(a => a.Id));
             records.Select(r => (r.Row, r.Key, r.Cell)).Should().OnlyHaveUniqueItems();
 
-            var claims = from axiom in WithOutcomes
-                         from outcome in axiom.Outcomes!
-                         where outcome.On.HasFlag(CosmosAxiomTarget.Azure)
-                         from cell in outcome.Cells
-                         select (axiom.Id, outcome.Formula ?? outcome.Test + "/" + outcome.Operand, cell.Cell, cell.Answer.ToString());
+            var operands = WithOutcomes.SelectMany(a => a.Outcomes!.Select(o => (Key: (a.Id, o.Formula ?? o.Test + "/" + o.Operand), Operand: o.Formula is null ? o.Operand : Class.None)))
+                .DistinctBy(o => o.Key).ToDictionary(o => o.Key, o => o.Operand);
+            var claimable = (from r in records
+                             where Enum.TryParse<CosmosAnswer>(r.Answer, out _) && operands.TryGetValue((r.Row, r.Key), out var operand)
+                                 && CosmosOutcomeWitnesses.Of(operand, r.Cell).All(w => r.Witnesses.Contains(w ?? "absent"))
+                             select (r.Row, r.Key, r.Cell, Answer: Enum.Parse<CosmosAnswer>(r.Answer))).ToList();
+            var claims = (from axiom in WithOutcomes
+                          from outcome in axiom.Outcomes!
+                          where outcome.On.HasFlag(CosmosAxiomTarget.Azure)
+                          from cell in outcome.Cells
+                          select (axiom.Id, outcome.Formula ?? outcome.Test + "/" + outcome.Operand, cell.Cell, cell.Answer)).ToList();
 
-            claims.Except(records.Select(r => (r.Row, r.Key, r.Cell, r.Answer))).Should().BeEmpty("an outcome claims Azure only where a run on Azure answered it");
+            // A line is claimed by its answer, or by a later run's that means nothing more, as a WHERE NOT read beside a NotKept.
+            claims.Except(claimable).Should().BeEmpty("an outcome claims Azure only where a run read the cell as its test does");
+            claimable.Where(line => claims.Any(c => (c.Item1, c.Item2, c.Cell) == (line.Row, line.Key, line.Cell)
+                && (c.Answer == line.Answer || AnswerMeanings.Measured.Of(c.Answer) is var meant and not ServiceOutcomes.None
+                    && (meant & ~AnswerMeanings.Measured.Of(line.Answer)) == ServiceOutcomes.None)) == false).Should().BeEmpty("no evidence a run read so is dropped");
         }
 
         /// <summary>
         /// The lines of every record under <c>Measurements/Runs</c>: a row, its key spelled <c>test/operand</c> or a
-        /// composite's formula, the cell and the answer.
+        /// composite's formula, the cell, the answer and the witnesses.
         /// </summary>
-        static IEnumerable<(string Row, string Key, Class Cell, string Answer)> Records()
+        static IEnumerable<(string Row, string Key, Class Cell, string Answer, string[] Witnesses)> Records()
         {
             var assembly = typeof(CosmosAxiomsTests).Assembly;
             foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
@@ -340,7 +330,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     var f = line.Split('\t');
                     f.Should().HaveCount(7, $"{name}: {line}");
                     var key = f[5].Length > 0 ? f[5] : Enum.Parse<Test>(f[1]) + "/" + Enum.Parse<Class>(f[2]);
-                    yield return (f[0], key, Enum.Parse<Class>(f[3]), f[4]);
+                    yield return (f[0], key, Enum.Parse<Class>(f[3]), f[4], f[6].Split(' '));
                 }
             }
         }

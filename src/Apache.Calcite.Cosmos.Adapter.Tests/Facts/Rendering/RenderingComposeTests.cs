@@ -163,23 +163,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Two bounds of one path whose literal parts the orders there need the range licence, which only a set whose every
         /// target answers the range pointwise holds: the emulator keeps it and Azure does not (N8), so it is licensed under
         /// the emulator and not under the portable set; bounds that part nothing compose under both, and without Range's
-        /// expectation nothing licenses it.
+        /// expectation nothing licenses it. Azure's orderings within strings, its order and its connectives, which no row
+        /// claims on Azure yet, are planted as the emulator's.
         /// </summary>
         [Fact]
         public void APartedRangeComposesOnlyWhereRangeIsLicensed()
         {
-            // Azure's orderings within strings, which the emulator's row of the family measures.
-            var orders = new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.SelectMany(side => new[]
-            {
-                (MeasuredKey.Of(Op.GreaterOrEqual, CosmosValueClass.String, side), side == CosmosValueClass.Below ? CosmosAnswer.False : CosmosAnswer.True),
-                (MeasuredKey.Of(Op.LessOrEqual, CosmosValueClass.String, side), side == CosmosValueClass.Above ? CosmosAnswer.False : CosmosAnswer.True),
-            });
             var planted = Measured with
             {
                 Rows =
                 [
                     .. ProbeRows.Rows,
-                    .. orders.Select(o => new MeasuredOutcome("Service.ComparisonWithinAType", o.Item1, RenderingTarget.Azure, o.Item2)),
+                    .. from row in ProbeRows.Rows
+                       where row.Target == RenderingTarget.Emulator && (row.Key.Test is Op.GreaterOrEqual or Op.LessOrEqual or Op.Order && row.Key.Operand == CosmosValueClass.String
+                           || row.Key.Test is Op.And or Op.Or or Op.Not && ProbeRows.Rows.Any(other => other.Key == row.Key && other.Target == RenderingTarget.Azure) == false)
+                       select row with { AxiomId = "Probe.Planted", Target = RenderingTarget.Azure },
                 ],
             };
 

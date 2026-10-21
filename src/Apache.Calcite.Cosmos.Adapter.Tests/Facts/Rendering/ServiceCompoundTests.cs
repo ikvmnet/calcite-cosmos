@@ -93,10 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var not = MeasuredKey.Of(CosmosServiceTest.Not, CosmosValueClass.None, CosmosValueClass.String);
             var and = MeasuredKey.Of(CosmosServiceTest.And, CosmosValueClass.String, CosmosValueClass.True);
-            var kinds = new[] { CosmosValueClass.Absent, CosmosValueClass.Null, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Number, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array };
-            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target != RenderingTarget.Calcite && row.Key != not && row.Key != and)
-                .Concat(kinds.Select(kind => new MeasuredOutcome("Service.BarePathKeepsOnlyTrue", MeasuredKey.Of(CosmosServiceTest.Bare, CosmosValueClass.None, kind), RenderingTarget.Emulator,
-                    kind == CosmosValueClass.True ? CosmosAnswer.True : kind == CosmosValueClass.False ? CosmosAnswer.False : CosmosAnswer.Undefined)))
+            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == RenderingTarget.Emulator && row.Key != not && row.Key != and)
                 .Append(new MeasuredOutcome("Service.Planted", not, RenderingTarget.Emulator, CosmosAnswer.True))
                 .Append(new MeasuredOutcome("Service.Planted", and, RenderingTarget.Emulator, CosmosAnswer.False)));
 
