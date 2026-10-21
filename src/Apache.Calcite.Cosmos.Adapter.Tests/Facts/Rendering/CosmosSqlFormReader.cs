@@ -17,14 +17,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// Reads the Cosmos SQL text the translator sent into a <see cref="ServiceForm"/>, sharing nothing with the writer: the
-    /// one reader of that input (spec §5.1).
+    /// Reads the Cosmos SQL text the translator sent into a <see cref="ServiceForm"/>, sharing nothing with the writer but
+    /// its spelling of a property and an index, through which a path is printed back: the one reader of that input (spec
+    /// §5.1).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The grammar is the family's: <c>NOT</c> binds tighter than <c>AND</c>, and <c>AND</c> than <c>OR</c>, which the
-    /// guards rely on (<c>IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)</c>); a primary is a parenthesised condition,
-    /// an <c>IS_*</c> test of a path, or a path compared with a parameter. Grouping is kept as written: no junction is
+    /// The grammar is the service's, as measured (<see cref="Row"/>): <c>NOT</c> binds tighter than a comparison and than
+    /// <c>AND</c>, and <c>AND</c> than <c>OR</c>, which the guards rely on (<c>IS_DEFINED(p) AND NOT IS_NULL(p) AND
+    /// (p != @p0)</c>); a primary is a parenthesised condition, an <c>IS_*</c> test of a path, or a path compared with a
+    /// parameter, so <c>NOT p = @v</c>, which compares <c>NOT p</c>, is no form. Grouping is kept as written: no junction is
     /// flattened, regrouped or deduplicated, so that a form is the one sent.
     /// </para>
     /// <para>
@@ -38,6 +40,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class CosmosSqlFormReader
     {
 
+        /// <summary>The registry row the grammar rests on, which every check's claim, read through it, rests on too.</summary>
+        internal const string Row = "Service.NotBindsTightestThenAndThenOr";
+
         static readonly Regex Name = new(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.CultureInvariant);
 
         static readonly Dictionary<string, CosmosServiceTest> Tests = new(StringComparer.Ordinal)
@@ -49,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly Dictionary<string, CosmosServiceTest> Operators = new(StringComparer.Ordinal)
         {
-            ["="] = CosmosServiceTest.Equal, ["!="] = CosmosServiceTest.NotEqual, ["<>"] = CosmosServiceTest.NotEqual, ["<"] = CosmosServiceTest.Less,
+            ["="] = CosmosServiceTest.Equal, ["!="] = CosmosServiceTest.NotEqual, ["<"] = CosmosServiceTest.Less,
             ["<="] = CosmosServiceTest.LessOrEqual, [">"] = CosmosServiceTest.Greater, [">="] = CosmosServiceTest.GreaterOrEqual,
         };
 
@@ -131,11 +136,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (ServiceForm, string) Not()
             {
+                var start = _at;
                 if (Accept("NOT") == false)
                     return Primary();
 
-                var (operand, written) = _notOverAnd ? And() : Not();
-                return (ServiceForm.NotOf(operand), "NOT " + written);
+                // NOT p = @v compares NOT p, which no form reads.
+                var operand = _at;
+                if (TryPath() is not null && Peek is { } op && Operators.ContainsKey(op))
+                    return Opaque(start);
+
+                _at = operand;
+                var (form, written) = _notOverAnd ? And() : Not();
+                return (ServiceForm.NotOf(form), "NOT " + written);
             }
 
             (ServiceForm, string) Primary()

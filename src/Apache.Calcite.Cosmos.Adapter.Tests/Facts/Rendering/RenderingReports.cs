@@ -55,10 +55,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return folder;
         }
 
-        /// <summary>Each registry row a proven check's proof reads, and the checks resting on it.</summary>
+        /// <summary>
+        /// Each registry row a proven check rests on, and the checks resting on it: the rows its proof reads, and the reader's
+        /// grammar, through which its claim was read from the text.
+        /// </summary>
         public static IReadOnlyDictionary<string, IReadOnlyList<string>> Resting(RenderingCheckRun run) =>
             Units(Ordered(run.Conjuncts)).Where(c => c.Entry!.Asserted.Proof is not null)
-                .SelectMany(c => c.Entry!.Asserted.Proof!.Rows.AsEnumerable().Select(row => (Row: row, Check: $"{c.Input}:{c.Name}#{c.Unit}")))
+                .SelectMany(c => c.Entry!.Asserted.Proof!.Rows.AsEnumerable().Append(CosmosSqlFormReader.Row).Select(row => (Row: row, Check: $"{c.Input}:{c.Name}#{c.Unit}")))
                 .GroupBy(r => r.Row, StringComparer.Ordinal).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)[.. g.Select(r => r.Check).Distinct()], StringComparer.Ordinal);
 
         /// <summary>Each check refuted, and its triage.</summary>

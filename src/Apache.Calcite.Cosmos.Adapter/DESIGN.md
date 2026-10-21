@@ -6399,13 +6399,16 @@ ways, is the bundle's, and the generation serves on.
 
 **The text sent is read, not the translator's structure.** A sink inside each writer would be a second encoding of what
 the code under test meant, and a string assembled wrongly would report the right structure. `CosmosSqlFormReader`
-(tests) reads the text into a `ServiceForm` by the family's grammar: `NOT` binds tighter than `AND`, and `AND` than
-`OR`, which the guards rely on (`IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)`); grouping is kept as written, with no
-junction flattened, regrouped or deduplicated; a parameter is its value; anything else is opaque, up to the next
-connective outside its own parentheses and ternaries. It prints its parse back with the source's parentheses and names,
-and every text the run captures must print back byte for byte. The precedence is pinned on a dozen texts, and held to
-the service: over the 27 documents that set three paths to nothing, a null or a string, `WHERE` keeps what each pinned
-tree predicts, which refutes the other binding.
+(tests) reads the text into a `ServiceForm` by the service's grammar: `NOT` binds tighter than a comparison and than
+`AND`, and `AND` than `OR`, which the guards rely on (`IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)`); so
+`NOT c.a = @p0`, which compares `NOT c.a`, is opaque. Grouping is kept as written, with no junction flattened, regrouped
+or deduplicated; a parameter is its value; anything else is opaque, up to the next connective outside its own
+parentheses and ternaries, and `<>`, which the translator never writes, is no comparison. It prints its parse back with
+the source's parentheses and names, and every text the run captures must print back byte for byte. The grammar is a
+measured row, `Service.NotBindsTightestThenAndThenOr`, which every proof rests on in `proof-lines.tsv`: over the 27
+documents that set three paths to nothing, a null or a string, `WHERE` keeps for each pinned text what it keeps for the
+pinned tree written with every grouping explicit, which the other binding's tree does not, and `NOT c.a = @p0` keeps
+what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator of the tests in C# is trusted.
 
 **The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the

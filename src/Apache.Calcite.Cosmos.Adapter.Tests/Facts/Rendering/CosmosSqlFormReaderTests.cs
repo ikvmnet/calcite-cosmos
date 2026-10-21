@@ -5,6 +5,8 @@ using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
+using Eggnog;
+
 using FluentAssertions;
 
 using Xunit;
@@ -22,12 +24,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class CosmosSqlFormReaderTests
     {
 
-        static readonly CosmosParameter[] Parameters = [new("@p0", "x")];
+        internal static readonly CosmosParameter[] Parameters = [new("@p0", "x")];
 
         /// <summary>
         /// Texts that mix <c>NOT</c>, <c>AND</c> and <c>OR</c> without parentheses, and two that keep them, each with the tree
-        /// it must read as: <c>NOT</c> binds tighter than <c>AND</c>, <c>AND</c> than <c>OR</c>, and grouping stays as written.
-        /// The service is held to the same trees (<see cref="CosmosSqlPrecedenceMeasurementTests"/>).
+        /// it must read as: <c>NOT</c> binds tighter than <c>AND</c>, <c>AND</c> than <c>OR</c>, and grouping stays as written;
+        /// and <c>NOT</c> before a comparison, which negates the path and so reads as opaque. The service is held to the same
+        /// trees (<see cref="Measurements.CosmosSqlPrecedenceMeasurementTests"/>).
         /// </summary>
         internal static readonly (string Text, ServiceForm Tree)[] Pinned =
         [
@@ -43,6 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ("NOT (IS_DEFINED(c.a) AND IS_NULL(c.b)) OR IS_DEFINED(c.c)", Any(Negated(All(D("a"), N("b"))), D("c"))),
             ("(IS_DEFINED(c.a) AND IS_NULL(c.b)) AND IS_DEFINED(c.c)", All(All(D("a"), N("b")), D("c"))),
             ("IS_NULL(c.a) OR NOT IS_NULL(c.b) AND NOT IS_DEFINED(c.c) OR IS_DEFINED(c.a)", Any(N("a"), All(Negated(N("b")), Negated(D("c"))), D("a"))),
+            ("NOT c.a = @p0", ServiceForm.OpaqueOf("NOT c.a = @p0", ValueSet.Of(S("a")))),
         ];
 
         /// <summary>

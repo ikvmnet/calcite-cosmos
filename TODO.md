@@ -2712,7 +2712,12 @@ across documents* and *A join of a container to itself* is the record.
   is `Emulator`, because the outcomes that claim Azure rest on the probe account's record of 2026-10-16 alone, and what
   Azure has not been run on is unsettled under `Portable` and answers widest. c09b commits D7's record and widens `On`;
   then `AssertedSet` becomes `Portable`, and the rendering tests that build under `Emulator` move with it where they
-  hold.
+  hold. `Service.NotBindsTightestThenAndThenOr`, the reader's grammar, every claim rests on, is one of them: its
+  measurement sits in the measurement namespace D7 runs, and the row names the emulator alone until that run passes.
+- **The service-gated measurements each seed a container of their own** — *small.* The precedence measurement copies the
+  fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
+  documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80
+  lines off each.
 - **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
   resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
   measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.

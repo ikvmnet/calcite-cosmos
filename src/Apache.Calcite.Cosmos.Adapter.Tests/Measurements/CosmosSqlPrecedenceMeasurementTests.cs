@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -20,18 +21,17 @@ using Newtonsoft.Json.Linq;
 
 using Xunit;
 
-namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
 
     /// <summary>
-    /// The reader's grammar held to the service, independently of the reader's author: for each pinned text, over every
-    /// document that sets <c>a</c>, <c>b</c> and <c>c</c> to nothing, a null or a string, the service's <c>WHERE</c> keeps
-    /// exactly what the pinned tree predicts, and so refutes the tree the other binding would give.
+    /// The rendering check's reader held to the service, independently of the reader's author
+    /// (<c>Service.NotBindsTightestThenAndThenOr</c>): over every document that sets <c>a</c>, <c>b</c> and <c>c</c> to
+    /// nothing, a null or a string, the service's <c>WHERE</c> keeps for each pinned text what it keeps for the pinned tree
+    /// written with every grouping explicit, which the other binding's tree does not; and <c>NOT</c> before a comparison
+    /// negates the path, which the reader therefore reads as opaque.
     /// </summary>
-    /// <remarks>
-    /// The documents make every test two-valued: <c>IS_DEFINED</c> and <c>IS_NULL</c> are never undefined, so a tree is
-    /// evaluated as a boolean one. Against whatever account the suite resolves (<see cref="CosmosEmulator"/>).
-    /// </remarks>
+    /// <remarks>Against whatever account the suite resolves (<see cref="CosmosEmulator"/>).</remarks>
     public sealed class CosmosSqlPrecedenceMeasurementTests : IClassFixture<CosmosSqlPrecedenceMeasurementTests.Fixture>
     {
 
@@ -114,8 +114,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Each pinned text without a parameter keeps on the service what its tree predicts; and where the plant's tree,
-        /// <c>NOT</c> binding looser than <c>AND</c>, predicts otherwise, the service keeps what the grammar's does.
+        /// Each pinned text the reader reads keeps on the service what its tree written out keeps; where the plant's tree,
+        /// <c>NOT</c> binding looser than <c>AND</c>, keeps otherwise, the service keeps what the grammar's does; and
+        /// <c>NOT c.a = @p0</c> keeps what <c>(NOT c.a) = @p0</c> keeps, not what <c>NOT (c.a = @p0)</c> does.
         /// </summary>
         [Fact]
         public async Task TheServiceKeepsWhatThePinnedTreePredicts()
@@ -124,36 +125,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Assert.Skip("This needs a service. " + _unavailable);
 
             var refuted = 0;
-            foreach (var (text, tree) in CosmosSqlFormReaderTests.Pinned.Where(p => p.Text.Contains('@') == false))
+            foreach (var (text, tree) in CosmosSqlFormReaderTests.Pinned.Where(p => RenderingCheckRun.Opaque(p.Tree) == false))
             {
-                var kept = await Kept(text);
-                kept.Should().Equal(Predicted(tree), text);
-
-                var planted = CosmosSqlFormReader.Read(text, [], notOverAnd: true).Form;
-                refuted += kept.SequenceEqual(Predicted(planted)) ? 0 : 1;
+                var (kept, predicted) = (await Kept(text), await Kept(Sql(tree)));
+                var planted = await Kept(Sql(CosmosSqlFormReader.Read(text, CosmosSqlFormReaderTests.Parameters, notOverAnd: true).Form));
+                kept.Should().Equal(predicted, text);
+                refuted += kept.SequenceEqual(planted) ? 0 : 1;
             }
 
             refuted.Should().BePositive("the documents part the two bindings");
+            var (bare, path, comparison) = (await Kept("NOT c.a = @p0"), await Kept("(NOT c.a) = @p0"), await Kept("NOT (c.a = @p0)"));
+            bare.Should().Equal(path).And.NotEqual(comparison);
         }
 
-        static string[] Predicted(ServiceForm tree) =>
-            [.. Documents.Where(d => Holds(tree, d)).Select(d => (string)d["id"]!).Order(StringComparer.Ordinal)];
-
-        /// <summary>A tree of <c>IS_DEFINED</c> and <c>IS_NULL</c> tests over one document, each two-valued there.</summary>
-        static bool Holds(ServiceForm form, JsonObject document) => form.Kind switch
+        /// <summary>A pinned tree written with every grouping explicit, which the service reads one way only.</summary>
+        static string Sql(ServiceForm form) => form.Kind switch
         {
-            ServiceFormKind.Test => Paths.Single(p => SqlValue.Spell(JsonDocumentPath.Root.Property(p)) == form.Path) is var path
-                && (form.Test == CosmosServiceTest.IsDefined ? document.ContainsKey(path) : document.TryGetPropertyValue(path, out var value) && value is null),
-            ServiceFormKind.Not => Holds(form.Members[0], document) == false,
-            ServiceFormKind.And => form.Members.All(m => Holds(m, document)),
-            ServiceFormKind.Or => form.Members.Any(m => Holds(m, document)),
-            _ => throw new ArgumentException("Only the tests and connectives are two-valued here.", nameof(form)),
+            ServiceFormKind.Not => $"NOT ({Sql(form.Members[0])})",
+            ServiceFormKind.And or ServiceFormKind.Or => "(" + string.Join(form.Kind == ServiceFormKind.And ? " AND " : " OR ", form.Members.Select(Sql)) + ")",
+            _ => form.Test switch
+            {
+                CosmosServiceTest.IsDefined => $"IS_DEFINED(c.{Name(form)})",
+                CosmosServiceTest.IsNull => $"IS_NULL(c.{Name(form)})",
+                CosmosServiceTest.NotEqual => $"(c.{Name(form)} != @p0)",
+                _ => throw new ArgumentException("Only the pinned trees' leaves are written here.", nameof(form)),
+            },
         };
+
+        static string Name(ServiceForm form) => Paths.Single(p => SqlValue.Spell(JsonDocumentPath.Root.Property(p)) == form.Path);
 
         static async Task<string[]> Kept(string where)
         {
             var ids = new List<string>();
-            using var iterator = _container!.GetItemQueryIterator<JObject>(new QueryDefinition("SELECT c.id FROM c WHERE " + where));
+            var query = new QueryDefinition("SELECT c.id FROM c WHERE " + where);
+            using var iterator = _container!.GetItemQueryIterator<JObject>(where.Contains("@p0") ? query.WithParameter("@p0", "x") : query);
             while (iterator.HasMoreResults)
                 foreach (var row in await iterator.ReadNextAsync())
                     ids.Add((string)row["id"]!);
