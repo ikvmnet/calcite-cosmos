@@ -9,6 +9,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -36,20 +37,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Every digest, one line a statement: the input, the statement's name or index, its text, and its digest.
         /// </summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
-        public static IEnumerable<string> All(int partitionedPredicates)
+        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
+        public static IEnumerable<string> All(int partitionedPredicates, JsonFactGenerations? generations = null)
         {
-            foreach (var line in Corpus())
+            foreach (var line in Corpus(generations))
                 yield return line;
 
+            var containers = CosmosDifferentialTests.Containers.Select(c => generations is null ? c : c.WithFactGenerations(generations)).ToArray();
             var statements = CosmosDifferentialTests.Statements;
             for (var i = 0; i < statements.Count; i++)
-                yield return Line("differential", i, statements[i], Of(() => Differential(statements[i])));
+                yield return Line("differential", i, statements[i], Of(() => Differential(statements[i], containers)));
 
             var partitions = CosmosDifferentialTests.PartitionStatements(partitionedPredicates);
             for (var i = 0; i < partitions.Count; i++)
-                yield return Line("partitions", i, partitions[i], Of(() => Differential(partitions[i])));
+                yield return Line("partitions", i, partitions[i], Of(() => Differential(partitions[i], containers)));
 
-            var kinds = CosmosDifferentialTests.Containers.Single(c => c.Name == "kinds");
+            var kinds = containers.Single(c => c.Name == "kinds");
             foreach (var (name, where) in CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal)))
             {
                 var sql = $"SELECT c.\"id\" FROM kinds AS c WHERE {where}";
@@ -60,9 +63,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// The planner corpus's digests, one line a statement.
         /// </summary>
-        public static IEnumerable<string> Corpus()
+        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
+        public static IEnumerable<string> Corpus(JsonFactGenerations? generations = null)
         {
-            var harness = new PlannerHarness();
+            var harness = new PlannerHarness(generations);
             foreach (var query in PlannerQueries.All)
                 yield return Line("corpus", query.Name, query.Sql, Of(() => harness.PlanToAsync(query.Sql)));
         }
@@ -74,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// The planning half of <c>CosmosDifferentialTests.Run</c> with the pushdown rules: the same schema, operators,
         /// traits, rules and calc pass, and nothing executed.
         /// </summary>
-        static RelNode Differential(string sql) => PlannerHarness.Plan(sql, CosmosDifferentialTests.Containers, SqlOperatorTables.chain(SqlStdOperatorTable.instance(),
+        static RelNode Differential(string sql, IReadOnlyList<CosmosContainerMetadata> containers) => PlannerHarness.Plan(sql, containers, SqlOperatorTables.chain(SqlStdOperatorTable.instance(),
             SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(java.util.EnumSet.of(SqlLibrary.MYSQL, SqlLibrary.SPARK, SqlLibrary.HIVE, SqlLibrary.BIG_QUERY))),
             collations: true, calc: true);
 

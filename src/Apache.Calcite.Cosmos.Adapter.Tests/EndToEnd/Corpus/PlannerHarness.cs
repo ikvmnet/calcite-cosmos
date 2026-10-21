@@ -63,9 +63,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// <summary>
         /// Initializes a new instance over <see cref="PlannerSchema"/>.
         /// </summary>
-        public PlannerHarness()
+        public PlannerHarness() :
+            this(null)
         {
-            _tables = PlannerSchema.CreateTables();
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance over <see cref="PlannerSchema"/>, its containers reasoning in the given generations,
+        /// or in <see cref="Cosmos.Facts.JsonFactGenerations.Default"/> where <c>null</c>.
+        /// </summary>
+        internal PlannerHarness(Cosmos.Facts.JsonFactGenerations? generations)
+        {
+            _tables = PlannerSchema.CreateTables(generations);
             _typeFactory = new JavaTypeFactoryImpl();
             _rootSchema = CalciteSchema.createRootSchema(false);
 

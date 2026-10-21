@@ -87,6 +87,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Arms = graph.DefineFunction<Pred, bool, ValueSet<long>>("arms", options: analysis);
             Arm = graph.DefineRelation<Pred, bool, long, Pred>("arm", analysis);
             Possible = graph.DefineFunction<JPath, PathValues>("possible", PathValues.Lattice, local);
+            Declared = graph.DefineRelation<JPath>("declared", local);
             AlwaysTrue = graph.DefineRelation<Pred>("always true");
             AlwaysFalse = graph.DefineRelation<Pred>("always false");
             NeverTrue = graph.DefineRelation<Pred>("never true");
@@ -171,8 +172,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>One numbered arm of a junction.</summary>
         public Relation<Pred, bool, long, Pred> Arm { get; }
 
-        /// <summary>What a path an atom reads may hold, gathered from the theory's tables into one value.</summary>
+        /// <summary>
+        /// What a path an atom reads, or <c>D0</c> declares, may hold, gathered from the theory's tables into one value.
+        /// </summary>
         public Function<JPath, PathValues> Possible { get; }
+
+        /// <summary>The paths a declaration mentions: defined in every graph, with rows only in its <c>D0</c>.</summary>
+        public Relation<JPath> Declared { get; }
 
         /// <summary>The predicate is TRUE of every row the context admits.</summary>
         public Relation<Pred> AlwaysTrue { get; }
@@ -589,6 +595,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 });
             }
         }
+
+        /// <summary>
+        /// Defines <c>D0</c>'s one rule: every path the declaration mentions gets a <see cref="Possible"/> row, which
+        /// <see cref="Decide"/>'s other rules narrow as they narrow an atom's. Local, so active only in <c>D0</c> and
+        /// beneath it, where the <see cref="Declared"/> rows are inherited and it derives nothing new.
+        /// </summary>
+        internal void DefineDeclaredPossible(Scope d0) =>
+            d0.DefineRule(Decide, "a path the declaration states a fact of may hold what nothing has ruled out", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(Declared.Of(p));
+                r.Then(Possible.Of(p).Is(PathValues.Anything));
+            });
 
     }
 

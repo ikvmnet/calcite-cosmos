@@ -6335,6 +6335,37 @@ divergence.
 value, never both rounded. That is what `Numeric` means; S places a number only within ±2^53, where the two agree,
 until c13's double slots read N14.
 
+### The declaration's `possible` rows: `D0`
+
+**Round 1 renders from the root, and the root holds none of a statement's terms,** so the facts graph's `possible`,
+written only where an atom reads a path, held nothing for most round-1 conjuncts to import. Gathering `PathValues` in C#
+would restate `Decide`'s seven rules. `D0` is a frozen child of the declaration's context instead: a `declared(p)` row
+for every path the declaration mentions, and one local rule in `Decide` writing `possible(p) = Anything`, which the
+other six narrow from the declaration's tables as they narrow an atom's path. It is built once per declaration and
+generation, however many planning threads ask (`Lazy`, `ExecutionAndPublication`), and is `null` where nothing is
+mentioned or its run does not complete.
+
+**Production carries it nowhere.** The rule is local, so it is active only in `D0` and beneath it. A statement is rooted
+at `D0` only in a flow that `StatementTerms.ArmDeclaredPossible` armed (an `AsyncLocal`), the oracle keys an armed tree
+`d0|` apart from an unarmed one, and production arms nothing. Unarmed, what runs is the `declared` table's definition in
+each graph, a `Lazy` per compiled declaration, and one read of the switch per statement tree and per memo lookup.
+
+**It changes no verdict, fact set or plan.** The root's view is still the declaration's own fact set (`ViewOf` compares
+the root's scope by reference), so the translator's round-1 facts are unchanged. A stratum's row for an atom's path
+starts from `D0`'s instead of `Anything`, and `D0`'s, read from tables the stratum inherits, is no narrower than the
+stratum's, so the meet is the stratum's own. The plan digests with the switch off and on, each in generations of its
+own, are byte-equal.
+
+**`D0` keeps a declared domain as stated.** For a path an atom reads, a stratum keeps only the domain's values of a type
+the path may hold (the last rule of what a predicate establishes), and `D0` holds no atom. So where a declaration states
+a domain beside narrower types, `D0`'s row lists values of a kind it excludes. It allows the same documents, since
+`PathValues.Admits` and `PathCell.Split` read a value only of a kind the row allows; it is the spelling that differs.
+
+**`D0` makes no term.** It writes a row only for a path the declaration's context holds a term of: it runs no rule of
+JSON, and a term made there would put into every stratum beneath it a path the unarmed stratum never holds. A body atom
+of a rule the theory cannot read is mentioned and never made, and has no row. A path the round-1 view mentions lazily,
+an element or a child of a declared path, has none either; the importer counts each as a default.
+
 ---
 
 ## Differential testing
