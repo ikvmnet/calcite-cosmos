@@ -6369,20 +6369,21 @@ an element or a child of a declared path, has none either; the importer counts e
 ### The importer, and S's generations
 
 **The importer copies one value per path per table.** For each path a bundle's atoms read, `RenderingImporter` reads the
-licensed node's `possible` and `chars` rows with `TryGet`, which on a frozen scope interns nothing, and writes them as
-S's lattice-free `imported` and `importedchars`. It reads none of F's verdicts, nor `types`, `dom`, `ne`, `lo` and `hi`,
-which F has already met into `possible`. A refutation is not monotone under narrowing, so an import must be the whole
-value before the run: a bundle takes one `ImportSource`, refuses an import after its run or from a second source, and
-throws where a path is imported again with another value, so S never meets two.
+licensed node's `possible` and `chars` rows with `TryGet`, which on a frozen scope interns nothing, each table on its
+own, and writes them as S's lattice-free `imported` and `importedchars`. It reads none of F's verdicts, nor `types`,
+`dom`, `ne`, `lo` and `hi`, which F has already met into `possible`. A refutation is not monotone under narrowing, so an
+import must be the whole value before the run: a bundle takes one `ImportSource`, refuses an import after its run or
+from a second node, and throws where a path is imported again with another value, so S never meets two. The source holds
+the node itself, compared by reference: a statement's digest, a licence and a round name no generation and no root.
 
 **A path F holds no row for is the top, and counted.** Where the declaration mentions nothing at, within or above the
 path, the top is exact, and a refutation over it is one. Elsewhere — a child of a declared object, a parent of a declared
 path, a path `D0` made no term for — the top loses precision, so the default is counted as constrained and the check run
 warns. A node that keeps no document imports nothing, and the report says so.
 
-**The digests are content.** An import's digest is the import spelled whole, so a memo keyed on it holds every value a
-rule reads; `D0`'s wider spelling of a domain (above) keys the same documents apart, which costs a bundle and never a
-verdict. The theory's digest hashes the frozen theory's rows, so generations defined alike share entries, a planted
+**The digests are content.** An import's digest is the import written as JSON, every value quoted, so a memo keyed on it
+holds every value a rule reads and two imports that differ never share an entry; `D0`'s wider spelling of a domain
+(above) keys the same documents apart, which costs a bundle and never a verdict. The theory's digest hashes the frozen theory's rows, so generations defined alike share entries, a planted
 row shares none, and no table can be left off a list; a primitive is no row, so a plant of one keeps a memo of its own.
 
 **Generations, as F's.** A graph's ids and epochs are finite and its pools never shrink. `RenderingGraph` defines a new

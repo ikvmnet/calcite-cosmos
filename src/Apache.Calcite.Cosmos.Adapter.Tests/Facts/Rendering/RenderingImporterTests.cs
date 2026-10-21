@@ -54,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var term = JsonFactEncoding.Path(path).ToTerm(rules!.Json);
                     var s = JsonFactEncoding.Path(path).ToTerm(ProbeTheory.Paths);
                     var possible = node!.TryGet(rules.Possible.Of(term), out var p) ? p : null;
-                    var chars = possible is not null && node.TryGet(rules.Json.Chars.Of(term), out var c) ? c : JsonValues.AllBands;
+                    var chars = node.TryGet(rules.Json.Chars.Of(term), out var c) ? c : JsonValues.AllBands;
                     bundle.Scope.Get(ProbeTheory.Imported.Of(s)).Should().Be(possible ?? PathValues.Anything, SqlValue.Spell(path));
                     bundle.Scope.Get(ProbeTheory.ImportedChars.Of(s)).Should().Equal(chars, SqlValue.Spell(path));
                     held += possible is null ? 0 : 1;
@@ -96,8 +96,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The plant "two imports of one path": S never meets two values of a path, so a second that differs throws, from
-        /// the importer or from the bundle; the same value again is the same row.
+        /// The plant "two imports of one path": S never meets two values of a path, so a second that differs throws; the
+        /// importer reads one node alike each time, so the same value again is the same row.
         /// </summary>
         [Fact]
         public void ASecondImportOfOnePathThrows()
@@ -111,19 +111,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             RenderingImporter.Import(bundle, Source, d0, rules, theory, [P("a")]);
             RenderingImporter.Import(bundle, Source, d0, rules, theory, [P("a")]);
-            FluentActions.Invoking(() => RenderingImporter.Import(bundle, Source, null, null, theory, [P("a")])).Should().Throw<FactConflictException>();
-            FluentActions.Invoking(() => bundle.Import(Source, P("a"), PathValues.AnythingThere, JsonValues.AllBands)).Should().Throw<FactConflictException>();
+            FluentActions.Invoking(() => bundle.Import(Source with { Node = d0 }, P("a"), PathValues.AnythingThere, JsonValues.AllBands)).Should().Throw<FactConflictException>();
             bundle.Failure.Should().BeNull();
             GC.KeepAlive(scope);
         }
 
-        /// <summary>The plant "a second source": one bundle holds one node's facts, so an import from another is refused.</summary>
+        /// <summary>
+        /// The plant "a second source": one bundle holds one node's facts, so an import from another is refused, named
+        /// otherwise or named alike: a declaration's context and its <c>D0</c> under one statement, licence and round.
+        /// </summary>
         [Fact]
         public void ASecondSourceIsRefused()
         {
-            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
-            RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath]);
-            FluentActions.Invoking(() => RenderingImporter.Import(bundle, Source with { Round = 2 }, null, null, null, [KindPath])).Should().Throw<InvalidOperationException>();
+            using (var bundle = ProbeTheory.Open(RenderingSet.Emulator))
+            {
+                RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath]);
+                FluentActions.Invoking(() => RenderingImporter.Import(bundle, Source with { Round = 2 }, null, null, null, [KindPath])).Should().Throw<InvalidOperationException>();
+            }
+
+            var theory = Declaration(new JsonFactGenerations(long.MaxValue));
+            var declaration = theory.Declaration()!;
+            var rules = PredicateRules.Of(declaration.Generation.Contexts);
+            using var twice = ProbeTheory.Open(RenderingSet.Emulator);
+            RenderingImporter.Import(twice, Source, declaration.Context, rules, theory, [P("a")]);
+            FluentActions.Invoking(() => RenderingImporter.Import(twice, Source, declaration.DeclaredPossible(), rules, theory, [P("o")])).Should().Throw<InvalidOperationException>();
+        }
+
+        /// <summary>
+        /// Two imports that differ spell apart, though <see cref="PathValues"/> prints them alike: one string holding a
+        /// comma, against two strings, would otherwise share a memo entry and its verdict.
+        /// </summary>
+        [Fact]
+        public void TwoImportsThatDifferSpellApart()
+        {
+            var (one, two) = (PathValues.Anything with { Values = ValueSet.Of("string|a, string|b") }, PathValues.Anything with { Values = ValueSet.Of("string|a", "string|b") });
+            one.ToString().Should().Be(two.ToString());
+            RenderingImporter.Spell(LabelPath, one, JsonValues.AllBands).Should().NotBe(RenderingImporter.Spell(LabelPath, two, JsonValues.AllBands));
         }
 
         /// <summary>
@@ -144,17 +167,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using (StatementTerms.ArmDeclaredPossible())
                 scope = new CosmosOracle(theory, generations).Admit(statement);
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
-            Report(d0, rules).Should().Match<ImportReport>(r => r.Paths == 6 && r.DefaultedOpen == 2 && r.DefaultedConstrained == 2 && r.Contradicted == false);
+            Report(d0, rules).Should().Match<ImportReport>(r => r.Paths == 6 && r.DefaultedOpen == 2 && r.Constrained.Count == 2 && r.Contradicted == false);
 
             // Unarmed, the declaration's own context holds no possible row: every mentioned path's default is constrained.
             var (context, unarmed) = new CosmosOracle(theory, generations).Admit(statement).ContextFor(OracleLicence.RenderConjunct(0));
-            Report(context, unarmed).Should().Match<ImportReport>(r => r.DefaultedOpen == 2 && r.DefaultedConstrained == 4);
+            Report(context, unarmed).Should().Match<ImportReport>(r => r.DefaultedOpen == 2 && r.Constrained.Count == 4);
 
             // A node that keeps no document: a declared string equal to two values.
             var nothing = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { Eq(Text(P("a")), "x"), Eq(Text(P("a")), "y") }));
             nothing.IsContradictory(OracleLicence.Kept).Should().BeTrue();
             var (none, kept) = nothing.ContextFor(OracleLicence.Kept);
-            Report(none, kept).Should().Be(new ImportReport(0, 0, 0, "contradicted", true));
+            Report(none, kept).Should().Be(new ImportReport(0, 0, ValueSet<string>.Empty, "contradicted", true));
             GC.KeepAlive(scope);
 
             ImportReport Report(Scope? node, PredicateRules? rules)

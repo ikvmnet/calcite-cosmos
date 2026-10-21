@@ -30,11 +30,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 rows.Select(c => new object?[] { c.Input, c.Name, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
                     Name(c.Entry?.Portable, c), c.Position < 0 ? null : Name(c.Entry!.Alone[c.Position], c), c.Skip ?? c.Reason, c.Entry?.Id,
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
-                    c.Entry?.Import.DefaultedOpen, c.Entry?.Import.DefaultedConstrained }));
+                    c.Entry?.Import.DefaultedOpen, c.Entry?.Import.Constrained.Count }));
 
             Tsv(folder, "refutations.tsv", ["input", "name", "statement", "entry", "cells", "class", "rows", "constrained", "conditional", "emulator", "triage"],
                 Statements(rows).Select(c => (c, r: c.Entry!.Asserted.Refutation)).Where(x => x.r is not null).Select(x => new object?[] { x.c.Input, x.c.Name, x.c.Statement,
-                    x.c.Entry!.Id, string.Join("; ", x.r!.Cells.AsEnumerable()), x.r.Class, string.Join(" ", x.r.Rows.AsEnumerable()), x.c.Entry.Import.DefaultedConstrained,
+                    x.c.Entry!.Id, string.Join("; ", x.r!.Cells.AsEnumerable()), x.r.Class, string.Join(" ", x.r.Rows.AsEnumerable()), x.c.Entry.Import.Constrained.Count,
                     x.c.Conditional, "not run", Triage(x.c, x.r) }));
 
             Tsv(folder, "vacuous-proofs.tsv", ["input", "name", "statement", "entry", "why", "form"],
@@ -64,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>A refutation warns until the emulator reproduces it where the facts it was found on may admit what no document holds.</summary>
         static string Triage(RenderingCheckRun.Checked c, Refutation r) =>
-            c.Entry!.Import.DefaultedConstrained > 0 ? "warns: a default the declaration constrains"
+            c.Entry!.Import.Constrained.Count > 0 ? "warns: a default the declaration constrains"
             : r.Cells.Count > 1 && c.Conditional ? "warns: a cell over two paths, under conditional rules"
             : "fails";
 
