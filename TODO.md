@@ -2721,17 +2721,20 @@ across documents* and *A join of a container to itself* is the record.
 - **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
   resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
   measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.
-- **`D0`'s row spells a declared domain as stated** — *small, for c12's memo.* A stratum keeps only a domain's values of
-  a type the path may hold, and only for a path an atom reads; `D0` holds no atom, so its row can list values of a kind
-  it excludes (2 of 431 paths in `DeclaredPossibleTests`). The documents are the same and so are the cells, but the
-  importer digests an import as spelled, so it keys a memo entry apart from a stratum's import of the same documents: a
-  bundle more, never another verdict. A body atom of a rule the theory cannot read has no `D0` row at all, since `D0`
-  makes no term; its import defaults, constrained.
+- **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
+  makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
+- **`D0`'s cost is measured by no test** — *small, for c17.* §4.3's timing line, taken on a free machine only, kills
+  above +5 ms a declaration (`D0` built and run, per declaration and generation) or +0.06 s on the corpus planned new
+  and armed against unarmed. It belongs in c17's `RenderingCostTests`, beside S's bundles.
+- **The population D run rooted at `D0` is 50 trials a pull request** — *small, for c17's cost line.* §4.3 asks for 200
+  and §10.3 budgets source B at 20 to 50; 50 keeps the unarmed 200, which production's root stands on, and the 5,000
+  armed stay explicit.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
   retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
   `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
   the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
-  Stage 0d); S's bundle adds it to F's list, and shares the list once 0d fixes it.
+  Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
+  list once 0d fixes it.
 
 ---
 

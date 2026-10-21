@@ -34,12 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// stratum's row, the stratum's row, which is what an armed stratum holds. A declaration that mentions nothing has
         /// no <c>D0</c>.
         /// </summary>
-        /// <remarks>
-        /// Not always the same spelling. A domain stated beside narrower types keeps only its values of those types for a
-        /// path an atom reads (<see cref="PredicateRules"/>' last rule of what a predicate establishes), and <c>D0</c>
-        /// holds no atom, so its row keeps the declared domain; a value of another kind is one no reader of the row
-        /// admits (<see cref="PathValues.Admits"/>, <see cref="PathCell.Split"/>).
-        /// </remarks>
+        /// <remarks>Not always the same spelling: <c>DESIGN.md</c>, <i><c>D0</c> keeps a declared domain as stated</i>.</remarks>
         [Fact]
         public void TheDeclaredPossibleRowsAreWhatAStratumWithAnAtomComputes()
         {

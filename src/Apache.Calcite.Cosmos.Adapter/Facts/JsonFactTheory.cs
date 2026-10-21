@@ -285,9 +285,9 @@ namespace Apache.Calcite.Cosmos.Facts
                         return d0;
                     }
                 }
-                catch (Exception e) when (IsEngineFailure(e))
+                catch (Exception e) when (IsEngineFailure(e) || e is OverflowException)
                 {
-                    // Released below, as a run that stops short is.
+                    // Released below, as a run that stops short is; running out is a failure here, or the Lazy would keep it.
                 }
 
                 d0?.Dispose();
