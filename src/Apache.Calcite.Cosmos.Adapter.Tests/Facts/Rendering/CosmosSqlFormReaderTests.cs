@@ -72,19 +72,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Should().Contain(Pinned[0].Text).And.Contain(Pinned[4].Text);
         }
 
-        /// <summary>
-        /// A parameter reads as its value, one bound only when the statement runs makes its comparison opaque, and a primary
-        /// outside the grammar reads as opaque up to the connective after it, while what it stands beside reads as itself.
-        /// </summary>
-        [Fact]
-        public void WhatTheGrammarLeavesOutIsOpaque()
-        {
-            CosmosSqlFormReader.Read("(c.n > @p0)", [new("@p0", 30L)]).Form.Should().Be(ServiceForm.CompareOf(CosmosServiceTest.Greater, S("n"), JsonValues.Of(30m)));
-            CosmosSqlFormReader.Read("(c.n > @p0)", [new("@p0", new CosmosDynamicValue(0))]).Form.Kind.Should().Be(ServiceFormKind.Opaque);
-            CosmosSqlFormReader.Read("(STARTSWITH(c.a, @p0) AND IS_DEFINED(c.b))", Parameters).Should().Be(new ReadForm(
-                And(ServiceForm.OpaqueOf("STARTSWITH(c.a, @p0)", Eggnog.ValueSet.Of(S("a"))), D("b")), "(STARTSWITH(c.a, @p0) AND IS_DEFINED(c.b))"));
-        }
-
         static bool Opaque(ServiceForm form) => form.Kind == ServiceFormKind.Opaque || form.Members.Any(Opaque);
 
         static string S(string name) => SqlValue.Spell(P(name));

@@ -34,8 +34,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Add(new(1, statement, conjunct, text, [.. parameters.Parameters], [.. parameters.Comparisons], [.. parameters.Rechecks]));
 
         // The list is the statement's, so the conjunct's own are those its text names; a name is never bound twice.
-        public void Written(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters) =>
-            Add(new(2, statement, conjunct, text, [.. parameters.Parameters.Where(p => CosmosSqlFormReader.Names(text).Contains(p.Name))], [], []));
+        public void Written(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters)
+        {
+            var names = CosmosSqlFormReader.Names(text);
+            Add(new(2, statement, conjunct, text, [.. parameters.Parameters.Where(p => names.Contains(p.Name))], [], []));
+        }
 
         void Add(CaptureRecord record)
         {

@@ -26,9 +26,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Directory.CreateDirectory(folder);
             var rows = Ordered(run.Conjuncts).ToList();
 
-            Tsv(folder, "verdicts.tsv", ["input", "name", "statement", "conjunct", "site", "ir", "text", "verdict", "portable", "alone", "reason", "entry", "open", "constrained"],
+            Tsv(folder, "verdicts.tsv", ["input", "name", "statement", "conjunct", "site", "ir", "text", "verdict", "portable", "alone", "reason", "entry", "run", "open", "constrained"],
                 rows.Select(c => new object?[] { c.Input, c.Name, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
                     Name(c.Entry?.Portable, c), c.Position < 0 ? null : Name(c.Entry!.Alone[c.Position], c), c.Skip ?? c.Reason, c.Entry?.Id,
+                    c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
                     c.Entry?.Import.DefaultedOpen, c.Entry?.Import.DefaultedConstrained }));
 
             Tsv(folder, "refutations.tsv", ["input", "name", "statement", "entry", "cells", "class", "rows", "constrained", "conditional", "emulator", "triage"],
