@@ -228,7 +228,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A document's strings are ordered, compared and extremed by code point, with no collation: U+E000 below
-        /// U+1F600, where Calcite's UTF-16 order puts it above; and on the emulator a string holding U+0000 as it stores it.
+        /// U+1F600, where Calcite's UTF-16 order puts it above; a string holding U+0000 too on Azure, U+0000 the least, and
+        /// on the emulator as it stores it.
         /// </summary>
         [Fact, CosmosPins("Service.StringOrderIsCodePoint")]
         public async Task ADocumentsStringsOrderByCodePoint()
@@ -286,9 +287,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// between bounds the orders rank alike.
         /// </summary>
         /// <remarks>
-        /// Held in the spelling the translator writes and S reads, <c>&gt;= AND &lt;=</c>, and its <c>NOT</c>. Azure's
-        /// outcome was measured as <c>BETWEEN</c>, which keeps what that spelling keeps, here on either target. Every
-        /// assertion is read before any fails, so one run records them all.
+        /// Held in the spelling the translator writes and S reads, <c>&gt;= AND &lt;=</c>, and its <c>NOT</c>, beside
+        /// <c>BETWEEN</c>, which keeps what that spelling keeps on either target. Every assertion is read before any fails,
+        /// so one run records them all.
         /// </remarks>
         [Fact, CosmosPins("Service.RangeOverPartedBoundsIsEmpty")]
         public async Task ARangeWhoseBoundsTheOrdersRankApartKeepsNothing()

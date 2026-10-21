@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -33,25 +32,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// The cells of a key some outcome answers for a target that no outcome covers for it: unmeasured there, so no
         /// row, and S reads the service as answering anything. Declared, so that a cell is owed on purpose and one
-        /// dropped from a vector is caught.
+        /// dropped from a vector is caught. None is: the probe account has run every witness the emulator runs (D7).
         /// </summary>
-        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } =
-        [
-            // What the emulator measures beside a key the probe account answered: the witnesses Azure ran none of, a string
-            // beside "true" and a number beside 1 among them; another type against an order's literal; a range outside its
-            // bounds, above them included, and over another type; and NOT over undefined.
-            .. Cells(RenderingTarget.Azure, "Equal/True Bare/None Not/None", "String Number Object Array"),
-            .. Cells(RenderingTarget.Azure, "Greater/String Range/Parted", "Absent Null True False Number Object Array"),
-            .. Cells(RenderingTarget.Azure, "Range/Parted", "Outside"),
-            .. Cells(RenderingTarget.Azure, "Not/None", "Undefined"),
-        ];
-
-        /// <summary>Each cell of each key, spelled <c>test/operand</c>, owed on a target.</summary>
-        static IEnumerable<(MeasuredKey, RenderingTarget)> Cells(RenderingTarget target, string keys, string cells) =>
-            from key in keys.Split(' ')
-            let parts = key.Split('/')
-            from cell in cells.Split(' ')
-            select (MeasuredKey.Of(Enum.Parse<CosmosServiceTest>(parts[0]), Enum.Parse<CosmosValueClass>(parts[1]), Enum.Parse<CosmosValueClass>(cell)), target);
+        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } = [];
 
     }
 
