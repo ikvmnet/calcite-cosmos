@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -321,6 +322,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public async Task NotOverUndefinedIsUndefined()
         {
             await Holds("Service.NotOverUndefinedIsUndefined");
+        }
+
+        /// <summary>
+        /// The in-process bodies of the <c>IS_*</c> tests answer what the service answers over the catalogue's kinds, as
+        /// <c>Sql.CosmosFunctionBodiesTests</c> asks of a real account: each over the document text the query returns, so
+        /// neither side is handed a tidied input, and a test the service answers as undefined, absent from the row, false.
+        /// </summary>
+        [Fact, CosmosPins("Service.TypeTestBodiesMatchTheService")]
+        public async Task TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind()
+        {
+            if (_container is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            var (pk, cancellation) = (Guid.NewGuid().ToString("N"), TestContext.Current.CancellationToken);
+            var witnesses = CosmosOutcomeWitnesses.KindCells.SelectMany(kind => CosmosOutcomeWitnesses.Of(CosmosValueClass.None, kind)).ToList();
+            foreach (var (json, i) in witnesses.Select((json, i) => (json, i)))
+                using (var response = await _container!.CreateItemStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes($"{{\"id\":\"w{i}\",\"pk\":\"{pk}\"" + (json is null ? "" : ",\"v\":" + json) + "}")), new PartitionKey(pk), cancellationToken: cancellation))
+                    response.EnsureSuccessStatusCode();
+
+            var sql = "SELECT c AS doc, " + string.Join(", ", CosmosFunctionBodiesTests.Tests.Select(t => $"{t.Name}(c.v) AS {t.Name}")) + " FROM c";
+            var (disagreements, seen) = (new List<string>(), 0);
+            using var iterator = _container!.GetItemQueryStreamIterator(new QueryDefinition(sql), requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });
+            while (iterator.HasMoreResults)
+            {
+                using var page = await iterator.ReadNextAsync(cancellation);
+                using var rows = await System.Text.Json.JsonDocument.ParseAsync(page.EnsureSuccessStatusCode().Content, cancellationToken: cancellation);
+                foreach (var row in rows.RootElement.GetProperty("Documents").EnumerateArray())
+                {
+                    seen++;
+                    var document = row.GetProperty("doc").GetRawText();
+                    disagreements.AddRange(from test in CosmosFunctionBodiesTests.Tests
+                                           where (row.TryGetProperty(test.Name, out var answer) && answer.ValueKind == System.Text.Json.JsonValueKind.True) != test.Body(document, "$.v")
+                                           select $"{test.Name} over {document}");
+                }
+            }
+
+            (seen, disagreements.Count).Should().Be((witnesses.Count, 0), string.Join("; ", disagreements));
         }
 
     }

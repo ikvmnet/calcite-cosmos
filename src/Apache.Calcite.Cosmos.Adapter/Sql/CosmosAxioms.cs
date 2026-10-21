@@ -226,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ]),
             new("Service.TypeTestBodiesMatchTheService",
                 "The in-process bodies of the IS_* tests (CosmosFunctionBodies) answer what the service answers over a path holding each kind of value, false and a fraction among them, and over an absent one; so IS_DEFINED's Calcite side, which is its body, is the service's.",
-                CosmosAxiomTarget.Emulator, Family, "Measurements.CosmosFunctionBodiesMeasurementTests.TheBodiesAnswerWhatTheServiceAnswersOverEveryKind"),
+                CosmosAxiomTarget.Emulator, Family, "Measurements.CosmosJsonTypeMeasurementTests.TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind"),
             new("Service.NumbersBeyondLongCompareAsDoubles",
                 "A number written as a fraction or outside int64 is held as its correctly rounded double and compares as that double, against an int64 by value rather than rounded: 9007199254740992.5, held as 2^53, is below 2^53 + 1, 9999999999999999999999 equals 1e22, and 2^63 - 1 is below 2^63. The emulator keeps an integer written in [2^63, 2^64) as written (Service.IntegerOutsideLongIsStoredAsADouble) and compares it as its double, 2^63 + 1 equal to 2^63; and it holds 9007199254740993.0 as a double, which Azure holds as an int64.",
                 CosmosAxiomTarget.Emulator, Family, "Measurements.CosmosServiceOrderMeasurementTests.NumbersBeyondLongCompareAsDoubles",
