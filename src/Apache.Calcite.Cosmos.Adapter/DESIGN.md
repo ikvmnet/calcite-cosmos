@@ -6377,14 +6377,15 @@ from a second node, and throws where a path is imported again with another value
 the node itself, compared by reference: a statement's digest, a licence and a round name no generation and no root.
 
 **A path F holds no row for is the top, and counted.** Where the declaration mentions nothing at, within or above the
-path, the top is exact, and a refutation over it is one. Elsewhere — a child of a declared object, a parent of a declared
-path, a path `D0` made no term for — the top loses precision, so the default is counted as constrained and the check run
-warns. A node that keeps no document imports nothing, and the report says so.
+path, the top is exact, and a refutation over it is one. Elsewhere — a child of a declared object, a parent of a
+declared path, a path `D0` made no term for — the top loses precision, so the default is counted as constrained and the
+check run warns. A node that keeps no document imports nothing, and the report says so.
 
 **The digests are content.** An import's digest is the import written as JSON, every value quoted, so a memo keyed on it
 holds every value a rule reads and two imports that differ never share an entry; `D0`'s wider spelling of a domain
-(above) keys the same documents apart, which costs a bundle and never a verdict. The theory's digest hashes the frozen theory's rows, so generations defined alike share entries, a planted
-row shares none, and no table can be left off a list; a primitive is no row, so a plant of one keeps a memo of its own.
+(above) keys the same documents apart, which costs a bundle and never a verdict. The theory's digest hashes the frozen
+theory's rows, so generations defined alike share entries, a planted row shares none, and no table can be left off a
+list; a primitive is no row, so a plant of one keeps a memo of its own.
 
 **Generations, as F's.** A graph's ids and epochs are finite and its pools never shrink. `RenderingGraph` defines a new
 theory from the same definition before it hands out a bundle once the graph has used half of either
@@ -6398,13 +6399,13 @@ ways, is the bundle's, and the generation serves on.
 
 **The text sent is read, not the translator's structure.** A sink inside each writer would be a second encoding of what
 the code under test meant, and a string assembled wrongly would report the right structure. `CosmosSqlFormReader`
-(tests) reads the text into a `ServiceForm` by the family's grammar: `NOT` binds tighter than `AND`, and `AND` than `OR`,
-which the guards rely on (`IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)`); grouping is kept as written, with no
+(tests) reads the text into a `ServiceForm` by the family's grammar: `NOT` binds tighter than `AND`, and `AND` than
+`OR`, which the guards rely on (`IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)`); grouping is kept as written, with no
 junction flattened, regrouped or deduplicated; a parameter is its value; anything else is opaque, up to the next
 connective outside its own parentheses and ternaries. It prints its parse back with the source's parentheses and names,
-and every text the run captures must print back byte for byte. The precedence is pinned on a dozen texts, and held to the
-service: over the 27 documents that set three paths to nothing, a null or a string, `WHERE` keeps what each pinned tree
-predicts, which refutes the other binding.
+and every text the run captures must print back byte for byte. The precedence is pinned on a dozen texts, and held to
+the service: over the 27 documents that set three paths to nothing, a null or a string, `WHERE` keeps what each pinned
+tree predicts, which refutes the other binding.
 
 **The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
@@ -6412,37 +6413,49 @@ parameters it bound. Production arms nothing; unarmed, each site reads one `vola
 is allocated once a process. Armed, the observer is the flow's own, so a test planning beside it is told nothing. Two
 accessors on the statement hand the check its scope and its declaration; nothing in production calls them.
 
-**A statement is checked as it is sent: one junction.** The service reads the built `WHERE`, so two conjuncts proven
-apart, `label >= X` and `label <= Y`, may still be a range over bounds that part, and the statement's `AND` composes
-only under its licence. So the conjuncts a statement's rounds admitted are written into one bundle as one IR junction and
-claimed against their conjunction as `Translate` builds it; S reads the licence and the range need across them, and
-each conjunct's own position is read from the same run. A conjunct whose IR holds a parameter or an opaque term, or
-whose text does not read back, is skipped, never one whose reading S cannot yet judge; the rest are checked together.
+**A check is what the service is asked together.** The service reads a whole `WHERE`: a filter's conjuncts, and those of
+any filter stacked beneath it that the implementor conjoined in. Two conjuncts proven apart, `label >= X` and
+`label <= Y`, may still be a range over bounds that part, and the `AND` composes only under its licence. So each `WHERE`
+sent is one check: every conjunct of every statement it holds is written into one bundle as one IR junction and claimed
+as the reader reads the `WHERE` itself, and S reads the licence and the range need across all of it. A statement never
+sent is claimed as `Translate` would write what its rounds admitted, read from those texts joined, each one's parameter
+names apart. A conjunct whose IR holds a parameter or an opaque term, or whose text does not read back, is skipped,
+never one whose reading S cannot yet judge; it is written as an opaque term, which no form agrees with, so a check that
+holds one is unproven and nothing the service reads beside a checked conjunct is left out of its check. Each conjunct's
+own position is read from the same run, and reported beside, never claimed.
 
-**The import is the earliest round's node.** A bundle takes one source, and the node a later round rendered from assumes
-the conjuncts admitted before it; checked there, those conjuncts would be agreed with only where they already hold. The
-first round's node lies above every later one, so its facts hold of every document the statement can keep: weaker, never
-wrong. A later round's conjunct can then be unproven where its own stratum would prove it, or refuted on a cell its
-round's facts rule out, two paths a conditional rule ties together that S imports apart; such a refutation is triaged as
-a warning until the emulator reproduces it.
+**The import is the statements' root.** A bundle takes one source, and a check holds every conjunct its statements'
+rounds admitted. A stratum assumes the conjuncts admitted before it, and the node a residual conjunct renders from is
+the last stratum, which assumes them all: checked there, those conjuncts would be agreed with only where they already
+hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, and every statement over one container
+shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong: a later round's
+conjunct can be unproven where its own stratum would prove it, or refuted on a cell its round's facts rule out, two
+paths a conditional rule ties together that S imports apart. Such a refutation is triaged as a warning until the
+emulator reproduces it, and the triage names the round.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
-armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the corpus's
-statements share a harness and are planned one at a time, the rest two at a time. A bundle runs within count limits that
-grow with the form, since descent and evaluation peel a junction a member at a time. A check is memoised by its IR, the
-import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a weakening's
-`Implies` holds where an exact push's `Equal` does not. Every check is read under the asserted set and under `Portable`
-beside it. CI asserts under `Emulator` until the probe account's record lands, since what Azure has not been run on is
-unsettled under `Portable` and answers widest.
+armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the
+corpus's statements share a harness and are planned one at a time, the rest two at a time. A bundle runs within count
+limits that grow with the form, since descent and evaluation peel a junction a member at a time. A check is memoised by
+its IR, the import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a
+weakening's `Implies` holds where an exact push's `Equal` does not; the theory, because a planted row is another theory.
+A bundle that declines on an engine failure, at any call, fails the discipline line as a run stopped short does: its
+Unproven is no answer of S's. Every check is read under the asserted set and under `Portable` beside it. CI asserts
+under `Emulator` until the probe account's record lands, since what Azure has not been run on is unsettled under
+`Portable` and answers widest.
 
 **Two cross-checks hold the capture to what was sent.** A conjunct's text at implementation is its text at admission,
-its values inlined: both render from the stratum that admitted it. And the implementor's `WHERE` holds the conjunction of
-the texts its statements wrote; anything else in it is counted as written outside the translator.
+its values inlined: both render from the stratum that admitted it. And the implementor's `WHERE` holds the conjunction
+of the texts its statements wrote, and reads back as itself; anything else in it is counted as written outside the
+translator, and a claim that holds it is unproven.
 
-**The reports** (`TestResults/rendering/`): `verdicts.tsv`, every admitted conjunct with its statement's verdict under each
-set and its own; `refutations.tsv`, each refuting cell and its triage; `vacuous-proofs.tsv`, a proof that holds only where
-Calcite raises, or a render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the statements
-resting on each registry row, which every proof must name; and `skipped.tsv`.
+**The reports** (`TestResults/rendering/`): `verdicts.tsv`, every conjunct a check holds with the check's verdict under
+each set and its own; `refutations.tsv`, each refuting cell and its triage, from the check's own import: a refutation
+warns where a refuting cell's path defaulted constrained, or where a cell spans two paths under conditional rules the
+facts graph reads, and otherwise fails CI; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
+render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the checks resting on each registry
+row, which every proof must name; and `skipped.tsv`. Every statement that fails to plan or implement fails CI too,
+rather than leaving the check smaller.
 
 ---
 

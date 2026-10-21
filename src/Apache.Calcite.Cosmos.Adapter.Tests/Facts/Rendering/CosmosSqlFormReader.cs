@@ -67,6 +67,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The parameter names a text holds.</summary>
         public static IReadOnlySet<string> Names(string text) => Name.Matches(text).Select(m => m.Value).ToHashSet(StringComparer.Ordinal);
 
+        /// <summary>A text with every parameter name suffixed, so that texts bound by lists of their own join apart.</summary>
+        public static string Rename(string text, string suffix) => Name.Replace(text, m => m.Value + suffix);
+
         /// <summary>A text with each parameter's value in place of its name: two texts that bind one value under two names are one.</summary>
         public static string Inline(string text, IReadOnlyList<CosmosParameter> parameters) =>
             Name.Replace(text, m => parameters.FirstOrDefault(p => p.Name == m.Value) is { Name: not null } p ? Literal(p.Value) ?? "?" + p.Value : m.Value);

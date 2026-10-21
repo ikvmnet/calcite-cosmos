@@ -2640,15 +2640,28 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A statement's later rounds are checked under its first round's facts** — *medium, for the coverage and precision
-  lines (c13, c15).* The check run writes a statement's conjuncts into one bundle as one junction, so that its `AND`
-  licence and range need are read across them, and a bundle takes one source: the first round's node, the only one whose
-  facts hold of every document the statement keeps. A conjunct a later round admitted, rendered knowing what the earlier
-  ones establish, is then unproven, or refuted on a cell that knowledge rules out. Three statements over `kinds`
-  (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean `label` and `kind = "c"` beside a boolean
-  `ref`, which the conditional rules on `kind` exclude; they are triaged as warnings, and the document each names is one the declaration rules out. Checking each
-  round's conjuncts from its own node and composing the rounds needs a rule over the bundles' verdicts, which S does not
-  have.
+- **A check's later rounds are judged under round 1's facts** — *medium, before c15's precision line.* A check imports
+  from its statements' root, the only node that assumes none of the conjuncts it holds. A conjunct a later round
+  admitted, rendered knowing what the earlier ones establish, is then unproven, or refuted on a cell that knowledge
+  rules out. Three checks over `kinds` (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean
+  `label` and `kind = "c"` beside a boolean `ref`, which the conditional rules on `kind` exclude; they warn, and their
+  triage names the round. They are two distinct entries, and c15's precision line kills above two that need a
+  gate-specific exception, so the fix lands before c15: judging each round on its own node needs a rule over bundles'
+  verdicts, which S does not have, or the conditional rules' joint facts imported beside the paths.
+- **A check that holds a conjunct it cannot judge is unproven** — *medium, for c13's coverage.* Nothing the service
+  reads beside a checked conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct
+  beside it unproven: 70 conjuncts proven before are unproven since, most beside a numeric or cast reading the loader
+  reads as opaque. c13's typed and cast readings bring most of those into the family; what remains is c13's to count.
+- **A `WHERE` of two statements, one of more than one conjunct, has no exact join** — *small, for c13.* The IR flattens
+  a junction and the claim keeps the `WHERE`'s grouping, `((a) AND ((b) AND (c)))`, so no IR child pairs with
+  `(b) AND (c)`: differential 117–121 are unproven, 15 conjuncts, 11 of them proven before. Regrouping the claim would
+  be a form no text holds; S composing a nested form over a flat junction is the fix.
+- **`verdicts.tsv` names no cause for an Unproven, and c13 chooses its coverage basis** — *small, for c13.* §5.1's "no
+  exact join" is S's to say, read from its rows (an IR arm no member of the claim agrees with), never from an arity
+  count. The check's verdict, repeated for each conjunct it holds, is the claim made; each conjunct's own position is
+  the `alone` column. c13's 5 % line reads one of them, and says which.
+- **`refutations.tsv` names no witness document** — *small, for c15.* §5.6 lists one, the least refuting cell completed
+  into a document (§5.5); it lands with c15's witnesses and the emulator column.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
@@ -2698,7 +2711,8 @@ across documents* and *A join of a container to itself* is the record.
 - **The rendering check asserts under the emulator's set until c09b lands** — *small.* `RenderingCheckRun.AssertedSet`
   is `Emulator`, because the outcomes that claim Azure rest on the probe account's record of 2026-10-16 alone, and what
   Azure has not been run on is unsettled under `Portable` and answers widest. c09b commits D7's record and widens `On`;
-  then `AssertedSet` becomes `Portable`, and the rendering tests that build under `Emulator` move with it where they hold.
+  then `AssertedSet` becomes `Portable`, and the rendering tests that build under `Emulator` move with it where they
+  hold.
 - **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
   resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
   measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.

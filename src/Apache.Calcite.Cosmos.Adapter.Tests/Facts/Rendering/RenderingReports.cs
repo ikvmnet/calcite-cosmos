@@ -12,7 +12,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The check run's reports (spec §5.6), tab-separated, in <c>TestResults/rendering/</c>: every conjunct's verdict, each
-    /// refutation, every proof that holds of nothing, the statements resting on each registry row, and the skips counted.
+    /// refutation, every proof that holds of nothing, the checks resting on each registry row, and the skips counted.
     /// </summary>
     internal static class RenderingReports
     {
@@ -20,29 +20,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly string[] Inputs = ["corpus", "differential", "partitions", "probe"];
 
         /// <summary>Writes every report, and returns the folder.</summary>
-        public static string Write(RenderingCheckRun run, string? folder = null)
+        public static string Write(RenderingCheckRun run)
         {
-            folder = Path.GetFullPath(folder ?? Path.Combine("TestResults", "rendering"));
+            var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);
             var rows = Ordered(run.Conjuncts).ToList();
 
-            Tsv(folder, "verdicts.tsv", ["input", "name", "statement", "conjunct", "site", "ir", "text", "verdict", "portable", "alone", "reason", "entry", "run", "open", "constrained"],
-                rows.Select(c => new object?[] { c.Input, c.Name, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
-                    Name(c.Entry?.Portable, c), c.Position < 0 ? null : Name(c.Entry!.Alone[c.Position], c), c.Skip ?? c.Reason, c.Entry?.Id,
+            Tsv(folder, "verdicts.tsv", ["input", "name", "unit", "statement", "conjunct", "site", "ir", "text", "verdict", "portable", "alone", "reason", "entry", "run", "open", "constrained"],
+                rows.Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
+                    Name(c.Entry?.Portable, c), Name(c.Entry?.Alone[c.Position], c), c.Skip ?? c.Entry?.Asserted.Reason, c.Entry?.Id,
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
-                    c.Entry?.Import.DefaultedOpen, c.Entry?.Import.Constrained.Count }));
+                    c.Import?.DefaultedOpen, c.Import?.Constrained.Count }));
 
-            Tsv(folder, "refutations.tsv", ["input", "name", "statement", "entry", "cells", "class", "rows", "constrained", "conditional", "emulator", "triage"],
-                Statements(rows).Select(c => (c, r: c.Entry!.Asserted.Refutation)).Where(x => x.r is not null).Select(x => new object?[] { x.c.Input, x.c.Name, x.c.Statement,
-                    x.c.Entry!.Id, string.Join("; ", x.r!.Cells.AsEnumerable()), x.r.Class, string.Join(" ", x.r.Rows.AsEnumerable()), x.c.Entry.Import.Constrained.Count,
-                    x.c.Conditional, "not run", Triage(x.c, x.r) }));
+            Tsv(folder, "refutations.tsv", ["input", "name", "unit", "entry", "cells", "class", "rows", "constrained", "conditional", "emulator", "triage"],
+                Refutations(run).Select(x => new object?[] { x.Check.Input, x.Check.Name, x.Check.Unit, x.Check.Entry!.Id, string.Join("; ", x.Refutation.Cells.AsEnumerable()),
+                    x.Refutation.Class, string.Join(" ", x.Refutation.Rows.AsEnumerable()), string.Join(" ", x.Check.Import!.Constrained.AsEnumerable()), x.Check.Conditional, "not run", x.Triage }));
 
-            Tsv(folder, "vacuous-proofs.tsv", ["input", "name", "statement", "entry", "why", "form"],
-                Statements(rows).Where(c => c.Entry!.Import.Contradicted || Vacuous(c.Entry!)).Select(c => new object?[] { c.Input, c.Name, c.Statement, c.Entry!.Id,
-                    c.Entry.Import.Contradicted ? "the render licence keeps nothing" : "Calcite raises on every row", c.Entry.Key.Form }));
+            Tsv(folder, "vacuous-proofs.tsv", ["input", "name", "unit", "entry", "why", "form"],
+                Units(rows).Where(RestsOnNothing).Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Entry!.Id,
+                    c.Import!.Contradicted ? "the render licence keeps nothing" : "Calcite raises on every row", c.Entry.Key.Form }));
 
             var resting = Resting(run);
-            Tsv(folder, "proof-lines.tsv", ["row", "statements", "which"],
+            Tsv(folder, "proof-lines.tsv", ["row", "checks", "which"],
                 CosmosAxioms.All.Select(a => a.Id).Concat(resting.Keys).Distinct().OrderBy(id => resting.ContainsKey(id) ? 0 : 1).ThenBy(id => id, StringComparer.Ordinal)
                     .Select(id => resting.TryGetValue(id, out var on) ? new object?[] { id, on.Count, string.Join(" ", on) } : [id, 0, "read by no proof"]));
 
@@ -56,20 +55,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return folder;
         }
 
-        /// <summary>Each registry row a proven statement's proof reads, and the statements resting on it.</summary>
+        /// <summary>Each registry row a proven check's proof reads, and the checks resting on it.</summary>
         public static IReadOnlyDictionary<string, IReadOnlyList<string>> Resting(RenderingCheckRun run) =>
-            Statements(Ordered(run.Conjuncts)).Where(c => c.Entry!.Asserted.Proof is not null)
-                .SelectMany(c => c.Entry!.Asserted.Proof!.Rows.AsEnumerable().Select(row => (Row: row, Statement: $"{c.Input}:{c.Name}#{c.Statement}")))
-                .GroupBy(r => r.Row, StringComparer.Ordinal).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)[.. g.Select(r => r.Statement).Distinct()], StringComparer.Ordinal);
+            Units(Ordered(run.Conjuncts)).Where(c => c.Entry!.Asserted.Proof is not null)
+                .SelectMany(c => c.Entry!.Asserted.Proof!.Rows.AsEnumerable().Select(row => (Row: row, Check: $"{c.Input}:{c.Name}#{c.Unit}")))
+                .GroupBy(r => r.Row, StringComparer.Ordinal).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)[.. g.Select(r => r.Check).Distinct()], StringComparer.Ordinal);
 
-        /// <summary>A refutation warns until the emulator reproduces it where the facts it was found on may admit what no document holds.</summary>
+        /// <summary>Each check refuted, and its triage.</summary>
+        public static IEnumerable<(RenderingCheckRun.Checked Check, Refutation Refutation, string Triage)> Refutations(RenderingCheckRun run) =>
+            Units(Ordered(run.Conjuncts)).Where(c => c.Entry!.Asserted.Refutation is not null).Select(c => (c, c.Entry!.Asserted.Refutation!, Triage(c, c.Entry.Asserted.Refutation!)));
+
+        /// <summary>
+        /// A check that rests on nothing: its render licence keeps no document (#217's shape), or a proof of it or of a
+        /// conjunct in it holds only where Calcite raises on every row.
+        /// </summary>
+        public static bool RestsOnNothing(RenderingCheckRun.Checked c) => c.Import!.Contradicted
+            || c.Entry!.Asserted is { Kind: RenderingVerdictKind.Proven, Vacuous: true } || c.Entry.Alone.Any(v => v is { Kind: RenderingVerdictKind.Proven, Vacuous: true });
+
+        /// <summary>
+        /// A refutation warns until the emulator reproduces it where the facts it was found on may admit what no document
+        /// holds: a refuting cell on a path whose import defaulted constrained, or a cell over two paths under conditional
+        /// rules. Where the check holds a conjunct a later round admitted, the triage says it was judged under round 1's facts.
+        /// </summary>
         static string Triage(RenderingCheckRun.Checked c, Refutation r) =>
-            c.Entry!.Import.Constrained.Count > 0 ? "warns: a default the declaration constrains"
+            (r.Cells.Any(cell => c.Import!.Constrained.Any(path => cell.StartsWith(path + "=", StringComparison.Ordinal))) ? "warns: a default the declaration constrains"
             : r.Cells.Count > 1 && c.Conditional ? "warns: a cell over two paths, under conditional rules"
-            : "fails";
-
-        static bool Vacuous(RenderingMemo.Entry entry) =>
-            entry.Asserted is { Kind: RenderingVerdictKind.Proven, Vacuous: true } || entry.Alone.Any(v => v is { Kind: RenderingVerdictKind.Proven, Vacuous: true });
+            : "fails") + (c.LaterRound ? "; a later round's conjunct, judged under round 1's facts" : "");
 
         static string Name(RenderingVerdict? verdict, RenderingCheckRun.Checked c) => verdict switch
         {
@@ -78,13 +89,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             _ => verdict.Kind.ToString(),
         };
 
-        /// <summary>One row a checked statement: its first checked conjunct's.</summary>
-        static IEnumerable<RenderingCheckRun.Checked> Statements(IEnumerable<RenderingCheckRun.Checked> rows) =>
-            rows.Where(c => c.Entry is not null).GroupBy(c => (c.Input, c.Name, c.Statement)).Select(g => g.First());
+        /// <summary>One row a check: its first checked conjunct's.</summary>
+        static IEnumerable<RenderingCheckRun.Checked> Units(IEnumerable<RenderingCheckRun.Checked> rows) =>
+            rows.Where(c => c.Entry is not null).GroupBy(c => (c.Input, c.Name, c.Unit)).Select(g => g.First());
 
         static IEnumerable<RenderingCheckRun.Checked> Ordered(IEnumerable<RenderingCheckRun.Checked> rows) =>
             rows.OrderBy(c => Array.IndexOf(Inputs, c.Input)).ThenBy(c => int.TryParse(c.Name, CultureInfo.InvariantCulture, out var n) ? n : -1)
-                .ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Statement).ThenBy(c => c.Conjunct);
+                .ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Unit).ThenBy(c => c.Position);
 
         static void Tsv(string folder, string name, string[] header, IEnumerable<object?[]> rows) =>
             File.WriteAllLines(Path.Combine(folder, name), [string.Join("\t", header), .. rows.Select(r => string.Join("\t", r.Select(Field)))]);

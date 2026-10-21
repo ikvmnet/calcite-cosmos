@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             captured.Should().Contain(c => c.InFamily);
             captured.Where(c => c.Read.Written != c.Text).Select(c => c.Text + " read back as " + c.Read.Written).Should().BeEmpty();
-            captured.Where(c => c.InFamily && Opaque(c.Read.Form)).Select(c => c.Text + " read as " + c.Read.Form).Should().BeEmpty();
+            captured.Where(c => c.InFamily && RenderingCheckRun.Opaque(c.Read.Form)).Select(c => c.Text + " read as " + c.Read.Form).Should().BeEmpty();
         }
 
         /// <summary>
@@ -72,8 +72,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Pinned.Where(p => CosmosSqlFormReader.Read(p.Text, Parameters, notOverAnd: true).Form.Equals(p.Tree) == false).Select(p => p.Text)
                 .Should().Contain(Pinned[0].Text).And.Contain(Pinned[4].Text);
         }
-
-        static bool Opaque(ServiceForm form) => form.Kind == ServiceFormKind.Opaque || form.Members.Any(Opaque);
 
         static string S(string name) => SqlValue.Spell(P(name));
 

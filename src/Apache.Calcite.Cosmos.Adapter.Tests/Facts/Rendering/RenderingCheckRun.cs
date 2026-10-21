@@ -9,8 +9,12 @@ using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
+using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
 
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -20,23 +24,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The check run (spec §5.3, as Appendix E amends it): each input statement planned and implemented in a flow armed for
-    /// the capture and for <c>D0</c>; then each filter statement a round admitted, read off the texts written, imported
-    /// from its licensed node and checked in a bundle of S as one junction of its conjuncts, claimed against their
-    /// conjunction as built, so that the statement's <c>AND</c> licence and range need are read across them.
+    /// The check run (spec §5.3, as Appendix E amends it): each input planned and implemented in a flow armed for the
+    /// capture and for <c>D0</c>, then what the service is asked together checked as one junction in S: each <c>WHERE</c>
+    /// sent, and each statement never sent as the conjunction its rounds admitted (<c>DESIGN.md</c>, <i>A check is what
+    /// the service is asked together</i>).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// A conjunct is skipped for a parameter, for an IR outside the reader's family (<c>Opaque</c> anywhere), or for a
-    /// text the reader reads back otherwise or reads as opaque; never for what it means. The rest of a statement's
-    /// conjuncts are checked together. Their import is the node of the earliest round among them, which every later
-    /// round's node lies beneath: weaker facts, so a later conjunct may be unproven there, never wrongly proven.
-    /// </para>
-    /// <para>
-    /// The run decides only whether a verdict may be read; S decides what it is. Each check is memoised by content,
-    /// and read under <see cref="AssertedSet"/> and, beside it, under <see cref="RenderingSet.Portable"/>.
-    /// </para>
-    /// </remarks>
     internal sealed class RenderingCheckRun
     {
 
@@ -53,32 +45,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
             Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, new JsonFactGenerations())));
 
-        readonly RenderingGraph _graph;
-
-        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null)
-        {
-            Memo = memo ?? new RenderingMemo();
-            _graph = graph ?? Graph;
-        }
+        public RenderingCheckRun(RenderingMemo? memo = null) => Memo = memo ?? new RenderingMemo();
 
         public RenderingMemo Memo { get; }
 
-        /// <summary>Every conjunct a round admitted, one row each, with what its statement's check says.</summary>
+        /// <summary>Every conjunct a check holds, one row each, with what the check says.</summary>
         public ConcurrentQueue<Checked> Conjuncts { get; } = new();
 
         /// <summary>Every text captured at either site, once a text with its values inlined: what the reader is held to.</summary>
         public ConcurrentDictionary<string, (string Text, IReadOnlyList<CosmosParameter> Parameters, bool InFamily)> Captured { get; } = new();
 
         /// <summary>
-        /// What the cross-checks found: a conjunct whose texts at the two sites differ with their values inlined, or a
-        /// statement whose texts sent are not the conjunction its <c>WHERE</c> holds.
+        /// What the cross-checks found: a conjunct written two ways with its values inlined, a <c>WHERE</c> that is not the
+        /// conjunction of the texts its statements sent, or a text claimed that does not read back.
         /// </summary>
         public ConcurrentQueue<string> Mismatches { get; } = new();
 
         /// <summary>Text a <c>WHERE</c> holds that no site wrote: written outside the translator.</summary>
         public ConcurrentQueue<(string Input, string Name, string Text)> Outside { get; } = new();
 
-        /// <summary>A statement that failed to plan or to implement.</summary>
+        /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
@@ -94,36 +80,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Checks a claim of a form for the conjunction of conjuncts, each with its own member of the form, under the asserted
-        /// set and under <see cref="RenderingSet.Portable"/>; memoised on the import the callback makes into a bundle.
+        /// Checks a claim of a form for the conjunction of conjuncts, each with its own member of the form or none, under the
+        /// asserted set and under <see cref="RenderingSet.Portable"/>; memoised on the import the callback makes, which it
+        /// is first asked with no bundle, for the report alone.
         /// </summary>
-        public RenderingMemo.Entry Check(IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm> members, Verdict claim,
-            Func<RenderingBundle, ImportReport> import)
+        public (RenderingMemo.Entry Entry, ImportReport Import) Check(IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm?> members,
+            Verdict claim, Func<RenderingBundle?, ImportReport> import)
         {
             var ir = conjuncts.Count == 1 ? conjuncts[0] : new SqlPredicate.And(conjuncts);
-            RenderingMemoKey key;
-            using (var probe = _graph.Open(AssertedSet))
-                key = new RenderingMemoKey(ir.Digest, import(probe).Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(probe.Theory));
-
-            return Memo.GetOrAdd(key, id =>
+            var report = import(null);
+            var key = new RenderingMemoKey(ir.Digest, report.Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(Graph.Current()));
+            return (Memo.GetOrAdd(key, id =>
             {
-                var (asserted, run, alone, report) = Bundle(AssertedSet);
-                var (portable, portableRun, _, _) = Bundle(RenderingSet.Portable);
-                return new RenderingMemo.Entry(id, key, asserted, run, portable, portableRun, alone, report);
-            });
+                var (asserted, run, alone, failure) = Bundle(AssertedSet);
+                var (portable, portableRun, _, declined) = Bundle(RenderingSet.Portable);
+                return new RenderingMemo.Entry(id, key, asserted, run, portable, portableRun, alone, failure ?? declined);
+            }), report);
 
-            (RenderingVerdict, RenderingRun, IReadOnlyList<RenderingVerdict>, ImportReport) Bundle(RenderingSet set)
+            (RenderingVerdict, RenderingRun, IReadOnlyList<RenderingVerdict?>, Exception?) Bundle(RenderingSet set)
             {
-                using var bundle = _graph.Open(set);
+                using var bundle = Graph.Open(set);
                 var each = conjuncts.Select(bundle.Write).ToList();
                 var root = bundle.Write(ir);
-                var report = import(bundle);
+                import(bundle);
                 bundle.Claim(root, form);
 
                 // A count limit, never time: descent and evaluation peel a junction a member at a time, so it grows with the form.
                 var run = bundle.Run(64 + 8 * Leaves(form));
-                return (bundle.Read(root, form, claim), run, [.. each.Select((c, i) => bundle.Read(c, members[i], claim))], report);
+                return (bundle.Read(root, form, claim), run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure);
             }
+        }
+
+        /// <summary>
+        /// The one node every statement of a check is imported from: their root, which assumes none of their conjuncts, and
+        /// so none the check holds; <c>null</c> where two are rooted apart.
+        /// </summary>
+        internal static (Scope? Context, PredicateRules? Rules)? RootOf(IEnumerable<CosmosStatementScope> scopes)
+        {
+            var roots = scopes.Select(s => s.ContextFor(OracleLicence.Declaration)).ToList();
+            return roots.All(r => ReferenceEquals(r.Context, roots[0].Context)) ? roots[0] : null;
         }
 
         void Plan(RenderingInputs.Statement input)
@@ -140,11 +135,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
                 catch (Exception e)
                 {
-                    Failures.Enqueue((input.Input, input.Name, "plans: " + Failure(e)));
+                    Failures.Enqueue((input.Input, input.Name, "plans: " + PlanDigests.Failure(e)));
                     return;
                 }
 
-                foreach (var cosmos in Subtrees(planned))
+                foreach (var cosmos in PlanDigests.Subtrees(planned, n => n is CosmosRel))
                 {
                     if (PlannerHarness.TableOf(cosmos) is not CosmosTable table)
                         continue;
@@ -158,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                     catch (Exception e)
                     {
-                        Failures.Enqueue((input.Input, input.Name, "implements: " + Failure(e)));
+                        Failures.Enqueue((input.Input, input.Name, "implements: " + PlanDigests.Failure(e)));
                     }
                 }
             }
@@ -166,62 +161,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             // Read after the statement, never during its planning: the importer opens nothing planning did not.
             var records = recorder.Records;
             var statements = records.Select(r => r.Statement).Distinct().ToList();
-            for (var k = 0; k < statements.Count; k++)
-                CheckStatement(input, k, statements[k], [.. records.Where(r => r.Statement == statements[k])]);
+            foreach (var record in records)
+                Captured.TryAdd(CosmosSqlFormReader.Inline(record.Text, record.Parameters), (record.Text, record.Parameters,
+                    Parts(IrOf(record)).All(p => p is not (SqlPredicate.Opaque or SqlValue.Parameter))));
 
+            foreach (var conjunct in records.GroupBy(r => (r.Statement, r.Conjunct)).Where(g => g.Select(r => CosmosSqlFormReader.Inline(r.Text, r.Parameters)).Distinct().Count() > 1))
+                Mismatches.Enqueue($"{input.Input} {input.Name}: conjunct {conjunct.Key.Conjunct} written as {string.Join(" and as ", conjunct.Select(r => r.Text).Distinct())}");
+
+            var unit = 0;
             foreach (var (where, from, to) in queries)
-                Account(input, where, records.Take(to).Skip(from).Where(r => r.Site == 2).ToList());
+            {
+                var sent = records.Take(to).Skip(from).Where(r => r.Site == 2).ToList();
+                Account(input, where, sent);
+                if (sent.Count > 0)
+                    CheckUnit(input, unit++, statements, records, sent, where!, [.. sent.SelectMany(r => r.Parameters).DistinctBy(p => p.Name)]);
+            }
+
+            // A statement never sent is claimed as Translate would write what its rounds admitted, each conjunct's names apart.
+            foreach (var statement in statements.Where(s => records.All(r => r.Statement != s || r.Site == 1)))
+            {
+                var admitted = records.Where(r => r.Statement == statement).ToList();
+                CheckUnit(input, unit++, statements, records, admitted,
+                    Built(statement, i => admitted.FirstOrDefault(r => r.Conjunct == i) is { } r ? CosmosSqlFormReader.Rename(r.Text, "_" + i) : null),
+                    [.. admitted.SelectMany(r => r.Parameters.Select(p => p with { Name = p.Name + "_" + r.Conjunct }))]);
+            }
 
             GC.KeepAlive(records);
         }
 
-        void CheckStatement(RenderingInputs.Statement input, int k, CosmosFilterStatement statement, List<CaptureRecord> records)
+        /// <summary>
+        /// Checks one text the service is asked, or would be, as one junction of every conjunct it holds: claimed as the
+        /// reader reads the text, and imported from the statements' root. A conjunct skipped is written as an opaque term,
+        /// which no form agrees with, so a junction that holds one is never proven: nothing the service reads beside a
+        /// checked conjunct is left out of its check.
+        /// </summary>
+        void CheckUnit(RenderingInputs.Statement input, int unit, List<CosmosFilterStatement> statements, IReadOnlyList<CaptureRecord> records,
+            List<CaptureRecord> held, string text, IReadOnlyList<CosmosParameter> parameters)
         {
-            var ir = statement.Statement.Conjuncts;
-            var texts = new CaptureRecord?[ir.Count];
-            foreach (var record in records.OrderByDescending(r => r.Site))
+            var claimed = CosmosSqlFormReader.Read(text, parameters);
+            if (claimed.Written != text)
             {
-                texts[record.Conjunct] ??= record;
-                if (CosmosSqlFormReader.Inline(record.Text, record.Parameters) != CosmosSqlFormReader.Inline(texts[record.Conjunct]!.Text, texts[record.Conjunct]!.Parameters))
-                    Mismatches.Enqueue($"{input.Input} {input.Name}: conjunct {record.Conjunct} admitted as {record.Text}, sent as {texts[record.Conjunct]!.Text}");
+                Mismatches.Enqueue($"{input.Input} {input.Name}: {text} reads back as {claimed.Written}");
+                return;
             }
 
-            var reads = texts.Select(r => r is null ? null : CosmosSqlFormReader.Read(r.Text, r.Parameters)).ToArray();
-            var skips = texts.Select((r, i) => r is null ? null : Skip(ir[i], r, reads[i]!)).ToArray();
-            var checkable = Enumerable.Range(0, ir.Count).Where(i => texts[i] is not null && skips[i] is null).ToArray();
-            foreach (var record in records)
-                Captured.TryAdd(CosmosSqlFormReader.Inline(record.Text, record.Parameters), (record.Text, record.Parameters, Parts(ir[record.Conjunct]).All(p => p is not (SqlPredicate.Opaque or SqlValue.Parameter))));
-
-            RenderingMemo.Entry? entry = null;
-            string? reason = null;
-            if (checkable.Length > 0)
+            var reads = held.Select(r => CosmosSqlFormReader.Read(r.Text, r.Parameters)).ToList();
+            var skips = held.Select((r, i) => Skip(r, reads[i], records.Any(x => x.Statement == r.Statement && x.Conjunct == r.Conjunct && x.Comparisons.Count + x.Rechecks.Count > 0))).ToList();
+            var (entry, report) = ((RenderingMemo.Entry?)null, (ImportReport?)null);
+            if (skips.Any(s => s is null))
             {
-                var scope = statement.ScopeForCheck;
-                var first = checkable.MinBy(scope.StratumOf);
-                var (node, rules) = scope.ContextFor(OracleLicence.RenderConjunct(first));
-                var source = new ImportSource(statement.Statement.Digest, $"render {first}", scope.StratumOf(first));
-                var paths = checkable.SelectMany(i => ir[i].Paths).Distinct().ToArray();
-                var form = Shape(statement, i => checkable.Contains(i) ? reads[i]!.Form : null, parts => ServiceForm.JunctionOf(CosmosServiceTest.And, parts))!;
+                if (RootOf(held.Select(r => r.Statement.ScopeForCheck).Distinct()) is not { } root)
+                {
+                    Failures.Enqueue((input.Input, input.Name, "checks: two statements rooted apart"));
+                    return;
+                }
 
-                // Sent whole, the claim is the conjunction as built, read back.
-                if (checkable.Length == ir.Count && texts.All(t => t!.Site == 2)
-                    && CosmosSqlFormReader.Read(Built(statement, i => texts[i]!.Text), [.. texts.SelectMany(t => t!.Parameters)]).Form.Equals(form) == false)
-                    Mismatches.Enqueue($"{input.Input} {input.Name}: {Built(statement, i => texts[i]!.Text)} reads otherwise than its conjuncts joined");
-
-                entry = Check([.. checkable.Select(i => ir[i])], form, [.. checkable.Select(i => reads[i]!.Form)], Verdict.Equal,
-                    bundle => RenderingImporter.Import(bundle, source, node, rules, statement.DeclarationForCheck, paths));
-                GC.KeepAlive(scope);
-
-                // A written junction of another arity than the IR's flattened one leaves an IR child no exact join.
-                var arity = form.Kind == ServiceFormKind.And ? form.Members.Count : 1;
-                reason = entry.Asserted.Reason ?? (entry.Asserted.Kind == RenderingVerdictKind.Unproven && arity != checkable.Sum(i => Arms(ir[i])) ? "no exact join" : null);
+                var conjuncts = held.Select((r, i) => skips[i] is null ? IrOf(r) : new SqlPredicate.Opaque(-1 - i)).ToList();
+                var source = new ImportSource(string.Join("+", held.Select(r => r.Statement.Statement.Digest).Distinct()), "declaration", 1);
+                (entry, report) = Check(conjuncts, claimed.Form, [.. reads.Select((r, i) => skips[i] is null ? r.Form : null)], Verdict.Equal,
+                    bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths)));
             }
 
-            var conditional = statement.DeclarationForCheck.Rules.Any(r => r.Body.Count > 0);
-            for (var i = 0; i < ir.Count; i++)
-                if (texts[i] is { } text)
-                    Conjuncts.Enqueue(new Checked(input.Input, input.Name, k, i, text.Site, ir[i].Digest, text.Text, skips[i], skips[i] is null ? entry : null,
-                        Array.IndexOf(checkable, i), conditional, skips[i] is null ? reason : null));
+            var (conditional, later) = (held[0].Statement.DeclarationForCheck.IsConditional, held.Any(r => r.Statement.StratumOf(r.Conjunct) > 1));
+            for (var i = 0; i < held.Count; i++)
+                Conjuncts.Enqueue(new Checked(input.Input, input.Name, unit, statements.IndexOf(held[i].Statement), held[i].Conjunct, held[i].Site, IrOf(held[i]).Digest,
+                    held[i].Text, skips[i], skips[i] is null ? entry : null, i, report, conditional, later));
         }
 
         /// <summary>Holds each <c>WHERE</c> built to the conjunction of the texts its statements sent, as <c>Translate</c> writes one.</summary>
@@ -242,32 +246,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Outside.Enqueue((input.Input, input.Name, rest));
         }
 
-        static string? Skip(SqlPredicate ir, CaptureRecord record, ReadForm read) =>
-            Parts(ir).Any(p => p is SqlValue.Parameter) || record.Parameters.Any(p => p.Value is CosmosDynamicValue) || record.Comparisons.Count + record.Rechecks.Count > 0 ? "parameter"
-            : Parts(ir).Any(p => p is SqlPredicate.Opaque) ? "outside the IR"
+        static SqlPredicate IrOf(CaptureRecord record) => record.Statement.Statement.Conjuncts[record.Conjunct];
+
+        static string? Skip(CaptureRecord record, ReadForm read, bool rechecked) =>
+            Parts(IrOf(record)).Any(p => p is SqlValue.Parameter) || record.Parameters.Any(p => p.Value is CosmosDynamicValue) || rechecked ? "parameter"
+            : Parts(IrOf(record)).Any(p => p is SqlPredicate.Opaque) ? "outside the IR"
             : read.Written != record.Text || Opaque(read.Form) ? "unreadable"
             : null;
 
-        static int Arms(SqlPredicate p) => p is SqlPredicate.And and ? and.Arms.Sum(Arms) : 1;
-
-        static string Failure(Exception e) => e.GetType().Name + ": " + e.Message.Split('\n')[0].TrimEnd('\r');
-
-        static bool Opaque(ServiceForm form) => form.Kind == ServiceFormKind.Opaque || form.Members.Any(Opaque);
+        internal static bool Opaque(ServiceForm form) => form.Kind == ServiceFormKind.Opaque || form.Members.Any(Opaque);
 
         static int Leaves(ServiceForm form) => form.Members.Count == 0 ? 1 : form.Members.Sum(Leaves);
 
         /// <summary>Every predicate and value in the IR, depth first.</summary>
-        static IEnumerable<object> Parts(SqlPredicate predicate) => predicate switch
+        static IEnumerable<object> Parts(SqlPredicate predicate) => predicate.Subterms.SelectMany(term => term switch
         {
-            SqlPredicate.And a => a.Arms.SelectMany(Parts),
-            SqlPredicate.Or o => o.Arms.SelectMany(Parts),
-            SqlPredicate.Not n => Parts(n.Operand),
             SqlPredicate.Compare c => Values(c.Left).Concat(Values(c.Right)),
             SqlPredicate.In i => Values(i.Value),
             SqlPredicate.IsNull n => Values(n.Value),
             SqlPredicate.IsDefined d => Values(d.Value),
-            _ => [predicate],
-        };
+            _ => [term],
+        });
 
         static IEnumerable<object> Values(SqlValue value) => value switch
         {
@@ -276,40 +275,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             _ => [value],
         };
 
-        /// <summary>The conjunction of the texts given, as <c>Translate</c> writes one.</summary>
-        static string Built(CosmosFilterStatement statement, Func<int, string?> text) => Shape(statement, text, parts => "(" + string.Join(" AND ", parts) + ")")!;
-
         /// <summary>
-        /// The conjunction of a statement's conjuncts as <c>Translate</c> writes it, each by its leaf and those with none
-        /// left out: every <c>AND</c> of the condition a junction of what it holds, and one of a single member that member.
+        /// The conjunction of a statement's texts as <c>Translate</c> writes it, those with none left out: every <c>AND</c>
+        /// of the condition a parenthesised junction of what it holds, and one of a single member that member.
         /// </summary>
-        static T? Shape<T>(CosmosFilterStatement statement, Func<int, T?> leaf, Func<IReadOnlyList<T>, T> and) where T : class
+        static string Built(CosmosFilterStatement statement, Func<int, string?> text)
         {
             var next = 0;
-            T? Walk(RexNode node)
+            string? Walk(RexNode node)
             {
                 if (node is not RexCall call || call.getKind() != SqlKind.AND)
-                    return leaf(next++);
+                    return text(next++);
 
-                var parts = Enumerable.Range(0, call.getOperands().size()).Select(i => Walk((RexNode)call.getOperands().get(i))).OfType<T>().ToList();
-                return parts.Count switch { 0 => null, 1 => parts[0], _ => and(parts) };
+                var parts = Enumerable.Range(0, call.getOperands().size()).Select(i => Walk((RexNode)call.getOperands().get(i))).OfType<string>().ToList();
+                return parts.Count switch { 0 => null, 1 => parts[0], _ => "(" + string.Join(" AND ", parts) + ")" };
             }
 
-            return Walk(statement.Condition);
+            return Walk(statement.Condition) ?? "";
         }
 
-        /// <summary>The Cosmos subtrees of a plan, each rooted where the walk from the top first meets the convention.</summary>
-        static IEnumerable<RelNode> Subtrees(RelNode node) => node is CosmosRel
-            ? [node]
-            : Enumerable.Range(0, node.getInputs().size()).SelectMany(i => Subtrees((RelNode)node.getInputs().get(i)));
-
         /// <summary>
-        /// One conjunct a round admitted: its input statement, its filter statement's number within it, its index, the site
-        /// its text was read from (2 where it was sent), its IR and text, why it was skipped, the check of its statement and
-        /// its own position in it, whether the declaration has conditional rules, and why the check is unproven.
+        /// One conjunct a check holds: its input, the check's number within it, its filter statement's number and its own
+        /// index, the site its text was read from (2 where it was sent), its IR and text, why it was skipped, the check and
+        /// its position in it, the check's import, whether the declaration has conditional rules the facts graph reads, and
+        /// whether the check holds a conjunct a later round admitted.
         /// </summary>
-        public sealed record Checked(string Input, string Name, int Statement, int Conjunct, int Site, string Ir, string Text, string? Skip,
-            RenderingMemo.Entry? Entry, int Position, bool Conditional, string? Reason);
+        public sealed record Checked(string Input, string Name, int Unit, int Statement, int Conjunct, int Site, string Ir, string Text, string? Skip,
+            RenderingMemo.Entry? Entry, int Position, ImportReport? Import, bool Conditional, bool LaterRound);
 
     }
 

@@ -163,6 +163,11 @@ namespace Apache.Calcite.Cosmos.Facts
         internal IReadOnlyCollection<JsonDocumentPath> MentionedPaths => _mentionedPaths;
 
         /// <summary>
+        /// Gets whether a rule the theory reads is conditional, so that what it states of one path depends on another.
+        /// </summary>
+        internal bool IsConditional => _guarded.Count > 0;
+
+        /// <summary>
         /// Gets whether the container declares nothing.
         /// </summary>
         public bool IsEmpty => _rules.Length == 0;

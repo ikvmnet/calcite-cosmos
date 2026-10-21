@@ -41,10 +41,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// One check: the claim's verdict under the asserted set and under <see cref="RenderingSet.Portable"/>, each with the
-        /// run it was read off; each conjunct's verdict at its own position in the first; and the import.
+        /// run it was read off; each checked conjunct's verdict at its own position in the first; and the engine failure
+        /// either bundle declined on, which the discipline line refuses.
         /// </summary>
         public sealed record Entry(int Id, RenderingMemoKey Key, RenderingVerdict Asserted, RenderingRun AssertedRun, RenderingVerdict Portable,
-            RenderingRun PortableRun, IReadOnlyList<RenderingVerdict> Alone, ImportReport Import);
+            RenderingRun PortableRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure);
 
     }
 
