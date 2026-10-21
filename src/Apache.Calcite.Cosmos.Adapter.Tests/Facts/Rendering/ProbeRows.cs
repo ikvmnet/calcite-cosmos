@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -10,33 +11,30 @@ using Eggnog;
 using FluentAssertions;
 
 using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.OracleFixture;
-using static Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The rendering tests' fixture: the probe's rows (<c>probes/rcore/Program.cs</c>), completed for the cells and
-    /// connectives the first checks read, each written for the emulator and Azure so that both service sets settle it; the
-    /// theory defined from them, once; the probe's label forms; and a bundle that checks one claim. Test data, until the
-    /// registry replaces it.
+    /// The rendering tests' fixture: the registry's rows as S reads them (<see cref="CosmosAxiomRows"/>), and no others; the
+    /// theory defined from them, once, and the emulator's table it settles; the probe's label forms
+    /// (<c>probes/rcore/Program.cs</c>); and a bundle that checks one claim. A test that needs a row the registry lacks
+    /// plants it under an id no row holds.
     /// </summary>
     internal static class ProbeRows
     {
 
-        static readonly CosmosValueClass[] Kinds = [Absent, Null, True, False, Number, String, Object, Array];
-
-        public static IReadOnlyList<MeasuredOutcome> Rows { get; } = Build();
-
-        /// <summary>The table a service set settles the rows into: one entry a key, both targets agreeing.</summary>
-        public static ServiceTable Table { get; } = TableOf(Rows.Where(row => row.Target != RenderingTarget.Calcite));
+        public static IReadOnlyList<MeasuredOutcome> Rows { get; } = CosmosAxiomRows.Read(CosmosAxioms.All);
 
         public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows);
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
-        /// <summary>S defined from the probe's rows, once a run.</summary>
+        /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
+
+        /// <summary>The table S settles for the emulator's set, which CI asserts under.</summary>
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)));
 
         public static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
 
@@ -49,10 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly ServiceForm Guarded = ServiceForm.JunctionOf(CosmosServiceTest.And,
             [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
 
-        /// <summary>
-        /// One entry a key, holding every answer its rows give and every row's id: what <c>tabulate</c> settles where every
-        /// row is written for each target a set serves, as the probe's are. The primitives' tests build plants with it.
-        /// </summary>
+        /// <summary>A plant's table: one entry a key, holding every answer its rows give and every row's id.</summary>
         public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows) => ServiceTable.Of(ValueSet.From(rows.GroupBy(row => row.Key).Select(key =>
             MeasuredEntry.Of(key.Key, ValueSet.From(key.Select(row => row.Answer)), ValueSet.From(key.Select(row => row.AxiomId)), AnswerMeanings.Measured))));
 
@@ -72,42 +67,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var run = bundle.Run();
             (run.StopReason, run.OneNodePerClass, run.Contradicted).Should().Be((RunStopReason.Completed, true, false), form.Text);
             return (bundle.Read(root, form, Verdict.Equal), bundle.Read(root, form, Verdict.Implies));
-        }
-
-        static List<MeasuredOutcome> Build()
-        {
-            var rows = new List<MeasuredOutcome>();
-            void Service(string id, CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer)
-            {
-                rows.Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Emulator, answer));
-                rows.Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Azure, answer));
-            }
-
-            foreach (var kind in Kinds)
-            {
-                Service("IsPrimitive", CosmosServiceTest.IsPrimitive, None, kind, kind is Absent or Object or Array ? CosmosAnswer.False : CosmosAnswer.True);
-                Service("IsNull", CosmosServiceTest.IsNull, None, kind, kind == Null ? CosmosAnswer.True : CosmosAnswer.False);
-                Service("IsDefined", CosmosServiceTest.IsDefined, None, kind, kind == Absent ? CosmosAnswer.False : CosmosAnswer.True);
-                if (kind == String)
-                    continue;
-
-                Service("EqualityAcrossTypesIsFalse", CosmosServiceTest.Equal, String, kind, kind == Absent ? CosmosAnswer.Undefined : CosmosAnswer.False);
-                Service("InequalityOverNullIsTrue", CosmosServiceTest.NotEqual, String, kind, kind == Absent ? CosmosAnswer.Undefined : CosmosAnswer.True);
-            }
-
-            Service("StringOrderIsCodePoint", CosmosServiceTest.Order, String, None, CosmosAnswer.CodePoint);
-            foreach (var side in new[] { Below, Equal, Above })
-            {
-                Service("StringOrderIsCodePoint", CosmosServiceTest.Equal, String, side, side == Equal ? CosmosAnswer.True : CosmosAnswer.False);
-                Service("StringOrderIsCodePoint", CosmosServiceTest.NotEqual, String, side, side == Equal ? CosmosAnswer.False : CosmosAnswer.True);
-            }
-
-            // The connectives are Kleene's expectations written as rows, not measurements, until c07–c09 measure them.
-            foreach (var (target, key, answer) in KleeneTables.Rows)
-                rows.Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene"
-                    : key.Test == CosmosServiceTest.Not ? "Service.NotOverUndefinedIsUndefined" : "Service.ConnectivesReadNonBooleansAsUnknown", key, target, answer));
-
-            return rows;
         }
 
     }

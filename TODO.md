@@ -2520,8 +2520,9 @@ across documents* and *A join of a container to itself* is the record.
   `Sql/CosmosAxioms.cs` that was measured on the emulator alone is now measured on the probe account
   too, and the order's own rows — code point order, the constants, the excluded path, the composite
   index, the rank's direction, the merge across partitions — are pinned by tests that skip where the
-  account in hand cannot show them. The translator still encodes each fact where it uses it; reading
-  the registry, and refusing where a row names only one target, is the step after.
+  account in hand cannot show them. The rendering graph reads a row's outcomes (`CosmosAxiomRows`); the
+  translator still encodes each fact where it uses it, and reading the registry, refusing where a row
+  names only one target, is the step after.
 - **Ternary logic partitioning passes over the fixes** — *done; what it found is kept below.*
   `EveryPredicatePartitionsTheRows` (`DESIGN.md`, *Differential testing*) fails on main: 131 of
   1,000 predicates. Over the fixes for A to K it failed two, both L, and with L closed the gate's
@@ -2639,9 +2640,6 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
-  orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
-  under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.
 - **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
   `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
   `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
@@ -2662,6 +2660,37 @@ across documents* and *A join of a container to itself* is the record.
   (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")` keeps the booleans too. The reading
   wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
   `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
+- **The probe account's run of 2026-10-19 has no record** — *small.* The Azure targets of the string functions' and the
+  stored values' rows rest on it, and `Tests/Measurements/Runs/` holds only 2026-10-16's, so an outcome on one of those
+  rows cannot claim Azure until a run of its witnesses is recorded.
+- **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
+  unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
+  constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
+- **Orderings over strings that may hold U+0000 are unproven on the emulator** — *small, for the coverage line (c12).*
+  The emulator orders a string holding U+0000 as U+FDD0 then `0` (`CosmosAnswer.StoredCodePoint`), so S proves `<`,
+  `<=`, `>` and `>=` over strings only where the import says they hold no U+0000; `=` and `!=` with ASCII are exact
+  whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
+  finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
+  comparator as code point.
+- **What the probe account owes at D7** — *small.* Its run of the measurement namespace records every cell `Holds`
+  measures, `runs.tsv` written before any assertion fails, and c09b widens `On` to Azure where the record holds a cell
+  read as the pinning test reads it. Azure claims little now (`DESIGN.md`, *The registry, read into S*), so it owes:
+  the `IS_*` family, the comparisons and `NOT` over undefined filtered rather than projected; the `WHERE NOT` beside
+  each `NotKept`, which a later line's finer answer then claims; every literal as a parameter, 2^53 + 1 among them; the
+  catalogue's wider witnesses, a string beside `"true"`, a number beside 1, `false`, an object and an array; both orders
+  with their `>` filters, U+0000 among the strings, where code point is claimed only if Azure's `>` reads past it as
+  its `ORDER BY` does; the range outside its parted bounds, above them included, between agreeing bounds and over
+  another type, and its `>= AND <=` spelling beside `BETWEEN`; the rows that claim the emulator alone — N1, N3, the
+  constants, N14, whether Azure compares an int64 with a double by value — and `Sql.CosmosFunctionBodiesTests` for
+  N13. N8's Azure cell, `NotKept`, is matched by false or undefined, so its test passes there if Azure keeps nothing;
+  a cell Azure answers otherwise than the emulator's declared answer fails after the run is recorded, and c09b
+  declares it as a divergence.
+- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number only within ±2^53 and answers
+  widest beyond, where `Numeric` means the value compared (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as
+  itself, anything else as its correctly rounded double, the two by value. c13's double slots should place a cell by
+  the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
+  its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
+  as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
 
 ---
 

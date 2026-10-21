@@ -113,8 +113,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var dropped = MeasuredKey.Of(Op.And, CosmosValueClass.True, CosmosValueClass.False);
             var theory = RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows.Where(row => row.Key != dropped || row.Target != RenderingTarget.Emulator)] });
-            ProbeTheory.Theory.Get(ProbeTheory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not });
-            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.Or, Op.Not });
+            ProbeTheory.Theory.Get(ProbeTheory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not, Op.Range });
+            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.Or, Op.Not, Op.Range });
 
             var conjunct = And(Eq(Text(KindPath), "a"), Eq(Text(CategoryPath), "b"));
             var form = All(KindIsA, Compare(Op.Equal, Category, "b"));
@@ -147,48 +147,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void WithoutTheNonBooleanRowsABareMemberDoesNotCompose()
         {
-            CosmosValueClass[] kinds = [CosmosValueClass.Absent, CosmosValueClass.Null, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Number,
-                CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array];
-            var bare = kinds.SelectMany(kind => new[] { RenderingTarget.Emulator, RenderingTarget.Azure }.Select(target => new MeasuredOutcome("Service.BarePathKeepsOnlyTrue",
-                MeasuredKey.Of(Op.Bare, CosmosValueClass.None, kind), target,
-                kind == CosmosValueClass.True ? CosmosAnswer.True : kind == CosmosValueClass.False ? CosmosAnswer.False : CosmosAnswer.Undefined)));
             static bool Boolean(CosmosValueClass x) => x is CosmosValueClass.None or CosmosValueClass.True or CosmosValueClass.False or CosmosValueClass.Undefined;
             var booleans = ProbeRows.Rows.Where(row => row.Key.Test is not (Op.And or Op.Or or Op.Not) || Boolean(row.Key.Operand) && Boolean(row.Key.Cell));
 
             var conjunct = And(Eq(Raw(FlagPath), true), Eq(Text(KindPath), "a"));
             var form = All(ServiceForm.BareOf(SqlValue.Spell(FlagPath)), KindIsA);
-            Check(conjunct, form, RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows, .. bare] })).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
+            Check(conjunct, form).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
-            var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans, .. bare] });
-            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEmpty("no connective is licensed");
+            var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans] });
+            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().Equal([Op.Range], "no connective is licensed, and a range's rows are none of theirs");
             Check(conjunct, form, theory).Equal.Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 
         /// <summary>
         /// Two bounds of one path whose literal parts the orders there need the range licence, which only a set whose every
-        /// target answers the range pointwise holds: planted Range rows, kept by the emulator and not by Azure (N8), license
-        /// it under the emulator and not under the portable set; bounds that part nothing compose under both, and the
-        /// measured definition, holding no Range row, licenses it nowhere.
+        /// target answers the range pointwise holds: the emulator keeps it and Azure does not (N8), so it is licensed under
+        /// the emulator and not under the portable set; bounds that part nothing compose under both, and without Range's
+        /// expectation nothing licenses it. Azure's orderings within strings, its order and its connectives, which no row
+        /// claims on Azure yet, are planted as the emulator's.
         /// </summary>
         [Fact]
         public void APartedRangeComposesOnlyWhereRangeIsLicensed()
         {
-            var range = MeasuredKey.Of(Op.Range, CosmosValueClass.Parted, CosmosValueClass.Between);
-            var orders = new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.SelectMany(side => new[]
-            {
-                (MeasuredKey.Of(Op.GreaterOrEqual, CosmosValueClass.String, side), side == CosmosValueClass.Below ? CosmosAnswer.False : CosmosAnswer.True),
-                (MeasuredKey.Of(Op.LessOrEqual, CosmosValueClass.String, side), side == CosmosValueClass.Above ? CosmosAnswer.False : CosmosAnswer.True),
-            });
             var planted = Measured with
             {
                 Rows =
                 [
                     .. ProbeRows.Rows,
-                    .. orders.SelectMany(o => new[] { RenderingTarget.Emulator, RenderingTarget.Azure }.Select(target => new MeasuredOutcome("Service.StringOrderIsCodePoint", o.Item1, target, o.Item2))),
-                    new("Service.RangeOverPartedBoundsIsEmpty", range, RenderingTarget.Emulator, CosmosAnswer.True),
-                    new("Service.RangeOverPartedBoundsIsEmpty", range, RenderingTarget.Azure, CosmosAnswer.NotKept),
+                    .. from row in ProbeRows.Rows
+                       where row.Target == RenderingTarget.Emulator && (row.Key.Test is Op.GreaterOrEqual or Op.LessOrEqual or Op.Order && row.Key.Operand == CosmosValueClass.String
+                           || row.Key.Test is Op.And or Op.Or or Op.Not && ProbeRows.Rows.Any(other => other.Key == row.Key && other.Target == RenderingTarget.Azure) == false)
+                       select row with { AxiomId = "Probe.Planted", Target = RenderingTarget.Azure },
                 ],
-                Kleene = [.. Measured.Kleene, (RenderingTarget.Emulator, range, CosmosAnswer.True), (RenderingTarget.Azure, range, CosmosAnswer.True)],
             };
 
             // Strings the two orders rank alike, beneath a bound that holds the high band: each bound is exact alone.
@@ -203,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Composed(theory, RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Proven);
             Composed(theory, RenderingSet.Portable, AllBands).Should().Be(RenderingVerdictKind.Unproven);
             Composed(theory, RenderingSet.Portable, NoBand).Should().Be(RenderingVerdictKind.Proven);
-            Composed(RenderingTheory.Define(planted with { Kleene = Measured.Kleene }), RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Unproven);
+            Composed(RenderingTheory.Define(planted with { Kleene = [.. Measured.Kleene.Where(k => k.Item2.Test != Op.Range)] }), RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Unproven);
 
             // What is read is the conjunction as written: the same two bounds claimed for one atom, evaluated on its cells.
             RenderingVerdictKind OnOneAtom(RenderingSet set, ValueSet<string> classes) =>

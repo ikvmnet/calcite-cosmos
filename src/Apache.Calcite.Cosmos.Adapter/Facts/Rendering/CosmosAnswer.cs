@@ -23,14 +23,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The statement fails.</summary>
         Fails,
 
-        /// <summary>Strings ordered by code point, which is UTF-8 byte order.</summary>
+        /// <summary>Strings ordered by code point, which is UTF-8 byte order, U+0000 the least.</summary>
         CodePoint,
 
         /// <summary>Strings ordered by UTF-16 code unit.</summary>
         Utf16,
 
-        /// <summary>Numbers ordered by value.</summary>
+        /// <summary>
+        /// Numbers ordered by the value compared: an int64 as itself, any other number as its correctly rounded double, and
+        /// the two by value (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
+        /// </summary>
         Numeric,
+
+        /// <summary>
+        /// Strings ordered by code point as the emulator stores them, a U+0000 as U+FDD0 followed by <c>0</c>
+        /// (<c>Service.StringOrderIsCodePoint</c>).
+        /// </summary>
+        StoredCodePoint,
 
     }
 

@@ -7,7 +7,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 
 using FluentAssertions;
 
@@ -126,6 +128,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             _client = null;
         }
 
+        /// <summary>Holds a row's outcomes against the service, over witnesses of their own.</summary>
+        static Task Holds(string id) => CosmosOutcomeHarness.Holds(_container, id, _unavailable);
+
         /// <summary>
         /// The ids of the documents a <c>WHERE</c> keeps.
         /// </summary>
@@ -149,10 +154,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// A path stands for itself as a whole condition: the service keeps the document holding
         /// <c>true</c> and nothing else — not a string that spells it, not a number.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.BarePathKeepsOnlyTrue")]
         public async Task ABarePathKeepsOnlyTrue()
         {
-            (await Kept("c.flag")).Should().Equal("true");
+            await Holds("Service.BarePathKeepsOnlyTrue");
         }
 
         /// <summary>
@@ -160,33 +165,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// that is not a boolean it answers something a <c>WHERE</c> does not keep, which is what SQL's
         /// <c>NOT</c> answers over unknown.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.NotOverAPathKeepsOnlyFalse")]
         public async Task NotOverAPathKeepsOnlyFalse()
         {
-            (await Kept("NOT c.flag")).Should().Equal("false");
+            await Holds("Service.NotOverAPathKeepsOnlyFalse");
         }
 
         /// <summary>
         /// The connectives treat what is not a boolean as unknown: <c>OR true</c> keeps it,
         /// <c>AND false</c> under a <c>NOT</c> keeps it, and <c>OR false</c> under a <c>NOT</c> does not.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.ConnectivesReadNonBooleansAsUnknown")]
         public async Task TheConnectivesTreatEverythingButABooleanAsUnknown()
         {
-            (await Kept("(c.flag OR true)")).Should().Equal("absent", "false", "null", "number", "string", "true");
-            (await Kept("NOT (c.flag AND false)")).Should().Equal("absent", "false", "null", "number", "string", "true");
-            (await Kept("NOT (c.flag OR false)")).Should().Equal("false");
+            await Holds("Service.ConnectivesReadNonBooleansAsUnknown");
+        }
+
+        /// <summary>
+        /// <c>AND</c> and <c>OR</c> are Kleene's whichever side an operand stands on, a value that is no boolean read as
+        /// unknown, and <c>NOT</c> over undefined is undefined.
+        /// </summary>
+        [Fact, CosmosPins("Service.ConnectivesAreKleene")]
+        public async Task TheConnectivesAreKleenesInEitherOrder()
+        {
+            await Holds("Service.ConnectivesAreKleene");
+        }
+
+        /// <summary>
+        /// <c>true</c> written as a condition keeps every document and <c>false</c> none, whatever the path holds: what
+        /// the connectives above are composed with.
+        /// </summary>
+        [Fact, CosmosPins("Service.AConstantIsItsOwnTruth")]
+        public async Task AConstantIsItsOwnTruth()
+        {
+            await Holds("Service.AConstantIsItsOwnTruth");
         }
 
         /// <summary>
         /// A comparison with a boolean is false over a null and over another type, and undefined over
         /// an absent path — so <c>NOT</c> above it keeps the first two and not the third.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.BooleanEqualityIsUndefinedOnlyOverAbsent")]
         public async Task AComparisonIsUndefinedOnlyOverAnAbsentPath()
         {
-            (await Kept("(c.flag = @t)")).Should().Equal("true");
-            (await Kept("NOT (c.flag = @t)")).Should().Equal("false", "null", "number", "string");
+            await Holds("Service.BooleanEqualityIsUndefinedOnlyOverAbsent");
         }
 
         /// <summary>

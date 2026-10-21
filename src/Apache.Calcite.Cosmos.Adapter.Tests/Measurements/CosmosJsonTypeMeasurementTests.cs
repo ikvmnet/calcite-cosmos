@@ -7,7 +7,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -43,14 +46,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// the value's rendering, and each is a row of <c>CosmosAxioms</c>.
     /// </para>
     /// <para>
-    /// <b>Read as a projection, so that undefined is visible.</b> A filter cannot tell undefined from
-    /// false: neither keeps the document. An object constructor omits a property whose value is
-    /// undefined, so <c>SELECT c.id, F(c.v) AS r</c> answers <c>true</c>, <c>false</c> or nothing, and
-    /// nothing is undefined.
+    /// <b>A row's outcomes are held by <see cref="CosmosOutcomeHarness"/>,</b> which tells undefined from
+    /// false by a <c>WHERE</c> and a <c>WHERE NOT</c>, neither of which keeps it, and by the projection: an
+    /// object constructor omits a property whose value is undefined, so <c>SELECT c.id, F(c.v) AS r</c>
+    /// answers <c>true</c>, <c>false</c> or nothing. What is no truth is read projected here.
     /// </para>
     /// <para>
-    /// Against whatever account the suite resolves — see <see cref="CosmosEmulator"/>. Measured on the
-    /// emulator; Azure is owed, and <c>TODO.md</c> says so.
+    /// Against whatever account the suite resolves — see <see cref="CosmosEmulator"/>. Each outcome
+    /// names the targets that ran it.
     /// </para>
     /// </remarks>
     public class CosmosJsonTypeMeasurementTests : IClassFixture<CosmosJsonTypeMeasurementTests.Fixture>
@@ -142,6 +145,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             _client = null;
         }
 
+        /// <summary>Holds a row's outcomes against the service, over witnesses of their own.</summary>
+        static Task Holds(string id) => CosmosOutcomeHarness.Holds(_container, id, _unavailable);
+
         /// <summary>
         /// What an expression over <c>c.v</c> answers for each document, written
         /// <c>id=answer</c> in the order of <see cref="Documents"/>: the value's JSON, or
@@ -173,10 +179,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// undefined — which is what <c>JSON_VALUE</c> answers there, and why
         /// <c>IS_DEFINED</c> over the guard is true even where the path is not.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.IsPrimitive")]
         public async Task IsPrimitiveIsFalseOverAnAbsentPath()
         {
-            (await Answers("IS_PRIMITIVE(c.v)")).Should().Be("string=true number=true boolean=true null=true object=false array=false absent=false");
+            await Holds("Service.IsPrimitive");
             (await Answers("(IS_PRIMITIVE(c.v) ? c.v : null)")).Should().Be("string=\"bikes\" number=30 boolean=true null=null object=null array=null absent=null",
                 "so the guarded accessor is null over an absent path, as JSON_VALUE is");
         }
@@ -185,34 +191,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>IS_DEFINED</c> is false over an absent path and true over everything else, a null
         /// included.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.IsDefined")]
         public async Task IsDefinedIsFalseOnlyOverAnAbsentPath()
         {
-            (await Answers("IS_DEFINED(c.v)")).Should().Be("string=true number=true boolean=true null=true object=true array=true absent=false");
+            await Holds("Service.IsDefined");
         }
 
         /// <summary>
         /// <c>IS_NULL</c> is true of a null alone, and false over an absent path: absence is not null
         /// to the service, which is why SQL's null test names both.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.IsNull")]
         public async Task IsNullIsTrueOnlyOfANull()
         {
-            (await Answers("IS_NULL(c.v)")).Should().Be("string=false number=false boolean=false null=true object=false array=false absent=false");
+            await Holds("Service.IsNull");
         }
 
         /// <summary>
         /// Each test of a kind is true of that kind and false of everything else, an absent path
         /// included.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.KindTests")]
         public async Task EachKindTestIsTrueOfItsKindAlone()
         {
-            (await Answers("IS_STRING(c.v)")).Should().Be("string=true number=false boolean=false null=false object=false array=false absent=false");
-            (await Answers("IS_NUMBER(c.v)")).Should().Be("string=false number=true boolean=false null=false object=false array=false absent=false");
-            (await Answers("IS_BOOL(c.v)")).Should().Be("string=false number=false boolean=true null=false object=false array=false absent=false");
-            (await Answers("IS_OBJECT(c.v)")).Should().Be("string=false number=false boolean=false null=false object=true array=false absent=false");
-            (await Answers("IS_ARRAY(c.v)")).Should().Be("string=false number=false boolean=false null=false object=false array=true absent=false");
+            await Holds("Service.KindTests");
         }
 
         /// <summary>
@@ -223,13 +225,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// That is what <c>CosmosOperators.IsAbsenceObserving</c> claims of the family: an expression
         /// built from one keeps a document without the path, where a comparison over it would not.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.NotOfAKindTest")]
         public async Task NotOfATypeTestIsTrueOverAnAbsentPath()
         {
-            foreach (var test in new[] { "IS_PRIMITIVE", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_NULL", "IS_OBJECT", "IS_ARRAY" })
-                (await Answers($"NOT {test}(c.v)")).Should().EndWith("absent=true", $"NOT {test} over an absent path");
-
-            (await Answers("NOT IS_DEFINED(c.v)")).Should().Be("string=false number=false boolean=false null=false object=false array=false absent=true");
+            await Holds("Service.NotOfAKindTest");
         }
 
         /// <summary>
@@ -275,11 +274,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// An ordering comparison across types is undefined, as is one over an absent path.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.OrderingAcrossTypesIsUndefined")]
         public async Task AnOrderingAcrossTypesIsUndefined()
         {
-            (await Answers("c.v < \"zzz\"")).Should().Be("string=true number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("c.v > 0")).Should().Be("string=undefined number=true boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            await Holds("Service.OrderingAcrossTypesIsUndefined");
         }
 
         /// <summary>
@@ -294,12 +292,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>NOT IS_NULL</c>, and why <c>NOT (p = x)</c> keeps a null at the service and not in
         /// process.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.EqualityAcrossTypesIsFalse"), CosmosPins("Service.InequalityOverNullIsTrue")]
         public async Task AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue()
         {
-            (await Answers("c.v = \"bikes\"")).Should().Be("string=true number=false boolean=false null=false object=false array=false absent=undefined");
-            (await Answers("c.v != \"bikes\"")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
-            (await Answers("c.v != 30")).Should().Be("string=true number=false boolean=true null=true object=true array=true absent=undefined");
+            await Holds("Service.EqualityAcrossTypesIsFalse");
+            await Holds("Service.InequalityOverNullIsTrue");
+        }
+
+        /// <summary>
+        /// Within a type a comparison is true or false, never undefined, as the two values stand in the type's order: strings
+        /// either side of U+E000 by code point, integers either side of 2^53 + 1, a boolean against itself and the other.
+        /// </summary>
+        [Fact, CosmosPins("Service.ComparisonWithinAType")]
+        public async Task AComparisonWithinATypeIsTrueOrFalse()
+        {
+            await Holds("Service.ComparisonWithinAType");
         }
 
         /// <summary>
@@ -311,12 +318,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// undefined stands where SQL's unknown does — and part company wherever the service answers
         /// false where SQL answers unknown, which is the equality across types and over a null above.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.NotOverUndefinedIsUndefined")]
         public async Task NotOverUndefinedIsUndefined()
         {
-            (await Answers("NOT (c.v < \"zzz\")")).Should().Be("string=false number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("NOT c.v")).Should().Be("string=undefined number=undefined boolean=false null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("NOT (c.v = \"bikes\")")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
+            await Holds("Service.NotOverUndefinedIsUndefined");
+        }
+
+        /// <summary>
+        /// The in-process bodies of the <c>IS_*</c> tests answer what the service answers over the catalogue's kinds, as
+        /// <c>Sql.CosmosFunctionBodiesTests</c> asks of a real account: each over the document text the query returns, so
+        /// neither side is handed a tidied input, and a test the service answers as undefined, absent from the row, false.
+        /// </summary>
+        [Fact, CosmosPins("Service.TypeTestBodiesMatchTheService")]
+        public async Task TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind()
+        {
+            if (_container is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            var (pk, cancellation) = (Guid.NewGuid().ToString("N"), TestContext.Current.CancellationToken);
+            var witnesses = CosmosOutcomeWitnesses.KindCells.SelectMany(kind => CosmosOutcomeWitnesses.Of(CosmosValueClass.None, kind)).ToList();
+            foreach (var (json, i) in witnesses.Select((json, i) => (json, i)))
+                using (var response = await _container!.CreateItemStreamAsync(new MemoryStream(Encoding.UTF8.GetBytes($"{{\"id\":\"w{i}\",\"pk\":\"{pk}\"" + (json is null ? "" : ",\"v\":" + json) + "}")), new PartitionKey(pk), cancellationToken: cancellation))
+                    response.EnsureSuccessStatusCode();
+
+            var sql = "SELECT c AS doc, " + string.Join(", ", CosmosFunctionBodiesTests.Tests.Select(t => $"{t.Name}(c.v) AS {t.Name}")) + " FROM c";
+            var (disagreements, seen) = (new List<string>(), 0);
+            using var iterator = _container!.GetItemQueryStreamIterator(new QueryDefinition(sql), requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });
+            while (iterator.HasMoreResults)
+            {
+                using var page = await iterator.ReadNextAsync(cancellation);
+                using var rows = await System.Text.Json.JsonDocument.ParseAsync(page.EnsureSuccessStatusCode().Content, cancellationToken: cancellation);
+                foreach (var row in rows.RootElement.GetProperty("Documents").EnumerateArray())
+                {
+                    seen++;
+                    var document = row.GetProperty("doc").GetRawText();
+                    disagreements.AddRange(from test in CosmosFunctionBodiesTests.Tests
+                                           where (row.TryGetProperty(test.Name, out var answer) && answer.ValueKind == System.Text.Json.JsonValueKind.True) != test.Body(document, "$.v")
+                                           select $"{test.Name} over {document}");
+                }
+            }
+
+            (seen, disagreements.Count).Should().Be((witnesses.Count, 0), string.Join("; ", disagreements));
         }
 
     }

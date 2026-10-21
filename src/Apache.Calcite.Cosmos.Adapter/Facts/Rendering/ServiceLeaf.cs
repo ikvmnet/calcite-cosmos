@@ -45,6 +45,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 case ServiceFormKind.Test or ServiceFormKind.Bare:
                     return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
 
+                case ServiceFormKind.Constant:
+                    return table.Outcomes(MeasuredKey.Of(leaf.Test, ClassOf(leaf.Literal!), kind), rows);
+
                 case ServiceFormKind.Compare:
                     var operand = ClassOf(leaf.Literal!);
                     return operand == kind && operand is CosmosValueClass.String or CosmosValueClass.Number
@@ -68,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             // An entry that names no comparator orders nothing; what else it answers, a failure say, stands beside.
             rows.UnionWith(comparators.Evidence);
-            var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric).ToList();
+            var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric or CosmosAnswer.StoredCodePoint).ToList();
             if (placing.Count == 0)
                 return ServiceOutcomes.Widest;
 
@@ -96,10 +99,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             switch (comparator, cell)
             {
-                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16, PathCell.Point { Value: var v }) when IsString(v) && IsString(literal):
-                    return [Side(comparator == CosmosAnswer.Utf16 ? string.CompareOrdinal(StringOf(v), StringOf(literal)) : ByCodePoint(StringOf(v), StringOf(literal)))];
+                // What the emulator stores for U+0000 is not what it is sent: a literal holding one lies anywhere, and so does
+                // a range that may hold one, equal only to a literal it holds or one holding the high band, as U+FDD0 is.
+                case (CosmosAnswer.StoredCodePoint, PathCell.Point or PathCell.Strings) when IsString(literal) && CharactersOf(literal).Contains(NulClass):
+                    return [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above];
 
-                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16, PathCell.Strings s) when IsString(literal):
+                case (CosmosAnswer.StoredCodePoint, PathCell.Strings s) when IsString(literal) && s.Classes.Contains(NulClass):
+                    return cell.Contains(literal) || CharactersOf(literal).Contains(HighBand)
+                        ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
+
+                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint, PathCell.Point { Value: var v }) when IsString(v) && IsString(literal):
+                    return [Side(Compare(comparator, StringOf(v), StringOf(literal)))];
+
+                case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint, PathCell.Strings s) when IsString(literal):
                     var t = StringOf(literal);
                     return Sides(cell, literal, parted.Contains(literal) == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
                         parted.Contains(literal) == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0);
@@ -121,6 +133,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : cell.Contains(literal) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
 
         static CosmosValueClass Side(int order) => order < 0 ? CosmosValueClass.Below : order > 0 ? CosmosValueClass.Above : CosmosValueClass.Equal;
+
+        /// <summary>Two strings under a comparator of strings, the one the harness holds the service's order to.</summary>
+        internal static int Compare(CosmosAnswer comparator, string a, string b) => comparator switch
+        {
+            CosmosAnswer.Utf16 => string.CompareOrdinal(a, b),
+            CosmosAnswer.StoredCodePoint => ByCodePoint(a.Replace("\0", (char)0xFDD0 + "0"), b.Replace("\0", (char)0xFDD0 + "0")),
+            _ => ByCodePoint(a, b),
+        };
 
         /// <summary>Strings by code point, a lone surrogate read as U+FFFD, as the service stores one.</summary>
         static int ByCodePoint(string a, string b)

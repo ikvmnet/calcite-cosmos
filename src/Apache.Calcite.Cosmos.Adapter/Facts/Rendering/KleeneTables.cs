@@ -15,7 +15,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// The logic composition rests on, as host data: what Kleene's connectives answer on every operand a target can be
     /// handed — the service values, among them the six classes of one that is no boolean, Calcite truths alone — which a
     /// set's measured connective rows must match for S to compose through that connective; the class of a cell on which an
-    /// atom leaves a junction to its sibling, exactly; and the position beneath a negation. <c>Range</c> has no rows yet.
+    /// atom leaves a junction to its sibling, exactly; the position beneath a negation; and a range of one path answering
+    /// as its two orderings do, which a set must have measured before S reads one whose bounds part the orders pointwise.
     /// </summary>
     internal static class KleeneTables
     {
@@ -26,7 +27,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>Kleene's answer on each key, for each target that may be handed its operands.</summary>
         public static IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Rows { get; } =
-            [.. Over(RenderingTarget.Emulator, Operands), .. Over(RenderingTarget.Azure, Operands), .. Over(RenderingTarget.Calcite, Booleans)];
+            [.. Over(RenderingTarget.Emulator, Operands), .. Over(RenderingTarget.Azure, Operands), .. Over(RenderingTarget.Calcite, Booleans),
+             .. Pointwise(RenderingTarget.Emulator), .. Pointwise(RenderingTarget.Azure)];
 
         /// <summary>The class of a cell on which a side leaves each junction to its sibling.</summary>
         public static IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity { get; } = new Dictionary<CosmosServiceTest, ValueSet<CellClass>>
@@ -41,6 +43,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Over(RenderingTarget target, CosmosValueClass[] operands) =>
             operands.SelectMany(x => operands.SelectMany(y => new[] { And, Or }.Select(c => (target, MeasuredKey.Of(c, x, y), Answer(c, x, y))))
                 .Prepend((target, MeasuredKey.Of(Not, None, x), Answer(Not, x, x))));
+
+        /// <summary>
+        /// A range kept where a value lies between its bounds and kept by <c>NOT</c> where outside, whether they part the
+        /// orders or not, and undefined over a value of another type or none, as both its orderings are.
+        /// </summary>
+        static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Pointwise(RenderingTarget target) =>
+            from bounds in new[] { Parted, Agreeing }
+            from cell in new[] { (Between, CosmosAnswer.True), (Outside, CosmosAnswer.False) }
+                .Concat(new[] { Absent, Null, True, False, Number, Object, CosmosValueClass.Array }.Select(kind => (kind, CosmosAnswer.Undefined)))
+            select (target, MeasuredKey.Of(CosmosServiceTest.Range, bounds, cell.Item1), cell.Item2);
 
         /// <summary>Kleene's connectives, an operand that is no truth read as unknown.</summary>
         static CosmosAnswer Answer(CosmosServiceTest connective, CosmosValueClass x, CosmosValueClass y)

@@ -146,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>The tests, named as the service names them, against the body that answers each.</summary>
-        static readonly (string Name, Func<string, string, bool> Body)[] Tests =
+        internal static readonly (string Name, Func<string, string, bool> Body)[] Tests =
         {
             ("IS_DEFINED", CosmosFunctionBodies.IsDefined),
             ("IS_NULL", CosmosFunctionBodies.IsNull),

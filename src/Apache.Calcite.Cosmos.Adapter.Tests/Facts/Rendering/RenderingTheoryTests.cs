@@ -110,8 +110,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheTargetsMergeIntoOneEntryForEachSettledKey()
         {
-            var once = MeasuredKey.Of(CosmosServiceTest.IsBool, None, Number);
-            var twice = MeasuredKey.Of(CosmosServiceTest.IsBool, None, CosmosValueClass.String);
+            // An ordering against a boolean, which no row measures.
+            var once = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, True);
+            var twice = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, False);
             var theory = RenderingTheory.Define(RenderingDefinition.Measured([.. ProbeRows.Rows,
                 new("Service.Planted", once, RenderingTarget.Emulator, CosmosAnswer.False),
                 new("Service.Planted", twice, RenderingTarget.Emulator, CosmosAnswer.False),
@@ -133,10 +134,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, Null);
             var refusal = FluentActions.Invoking(() => RenderingTheory.Define(RenderingDefinition.Measured(
-                [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
+                [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Emulator, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
             (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
 
-            ProbeTheory.Theory.Get(ProbeTheory.Final.Of(key, RenderingSet.Portable)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
+            ProbeTheory.Theory.Get(ProbeTheory.Final.Of(key, RenderingSet.Emulator)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
         }
 
         /// <summary>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Tests.Measurements;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -105,6 +106,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             empty.Should().BeEmpty();
         }
 
+        /// <summary>
+        /// Every key a leaf reads is a cell its test and operand are read at, as the registry's owed cells and the harness's
+        /// witnesses are declared (<see cref="CosmosOutcomeWitnesses"/>), so the three cannot drift apart.
+        /// </summary>
+        [Fact]
+        public void EveryKeyALeafReadsIsACellOfItsKey()
+        {
+            var orders = ProbeRows.TableOf([Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, CosmosAnswer.CodePoint),
+                Row(CosmosServiceTest.Order, CosmosValueClass.Number, CosmosValueClass.None, CosmosAnswer.Numeric)]);
+            var strays = from table in new[] { Empty, orders }
+                         from leaf in Leaves()
+                         from cells in Partitions()
+                         from row in ServiceLeaf.On(leaf, cells, table, ValueSet<string>.Empty).Rows
+                         where row.StartsWith("missing:", StringComparison.Ordinal)
+                         let key = row["missing:".Length..].Split('/')
+                         where CosmosOutcomeWitnesses.Cells(Enum.Parse<CosmosServiceTest>(key[0]), Enum.Parse<CosmosValueClass>(key[1]), RenderingTarget.Emulator)
+                             .Contains(Enum.Parse<CosmosValueClass>(key[2])) == false
+                         select row;
+
+            strays.Distinct().Should().BeEmpty();
+        }
+
         /// <summary>A key no row settles may fail the statement; one a row settles fails only where the row says so.</summary>
         [Fact]
         public void WidestIncludesFails()
@@ -112,8 +135,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceOutcomes.Widest.Should().HaveFlag(ServiceOutcomes.Fails);
 
             var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
-                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "the probe's rows hold no ordering");
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of(true)), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "no row measures <= against a boolean");
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
                 .Should().NotContain(o => o.Outcomes.HasFlag(ServiceOutcomes.Fails));
         }
@@ -141,6 +164,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(parted, High).Should().Be(ServiceOutcomes.False);
         }
 
+        /// <summary>
+        /// Under the emulator's order a point holding U+0000 lies where U+FDD0 then 0 does, a range that may hold one lies
+        /// either side, and a literal holding one lies nowhere.
+        /// </summary>
+        [Fact]
+        public void TheStoredOrderReadsU0000AsTheEmulatorStoresIt()
+        {
+            var table = Less(CosmosAnswer.StoredCodePoint, CosmosAnswer.True);
+            var nul = Of("\0");
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("b"), CutKind.Literal), new CutPoint(nul, CutKind.Literal)));
+            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("b")), cells, table, ValueSet<string>.Empty);
+            At(less, nul).Should().Be(ServiceOutcomes.False, "stored as U+FDD0 then 0, it lies above b");
+            cells.Cells.Select((cell, i) => (cell, less.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
+                .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("a\0")), cells, table, ValueSet<string>.Empty).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
+        }
+
         /// <summary>An entry of two answers means both; an order of two comparators places a cell by each.</summary>
         [Fact]
         public void AMultiValuedEntryAnswersTheUnion()
@@ -166,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void MissingKeysAreNamed()
         {
             var missing = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
-            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target != RenderingTarget.Calcite && row.Key != missing));
+            var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == RenderingTarget.Emulator && row.Key != missing && row.Key.Test != CosmosServiceTest.LessOrEqual));
             var cells = PathCell.Split(S, PathValues.Anything, AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
 
             var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty);
@@ -174,15 +215,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(vector, "null").Should().Be(ServiceOutcomes.Widest);
             At(vector, "absent").Should().Be(ServiceOutcomes.Undefined);
 
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("bikes")), cells, table, ValueSet<string>.Empty).Rows.Where(row => row.StartsWith("missing:"))
-                .Should().BeEquivalentTo(new[] { "Below", "Equal", "Above", "Absent", "Null", "True", "False", "Number", "Object", "Array" }.Select(cell => "missing:Less/String/" + cell));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty).Rows.Where(row => row.StartsWith("missing:"))
+                .Should().BeEquivalentTo(new[] { "Below", "Equal", "Above", "Absent", "Null", "True", "False", "Number", "Object", "Array" }.Select(cell => "missing:LessOrEqual/String/" + cell));
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, Empty, ValueSet<string>.Empty).Rows.Should().Contain("missing:Order/String/None");
         }
 
         /// <summary>A table of <c>&lt;</c> against a string, ordered by the comparators, below the literal answering the rest.</summary>
         static ServiceTable Less(params CosmosAnswer[] comparatorsThenBelow)
         {
-            var comparators = comparatorsThenBelow.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16).ToList();
+            var comparators = comparatorsThenBelow.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint).ToList();
             var below = comparatorsThenBelow.Except(comparators).ToList();
             return ProbeRows.TableOf(comparators.Select(c => Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, c))
                 .Concat(below.Select(a => Row(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Below, a)))
