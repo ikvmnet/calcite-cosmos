@@ -6414,7 +6414,8 @@ what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator 
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
 parameters it bound. Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
 is allocated once a process. Armed, the observer is the flow's own, so a test planning beside it is told nothing. Two
-accessors on the statement hand the check its scope and its declaration; nothing in production calls them.
+accessors on the statement hand the check its scope and its declaration, and the declaration says whether a rule it
+reads is conditional, for the triage; nothing in production calls them.
 
 **A check is what the service is asked together.** The service reads a whole `WHERE`: a filter's conjuncts, and those of
 any filter stacked beneath it that the implementor conjoined in. Two conjuncts proven apart, `label >= X` and
@@ -6434,7 +6435,8 @@ hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, 
 shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong: a later round's
 conjunct can be unproven where its own stratum would prove it, or refuted on a cell its round's facts rule out, two
 paths a conditional rule ties together that S imports apart. Such a refutation is triaged as a warning until the
-emulator reproduces it, and the triage names the round.
+emulator reproduces it, the triage names the round, and each counts against c15's precision line until a fix lands
+before it (`TODO.md`).
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
 armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the
