@@ -186,9 +186,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, (i, facts) => Translator(facts, new CosmosParameterList()).TryTranslateConjunct(Conjuncts[i], out _));
+                    return _scope ??= Oracle.Admit(Statement, (i, facts) =>
+                    {
+                        var parameters = new CosmosParameterList();
+                        if (Translator(facts, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
+                            return false;
+
+                        if (CosmosRenderingCapture.Armed)
+                            CosmosRenderingCapture.Observer?.Admitted(this, i, text!, parameters);
+
+                        return true;
+                    });
             }
         }
+
+        /// <summary>The statement's scope, for the rendering check's importer.</summary>
+        internal CosmosStatementScope ScopeForCheck => Scope;
+
+        /// <summary>The declaration the statement reasons from, for the rendering check's importer.</summary>
+        internal JsonFactTheory DeclarationForCheck => Oracle.Theory;
 
         CosmosRexTranslator Translator(JsonFactSet facts, CosmosParameterList parameters) =>
             new(_rexBuilder, _fields, parameters, facts, null, _container, _readings);
@@ -256,7 +272,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // each index says.
                 var conjunct = next++;
                 System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
-                builder.Append(TranslatorFor(conjunct, parameters).TranslateConjunct(node));
+                var text = TranslatorFor(conjunct, parameters).TranslateConjunct(node);
+                builder.Append(text);
+                if (CosmosRenderingCapture.Armed)
+                    CosmosRenderingCapture.Observer?.Written(this, conjunct, text, parameters);
             }
 
             Write(Condition);

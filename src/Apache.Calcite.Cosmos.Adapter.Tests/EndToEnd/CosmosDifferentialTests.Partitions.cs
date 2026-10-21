@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// fails there too, as the same statement. The size was measured; see <c>DESIGN.md</c> under
         /// <em>Differential testing</em>.
         /// </remarks>
-        const int DefaultPartitionedPredicates = 200;
+        internal const int DefaultPartitionedPredicates = 200;
 
         /// <summary>
         /// The generator's seed, fixed so that a failure names a predicate the next run asks again, and

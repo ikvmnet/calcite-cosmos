@@ -6393,6 +6393,56 @@ declines it rather than throwing, and every claim of it reads Unproven, naming t
 epochs is the graph's, so it retires the generation at once; a fault, such as a primitive that answered one key two
 ways, is the bundle's, and the generation serves on.
 
+### The check run: what was sent, read back and checked
+
+**The text sent is read, not the translator's structure.** A sink inside each writer would be a second encoding of what
+the code under test meant, and a string assembled wrongly would report the right structure. `CosmosSqlFormReader`
+(tests) reads the text into a `ServiceForm` by the family's grammar: `NOT` binds tighter than `AND`, and `AND` than `OR`,
+which the guards rely on (`IS_DEFINED(p) AND NOT IS_NULL(p) AND (p != @p0)`); grouping is kept as written, with no
+junction flattened, regrouped or deduplicated; a parameter is its value; anything else is opaque, up to the next
+connective outside its own parentheses and ternaries. It prints its parse back with the source's parentheses and names,
+and every text the run captures must print back byte for byte. The precedence is pinned on a dozen texts, and held to the
+service: over the 27 documents that set three paths to nothing, a null or a string, `WHERE` keeps what each pinned tree
+predicts, which refutes the other binding.
+
+**The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
+`CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
+parameters it bound. Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
+is allocated once a process. Armed, the observer is the flow's own, so a test planning beside it is told nothing. Two
+accessors on the statement hand the check its scope and its declaration; nothing in production calls them.
+
+**A statement is checked as it is sent: one junction.** The service reads the built `WHERE`, so two conjuncts proven
+apart, `label >= X` and `label <= Y`, may still be a range over bounds that part, and the statement's `AND` composes
+only under its licence. So the conjuncts a statement's rounds admitted are written into one bundle as one IR junction and
+claimed against their conjunction as `Translate` builds it; S reads the licence and the range need across them, and
+each conjunct's own position is read from the same run. A conjunct whose IR holds a parameter or an opaque term, or
+whose text does not read back, is skipped, never one whose reading S cannot yet judge; the rest are checked together.
+
+**The import is the earliest round's node.** A bundle takes one source, and the node a later round rendered from assumes
+the conjuncts admitted before it; checked there, those conjuncts would be agreed with only where they already hold. The
+first round's node lies above every later one, so its facts hold of every document the statement can keep: weaker, never
+wrong. A later round's conjunct can then be unproven where its own stratum would prove it, or refuted on a cell its
+round's facts rule out, two paths a conditional rule ties together that S imports apart; such a refutation is triaged as
+a warning until the emulator reproduces it.
+
+**The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
+armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the corpus's
+statements share a harness and are planned one at a time, the rest two at a time. A bundle runs within count limits that
+grow with the form, since descent and evaluation peel a junction a member at a time. A check is memoised by its IR, the
+import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a weakening's
+`Implies` holds where an exact push's `Equal` does not. Every check is read under the asserted set and under `Portable`
+beside it. CI asserts under `Emulator` until the probe account's record lands, since what Azure has not been run on is
+unsettled under `Portable` and answers widest.
+
+**Two cross-checks hold the capture to what was sent.** A conjunct's text at implementation is its text at admission,
+its values inlined: both render from the stratum that admitted it. And the implementor's `WHERE` holds the conjunction of
+the texts its statements wrote; anything else in it is counted as written outside the translator.
+
+**The reports** (`TestResults/rendering/`): `verdicts.tsv`, every admitted conjunct with its statement's verdict under each
+set and its own; `refutations.tsv`, each refuting cell and its triage; `vacuous-proofs.tsv`, a proof that holds only where
+Calcite raises, or a render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the statements
+resting on each registry row, which every proof must name; and `skipped.tsv`.
+
 ---
 
 ## Differential testing

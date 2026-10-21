@@ -2640,11 +2640,15 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
-  `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
-  `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
-  licence. The harness should write a statement's admitted conjuncts into the bundle as one IR junction and claim the
-  conjunction as built.
+- **A statement's later rounds are checked under its first round's facts** — *medium, for the coverage and precision
+  lines (c13, c15).* The check run writes a statement's conjuncts into one bundle as one junction, so that its `AND`
+  licence and range need are read across them, and a bundle takes one source: the first round's node, the only one whose
+  facts hold of every document the statement keeps. A conjunct a later round admitted, rendered knowing what the earlier
+  ones establish, is then unproven, or refuted on a cell that knowledge rules out. Three statements over `kinds`
+  (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean `label` and `kind = "c"` beside a boolean
+  `ref`, which the conditional rules on `kind` exclude; they are triaged as warnings, and the document each names is one the declaration rules out. Checking each
+  round's conjuncts from its own node and composing the rounds needs a rule over the bundles' verdicts, which S does not
+  have.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
@@ -2691,6 +2695,13 @@ across documents* and *A join of a container to itself* is the record.
   the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
   its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
   as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
+- **The rendering check asserts under the emulator's set until c09b lands** — *small.* `RenderingCheckRun.AssertedSet`
+  is `Emulator`, because the outcomes that claim Azure rest on the probe account's record of 2026-10-16 alone, and what
+  Azure has not been run on is unsettled under `Portable` and answers widest. c09b commits D7's record and widens `On`;
+  then `AssertedSet` becomes `Portable`, and the rendering tests that build under `Emulator` move with it where they hold.
+- **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
+  resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
+  measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.
 - **`D0`'s row spells a declared domain as stated** — *small, for c12's memo.* A stratum keeps only a domain's values of
   a type the path may hold, and only for a path an atom reads; `D0` holds no atom, so its row can list values of a kind
   it excludes (2 of 431 paths in `DeclaredPossibleTests`). The documents are the same and so are the cells, but the
