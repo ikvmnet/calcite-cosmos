@@ -28,9 +28,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <para>
     /// <b>A truth is read off three statements.</b> A witness <c>WHERE</c> keeps is true, one <c>WHERE NOT</c> keeps is
     /// false, one neither keeps is undefined; the projection, where it is a boolean or nothing, says the same, except at a
-    /// cell some target declared off a <c>WHERE</c> alone. An order is the one comparator that sorts the witnesses as
-    /// <c>ORDER BY</c> does and places them as <c>&gt;</c> beside each does. A literal is a parameter, as the translator
-    /// sends one, and a range's two bounds are two.
+    /// cell some target declared off a <c>WHERE</c> alone or the targets answer apart. An order is the one comparator that
+    /// sorts the witnesses as <c>ORDER BY</c> does and places them as <c>&gt;</c> beside each does. A literal is a
+    /// parameter, as the translator sends one, and a range's two bounds are two.
     /// </para>
     /// <para>
     /// <b>It never asks which endpoint answered</b> (<c>TODO.md</c>, the measurements): an answer must mean nothing a
@@ -133,9 +133,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     var answer = kept.Contains(witness.Id) ? CosmosAnswer.True : negated.Contains(witness.Id) ? CosmosAnswer.False : CosmosAnswer.Undefined;
 
                     // A projection says what its filter keeps, except where a target was measured to keep otherwise than it
-                    // projects (Service.RangeOverPartedBoundsIsEmpty), which a cell declared off a WHERE alone may be.
+                    // projects (Service.RangeOverPartedBoundsIsEmpty): a cell declared off a WHERE alone may be one, and so may
+                    // a cell the targets answer apart, as Azure's parted range projects true where its filter keeps nothing.
                     var r = projected[witness.Id];
-                    if ((r is null || r.Type == JTokenType.Boolean) && declared.Any(d => d.Cell == witness.Cell && d.Answer == CosmosAnswer.NotKept) == false
+                    var at = declared.Where(d => d.Cell == witness.Cell).Select(d => d.Answer).Distinct().ToList();
+                    if ((r is null || r.Type == JTokenType.Boolean) && at.Contains(CosmosAnswer.NotKept) == false && at.Count < 2
                         && (r is null ? CosmosAnswer.Undefined : (bool)r ? CosmosAnswer.True : CosmosAnswer.False) is var shown && shown != answer)
                         failures.Add($"{test} projected over {witness.Json} is {shown}, where its filters read {answer}");
 

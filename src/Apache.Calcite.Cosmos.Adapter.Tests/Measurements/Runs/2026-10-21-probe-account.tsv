@@ -1,0 +1,697 @@
+# What the probe account answered on 2026-10-21 (D7), cell by cell: every cell CosmosOutcomeHarness.Holds measured, as
+# runs.tsv wrote it before any assertion. An outcome whose On names Azure must find its answer here, or in an earlier
+# record, for each of its cells (CosmosAxiomsTests.EveryAzureClaimHasARecordedRun).
+#
+# main at #237's merge (bab0d59), Release, net10.0, at 400 RU/s, every container deleted afterwards. The JSON type class
+# passed 12 of 12, the boolean logic class 7 of 7, and the order class 10 of 11: ADocumentsStringsOrderByCodePoint failed,
+# Azure ordering the strings holding U+0000 by code point where the row declared only the emulator's StoredCodePoint.
+# Sql.CosmosFunctionBodiesTests did not run: it needs an Entra role assignment and a container made beforehand, and N13
+# is held in the JSON type class over the same kinds (TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind).
+#
+# Columns as 2026-10-16's. The witnesses are the catalogue's for the cell (CosmosOutcomeWitnesses), all of which Holds
+# ran: a connective's those at c.v, each beside every witness of its operand's class at c.u; a row held over the rounding
+# edges in its literal's place, every edge's.
+#
+# Every line was read as its pinning test reads it: a WHERE that keeps a witness is True, a WHERE NOT that keeps one is
+# False, one neither keeps is Undefined, the literal sent as a parameter and a range's bounds as two; the projection,
+# where it is a boolean or nothing, said the same at every cell no target declared NotKept. An order is the comparator
+# that sorts the witnesses as ORDER BY does, ASC and DESC, and places them as > does beside each witness holding no U+0000,
+# the two holding one among those placed. A line at a cell its row declares for no target was measured beside its key's
+# and backs nothing, nor does a cell that answered two ways.
+row	test	operand	cell	answer	formula	witnesses
+#
+# Measurements.CosmosJsonTypeMeasurementTests, over c.v
+# IsPrimitiveIsFalseOverAnAbsentPath: IS_PRIMITIVE(c.v)
+Service.IsPrimitive	IsPrimitive	None	Absent	False		absent
+Service.IsPrimitive	IsPrimitive	None	Null	True		null
+Service.IsPrimitive	IsPrimitive	None	True	True		true
+Service.IsPrimitive	IsPrimitive	None	False	True		false
+Service.IsPrimitive	IsPrimitive	None	Number	True		1 30 30.5
+Service.IsPrimitive	IsPrimitive	None	String	True		"bikes" "true"
+Service.IsPrimitive	IsPrimitive	None	Object	False		{"x":1}
+Service.IsPrimitive	IsPrimitive	None	Array	False		[1]
+# IsDefinedIsFalseOnlyOverAnAbsentPath: IS_DEFINED(c.v)
+Service.IsDefined	IsDefined	None	Absent	False		absent
+Service.IsDefined	IsDefined	None	Null	True		null
+Service.IsDefined	IsDefined	None	True	True		true
+Service.IsDefined	IsDefined	None	False	True		false
+Service.IsDefined	IsDefined	None	Number	True		1 30 30.5
+Service.IsDefined	IsDefined	None	String	True		"bikes" "true"
+Service.IsDefined	IsDefined	None	Object	True		{"x":1}
+Service.IsDefined	IsDefined	None	Array	True		[1]
+# IsNullIsTrueOnlyOfANull: IS_NULL(c.v)
+Service.IsNull	IsNull	None	Absent	False		absent
+Service.IsNull	IsNull	None	Null	True		null
+Service.IsNull	IsNull	None	True	False		true
+Service.IsNull	IsNull	None	False	False		false
+Service.IsNull	IsNull	None	Number	False		1 30 30.5
+Service.IsNull	IsNull	None	String	False		"bikes" "true"
+Service.IsNull	IsNull	None	Object	False		{"x":1}
+Service.IsNull	IsNull	None	Array	False		[1]
+# EachKindTestIsTrueOfItsKindAlone: IS_STRING, IS_NUMBER, IS_BOOL, IS_OBJECT, IS_ARRAY (c.v)
+Service.KindTests	IsString	None	Absent	False		absent
+Service.KindTests	IsString	None	Null	False		null
+Service.KindTests	IsString	None	True	False		true
+Service.KindTests	IsString	None	False	False		false
+Service.KindTests	IsString	None	Number	False		1 30 30.5
+Service.KindTests	IsString	None	String	True		"bikes" "true"
+Service.KindTests	IsString	None	Object	False		{"x":1}
+Service.KindTests	IsString	None	Array	False		[1]
+Service.KindTests	IsNumber	None	Absent	False		absent
+Service.KindTests	IsNumber	None	Null	False		null
+Service.KindTests	IsNumber	None	True	False		true
+Service.KindTests	IsNumber	None	False	False		false
+Service.KindTests	IsNumber	None	Number	True		1 30 30.5
+Service.KindTests	IsNumber	None	String	False		"bikes" "true"
+Service.KindTests	IsNumber	None	Object	False		{"x":1}
+Service.KindTests	IsNumber	None	Array	False		[1]
+Service.KindTests	IsBool	None	Absent	False		absent
+Service.KindTests	IsBool	None	Null	False		null
+Service.KindTests	IsBool	None	True	True		true
+Service.KindTests	IsBool	None	False	True		false
+Service.KindTests	IsBool	None	Number	False		1 30 30.5
+Service.KindTests	IsBool	None	String	False		"bikes" "true"
+Service.KindTests	IsBool	None	Object	False		{"x":1}
+Service.KindTests	IsBool	None	Array	False		[1]
+Service.KindTests	IsObject	None	Absent	False		absent
+Service.KindTests	IsObject	None	Null	False		null
+Service.KindTests	IsObject	None	True	False		true
+Service.KindTests	IsObject	None	False	False		false
+Service.KindTests	IsObject	None	Number	False		1 30 30.5
+Service.KindTests	IsObject	None	String	False		"bikes" "true"
+Service.KindTests	IsObject	None	Object	True		{"x":1}
+Service.KindTests	IsObject	None	Array	False		[1]
+Service.KindTests	IsArray	None	Absent	False		absent
+Service.KindTests	IsArray	None	Null	False		null
+Service.KindTests	IsArray	None	True	False		true
+Service.KindTests	IsArray	None	False	False		false
+Service.KindTests	IsArray	None	Number	False		1 30 30.5
+Service.KindTests	IsArray	None	String	False		"bikes" "true"
+Service.KindTests	IsArray	None	Object	False		{"x":1}
+Service.KindTests	IsArray	None	Array	True		[1]
+# NotOfATypeTestIsTrueOverAnAbsentPath: NOT over each test
+Service.NotOfAKindTest			Absent	True	NOT IS_PRIMITIVE(c.v)	absent
+Service.NotOfAKindTest			Null	False	NOT IS_PRIMITIVE(c.v)	null
+Service.NotOfAKindTest			True	False	NOT IS_PRIMITIVE(c.v)	true
+Service.NotOfAKindTest			False	False	NOT IS_PRIMITIVE(c.v)	false
+Service.NotOfAKindTest			Number	False	NOT IS_PRIMITIVE(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	False	NOT IS_PRIMITIVE(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_PRIMITIVE(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_PRIMITIVE(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_STRING(c.v)	absent
+Service.NotOfAKindTest			Null	True	NOT IS_STRING(c.v)	null
+Service.NotOfAKindTest			True	True	NOT IS_STRING(c.v)	true
+Service.NotOfAKindTest			False	True	NOT IS_STRING(c.v)	false
+Service.NotOfAKindTest			Number	True	NOT IS_STRING(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	False	NOT IS_STRING(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_STRING(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_STRING(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_NUMBER(c.v)	absent
+Service.NotOfAKindTest			Null	True	NOT IS_NUMBER(c.v)	null
+Service.NotOfAKindTest			True	True	NOT IS_NUMBER(c.v)	true
+Service.NotOfAKindTest			False	True	NOT IS_NUMBER(c.v)	false
+Service.NotOfAKindTest			Number	False	NOT IS_NUMBER(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	True	NOT IS_NUMBER(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_NUMBER(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_NUMBER(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_BOOL(c.v)	absent
+Service.NotOfAKindTest			Null	True	NOT IS_BOOL(c.v)	null
+Service.NotOfAKindTest			True	False	NOT IS_BOOL(c.v)	true
+Service.NotOfAKindTest			False	False	NOT IS_BOOL(c.v)	false
+Service.NotOfAKindTest			Number	True	NOT IS_BOOL(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	True	NOT IS_BOOL(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_BOOL(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_BOOL(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_NULL(c.v)	absent
+Service.NotOfAKindTest			Null	False	NOT IS_NULL(c.v)	null
+Service.NotOfAKindTest			True	True	NOT IS_NULL(c.v)	true
+Service.NotOfAKindTest			False	True	NOT IS_NULL(c.v)	false
+Service.NotOfAKindTest			Number	True	NOT IS_NULL(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	True	NOT IS_NULL(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_NULL(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_NULL(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_OBJECT(c.v)	absent
+Service.NotOfAKindTest			Null	True	NOT IS_OBJECT(c.v)	null
+Service.NotOfAKindTest			True	True	NOT IS_OBJECT(c.v)	true
+Service.NotOfAKindTest			False	True	NOT IS_OBJECT(c.v)	false
+Service.NotOfAKindTest			Number	True	NOT IS_OBJECT(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	True	NOT IS_OBJECT(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	False	NOT IS_OBJECT(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	True	NOT IS_OBJECT(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_ARRAY(c.v)	absent
+Service.NotOfAKindTest			Null	True	NOT IS_ARRAY(c.v)	null
+Service.NotOfAKindTest			True	True	NOT IS_ARRAY(c.v)	true
+Service.NotOfAKindTest			False	True	NOT IS_ARRAY(c.v)	false
+Service.NotOfAKindTest			Number	True	NOT IS_ARRAY(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	True	NOT IS_ARRAY(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	True	NOT IS_ARRAY(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	False	NOT IS_ARRAY(c.v)	[1]
+Service.NotOfAKindTest			Absent	True	NOT IS_DEFINED(c.v)	absent
+Service.NotOfAKindTest			Null	False	NOT IS_DEFINED(c.v)	null
+Service.NotOfAKindTest			True	False	NOT IS_DEFINED(c.v)	true
+Service.NotOfAKindTest			False	False	NOT IS_DEFINED(c.v)	false
+Service.NotOfAKindTest			Number	False	NOT IS_DEFINED(c.v)	1 30 30.5
+Service.NotOfAKindTest			String	False	NOT IS_DEFINED(c.v)	"bikes" "true"
+Service.NotOfAKindTest			Object	False	NOT IS_DEFINED(c.v)	{"x":1}
+Service.NotOfAKindTest			Array	False	NOT IS_DEFINED(c.v)	[1]
+# AnOrderingAcrossTypesIsUndefined: c.v < @l, c.v > @l
+Service.OrderingAcrossTypesIsUndefined	Less	String	Absent	Undefined		absent
+Service.OrderingAcrossTypesIsUndefined	Less	String	Null	Undefined		null
+Service.OrderingAcrossTypesIsUndefined	Less	String	True	Undefined		true
+Service.OrderingAcrossTypesIsUndefined	Less	String	False	Undefined		false
+Service.OrderingAcrossTypesIsUndefined	Less	String	Number	Undefined		1 30 30.5
+Service.OrderingAcrossTypesIsUndefined	Less	String	Object	Undefined		{"x":1}
+Service.OrderingAcrossTypesIsUndefined	Less	String	Array	Undefined		[1]
+Service.OrderingAcrossTypesIsUndefined	Less	String	Below	True		"" "B" "a" "\ud7ff"
+Service.OrderingAcrossTypesIsUndefined	Less	String	Equal	False		"\ue000"
+Service.OrderingAcrossTypesIsUndefined	Less	String	Above	False		"\uff21" "\ud83d\ude00"
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Absent	Undefined		absent
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Null	Undefined		null
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	True	Undefined		true
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	False	Undefined		false
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	String	Undefined		"bikes" "true"
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Object	Undefined		{"x":1}
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Array	Undefined		[1]
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Below	False		30 9007199254740992
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Equal	False		9007199254740993
+Service.OrderingAcrossTypesIsUndefined	Greater	Number	Above	True		9007199254740994 9223372036854775807
+# AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue: c.v = @l, c.v != @l
+Service.EqualityAcrossTypesIsFalse	Equal	String	Absent	Undefined		absent
+Service.EqualityAcrossTypesIsFalse	Equal	String	Null	False		null
+Service.EqualityAcrossTypesIsFalse	Equal	String	True	False		true
+Service.EqualityAcrossTypesIsFalse	Equal	String	False	False		false
+Service.EqualityAcrossTypesIsFalse	Equal	String	Number	False		1 30 30.5
+Service.EqualityAcrossTypesIsFalse	Equal	String	Object	False		{"x":1}
+Service.EqualityAcrossTypesIsFalse	Equal	String	Array	False		[1]
+Service.EqualityAcrossTypesIsFalse	Equal	String	Below	False		"" "B" "a" "\ud7ff"
+Service.EqualityAcrossTypesIsFalse	Equal	String	Equal	True		"\ue000"
+Service.EqualityAcrossTypesIsFalse	Equal	String	Above	False		"\uff21" "\ud83d\ude00"
+Service.InequalityOverNullIsTrue	NotEqual	String	Absent	Undefined		absent
+Service.InequalityOverNullIsTrue	NotEqual	String	Null	True		null
+Service.InequalityOverNullIsTrue	NotEqual	String	True	True		true
+Service.InequalityOverNullIsTrue	NotEqual	String	False	True		false
+Service.InequalityOverNullIsTrue	NotEqual	String	Number	True		1 30 30.5
+Service.InequalityOverNullIsTrue	NotEqual	String	Object	True		{"x":1}
+Service.InequalityOverNullIsTrue	NotEqual	String	Array	True		[1]
+Service.InequalityOverNullIsTrue	NotEqual	String	Below	True		"" "B" "a" "\ud7ff"
+Service.InequalityOverNullIsTrue	NotEqual	String	Equal	False		"\ue000"
+Service.InequalityOverNullIsTrue	NotEqual	String	Above	True		"\uff21" "\ud83d\ude00"
+Service.InequalityOverNullIsTrue	NotEqual	Number	Absent	Undefined		absent
+Service.InequalityOverNullIsTrue	NotEqual	Number	Null	True		null
+Service.InequalityOverNullIsTrue	NotEqual	Number	True	True		true
+Service.InequalityOverNullIsTrue	NotEqual	Number	False	True		false
+Service.InequalityOverNullIsTrue	NotEqual	Number	String	True		"bikes" "true"
+Service.InequalityOverNullIsTrue	NotEqual	Number	Object	True		{"x":1}
+Service.InequalityOverNullIsTrue	NotEqual	Number	Array	True		[1]
+Service.InequalityOverNullIsTrue	NotEqual	Number	Below	True		30 9007199254740992
+Service.InequalityOverNullIsTrue	NotEqual	Number	Equal	False		9007199254740993
+Service.InequalityOverNullIsTrue	NotEqual	Number	Above	True		9007199254740994 9223372036854775807
+# AComparisonWithinATypeIsTrueOrFalse: =, !=, <, <=, >, >= against @l, and = and != against true and false
+Service.ComparisonWithinAType	Equal	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	Equal	String	Null	False		null
+Service.ComparisonWithinAType	Equal	String	True	False		true
+Service.ComparisonWithinAType	Equal	String	False	False		false
+Service.ComparisonWithinAType	Equal	String	Number	False		1 30 30.5
+Service.ComparisonWithinAType	Equal	String	Object	False		{"x":1}
+Service.ComparisonWithinAType	Equal	String	Array	False		[1]
+Service.ComparisonWithinAType	Equal	String	Below	False		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	Equal	String	Equal	True		"\ue000"
+Service.ComparisonWithinAType	Equal	String	Above	False		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	NotEqual	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	NotEqual	String	Null	True		null
+Service.ComparisonWithinAType	NotEqual	String	True	True		true
+Service.ComparisonWithinAType	NotEqual	String	False	True		false
+Service.ComparisonWithinAType	NotEqual	String	Number	True		1 30 30.5
+Service.ComparisonWithinAType	NotEqual	String	Object	True		{"x":1}
+Service.ComparisonWithinAType	NotEqual	String	Array	True		[1]
+Service.ComparisonWithinAType	NotEqual	String	Below	True		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	NotEqual	String	Equal	False		"\ue000"
+Service.ComparisonWithinAType	NotEqual	String	Above	True		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	Less	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	Less	String	Null	Undefined		null
+Service.ComparisonWithinAType	Less	String	True	Undefined		true
+Service.ComparisonWithinAType	Less	String	False	Undefined		false
+Service.ComparisonWithinAType	Less	String	Number	Undefined		1 30 30.5
+Service.ComparisonWithinAType	Less	String	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	Less	String	Array	Undefined		[1]
+Service.ComparisonWithinAType	Less	String	Below	True		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	Less	String	Equal	False		"\ue000"
+Service.ComparisonWithinAType	Less	String	Above	False		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	LessOrEqual	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	LessOrEqual	String	Null	Undefined		null
+Service.ComparisonWithinAType	LessOrEqual	String	True	Undefined		true
+Service.ComparisonWithinAType	LessOrEqual	String	False	Undefined		false
+Service.ComparisonWithinAType	LessOrEqual	String	Number	Undefined		1 30 30.5
+Service.ComparisonWithinAType	LessOrEqual	String	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	LessOrEqual	String	Array	Undefined		[1]
+Service.ComparisonWithinAType	LessOrEqual	String	Below	True		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	LessOrEqual	String	Equal	True		"\ue000"
+Service.ComparisonWithinAType	LessOrEqual	String	Above	False		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	Greater	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	Greater	String	Null	Undefined		null
+Service.ComparisonWithinAType	Greater	String	True	Undefined		true
+Service.ComparisonWithinAType	Greater	String	False	Undefined		false
+Service.ComparisonWithinAType	Greater	String	Number	Undefined		1 30 30.5
+Service.ComparisonWithinAType	Greater	String	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	Greater	String	Array	Undefined		[1]
+Service.ComparisonWithinAType	Greater	String	Below	False		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	Greater	String	Equal	False		"\ue000"
+Service.ComparisonWithinAType	Greater	String	Above	True		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	GreaterOrEqual	String	Absent	Undefined		absent
+Service.ComparisonWithinAType	GreaterOrEqual	String	Null	Undefined		null
+Service.ComparisonWithinAType	GreaterOrEqual	String	True	Undefined		true
+Service.ComparisonWithinAType	GreaterOrEqual	String	False	Undefined		false
+Service.ComparisonWithinAType	GreaterOrEqual	String	Number	Undefined		1 30 30.5
+Service.ComparisonWithinAType	GreaterOrEqual	String	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	GreaterOrEqual	String	Array	Undefined		[1]
+Service.ComparisonWithinAType	GreaterOrEqual	String	Below	False		"" "B" "a" "\ud7ff"
+Service.ComparisonWithinAType	GreaterOrEqual	String	Equal	True		"\ue000"
+Service.ComparisonWithinAType	GreaterOrEqual	String	Above	True		"\uff21" "\ud83d\ude00"
+Service.ComparisonWithinAType	Equal	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	Equal	Number	Null	False		null
+Service.ComparisonWithinAType	Equal	Number	True	False		true
+Service.ComparisonWithinAType	Equal	Number	False	False		false
+Service.ComparisonWithinAType	Equal	Number	String	False		"bikes" "true"
+Service.ComparisonWithinAType	Equal	Number	Object	False		{"x":1}
+Service.ComparisonWithinAType	Equal	Number	Array	False		[1]
+Service.ComparisonWithinAType	Equal	Number	Below	False		30 9007199254740992
+Service.ComparisonWithinAType	Equal	Number	Equal	True		9007199254740993
+Service.ComparisonWithinAType	Equal	Number	Above	False		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	NotEqual	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	NotEqual	Number	Null	True		null
+Service.ComparisonWithinAType	NotEqual	Number	True	True		true
+Service.ComparisonWithinAType	NotEqual	Number	False	True		false
+Service.ComparisonWithinAType	NotEqual	Number	String	True		"bikes" "true"
+Service.ComparisonWithinAType	NotEqual	Number	Object	True		{"x":1}
+Service.ComparisonWithinAType	NotEqual	Number	Array	True		[1]
+Service.ComparisonWithinAType	NotEqual	Number	Below	True		30 9007199254740992
+Service.ComparisonWithinAType	NotEqual	Number	Equal	False		9007199254740993
+Service.ComparisonWithinAType	NotEqual	Number	Above	True		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	Less	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	Less	Number	Null	Undefined		null
+Service.ComparisonWithinAType	Less	Number	True	Undefined		true
+Service.ComparisonWithinAType	Less	Number	False	Undefined		false
+Service.ComparisonWithinAType	Less	Number	String	Undefined		"bikes" "true"
+Service.ComparisonWithinAType	Less	Number	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	Less	Number	Array	Undefined		[1]
+Service.ComparisonWithinAType	Less	Number	Below	True		30 9007199254740992
+Service.ComparisonWithinAType	Less	Number	Equal	False		9007199254740993
+Service.ComparisonWithinAType	Less	Number	Above	False		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	LessOrEqual	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	LessOrEqual	Number	Null	Undefined		null
+Service.ComparisonWithinAType	LessOrEqual	Number	True	Undefined		true
+Service.ComparisonWithinAType	LessOrEqual	Number	False	Undefined		false
+Service.ComparisonWithinAType	LessOrEqual	Number	String	Undefined		"bikes" "true"
+Service.ComparisonWithinAType	LessOrEqual	Number	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	LessOrEqual	Number	Array	Undefined		[1]
+Service.ComparisonWithinAType	LessOrEqual	Number	Below	True		30 9007199254740992
+Service.ComparisonWithinAType	LessOrEqual	Number	Equal	True		9007199254740993
+Service.ComparisonWithinAType	LessOrEqual	Number	Above	False		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	Greater	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	Greater	Number	Null	Undefined		null
+Service.ComparisonWithinAType	Greater	Number	True	Undefined		true
+Service.ComparisonWithinAType	Greater	Number	False	Undefined		false
+Service.ComparisonWithinAType	Greater	Number	String	Undefined		"bikes" "true"
+Service.ComparisonWithinAType	Greater	Number	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	Greater	Number	Array	Undefined		[1]
+Service.ComparisonWithinAType	Greater	Number	Below	False		30 9007199254740992
+Service.ComparisonWithinAType	Greater	Number	Equal	False		9007199254740993
+Service.ComparisonWithinAType	Greater	Number	Above	True		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Absent	Undefined		absent
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Null	Undefined		null
+Service.ComparisonWithinAType	GreaterOrEqual	Number	True	Undefined		true
+Service.ComparisonWithinAType	GreaterOrEqual	Number	False	Undefined		false
+Service.ComparisonWithinAType	GreaterOrEqual	Number	String	Undefined		"bikes" "true"
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Object	Undefined		{"x":1}
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Array	Undefined		[1]
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Below	False		30 9007199254740992
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Equal	True		9007199254740993
+Service.ComparisonWithinAType	GreaterOrEqual	Number	Above	True		9007199254740994 9223372036854775807
+Service.ComparisonWithinAType	Equal	True	Absent	Undefined		absent
+Service.ComparisonWithinAType	Equal	True	Null	False		null
+Service.ComparisonWithinAType	Equal	True	True	True		true
+Service.ComparisonWithinAType	Equal	True	False	False		false
+Service.ComparisonWithinAType	Equal	True	Number	False		1 30 30.5
+Service.ComparisonWithinAType	Equal	True	String	False		"bikes" "true"
+Service.ComparisonWithinAType	Equal	True	Object	False		{"x":1}
+Service.ComparisonWithinAType	Equal	True	Array	False		[1]
+Service.ComparisonWithinAType	NotEqual	True	Absent	Undefined		absent
+Service.ComparisonWithinAType	NotEqual	True	Null	True		null
+Service.ComparisonWithinAType	NotEqual	True	True	False		true
+Service.ComparisonWithinAType	NotEqual	True	False	True		false
+Service.ComparisonWithinAType	NotEqual	True	Number	True		1 30 30.5
+Service.ComparisonWithinAType	NotEqual	True	String	True		"bikes" "true"
+Service.ComparisonWithinAType	NotEqual	True	Object	True		{"x":1}
+Service.ComparisonWithinAType	NotEqual	True	Array	True		[1]
+Service.ComparisonWithinAType	Equal	False	Absent	Undefined		absent
+Service.ComparisonWithinAType	Equal	False	Null	False		null
+Service.ComparisonWithinAType	Equal	False	True	False		true
+Service.ComparisonWithinAType	Equal	False	False	True		false
+Service.ComparisonWithinAType	Equal	False	Number	False		1 30 30.5
+Service.ComparisonWithinAType	Equal	False	String	False		"bikes" "true"
+Service.ComparisonWithinAType	Equal	False	Object	False		{"x":1}
+Service.ComparisonWithinAType	Equal	False	Array	False		[1]
+Service.ComparisonWithinAType	NotEqual	False	Absent	Undefined		absent
+Service.ComparisonWithinAType	NotEqual	False	Null	True		null
+Service.ComparisonWithinAType	NotEqual	False	True	True		true
+Service.ComparisonWithinAType	NotEqual	False	False	False		false
+Service.ComparisonWithinAType	NotEqual	False	Number	True		1 30 30.5
+Service.ComparisonWithinAType	NotEqual	False	String	True		"bikes" "true"
+Service.ComparisonWithinAType	NotEqual	False	Object	True		{"x":1}
+Service.ComparisonWithinAType	NotEqual	False	Array	True		[1]
+# NotOverUndefinedIsUndefined: NOT c.v, NOT (c.v > "") for undefined, and two composites
+Service.NotOverUndefinedIsUndefined	Not	None	True	False		true
+Service.NotOverUndefinedIsUndefined	Not	None	False	True		false
+Service.NotOverUndefinedIsUndefined	Not	None	Absent	Undefined		absent
+Service.NotOverUndefinedIsUndefined	Not	None	Null	Undefined		null
+Service.NotOverUndefinedIsUndefined	Not	None	Number	Undefined		1 30 30.5
+Service.NotOverUndefinedIsUndefined	Not	None	String	Undefined		"bikes" "true"
+Service.NotOverUndefinedIsUndefined	Not	None	Object	Undefined		{"x":1}
+Service.NotOverUndefinedIsUndefined	Not	None	Array	Undefined		[1]
+Service.NotOverUndefinedIsUndefined	Not	None	Undefined	Undefined		1
+Service.NotOverUndefinedIsUndefined			True	Undefined	NOT (c.v < "zzz")	true
+Service.NotOverUndefinedIsUndefined			False	Undefined	NOT (c.v < "zzz")	false
+Service.NotOverUndefinedIsUndefined			Absent	Undefined	NOT (c.v < "zzz")	absent
+Service.NotOverUndefinedIsUndefined			Null	Undefined	NOT (c.v < "zzz")	null
+Service.NotOverUndefinedIsUndefined			Number	Undefined	NOT (c.v < "zzz")	1 30 30.5
+Service.NotOverUndefinedIsUndefined			String	False	NOT (c.v < "zzz")	"bikes" "true"
+Service.NotOverUndefinedIsUndefined			Object	Undefined	NOT (c.v < "zzz")	{"x":1}
+Service.NotOverUndefinedIsUndefined			Array	Undefined	NOT (c.v < "zzz")	[1]
+Service.NotOverUndefinedIsUndefined			True	True	NOT (c.v = "bikes")	true
+Service.NotOverUndefinedIsUndefined			False	True	NOT (c.v = "bikes")	false
+Service.NotOverUndefinedIsUndefined			Absent	Undefined	NOT (c.v = "bikes")	absent
+Service.NotOverUndefinedIsUndefined			Null	True	NOT (c.v = "bikes")	null
+Service.NotOverUndefinedIsUndefined			Number	True	NOT (c.v = "bikes")	1 30 30.5
+# NOT (c.v = "bikes") at String answered False and True, a witness each, and backs nothing
+Service.NotOverUndefinedIsUndefined			String	False	NOT (c.v = "bikes")	"bikes" "true"
+Service.NotOverUndefinedIsUndefined			String	True	NOT (c.v = "bikes")	"bikes" "true"
+Service.NotOverUndefinedIsUndefined			Object	True	NOT (c.v = "bikes")	{"x":1}
+Service.NotOverUndefinedIsUndefined			Array	True	NOT (c.v = "bikes")	[1]
+#
+# Measurements.CosmosBooleanLogicMeasurementTests, over c.v, a connective's first side at c.u
+# AComparisonIsUndefinedOnlyOverAnAbsentPath: c.v = @l, @l true
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	Absent	Undefined		absent
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	Null	False		null
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	True	True		true
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	False	False		false
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	Number	False		1 30 30.5
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	String	False		"bikes" "true"
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	Object	False		{"x":1}
+Service.BooleanEqualityIsUndefinedOnlyOverAbsent	Equal	True	Array	False		[1]
+# ABarePathKeepsOnlyTrue: c.v
+Service.BarePathKeepsOnlyTrue	Bare	None	Absent	Undefined		absent
+Service.BarePathKeepsOnlyTrue	Bare	None	Null	Undefined		null
+Service.BarePathKeepsOnlyTrue	Bare	None	True	True		true
+Service.BarePathKeepsOnlyTrue	Bare	None	False	False		false
+Service.BarePathKeepsOnlyTrue	Bare	None	Number	Undefined		1 30 30.5
+Service.BarePathKeepsOnlyTrue	Bare	None	String	Undefined		"bikes" "true"
+Service.BarePathKeepsOnlyTrue	Bare	None	Object	Undefined		{"x":1}
+Service.BarePathKeepsOnlyTrue	Bare	None	Array	Undefined		[1]
+# NotOverAPathKeepsOnlyFalse: NOT c.v
+Service.NotOverAPathKeepsOnlyFalse	Not	None	True	False		true
+Service.NotOverAPathKeepsOnlyFalse	Not	None	False	True		false
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Absent	Undefined		absent
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Null	Undefined		null
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Number	Undefined		1 30 30.5
+Service.NotOverAPathKeepsOnlyFalse	Not	None	String	Undefined		"bikes" "true"
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Object	Undefined		{"x":1}
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Array	Undefined		[1]
+Service.NotOverAPathKeepsOnlyFalse	Not	None	Undefined	Undefined		1
+# TheConnectivesTreatEverythingButABooleanAsUnknown: (c.v OR true), NOT (c.v AND false), NOT (c.v OR false)
+Service.ConnectivesReadNonBooleansAsUnknown			Absent	True	(c.v OR true)	absent
+Service.ConnectivesReadNonBooleansAsUnknown			Null	True	(c.v OR true)	null
+Service.ConnectivesReadNonBooleansAsUnknown			True	True	(c.v OR true)	true
+Service.ConnectivesReadNonBooleansAsUnknown			False	True	(c.v OR true)	false
+Service.ConnectivesReadNonBooleansAsUnknown			Number	True	(c.v OR true)	1 30 30.5
+Service.ConnectivesReadNonBooleansAsUnknown			String	True	(c.v OR true)	"bikes" "true"
+Service.ConnectivesReadNonBooleansAsUnknown			Object	True	(c.v OR true)	{"x":1}
+Service.ConnectivesReadNonBooleansAsUnknown			Array	True	(c.v OR true)	[1]
+Service.ConnectivesReadNonBooleansAsUnknown			Absent	True	NOT (c.v AND false)	absent
+Service.ConnectivesReadNonBooleansAsUnknown			Null	True	NOT (c.v AND false)	null
+Service.ConnectivesReadNonBooleansAsUnknown			True	True	NOT (c.v AND false)	true
+Service.ConnectivesReadNonBooleansAsUnknown			False	True	NOT (c.v AND false)	false
+Service.ConnectivesReadNonBooleansAsUnknown			Number	True	NOT (c.v AND false)	1 30 30.5
+Service.ConnectivesReadNonBooleansAsUnknown			String	True	NOT (c.v AND false)	"bikes" "true"
+Service.ConnectivesReadNonBooleansAsUnknown			Object	True	NOT (c.v AND false)	{"x":1}
+Service.ConnectivesReadNonBooleansAsUnknown			Array	True	NOT (c.v AND false)	[1]
+Service.ConnectivesReadNonBooleansAsUnknown			Absent	Undefined	NOT (c.v OR false)	absent
+Service.ConnectivesReadNonBooleansAsUnknown			Null	Undefined	NOT (c.v OR false)	null
+Service.ConnectivesReadNonBooleansAsUnknown			True	False	NOT (c.v OR false)	true
+Service.ConnectivesReadNonBooleansAsUnknown			False	True	NOT (c.v OR false)	false
+Service.ConnectivesReadNonBooleansAsUnknown			Number	Undefined	NOT (c.v OR false)	1 30 30.5
+Service.ConnectivesReadNonBooleansAsUnknown			String	Undefined	NOT (c.v OR false)	"bikes" "true"
+Service.ConnectivesReadNonBooleansAsUnknown			Object	Undefined	NOT (c.v OR false)	{"x":1}
+Service.ConnectivesReadNonBooleansAsUnknown			Array	Undefined	NOT (c.v OR false)	[1]
+# TheConnectivesAreKleenesInEitherOrder: (u AND v), (u OR v), u of the operand's class at c.u, and NOT v
+Service.ConnectivesAreKleene	And	True	True	True		true
+Service.ConnectivesAreKleene	And	True	False	False		false
+Service.ConnectivesAreKleene	And	True	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	True	Null	Undefined		null
+Service.ConnectivesAreKleene	And	True	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	True	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	True	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	True	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	True	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	True	True	True		true
+Service.ConnectivesAreKleene	Or	True	False	True		false
+Service.ConnectivesAreKleene	Or	True	Absent	True		absent
+Service.ConnectivesAreKleene	Or	True	Null	True		null
+Service.ConnectivesAreKleene	Or	True	Number	True		1 30 30.5
+Service.ConnectivesAreKleene	Or	True	String	True		"bikes" "true"
+Service.ConnectivesAreKleene	Or	True	Object	True		{"x":1}
+Service.ConnectivesAreKleene	Or	True	Array	True		[1]
+Service.ConnectivesAreKleene	Or	True	Undefined	True		1
+Service.ConnectivesAreKleene	And	False	True	False		true
+Service.ConnectivesAreKleene	And	False	False	False		false
+Service.ConnectivesAreKleene	And	False	Absent	False		absent
+Service.ConnectivesAreKleene	And	False	Null	False		null
+Service.ConnectivesAreKleene	And	False	Number	False		1 30 30.5
+Service.ConnectivesAreKleene	And	False	String	False		"bikes" "true"
+Service.ConnectivesAreKleene	And	False	Object	False		{"x":1}
+Service.ConnectivesAreKleene	And	False	Array	False		[1]
+Service.ConnectivesAreKleene	And	False	Undefined	False		1
+Service.ConnectivesAreKleene	Or	False	True	True		true
+Service.ConnectivesAreKleene	Or	False	False	False		false
+Service.ConnectivesAreKleene	Or	False	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	False	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	False	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	False	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	False	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	False	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	False	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Undefined	True	Undefined		true
+Service.ConnectivesAreKleene	And	Undefined	False	False		false
+Service.ConnectivesAreKleene	And	Undefined	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Undefined	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Undefined	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Undefined	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Undefined	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Undefined	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Undefined	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Undefined	True	True		true
+Service.ConnectivesAreKleene	Or	Undefined	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Undefined	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Undefined	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Undefined	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Undefined	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Undefined	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Undefined	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Undefined	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Absent	True	Undefined		true
+Service.ConnectivesAreKleene	And	Absent	False	False		false
+Service.ConnectivesAreKleene	And	Absent	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Absent	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Absent	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Absent	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Absent	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Absent	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Absent	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Absent	True	True		true
+Service.ConnectivesAreKleene	Or	Absent	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Absent	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Absent	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Absent	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Absent	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Absent	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Absent	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Absent	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Null	True	Undefined		true
+Service.ConnectivesAreKleene	And	Null	False	False		false
+Service.ConnectivesAreKleene	And	Null	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Null	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Null	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Null	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Null	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Null	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Null	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Null	True	True		true
+Service.ConnectivesAreKleene	Or	Null	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Null	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Null	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Null	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Null	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Null	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Null	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Null	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Number	True	Undefined		true
+Service.ConnectivesAreKleene	And	Number	False	False		false
+Service.ConnectivesAreKleene	And	Number	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Number	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Number	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Number	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Number	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Number	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Number	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Number	True	True		true
+Service.ConnectivesAreKleene	Or	Number	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Number	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Number	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Number	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Number	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Number	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Number	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Number	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	String	True	Undefined		true
+Service.ConnectivesAreKleene	And	String	False	False		false
+Service.ConnectivesAreKleene	And	String	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	String	Null	Undefined		null
+Service.ConnectivesAreKleene	And	String	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	String	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	String	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	String	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	String	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	String	True	True		true
+Service.ConnectivesAreKleene	Or	String	False	Undefined		false
+Service.ConnectivesAreKleene	Or	String	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	String	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	String	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	String	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	String	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	String	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	String	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Object	True	Undefined		true
+Service.ConnectivesAreKleene	And	Object	False	False		false
+Service.ConnectivesAreKleene	And	Object	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Object	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Object	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Object	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Object	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Object	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Object	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Object	True	True		true
+Service.ConnectivesAreKleene	Or	Object	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Object	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Object	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Object	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Object	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Object	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Object	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Object	Undefined	Undefined		1
+Service.ConnectivesAreKleene	And	Array	True	Undefined		true
+Service.ConnectivesAreKleene	And	Array	False	False		false
+Service.ConnectivesAreKleene	And	Array	Absent	Undefined		absent
+Service.ConnectivesAreKleene	And	Array	Null	Undefined		null
+Service.ConnectivesAreKleene	And	Array	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	And	Array	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	And	Array	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	And	Array	Array	Undefined		[1]
+Service.ConnectivesAreKleene	And	Array	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Or	Array	True	True		true
+Service.ConnectivesAreKleene	Or	Array	False	Undefined		false
+Service.ConnectivesAreKleene	Or	Array	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Or	Array	Null	Undefined		null
+Service.ConnectivesAreKleene	Or	Array	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Or	Array	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Or	Array	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Or	Array	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Or	Array	Undefined	Undefined		1
+Service.ConnectivesAreKleene	Not	None	True	False		true
+Service.ConnectivesAreKleene	Not	None	False	True		false
+Service.ConnectivesAreKleene	Not	None	Absent	Undefined		absent
+Service.ConnectivesAreKleene	Not	None	Null	Undefined		null
+Service.ConnectivesAreKleene	Not	None	Number	Undefined		1 30 30.5
+Service.ConnectivesAreKleene	Not	None	String	Undefined		"bikes" "true"
+Service.ConnectivesAreKleene	Not	None	Object	Undefined		{"x":1}
+Service.ConnectivesAreKleene	Not	None	Array	Undefined		[1]
+Service.ConnectivesAreKleene	Not	None	Undefined	Undefined		1
+# AConstantIsItsOwnTruth: true, false
+Service.AConstantIsItsOwnTruth	Constant	True	Absent	True		absent
+Service.AConstantIsItsOwnTruth	Constant	True	Null	True		null
+Service.AConstantIsItsOwnTruth	Constant	True	True	True		true
+Service.AConstantIsItsOwnTruth	Constant	True	False	True		false
+Service.AConstantIsItsOwnTruth	Constant	True	Number	True		1 30 30.5
+Service.AConstantIsItsOwnTruth	Constant	True	String	True		"bikes" "true"
+Service.AConstantIsItsOwnTruth	Constant	True	Object	True		{"x":1}
+Service.AConstantIsItsOwnTruth	Constant	True	Array	True		[1]
+Service.AConstantIsItsOwnTruth	Constant	False	Absent	False		absent
+Service.AConstantIsItsOwnTruth	Constant	False	Null	False		null
+Service.AConstantIsItsOwnTruth	Constant	False	True	False		true
+Service.AConstantIsItsOwnTruth	Constant	False	False	False		false
+Service.AConstantIsItsOwnTruth	Constant	False	Number	False		1 30 30.5
+Service.AConstantIsItsOwnTruth	Constant	False	String	False		"bikes" "true"
+Service.AConstantIsItsOwnTruth	Constant	False	Object	False		{"x":1}
+Service.AConstantIsItsOwnTruth	Constant	False	Array	False		[1]
+#
+# Measurements.CosmosServiceOrderMeasurementTests, over c.v
+# ADocumentsStringsOrderByCodePoint: ORDER BY c.v over the order's witnesses, > beside each; c.v > @l, @l U+E000
+Service.StringOrderIsCodePoint	Order	String	None	CodePoint		"\ud7ff" "a" "B" "\ue000" "\uff21" "\ud83d\ude00" "" "\u0000" "a\u0000b"
+Service.StringOrderIsCodePoint	Greater	String	Absent	Undefined		absent
+Service.StringOrderIsCodePoint	Greater	String	Null	Undefined		null
+Service.StringOrderIsCodePoint	Greater	String	True	Undefined		true
+Service.StringOrderIsCodePoint	Greater	String	False	Undefined		false
+Service.StringOrderIsCodePoint	Greater	String	Number	Undefined		1 30 30.5
+Service.StringOrderIsCodePoint	Greater	String	Object	Undefined		{"x":1}
+Service.StringOrderIsCodePoint	Greater	String	Array	Undefined		[1]
+Service.StringOrderIsCodePoint	Greater	String	Below	False		"" "B" "a" "\ud7ff"
+Service.StringOrderIsCodePoint	Greater	String	Equal	False		"\ue000"
+Service.StringOrderIsCodePoint	Greater	String	Above	True		"\uff21" "\ud83d\ude00"
+# ARangeWhoseBoundsTheOrdersRankApartKeepsNothing: c.v >= @lo AND c.v <= @hi, U+E000 and U+1F600, B and a
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Between	Undefined		"\ue000" "\uff21" "\ud83d\ude00"
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Outside	False		"" "B" "a" "\ud7ff" "\ud83d\ude01"
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Absent	Undefined		absent
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Null	Undefined		null
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	True	Undefined		true
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	False	Undefined		false
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Number	Undefined		1 30 30.5
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Object	Undefined		{"x":1}
+Service.RangeOverPartedBoundsIsEmpty	Range	Parted	Array	Undefined		[1]
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Between	True		"B" "C" "a"
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Outside	False		"" "A" "bikes" "\ue000" "\ud83d\ude00"
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Absent	Undefined		absent
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Null	Undefined		null
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	True	Undefined		true
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	False	Undefined		false
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Number	Undefined		1 30 30.5
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Object	Undefined		{"x":1}
+Service.RangeOverPartedBoundsIsEmpty	Range	Agreeing	Array	Undefined		[1]
+# IntegersOrderExactly: ORDER BY c.v over the order's witnesses, > beside each; c.v = @l, @l 2^53 + 1
+Service.IntegersOrderExactly	Order	Number	None	Numeric		9007199254740992 9007199254740993 9007199254740994 9223372036854775806 9223372036854775807
+Service.IntegersOrderExactly	Equal	Number	Absent	Undefined		absent
+Service.IntegersOrderExactly	Equal	Number	Null	False		null
+Service.IntegersOrderExactly	Equal	Number	True	False		true
+Service.IntegersOrderExactly	Equal	Number	False	False		false
+Service.IntegersOrderExactly	Equal	Number	String	False		"bikes" "true"
+Service.IntegersOrderExactly	Equal	Number	Object	False		{"x":1}
+Service.IntegersOrderExactly	Equal	Number	Array	False		[1]
+Service.IntegersOrderExactly	Equal	Number	Below	False		30 9007199254740992
+Service.IntegersOrderExactly	Equal	Number	Equal	True		9007199254740993
+Service.IntegersOrderExactly	Equal	Number	Above	False		9007199254740994 9223372036854775807
+# NumbersBeyondLongCompareAsDoubles: =, !=, <, <=, >, >= against @l at 0.1, 2^53 + 1, 1e22 and 2^63 as a double
+Service.NumbersBeyondLongCompareAsDoubles	Equal	Number	Below	False		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	Equal	Number	Equal	True		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	Equal	Number	Above	False		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
+Service.NumbersBeyondLongCompareAsDoubles	NotEqual	Number	Below	True		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	NotEqual	Number	Equal	False		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	NotEqual	Number	Above	True		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
+Service.NumbersBeyondLongCompareAsDoubles	Less	Number	Below	True		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	Less	Number	Equal	False		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	Less	Number	Above	False		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
+Service.NumbersBeyondLongCompareAsDoubles	LessOrEqual	Number	Below	True		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	LessOrEqual	Number	Equal	True		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	LessOrEqual	Number	Above	False		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
+Service.NumbersBeyondLongCompareAsDoubles	Greater	Number	Below	False		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	Greater	Number	Equal	False		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	Greater	Number	Above	True		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
+Service.NumbersBeyondLongCompareAsDoubles	GreaterOrEqual	Number	Below	False		0.09999999999999999 9007199254740992.5 9999999999999997902848 9223372036854775807
+Service.NumbersBeyondLongCompareAsDoubles	GreaterOrEqual	Number	Equal	True		0.1 0.1000000000000000055511151231257827021181583404541015625 0.10000000000000000001 1e22 9999999999999999999999 10000000000000000000001 9223372036854775808 9223372036854775809
+Service.NumbersBeyondLongCompareAsDoubles	GreaterOrEqual	Number	Above	True		0.10000000000000002 9007199254740993.5 10000000000000002097152 9223372036854777856
