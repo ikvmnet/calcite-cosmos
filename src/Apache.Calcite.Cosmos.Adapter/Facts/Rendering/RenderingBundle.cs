@@ -13,11 +13,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// One statement round in S: a child of the frozen theory holding the round's conjuncts as terms, the import they were
     /// rendered from, and the forms claimed for them; run once, read off a completed run alone, and disposed.
     /// </summary>
+    /// <remarks>
+    /// An engine failure in any call declines the bundle rather than throwing: every claim then reads Unproven, and where
+    /// the graph ran out of ids or epochs its generation retires (<see cref="RenderingGraph"/>).
+    /// </remarks>
     internal sealed class RenderingBundle : IDisposable
     {
 
         readonly RenderingTheory _theory;
-        string? _source;
+        ImportSource? _source;
         RenderingRun? _run;
 
         internal RenderingBundle(RenderingTheory theory, RenderingSet set)
@@ -29,6 +33,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The bundle's scope, for its tests.</summary>
         public Scope Scope { get; }
+
+        /// <summary>The theory, of one generation, the bundle is a child of.</summary>
+        public RenderingTheory Theory => _theory;
+
+        /// <summary>The engine failure the bundle declined on, if any.</summary>
+        public Exception? Failure { get; private set; }
 
         /// <summary>Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads.</summary>
         public Pred Write(SqlPredicate predicate)
@@ -43,14 +53,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
 
             var term = writer.Term(predicate, facts);
-            var root = default(Pred);
-            Scope.Write(w =>
+            return Guard(() =>
             {
-                root = w.Make(term);
-                w.Assume([.. facts]);
-            });
+                var root = default(Pred);
+                Scope.Write(w =>
+                {
+                    root = w.Make(term);
+                    w.Assume([.. facts]);
+                });
 
-            return root;
+                return root;
+            });
         }
 
         /// <summary>
@@ -59,17 +72,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         /// <exception cref="InvalidOperationException">The bundle has run, or holds an import from another source.</exception>
         /// <exception cref="FactConflictException">The path was imported with another value.</exception>
-        public void Import(string source, JsonDocumentPath path, PathValues values, ValueSet<string> classes)
+        public void Import(ImportSource source, JsonDocumentPath path, PathValues values, ValueSet<string> classes)
         {
             if (_run is not null)
                 throw new InvalidOperationException("An import after the run would be read by nothing the run derived.");
 
             if (_source is not null && _source != source)
-                throw new InvalidOperationException($"The bundle imports from '{_source}', and one bundle holds one source's facts.");
+                throw new InvalidOperationException($"The bundle imports from {_source}, and one bundle holds one source's facts.");
 
             _source = source;
             var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
-            Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
+
+            // A differing second import is the importer's fault, not the engine's, and throws.
+            try
+            {
+                if (Failure is null)
+                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
+            }
+            catch (Exception e) when (e is not FactConflictException && IsEngineFailure(e))
+            {
+                Decline(e);
+            }
         }
 
         /// <summary>
@@ -80,22 +103,67 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             var facts = new List<Fact> { _theory.Candidate.Of(root, RenderPosition.Pos, form) };
             Members(form, facts);
-            Scope.Assume([.. facts]);
+            Guard(() => Scope.Assume([.. facts]));
         }
 
-        /// <summary>Runs the check within count limits, never time, and the tripwire after it.</summary>
-        public RenderingRun Run(int iterationLimit = 64)
+        /// <summary>
+        /// Runs the check within count limits, never time, and the tripwire after it. A run the engine failed has no stop
+        /// reason.
+        /// </summary>
+        public RenderingRun Run(int iterationLimit = 64) => _run = Guard(() =>
         {
             var report = Scope.Run(_theory.Check, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();
-            return _run = new RenderingRun(report.StopReason, terms.Select(row => row.Output).Distinct().Count() == terms.Count,
+            return new RenderingRun(report.StopReason, terms.Select(row => row.Output).Distinct().Count() == terms.Count,
                 Scope.Check(_theory.Graph.Contradiction.Of()));
+        }) ?? new RenderingRun(null, true, false);
+
+        /// <summary>What the run says of a claim of a form for a conjunct at the root; Unproven where the bundle declined.</summary>
+        public RenderingVerdict Read(Pred root, ServiceForm form, Verdict claim) => Guard(() => Answer(root, form, claim))
+            ?? new(RenderingVerdictKind.Unproven, null, null, $"declined: {Failure!.GetType().Name}: {Failure.Message}");
+
+        /// <summary>
+        /// Declines the bundle on an engine failure, so nothing more is asked of its scope. Running out of ids or epochs is
+        /// the graph's, not the bundle's, and retires its generation.
+        /// </summary>
+        internal void Decline(Exception failure)
+        {
+            Failure ??= failure;
+            if (failure is OverflowException)
+                _theory.RanOut = true;
         }
 
-        /// <summary>What the run says of a claim of a form for a conjunct at the root.</summary>
-        public RenderingVerdict Read(Pred root, ServiceForm form, Verdict claim)
+        /// <inheritdoc />
+        public void Dispose() => Scope.Dispose();
+
+        /// <summary>What a call into the engine declines on: the facts graph's engine failures, and running out (Arch §2.12).</summary>
+        static bool IsEngineFailure(Exception e) => JsonFactTheory.IsEngineFailure(e) || e is OverflowException;
+
+        T? Guard<T>(Func<T> call)
+        {
+            if (Failure is not null)
+                return default;
+
+            try
+            {
+                return call();
+            }
+            catch (Exception e) when (IsEngineFailure(e))
+            {
+                Decline(e);
+                return default;
+            }
+        }
+
+        void Guard(Action call) => Guard(() =>
+        {
+            call();
+            return true;
+        });
+
+        RenderingVerdict Answer(Pred root, ServiceForm form, Verdict claim)
         {
             if (_run is not { StopReason: RunStopReason.Completed })
                 return new(RenderingVerdictKind.Incomplete, null, null, _run is null ? "not run" : "stopped: " + _run.StopReason);
@@ -115,9 +183,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             return new(RenderingVerdictKind.Unproven, null, null, null);
         }
-
-        /// <inheritdoc />
-        public void Dispose() => Scope.Dispose();
 
         void Members(ServiceForm form, List<Fact> facts)
         {

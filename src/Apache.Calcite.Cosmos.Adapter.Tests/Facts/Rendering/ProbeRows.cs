@@ -40,6 +40,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         public static readonly string Label = SqlValue.Spell(LabelPath);
 
+        /// <summary>The one source a test's bundle imports from.</summary>
+        public static readonly ImportSource Source = new("test", "test", 0);
+
         /// <summary>The bare comparison for text <c>label &lt;&gt; 'bikes'</c>, refuted for Equal where a <c>WHERE</c> keeps a null, an object or an array (T5).</summary>
         public static readonly ServiceForm Bare = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Label, JsonValues.Of("bikes"));
 
@@ -61,11 +64,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using var bundle = (theory ?? ProbeTheory).Open(set);
             var root = bundle.Write(conjunct);
             foreach (var each in new[] { LabelPath, KindPath, CategoryPath, MetadataPath, FlagPath })
-                bundle.Import("test", each, each == path ? values! : PathValues.Anything, each == path ? classes ?? JsonValues.AllBands : JsonValues.AllBands);
+                bundle.Import(Source, each, each == path ? values! : PathValues.Anything, each == path ? classes ?? JsonValues.AllBands : JsonValues.AllBands);
 
             bundle.Claim(root, form);
             var run = bundle.Run();
-            (run.StopReason, run.OneNodePerClass, run.Contradicted).Should().Be((RunStopReason.Completed, true, false), form.Text);
+            run.Should().Be(new RenderingRun(RunStopReason.Completed, true, false), form.Text);
             return (bundle.Read(root, form, Verdict.Equal), bundle.Read(root, form, Verdict.Implies));
         }
 

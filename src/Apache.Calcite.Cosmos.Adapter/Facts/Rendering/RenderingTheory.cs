@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -20,6 +22,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </remarks>
     internal sealed class RenderingTheory
     {
+
+        string? _digest;
+        volatile bool _ranOut;
 
         RenderingTheory(RenderingDefinition definition)
         {
@@ -209,6 +214,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>Opens a bundle under a set: a child of the theory, holding one statement round's terms, import and candidates.</summary>
         public RenderingBundle Open(RenderingSet set) => new(this, set);
+
+        /// <summary>
+        /// Gets the frozen theory's rows, hashed: what a memo of its verdicts keys on, so that generations defined alike
+        /// share entries and a planted row shares none. Rows, never a list of what was loaded, so no table is left out; a
+        /// primitive is no row, so a plant of one keeps a memo of its own.
+        /// </summary>
+        public string Digest => _digest ??= Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n",
+            Graph.Tables.SelectMany(Theory.Rows).Select(row => row.ToString()).Order(StringComparer.Ordinal)))));
+
+        /// <summary>Gets whether a bundle found the graph out of ids or epochs, which retires its generation at once.</summary>
+        public bool RanOut
+        {
+            get => _ranOut;
+            internal set => _ranOut = value;
+        }
 
         static void Register(ValueStore values)
         {

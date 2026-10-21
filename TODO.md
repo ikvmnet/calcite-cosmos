@@ -2691,11 +2691,17 @@ across documents* and *A join of a container to itself* is the record.
   the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
   its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
   as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
-- **`D0`'s row spells a declared domain as stated** — *small, for the importer (c11).* A stratum keeps only a domain's
-  values of a type the path may hold, and only for a path an atom reads; `D0` holds no atom, so its row can list values
-  of a kind it excludes (2 of 431 paths in `DeclaredPossibleTests`). The documents are the same and so are the cells, but
-  an import digested by its spelling keys a memo entry apart from a stratum's import of the same documents. A body atom
-  of a rule the theory cannot read has no `D0` row at all, since `D0` makes no term; its import defaults.
+- **`D0`'s row spells a declared domain as stated** — *small, for c12's memo.* A stratum keeps only a domain's values of
+  a type the path may hold, and only for a path an atom reads; `D0` holds no atom, so its row can list values of a kind
+  it excludes (2 of 431 paths in `DeclaredPossibleTests`). The documents are the same and so are the cells, but the
+  importer digests an import as spelled, so it keys a memo entry apart from a stratum's import of the same documents: a
+  bundle more, never another verdict. A body atom of a rule the theory cannot read has no `D0` row at all, since `D0`
+  makes no term; its import defaults, constrained.
+- **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
+  retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
+  `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
+  the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
+  Stage 0d); S's bundle adds it to F's list, and shares the list once 0d fixes it.
 
 ---
 

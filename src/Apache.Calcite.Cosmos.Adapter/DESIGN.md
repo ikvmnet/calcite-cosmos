@@ -6366,6 +6366,33 @@ JSON, and a term made there would put into every stratum beneath it a path the u
 of a rule the theory cannot read is mentioned and never made, and has no row. A path the round-1 view mentions lazily,
 an element or a child of a declared path, has none either; the importer counts each as a default.
 
+### The importer, and S's generations
+
+**The importer copies one value per path per table.** For each path a bundle's atoms read, `RenderingImporter` reads the
+licensed node's `possible` and `chars` rows with `TryGet`, which on a frozen scope interns nothing, and writes them as
+S's lattice-free `imported` and `importedchars`. It reads none of F's verdicts, nor `types`, `dom`, `ne`, `lo` and `hi`,
+which F has already met into `possible`. A refutation is not monotone under narrowing, so an import must be the whole
+value before the run: a bundle takes one `ImportSource`, refuses an import after its run or from a second source, and
+throws where a path is imported again with another value, so S never meets two.
+
+**A path F holds no row for is the top, and counted.** Where the declaration mentions nothing at, within or above the
+path, the top is exact, and a refutation over it is one. Elsewhere — a child of a declared object, a parent of a declared
+path, a path `D0` made no term for — the top loses precision, so the default is counted as constrained and the check run
+warns. A node that keeps no document imports nothing, and the report says so.
+
+**The digests are content.** An import's digest is the import spelled whole, so a memo keyed on it holds every value a
+rule reads; `D0`'s wider spelling of a domain (above) keys the same documents apart, which costs a bundle and never a
+verdict. The theory's digest hashes the frozen theory's rows, so generations defined alike share entries, a planted
+row shares none, and no table can be left off a list; a primitive is no row, so a plant of one keeps a memo of its own.
+
+**Generations, as F's.** A graph's ids and epochs are finite and its pools never shrink. `RenderingGraph` defines a new
+theory from the same definition before it hands out a bundle once the graph has used half of either
+(`Usage.FractionUsed`), leaving headroom for the bundles open on it, or has interned F's limit of a million values;
+nothing disposes the old one, which is collected with its last bundle. An engine failure in any of a bundle's calls
+declines it rather than throwing, and every claim of it reads Unproven, naming the failure. Running out of ids or
+epochs is the graph's, so it retires the generation at once; a fault, such as a primitive that answered one key two
+ways, is the bundle's, and the generation serves on.
+
 ---
 
 ## Differential testing

@@ -221,8 +221,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using (var both = ProbeTheory.Open(RenderingSet.Emulator))
             {
                 var conjunct = both.Write(LabelAndKind);
-                both.Import("test", LabelPath, PathValues.Anything, AllBands);
-                both.Import("test", KindPath, PathValues.Anything, AllBands);
+                both.Import(Source, LabelPath, PathValues.Anything, AllBands);
+                both.Import(Source, KindPath, PathValues.Anything, AllBands);
                 both.Claim(conjunct, All(KindIsA, Guarded));
                 both.Claim(conjunct, Any(KindIsA, Guarded));
                 both.Run().StopReason.Should().Be(RunStopReason.Completed);
@@ -249,8 +249,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             using var bundle = theory.Open(RenderingSet.Emulator);
             var root = bundle.Write(LabelAndKind);
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
-            bundle.Import("test", KindPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, KindPath, PathValues.Anything, AllBands);
             bundle.Claim(root, leftOver);
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
             bundle.Scope.Rows(theory.Agrees).Should().Contain(row => row.Keys[2].Equals(Guarded), "the plant offered the label side its own member alone");

@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var root = bundle.Write(NotBikes);
             bundle.Write(Eq(Text(P("kind")), "a"));
             bundle.Write(Eq(Text(P("kind")), "b"));
-            bundle.Import("test", LabelPath, DeclaredString, AllBands);
+            bundle.Import(Source, LabelPath, DeclaredString, AllBands);
             bundle.Claim(root, Bare);
             bundle.Run().OneNodePerClass.Should().BeFalse();
             bundle.Read(root, Bare, Verdict.Equal).Should().Be(new RenderingVerdict(RenderingVerdictKind.Conflict, null, null, "tripwire: a rule merged two terms"));
@@ -135,8 +135,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var kind = P("kind");
             var label = bundle.Write(NotBikes);
             var named = bundle.Write(Eq(Text(kind), "a"));
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
-            bundle.Import("test", kind, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, kind, PathValues.Anything, AllBands);
             bundle.Claim(label, Guarded);
             bundle.Claim(named, ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(kind), Of("a")));
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
@@ -168,10 +168,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using var bundle = theory.Open(RenderingSet.Emulator);
             var unequal = bundle.Write(NotBikes);
             var equal = bundle.Write(Eq(Text(LabelPath), "bikes"));
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(unequal, Bare);
             bundle.Claim(equal, Bare);
-            FluentActions.Invoking(() => bundle.Run()).Should().Throw<RuleEvaluationException>().WithMessage("*function svc*");
+            bundle.Run().StopReason.Should().BeNull();
+            bundle.Failure.Should().BeOfType<RuleEvaluationException>().Which.Message.Should().Match("*function svc*");
             bundle.Scope.IsFaulted.Should().BeTrue();
         }
 
@@ -181,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, Guarded);
             bundle.Run(iterationLimit: 2).StopReason.Should().Be(RunStopReason.IterationLimit);
             bundle.Read(root, Guarded, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Incomplete);
@@ -201,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             using var bundle = theory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, DeclaredString, AllBands);
+            bundle.Import(Source, LabelPath, DeclaredString, AllBands);
             bundle.Claim(root, Bare);
             bundle.Run().Contradicted.Should().BeTrue();
             bundle.Read(root, Bare, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Conflict);
@@ -217,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var lable = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, SqlValue.Spell(P("lable")), Of("bikes"));
             using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, lable);
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
             (bundle.Read(root, lable, Verdict.Equal).Kind, bundle.Read(root, lable, Verdict.Implies).Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
@@ -267,7 +268,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
                 using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
                 var root = bundle.Write(Cmp(Text(LabelPath), op, Lit(high)));
-                bundle.Import("test", LabelPath, PathValues.Anything, chars);
+                bundle.Import(Source, LabelPath, PathValues.Anything, chars);
                 bundle.Claim(root, form);
                 bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
                 bundle.Scope.Rows(ProbeTheory.PartedLiterals).Single().Output.Should().Be(parted ? ValueSet.Of(Of(high)) : ValueSet<string>.Empty, string.Join(",", chars.AsEnumerable()));
