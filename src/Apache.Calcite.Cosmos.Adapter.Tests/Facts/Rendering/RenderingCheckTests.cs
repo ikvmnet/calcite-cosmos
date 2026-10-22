@@ -21,8 +21,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The check run over every input (<see cref="RenderingCheckRun"/>): its discipline, its memo, its cross-checks and
-    /// what each check holds asserted, the proofs held to the registry, no refutation left to fail, and its coverage
-    /// reported, here and in the reports. Coverage's line lands with the typed readings.
+    /// what each check holds asserted, the proofs held to the registry, no refutation left to fail, and its coverage within
+    /// the line.
     /// </summary>
     public sealed class RenderingCheckTests
     {
@@ -50,6 +50,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             run.Memo.Entries.Where(e => e.AssertedRun != disciplined || e.BesideRun != disciplined || e.Failure is not null
                 || new[] { e.Asserted, e.Beside }.Concat(e.Alone).Any(v => v?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict))
                 .Select(e => $"entry {e.Id}, {e.Key.Form}: {e.AssertedRun} {e.Asserted.Reason}; {e.BesideRun} {e.Beside.Reason}; {e.Failure?.Message}").Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// The coverage line (spec §6), under the asserted set: of the in-family exact pushes the run captured, at most 5 %
+        /// Unproven, counted as <see cref="RenderingReports.Coverage"/> says.
+        /// </summary>
+        [Fact]
+        public void CoverageIsWithinTheLine()
+        {
+            var coverage = RenderingReports.Coverage(Run);
+            var (unproven, counted) = (coverage.Values.Sum(c => c.Unproven), coverage.Values.Sum(c => c.Counted));
+            TestContext.Current.TestOutputHelper?.WriteLine($"coverage {unproven} unproven of {counted} counted ({100.0 * unproven / counted:N1} %): "
+                + string.Join(", ", coverage.Select(c => $"{c.Key} {c.Value.Unproven}/{c.Value.Counted}")));
+            counted.Should().BePositive();
+            (unproven * 20).Should().BeLessThanOrEqualTo(counted, "the line kills above 5 % Unproven");
         }
 
         /// <summary>

@@ -377,14 +377,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Candidate.Of(a, q, Compute.Of(g, ServiceForm.Strip)));
             });
 
-            // Members are counted as the relation holds them, once a text: with three, the rest without one is a junction
-            // of the others; with two, it is the other, whose members are its own.
+            // Members are counted as the relation holds them, once a text, nested ones of the junction's connective in place:
+            // with three, the rest without one is a junction of the others; with two, it is the other, whose members are its own.
             descend.DefineRule("the rest of a junction's form has every member it was not stripped of", r =>
             {
                 var (e, x, n) = r.Vars<Pred, Pred, long>("e", "x", "n");
                 var pos = r.Var<RenderPosition>("pos");
                 var (f, g, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "g", "h");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Members).Count)));
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Flat).Count)));
                 r.Where(Primitives.Greater.Of(n, 2L));
                 r.Then(Member.Of(Compute.Of(f, g, ServiceForm.Without), h));
             });

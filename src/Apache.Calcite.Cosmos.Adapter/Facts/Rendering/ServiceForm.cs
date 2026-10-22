@@ -51,6 +51,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A negation's operand, or a junction's members as written; none for a leaf.</summary>
         public IReadOnlyList<ServiceForm> Members { get; }
 
+        /// <summary>A junction's members, each of its own connective's in place of its members: what its value is a join of.</summary>
+        public IEnumerable<ServiceForm> Flat => Members.SelectMany(m => Joins(m) ? m.Flat : [m]);
+
+        /// <summary>What a junction's arm may take of it: a member, or one within a member of its own connective, however deep.</summary>
+        public IEnumerable<ServiceForm> Parts => Members.SelectMany(m => Joins(m) ? m.Parts.Prepend(m) : [m]);
+
+        bool Joins(ServiceForm member) => member.Kind == Kind && Kind is ServiceFormKind.And or ServiceFormKind.Or;
+
         public string Text { get; }
 
         public static ServiceForm TestOf(CosmosServiceTest test, string path) => new(ServiceFormKind.Test, test, path, null, ValueSet<string>.Empty, ValueSet.Of(path), Leaf, test switch
@@ -108,20 +116,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A negation's operand, or a junction's first member; a leaf is its own.</summary>
         public static ServiceForm First(ServiceForm form) => form.Members.Count > 0 ? form.Members[0] : form;
 
-        /// <summary>A negation's operand, or a junction without its first member; a leaf is its own.</summary>
-        public static ServiceForm Rest(ServiceForm form) => form.Kind is ServiceFormKind.And or ServiceFormKind.Or ? Without(form, form.Members[0]) : First(form);
+        /// <summary>A negation's operand, or a junction without its first member as written; a leaf is its own.</summary>
+        public static ServiceForm Rest(ServiceForm form) => form.Kind is ServiceFormKind.And or ServiceFormKind.Or ? Without(form, form.Members[0], within: false) : First(form);
 
         /// <summary>
-        /// A junction without every member whose text is the member's: the one member left where one is, and the member
-        /// itself where none is, a junction of copies of one form being that form.
+        /// A junction without every part whose text is the member's, those within a member of its own connective among them,
+        /// its grouping kept: the one member left where one is, and the member itself where none is, a junction of copies of
+        /// one form being that form.
         /// </summary>
-        public static ServiceForm Without(ServiceForm junction, ServiceForm member)
+        public static ServiceForm Without(ServiceForm junction, ServiceForm member) => Without(junction, member, within: true);
+
+        static ServiceForm Without(ServiceForm junction, ServiceForm member, bool within)
         {
             if (junction.Kind is not (ServiceFormKind.And or ServiceFormKind.Or))
                 throw new ArgumentException("Only a junction has members to take one from.", nameof(junction));
 
-            var rest = junction.Members.Where(m => m.Equals(member) == false).ToArray();
-            return rest.Length == junction.Members.Count ? junction : rest.Length switch
+            var rest = junction.Members.Select(m => within && junction.Joins(m) && m.Parts.Contains(member) ? Without(m, member, within) : m).Where(m => m.Equals(member) == false).ToArray();
+            return rest.SequenceEqual(junction.Members) ? junction : rest.Length switch
             {
                 0 => member,
                 1 => rest[0],
@@ -129,9 +140,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             };
         }
 
-        /// <summary>Whether a junction is one of its members joined with the rest of it.</summary>
+        /// <summary>Whether a junction is one of its parts joined with the rest of it.</summary>
         public static bool Decomposes(ServiceForm junction, ServiceForm left, ServiceForm right) =>
-            junction.Kind is ServiceFormKind.And or ServiceFormKind.Or && junction.Members.Contains(left) && Without(junction, left).Equals(right);
+            junction.Kind is ServiceFormKind.And or ServiceFormKind.Or && junction.Parts.Contains(left) && Without(junction, left).Equals(right);
 
         /// <summary>A negation's operand, or the negation of anything else.</summary>
         public static ServiceForm Strip(ServiceForm form) => form.Kind == ServiceFormKind.Not ? form.Members[0] : NotOf(form);

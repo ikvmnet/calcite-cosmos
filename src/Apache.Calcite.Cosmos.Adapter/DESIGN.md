@@ -6504,6 +6504,18 @@ reads a number not written as an integer through its double's rendering.
 number as its double, by value. A whole number in int64, or in [2^63, 2^64), which the emulator holds as written, may
 be held either way, so it is placed by both; a literal sent as a double is placed only where that double is it.
 
+### A grouped claim, and the coverage line
+
+**A claim grouped as the `WHERE` writes it composes over the IR's flat junction.** A junction's parts are its members
+and those within a member of its own connective, however deep; `Claim` states each as a member, so an arm may take any,
+and the rest keeps the grouping of what is left. That is the join because the licensed connective is associative,
+commutative and idempotent, which evaluating a regrouped rest already took for granted.
+
+**The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
+conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
+names `no exact join`, from S's rows, where a conjunct was never offered its own written member, and `beside a skipped
+conjunct`.
+
 ---
 
 ## Differential testing

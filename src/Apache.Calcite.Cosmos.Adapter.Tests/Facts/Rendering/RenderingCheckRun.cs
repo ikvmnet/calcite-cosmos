@@ -110,7 +110,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 // A count limit, never time: descent and evaluation peel a junction a member at a time, so it grows with the form.
                 var run = bundle.Run(64 + 8 * Leaves(form));
-                return (bundle.Read(root, form, claim), run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure);
+                // No exact join (spec §5.1), read from S's rows: a conjunct its own written member was never offered to.
+                var verdict = bundle.Read(root, form, claim);
+                if (verdict is { Kind: RenderingVerdictKind.Unproven, Reason: null } && bundle.Failure is null
+                    && each.Where((c, i) => members[i] is { } member && bundle.Scope.Check(bundle.Theory.Candidate.Of(c, RenderPosition.Pos, member)) == false).Any())
+                    verdict = verdict with { Reason = "no exact join" };
+
+                return (verdict, run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure);
             }
         }
 
@@ -228,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (conditional, later) = (held[0].Statement.DeclarationForCheck.IsConditional, held.Any(r => r.Statement.StratumOf(r.Conjunct) > 1));
             for (var i = 0; i < held.Count; i++)
                 Conjuncts.Enqueue(new Checked(input.Input, input.Name, unit, statements.IndexOf(held[i].Statement), held[i].Conjunct, held[i].Site, IrOf(held[i]).Digest,
-                    held[i].Text, skips[i], skips[i] is null ? entry : null, i, report, conditional, later));
+                    held[i].Text, skips[i], skips[i] is null ? entry : null, i, report, conditional, later, RawScope(IrOf(held[i]))));
         }
 
         /// <summary>Holds each <c>WHERE</c> built to the conjunction of the texts its statements sent, as <c>Translate</c> writes one.</summary>
@@ -250,6 +256,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         static SqlPredicate IrOf(CaptureRecord record) => record.Statement.Statement.Conjuncts[record.Conjunct];
+
+        /// <summary>
+        /// Decision D3, read off the IR's readers and tests: a raw ordering, or a raw <c>=</c>, <c>&lt;&gt;</c> or <c>IN</c>
+        /// with a number or a boolean, whose Unproven the coverage line leaves out.
+        /// </summary>
+        static bool RawScope(SqlPredicate conjunct) => conjunct.Subterms.Any(term => term switch
+        {
+            SqlPredicate.Compare { Left: SqlValue.Raw } c => c.Op is not (PredicateAtom.Equal or PredicateAtom.NotEqual)
+                || c.Right is SqlValue.Literal { Value: var v } && JsonValues.IsString(v) == false,
+            SqlPredicate.In { Value: SqlValue.Raw } i => i.Points.Any(p => JsonValues.IsString(p) == false),
+            _ => false,
+        });
 
         static string? Skip(CaptureRecord record, ReadForm read, bool rechecked) =>
             Parts(IrOf(record)).Any(p => p is SqlValue.Parameter) || record.Parameters.Any(p => p.Value is CosmosDynamicValue) || rechecked ? "parameter"
@@ -301,10 +319,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// One conjunct a check holds: its input, the check's number within it, its filter statement's number and its own
         /// index, the site its text was read from (2 where it was sent), its IR and text, why it was skipped, the check and
         /// its position in it, the check's import, whether the declaration has conditional rules the facts graph reads, and
-        /// whether the check holds a conjunct a later round admitted.
+        /// whether the check holds a conjunct a later round admitted, and whether decision D3 leaves its Unproven out of the
+        /// coverage line.
         /// </summary>
         public sealed record Checked(string Input, string Name, int Unit, int Statement, int Conjunct, int Site, string Ir, string Text, string? Skip,
-            RenderingMemo.Entry? Entry, int Position, ImportReport? Import, bool Conditional, bool LaterRound);
+            RenderingMemo.Entry? Entry, int Position, ImportReport? Import, bool Conditional, bool LaterRound, bool RawScope);
 
     }
 

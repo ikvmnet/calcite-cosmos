@@ -2653,18 +2653,11 @@ across documents* and *A join of a container to itself* is the record.
   triage names the round. They are two distinct entries, and c15's precision line kills above two that need a
   gate-specific exception, so the fix lands before c15: judging each round on its own node needs a rule over bundles'
   verdicts, which S does not have, or the conditional rules' joint facts imported beside the paths.
-- **A check that holds a conjunct it cannot judge is unproven** — *medium, for c13's coverage.* Nothing the service
-  reads beside a checked conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct
-  beside it unproven: 70 conjuncts proven before are unproven since, most beside a numeric or cast reading the loader
-  reads as opaque. c13's typed and cast readings bring most of those into the family; what remains is c13's to count.
-- **A `WHERE` of two statements, one of more than one conjunct, has no exact join** — *small, for c13.* The IR flattens
-  a junction and the claim keeps the `WHERE`'s grouping, `((a) AND ((b) AND (c)))`, so no IR child pairs with
-  `(b) AND (c)`: differential 117–121 are unproven, 15 conjuncts, 11 of them proven before. Regrouping the claim would
-  be a form no text holds; S composing a nested form over a flat junction is the fix.
-- **`verdicts.tsv` names no cause for an Unproven, and c13 chooses its coverage basis** — *small, for c13.* §5.1's "no
-  exact join" is S's to say, read from its rows (an IR arm no member of the claim agrees with), never from an arity
-  count. The check's verdict, repeated for each conjunct it holds, is the claim made; each conjunct's own position is
-  the `alone` column. c13's 5 % line reads one of them, and says which.
+- **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
+  conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
+  94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
+  coverage line reads such a conjunct at its own position, which leaves the check's `AND` licence and range need unread
+  there; bringing those terms into the IR is the fix.
 - **`refutations.tsv` names no witness document** — *small, for c15.* §5.6 lists one, the least refuting cell completed
   into a document (§5.5); it lands with c15's witnesses and the emulator column.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
@@ -2738,6 +2731,9 @@ across documents* and *A join of a container to itself* is the record.
   the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
   Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
   list once 0d fixes it.
+- **A statement that admits one conjunct twice has no exact join** — *small.* The IR keeps both arms, and the claim's
+  textually equal members are one row, so the rest of the junction is a junction of copies that no row gives members:
+  partitions 150 and 187 at 200 predicates, never sent. Writing a rest's members where only copies are left is the fix.
 - **A typed bound one off under an int is unproven, not refuted** — *small, for D12.* `RETURNING` raises over an integer
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001

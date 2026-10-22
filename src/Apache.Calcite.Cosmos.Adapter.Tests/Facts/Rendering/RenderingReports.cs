@@ -25,10 +25,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);
             var rows = Ordered(run.Conjuncts).ToList();
+            var skipping = Skipping(run);
 
             Tsv(folder, "verdicts.tsv", ["input", "name", "unit", "statement", "conjunct", "site", "ir", "text", "verdict", RenderingCheckRun.BesideSet.ToString().ToLowerInvariant(), "alone", "reason", "entry", "run", "open", "constrained"],
                 rows.Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
-                    Name(c.Entry?.Beside, c), Name(c.Entry?.Alone[c.Position], c), c.Skip ?? c.Entry?.Asserted.Reason, c.Entry?.Id,
+                    Name(c.Entry?.Beside, c), Name(c.Entry?.Alone[c.Position], c),
+                    c.Skip ?? c.Entry?.Asserted.Reason ?? (c.Entry?.Asserted.Kind == RenderingVerdictKind.Unproven && skipping.Contains((c.Input, c.Name, c.Unit)) ? "beside a skipped conjunct" : null), c.Entry?.Id,
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
                     c.Import?.DefaultedOpen, c.Import?.Constrained.Count }));
 
@@ -54,6 +56,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             return folder;
         }
+
+        /// <summary>
+        /// The coverage line's count by input (spec §6): each conjunct sent and not skipped, read by its check's verdict, the
+        /// claim made, but by its own at its position where its check is Unproven for holding a skipped conjunct, which the
+        /// line excludes with what it does to the check; an Unproven decision D3 leaves out is not counted.
+        /// </summary>
+        public static IReadOnlyDictionary<string, (int Unproven, int Counted)> Coverage(RenderingCheckRun run)
+        {
+            var skipping = Skipping(run);
+            return run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null)
+                .Select(c => (c.Input, c.RawScope, Kind: c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven && skipping.Contains((c.Input, c.Name, c.Unit))
+                    ? c.Entry.Alone[c.Position]?.Kind ?? RenderingVerdictKind.Unproven : c.Entry.Asserted.Kind))
+                .Where(c => (c.Kind == RenderingVerdictKind.Unproven && c.RawScope) == false)
+                .GroupBy(c => c.Input).ToDictionary(g => g.Key, g => (g.Count(c => c.Kind == RenderingVerdictKind.Unproven), g.Count()));
+        }
+
+        static HashSet<(string, string, int)> Skipping(RenderingCheckRun run) => [.. run.Conjuncts.Where(c => c.Skip is not null).Select(c => (c.Input, c.Name, c.Unit))];
 
         /// <summary>
         /// Each registry row a proven check rests on, and the checks resting on it: the rows its proof reads, and the reader's
