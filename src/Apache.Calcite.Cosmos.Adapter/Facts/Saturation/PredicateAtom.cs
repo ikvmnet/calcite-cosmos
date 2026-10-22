@@ -888,7 +888,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <para>
             /// <b>What it does to a number was measured</b> (<c>CosmosRexTranslator.TryNumericCastOperand</c>):
             /// <c>INTEGER</c> and <c>BIGINT</c> truncate toward zero and saturate at their limits, and <c>DOUBLE</c> is the
-            /// number. So a number's converted value is known, and a range of numbers converts to a range.
+            /// number. So a number's converted value is known, and a range of numbers converts to a range. Over an <c>ANY</c>
+            /// column Calcite wraps a long beyond an int instead, and over a <c>VARIANT</c> raises (<c>TODO.md</c>).
             /// </para>
             /// <para>
             /// <b>Over the text accessor it is a parse of the rendering</b>, which is another measurement
@@ -943,8 +944,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 /// <summary>
                 /// A cell's answer where the conversion places it one way: a string or a boolean over text by the reading's own
-                /// parse; a number by its double under <c>DOUBLE</c>, by value under <c>DECIMAL</c>, as written under an integer
-                /// type's parse, and truncated and held at the limits under its cast; elsewhere the state's.
+                /// parse; a number by its double under <c>DOUBLE</c>, by value under <c>DECIMAL</c>, and as written under an integer
+                /// type's parse; elsewhere, and over a raw value, which no cell is cut for (<c>ReaderEdgesTable</c>), the state's.
                 /// </summary>
                 Truths On(PathCell cell, string op, string literal)
                 {
@@ -968,9 +969,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
                         }
 
-                        case PathCell.Point { Value: var v } when _roundsFrom is not null && IsNumber(v):
+                        case PathCell.Point { Value: var v } when _overText && _roundsFrom is not null && IsNumber(v):
                             return By(Math.Sign(DoubleBound.Of(v).CompareTo(DoubleBound.Of(c))), 0);
-                        case PathCell.Numbers n when _roundsFrom is not null:
+                        case PathCell.Numbers n when _overText && _roundsFrom is not null:
                             return By(n.DoubleSide(DoubleBound.Of(c)), 0);
 
                         // A number written as an integer renders as its digits, and any other as its double does
@@ -986,17 +987,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         case PathCell.Numbers n when _overText:
                             return n.Integral == false || n.Side(most) == 1 || n.Side(least) == -1 ? R
                                 : n.Side(least - 1) == 1 && n.Side(most + 1) == -1 ? By(n.Side(c), R) : Compare(cell.Coarse, op, literal);
-
-                        // Truncation toward zero never falls as a number rises: the least and the most a cell converts to.
-                        case PathCell.Numbers n:
-                        {
-                            static bool Whole(decimal x) => x == decimal.Truncate(x);
-                            var low = n.Lower is not Bound l ? least : Math.Clamp(n.Integral ? (l.Open ? Math.Floor(l.Value) + 1 : Math.Ceiling(l.Value))
-                                : l.Value < 0 && Whole(l.Value) ? l.Value + 1 : decimal.Truncate(l.Value), least, most);
-                            var high = n.Upper is not Bound u ? most : Math.Clamp(n.Integral ? (u.Open ? Math.Ceiling(u.Value) - 1 : Math.Floor(u.Value))
-                                : u.Value > 0 && Whole(u.Value) ? u.Value - 1 : decimal.Truncate(u.Value), least, most);
-                            return Between(op, low, high, c, Whole(c));
-                        }
 
                         default:
                             return Compare(cell.Coarse, op, literal);

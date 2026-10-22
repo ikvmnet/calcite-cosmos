@@ -106,6 +106,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 FluentActions.Invoking(() => MaterialisedTable.Read(value, SqlTypeName.VARCHAR)).Should().Throw<CosmosMaterializationException>($"a VARCHAR column reads {value} as no string");
         }
 
+        /// <summary>
+        /// A numeric cast of a raw value is each column's own, which no row states, so the rendering check cuts no cells for
+        /// one (<c>ReaderEdgesTable</c>): an <c>ANY</c> converts the Java number the reader built, wrapping a long beyond an
+        /// int and holding a double at the limit, and parses a string; a <c>VARIANT</c> raises beyond the type and casts a
+        /// string to null; a <c>VARCHAR</c> column refuses a number.
+        /// </summary>
+        [Fact]
+        public void ACastOfARawNumberIsEachColumnsOwn()
+        {
+            using var connection = MaterialisedTable.Open();
+            MaterialisedTable.Of(SqlTypeName.ANY, ["4294967297", "1e30", "2.5", "\"7\""]).Ask(connection, "CAST(\"v\" AS INTEGER) = 1", "CAST(\"v\" AS INTEGER) = 2147483647",
+                "CAST(\"v\" AS INTEGER) = 2", "CAST(\"v\" AS INTEGER) = 7").Should().Equal("TFFF", "FTFF", "FFTF", "FFFT");
+            MaterialisedTable.Of(SqlTypeName.VARIANT, ["4294967296"]).Failure(connection, "CAST(\"v\" AS INTEGER) > 0").Should().BeOfType<java.lang.ArithmeticException>();
+            MaterialisedTable.Of(SqlTypeName.VARIANT, ["\"7\""]).Ask(connection, "CAST(\"v\" AS INTEGER) IS NULL").Should().Equal("T");
+            MaterialisedTable.Of(SqlTypeName.VARCHAR, ["30"]).Failure(connection, "CAST(\"v\" AS INTEGER) > 0").Should().BeOfType<CosmosMaterializationException>();
+        }
+
     }
 
 }

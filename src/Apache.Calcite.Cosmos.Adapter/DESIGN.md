@@ -6502,7 +6502,8 @@ beside every cut.
 **Each reader's edges are a row** (`ReaderEdgesTable`): an integer type's limits, and a cast's one either side of a
 literal, where it raises, truncates or saturates; a double edge for every reading that compares a double; and the text
 a literal renders as for a parse, which reads `"2"` as 2, so `RETURNING DECIMAL = 2` over a string has the definite cell
-`"2"`. The text cast of a raw value still has none.
+`"2"`. A cast of a raw value has none, to text or to a number: each column the raw value is read through casts as its
+own, an `ANY` wrapping a long beyond an int where a `VARIANT` raises, and no row states it (`TODO.md`).
 
 **A typed reading is the union of `RETURNING` and the column, read from the code.** `RETURNING` reads an integer written
 so and raises over anything else, `BIGINT`'s over one an int holds; the column reads that, and any other number as its

@@ -2634,10 +2634,14 @@ across documents* and *A join of a container to itself* is the record.
   compare the doubles they round to; and an integer type's column reads any number not written as an integer as its
   double where that is whole (`CosmosJson.GetInteger`): a fraction that rounds to one, which the coarse reading says
   raises alone, and past 2^53 another integer, which `KeptEqual` establishes is the literal. The typed cells read both.
-- **A numeric cast over a raw value rests on no row** — *small.* The casts of the accessor and `RETURNING DECIMAL` rest on
-  `Calcite.CastOfTheAccessorParsesTheRendering` and `Calcite.ReturningDecimalParsesTheRendering`; a cast of a raw value
-  truncates and saturates as `CosmosRexTranslator.TryNumericCastOperand` measured, with no registry row, so its cells
-  cite nothing on Calcite's side.
+- **A numeric cast of a raw value is each column's own, and the facts graph reads it as a truncation** — *medium, and it
+  touches plans.* `CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn`: an `ANY` converts the Java number
+  the reader built, so `CAST(… AS INTEGER)` wraps a long beyond an int (4294967297 is 1) and holds a double at the limit;
+  a `VARIANT` raises beyond the type, casts a string or a boolean to null, and under `BIGINT` does not read 2.5 as 2; a
+  `VARCHAR` column refuses a number. `NumberCast` reads every one as truncating and saturating, and so does `IrEval`,
+  which population D holds it to, so neither sees it; the split rule's window for `CAST(… AS INTEGER) = 1` drops a stored
+  4294967297 an `ANY` reads as 1. S cuts no cells for a raw cast, so its checks stay unproven, until a `Calcite.*` row
+  states each column's cast and both graphs read it.
 - **`RETURNING DECIMAL` compares a stored fraction through its double's rendering** — *small, and it touches plans.*
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE

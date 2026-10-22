@@ -15,8 +15,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// Text and raw answer at the literals alone. An integer type raises past its limits, and a cast to one truncates within
     /// one of a literal and saturates at them. A double compares doubles, and so does the service a number it holds as one,
     /// an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>), and <c>DECIMAL</c> one
-    /// it renders; and a parse of the rendering reads the literal's text as the literal. A text cast of the raw value has no row: over a
-    /// <c>VARIANT</c> Calcite casts every value but a string to null, which its cells do not say (<c>TODO.md</c>).
+    /// it renders; and a parse of the rendering reads the literal's text as the literal. A cast of the raw value has no row,
+    /// since no <c>Calcite.*</c> row measures one (<c>TODO.md</c>): over a <c>VARIANT</c> Calcite casts every value but a string to
+    /// null as text and raises on a number beyond a numeric type, and over an <c>ANY</c> wraps a long beyond an int.
     /// </remarks>
     internal static class ReaderEdgesTable
     {
@@ -39,9 +40,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.TypedReader("REAL")] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("DOUBLE")] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("DECIMAL")] = Row(CutKind.Double, CutKind.Rendering),
-            [PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader)] = Limits("INTEGER", CutKind.Below, CutKind.Above, CutKind.Double),
-            [PredicateAtom.CastReader("BIGINT", PredicateAtom.RawReader)] = Limits("BIGINT", CutKind.Below, CutKind.Above, CutKind.Double),
-            [PredicateAtom.CastReader("DOUBLE", PredicateAtom.RawReader)] = Row(CutKind.Double),
             [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = Limits("INTEGER", CutKind.Rendering),
             [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = Limits("BIGINT", CutKind.Rendering),
             [PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader)] = Row(CutKind.Double, CutKind.Rendering),
