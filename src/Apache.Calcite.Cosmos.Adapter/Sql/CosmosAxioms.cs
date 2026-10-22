@@ -214,7 +214,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Family, "Measurements.CosmosJsonTypeMeasurementTests.TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind"),
             new("Service.NotBindsTightestThenAndThenOr",
                 "In a condition NOT binds tighter than a comparison and than AND, and AND tighter than OR, parentheses grouping as written: NOT c.a = @v compares NOT c.a, NOT x AND y negates x alone, and x OR y AND z is x OR (y AND z). The rendering check's reader reads every text it claims by this grammar.",
-                CosmosAxiomTarget.Emulator, new(2026, 10, 21), "Measurements.CosmosSqlPrecedenceMeasurementTests.TheServiceKeepsWhatThePinnedTreePredicts"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 22), "Measurements.CosmosSqlPrecedenceMeasurementTests.TheServiceKeepsWhatThePinnedTreePredicts"),
             new("Service.NumbersBeyondLongCompareAsDoubles",
                 "A number written as a fraction or outside int64 is held as its correctly rounded double and compares as that double, against an int64 by value rather than rounded: 9007199254740992.5, held as 2^53, is below 2^53 + 1, 9999999999999999999999 equals 1e22, and 2^63 - 1 is below 2^63. The emulator keeps an integer written in [2^63, 2^64) as written (Service.IntegerOutsideLongIsStoredAsADouble) and compares it as its double, 2^63 + 1 equal to 2^63; and it holds 9007199254740993.0 as a double, which Azure holds as an int64.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Family, "Measurements.CosmosServiceOrderMeasurementTests.NumbersBeyondLongCompareAsDoubles",

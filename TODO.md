@@ -2717,11 +2717,12 @@ across documents* and *A join of a container to itself* is the record.
   `NOT (c.v OR false)` at true, null and absent, and `Greater/String` below and equal. Those cells are filtered answers
   now, so `Holds` checks the projection there; the emulator's agrees at each, and Azure's has answered apart from its
   filter only over the parted range.
-- **The reader's grammar is measured on the emulator alone** — *small, for the next probe-account run.* Every proof the
-  check run asserts under `Portable` rests on `Service.NotBindsTightestThenAndThenOr`, which the run of 2026-10-21
-  predates. Its measurement sits in the namespace a probe-account run covers, and the row names the emulator alone until
-  such a run passes. The translator writes by the same grammar (`NOT IS_NULL(p)` unparenthesised), so a service that
-  read it otherwise would make the translator wrong too, and the check blind to it.
+- **The reader's grammar is measured on the probe account** — *done.* Every proof the check run asserts under
+  `Portable` rests on `Service.NotBindsTightestThenAndThenOr`. The probe account's run of 2026-10-22 passed its
+  measurement, so the row names both targets. The same run held `CosmosEval`, the witnesses (53 documents) and the
+  recall and gains statements to Azure, all passing, and its 649 `Holds` cells repeat the record of 2026-10-21 exactly,
+  so no second record is committed. Still owed to a later run: the order witnesses 2^54 + 1 and 18014398509481986.0,
+  which no catalogue holds yet, for splitting `Order/Number` per target.
 - **The service-gated measurements each seed a container of their own** — *small.* The precedence measurement copies the
   fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
   documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80

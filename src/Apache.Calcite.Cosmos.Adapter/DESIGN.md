@@ -6418,7 +6418,8 @@ the source's parentheses and names, and every text the run captures must print b
 measured row, `Service.NotBindsTightestThenAndThenOr`, which every proof rests on in `proof-lines.tsv`: over the 27
 documents that set three paths to nothing, a null or a string, `WHERE` keeps for each pinned text what it keeps for the
 pinned tree written with every grouping explicit, which the other binding's tree does not, and `NOT c.a = @p0` keeps
-what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator of the tests in C# is trusted.
+what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator of the tests in C# is trusted. The
+emulator and the probe account (2026-10-22) both answer so, and the row names both.
 
 **The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
