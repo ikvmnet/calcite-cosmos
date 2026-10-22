@@ -2655,8 +2655,6 @@ across documents* and *A join of a container to itself* is the record.
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
   coverage line reads such a conjunct at its own position, which leaves the check's `AND` licence and range need unread
   there; bringing those terms into the IR is the fix.
-- **`refutations.tsv` names no witness document** — *small, for c15.* §5.6 lists one, the least refuting cell completed
-  into a document (§5.5); it lands with c15's witnesses and the emulator column.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
@@ -2746,10 +2744,20 @@ across documents* and *A join of a container to itself* is the record.
   `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
   Exact, counting strings and booleans alone. The column's own reading would separate the two, and `RETURNING`'s would
   refute the plant.
-- **Recall's witness documents come with c15** — *small.* `RenderingRecallTests.OnTheService` runs each 4b65754 text
-  on the differential's seeded documents and gets the rows that commit returned; the refuting cell S names is not always
-  a seeded one (P1's is an array, where products holds an object at `metadata`), and writing it to the witness
-  container is c15's.
+- **Source B prints what the differential's operator table plans** — *small.* A raw value is a column only at a key
+  path, so the container keys on three of the declaration's six paths and a raw reading of `b`, `o` or `o.v` is not
+  printed, nor is a parameter, `IS_DEFINED` (`CosmosOperators` is not in that table) or a literal with a control
+  character. At 30 trials 25 statements plan, holding 17 proofs over 1,360 declared documents; drawing for source B, so
+  that more of its conjuncts push and prove, would weigh it more.
+- **The witnesses run on the emulator leg alone** — *small, for c17's CI wiring.* `RenderingWitnessTests` and
+  `CosmosEvalServiceTests` are service-gated, so on a leg with no emulator `refutations.tsv`'s emulator column reads
+  `not run`; the witness run rewrites it where it runs, and writes `witnesses.tsv`.
+- **A witness reads S's prediction as its verdict's** — *small.* §5.5 holds the service's outcome on a witness to "S's
+  predicted outcome set for the document's cell". A refutation's class is the outcome at the refuting atom's own
+  position, which a negation above it swaps, and a composed one's sibling stands at the connective's identity, so the
+  root's set is not on the refutation; the witness test holds the document to the verdict (a refuting cell keeps apart
+  on the two, an agreed one alike) and the outcome to `CosmosEval`. Carrying the position up with the refutation would
+  let it read the set.
 - **The translator's fault switch names M11 before its site** — *small, for c16.* `CosmosTranslatorFault.M11` is
   planted at the split rule's weakening, beside shim 3.
 

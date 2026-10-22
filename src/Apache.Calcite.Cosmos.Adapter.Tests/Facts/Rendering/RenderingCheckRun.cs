@@ -41,14 +41,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The set every check is read under beside the asserted one, and reported, never asserted.</summary>
         public const RenderingSet BesideSet = RenderingSet.Emulator;
 
+        /// <summary>The targets the asserted set serves, each of which a proof must hold on.</summary>
+        public static IEnumerable<RenderingTarget> Targets => ProbeRows.Measured.Serves[AssertedSet];
+
         /// <summary>One S a process, its generations defined from the registry's rows.</summary>
-        static readonly RenderingGraph Graph = new(() => ProbeRows.Measured);
+        static readonly RenderingGraph Measured = new(() => ProbeRows.Measured);
+
+        readonly RenderingGraph Graph;
 
         /// <summary>The pull request's run, once a process, in generations of its own: the partition run's 200 predicates, or 1,000 at the gate.</summary>
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
             Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, new JsonFactGenerations())));
 
-        public RenderingCheckRun(RenderingMemo? memo = null) => Memo = memo ?? new RenderingMemo();
+        /// <param name="memo">The memo, or one of its own.</param>
+        /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
+        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null) => (Memo, Graph) = (memo ?? new RenderingMemo(), graph ?? Measured);
 
         public RenderingMemo Memo { get; }
 
@@ -95,12 +102,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var key = new RenderingMemoKey(ir.Digest, report.Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(Graph.Current()));
             return (Memo.GetOrAdd(key, id =>
             {
-                var (asserted, run, alone, failure) = Bundle(AssertedSet);
-                var (beside, besideRun, _, declined) = Bundle(BesideSet);
-                return new RenderingMemo.Entry(id, key, asserted, run, beside, besideRun, alone, failure ?? declined);
+                var (asserted, run, alone, failure, what) = Bundle(AssertedSet);
+                var (beside, besideRun, _, declined, _) = Bundle(BesideSet);
+                return new RenderingMemo.Entry(id, key, asserted, run, beside, besideRun, alone, failure ?? declined, what);
             }), report);
 
-            (RenderingVerdict, RenderingRun, IReadOnlyList<RenderingVerdict?>, Exception?) Bundle(RenderingSet set)
+            (RenderingVerdict, RenderingRun, IReadOnlyList<RenderingVerdict?>, Exception?, RenderingMemo.Claimed?) Bundle(RenderingSet set)
             {
                 using var bundle = Graph.Open(set);
                 var each = conjuncts.Select(bundle.Write).ToList();
@@ -116,9 +123,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     && each.Where((c, i) => members[i] is { } member && bundle.Scope.Check(bundle.Theory.Candidate.Of(c, RenderPosition.Pos, member)) == false).Any())
                     verdict = verdict with { Reason = "no exact join" };
 
-                return (verdict, run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure);
+                return (verdict, run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure,
+                    bundle.Failure is null && set == AssertedSet ? Claimed(bundle, conjuncts, form, members, verdict.Refutation) : null);
             }
         }
+
+        /// <summary>What a bundle claimed and imported, read off its rows, and the value at each of a refutation's cells.</summary>
+        static RenderingMemo.Claimed Claimed(RenderingBundle bundle, IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm?> members, Refutation? refutation)
+        {
+            var (scope, theory) = (bundle.Scope, bundle.Theory);
+            IReadOnlyDictionary<object, T> Rows<T>(Function<JPath, T> table) => scope.Rows(table).ToDictionary(r => r.Keys[0], r => (T)r.Output!);
+            var (values, chars, assumed) = (Rows(theory.Imported), Rows(theory.ImportedChars), Rows(theory.Assumed));
+            var cells = refutation is null ? [] : scope.Rows(theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
+                .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
+            return new(conjuncts, form, members, Rows(theory.Spelling).Where(s => values.ContainsKey(s.Key)).ToDictionary(s => s.Value, s => new RenderingMemo.Imported(values[s.Key], chars[s.Key], assumed[s.Key])),
+                refutation?.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness()));
+        }
+
+        /// <summary>Checks another form, and its members, for what an entry claimed, over what it imported.</summary>
+        public RenderingMemo.Entry Recheck(RenderingMemo.Claimed claimed, ServiceForm form, IReadOnlyList<ServiceForm?> members) =>
+            Check(claimed.Conjuncts, form, members, Verdict.Equal, bundle =>
+            {
+                foreach (var (path, import) in claimed.Imports)
+                    bundle?.Import(new ImportSource("recheck", "recheck", 0), CosmosEval.PathOf(path), import.Values, import.Chars, import.Assumed);
+
+                return new ImportReport(claimed.Imports.Count, 0, ValueSet<string>.Empty, string.Join(",", claimed.Imports.Select(i =>
+                    RenderingImporter.Spell(CosmosEval.PathOf(i.Key), i.Value.Values, i.Value.Chars) + RenderingImporter.Spell(CosmosEval.PathOf(i.Key), i.Value.Assumed, i.Value.Chars))), false);
+            }).Entry;
 
         /// <summary>
         /// The one node every statement of a check is imported from: their root, which assumes none of their conjuncts, and
@@ -216,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var reads = held.Select(r => CosmosSqlFormReader.Read(r.Text, r.Parameters)).ToList();
             var skips = held.Select((r, i) => Skip(r, reads[i], records.Any(x => x.Statement == r.Statement && x.Conjunct == r.Conjunct && x.Comparisons.Count + x.Rechecks.Count > 0))).ToList();
-            var (entry, report) = ((RenderingMemo.Entry?)null, (ImportReport?)null);
+            var (entry, report, assumes) = ((RenderingMemo.Entry?)null, (ImportReport?)null, (Dictionary<string, int[]>?)null);
             if (skips.Any(s => s is null))
             {
                 if (RootOf(held.Select(r => r.Statement.ScopeForCheck).Distinct()) is not { } root)
@@ -227,7 +258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var conjuncts = held.Select((r, i) => skips[i] is null ? IrOf(r) : new SqlPredicate.Opaque(-1 - i)).ToList();
                 var source = new ImportSource(string.Join("+", held.Select(r => r.Statement.Statement.Digest).Distinct()), "declaration", 1);
-                var beneath = Beneath(held, skips);
+                (var beneath, assumes) = Beneath(held, skips);
                 (entry, report) = Check(conjuncts, claimed.Form, [.. reads.Select((r, i) => skips[i] is null ? r.Form : null)], Verdict.Equal,
                     bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths), beneath));
             }
@@ -235,7 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (conditional, later) = (held[0].Statement.DeclarationForCheck.IsConditional, held.Any(r => r.Statement.StratumOf(r.Conjunct) > 1));
             for (var i = 0; i < held.Count; i++)
                 Conjuncts.Enqueue(new Checked(input.Input, input.Name, unit, statements.IndexOf(held[i].Statement), held[i].Conjunct, held[i].Site, IrOf(held[i]).Digest,
-                    held[i].Text, skips[i], skips[i] is null ? entry : null, i, report, conditional, later, RawScope(IrOf(held[i]))));
+                    held[i].Text, skips[i], skips[i] is null ? entry : null, i, report, conditional, later, RawScope(IrOf(held[i])), assumes, text, parameters));
         }
 
         /// <summary>Holds each <c>WHERE</c> built to the conjunction of the texts its statements sent, as <c>Translate</c> writes one.</summary>
@@ -263,15 +294,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// statement and every conjunct the stratum assumes is checked beside it: a cell the stratum admits nothing of is
         /// then held only by documents a conjunct of the same junction drops, which the claim at its root reads alike.
         /// </summary>
-        static Dictionary<JsonDocumentPath, Scope?> Beneath(List<CaptureRecord> held, List<string?> skips)
+        /// <remarks>Also by each such path's spelling, the positions in the check of the conjuncts its stratum assumes.</remarks>
+        static (Dictionary<JsonDocumentPath, Scope?> Nodes, Dictionary<string, int[]> Assumes) Beneath(List<CaptureRecord> held, List<string?> skips)
         {
             var judged = Enumerable.Range(0, held.Count).Where(i => skips[i] is null).ToList();
-            return judged.SelectMany(i => IrOf(held[i]).Paths.Distinct().Select(p => (Path: p, Record: held[i]))).GroupBy(x => x.Path)
+            var narrowed = judged.SelectMany(i => IrOf(held[i]).Paths.Distinct().Select(p => (Path: p, Record: held[i]))).GroupBy(x => x.Path)
                 .Where(g => g.Select(x => x.Record.Statement).Distinct().Count() == 1)
                 .Select(g => (g.Key, First: g.MinBy(x => x.Record.Statement.StratumOf(x.Record.Conjunct)).Record))
-                .Where(x => x.First.Statement.StratumOf(x.First.Conjunct) > 1 && x.First.Statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(x.First.Conjunct))
-                    .All(j => judged.Any(i => held[i].Statement == x.First.Statement && held[i].Conjunct == j)))
-                .ToDictionary(x => x.Key, x => x.First.Statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(x.First.Conjunct)).Context);
+                .Select(x => (x.Key, x.First, Assumed: x.First.Statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(x.First.Conjunct))
+                    .Select(j => judged.FirstOrDefault(i => held[i].Statement == x.First.Statement && held[i].Conjunct == j, -1)).ToArray()))
+                .Where(x => x.First.Statement.StratumOf(x.First.Conjunct) > 1 && x.Assumed.All(i => i >= 0)).ToList();
+            return (narrowed.ToDictionary(x => x.Key, x => x.First.Statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(x.First.Conjunct)).Context),
+                narrowed.ToDictionary(x => SqlValue.Spell(x.Key), x => x.Assumed));
         }
 
         /// <summary>
@@ -336,11 +370,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// One conjunct a check holds: its input, the check's number within it, its filter statement's number and its own
         /// index, the site its text was read from (2 where it was sent), its IR and text, why it was skipped, the check and
         /// its position in it, the check's import, whether the declaration has conditional rules the facts graph reads, and
-        /// whether the check holds a conjunct a later round admitted, and whether decision D3 leaves its Unproven out of the
-        /// coverage line.
+        /// whether the check holds a conjunct a later round admitted, whether decision D3 leaves its Unproven out of the
+        /// coverage line, by the spelling of each path read beneath the root the positions of the conjuncts its stratum
+        /// assumes, and the text the check claimed, with the values its parameters were bound to.
         /// </summary>
         public sealed record Checked(string Input, string Name, int Unit, int Statement, int Conjunct, int Site, string Ir, string Text, string? Skip,
-            RenderingMemo.Entry? Entry, int Position, ImportReport? Import, bool Conditional, bool LaterRound, bool RawScope);
+            RenderingMemo.Entry? Entry, int Position, ImportReport? Import, bool Conditional, bool LaterRound, bool RawScope, IReadOnlyDictionary<string, int[]>? Assumes = null,
+            string? Claimed = null, IReadOnlyList<CosmosParameter>? Bound = null);
 
     }
 

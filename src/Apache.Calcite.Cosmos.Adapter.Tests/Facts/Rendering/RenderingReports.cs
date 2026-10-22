@@ -20,7 +20,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly string[] Inputs = ["corpus", "differential", "partitions", "probe"];
 
         /// <summary>Writes every report, and returns the folder.</summary>
-        public static string Write(RenderingCheckRun run)
+        /// <param name="run">The check run.</param>
+        /// <param name="witnessed">What the emulator made of each refutation's witness, by memo entry, where it was run.</param>
+        public static string Write(RenderingCheckRun run, IReadOnlyDictionary<int, string>? witnessed = null)
         {
             var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);
@@ -34,9 +36,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
                     c.Import?.DefaultedOpen, c.Import?.Constrained.Count }));
 
-            Tsv(folder, "refutations.tsv", ["input", "name", "unit", "entry", "cells", "class", "rows", "constrained", "conditional", "emulator", "triage"],
+            Tsv(folder, "refutations.tsv", ["input", "name", "unit", "entry", "cells", "class", "rows", "constrained", "conditional", "witness", "emulator", "triage"],
                 Refutations(run).Select(x => new object?[] { x.Check.Input, x.Check.Name, x.Check.Unit, x.Check.Entry!.Id, string.Join("; ", x.Refutation.Cells.AsEnumerable()),
-                    x.Refutation.Class, string.Join(" ", x.Refutation.Rows.AsEnumerable()), string.Join(" ", x.Check.Import!.Constrained.AsEnumerable()), x.Check.Conditional, "not run", x.Triage }));
+                    x.Refutation.Class, string.Join(" ", x.Refutation.Rows.AsEnumerable()), string.Join(" ", x.Check.Import!.Constrained.AsEnumerable()), x.Check.Conditional,
+                    x.Check.Entry.What?.Witness is { } cells ? string.Join("; ", cells.Select(c => c.Key + "=" + (c.Value ?? "absent"))) : null,
+                    witnessed?.GetValueOrDefault(x.Check.Entry.Id) ?? "not run", x.Triage }));
 
             Tsv(folder, "vacuous-proofs.tsv", ["input", "name", "unit", "entry", "why", "form"],
                 Units(rows).Where(RestsOnNothing).Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Entry!.Id,

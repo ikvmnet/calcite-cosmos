@@ -412,7 +412,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(p)), n.Is(Spelling.Of(p)),
                     rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split), y, definition.Within)));
+                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split), y, definition.SetAside)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>

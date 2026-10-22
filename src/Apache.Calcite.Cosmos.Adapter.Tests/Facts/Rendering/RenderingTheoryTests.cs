@@ -20,7 +20,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// S's theory, loaded and frozen: the rule count, the boxes' algebra and their definition, the merge of targets into
-    /// a set's table, a contradicting row refused at load (T6, G1), and the readers the cuts are named for.
+    /// a set's table, and the readers the cuts are named for. A contradicting row refused at load (T6) is gate fault G1
+    /// (<see cref="RenderingGateFaultTests"/>).
     /// </summary>
     public sealed class RenderingTheoryTests
     {
@@ -123,21 +124,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             theory.Theory.Get(theory.Table.Of(RenderingSet.Emulator)).Should().ContainSingle(e => e.Key == once);
             portable.Single(e => e.Key == twice).Should().Be(new MeasuredEntry(twice, ValueSet.Of(CosmosAnswer.False, CosmosAnswer.Undefined),
                 ServiceOutcomes.False | ServiceOutcomes.Undefined, ValueSet.Of("Service.Planted")));
-        }
-
-        /// <summary>
-        /// T6, gate fault G1: a second row for one key and target that answers otherwise is refused at load, naming its
-        /// axiom, without faulting the theory; a definition from the right rows answers as before.
-        /// </summary>
-        [Fact]
-        public void T6_AContradictingRowIsRefusedAtLoad()
-        {
-            var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, Null);
-            var refusal = FluentActions.Invoking(() => RenderingTheory.Define(RenderingDefinition.Measured(
-                [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Emulator, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
-            (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
-
-            ProbeTheory.Theory.Get(ProbeTheory.Final.Of(key, RenderingSet.Emulator)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
         }
 
         /// <summary>

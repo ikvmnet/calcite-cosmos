@@ -101,7 +101,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Claims a text, joined from its conjuncts' as <c>Translate</c> joins them, for the conjuncts a statement's planning
         /// admitted, imported as the check run imports them: from their root, <c>D0</c> armed.
         /// </summary>
-        internal static RenderingMemo.Entry Replay(string sql, IReadOnlyList<string> texts, IReadOnlyList<CosmosParameter> parameters, CosmosTranslatorFault faults = None)
+        internal static RenderingMemo.Entry Replay(string sql, IReadOnlyList<string> texts, IReadOnlyList<CosmosParameter> parameters, CosmosTranslatorFault faults = None,
+            RenderingCheckRun? run = null)
         {
             var recorder = new RenderingRecorder();
             using (CosmosTranslatorFaults.Plant(faults))
@@ -116,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var claimed = CosmosSqlFormReader.Read(Where(texts), parameters);
             claimed.Written.Should().Be(Where(texts), "the text reads back as itself");
             var source = new ImportSource(held[0].Statement.Statement.Digest, "declaration", 1);
-            var entry = new RenderingCheckRun().Check(conjuncts, claimed.Form, [.. texts.Select(t => CosmosSqlFormReader.Read(t, parameters).Form)], Verdict.Equal,
+            var entry = (run ?? new RenderingCheckRun()).Check(conjuncts, claimed.Form, [.. texts.Select(t => CosmosSqlFormReader.Read(t, parameters).Form)], Verdict.Equal,
                 bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths))).Entry;
             GC.KeepAlive(held);
             return entry;

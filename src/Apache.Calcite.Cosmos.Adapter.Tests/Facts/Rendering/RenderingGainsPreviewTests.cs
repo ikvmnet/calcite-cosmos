@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         const string Unequal = "IS_PRIMITIVE(c.label) AND NOT IS_NULL(c.label) AND c.label != @p0", Above = "c.label > @p0 OR IS_BOOL(c.label)";
 
         /// <summary>Each statement, the form that would be its gain and what the check reads it as, and the bare comparison and its refutation.</summary>
-        static readonly (string Sql, string Gain, string Reads, string Bare, string Refuted)[] Cases =
+        internal static readonly (string Sql, string Gain, string Reads, string Bare, string Refuted)[] Cases =
         [
             (Typed + "<> 'bikes'", Unequal, "Exact", "c.label != @p0", "$[\"label\"]=array (U,t)"),
             (Typed + "> 'bikes'", Above, "Unproven", "c.label > @p0", "$[\"label\"]=boolean|false (T,u)"),

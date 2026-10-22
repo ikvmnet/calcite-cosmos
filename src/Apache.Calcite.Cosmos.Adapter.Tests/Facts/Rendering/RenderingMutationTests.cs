@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Each fault's triggers, the differential's but the one M8 needed: what each must read under the fault, a refutation
         /// spelled as its cells and class, or <c>Exact</c>; or <c>null</c>, reported only, where no cell is definite.
         /// </summary>
-        static readonly Dictionary<CosmosTranslatorFault, (string Sql, string? Reads)[]> Triggers = new()
+        internal static readonly Dictionary<CosmosTranslatorFault, (string Sql, string? Reads)[]> Triggers = new()
         {
             [M1] = [.. new[] { "P1", "P19", "P2", "P3", "P25" }.Select(p => (RenderingRecallTests.Cases[p].Sql, (string?)RenderingRecallTests.Cases[p].Refuted))],
             [M2] = [.. new[] { "P4", "P5", "P6" }.Select(p => (RenderingRecallTests.Cases[p].Sql, (string?)RenderingRecallTests.Cases[p].Refuted))],

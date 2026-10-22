@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// rendered from, beneath the import, so that every document holding one is dropped by an earlier round's
         /// conjunct. A cell it admits something of is not marked, however little.
         /// </summary>
-        public static CellPartition Within(CellPartition cells, PathValues assumed) =>
+        public static CellPartition SetAside(CellPartition cells, PathValues assumed) =>
             ValueSet.From(cells.Cells.Where(cell => AdmitsNothingOf(assumed, cell))) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
 
         static bool AdmitsNothingOf(PathValues x, PathCell cell) => cell switch

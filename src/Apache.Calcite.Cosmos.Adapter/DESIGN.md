@@ -6451,7 +6451,7 @@ conditional rule ties that S imports apart, and the check was unproven, or refut
 (differential 394, 405, 410). So each path a check reads is imported from the root and, beside it, from the stratum the
 earliest round that reads it was rendered from (`assumed`), where every conjunct that stratum assumes is in the check;
 a path two statements read keeps the root's alone, and one two rounds read is read where the earlier was rendered. A cell of the root's import the stratum admits nothing
-of (`PathCell.Within`) is held only by documents that fail a conjunct of the same junction, and is read as one Calcite
+of (`PathCell.SetAside`) is held only by documents that fail a conjunct of the same junction, and is read as one Calcite
 raises on: the service may answer anything there but a failure, and the cell refutes nothing. That is sound for the claim
 at the root: the check is the `AND` of every conjunct at `Pos`; the assumed conjuncts read the root's cells and agree,
 so on a document outside the stratum both sides drop the row, and the service is still evaluated on every cell, so no
@@ -6478,9 +6478,10 @@ of the texts its statements wrote, and reads back as itself; anything else in it
 translator, and a claim that holds it is unproven.
 
 **The reports** (`TestResults/rendering/`): `verdicts.tsv`, every conjunct a check holds with the check's verdict under
-each set and its own; `refutations.tsv`, each refuting cell and its triage, from the check's own import: a refutation
-warns where a refuting cell's path defaulted constrained, or where a cell spans two paths under conditional rules the
-facts graph reads, and otherwise fails CI; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
+each set and its own; `refutations.tsv`, each refuting cell, the value it puts at its path, what the emulator made of
+that document where the witnesses ran, and the triage, from the check's own import: a refutation warns where a refuting
+cell's path defaulted constrained, or where a cell spans two paths under conditional rules the facts graph reads, and
+otherwise fails CI; `witnesses.tsv`, each witness the emulator ran; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
 render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the checks resting on each registry
 row, which every proof must name; and `skipped.tsv`. Every statement that fails to plan or implement fails CI too,
 rather than leaving the check smaller.
@@ -6556,6 +6557,51 @@ returned while Calcite returns its own.
 translator admit so that the conjunct is captured. The guarded inequality is Exact; the orderings' forms, `> @p0 OR
 IS_BOOL` and `< @p0 OR IS_NUMBER`, are unproven over an undeclared label, whose strings may hold U+0000, which the
 emulator orders as it stores it, and are Exact where no string can.
+
+### The soundness line: documents, an evaluator of the service's own, and gate faults
+
+**Every reported proof is held to documents by evaluators S does not share.** `IrEval` is Calcite's side, measured and
+held to Calcite; `CosmosEval` is the service's, a document at a time from what the rows state — a test true or false of a
+kind, a comparison within a type by its order and across types false, true or undefined, Kleene's connectives, an int64
+against a double by value, the emulator's U+0000 as it stores it, Azure's range over bounds the two string orders rank
+apart — and never through `ServiceLeaf`, `ServiceCompound` or a cell. `CosmosEvalServiceTests` holds it to the emulator:
+each of the reader's forms over a path holding each kind, kept by `WHERE`, by `WHERE NOT` and projected as it says, on
+both images. A proof is judged on every target the asserted set serves and in both typed modes; a coin `IrEval` tosses
+makes a document unmeasured, not a witness, and one every mode raises on is skipped (decision 2).
+
+**Source A samples each proven check's import.** Up to 64 documents set each path to values its import admits: the
+literals and their neighbours, the text other values render as, strings with a character of each band beside each
+literal where the import's classes admit it, numbers either side of 2^53, a typed atom's int-sized and beyond-int
+integers, and every kind, mixed so that each value stands in one at least. A document a stratum's facts rule out beside
+the conjuncts it assumes is no declared one and is left out, and a conjunct's own proof beside a stratum is judged where
+those conjuncts hold. **Source B** plans population D's conjuncts, printed as one Calcite `WHERE` over a container the
+trial's declaration describes, and judges every proof on the trial's declared documents, whose conditional rules hold
+together, as no sampled document's need: 30 trials a pull request, 5,000 explicit. A raw value is a column only at a key
+path, so the container's hierarchical key is three of the declaration's paths, and a parameter, `IS_DEFINED` and a
+literal with a control character are not printed.
+
+**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is refused
+at load on either target; G2, a template without the null guard, is refuted wherever source A's documents show the guard
+kept something out, and at the null for the gains preview's inequality; G3, a service evaluation answering `!=` over a
+null as false, makes the gate agree with that form, and source A finds the null label `CosmosEval` keeps; G4, the second
+disjunct's form claimed for the first under an `OR`, agrees nowhere at the root or the first disjunct, the second's own
+form agreeing on its own partition; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
+trips the wire.
+
+### Witnesses, and the precision line
+
+**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's, the
+mutations' and G2's, and each cell the gains preview's agreements were proved over, is one document
+(`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
+projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
+document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. S's prediction is read
+as its verdict's — a refuting cell predicts the two part, an agreed one that they do not — since a cell's class is the
+outcome at the atom's own position, which a negation above it swaps. On 2026-10-22 all 54 documents of 34 cases did as
+their verdicts said, on both images.
+
+**Precision triages the tip's refutations by their witnesses**: reproduced is the translator's (`KnownRefutations`),
+not reproduced is false. With each later round read beside its facts the tip refutes nothing, so nothing is triaged and
+nothing is false; the three refutations PR C reported were all of that cause.
 
 ---
 

@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Violations(theory).Should().Equal("compose/planted: an agreement over some cell: a filter is a lambda");
         }
 
-        static List<string> Violations(RenderingTheory theory)
+        internal static List<string> Violations(RenderingTheory theory)
         {
             var tables = theory.Graph.Tables.ToDictionary(t => t.Name);
             var owned = theory.Graph.Tables.Where(t => theory.Theory.CountRows(t) > 0).Select(t => t.Name).Concat(BundleHost).ToHashSet();
