@@ -348,6 +348,7 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `point(e, s)` | a literal an atom compares with; stated by the host |
 | `reads(v, p, k)`, `atom(e, p, a)` | analyses of terms alone: the path a value reads and how, and the atom a test is |
 | `possible(p)` | what a path an atom reads may hold, gathered into one value (`PathValues`) |
+| `declared(p)` | a path the declaration mentions; stated by the host, for `D0` (below) |
 | `value chars(v) = S` | **if** the value is a string, its characters are of the classes `S`: `chars` said of a value |
 | `walk(v, i, a)`, `drawn(v, a) = S` | a call's operands from position `i` on, an analysis of terms alone; the classes the call draws from them |
 | `always true(e)`, `always false(e)`, `never true(e)` | the verdicts |
@@ -373,11 +374,22 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
   before discriminators.
 - **Decide** (24), run once the facts have settled:
   - what a path an atom reads may hold, narrowed by presence, types, a domain, a disequality and either bound (7);
+    and, a local rule of `D0` alone, that a path the declaration mentions may hold anything, which the seven narrow;
   - an atom is always true, always false or never true where `Over` says so (3);
   - a predicate that holds with a truth value on every row has that verdict, whatever its atoms mean (2): an opaque
     predicate given is one decided, which is the question a weakening already beneath a filter asks;
   - twelve connectives in Kleene's logic. What is always false is never true; nothing reads never-true beneath a
     `NOT`, because UNKNOWN is not FALSE there.
+
+**`D0`, the declaration's `possible` rows.** Round 1 renders from the declaration's context, which holds no atom, so
+`possible` held nothing for most round-1 conjuncts, and the rendering graph had nothing to import for them. `D0` is a
+frozen child of that context: a `declared(p)` row for every path the declaration mentions and holds a term of, and the
+one local rule above, so `Decide` narrows each path from the declaration's tables as it narrows an atom's. It is built
+once a declaration and generation, however many planning threads ask, and is `null` where nothing is mentioned or its
+run does not complete. A statement is rooted there only in a flow `StatementTerms.ArmDeclaredPossible` armed; the
+oracle remembers an armed tree apart, and production arms nothing. The root's view is still the declaration's own fact
+set, and a stratum's `possible` meets `D0`'s, which is no narrower, so no verdict or plan changes (`DESIGN.md`, *The
+declaration's `possible` rows: `D0`*).
 
 **What a computed string's characters are** (10 rules, ruleset `characters`), asked by a string function's rule of its
 argument (`JsonFactSet.CharactersOf`), in a context made for the question beneath the one the facts are read from:
@@ -406,6 +418,10 @@ verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value'
 - `CosmosOracleReplayTests`: the fact family's defects, each answered by the general rules through the planner's
   statement;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
+- `DeclaredPossibleTests`: `D0`'s rows against a stratum holding an atom over each path, on every container the plan
+  digests plan over and population D's first 64 declarations; one build under sixteen threads; and an armed statement
+  rooted at `D0` and remembered apart. `PlanDigestTests.TheDeclarationsPossibleRowsChangeNoPlan` (explicit) plans every
+  input with the switch off and on, and requires the same digests;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, one in eight with no
   conditional rule as a container that declares no schema has, random filters over their paths, and 64 documents drawn
   from each declaration and not from its filter; from a stream of their own, patterns, `enum`s and `const`s of strings

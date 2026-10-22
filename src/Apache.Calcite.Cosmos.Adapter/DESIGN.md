@@ -6631,6 +6631,44 @@ alone and loses the number 30, which Calcite may render as `30` or as `30.0`, so
 it; the tip's weakening is implied and the planted one is not. Its switch is read only where the literal parses as a
 number.
 
+### Cost, size, and where the check runs
+
+**The check runs with every suite, once a process, and planning is most of what it costs.** The pull request's run is
+one lazy value the check, soundness and witness tests share. It plans and implements about 1,180 statements armed, the
+corpus's one at a time and the rest two at a time, and checks 389 memo entries under two sets. On 2026-10-22, on a
+machine its other work held at 75–99 %, it took 35–55 s first in a process, on either framework; warm, its 778 bundles
+summed to 5.3–5.6 s of a 36 s run, and the rest was planning. The stage's plan budgeted 13–17 s, on 9.6 ms a statement
+planned warm on a quiet machine, and decision D11 accepted the gap. Planning the partition run's first 100 predicates would save about
+3 s and move the coverage and precision lines off the 200 they are measured on, so it is not taken.
+
+**The reports travel with the leg's results.** The runner sets each test's working folder to its assembly's, so
+`TestResults/rendering/` lands there, and CI's archive step copies what tests wrote there in beside the trx. Witnesses
+run on the Linux x64 leg, the one with an emulator; elsewhere `refutations.tsv`'s emulator column reads `not run`. The
+rendering tests build under the asserted set, all but four, which state what the emulator's set alone holds — `Range`
+licensed, and a key it alone measured — and name it.
+
+**What the cost line times** (`RenderingCostTests`, explicit). The pull request's bundles warm, open to dispose, under
+each set. Stage 2's projection: the corpus's distinct bundles at their cost first in a process, each with 12 to 14 more
+candidates an atom at the cost of one, which bundles claiming 3, 6 and 12 forms at each atom of a conjunction measure
+warm, scaled by the corpus's early cost against its warm. `D0` per declaration and generation, read at each
+declaration's median, its tail being a slow build in a process that ran every round. And the corpus planned new armed
+against unarmed, each statement's two arms a moment apart in two harnesses of fresh generations, so that the machine's
+drift is paired away.
+
+**On the busy machine only arming held, and the projection misses by more than the load.** Bundles took 2.1–3.7 ms at
+the median and 12–15 ms at the 90th centile, against 1.5 and 5; PR C's took 0.95 and 4.4 at 21 % load, so the load
+accounts for a factor of two or three. `D0` took 3.3–6.0 ms at a declaration's median, and 14 ms for the first a
+generation builds, against 5. Arming the corpus moved it −0.19 s at the median, quartiles −0.30 to +0.40 s, which
+cannot resolve the line's 0.06. Stage 2's projection came to 1.7–3.2 s against 0.25, and not for the load: a junction's
+descent offers its first arm each member and its second the rest, so a right-nested junction of n arms holds a
+candidate for every subset of its members. `Filter.DeepConjunction`, eight conjuncts, took 0.74–0.98 s, half the
+corpus's bundles together, and a candidate costs 2–3 ms, of which generate mode would claim a dozen an atom. Generate
+mode wants descent along the IR's own arms before it can meet its line (`TODO.md`).
+
+**The size line holds:** S has 39 rules against 40, and the rules, the service's evaluation, the agreement and the
+readings hold 2,080 lines against 2,500 — `PredicateAtom`'s delta net of what it deleted, and `ServiceForm`'s structural
+helpers member by member with their comments.
+
 ---
 
 ## Differential testing

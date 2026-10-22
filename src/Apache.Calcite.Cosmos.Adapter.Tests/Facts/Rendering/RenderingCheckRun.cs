@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -53,9 +54,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
             Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, new JsonFactGenerations())));
 
+        readonly Action<RenderingSet, ServiceForm, TimeSpan>? Timed;
+
         /// <param name="memo">The memo, or one of its own.</param>
         /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
-        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null) => (Memo, Graph) = (memo ?? new RenderingMemo(), graph ?? Measured);
+        /// <param name="timed">Told each bundle's time from open to dispose, with its set and the form claimed (the cost line).</param>
+        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, ServiceForm, TimeSpan>? timed = null) =>
+            (Memo, Graph, Timed) = (memo ?? new RenderingMemo(), graph ?? Measured, timed);
 
         public RenderingMemo Memo { get; }
 
@@ -78,9 +83,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs)
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, ServiceForm, TimeSpan>? timed = null)
         {
-            var run = new RenderingCheckRun();
+            var run = new RenderingCheckRun(timed: timed);
             var all = inputs.ToList();
             foreach (var input in all.Where(i => i.Input == "corpus"))
                 run.Plan(input);
@@ -102,8 +107,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var key = new RenderingMemoKey(ir.Digest, report.Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(Graph.Current()));
             return (Memo.GetOrAdd(key, id =>
             {
+                var started = Stopwatch.GetTimestamp();
                 var (asserted, run, alone, failure, what) = Bundle(AssertedSet);
+                Timed?.Invoke(AssertedSet, form, Stopwatch.GetElapsedTime(started));
+                started = Stopwatch.GetTimestamp();
                 var (beside, besideRun, _, declined, _) = Bundle(BesideSet);
+                Timed?.Invoke(BesideSet, form, Stopwatch.GetElapsedTime(started));
                 return new RenderingMemo.Entry(id, key, asserted, run, beside, besideRun, alone, failure ?? declined, what);
             }), report);
 

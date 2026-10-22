@@ -2597,7 +2597,8 @@ across documents* and *A join of a container to itself* is the record.
   run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
   full run belongs in a nightly job or in a gate before merging, a change to the translator or the
   split rule above all, and which of the two is the owner's to decide. The default being its
-  prefix, either is the pull request's run carried further, and the variable is how it asks.
+  prefix, either is the pull request's run carried further, and the variable is how it asks. The
+  rendering check reuses it (decision D6), and its 1,000 run before each of Stage 1's pull requests.
 - **What the partition run costs** — *medium.* Most of it is Calcite compiling the reduction of a
   literal's cast with Janino, under IKVM, in statements the adapter plans. A host planning through a
   connection pays the same, which makes it worth reducing for its own sake, and the cheaper it is the
@@ -2701,17 +2702,11 @@ across documents* and *A join of a container to itself* is the record.
   fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
   documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80
   lines off each.
-- **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
-  resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
-  measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.
 - **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
   makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
-- **`D0`'s cost is measured by no test** — *small, for c17.* §4.3's timing line, taken on a free machine only, kills
-  above +5 ms a declaration (`D0` built and run, per declaration and generation) or +0.06 s on the corpus planned new
-  and armed against unarmed. It belongs in c17's `RenderingCostTests`, beside S's bundles.
-- **The population D run rooted at `D0` is 50 trials a pull request** — *small, for c17's cost line.* §4.3 asks for 200
-  and §10.3 budgets source B at 20 to 50; 50 keeps the unarmed 200, which production's root stands on, and the 5,000
-  armed stay explicit.
+- **The population D run rooted at `D0` is 50 trials a pull request** — *small.* §4.3 asks for 200 and §10.3 budgets
+  source B at 20 to 50; the check run is already above §10.3's budget (below), so 50 stay, the unarmed 200 keep
+  production's root, and the 5,000 armed stay explicit.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
   retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
   `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
@@ -2741,9 +2736,9 @@ across documents* and *A join of a container to itself* is the record.
   printed, nor is a parameter, `IS_DEFINED` (`CosmosOperators` is not in that table) or a literal with a control
   character. At 30 trials 25 statements plan, holding 17 proofs over 1,360 declared documents; drawing for source B, so
   that more of its conjuncts push and prove, would weigh it more.
-- **The witnesses run on the emulator leg alone** — *small, for c17's CI wiring.* `RenderingWitnessTests` and
-  `CosmosEvalServiceTests` are service-gated, so on a leg with no emulator `refutations.tsv`'s emulator column reads
-  `not run`; the witness run rewrites it where it runs, and writes `witnesses.tsv`.
+- **The witnesses run on the emulator leg alone** — *small.* `RenderingWitnessTests` and `CosmosEvalServiceTests` are
+  service-gated, so on a leg with no emulator `refutations.tsv`'s emulator column reads `not run`; the witness run
+  rewrites it where it runs, and writes `witnesses.tsv`, which CI archives from the Linux x64 leg alone.
 - **A witness reads S's prediction as its verdict's** — *small.* §5.5 holds the service's outcome on a witness to "S's
   predicted outcome set for the document's cell". A refutation's class is the outcome at the refuting atom's own
   position, which a negation above it swaps, and a composed one's sibling stands at the connective's identity, so the
@@ -2763,6 +2758,53 @@ across documents* and *A join of a container to itself* is the record.
   translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
   text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
   is the one both render, so the texts part only where the facts do; that they agree is not checked.
+- **The rendering check skips parameters whole** — *small, for Stage 2.* A conjunct whose IR holds a parameter, or whose
+  text binds a dynamic value or an anchor slot, is skipped, and the differential's 33 statements with parameters are not
+  planned for the check at all: a parameter's value is in neither the IR nor the import, and a claim proven for the value
+  one plan bound says nothing of the next. Claiming a form over every value a parameter's type admits is the reading
+  generate mode needs anyway.
+- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are unmeasured** — *medium, for Stage 2.*
+  The loader reads a pattern as opaque, so a conjunct holding one is skipped and its check is unproven. The rows S would
+  read are owed with it: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes
+  (N6) and `LIKE` (N7) matched by code point, and how an integral number reads back (N11).
+- **Raw orderings and raw numeric equality are measured and not read** — *small, and it touches plans.* c01 measured
+  Calcite's side (`Calcite.RawNullIsSqlNull`): `ANY` raises on an ordering across types, a `VARIANT` has no ordering and
+  its `=` is exact in type. Neither `PredicateAtom`'s raw reading nor its cells read it, `IrEval` tosses a coin there,
+  and decision D3 keeps their Unproven out of the coverage line: 2 conjuncts a pull request, 18 at the gate. Reading them
+  needs the raw reading's raises (above).
+- **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
+  `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
+  verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
+  and the oracle's memo keys, which Stage 1 promised not to touch.
+- **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
+  path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
+  unproven: at the gate, partitions 1,428's `NOT (category < 'bikes')` is refuted at its own position beside `category
+  IN ('bikes!', 'shoes')`, on a cell the emulator's U+0000 storage may explain. Evaluating the pair on the path's own
+  cells, as one atom claiming both is, would decide it.
+- **A path beneath a declared scalar imports the top in round 1** — *small.* `D0` writes a row only for a path the
+  declaration mentions and holds a term of, so an element or a child of a declared path, or one beneath a declared
+  scalar or a closed object, defaults to anything, counted constrained, and a refutation over it only warns. The facts
+  graph reads such a path through a mention child (`JsonContexts.Mentioning`), which the importer could read instead. No
+  check met one: every default in the run is open.
+- **F does not read the cell readings** — *medium, and it touches plans.* `PredicateAtom.OnCell` is exact where `On`
+  is coarse: a scalar against a literal, a typed number by its double, the raw reading's raises, `RETURNING DECIMAL`'s
+  rendering. Only S reads it. The facts graph deciding from cells would close the coarse readings' gaps above and decide
+  more, and would change plans.
+- **The error policy has no strict form** — *small.* Decision 2 sets aside a raise beside a truth in every allowing box.
+  A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
+  neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
+  that needs it, as #162's temporal rewrites once did, designs it.
+- **The rendering check costs more than the stage's plan budgeted** — *small.* About 1,180 statements planned armed,
+  first in a process: 35–55 s on 2026-10-22 on a machine 75–99 % busy, against 13–17 s, and planning is all but 3 s of it
+  (`DESIGN.md`, *Cost, size, and where the check runs*). Decision D11 accepted it. Planning the partition run's first 100
+  predicates would save about 3 s and move the coverage and precision lines off the 200 they are measured on.
+- **A junction's descent holds a candidate for every subset of its members** — *medium, for Stage 2's cost line.* The
+  first arm is offered each member and the second the rest, down a right-nested junction, so `Filter.DeepConjunction`'s
+  eight conjuncts cost 0.74–0.98 s, half the corpus's bundles. With 12 to 14 candidates an atom at 2–3 ms each, Stage
+  2's projection came to 1.7–3.2 s against 0.25 s, and the bundles' own line missed too (2.1–3.7 ms at the median, 12–15
+  ms at the 90th centile, against 1.5 and 5), on a machine its other work held at 93–100 %. Descent along the IR's own
+  flat arms, pairing a member with the arm whose paths it reads, would be linear; retaking the line on a free machine
+  separates the load from the shape.
 
 ---
 

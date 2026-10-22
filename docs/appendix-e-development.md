@@ -130,6 +130,8 @@ The seed does not change with the size, and the predicates are drawn in order, s
 exactly the first 200 the full run asks. A predicate that fails in one fails in the other, as the same
 statement. Where the full run belongs, a nightly job or a gate before merging, is not settled yet
 (`TODO.md`, section 10); until it is, run it by hand after changing the translator or the split rule.
+The rendering check (below) plans the same predicates' statements, and the same variable takes it from
+200 to 1,000.
 
 **`EveryOrderIsOneCalciteAllows`** generates statements whose answers depend on an order — sorts over
 every reading, `DISTINCT`, a subquery's page, `UNION ALL`, `MIN`/`MAX`, keysets, comparisons with a
@@ -178,6 +180,9 @@ Each measured fact a pushdown relies on is also a row in `Sql/CosmosAxioms.cs`, 
 was measured and the test that pins it, and a test checks every named test still exists. A new
 measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
 Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
+The rendering check reads the rows, and every proof it makes names those it rests on: before
+re-measuring a row, list the checks resting on it with `COSMOS_RENDERING_ROW=<id>` and the explicit
+`RenderingCheckTests.TheStatementsRestingOnARow`.
 
 One measurement needs more than an account: `CosmosOrderMergeMeasurementTests` needs a container with two
 physical partitions, which only throughput above 10,000 RU/s makes, so it creates none. Name one the
@@ -193,6 +198,39 @@ few dozen documents tagged with its run and deletes them before it ends; without
 Beside the merge it measures, it runs the adapter's reader over the same documents through the adapter's own
 executor — the stream, every window, the `MAX` — and holds each to Calcite's order: the one place the
 reader meets a merge the service made rather than a model of one.
+
+### The rendering check
+
+`Facts/Rendering` holds a second e-graph, the rendering graph, and with every run of the suite it checks,
+with no service, that each `WHERE` conjunct the translator pushes keeps the rows Calcite keeps
+(`DESIGN.md`, *The rendering graph in check mode*). It plans the planner corpus, the differential's
+statements without parameters, the partition run's first 200 predicates and one definedness probe,
+reads back the text each filter sent, and proves it, refutes it with a cell, or leaves it unproven.
+`RenderingCheckTests` fails the run on a refutation its triage does not excuse, on a proof that rests on
+nothing, on a bundle that did not complete, and on more than 5 % of the exact pushes left unproven; the soundness, recall and
+mutation tests beside it hold the check itself to documents and to the translator's historical faults.
+
+- **The asserted set is `Portable`:** a proof must hold on every service the adapter serves, Azure and
+  the emulator. Each check is read under the emulator's set beside it, and reported.
+- **`COSMOS_PARTITION_GATE=1`** takes it to the partition run's 1,000 predicates, as it does the
+  differential's. Run it so, with the two explicit checks of the planner, before a pull request that
+  changes the translator, the split rule or the rows:
+
+  ```sh
+  COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
+  COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingCaptureTests.CaptureChangesNoPlan     -method Apache.Calcite.Cosmos.Adapter.Tests.Planning.PlanDigestTests.TheDeclarationsPossibleRowsChangeNoPlan
+  ```
+
+- **The reports** land in `TestResults/rendering/` beside the test assembly, which CI archives with each
+  leg's results: `verdicts.tsv`, every conjunct checked and its verdict; `refutations.tsv`, each
+  refuting cell and its triage; `witnesses.tsv`, what the emulator made of each witness document;
+  `vacuous-proofs.tsv`, `proof-lines.tsv` and `skipped.tsv`.
+- **Against a service**, `RenderingWitnessTests` writes each refuting and agreed cell as a document,
+  runs the text sent over it and the statement in Calcite, and `CosmosEvalServiceTests` holds the
+  check's evaluator of the service to it. Both skip without one.
+- **Explicit:** `RenderingSoundnessTests.NoReportedProofHasAWitnessOverALongRun` (5,000 random
+  declarations) and `RenderingCostTests`, the check's cost and `D0`'s, timed: run it in Release, a fact
+  a process, with `-showLiveOutput`, and read the figures beside the machine's load.
 
 ### Generated soundness checks
 
