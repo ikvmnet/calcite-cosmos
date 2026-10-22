@@ -6442,11 +6442,23 @@ own position is read from the same run, and reported beside, never claimed.
 rounds admitted. A stratum assumes the conjuncts admitted before it, and the node a residual conjunct renders from is
 the last stratum, which assumes them all: checked there, those conjuncts would be agreed with only where they already
 hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, and every statement over one container
-shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong: a later round's
-conjunct can be unproven where its own stratum would prove it, or refuted on a cell its round's facts rule out, two
-paths a conditional rule ties together that S imports apart. Such a refutation is triaged as a warning until the
-emulator reproduces it, the triage names the round, and each counts against c15's precision line until a fix lands
-before it (`TODO.md`).
+shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong.
+
+**A later round's conjunct is read beside the facts it was rendered from.** The translator renders a round-2 conjunct
+knowing the round-1 conjuncts hold: over `kinds`, where kind is `"a"` the label is a string, so `kind = 'a' AND label =
+'30'` is sent with a bare `c.label = @p1`. From the root alone a number 30 stands beside kind `"a"`, two paths a
+conditional rule ties that S imports apart, and the check was unproven, or refuted on a cell no declared document holds
+(differential 394, 405, 410). So each path a check reads is imported from the root and, beside it, from the stratum the
+earliest round that reads it was rendered from (`assumed`), where every conjunct that stratum assumes is in the check;
+a path two statements read keeps the root's alone, and one two rounds read is read where the earlier was rendered. A cell of the root's import the stratum admits nothing
+of (`PathCell.Within`) is held only by documents that fail a conjunct of the same junction, and is read as one Calcite
+raises on: the service may answer anything there but a failure, and the cell refutes nothing. That is sound for the claim
+at the root: the check is the `AND` of every conjunct at `Pos`; the assumed conjuncts read the root's cells and agree,
+so on a document outside the stratum both sides drop the row, and the service is still evaluated on every cell, so no
+failure hides there. A conjunct's own verdict beside such a cell is exact where the conjuncts its stratum assumes hold,
+which is what the translator's licence promised. No fact is met: the import stays one value a path, the cells the
+stratum rules out are set aside, never removed, and a path is never read beneath a stratum that assumes its own
+conjunct, which `ALaterRoundIsReadBesideTheFactsItWasRenderedFrom` plants.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
 armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the

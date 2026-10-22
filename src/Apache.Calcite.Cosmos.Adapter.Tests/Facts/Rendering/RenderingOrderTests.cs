@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
-        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars"];
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed"];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
 

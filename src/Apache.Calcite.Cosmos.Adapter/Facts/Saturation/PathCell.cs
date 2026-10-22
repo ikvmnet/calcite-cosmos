@@ -148,6 +148,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         };
 
         /// <summary>
+        /// Marks the cells a narrower value of the path admits nothing of: what the earliest round that reads it was
+        /// rendered from, beneath the import, so that every document holding one is dropped by an earlier round's
+        /// conjunct. A cell it admits something of is not marked, however little.
+        /// </summary>
+        public static CellPartition Within(CellPartition cells, PathValues assumed) =>
+            ValueSet.From(cells.Cells.Where(cell => AdmitsNothingOf(assumed, cell))) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
+
+        static bool AdmitsNothingOf(PathValues x, PathCell cell) => cell switch
+        {
+            Absent => x.Kinds.Contains(PathValues.AbsentKind) == false,
+            Null => x.Admits(NullValue) == false,
+            Structure s => x.Kinds.Contains(s.Type) == false || x.Values is not null,
+            Point p => (x.Admits(p.Value) && Within(p.Value, x.Lower, x.Upper)) == false,
+            Strings => x.Kinds.Contains(StringType) == false || x.Values is { } d && d.All(v => cell.Contains(v) == false),
+            Numbers n => x.Kinds.Contains(n.Integral ? IntegerType : FractionType) == false || x.Values is { } d && d.All(v => cell.Contains(v) == false)
+                || x.Upper is Bound u && n.Lower is Bound l && (u.Value < l.Value || u.Value == l.Value && (u.Open || l.Open))
+                || x.Lower is Bound lo && n.Upper is Bound hi && (lo.Value > hi.Value || lo.Value == hi.Value && (lo.Open || hi.Open)),
+            _ => false,
+        };
+
+        /// <summary>
         /// Cuts a path's import into cells at the cut points. A string or a number cut at is a point where the import
         /// admits it and a boundary where not, and an interval between two is kept where something lies in it.
         /// </summary>

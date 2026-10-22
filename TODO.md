@@ -2645,14 +2645,11 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A check's later rounds are judged under round 1's facts** — *medium, before c15's precision line.* A check imports
-  from its statements' root, the only node that assumes none of the conjuncts it holds. A conjunct a later round
-  admitted, rendered knowing what the earlier ones establish, is then unproven, or refuted on a cell that knowledge
-  rules out. Three checks over `kinds` (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean
-  `label` and `kind = "c"` beside a boolean `ref`, which the conditional rules on `kind` exclude; they warn, and their
-  triage names the round. They are two distinct entries, and c15's precision line kills above two that need a
-  gate-specific exception, so the fix lands before c15: judging each round on its own node needs a rule over bundles'
-  verdicts, which S does not have, or the conditional rules' joint facts imported beside the paths.
+- **A path two rounds read is read where the earlier was rendered** — *small.* A later round's conjunct is read beside
+  the facts it was rendered from (`DESIGN.md`), path by path, at the stratum of the earliest round that reads the path:
+  differential 404 reads `label` in round 1 (`label <> 'x'`) and round 2 (`label > 'm'`), so the ordering is read over
+  the root's label and stays unproven, as do 394, 405 and 410's orderings over strings that may hold U+0000. Reading
+  each atom at its own round would key the stratum by atom, not path; a path two statements read keeps the root's.
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The

@@ -97,12 +97,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A refutation warns until the emulator reproduces it where the facts it was found on may admit what no document
         /// holds: a refuting cell on a path whose import defaulted constrained, or a cell over two paths under conditional
-        /// rules. Where the check holds a conjunct a later round admitted, the triage says it was judged under round 1's facts.
+        /// rules. Where the check holds a conjunct a later round admitted, the triage says its paths were read beside the facts
+        /// it was rendered from.
         /// </summary>
         static string Triage(RenderingCheckRun.Checked c, Refutation r) =>
             (r.Cells.Any(cell => c.Import!.Constrained.Any(path => cell.StartsWith(path + "=", StringComparison.Ordinal))) ? "warns: a default the declaration constrains"
             : r.Cells.Count > 1 && c.Conditional ? "warns: a cell over two paths, under conditional rules"
-            : "fails") + (c.LaterRound ? "; a later round's conjunct, judged under round 1's facts" : "");
+            : "fails") + (c.LaterRound ? "; a later round's conjunct, read beside the facts it was rendered from" : "");
 
         static string Name(RenderingVerdict? verdict, RenderingCheckRun.Checked c) => verdict switch
         {

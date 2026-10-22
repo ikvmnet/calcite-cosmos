@@ -22,12 +22,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Pairs the atom's truths on each cell with the service's outcome there. Where a value that is no boolean is not
-        /// kept, a whole condition reads as the meanings say; what its row keeps, and a failure, stand.
+        /// kept, a whole condition reads as the meanings say; what its row keeps, and a failure, stand. A cell only a
+        /// document an earlier round drops holds is read as one Calcite raises on: anything but a failure refines it, and
+        /// it refutes nothing.
         /// </summary>
         public static CellOutcomes Of(PredicateAtom atom, OutcomeVector service, AnswerMeanings means)
         {
             var cells = service.Cells.Cells;
-            var at = cells.Select((cell, i) => new CellAt(cell, new CellClass(atom.OnCell(cell), Whole(service.Outcomes[i], means)))).ToList();
+            var at = cells.Select((cell, i) => new CellAt(cell, new CellClass(service.Cells.Outside?.Contains(cell) == true ? Truths.Raises : atom.OnCell(cell),
+                Whole(service.Outcomes[i], means)))).ToList();
             var rows = service.Rows.Union(atom.Rests);
             if (service.Outcomes.Any(o => o.NonBoolean != CosmosValueClass.None))
                 rows = rows.Union(WholeCondition);

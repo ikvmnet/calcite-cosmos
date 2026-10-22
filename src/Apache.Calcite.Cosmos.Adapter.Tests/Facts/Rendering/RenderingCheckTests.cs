@@ -142,6 +142,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A later round's conjunct is read beside the facts it was rendered from. Where kind is "a" the label is a string,
+        /// so the bare equality a second round writes for text <c>label = '30'</c> is exact: a cell the first round's
+        /// conjunct rules out, the number 30 among them, is read as one Calcite raises on, which the service's answer
+        /// there refines but for a failure. From the root alone it is Unproven. The plant: kind read beneath the stratum
+        /// that assumes its own conjunct, which proves a form that keeps every kind.
+        /// </summary>
+        [Fact]
+        public void ALaterRoundIsReadBesideTheFactsItWasRenderedFrom()
+        {
+            var generations = new JsonFactGenerations(long.MaxValue);
+            var theory = generations.Bind(Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))));
+            var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
+            var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { kind, label }),
+                (i, facts) => i == 0 || facts.Knows(new Cosmos.Facts.JsonFact(LabelPath, Type(JsonType.String))));
+            scope.StratumOf(1).Should().Be(2);
+
+            var (root, stratum) = (RenderingCheckRun.RootOf([scope])!.Value, scope.ContextFor(OracleLicence.RenderConjunct(1)).Context);
+            var (named, labelled) = (ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(KindPath), JsonValues.Of("a")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, JsonValues.Of("30")));
+            RenderingVerdictKind Checked(ServiceForm first, params JsonDocumentPath[] beneath) => new RenderingCheckRun().Check([kind, label], All(first, labelled), [first, labelled], Verdict.Equal,
+                bundle => RenderingImporter.Import(bundle, Source, root.Context, root.Rules, theory, [KindPath, LabelPath], beneath.ToDictionary(p => p, _ => stratum))).Entry.Asserted.Kind;
+
+            (Checked(named), Checked(named, LabelPath)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
+            Checked(ServiceForm.TestOf(CosmosServiceTest.IsDefined, SqlValue.Spell(KindPath)), LabelPath, KindPath).Should().Be(RenderingVerdictKind.Proven, "the plant is what reading each path at its earliest round refuses");
+            GC.KeepAlive(scope);
+        }
+
+        /// <summary>
         /// No push rests on nothing: no proof holds only where Calcite raises on every row, and no render licence keeps no
         /// document (#217's shape). The allowance is empty.
         /// </summary>

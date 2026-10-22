@@ -67,12 +67,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Imports what one path may hold, whole, from the one source the round was rendered from. Before the run only, so
+        /// Imports what one path may hold, whole, from the one source the round was rendered from, and what it may hold
+        /// where the earliest round that reads it was rendered, the same where nothing narrows it. Before the run only, so
         /// that every rule reads the final value; a second import of the path that differs throws, since S never meets two.
         /// </summary>
         /// <exception cref="InvalidOperationException">The bundle has run, or holds an import from another source.</exception>
         /// <exception cref="FactConflictException">The path was imported with another value.</exception>
-        public void Import(ImportSource source, JsonDocumentPath path, PathValues values, ValueSet<string> classes)
+        public void Import(ImportSource source, JsonDocumentPath path, PathValues values, ValueSet<string> classes, PathValues? assumed = null)
         {
             if (_run is not null)
                 throw new InvalidOperationException("An import after the run would be read by nothing the run derived.");
@@ -87,7 +88,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             try
             {
                 if (Failure is null)
-                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
+                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.Assumed.Of(term).Is(assumed ?? values),
+                        _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
             }
             catch (Exception e) when (e is not FactConflictException && IsEngineFailure(e))
             {

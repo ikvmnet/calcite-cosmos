@@ -227,8 +227,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var conjuncts = held.Select((r, i) => skips[i] is null ? IrOf(r) : new SqlPredicate.Opaque(-1 - i)).ToList();
                 var source = new ImportSource(string.Join("+", held.Select(r => r.Statement.Statement.Digest).Distinct()), "declaration", 1);
+                var beneath = Beneath(held, skips);
                 (entry, report) = Check(conjuncts, claimed.Form, [.. reads.Select((r, i) => skips[i] is null ? r.Form : null)], Verdict.Equal,
-                    bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths)));
+                    bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths), beneath));
             }
 
             var (conditional, later) = (held[0].Statement.DeclarationForCheck.IsConditional, held.Any(r => r.Statement.StratumOf(r.Conjunct) > 1));
@@ -256,6 +257,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         static SqlPredicate IrOf(CaptureRecord record) => record.Statement.Statement.Conjuncts[record.Conjunct];
+
+        /// <summary>
+        /// The stratum each path was rendered from by the earliest round that reads it, where that is a later round of one
+        /// statement and every conjunct the stratum assumes is checked beside it: a cell the stratum admits nothing of is
+        /// then held only by documents a conjunct of the same junction drops, which the claim at its root reads alike.
+        /// </summary>
+        static Dictionary<JsonDocumentPath, Scope?> Beneath(List<CaptureRecord> held, List<string?> skips)
+        {
+            var judged = Enumerable.Range(0, held.Count).Where(i => skips[i] is null).ToList();
+            return judged.SelectMany(i => IrOf(held[i]).Paths.Distinct().Select(p => (Path: p, Record: held[i]))).GroupBy(x => x.Path)
+                .Where(g => g.Select(x => x.Record.Statement).Distinct().Count() == 1)
+                .Select(g => (g.Key, First: g.MinBy(x => x.Record.Statement.StratumOf(x.Record.Conjunct)).Record))
+                .Where(x => x.First.Statement.StratumOf(x.First.Conjunct) > 1 && x.First.Statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(x.First.Conjunct))
+                    .All(j => judged.Any(i => held[i].Statement == x.First.Statement && held[i].Conjunct == j)))
+                .ToDictionary(x => x.Key, x => x.First.Statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(x.First.Conjunct)).Context);
+        }
 
         /// <summary>
         /// Decision D3, read off the IR's readers and tests: a raw ordering, or a raw <c>=</c>, <c>&lt;&gt;</c> or <c>IN</c>

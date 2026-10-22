@@ -58,6 +58,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
             Under = Graph.DefineRelation<RenderingSet>("under");
             Imported = Graph.DefineFunction<JPath, PathValues>("imported");
+            Assumed = Graph.DefineFunction<JPath, PathValues>("assumed");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
             Candidate = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("candidate");
@@ -166,13 +167,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<RenderPosition, RenderPosition> Opposite { get; }
 
         // A bundle's tables. The host writes a path's spelling beside its term (a merge of two paths would give one class
-        // two spellings, and throw), the set, each import once and lattice-free, and the root's candidate with every
-        // member of its junctions as written and each conjunction's members, nested ones flattened; the rules write the
-        // rest, the candidates beneath the root and the members of a junction's rest among them.
+        // two spellings, and throw), the set, each import once and lattice-free, beside it what the stratum its earliest
+        // round was rendered from says the path may hold (`assumed`, the import where none narrows it), and the root's
+        // candidate with every member of its junctions as written and each conjunction's members, nested ones flattened;
+        // the rules write the rest, the candidates beneath the root and the members of a junction's rest among them.
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
         public Function<JPath, PathValues> Imported { get; }
+        public Function<JPath, PathValues> Assumed { get; }
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
         public Relation<Pred, RenderPosition, ServiceForm> Candidate { get; }
@@ -404,12 +407,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             partition.DefineRule("an atom's import is cut into cells, at its literals, the form's and the edges its reader names, where the form reads that path alone", r =>
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
-                var (pos, x, k) = r.Vars<RenderPosition, PathValues, ValueSet<string>>("pos", "x", "k");
+                var (pos, x, k, y) = r.Vars<RenderPosition, PathValues, ValueSet<string>, PathValues>("pos", "x", "k", "y");
                 var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), n.Is(Spelling.Of(p)),
-                    rd.Is(Compute.Of(a, y => y.Reader)), g.Is(Edges.Of(rd)));
-                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, y => y.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split)));
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(p)), n.Is(Spelling.Of(p)),
+                    rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Primitives.Singleton<string>().Of(n)));
+                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split), y, definition.Within)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>
