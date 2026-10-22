@@ -283,6 +283,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.CastToBooleanParses",
                 "A cast of the accessor to BOOLEAN parses the rendering: a stored boolean reads as itself, a null and an absent path as null, a string spelling a boolean parses, trimmed and in any case, and a number raises.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 9), "Measurements.CalciteJsonValueMeasurementTests.ACastToBooleanParsesTheRendering"),
+            new("Calcite.CastOfTheAccessorParsesTheRendering",
+                "A cast of the accessor to INTEGER or BIGINT is Java's integer parse of the rendering, trimmed, and to DOUBLE its double parse: a whole number written without a point lands exactly, a string spelling a number parses, and a point, an exponent, a whole number beyond the type and anything else raise under the integer types.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 15), "Measurements.CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering"),
+            new("Calcite.ReturningDecimalParsesTheRendering",
+                "RETURNING DECIMAL parses the rendering as a BigDecimal, trimmed, a string of digits among them, and raises only on what does not parse; it is typed DECIMAL(19, 0), so a literal compared with it is cast to scale zero.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 15), "Measurements.CalciteJsonValueMeasurementTests.ReturningDecimalParsesTheRendering"),
 
             // ── What Calcite compares, in the columns the reader fills: the rendering check's Calcite side ──
 

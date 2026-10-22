@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -43,8 +44,41 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         }
 
-        /// <summary>The numbers of one kind within the bounds, but these.</summary>
-        public sealed record Numbers(bool Integral, Bound? Lower, Bound? Upper, ValueSet<string> Except) : PathCell;
+        /// <summary>
+        /// The numbers of one kind within the bounds whose double lies within the double bounds, both ends held, but these.
+        /// </summary>
+        public sealed record Numbers(bool Integral, Bound? Lower, Bound? Upper, ValueSet<string> Except, double? DoubleLow = null, double? DoubleHigh = null) : PathCell
+        {
+
+            /// <summary>The bounds, an integer's held at the least and the most integer within them.</summary>
+            (Bound? Lower, Bound? Upper) Held => Integral
+                ? (Lower is Bound l ? Bound.AtLeast(l.Open && Math.Floor(l.Value) == l.Value ? l.Value + 1 : Math.Ceiling(l.Value)) : null,
+                    Upper is Bound u ? Bound.AtMost(u.Open && Math.Ceiling(u.Value) == u.Value ? u.Value - 1 : Math.Floor(u.Value)) : null)
+                : (Lower, Upper);
+
+            /// <summary>Which side of a number every value lies on: -1 below, 1 above, or <c>null</c> where not every one.</summary>
+            internal int? Side(decimal c) => Held is var (lower, upper) && upper is Bound u && (u.Value < c || u.Value == c && u.Open) ? -1
+                : lower is Bound l && (l.Value > c || l.Value == c && l.Open) ? 1 : null;
+
+            /// <summary>
+            /// Which side of a double every value's double lies on: -1, 1, 0 where each is it, or <c>null</c>. A bound's double
+            /// bounds the doubles within it, since rounding never falls as a number rises.
+            /// </summary>
+            internal int? DoubleSide(double d)
+            {
+                var (lower, upper) = Held;
+                var low = lower is Bound l ? Math.Max(DoubleBound.Of(l.Value), DoubleLow ?? double.NegativeInfinity) : DoubleLow;
+                var high = upper is Bound u ? Math.Min(DoubleBound.Of(u.Value), DoubleHigh ?? double.PositiveInfinity) : DoubleHigh;
+                return high < d ? -1 : low > d ? 1 : low == d && high == d ? 0 : null;
+            }
+
+            /// <summary>Which side of a number every value's double lies on, by value: below the number's double is below it.</summary>
+            internal int? RoundedSide(decimal c) => DoubleSide(DoubleBound.Of(c)) is 0 ? DoubleBound.Compare(DoubleBound.Of(c), c) : DoubleSide(DoubleBound.Of(c));
+
+            /// <summary>Whether a number's double lies within the double bounds.</summary>
+            internal bool Rounds(string value) => DoubleBound.Of(value) is var d && d >= (DoubleLow ?? d) && d <= (DoubleHigh ?? d);
+
+        }
 
         /// <summary>A kind the theory does not know, of which nothing is said.</summary>
         public sealed record Unknown : PathCell;
@@ -71,7 +105,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Strings s => "strings" + (s.Low is null ? "" : " > " + SqlValue.Quote(StringOf(s.Low))) + (s.High is null ? "" : " < " + SqlValue.Quote(StringOf(s.High)))
                 + " in [" + string.Join(",", s.Classes.AsEnumerable()) + "]" + But(s.Except),
             Numbers n => (n.Integral ? "integers" : "fractions") + (n.Lower is Bound l ? (l.Open ? " > " : " >= ") + Number(l.Value) : "")
-                + (n.Upper is Bound h ? (h.Open ? " < " : " <= ") + Number(h.Value) : "") + But(n.Except),
+                + (n.Upper is Bound h ? (h.Open ? " < " : " <= ") + Number(h.Value) : "")
+                + (n.DoubleLow is double dl ? " double >= " + dl.ToString("R", CultureInfo.InvariantCulture) : "")
+                + (n.DoubleHigh is double dh ? " double <= " + dh.ToString("R", CultureInfo.InvariantCulture) : "") + But(n.Except),
             _ => "unknown",
         };
 
@@ -92,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Structure s => value == s.Type + "|",
             Point p => value == p.Value,
             Strings s => IsString(value) && s.Holds(StringOf(value)) && s.Except.Contains(value) == false,
-            Numbers n => IsNumber(value) && TypeOf(value) == (n.Integral ? IntegerType : FractionType) && Within(value, n.Lower, n.Upper) && n.Except.Contains(value) == false,
+            Numbers n => IsNumber(value) && TypeOf(value) == (n.Integral ? IntegerType : FractionType) && Within(value, n.Lower, n.Upper) && n.Rounds(value) && n.Except.Contains(value) == false,
             Unknown => AllTypes.Contains(TypeOf(value)) == false,
             _ => false,
         };
@@ -105,6 +141,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Structure s => s.Type + "|",
             Point p => p.Value,
             Strings s => LeastString(s),
+            Numbers n when (n.DoubleLow ?? n.DoubleHigh) is not null => Rounded(n),
             Numbers { Integral: true } n => LeastInteger(n),
             Numbers n => SomeFraction(n),
             _ => throw new InvalidOperationException("Nothing is known of a kind the theory does not know, not a value of it either."),
@@ -167,12 +204,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                     case IntegerType or FractionType:
                     {
+                        var doubles = cuts.Where(c => c.Kind == CutKind.Double && IsExactNumber(c.Value)).Select(c => DoubleBound.Of(c.Value)).Distinct().Order().ToList();
                         var lower = x.Lower;
                         foreach (var cut in cuts.Select(c => c.Value).Where(IsExactNumber).Select(NumberOf).Distinct().OrderBy(n => n).Select(n => (decimal?)n).Append(null))
                         {
                             var upper = cut is decimal below ? (x.Upper is Bound u ? Bound.StricterUpper(Bound.Below(below), u) : Bound.Below(below)) : x.Upper;
-                            var between = new Numbers(kind == IntegerType, lower, upper, ValueSet<string>.Empty);
-                            cells.Add(between with { Except = x.Excluded.Where(between.Contains) });
+                            foreach (var between in Slots(new Numbers(kind == IntegerType, lower, upper, ValueSet<string>.Empty), doubles))
+                                cells.Add(between with { Except = x.Excluded.Where(between.Contains) });
                             if (cut is not decimal point)
                                 break;
 
@@ -191,6 +229,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             return new CellPartition(path, ValueSet.From(cells.Where(c => c is not (Strings or Numbers) || c.Witness() is not null)));
+        }
+
+        /// <summary>
+        /// An interval parted at each double a literal rounds to that its values' doubles may reach: the values whose double
+        /// lies below it, at it and above it, so that a reading or the service comparing doubles answers one way on each.
+        /// </summary>
+        static IEnumerable<Numbers> Slots(Numbers interval, List<double> doubles)
+        {
+            double? low = null;
+            foreach (var d in doubles.Where(d => (interval.Lower is not Bound l || d >= DoubleBound.Of(l.Value)) && (interval.Upper is not Bound u || d <= DoubleBound.Of(u.Value))))
+            {
+                yield return interval with { DoubleLow = low, DoubleHigh = Math.BitDecrement(d) };
+                yield return interval with { DoubleLow = d, DoubleHigh = d };
+                low = Math.BitIncrement(d);
+            }
+
+            yield return interval with { DoubleLow = low };
         }
 
         /// <summary>
@@ -283,6 +338,70 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var beyond = Of(n.Lower is null ? -1e30 : 1e30);
                 return n.Contains(beyond) ? beyond : null;
             }
+        }
+
+        /// <summary>
+        /// A value of an interval whose double lies within its double bounds, not excepted. A double never falls as its number
+        /// rises, so halving finds the least integer at or past the low double, or a number between the double bounds, beside
+        /// which a fraction is stepped to; past a decimal's range, a number held approximately.
+        /// </summary>
+        static string? Rounded(Numbers n)
+        {
+            var (low, high) = (n.Lower?.Value ?? decimal.MinValue, n.Upper?.Value ?? decimal.MaxValue);
+            var candidates = new List<decimal> { low, high };
+            try
+            {
+                if (n.Integral)
+                {
+                    // The least integer at or past the low double, and upward; or the greatest within the high, and down.
+                    var (a, b, up) = (Math.Ceiling(low), Math.Floor(high), n.DoubleLow is not null);
+                    while (a < b)
+                    {
+                        var m = up ? Math.Floor(a / 2 + b / 2) : Math.Ceiling(a / 2 + b / 2);
+                        (a, b) = (up ? DoubleBound.Of(m) < n.DoubleLow : DoubleBound.Of(m) > n.DoubleHigh) ? (up ? (m + 1, b) : (a, m - 1)) : (up ? (a, m) : (m, b));
+                    }
+
+                    for (var i = 0; i < n.Except.Count + 2; i++)
+                        candidates.Add(up ? a + i : a - i);
+                }
+                else
+                {
+                    // A value between the double bounds; then the least such past the low double, or the greatest within the
+                    // high, near which fractions lie however large the interval; then steps beside it.
+                    var (p, q, inside) = (low, high, (decimal?)null);
+                    for (var m = p / 2 + q / 2; inside is null && m > p && m < q; m = p / 2 + q / 2)
+                    {
+                        if (DoubleBound.Of(m) < n.DoubleLow)
+                            p = m;
+                        else if (DoubleBound.Of(m) > n.DoubleHigh)
+                            q = m;
+                        else
+                            inside = m;
+                    }
+
+                    if (inside is decimal edge)
+                    {
+                        var up = n.DoubleLow is not null;
+                        for (var (a, b) = up ? (p, edge) : (edge, q); a / 2 + b / 2 is var m && m > a && m < b;)
+                        {
+                            if (up ? DoubleBound.Of(m) < n.DoubleLow : DoubleBound.Of(m) > n.DoubleHigh)
+                                (a, b) = up ? (m, b) : (a, m);
+                            else
+                                (a, b, edge) = up ? (a, m, m) : (m, b, m);
+                        }
+
+                        candidates.Add(edge);
+                        for (var k = (byte)0; k <= 28; k++)
+                            candidates.AddRange([edge + new decimal(1, 0, 0, false, k), edge - new decimal(1, 0, 0, false, k)]);
+                    }
+                }
+            }
+            catch (OverflowException)
+            {
+                // Past a decimal's range, where only a number held approximately lies.
+            }
+
+            return candidates.Select(Of).Concat(new[] { 1e30, -1e30, 1e-30, -1e-30 }.Select(Of)).FirstOrDefault(n.Contains);
         }
 
         /// <summary>

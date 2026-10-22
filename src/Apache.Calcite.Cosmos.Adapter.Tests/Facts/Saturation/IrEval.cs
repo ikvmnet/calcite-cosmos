@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -204,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             J.Str s => s.Value,
             J.Bool b => b.Value ? "true" : "false",
             J.Num n when IntegerSpelled(n) => n.Value.ToString(CultureInfo.InvariantCulture),
-            J.Num n => JavaDouble((double)n.Value),
+            J.Num n => JavaDouble(DoubleBound.Of(n.Value)),
             J.Huge h => JavaDouble(h.Value),
             _ => null,
         };
@@ -381,7 +380,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case "DOUBLE":
                     return value switch
                     {
-                        J.Num d when IntegerSpelled(d) == false => new SqlDatum.Double((double)d.Value),
+                        J.Num d when IntegerSpelled(d) == false => new SqlDatum.Double(DoubleBound.Of(d.Value)),
                         J.Huge h => new SqlDatum.Double(h.Value),
                         _ => SqlDatum.Raise,
                     };
@@ -420,15 +419,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _ => (long.MinValue, long.MaxValue),
                     };
 
-                    // A J.Huge is beyond any of them.
-                    return value is J.Num n && n.Value == decimal.Truncate(n.Value) && n.Value >= least && n.Value <= most
-                        ? new SqlDatum.Exact(decimal.Truncate(n.Value)) : SqlDatum.Raise;
+                    // Written as an int64, read as one; otherwise as its double, whole and checked in doubles. A J.Huge is
+                    // beyond any of them.
+                    if (value is not J.Num n)
+                        return SqlDatum.Raise;
+                    if (IntegerSpelled(n) && n.Value >= long.MinValue && n.Value <= long.MaxValue)
+                        return n.Value >= least && n.Value <= most ? new SqlDatum.Exact(n.Value) : SqlDatum.Raise;
+
+                    var d = DoubleBound.Of(n.Value);
+                    return Math.Floor(d) == d && d >= (double)least && d < (double)most + 1.0 ? new SqlDatum.Exact((long)d) : SqlDatum.Raise;
                 }
 
                 case "FLOAT" or "DOUBLE":
                     return value switch
                     {
-                        J.Num n => new SqlDatum.Double((double)n.Value),
+                        J.Num n => new SqlDatum.Double(DoubleBound.Of(n.Value)),
                         J.Huge h => new SqlDatum.Double(h.Value),
                         _ => SqlDatum.Raise,
                     };
@@ -441,49 +446,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
         }
 
-        static readonly Regex JavaInteger = new(@"^[+-]?[0-9]+$", RegexOptions.CultureInvariant);
-
-        static readonly Regex JavaDoubleText = new(@"^[+-]?(NaN|Infinity|(([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?[fFdD]?))$", RegexOptions.CultureInvariant);
-
-        static readonly Regex BigDecimalText = new(@"^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$", RegexOptions.CultureInvariant);
-
         /// <summary>
-        /// A cast of text to a number, as Calcite converts one: the text trimmed, then parsed by Java, which raises on what
-        /// it cannot parse.
+        /// A cast of text to a number, as Calcite converts one: by the parse of its type (<c>Renderings</c>), which raises on
+        /// what it cannot parse.
         /// </summary>
-        static SqlDatum Parse(string? text, string target)
+        static SqlDatum Parse(string? text, string target) => text is null ? SqlDatum.Null : target switch
         {
-            if (text is null)
-                return SqlDatum.Null;
-
-            var trimmed = text.Trim(' ', '\t', '\n', '\r', '\f', '\v', '\0');
-            switch (target)
-            {
-                case "INTEGER" or "BIGINT":
-                {
-                    if (JavaInteger.IsMatch(trimmed) == false || decimal.TryParse(trimmed, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var whole) == false)
-                        return SqlDatum.Raise;
-
-                    var (least, most) = target == "INTEGER" ? ((decimal)int.MinValue, (decimal)int.MaxValue) : (long.MinValue, long.MaxValue);
-                    return whole >= least && whole <= most ? new SqlDatum.Exact(whole) : SqlDatum.Raise;
-                }
-
-                case "DOUBLE":
-                    return JavaDoubleText.IsMatch(trimmed) && double.TryParse(trimmed.TrimEnd('f', 'F', 'd', 'D'), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
-                        ? new SqlDatum.Double(d) : SqlDatum.Raise;
-
-                case "DECIMAL":
-                    if (BigDecimalText.IsMatch(trimmed) == false)
-                        return SqlDatum.Raise;
-
-                    return decimal.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var exact)
-                        ? new SqlDatum.Exact(exact)
-                        : new SqlDatum.Double(double.Parse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture));
-
-                default:
-                    throw new NotSupportedException(target);
-            }
-        }
+            "INTEGER" or "BIGINT" => Renderings.ParseInteger(text, target == "INTEGER" ? int.MinValue : long.MinValue, target == "INTEGER" ? int.MaxValue : long.MaxValue) is decimal whole
+                ? new SqlDatum.Exact(whole) : SqlDatum.Raise,
+            "DOUBLE" => Renderings.ParseDouble(text) is double d ? new SqlDatum.Double(d) : SqlDatum.Raise,
+            "DECIMAL" => Renderings.ParseDecimal(text) is string number ? Datum(number) : SqlDatum.Raise,
+            _ => throw new NotSupportedException(target),
+        };
 
         /// <summary>
         /// A comparison of two values: UNKNOWN where either is null, a raise where either raises.
@@ -521,7 +495,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static double? Number(SqlDatum datum) => datum switch
         {
-            SqlDatum.Exact e => (double)e.Value,
+            SqlDatum.Exact e => DoubleBound.Of(e.Value),
             SqlDatum.Double d => d.Value,
             _ => null,
         };
@@ -645,7 +619,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var exact = stored is J.Num n ? n.Value : (decimal?)null;
 
             if (target == "DOUBLE")
-                return new SqlDatum.Double(approximate ?? (double)exact!.Value);
+                return new SqlDatum.Double(approximate ?? DoubleBound.Of(exact!.Value));
 
             var (least, most) = target == "INTEGER" ? ((decimal)int.MinValue, (decimal)int.MaxValue) : (long.MinValue, long.MaxValue);
             if (exact is decimal x)

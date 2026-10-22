@@ -19,9 +19,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal static class ServiceLeaf
     {
 
-        /// <summary>The magnitude to which every integer is a double.</summary>
-        const decimal Exact = 1L << 53;
-
         public static OutcomeVector On(ServiceForm leaf, CellPartition cells, ServiceTable table, ValueSet<string> parted)
         {
             if (leaf.Members.Count > 0)
@@ -116,11 +113,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return Sides(cell, literal, parted.Contains(literal) == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
                         parted.Contains(literal) == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0);
 
-                case (CosmosAnswer.Numeric, PathCell.Point { Value: var v }) when Whole(v) is decimal x && Whole(literal) is decimal c:
-                    return [Side(x.CompareTo(c))];
+                case (CosmosAnswer.Numeric, PathCell.Point { Value: var v }) when IsNumber(v) && TryNumberOf(literal, out var c):
+                    return Numeric(cell, c);
 
-                case (CosmosAnswer.Numeric, PathCell.Numbers { Integral: true, Lower: Bound lo, Upper: Bound hi }) when Whole(literal) is decimal c && Math.Abs(lo.Value) <= Exact && Math.Abs(hi.Value) <= Exact:
-                    return Sides(cell, literal, hi.Value < c || hi.Value == c && hi.Open, lo.Value > c || lo.Value == c && lo.Open);
+                case (CosmosAnswer.Numeric, PathCell.Numbers) when TryNumberOf(literal, out var c):
+                    return Numeric(cell, c);
 
                 default:
                     return null;
@@ -157,8 +154,32 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
         }
 
-        /// <summary>A whole number a double holds exactly, or <c>null</c>.</summary>
-        static decimal? Whole(string value) => TryNumberOf(value, out var x) && x == decimal.Truncate(x) && Math.Abs(x) <= Exact ? x : null;
+        /// <summary>
+        /// Where a number or a cell of numbers lies against a literal by the value the service compares
+        /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>): an int64 as itself and any other number as its double, by
+        /// value. A whole number in int64 is held either way, as Azure and the emulator hold one written with a point, and so
+        /// is one in [2^63, 2^64), which the emulator holds as written, until a row separates them; a literal sent as a
+        /// double is placed against only where that double is it.
+        /// </summary>
+        static CosmosValueClass[]? Numeric(PathCell cell, decimal c)
+        {
+            var d = DoubleBound.Of(c);
+            if ((c == decimal.Truncate(c) && c >= long.MinValue && c <= long.MaxValue) == false && DoubleBound.Compare(d, c) != 0)
+                return null;
+
+            const decimal Held = 18446744073709551616m;
+            int?[] sides = cell switch
+            {
+                PathCell.Point { Value: var v } when TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= long.MinValue && x < Held =>
+                    [x.CompareTo(c), new PathCell.Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)],
+                PathCell.Point { Value: var v } => [Math.Sign(DoubleBound.Of(v).CompareTo(d)) is var side && side == 0 ? DoubleBound.Compare(d, c) : side],
+                PathCell.Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value < Held) => [n.Side(c), n.RoundedSide(c)],
+                PathCell.Numbers n => [n.RoundedSide(c)],
+                _ => [null],
+            };
+
+            return sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
+        }
 
         static CosmosValueClass? ClassOf(PathCell cell) => cell switch
         {

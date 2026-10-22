@@ -6069,7 +6069,8 @@ row, which is what the check against Calcite leaves out.
 `PathCell.Split` cuts one imported `PathValues`, with the classes of its strings' characters, at the values the pair
 compares with: absent, null, each structure and each boolean apart; a literal the import admits as a point, and one it
 excludes as a boundary; strings between two literals in Calcite's order, by UTF-16 unit; numbers of a kind between two
-by value. The cut points are handed in, for S's rules to choose. Every value the import admits lies in exactly one cell,
+by value, and by the double a literal rounds to (*Numbers on cells*, below). The cut points are handed in, for S's rules
+to choose. Every value the import admits lies in exactly one cell,
 and a value it refuses in none.
 
 **Every cell is inhabited, and the search for an inhabitant is complete.** A refutation names a cell, and a cell nothing
@@ -6127,9 +6128,9 @@ the identity, or a `NOT`, decides nothing without it.
 code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
 decide that for every comparison with a string, `=` and `!=` as well as an ordering, since each reads the row of the
 side an interval lies on, and a parted interval answers both sides. A point is placed by each comparator the type's
-`Order` entry names, their answers unioned, beside whatever else the entry answers. A number is placed only within
-±2^53, where a double holds it exactly: the theory spells `30` and `30.0` alike, and the service may hold either as a
-double. A boolean and a null are keyed as their own classes, which no comparator orders.
+`Order` entry names, their answers unioned, beside whatever else the entry answers. A number is placed by the value the
+service compares (*Numbers on cells*, below). A boolean and a null are keyed as their own classes, which no comparator
+orders.
 
 **A path written bare carries the class of a value that is no boolean**, and a connective over it reads that class's
 row, not unknown's. As a whole condition, where its row keeps it not, such a value is kept by neither `WHERE` nor
@@ -6471,6 +6472,37 @@ facts graph reads, and otherwise fails CI; `vacuous-proofs.tsv`, a proof that ho
 render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the checks resting on each registry
 row, which every proof must name; and `skipped.tsv`. Every statement that fails to plan or implement fails CI too,
 rather than leaving the check smaller.
+
+### Numbers on cells
+
+**A literal's double parts its cells, since rounding never falls as a number rises.** A double compares doubles; so does
+the service any number it holds as one, an integer type's column any number not written as an integer, and `RETURNING
+DECIMAL` the rendering a double gives. Cut by value alone, the fractions beside a literal hold some whose double is the
+literal's and some whose is not, and answer both ways. So a reader's `Double` edge parts each interval at every double a
+literal rounds to that its values' doubles may reach — below it, at it, above it — which with the literal's point are
+its five slots. `Numbers` holds its double bounds closed: a double below another is at most the one before it. A decimal
+becomes a double by parsing its invariant text (`DoubleBound`), never by .NET's cast, which rounds twice and misses at
+9007199254740994.4. The search for an inhabitant halves toward the double bounds and steps beside the edge it finds, so
+an empty slot is dropped and an inhabited one never is; the property test asks each cell of values a rounding's width
+beside every cut.
+
+**Each reader's edges are a row** (`ReaderEdgesTable`): an integer type's limits, and a cast's one either side of a
+literal, where it raises, truncates or saturates; a double edge for every reading that compares a double; and the text
+a literal renders as for a parse, which reads `"2"` as 2, so `RETURNING DECIMAL = 2` over a string has the definite cell
+`"2"`. The text cast of a raw value still has none.
+
+**A typed reading is the union of `RETURNING` and the column, read from the code.** `RETURNING` reads an integer written
+so and raises over anything else, `BIGINT`'s over one an int holds; the column reads that, and any other number as its
+double where that is whole and within the type: 42.0, a fraction that rounds to a whole double, past 2^53 another
+integer (`CosmosJson.GetInteger`). So a `BIGINT` past 2^53 answers both ways at the literal, and a bound one off under an
+int is unproven, not refuted, since `RETURNING` raises there; the column's own reading is decision D12's. The coarse
+typed reading leaves both out (`TODO.md`), and the cells do not copy it. A cast or `RETURNING DECIMAL` reads a string
+by its own grammar — Java's integer parse, its double parse, or `BigDecimal`'s (`Renderings`) — and `RETURNING DECIMAL`
+reads a number not written as an integer through its double's rendering.
+
+**The service compares the value it holds** (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as itself, any other
+number as its double, by value. A whole number in int64, or in [2^63, 2^64), which the emulator holds as written, may
+be held either way, so it is placed by both; a literal sent as a double is placed only where that double is it.
 
 ---
 

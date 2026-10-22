@@ -141,8 +141,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Text and raw have the row their cuts read, and every row names a reader the loader builds (<c>CosmosPredicateLoader.Value</c>
-        /// and <c>Cast</c>). A text cast of the raw value has none: over a <c>VARIANT</c> Calcite casts all but a string to
+        /// Every reader the loader builds has the row its cuts read (<c>CosmosPredicateLoader.Value</c> and <c>Cast</c>), and
+        /// every row names one. A text cast of the raw value has none: over a <c>VARIANT</c> Calcite casts all but a string to
         /// null, which its cells do not model, so an atom read through it is never evaluated.
         /// </summary>
         [Fact]
@@ -154,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
                 .ToList();
 
-            var covered = built.Take(2).ToList();
+            var covered = built.Where(reader => reader != PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)).ToList();
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }

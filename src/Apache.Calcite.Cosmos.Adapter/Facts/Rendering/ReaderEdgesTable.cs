@@ -8,23 +8,42 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// Where each reader's answer changes, as host data: the <c>edges</c> rows S's <c>cuts</c> rule applies. A reader with
-    /// no row is cut nowhere, so an atom read by it is never evaluated and stays unproven.
+    /// Where each reader's answer changes, as host data: the <c>edges</c> rows S's <c>partition</c> rule applies. A reader
+    /// with no row is cut nowhere, so an atom read by it is never evaluated and stays unproven.
     /// </summary>
     /// <remarks>
-    /// Text and raw answer at the literals compared with alone. A text cast of the raw value has no row: over a
-    /// <c>VARIANT</c> Calcite casts every value but a string to null, which its cells, modelled on the rendering, do not
-    /// say (<c>TODO.md</c>). The typed and numeric readings enter with their edges when their cells do.
+    /// Text and raw answer at the literals alone. An integer type raises past its limits, and a cast to one truncates within
+    /// one of a literal and saturates at them. A double compares doubles, and so does the service a number it holds as one,
+    /// an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>), and <c>DECIMAL</c> one
+    /// it renders; and a parse of the rendering reads the literal's text as the literal. A text cast of the raw value has no row: over a
+    /// <c>VARIANT</c> Calcite casts every value but a string to null, which its cells do not say (<c>TODO.md</c>).
     /// </remarks>
     internal static class ReaderEdgesTable
     {
 
-        static readonly ReaderEdges AtTheLiterals = new(ValueSet<string>.Empty);
+        static ReaderEdges Row(params CutKind[] edges) => new(ValueSet.From(edges), ValueSet<string>.Empty);
+
+        static ReaderEdges Limits(decimal min, decimal max, params CutKind[] edges) => new(ValueSet.From(edges), ValueSet.Of(JsonValues.Of(min), JsonValues.Of(max)));
 
         public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = new Dictionary<string, ReaderEdges>
         {
-            [PredicateAtom.TextReader] = AtTheLiterals,
-            [PredicateAtom.RawReader] = AtTheLiterals,
+            [PredicateAtom.TextReader] = Row(),
+            [PredicateAtom.RawReader] = Row(),
+            [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
+            [PredicateAtom.TypedReader("TINYINT")] = Limits(sbyte.MinValue, sbyte.MaxValue, CutKind.Double),
+            [PredicateAtom.TypedReader("SMALLINT")] = Limits(short.MinValue, short.MaxValue, CutKind.Double),
+            [PredicateAtom.TypedReader("INTEGER")] = Limits(int.MinValue, int.MaxValue, CutKind.Double),
+            [PredicateAtom.TypedReader("BIGINT")] = Limits(long.MinValue, long.MaxValue, CutKind.Double),
+            [PredicateAtom.TypedReader("FLOAT")] = Row(CutKind.Double),
+            [PredicateAtom.TypedReader("REAL")] = Row(CutKind.Double),
+            [PredicateAtom.TypedReader("DOUBLE")] = Row(CutKind.Double),
+            [PredicateAtom.TypedReader("DECIMAL")] = Row(CutKind.Double, CutKind.Rendering),
+            [PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader)] = Limits(int.MinValue, int.MaxValue, CutKind.Below, CutKind.Above, CutKind.Double),
+            [PredicateAtom.CastReader("BIGINT", PredicateAtom.RawReader)] = Limits(long.MinValue, long.MaxValue, CutKind.Below, CutKind.Above, CutKind.Double),
+            [PredicateAtom.CastReader("DOUBLE", PredicateAtom.RawReader)] = Row(CutKind.Double),
+            [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = Limits(int.MinValue, int.MaxValue, CutKind.Rendering),
+            [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = Limits(long.MinValue, long.MaxValue, CutKind.Rendering),
+            [PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader)] = Row(CutKind.Double, CutKind.Rendering),
         };
 
     }

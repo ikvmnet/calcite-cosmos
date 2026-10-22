@@ -2628,14 +2628,19 @@ across documents* and *A join of a container to itself* is the record.
   `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
   `RETURNING` does, which `NeverTrue` reads as leave to decide. Read from the code and modelled in `IrEval`'s column
   mode; the column measurement holds no structure. The typed cells answer the raise.
-- **The typed `DOUBLE` reading compares numbers exactly** — *small, and it touches plans.* `Typed.Equal` decides a
-  stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE` compare the doubles they
-  round to: past 2^53 two integers a unit apart are one double, and `KeptEqual` establishes the literal of a row that
-  holds the other. The typed cells compare doubles, so a cell may answer TRUE there where its state does not.
-- **The cast readings rest on no row** — *small.* `NumberCast` answers from measurements the registry has no row for
-  (`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`,
-  `ReturningDecimalParsesTheRendering`), so `PredicateAtom.Rests` is empty for a numeric cast and `RETURNING DECIMAL`,
-  and a proof through one cites nothing on Calcite's side. The rows are owed before the casts' cells are.
+- **The typed reading compares numbers exactly, and says a fraction raises alone** — *small, and it touches plans.*
+  `Typed.Equal` decides a stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE`
+  compare the doubles they round to; and an integer type's column reads any number not written as an integer as its
+  double where that is whole (`CosmosJson.GetInteger`): a fraction that rounds to one, which the coarse reading says
+  raises alone, and past 2^53 another integer, which `KeptEqual` establishes is the literal. The typed cells read both.
+- **A numeric cast over a raw value rests on no row** — *small.* The casts of the accessor and `RETURNING DECIMAL` rest on
+  `Calcite.CastOfTheAccessorParsesTheRendering` and `Calcite.ReturningDecimalParsesTheRendering`; a cast of a raw value
+  truncates and saturates as `CosmosRexTranslator.TryNumericCastOperand` measured, with no registry row, so its cells
+  cite nothing on Calcite's side.
+- **`RETURNING DECIMAL` compares a stored fraction through its double's rendering** — *small, and it touches plans.*
+  Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
+  29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
+  where Calcite answers TRUE; the cells read the rendering.
 - **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
@@ -2707,12 +2712,6 @@ across documents* and *A join of a container to itself* is the record.
   `NOT (c.v OR false)` at true, null and absent, and `Greater/String` below and equal. Those cells are filtered answers
   now, so `Holds` checks the projection there; the emulator's agrees at each, and Azure's has answered apart from its
   filter only over the parted range.
-- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number only within ±2^53 and answers
-  widest beyond, where `Numeric` means the value compared (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as
-  itself, anything else as its correctly rounded double, the two by value. c13's double slots should place a cell by
-  the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
-  its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
-  as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
 - **The reader's grammar is measured on the emulator alone** — *small, for the next probe-account run.* Every proof the
   check run asserts under `Portable` rests on `Service.NotBindsTightestThenAndThenOr`, which the run of 2026-10-21
   predates. Its measurement sits in the namespace a probe-account run covers, and the row names the emulator alone until
@@ -2739,6 +2738,10 @@ across documents* and *A join of a container to itself* is the record.
   the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
   Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
   list once 0d fixes it.
+- **A typed bound one off under an int is unproven, not refuted** — *small, for D12.* `RETURNING` raises over an integer
+  written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
+  and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
+  where the service answers false. The column's own reading (decision D12) would refute it.
 
 ---
 
