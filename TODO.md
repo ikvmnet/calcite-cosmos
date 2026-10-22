@@ -2640,11 +2640,28 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A statement's conjuncts are checked apart, and written as one** — *medium, for the harness (c12).* The built
-  `WHERE` is the conjunction of the admitted conjuncts' texts, so two conjuncts proven alone, `label >= X` and
-  `label <= Y`, are sent as a range over bounds that may part (N8), and the statement's `AND` is never held to its
-  licence. The harness should write a statement's admitted conjuncts into the bundle as one IR junction and claim the
-  conjunction as built.
+- **A check's later rounds are judged under round 1's facts** — *medium, before c15's precision line.* A check imports
+  from its statements' root, the only node that assumes none of the conjuncts it holds. A conjunct a later round
+  admitted, rendered knowing what the earlier ones establish, is then unproven, or refuted on a cell that knowledge
+  rules out. Three checks over `kinds` (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean
+  `label` and `kind = "c"` beside a boolean `ref`, which the conditional rules on `kind` exclude; they warn, and their
+  triage names the round. They are two distinct entries, and c15's precision line kills above two that need a
+  gate-specific exception, so the fix lands before c15: judging each round on its own node needs a rule over bundles'
+  verdicts, which S does not have, or the conditional rules' joint facts imported beside the paths.
+- **A check that holds a conjunct it cannot judge is unproven** — *medium, for c13's coverage.* Nothing the service
+  reads beside a checked conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct
+  beside it unproven: 70 conjuncts proven before are unproven since, most beside a numeric or cast reading the loader
+  reads as opaque. c13's typed and cast readings bring most of those into the family; what remains is c13's to count.
+- **A `WHERE` of two statements, one of more than one conjunct, has no exact join** — *small, for c13.* The IR flattens
+  a junction and the claim keeps the `WHERE`'s grouping, `((a) AND ((b) AND (c)))`, so no IR child pairs with
+  `(b) AND (c)`: differential 117–121 are unproven, 15 conjuncts, 11 of them proven before. Regrouping the claim would
+  be a form no text holds; S composing a nested form over a flat junction is the fix.
+- **`verdicts.tsv` names no cause for an Unproven, and c13 chooses its coverage basis** — *small, for c13.* §5.1's "no
+  exact join" is S's to say, read from its rows (an IR arm no member of the claim agrees with), never from an arity
+  count. The check's verdict, repeated for each conjunct it holds, is the claim made; each conjunct's own position is
+  the `alone` column. c13's 5 % line reads one of them, and says which.
+- **`refutations.tsv` names no witness document** — *small, for c15.* §5.6 lists one, the least refuting cell completed
+  into a document (§5.5); it lands with c15's witnesses and the emulator column.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
@@ -2672,15 +2689,14 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point.
-- **The rendering tests assert under the emulator's set, and could assert `Portable`** — *small, for c12 or the commit
-  after it.* The probe account has run every row's `Holds` (`Runs/2026-10-21-probe-account.tsv`, `DESIGN.md`, *The
-  registry, read into S*), so every outcome claims both targets but the two keys they answer apart. `RenderingCheckRun`
-  arrives with c12, so nothing was switched: c12, or its follow-up, should assert `Portable` and report `Emulator`
-  beside. Checked by hand at c09b: with `ProbeRows`' default set and table made `Portable`, all 50 tests of
-  `Tests.Facts.Rendering` hold. With every `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that
-  fail state what is the emulator's alone — `Range` licensed (`WithoutAConnectiveRowNothingComposes`,
-  `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`, `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it
-  alone measured (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set.
+- **The rendering tests beside the check run build under the emulator's set** — *small.* `RenderingCheckRun` asserts
+  `Portable` and reads `Emulator` beside it, now that the probe account has run every row's `Holds`
+  (`Runs/2026-10-21-probe-account.tsv`), and the two agree on every check it makes. Checked by hand at c09b: with
+  `ProbeRows`' default set and table made `Portable`, all 50 tests of `Tests.Facts.Rendering` hold. With every
+  `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that fail state what is the emulator's alone —
+  `Range` licensed (`WithoutAConnectiveRowNothingComposes`, `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`,
+  `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it alone measured
+  (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set; the others could move.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -2697,6 +2713,32 @@ across documents* and *A join of a container to itself* is the record.
   the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
   its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
   as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
+- **The reader's grammar is measured on the emulator alone** — *small, for the next probe-account run.* Every proof the
+  check run asserts under `Portable` rests on `Service.NotBindsTightestThenAndThenOr`, which the run of 2026-10-21
+  predates. Its measurement sits in the namespace a probe-account run covers, and the row names the emulator alone until
+  such a run passes. The translator writes by the same grammar (`NOT IS_NULL(p)` unparenthesised), so a service that
+  read it otherwise would make the translator wrong too, and the check blind to it.
+- **The service-gated measurements each seed a container of their own** — *small.* The precedence measurement copies the
+  fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
+  documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80
+  lines off each.
+- **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
+  resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
+  measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.
+- **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
+  makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
+- **`D0`'s cost is measured by no test** — *small, for c17.* §4.3's timing line, taken on a free machine only, kills
+  above +5 ms a declaration (`D0` built and run, per declaration and generation) or +0.06 s on the corpus planned new
+  and armed against unarmed. It belongs in c17's `RenderingCostTests`, beside S's bundles.
+- **The population D run rooted at `D0` is 50 trials a pull request** — *small, for c17's cost line.* §4.3 asks for 200
+  and §10.3 budgets source B at 20 to 50; 50 keeps the unarmed 200, which production's root stands on, and the 5,000
+  armed stay explicit.
+- **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
+  retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
+  `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
+  the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
+  Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
+  list once 0d fixes it.
 
 ---
 

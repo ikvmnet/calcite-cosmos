@@ -9,11 +9,13 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts;
+
+using FluentAssertions;
 
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
-using org.apache.calcite.sql.fun;
-using org.apache.calcite.sql.util;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 {
@@ -36,47 +38,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Every digest, one line a statement: the input, the statement's name or index, its text, and its digest.
         /// </summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
-        public static IEnumerable<string> All(int partitionedPredicates)
-        {
-            foreach (var line in Corpus())
-                yield return line;
-
-            var statements = CosmosDifferentialTests.Statements;
-            for (var i = 0; i < statements.Count; i++)
-                yield return Line("differential", i, statements[i], Of(() => Differential(statements[i])));
-
-            var partitions = CosmosDifferentialTests.PartitionStatements(partitionedPredicates);
-            for (var i = 0; i < partitions.Count; i++)
-                yield return Line("partitions", i, partitions[i], Of(() => Differential(partitions[i])));
-
-            var kinds = CosmosDifferentialTests.Containers.Single(c => c.Name == "kinds");
-            foreach (var (name, where) in CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal)))
-            {
-                var sql = $"SELECT c.\"id\" FROM kinds AS c WHERE {where}";
-                yield return Line("probe", name, sql, Of(() => CosmosPushdownProbeTests.Plan(sql, kinds)));
-            }
-        }
+        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
+        public static IEnumerable<string> All(int partitionedPredicates, JsonFactGenerations? generations = null) =>
+            Lines(RenderingInputs.All(partitionedPredicates, generations));
 
         /// <summary>
         /// The planner corpus's digests, one line a statement.
         /// </summary>
-        public static IEnumerable<string> Corpus()
-        {
-            var harness = new PlannerHarness();
-            foreach (var query in PlannerQueries.All)
-                yield return Line("corpus", query.Name, query.Sql, Of(() => harness.PlanToAsync(query.Sql)));
-        }
-
-        static string Line(string input, object name, string sql, PlanDigest digest) =>
-            $"{input}\t{name}\t{PlanDigest.Escape(sql)}\t{digest}";
+        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
+        public static IEnumerable<string> Corpus(JsonFactGenerations? generations = null) => Lines(RenderingInputs.Corpus(generations));
 
         /// <summary>
-        /// The planning half of <c>CosmosDifferentialTests.Run</c> with the pushdown rules: the same schema, operators,
-        /// traits, rules and calc pass, and nothing executed.
+        /// The digests of the statements given, one line a statement.
         /// </summary>
-        static RelNode Differential(string sql) => PlannerHarness.Plan(sql, CosmosDifferentialTests.Containers, SqlOperatorTables.chain(SqlStdOperatorTable.instance(),
-            SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(java.util.EnumSet.of(SqlLibrary.MYSQL, SqlLibrary.SPARK, SqlLibrary.HIVE, SqlLibrary.BIG_QUERY))),
-            collations: true, calc: true);
+        public static IEnumerable<string> Lines(IEnumerable<RenderingInputs.Statement> statements) =>
+            statements.Select(s => Line(s.Input, s.Name, s.Sql, Of(s.Plan)));
+
+        /// <summary>
+        /// Plans the statements twice, each time in generations of their own, the second under a switch; holds that the
+        /// switch reached the planner, and that every digest is the same.
+        /// </summary>
+        public static void Unchanged(Func<IDisposable> arm, Func<JsonFactGenerations, IEnumerable<RenderingInputs.Statement>> statements, Action<JsonFactGenerations> reached)
+        {
+            var off = Lines(statements(new JsonFactGenerations())).ToList();
+            var armed = new JsonFactGenerations();
+            List<string> on;
+            using (arm())
+                on = Lines(statements(armed)).ToList();
+
+            reached(armed);
+            on.Should().Equal(off);
+        }
+
+        static string Line(string input, string name, string sql, PlanDigest digest) =>
+            $"{input}\t{name}\t{PlanDigest.Escape(sql)}\t{digest}";
 
         /// <summary>
         /// Plans a statement and digests the plan: its text, each Cosmos subtree implemented, and each pushed filter's
@@ -133,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// The nodes a predicate holds of, in a walk from the root, left to right; beneath one only where asked.
         /// </summary>
-        static IEnumerable<RelNode> Subtrees(RelNode node, Func<RelNode, bool> match, bool descend = false)
+        internal static IEnumerable<RelNode> Subtrees(RelNode node, Func<RelNode, bool> match, bool descend = false)
         {
             if (match(node))
             {
@@ -176,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             _ => value.GetType().Name + " " + value,
         };
 
-        static string Failure(Exception e) => e.GetType().Name + ": " + e.Message.Split('\n')[0].TrimEnd('\r');
+        internal static string Failure(Exception e) => e.GetType().Name + ": " + e.Message.Split('\n')[0].TrimEnd('\r');
 
     }
 

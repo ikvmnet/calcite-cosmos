@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -31,6 +32,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// How many answers about predicates the statement does not hold are remembered.
         /// </summary>
         const int Answers = 1024;
+
+        /// <summary>Whether the flow roots a statement at its declaration's <c>D0</c>.</summary>
+        static readonly AsyncLocal<bool> Armed = new();
 
         readonly PredicateStatement _statement;
         readonly JsonContexts? _contexts;
@@ -63,7 +67,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 foreach (var term in conjunct.Subterms)
                     _held.Add(term.Digest);
 
-            Root = new Node(this, declaration.Context, null, "", complete: true, holdsTerms: false, contradictory: false, report: null);
+            // Armed, the root is D0 where the declaration has one; ViewOf still reads it as the declaration's own facts.
+            Root = new Node(this, (Armed.Value ? declaration.DeclaredPossible() : null) ?? declaration.Context, null, "", complete: true, holdsTerms: false, contradictory: false, report: null);
         }
 
         StatementTerms(PredicateStatement statement)
@@ -77,9 +82,25 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public static StatementTerms Unknowing(PredicateStatement statement) => new(statement);
 
+        /// <summary>Gets whether the flow is armed, so that the oracle remembers an armed tree apart.</summary>
+        internal static bool DeclaredPossibleArmed => Armed.Value;
+
         /// <summary>
-        /// Gets the declaration's own context, frozen: what holds of every document (L0). It holds none of the statement's
-        /// terms; a question asked of it is answered in a child made for the question.
+        /// Roots every statement the flow opens until disposed at its declaration's <c>D0</c>, where what each path the
+        /// declaration mentions may hold is a row: what the rendering check imports for a conjunct round 1 renders from.
+        /// Production arms nothing.
+        /// </summary>
+        /// <remarks>Why no verdict, fact set or plan changes: <c>DESIGN.md</c>, <i>The declaration's <c>possible</c> rows</i>.</remarks>
+        internal static IDisposable ArmDeclaredPossible()
+        {
+            var arming = new Arming(Armed.Value);
+            Armed.Value = true;
+            return arming;
+        }
+
+        /// <summary>
+        /// Gets the declaration's own context, frozen, or armed its <c>D0</c>: what holds of every document (L0). It holds
+        /// none of the statement's terms; a question asked of it is answered in a child made for the question.
         /// </summary>
         public Node Root { get; }
 
@@ -405,6 +426,14 @@ namespace Apache.Calcite.Cosmos.Facts
                 for (var i = _scopes.Count - 1; i >= 0; i--)
                     _scopes[i].Dispose();
             }
+
+        }
+
+        /// <summary>Puts the switch back as <see cref="ArmDeclaredPossible"/> found it.</summary>
+        sealed class Arming(bool was) : IDisposable
+        {
+
+            public void Dispose() => Armed.Value = was;
 
         }
 

@@ -178,12 +178,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// harness's rule registrations reach another's planner.
         /// </remarks>
         /// <returns>The tables, keyed by container name.</returns>
-        public static IReadOnlyDictionary<string, CosmosTable> CreateTables()
+        public static IReadOnlyDictionary<string, CosmosTable> CreateTables() => CreateTables(null);
+
+        /// <inheritdoc cref="CreateTables()"/>
+        /// <param name="generations">The generations the containers reason in, or <c>null</c> for their own.</param>
+        internal static IReadOnlyDictionary<string, CosmosTable> CreateTables(Cosmos.Facts.JsonFactGenerations? generations)
         {
             var tables = new Dictionary<string, CosmosTable>();
 
             foreach (var container in All)
-                tables[container.Name] = new CosmosTable(container);
+                tables[container.Name] = new CosmosTable(generations is null ? container : container.WithFactGenerations(generations));
 
             return tables;
         }

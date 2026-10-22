@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -162,6 +163,11 @@ namespace Apache.Calcite.Cosmos.Facts
         internal IReadOnlyCollection<JsonDocumentPath> MentionedPaths => _mentionedPaths;
 
         /// <summary>
+        /// Gets whether a rule the theory reads is conditional, so that what it states of one path depends on another.
+        /// </summary>
+        internal bool IsConditional => _guarded.Count > 0;
+
+        /// <summary>
         /// Gets whether the container declares nothing.
         /// </summary>
         public bool IsEmpty => _rules.Length == 0;
@@ -179,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactDeclaration? Declaration()
         {
             var compiled = Compile();
-            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary, compiled.Outright) : null;
+            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary, compiled.Outright, compiled.DeclaredPossible) : null;
         }
 
         /// <summary>
@@ -214,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The declaration in one generation: its frozen context.
+        /// The declaration in one generation: its frozen context, and <c>D0</c> beneath it once an armed statement asks.
         /// </summary>
         sealed class Compiled
         {
@@ -246,9 +252,52 @@ namespace Apache.Calcite.Cosmos.Facts
                     // A declaration the engine cannot compile states nothing; every question is answered no.
                     Outright = JsonFactSet.Empty;
                 }
+
+                var d0 = new Lazy<Scope?>(() => OpenDeclaredPossible(theory, contexts), LazyThreadSafetyMode.ExecutionAndPublication);
+                DeclaredPossible = () => d0.Value;
+            }
+
+            /// <summary>
+            /// Opens <c>D0</c> beneath the declaration's context, or returns <c>null</c> where it would state nothing or its
+            /// run fails or stops short, and the root stays the context.
+            /// </summary>
+            Scope? OpenDeclaredPossible(JsonFactTheory theory, JsonContexts contexts)
+            {
+                if (_schema is not Scope schema)
+                    return null;
+
+                // Only paths the context holds a term of: a term D0 made would enter every stratum beneath it.
+                var rules = PredicateRules.Of(contexts);
+                var declared = theory._mentionedPaths.Select(path => JsonFactEncoding.Path(path).ToTerm(rules.Json))
+                    .Where(term => schema.TryGet(term, out _)).Select(term => rules.Declared.Of(term)).ToArray();
+                if (declared.Length == 0)
+                    return null;
+
+                Scope? d0 = null;
+                try
+                {
+                    d0 = schema.CreateChild();
+                    rules.DefineDeclaredPossible(d0);
+                    d0.Assume(declared);
+                    if (d0.Run(Schedule.Saturate(rules.Decide)).StopReason == RunStopReason.Completed)
+                    {
+                        d0.Freeze();
+                        return d0;
+                    }
+                }
+                catch (Exception e) when (IsEngineFailure(e) || e is OverflowException)
+                {
+                    // Released below, as a run that stops short is; running out is a failure here, or the Lazy would keep it.
+                }
+
+                d0?.Dispose();
+                return null;
             }
 
             public JsonFactGenerations.Generation Generation { get; }
+
+            /// <summary>Gets <c>D0</c>, opened when first asked for in this generation.</summary>
+            public Func<Scope?> DeclaredPossible { get; }
 
             /// <summary>
             /// Gets the declaration's frozen context, or <c>null</c> where the engine could not compile it.

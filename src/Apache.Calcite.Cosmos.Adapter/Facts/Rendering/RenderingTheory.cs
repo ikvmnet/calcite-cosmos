@@ -210,6 +210,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Opens a bundle under a set: a child of the theory, holding one statement round's terms, import and candidates.</summary>
         public RenderingBundle Open(RenderingSet set) => new(this, set);
 
+        /// <summary>Whether a bundle found the graph out of ids or epochs, which retires its generation at once.</summary>
+        internal volatile bool RanOut;
+
         static void Register(ValueStore values)
         {
             values.RegisterEnum<CosmosServiceTest>();

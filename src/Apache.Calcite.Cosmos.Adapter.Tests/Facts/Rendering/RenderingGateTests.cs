@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -83,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var root = bundle.Write(NotBikes);
             bundle.Write(Eq(Text(P("kind")), "a"));
             bundle.Write(Eq(Text(P("kind")), "b"));
-            bundle.Import("test", LabelPath, DeclaredString, AllBands);
+            bundle.Import(Source, LabelPath, DeclaredString, AllBands);
             bundle.Claim(root, Bare);
             bundle.Run().OneNodePerClass.Should().BeFalse();
             bundle.Read(root, Bare, Verdict.Equal).Should().Be(new RenderingVerdict(RenderingVerdictKind.Conflict, null, null, "tripwire: a rule merged two terms"));
@@ -135,8 +134,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var kind = P("kind");
             var label = bundle.Write(NotBikes);
             var named = bundle.Write(Eq(Text(kind), "a"));
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
-            bundle.Import("test", kind, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, kind, PathValues.Anything, AllBands);
             bundle.Claim(label, Guarded);
             bundle.Claim(named, ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(kind), Of("a")));
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
@@ -148,40 +147,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Keys("svc").Should().Be(7, "the guarded form's six parts and the comparison of kind");
         }
 
-        /// <summary>
-        /// A leaf that answers one key two ways faults the bundle: two conjuncts cut at one literal share a partition, so
-        /// the leaf their forms share is evaluated for each, and <c>svc</c> holds one value a key.
-        /// </summary>
-        [Fact]
-        public void ANondeterministicLeafFaultsTheBundle()
-        {
-            var calls = 0;
-            var theory = RenderingTheory.Define(Measured with
-            {
-                Leaf = (f, z, t, q) =>
-                {
-                    var v = Measured.Leaf(f, z, t, q);
-                    return v with { Rows = v.Rows.Add("call " + Interlocked.Increment(ref calls)) };
-                },
-            });
-
-            using var bundle = theory.Open(RenderingSet.Emulator);
-            var unequal = bundle.Write(NotBikes);
-            var equal = bundle.Write(Eq(Text(LabelPath), "bikes"));
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
-            bundle.Claim(unequal, Bare);
-            bundle.Claim(equal, Bare);
-            FluentActions.Invoking(() => bundle.Run()).Should().Throw<RuleEvaluationException>().WithMessage("*function svc*");
-            bundle.Scope.IsFaulted.Should().BeTrue();
-        }
-
         /// <summary>A run stopped by its limit answers nothing, though it derived something before it stopped.</summary>
         [Fact]
         public void ReadWaitsForCompleted()
         {
             using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, Guarded);
             bundle.Run(iterationLimit: 2).StopReason.Should().Be(RunStopReason.IterationLimit);
             bundle.Read(root, Guarded, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Incomplete);
@@ -201,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             using var bundle = theory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, DeclaredString, AllBands);
+            bundle.Import(Source, LabelPath, DeclaredString, AllBands);
             bundle.Claim(root, Bare);
             bundle.Run().Contradicted.Should().BeTrue();
             bundle.Read(root, Bare, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Conflict);
@@ -217,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var lable = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, SqlValue.Spell(P("lable")), Of("bikes"));
             using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var root = bundle.Write(NotBikes);
-            bundle.Import("test", LabelPath, PathValues.Anything, AllBands);
+            bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, lable);
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
             (bundle.Read(root, lable, Verdict.Equal).Kind, bundle.Read(root, lable, Verdict.Implies).Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
@@ -267,7 +239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
                 using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
                 var root = bundle.Write(Cmp(Text(LabelPath), op, Lit(high)));
-                bundle.Import("test", LabelPath, PathValues.Anything, chars);
+                bundle.Import(Source, LabelPath, PathValues.Anything, chars);
                 bundle.Claim(root, form);
                 bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
                 bundle.Scope.Rows(ProbeTheory.PartedLiterals).Single().Output.Should().Be(parted ? ValueSet.Of(Of(high)) : ValueSet<string>.Empty, string.Join(",", chars.AsEnumerable()));

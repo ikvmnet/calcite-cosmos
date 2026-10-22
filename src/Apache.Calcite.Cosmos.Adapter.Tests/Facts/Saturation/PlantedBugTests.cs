@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them,
     /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
-    /// one value in every document without the path's presence.
+    /// one value in every document without the path's presence. The last is <c>D0</c>'s: a declared path read as there.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -288,6 +288,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     r.Then(e.Is(left ? b : a));
                 });
         }), "c5");
+
+        /// <summary>
+        /// <c>D0</c> stating that every path the declaration mentions is there: a <c>possible</c> row of
+        /// <see cref="PathValues.AnythingThere"/> where its rule writes <see cref="PathValues.Anything"/>, which a document
+        /// without an optional path refutes. Armed, so that every statement is rooted at <c>D0</c>.
+        /// </summary>
+        [Fact]
+        public void ADeclaredPathReadAsThereInD0IsCaught()
+        {
+            using var arming = StatementTerms.ArmDeclaredPossible();
+            Caught(Planted(rules =>
+                rules.Decide.DefineRule("planted: a path the declaration states a fact of is there", r =>
+                {
+                    var p = r.Var<JPath>("p");
+                    r.When(rules.Declared.Of(p));
+                    r.Then(rules.Possible.Of(p).Is(PathValues.AnythingThere));
+                })), "possible");
+        }
 
         /// <summary>
         /// The predicate rules of a graph of the test's own, planted.

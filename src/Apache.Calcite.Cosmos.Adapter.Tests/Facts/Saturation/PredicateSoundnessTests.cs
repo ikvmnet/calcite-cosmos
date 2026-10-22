@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts;
+
 using Xunit;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
@@ -27,6 +29,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>The trials every run of the suite pays for.</summary>
         public const int Trials = 200;
 
+        /// <summary>
+        /// The trials rooted at <c>D0</c> every run pays for: source B's share of §10.3's budget, beside the unarmed run's,
+        /// which production's root stands on.
+        /// </summary>
+        public const int D0Trials = 50;
+
         /// <summary>The trials of the long run.</summary>
         public const int LongTrials = 5_000;
 
@@ -39,8 +47,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact(Explicit = true)]
         public void NothingTheOracleSaysIsFalseOfADeclaredDocumentOverALongRun() => Run(LongTrials);
 
-        static void Run(int trials)
+        /// <summary>
+        /// The same, every statement rooted at its declaration's <c>D0</c>: the declaration's context checked is <c>D0</c>,
+        /// its <c>possible</c> rows among what it holds, and every stratum lies beneath it.
+        /// </summary>
+        [Fact]
+        public void NothingTheOracleSaysRootedAtD0IsFalseOfADeclaredDocument() => Run(D0Trials, rootedAtD0: true);
+
+        [Fact(Explicit = true)]
+        public void NothingTheOracleSaysRootedAtD0IsFalseOfADeclaredDocumentOverALongRun() => Run(LongTrials, rootedAtD0: true);
+
+        static void Run(int trials, bool rootedAtD0 = false)
         {
+            using var arming = rootedAtD0 ? StatementTerms.ArmDeclaredPossible() : null;
             var checker = new PopulationD();
             var failed = new List<PopulationReport>();
             var reports = new List<PopulationReport>(trials);

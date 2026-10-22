@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns the tree of contexts for a statement, remembered by its digest in the current generation.
+        /// Returns the tree of contexts for a statement, remembered by its digest and its root in the current generation.
         /// </summary>
         StatementTerms Terms(PredicateStatement statement)
         {
@@ -166,6 +166,9 @@ namespace Apache.Calcite.Cosmos.Facts
             if (declaration is null)
                 return StatementTerms.Unknowing(statement);
 
+            // A tree rooted at D0 is remembered apart from one rooted at the declaration's own context.
+            var key = (StatementTerms.DeclaredPossibleArmed ? "d0|" : "") + statement.Digest;
+
             lock (_memoLock)
             {
                 if (ReferenceEquals(_generation, declaration.Generation) == false)
@@ -175,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     _generation = declaration.Generation;
                 }
 
-                if (_memo.TryGetValue(statement.Digest, out var hit))
+                if (_memo.TryGetValue(key, out var hit))
                 {
                     _recent.Remove(hit);
                     _recent.AddFirst(hit);
@@ -189,12 +192,12 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 // Another thread may have opened the same statement meanwhile; one tree is kept, so that the questions of
                 // a plan read one set of contexts.
-                if (ReferenceEquals(_generation, declaration.Generation) && _memo.TryGetValue(statement.Digest, out var raced))
+                if (ReferenceEquals(_generation, declaration.Generation) && _memo.TryGetValue(key, out var raced))
                     return raced.Value.Value;
 
                 if (ReferenceEquals(_generation, declaration.Generation))
                 {
-                    _memo[statement.Digest] = _recent.AddFirst(new KeyValuePair<string, StatementTerms>(statement.Digest, terms));
+                    _memo[key] = _recent.AddFirst(new KeyValuePair<string, StatementTerms>(key, terms));
                     while (_recent.Count > Remembered)
                     {
                         var last = _recent.Last!;
