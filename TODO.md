@@ -2798,9 +2798,10 @@ across documents* and *A join of a container to itself* is the record.
   and the oracle's memo keys, which Stage 1 promised not to touch.
 - **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
   path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
-  unproven: at the gate, partitions 1,428's `NOT (category < 'bikes')` is refuted at its own position beside `category
-  IN ('bikes!', 'shoes')`, on a cell the emulator's U+0000 storage may explain. Evaluating the pair on the path's own
-  cells, as one atom claiming both is, would decide it.
+  unproven. Partitions 1,428's `NOT (category < 'bikes')`, a second round's beside `category IN ('bikes!', 'shoes')`,
+  was refuted at its own position on a string holding U+0000, which the emulator orders as stored; read beneath its
+  stratum, where the category is one of the two, it is not. Evaluating such a pair on the path's own cells, as one atom
+  claiming both is, would decide it.
 - **A path beneath a declared scalar imports the top in round 1** — *small.* `D0` writes a row only for a path the
   declaration mentions and holds a term of, so an element or a child of a declared path, or one beneath a declared
   scalar or a closed object, defaults to anything, counted constrained, and a refutation over it only warns. The facts

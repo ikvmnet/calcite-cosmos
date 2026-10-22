@@ -19,10 +19,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly string[] Inputs = ["corpus", "differential", "partitions", "probe"];
 
+        /// <summary>One writer at a time: the check and witness tests write these from two collections at once.</summary>
+        static readonly object Writing = new();
+
+        /// <summary>What the emulator made of each refutation's witness, once the witness test has run, which every write carries.</summary>
+        static IReadOnlyDictionary<int, string>? _witnessed;
+
         /// <summary>Writes every report, and returns the folder.</summary>
         /// <param name="run">The check run.</param>
         /// <param name="witnessed">What the emulator made of each refutation's witness, by memo entry, where it was run.</param>
         public static string Write(RenderingCheckRun run, IReadOnlyDictionary<int, string>? witnessed = null)
+        {
+            lock (Writing)
+                return Written(run, _witnessed = witnessed ?? _witnessed);
+        }
+
+        static string Written(RenderingCheckRun run, IReadOnlyDictionary<int, string>? witnessed)
         {
             var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);
@@ -36,11 +48,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
                     c.Import?.DefaultedOpen, c.Import?.Constrained.Count }));
 
-            Tsv(folder, "refutations.tsv", ["input", "name", "unit", "entry", "cells", "class", "rows", "constrained", "conditional", "witness", "emulator", "triage"],
-                Refutations(run).Select(x => new object?[] { x.Check.Input, x.Check.Name, x.Check.Unit, x.Check.Entry!.Id, string.Join("; ", x.Refutation.Cells.AsEnumerable()),
+            Tsv(folder, "refutations.tsv", ["input", "name", "unit", "entry", "level", "cells", "class", "rows", "constrained", "conditional", "witness", "emulator", "triage"],
+                Refutations(run).Select(x => new object?[] { x.Check.Input, x.Check.Name, x.Check.Unit, x.Check.Entry!.Id, "check", string.Join("; ", x.Refutation.Cells.AsEnumerable()),
                     x.Refutation.Class, string.Join(" ", x.Refutation.Rows.AsEnumerable()), string.Join(" ", x.Check.Import!.Constrained.AsEnumerable()), x.Check.Conditional,
                     x.Check.Entry.What?.Witness is { } cells ? string.Join("; ", cells.Select(c => c.Key + "=" + (c.Value ?? "absent"))) : null,
-                    witnessed?.GetValueOrDefault(x.Check.Entry.Id) ?? "not run", x.Triage }));
+                    witnessed?.GetValueOrDefault(x.Check.Entry.Id) ?? "not run", x.Triage })
+                .Concat(Alone(run).Select(x => new object?[] { x.Check.Input, x.Check.Name, x.Check.Unit, x.Check.Entry!.Id, "conjunct " + x.Check.Position,
+                    string.Join("; ", x.Refutation.Cells.AsEnumerable()), x.Refutation.Class, string.Join(" ", x.Refutation.Rows.AsEnumerable()),
+                    string.Join(" ", x.Check.Import!.Constrained.AsEnumerable()), x.Check.Conditional, null, "not run",
+                    $"reported: its check is {x.Check.Entry.Asserted.Kind}, and holds what the service is asked beside it" })));
 
             Tsv(folder, "vacuous-proofs.tsv", ["input", "name", "unit", "entry", "why", "form"],
                 Units(rows).Where(RestsOnNothing).Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Entry!.Id,
@@ -90,6 +106,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Each check refuted, and its triage.</summary>
         public static IEnumerable<(RenderingCheckRun.Checked Check, Refutation Refutation, string Triage)> Refutations(RenderingCheckRun run) =>
             Units(Ordered(run.Conjuncts)).Where(c => c.Entry!.Asserted.Refutation is not null).Select(c => (c, c.Entry!.Asserted.Refutation!, Triage(c, c.Entry.Asserted.Refutation!)));
+
+        /// <summary>
+        /// Each conjunct sent refuted at its own position in a check not refuted: reported, not asserted, since the service
+        /// is asked the check's junction, which its siblings may decide.
+        /// </summary>
+        public static IEnumerable<(RenderingCheckRun.Checked Check, Refutation Refutation)> Alone(RenderingCheckRun run) =>
+            Ordered(run.Conjuncts).Where(c => c.Site == 2 && c.Entry is { Asserted.Refutation: null } e && e.Alone[c.Position]?.Refutation is not null)
+                .Select(c => (c, c.Entry!.Alone[c.Position]!.Refutation!));
 
         /// <summary>
         /// A check that rests on nothing: its render licence keeps no document (#217's shape), or a proof of it or of a

@@ -6493,7 +6493,8 @@ translator, and a claim that holds it is unproven.
 each set and its own; `refutations.tsv`, each refuting cell, the value it puts at its path, what the emulator made of
 that document where the witnesses ran, and the triage, from the check's own import: a refutation warns where a refuting
 cell's path defaulted constrained, or where a cell spans two paths under conditional rules the facts graph reads, and
-otherwise fails CI; `witnesses.tsv`, each witness the emulator ran; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
+otherwise fails CI, and beside them each conjunct refuted at its own position in a check that is not, reported, since
+the service is asked the junction its siblings may decide; `witnesses.tsv`, each witness the emulator ran; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
 render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the checks resting on each registry
 row, which every proof must name; and `skipped.tsv`. Every statement that fails to plan or implement fails CI too,
 rather than leaving the check smaller.
