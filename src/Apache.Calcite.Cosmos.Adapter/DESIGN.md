@@ -6586,7 +6586,10 @@ kind, a comparison within a type by its order and across types false, true or un
 against a double by value, the emulator's U+0000 as it stores it, Azure's range over bounds the two string orders rank
 apart — and never through `ServiceLeaf`, `ServiceCompound` or a cell. `CosmosEvalServiceTests` holds it to the emulator:
 each of the reader's forms over a path holding each kind, kept by `WHERE`, by `WHERE NOT` and projected as it says, on
-both images. A proof is judged on every target the asserted set serves and in both typed modes; a coin `IrEval` tosses
+both images, over values on which the two targets' models part — 2^53 + 1 written with a point, and strings holding
+U+0000 — so that the model held is the emulator's. A literal holding U+0000 it leaves unsaid on the emulator, which
+no row says how it sends. The reader reads a double parameter as the number the service compares, never by .NET's
+cast to a decimal, which keeps fifteen digits. A proof is judged on every target the asserted set serves and in both typed modes; a coin `IrEval` tosses
 makes a document unmeasured, not a witness, and one every mode raises on is skipped (decision 2).
 
 **Source A samples each proven check's import.** Up to 64 documents set each path to values its import admits: the

@@ -31,15 +31,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class CosmosEvalServiceTests : IClassFixture<CosmosEvalServiceTests.Fixture>
     {
 
-        static readonly string[] Values = ["null", "true", "false", "30", "30.0", "2.5", "-1", "9007199254740993", "\"\"", "\"30\"", "\"bikes\"", "\"a\\u0000\"", "\"\\uE000\"", "\"\\uD83D\\uDE00\"", "{}", "[]"];
+        /// <summary>
+        /// Every kind, and where the targets part: 2^53 + 1 written with a point, which the emulator holds as a double and
+        /// Azure as an int64; one in [2^63, 2^64), which both compare as its double; and strings holding U+0000, which the
+        /// emulator stores as U+FDD0 then 0 and orders as stored.
+        /// </summary>
+        static readonly string[] Values = ["null", "true", "false", "30", "30.0", "2.5", "-1", "9007199254740993", "9007199254740993.0", "9223372036854775809", "\"\"", "\"30\"",
+            "\"bikes\"", "\"a\\u0000\"", "\"bike\\u0000x\"", "\"\\u0000\"", "\"\\uE000\"", "\"\\uD83D\\uDE00\"", "{}", "[]"];
 
-        static readonly CosmosParameter[] Bound = [new("@s", "bikes"), new("@t", "30"), new("@n", 30L), new("@f", 2.5), new("@b", true), new("@c", "a")];
+        static readonly CosmosParameter[] Bound = [new("@s", "bikes"), new("@t", "30"), new("@n", 30L), new("@f", 2.5), new("@b", true), new("@c", "a"),
+            new("@m", 9007199254740993L), new("@h", 9223372036854775808d)];
 
         /// <summary>The forms: every test, each comparison against a literal of each kind, and connectives over them; a bare path and a constant the reader reads as opaque.</summary>
         static readonly string[] Forms =
         [
             .. new[] { "DEFINED", "NULL", "PRIMITIVE", "STRING", "NUMBER", "BOOL", "OBJECT", "ARRAY" }.SelectMany(t => new[] { $"IS_{t}(c.v)", $"NOT IS_{t}(c.v)" }),
-            .. new[] { "=", "!=", "<", "<=", ">", ">=" }.SelectMany(op => new[] { "@s", "@t", "@n", "@f" }.Select(p => $"(c.v {op} {p})")),
+            .. new[] { "=", "!=", "<", "<=", ">", ">=" }.SelectMany(op => new[] { "@s", "@t", "@n", "@f", "@m", "@h" }.Select(p => $"(c.v {op} {p})")),
             "(c.v = @b)", "(c.v != @b)",
             "(NOT (c.v = @s))", "((c.v > @c) AND (c.v < @s))", "((c.v = @s) OR IS_NULL(c.v))", "(IS_PRIMITIVE(c.v) AND NOT IS_NULL(c.v) AND (c.v != @s))",
         ];
@@ -61,11 +68,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var form = CosmosSqlFormReader.Read(text, Bound).Form;
                 form.Kind.Should().NotBe(ServiceFormKind.Opaque, text);
                 foreach (var (id, observed) in await _service.Observe("eval", text, Bound))
-                    if (CosmosEval.On(form, documents[id], CosmosEmulator.IsEmulator ? RenderingTarget.Emulator : RenderingTarget.Azure) is var said && said != observed)
+                    if (CosmosEval.On(form, documents[id], Target) is var said && said != observed)
                         wrong.Add($"{text} over {Documents.Json(documents[id])}: the service {observed}, CosmosEval {said?.ToString() ?? "nothing"}");
             }
 
             wrong.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// The two targets' models part on these values, so the service holds one of them: the emulator's where the
+        /// endpoint is one, a local one named by <c>COSMOS_TEST_ENDPOINT</c> among them.
+        /// </summary>
+        internal static RenderingTarget Target => CosmosEmulator.IsEmulator || new Uri(CosmosEmulator.Endpoint!).IsLoopback ? RenderingTarget.Emulator : RenderingTarget.Azure;
+
+        /// <summary>Where the two models part on these values, so that whichever passes is the one the service is.</summary>
+        [Fact]
+        public void TheTargetsModelsPart()
+        {
+            var parted = Forms.SelectMany(text => Values.Select(v => (Form: CosmosSqlFormReader.Read(text, Bound).Form, Document: (J.Obj)Fixture.Read(JsonDocument.Parse($"{{\"v\":{v}}}").RootElement)!)))
+                .Where(c => CosmosEval.On(c.Form, c.Document, RenderingTarget.Emulator) is { } e && CosmosEval.On(c.Form, c.Document, RenderingTarget.Azure) is { } a && e != a)
+                .Select(c => $"{c.Form.Text} over {Documents.Json(c.Document)}").ToList();
+            parted.Should().Contain(p => p.Contains("9007199254740993.0")).And.Contain(p => p.Contains("bike"));
         }
 
         /// <summary>A database of its own, named by the framework, holding one container whose documents each test writes under a partition of its own.</summary>
