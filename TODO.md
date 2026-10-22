@@ -2652,6 +2652,14 @@ across documents* and *A join of a container to itself* is the record.
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
   where Calcite answers TRUE; the cells read the rendering.
+- **One numeric order answer serves both targets** — *small, for the next probe-account run.* `Service.IntegersOrderExactly`
+  answers `Order/Number` `numeric` on both, and `ServiceLeaf` places a whole number in int64 both as itself and as its
+  double, since the theory spells it alike written with a point, which the emulator holds as a double and Azure as an
+  int64 (`reports/verify-bytes.md`). Splitting the answer per target, `numeric` for Azure and `storednumeric` for the
+  emulator, as `Order/String` is, needs order witnesses that tell them apart: 2^54 + 1 beside 18014398509481986.0, which
+  the emulator holds as 2^54 and Azure as itself, neither tying another witness. Added to the catalogue, they leave the
+  record of 2026-10-21 short of Azure's claim (`CosmosAxiomsTests`), so the split waits on the probe account's run of
+  `IntegersOrderExactly` over them.
 - **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one

@@ -157,9 +157,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Where a number or a cell of numbers lies against a literal by the value the service compares
         /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>): an int64 as itself and any other number as its double, by
-        /// value. A whole number in int64 is held either way, as Azure and the emulator hold one written with a point, and so
-        /// is one in [2^63, 2^64), which the emulator holds as written, until a row separates them; a literal sent as a
-        /// double is placed against only where that double is it.
+        /// value, [2^63, 2^64) among the others. A whole number in int64 is placed both ways, since the theory spells it
+        /// alike written with a point, which the emulator holds as a double and Azure as an int64, and one answer serves
+        /// both until a run of the probe account separates them (<c>TODO.md</c>); a literal sent as a double is placed
+        /// against only where that double is it.
         /// </summary>
         static CosmosValueClass[]? Numeric(PathCell cell, decimal c)
         {
@@ -167,13 +168,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if ((c == decimal.Truncate(c) && c >= long.MinValue && c <= long.MaxValue) == false && DoubleBound.Compare(d, c) != 0)
                 return null;
 
-            const decimal Held = 18446744073709551616m;
             int?[] sides = cell switch
             {
-                PathCell.Point { Value: var v } when TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= long.MinValue && x < Held =>
+                PathCell.Point { Value: var v } when TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue =>
                     [x.CompareTo(c), new PathCell.Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)],
                 PathCell.Point { Value: var v } => [Math.Sign(DoubleBound.Of(v).CompareTo(d)) is var side && side == 0 ? DoubleBound.Compare(d, c) : side],
-                PathCell.Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value < Held) => [n.Side(c), n.RoundedSide(c)],
+                PathCell.Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value <= long.MaxValue) => [n.Side(c), n.RoundedSide(c)],
                 PathCell.Numbers n => [n.RoundedSide(c)],
                 _ => [null],
             };
