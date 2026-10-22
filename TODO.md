@@ -2744,7 +2744,8 @@ across documents* and *A join of a container to itself* is the record.
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
   where the service answers false. The column's own reading (decision D12) would refute it.
-- **The gains preview reads two of five Exact** — *small, for Stage 2.* Over typed's undeclared label the guarded
+- **The gains preview reads two of five Exact, which §6's line kills** — *small, for Stage 2.* The validator ships, as
+  soundness, recall and mutations pass (plan §5). Over typed's undeclared label the guarded
   inequality is Exact, and the orderings' forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR
   IS_NUMBER(c.label)`, are unproven: the label's strings may hold U+0000, which the emulator orders as U+FDD0 then `0`,
   and `Portable` serves the emulator. They are Exact where no string can hold one, and under `Production` (a bundle of
@@ -2815,10 +2816,14 @@ across documents* and *A join of a container to itself* is the record.
   A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
   neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
   that needs it, as #162's temporal rewrites once did, designs it.
-- **The rendering check costs more than the stage's plan budgeted** — *small.* About 1,180 statements planned armed,
-  first in a process: 35–55 s on 2026-10-22 on a machine 75–99 % busy, against 13–17 s, and planning is all but 3 s of it
-  (`DESIGN.md`, *Cost, size, and where the check runs*). Decision D11 accepted it. Planning the partition run's first 100
-  predicates would save about 3 s and move the coverage and precision lines off the 200 they are measured on.
+- **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
+  a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
+  net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s
+  on net8.0); its shared check run 58.7 s against 46.4 s, first in a process; and on the emulator leg the service-gated
+  classes beside it about 23 s more (witnesses 15.6 s, `CosmosEval` 1.4 s, recall about 3 s, gains 0.4 s, fixtures about
+  2.4 s). Planning is most of the run: its bundles took 5.3–5.6 s of 36 s warm. The owner accepts the measured figures,
+  or D11's fallback runs the partition run at 100 predicates a pull request, about 3 s off, which moves the coverage and
+  precision lines off the 200 they are measured on.
 - **A junction's descent holds a candidate for every subset of its members** — *medium, for Stage 2's cost line.* The
   first arm is offered each member and the second the rest, down a right-nested junction, so `Filter.DeepConjunction`'s
   eight conjuncts cost 0.74–0.98 s, half the corpus's bundles. With 12 to 14 candidates an atom at 2–3 ms each, Stage

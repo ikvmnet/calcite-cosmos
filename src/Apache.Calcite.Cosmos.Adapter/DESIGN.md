@@ -6562,8 +6562,7 @@ the refusal path they skip), and a plant is the flow's `AsyncLocal`, so a planni
 
 **Each fault is caught as the check run catches a wrong push.** Its triggers are planned and checked between two
 unplanted runs: what is written changes under the fault and is the tip's again after it, and each trigger it was found by
-is refuted with the least refuting cell by text — for M5 a null category beside the label `bikes`, for M9 a boolean
-`false` or a fraction, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
+is refuted with the least refuting cell by text, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
 since a number equal to 30 may render so or not; and M10's path over the string `"2"`, TRUE to the clause beside a
 `DECIMAL` column's raise, is unproven too, so nine of the ten are caught. The controls are reported: X1's `CASE` condition, in a predicate's place, is
 opaque to the loader, so its text is skipped as the tip's was; X2's dropped type test lets a structure through, which
@@ -6645,10 +6644,9 @@ weakening is the bare bound `c.label > @p0`, implied there and unproven from the
 no round, so the stratum assumes nothing the check holds. A refutation is a row lost, triaged as an exact push's is.
 
 **Implied counts toward no line but soundness**, which source A samples as it does every proof, a `RETURNING DECIMAL`
-in both typed modes; coverage is the exact pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
-outside the IR, none refuted. The unproven are orderings over strings that may hold U+0000, the text cast of a raw value,
-numbers past 2^53, and a weakening shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`
-for `NOT (a OR b)` — which S composes only where the form is the join of its children's.
+in both typed modes; coverage is the exact pushes'. A weakening is unproven over strings that may hold U+0000, over a
+cast of a raw value, past 2^53, and where it is shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND
+IS_DEFINED(c.price)` for `NOT (a OR b)` — which S composes only where the form is the join of its children's.
 
 **M11 is caught as Implied → Unproven.** Without its number branch the weakening of text `label = '30'` keeps the string
 alone and loses the number 30, which Calcite may render as `30` or as `30.0`, so no cell is definite and nothing refutes
@@ -6658,12 +6656,12 @@ number.
 ### Cost, size, and where the check runs
 
 **The check runs with every suite, once a process, and planning is most of what it costs.** The pull request's run is
-one lazy value the check, soundness and witness tests share. It plans and implements about 1,180 statements armed, the
-corpus's one at a time and the rest two at a time, and checks 389 memo entries under two sets. On 2026-10-22, on a
-machine its other work held at 75–99 %, it took 35–55 s first in a process, on either framework; warm, its 778 bundles
-summed to 5.3–5.6 s of a 36 s run, and the rest was planning. The stage's plan budgeted 13–17 s, on 9.6 ms a statement
-planned warm on a quiet machine, and decision D11 accepted the gap. Planning the partition run's first 100 predicates would save about
-3 s and move the coverage and precision lines off the 200 they are measured on, so it is not taken.
+one lazy value the check, soundness and witness tests share. It plans and implements every input's statements armed,
+the corpus's one at a time and the rest two at a time, and checks each memo entry under two sets; its bundles are a
+small share of its time, and the rest is planning, which the stage's plan budgeted at 9.6 ms a statement warm on a quiet
+machine. What it costs a leg, and the emulator leg beside it, stands above the +13–17 s and +10–20 s decision D11
+accepted (`TODO.md`): the owner accepts the measured figures, or takes D11's fallback, the partition run's first 100
+predicates, which moves the coverage and precision lines off the 200 they are measured on.
 
 **The reports travel with the leg's results.** The runner sets each test's working folder to its assembly's, so
 `TestResults/rendering/` lands there, and CI's archive step copies what tests wrote there in beside the trx. Witnesses
@@ -6671,27 +6669,9 @@ run on the Linux x64 leg, the one with an emulator; elsewhere `refutations.tsv`'
 rendering tests build under the asserted set, all but four, which state what the emulator's set alone holds — `Range`
 licensed, and a key it alone measured — and name it.
 
-**What the cost line times** (`RenderingCostTests`, explicit). The pull request's bundles warm, open to dispose, under
-each set. Stage 2's projection: the corpus's distinct bundles at their cost first in a process, each with 12 to 14 more
-candidates an atom at the cost of one, which bundles claiming 3, 6 and 12 forms at each atom of a conjunction measure
-warm, scaled by the corpus's early cost against its warm. `D0` per declaration and generation, read at each
-declaration's median, its tail being a slow build in a process that ran every round. And the corpus planned new armed
-against unarmed, each statement's two arms a moment apart in two harnesses of fresh generations, so that the machine's
-drift is paired away.
-
-**On the busy machine only arming held, and the projection misses by more than the load.** Bundles took 2.1–3.7 ms at
-the median and 12–15 ms at the 90th centile, against 1.5 and 5; PR C's took 0.95 and 4.4 at 21 % load, so the load
-accounts for a factor of two or three. `D0` took 3.3–6.0 ms at a declaration's median, and 14 ms for the first a
-generation builds, against 5. Arming the corpus moved it −0.19 s at the median, quartiles −0.30 to +0.40 s, which
-cannot resolve the line's 0.06. Stage 2's projection came to 1.7–3.2 s against 0.25, and not for the load: a junction's
-descent offers its first arm each member and its second the rest, so a right-nested junction of n arms holds a
-candidate for every subset of its members. `Filter.DeepConjunction`, eight conjuncts, took 0.74–0.98 s, half the
-corpus's bundles together, and a candidate costs 2–3 ms, of which generate mode would claim a dozen an atom. Generate
-mode wants descent along the IR's own arms before it can meet its line (`TODO.md`).
-
-**The size line holds:** S has 39 rules against 40, and the rules, the service's evaluation, the agreement and the
-readings hold 2,080 lines against 2,500 — `PredicateAtom`'s delta net of what it deleted, and `ServiceForm`'s structural
-helpers member by member with their comments.
+**A junction's descent offers its first arm each member and its second the rest**, so a right-nested junction holds a
+candidate for every subset of its members: Stage 2's projection misses its cost line on that shape, whatever the load,
+and generate mode wants descent along the IR's own arms first (`TODO.md`).
 
 ---
 
