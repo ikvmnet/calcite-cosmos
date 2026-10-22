@@ -190,11 +190,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             /// <summary>
             /// Judges a proof on a document: every typed mode that answers against every target, a failure never allowed,
-            /// <c>Equal</c> keeping alike and <c>Implies</c> keeping at least Calcite's row.
+            /// <c>Equal</c> keeping alike and <c>Implies</c> keeping at least Calcite's row. A mode <c>IrEval</c> does not
+            /// model — the column of a <c>RETURNING DECIMAL</c>, which S reads as the clause's parse — is left out, and a
+            /// document no mode measures is unmeasured.
             /// </summary>
             public void Judge(SqlPredicate ir, ServiceForm form, Verdict claim, J.Obj document, World world, string where)
             {
-                var calcite = new List<Truths>();
+                var (calcite, measured) = (new List<Truths>(), false);
                 foreach (var mode in Modes)
                 {
                     var tossed = world.Tossed;
@@ -205,8 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                     catch (NotSupportedException)
                     {
-                        Unmeasured++;
-                        return;
+                        continue;
                     }
 
                     if (world.Tossed != tossed)
@@ -215,13 +216,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         return;
                     }
 
+                    measured = true;
                     if (truth != Truths.Raises)
                         calcite.Add(truth);
                 }
 
                 if (calcite.Count == 0)
                 {
-                    Skipped++;
+                    if (measured)
+                        Skipped++;
+                    else
+                        Unmeasured++;
+
                     return;
                 }
 

@@ -6619,8 +6619,9 @@ guard those facts delete is gone only where they hold: beside `kind = 'b'`, wher
 weakening is the bare bound `c.label > @p0`, implied there and unproven from the root. A residual conjunct's facts enter
 no round, so the stratum assumes nothing the check holds. A refutation is a row lost, triaged as an exact push's is.
 
-**Implied counts toward no line but soundness**, which source A samples as it does every proof; coverage is the exact
-pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
+**Implied counts toward no line but soundness**, which source A samples as it does every proof — a `RETURNING DECIMAL`
+in the clause's mode alone, since S reads it as the clause's parse and `IrEval` models no column of it; coverage is the
+exact pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
 outside the IR, none refuted. The unproven are orderings over strings that may hold U+0000, the text cast of a raw value,
 numbers past 2^53, and a weakening shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`
 for `NOT (a OR b)` — which S composes only where the form is the join of its children's.
