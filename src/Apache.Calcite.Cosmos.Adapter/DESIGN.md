@@ -6516,6 +6516,30 @@ conjunct**, which the line excludes with what it does to the check; decision D3'
 names `no exact join`, from S's rows, where a conjunct was never offered its own written member, and `beside a skipped
 conjunct`.
 
+### Planted faults: recall and mutations
+
+**A fault is planted where the translator writes, never where anything else reads.** The ten historical translator
+faults (M1–M10) and two controls are switches in the translator's own writers (`CosmosTranslatorFaults`): a reading's
+test dropped, a guard skipped, a refusal ignored, a position left unflipped. None sits in a recogniser the loader, the
+facts or the split rule call too, or the plant would change the IR the check reads and judge a wrong translator against
+a wrong reference: M9 ignores the verdict at `WriteComparand`'s call of `CompareOrder`, which the split rule calls
+itself, and M10 lets `WriteCallCore`'s path branch take a parsing `RETURNING` rather than change `IsJsonAccessor`, the
+gate every clause shares. Production plants nothing; unarmed, each site reads one `volatile bool` (M6, M8 and M9 only on
+the refusal path they skip), and a plant is the flow's `AsyncLocal`, so a planning thread beside a test is untouched.
+
+**Each fault is caught as the check run catches a wrong push.** Its triggers are planned and checked between two
+unplanted runs: what is written changes under the fault and is the tip's again after it, and each trigger it was found by
+is refuted with the least refuting cell by text — for M5 a null category beside the label `bikes`, for M9 a boolean
+`false` or a fraction, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
+since a number equal to 30 may render so or not. The controls are reported: X1's `CASE` condition, in a predicate's place, is
+opaque to the loader, so its text is skipped as the tip's was; X2's dropped type test lets a structure through, which
+`RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
+
+**Recall replays what 4b65754 sent.** Its eight first-family texts (P1–P6, P19, P25), carried verbatim, are claimed
+against the IR the loader reads for the same statements at the tip and refuted with a structure cell; with M1 or M2
+planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
+returned while Calcite returns its own.
+
 ---
 
 ## Differential testing

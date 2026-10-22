@@ -2738,6 +2738,17 @@ across documents* and *A join of a container to itself* is the record.
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
   where the service answers false. The column's own reading (decision D12) would refute it.
+- **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
+  the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
+  `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
+  Exact, counting strings and booleans alone. The column's own reading would separate the two, and `RETURNING`'s would
+  refute the plant.
+- **Recall's witness documents come with c15** — *small.* `RenderingRecallTests.OnTheService` runs each 4b65754 text
+  on the differential's seeded documents and gets the rows that commit returned; the refuting cell S names is not always
+  a seeded one (P1's is an array, where products holds an object at `metadata`), and writing it to the witness
+  container is c15's.
+- **The translator's fault switch names M11 before its site** — *small, for c16.* `CosmosTranslatorFault.M11` is
+  planted at the split rule's weakening, beside shim 3.
 
 ---
 

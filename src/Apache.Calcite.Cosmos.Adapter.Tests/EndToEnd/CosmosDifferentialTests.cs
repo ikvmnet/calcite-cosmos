@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly string DatabaseName = "calcite_cosmos_diff_" +
             System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        internal static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
 
         /// <summary>
         /// A second container, seeded so that the declared type of a cast column is a lie for some of
@@ -88,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and the divergence it produced would say nothing about casts. Keeping the hazard here means
         /// only the statements that name it read it.
         /// </remarks>
-        static readonly CosmosContainerMetadata Typed = new("typed", new[] { "/category" });
+        internal static readonly CosmosContainerMetadata Typed = new("typed", new[] { "/category" });
 
         /// <summary>
         /// A third container, for what a sort asks of a column: one that declares a path a string, an
@@ -228,7 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// could not tell.
         /// </para>
         /// </summary>
-        static readonly string[] Documents =
+        internal static readonly string[] Documents =
         [
             """{"id":"1","category":"bikes","name":"Trail Blazer","price":120,"tags":["outdoor","steel"]}""",
             """{"id":"2","category":"bikes","name":"Road Runner","price":340,"metadata":{"sku":"B-2"}}""",
@@ -259,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// on from one that is not.
         /// </para>
         /// </summary>
-        static readonly string[] TypedDocuments =
+        internal static readonly string[] TypedDocuments =
         [
             """{"id":"1","category":"a","name":"Exact","price":30,"label":"bikes"}""",
             """{"id":"2","category":"a","name":"Stringy","price":"30","label":30}""",
@@ -388,7 +388,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// before a statement was judged.
         /// </para>
         /// </remarks>
-        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category", IndexingPolicy? policy = null)
+        internal static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category", IndexingPolicy? policy = null)
         {
             try { await database.GetContainer(name).DeleteContainerAsync(cancellationToken: cancellationToken); } catch (CosmosException) { }
 
@@ -499,7 +499,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// registered are theirs alone: a statement over one set of containers plans as it would with
         /// no others beside it.
         /// </remarks>
-        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> containers, IReadOnlyList<object?>? parameters)
+        internal static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> containers, IReadOnlyList<object?>? parameters)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             var tables = containers.Select(c => new CosmosTable(c.Metadata, Recorded(new CosmosQueryExecutor(c.Container), sent))).ToList();
