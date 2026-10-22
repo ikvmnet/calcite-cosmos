@@ -60,17 +60,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// drawn from its import. A document a stratum's facts rule out beside the conjuncts it assumes is no declared one,
         /// and a conjunct proven beside such a stratum's facts is judged only where those conjuncts hold.
         /// </summary>
-        internal static Tally SourceA(RenderingCheckRun run)
+        internal static Tally SourceA(RenderingCheckRun run, Tally? tally = null, IReadOnlyList<J.Obj>? declared = null)
         {
-            var tally = new Tally();
+            tally ??= new Tally();
             foreach (var check in run.Conjuncts.Where(c => c.Entry?.What is not null).GroupBy(c => c.Entry!.Id).Select(g => g.First()))
-                SourceA(tally, check.Entry!, check.Assumes, $"{check.Input} {check.Name}#{check.Unit}, entry {check.Entry!.Id}");
+                SourceA(tally, check.Entry!, check.Assumes, $"{check.Input} {check.Name}#{check.Unit}, entry {check.Entry!.Id}", declared);
 
             return tally;
         }
 
-        /// <summary>Source A over one entry.</summary>
-        internal static void SourceA(Tally tally, RenderingMemo.Entry entry, IReadOnlyDictionary<string, int[]>? assumed, string where)
+        /// <summary>Source A over one entry; or source B's, over a trial's declared documents, which no stratum's facts rule out.</summary>
+        internal static void SourceA(Tally tally, RenderingMemo.Entry entry, IReadOnlyDictionary<string, int[]>? assumed, string where, IReadOnlyList<J.Obj>? declared = null)
         {
             var (claim, world, assumes) = (entry.What!, new World(entry.Id), assumed ?? new Dictionary<string, int[]>());
             bool Holds(J.Obj d, IEnumerable<string> paths) => paths.Where(assumes.ContainsKey).SelectMany(p => assumes[p])
@@ -78,9 +78,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var proofs = Proofs(entry, claim).ToList();
             tally.Proofs += proofs.Count;
-            foreach (var document in proofs.Count == 0 ? [] : RenderingDocumentSampler.Sample(claim))
+            foreach (var document in proofs.Count == 0 ? [] : declared ?? RenderingDocumentSampler.Sample(claim))
             {
-                if (assumes.Keys.Any(p => PopulationD.Admits(claim.Imports[p].Assumed, CosmosEval.At(document, p)) == false && Holds(document, [p])))
+                if (declared is null && assumes.Keys.Any(p => PopulationD.Admits(claim.Imports[p].Assumed, CosmosEval.At(document, p)) == false && Holds(document, [p])))
                     continue;
 
                 tally.Judged++;
@@ -100,12 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var tally = new Tally();
             for (var trial = 0; trial < trials; trial++)
             {
-                // Drawn as PopulationD.Run draws, so a trial here is that trial.
-                var seed = PredicateSoundnessTests.Seed + trial;
-                var (random, bands, world) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)), new World(seed));
-                var declaration = Declaration.Random(random, bands, PopulationD.DeclaresNothingConditional(seed));
-                var documents = Enumerable.Range(0, PopulationD.DocumentsPerTrial).Select(_ => declaration.Generate(random))
-                    .Concat(Enumerable.Range(0, PopulationD.BandedPerTrial).Select(_ => declaration.GenerateBanded(bands))).ToList();
+                var (random, _, _, declaration, documents) = PopulationD.Trial(PredicateSoundnessTests.Seed + trial);
                 var printed = Statements.Draw(random, declaration).Select(Sql).OfType<string>().ToList();
                 if (printed.Count == 0)
                     continue;
@@ -114,21 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]));
                 tally.Statements++;
                 tally.Unplanned += run.Failures.Count;
-                foreach (var check in run.Conjuncts.Where(c => c.Entry?.What is not null).GroupBy(c => c.Entry!.Id).Select(g => g.First()))
-                {
-                    var (entry, claim) = (check.Entry!, check.Entry!.What!);
-                    var assumes = check.Assumes ?? new Dictionary<string, int[]>();
-                    foreach (var (ir, form, verdict, paths) in Proofs(entry, claim))
-                    {
-                        tally.Proofs++;
-                        foreach (var document in documents.Where(d => paths is null || paths.Where(assumes.ContainsKey).SelectMany(p => assumes[p])
-                            .All(i => IrEval.Truth(claim.Conjuncts[i], d, world) == Truths.True)))
-                        {
-                            tally.Judged++;
-                            tally.Judge(ir, form, verdict, document, world, $"trial {trial}, {form.Text}");
-                        }
-                    }
-                }
+                SourceA(run, tally, documents);
             }
 
             return tally;

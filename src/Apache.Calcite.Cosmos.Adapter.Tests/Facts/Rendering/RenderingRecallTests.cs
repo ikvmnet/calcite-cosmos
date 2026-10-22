@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
-using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
@@ -124,64 +121,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>Conjuncts' texts joined as <c>Translate</c> joins them.</summary>
-        static string Where(IReadOnlyList<string> texts) => texts.Count == 1 ? texts[0] : "(" + string.Join(" AND ", texts) + ")";
+        internal static string Where(IReadOnlyList<string> texts) => texts.Count == 1 ? texts[0] : "(" + string.Join(" AND ", texts) + ")";
 
         /// <summary>A recall case (<see cref="Cases"/>).</summary>
         internal sealed record Case(string Sql, string[] Texts, CosmosParameter[] Parameters, CosmosTranslatorFault Fault, string Refuted, string[] Pushed, string[] Calcite);
 
         /// <summary>A database of its own, named by the framework, holding the differential's products and typed documents.</summary>
-        public class Fixture : IAsyncLifetime
+        public class Fixture : CosmosEvalServiceTests.Fixture
         {
 
-            readonly string _database;
-            CosmosClient? _client;
+            public Fixture() : base("recall") { }
 
-            public Fixture() : this("recall") { }
-
-            protected Fixture(string name) => _database = $"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
+            protected Fixture(string name) : base(name) { }
 
             public Container? Products { get; private set; }
 
             public Container? Typed { get; private set; }
 
-            public string? Unavailable { get; private set; }
-
-            public async ValueTask InitializeAsync()
-            {
-                if (CosmosEmulator.Endpoint is not string endpoint || CosmosEmulator.Key is not string key)
-                {
-                    Unavailable = "No account is reachable.";
-                    return;
-                }
-
-                var options = new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway, MaxRetryAttemptsOnRateLimitedRequests = 0 };
-                if (CosmosEmulator.IsEmulator)
-                    (options.LimitToEndpoint, options.ServerCertificateCustomValidationCallback) = (true, (_, _, _) => true);
-
-                try
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 30 : 120));
-                    _client = new CosmosClient(endpoint, key, options);
-                    var database = (await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database;
-                    Products = await CosmosDifferentialTests.Seed(database, "products", CosmosDifferentialTests.Documents, cts.Token);
-                    Typed = await CosmosDifferentialTests.Seed(database, "typed", CosmosDifferentialTests.TypedDocuments, cts.Token);
-                }
-                catch (Exception e)
-                {
-                    (Unavailable, Products, Typed) = (e.Message, null, null);
-                }
-            }
-
-            public ValueTask DisposeAsync()
-            {
-                try { _client?.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
-                _client?.Dispose();
-                return default;
-            }
+            protected override async Task Seed(Database database, CancellationToken token) =>
+                (Products, Typed) = (await CosmosDifferentialTests.Seed(database, "products", CosmosDifferentialTests.Documents, token),
+                    await CosmosDifferentialTests.Seed(database, "typed", CosmosDifferentialTests.TypedDocuments, token));
 
             /// <summary>The ids Calcite keeps for a statement over these containers, in process, nothing pushed.</summary>
-            public async Task<string[]> Calcite(string sql) =>
-                [.. (await CosmosDifferentialTests.Run(sql, false, null, [(CosmosDifferentialTests.Products, Products!), (CosmosDifferentialTests.Typed, Typed!)], null))
+            public Task<string[]> Calcite(string sql) => Calcite(sql, (CosmosDifferentialTests.Products, Products!), (CosmosDifferentialTests.Typed, Typed!));
+
+            /// <summary>The ids Calcite keeps for a statement over containers, in process, nothing pushed.</summary>
+            internal static async Task<string[]> Calcite(string sql, params (Adapter.Metadata.CosmosContainerMetadata, Container)[] containers) =>
+                [.. (await CosmosDifferentialTests.Run(sql, false, null, containers, null))
                     .Select(row => Convert.ToString(row is object[] r ? r[0] : row, System.Globalization.CultureInfo.InvariantCulture)!).Order(StringComparer.Ordinal)];
 
             /// <summary>The ids the service keeps for a text sent verbatim as a container's <c>WHERE</c>, its values bound.</summary>

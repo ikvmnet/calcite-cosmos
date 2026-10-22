@@ -67,6 +67,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Returns the reader of a cast to a SQL type over another reader.</summary>
         public static string CastReader(string target, string inner) => "cast:" + target + ":" + inner;
 
+        /// <summary>An integer type's limits, or <c>null</c>: what its readings raise or saturate past, and S's cells are cut at.</summary>
+        public static (decimal Least, decimal Most)? IntegerLimits(string type) => type switch
+        {
+            "TINYINT" => (sbyte.MinValue, sbyte.MaxValue),
+            "SMALLINT" => (short.MinValue, short.MaxValue),
+            "INTEGER" => (int.MinValue, int.MaxValue),
+            "BIGINT" => (long.MinValue, long.MaxValue),
+            _ => null,
+        };
+
         /// <summary>A comparison with a literal.</summary>
         public static PredicateAtom Compare(string reader, string op, string literal) => new(reader, op, literal, null, false);
 
@@ -445,6 +455,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 _ => sign >= 0,
             };
 
+            /// <summary>What a comparison answers of values on these sides of the literal, beside what else it may; either where a side is not told.</summary>
+            static Truths Placed(string op, IEnumerable<int?> sides, Truths beside) => sides.Aggregate(beside, (truths, side) => truths | (side is int sign ? Ordered(op, sign) ? T : F : T | F));
+
             /// <summary>
             /// <c>JSON_VALUE</c> read as text, and the cast to text over a raw value, which renders an object and an array
             /// as well and whose rendering of a null has not been measured.
@@ -818,14 +831,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 Truths Whole(PathCell cell) => Limits is var (least, most) && (cell is PathCell.Numbers { Integral: false }
                     || cell is PathCell.Point { Value: var v } && TypeOf(v) == FractionType && DoubleBound.Of(v) is var r && Math.Floor(r) == r && r >= (double)least && r < (double)most + 1) ? T | F : Truths.None;
 
-                (decimal Least, decimal Most)? Limits => _type switch
-                {
-                    "TINYINT" => (sbyte.MinValue, sbyte.MaxValue),
-                    "SMALLINT" => (short.MinValue, short.MaxValue),
-                    "INTEGER" => (int.MinValue, int.MaxValue),
-                    "BIGINT" => (long.MinValue, long.MaxValue),
-                    _ => null,
-                };
+                (decimal Least, decimal Most)? Limits => IntegerLimits(_type);
 
                 /// <summary>What a comparison answers on a number, or a cell of them; <c>null</c> for a reading this does not place.</summary>
                 /// <remarks>
@@ -869,8 +875,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             sides.Add(DoubleBound.Compare(r, c));
                     }
 
-                    var raise = _type != "DOUBLE" || integral ? R : Truths.None;
-                    return sides.Contains(null) ? T | F | raise : sides.Aggregate(raise, (truths, side) => truths | (Ordered(op, side!.Value) ? T : F));
+                    return Placed(op, sides, _type != "DOUBLE" || integral ? R : Truths.None);
                 }
 
             }
@@ -946,7 +951,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     if (TryNumberOf(literal, out var c) == false || _parsesDecimal && c != decimal.Truncate(c))
                         return Compare(cell.Coarse, op, literal);
 
-                    Truths By(int? side, Truths beside) => (side is int sign ? Ordered(op, sign) ? T : F : T | F) | beside;
+                    Truths By(int? side, Truths beside) => Placed(op, [side], beside);
                     var (least, most) = _saturates ?? (0m, 0m);
                     switch (cell)
                     {
@@ -986,14 +991,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 : l.Value < 0 && Whole(l.Value) ? l.Value + 1 : decimal.Truncate(l.Value), least, most);
                             var high = n.Upper is not Bound u ? most : Math.Clamp(n.Integral ? (u.Open ? Math.Ceiling(u.Value) - 1 : Math.Floor(u.Value))
                                 : u.Value > 0 && Whole(u.Value) ? u.Value - 1 : decimal.Truncate(u.Value), least, most);
-                            return op switch
-                            {
-                                PredicateAtom.Equal => (low <= c && c <= high && Whole(c) ? T : 0) | (low == c && high == c ? 0 : F),
-                                Less => (low < c ? T : 0) | (high >= c ? F : 0),
-                                LessOrEqual => (low <= c ? T : 0) | (high > c ? F : 0),
-                                Greater => (high > c ? T : 0) | (low <= c ? F : 0),
-                                _ => (high >= c ? T : 0) | (low < c ? F : 0),
-                            };
+                            return Between(op, low, high, c, Whole(c));
                         }
 
                         default:
@@ -1005,22 +1003,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// What <c>RETURNING DECIMAL</c> answers of numbers read as their double's rendering on the double's side of
                 /// the literal's, and as their digits on the sides given; where either is not one way, TRUE or FALSE.
                 /// </summary>
-                static Truths Rendered(string op, decimal c, int? doubled, int?[] digits)
-                {
-                    int?[] sides = [doubled == 0 ? (Math.Abs(c) < 1L << 53 ? 0 : null) : doubled, .. digits];
-                    return sides.Contains(null) ? T | F : sides.Aggregate(Truths.None, (truths, side) => truths | (Ordered(op, side!.Value) ? T : F));
-                }
+                static Truths Rendered(string op, decimal c, int? doubled, int?[] digits) =>
+                    Placed(op, [doubled == 0 ? (Math.Abs(c) < 1L << 53 ? 0 : null) : doubled, .. digits], Truths.None);
 
                 public NumberCast(string target, bool overText)
                 {
                     _overText = overText;
                     _parsesDecimal = target == "DECIMAL";
-                    _saturates = target switch
-                    {
-                        "INTEGER" => (int.MinValue, int.MaxValue),
-                        "BIGINT" => (long.MinValue, long.MaxValue),
-                        _ => null,
-                    };
+                    _saturates = target is "INTEGER" or "BIGINT" ? IntegerLimits(target) : null;
                     _roundsFrom = target == "DOUBLE" ? Renderings.DoubleUnitFrom : null;
                     _parse = overText && _saturates is not null ? R : Truths.None;
                 }
@@ -1192,10 +1182,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         high = numbers.Upper?.Value;
                     }
 
+                    return Between(op, low, high, c, _saturates is null || c == decimal.Truncate(c));
+                }
+
+                /// <summary>What a comparison answers of the numbers between two ends, read as closed; an end not given is open.</summary>
+                static Truths Between(string op, decimal? low, decimal? high, decimal c, bool whole)
+                {
                     bool SomeBelow(bool strict) => low is not decimal a || (strict ? a < c : a <= c);
                     bool SomeAbove(bool strict) => high is not decimal b || (strict ? b > c : b >= c);
-                    var whole = _saturates is null || c == decimal.Truncate(c);
-
                     return op switch
                     {
                         PredicateAtom.Equal => (whole && SomeBelow(false) && SomeAbove(false) ? T : 0) | (low == c && high == c ? 0 : F),

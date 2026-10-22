@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var literals = claim.Conjuncts.SelectMany(Literals).Concat(claim.Form.Literals).Distinct().ToList();
             var typed = claim.Conjuncts.Any(c => c.ToString()!.Contains("typed(", StringComparison.Ordinal) || c.ToString()!.Contains("cast(", StringComparison.Ordinal));
             var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
-            var values = paths.Select(p => Values(literals, typed).Where(v => Admits(claim.Imports[p], v)).DistinctBy(Show).ToList()).ToList();
+            var values = paths.Select(p => Values(literals, typed).Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
             if (values.Any(v => v.Count == 0))
                 yield break;
 
@@ -43,13 +43,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var picked = values.Select((v, i) => product <= Most ? v[(int)(j / radixes[i] % v.Count)] : j < widest ? v[j % v.Count] : v[random.Next(v.Count)]).ToList();
                 var document = Document(paths, picked);
-                if (paths.All(p => Admits(claim.Imports[p], CosmosEval.At(document, p))) && seen.Add(Documents.Json(document)))
+                if (paths.All(p => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), CosmosEval.At(document, p))) && seen.Add(Documents.Json(document)))
                     yield return document;
             }
         }
-
-        static bool Admits(RenderingMemo.Imported import, J? value) =>
-            PopulationD.Admits(import.Values, value) && (value is not J.Str s || BandsOfText(s.Value).IsSubsetOf(import.Chars));
 
         static IEnumerable<J?> Values(IReadOnlyList<string> literals, bool typed)
         {

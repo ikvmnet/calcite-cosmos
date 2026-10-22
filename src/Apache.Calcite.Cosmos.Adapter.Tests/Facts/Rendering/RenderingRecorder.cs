@@ -5,8 +5,6 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
-using org.apache.calcite.rex;
-
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
@@ -43,11 +41,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         // The list also holds what the attempts before the weakening bound, so its own are again those its text names.
-        public void Weakened(CosmosFilterStatement statement, int conjunct, RexNode weakened, string text, CosmosParameterList parameters)
+        public void Weakened(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters)
         {
             var names = CosmosSqlFormReader.Names(text);
             Add(new(3, statement, conjunct, text, [.. parameters.Parameters.Where(p => names.Contains(p.Name))],
-                [.. parameters.Comparisons.Where(c => names.Contains(c.Parameter))], [], weakened));
+                [.. parameters.Comparisons.Where(c => names.Contains(c.Parameter))], []));
         }
 
         void Add(CaptureRecord record)

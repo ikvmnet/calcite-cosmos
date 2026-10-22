@@ -23,26 +23,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ReaderEdges Row(params CutKind[] edges) => new(ValueSet.From(edges), ValueSet<string>.Empty);
 
-        static ReaderEdges Limits(decimal min, decimal max, params CutKind[] edges) => new(ValueSet.From(edges), ValueSet.Of(JsonValues.Of(min), JsonValues.Of(max)));
+        static ReaderEdges Limits(string type, params CutKind[] edges) =>
+            PredicateAtom.IntegerLimits(type) is var (least, most) ? new(ValueSet.From(edges), ValueSet.Of(JsonValues.Of(least), JsonValues.Of(most))) : Row(edges);
 
         public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = new Dictionary<string, ReaderEdges>
         {
             [PredicateAtom.TextReader] = Row(),
             [PredicateAtom.RawReader] = Row(),
             [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
-            [PredicateAtom.TypedReader("TINYINT")] = Limits(sbyte.MinValue, sbyte.MaxValue, CutKind.Double),
-            [PredicateAtom.TypedReader("SMALLINT")] = Limits(short.MinValue, short.MaxValue, CutKind.Double),
-            [PredicateAtom.TypedReader("INTEGER")] = Limits(int.MinValue, int.MaxValue, CutKind.Double),
-            [PredicateAtom.TypedReader("BIGINT")] = Limits(long.MinValue, long.MaxValue, CutKind.Double),
+            [PredicateAtom.TypedReader("TINYINT")] = Limits("TINYINT", CutKind.Double),
+            [PredicateAtom.TypedReader("SMALLINT")] = Limits("SMALLINT", CutKind.Double),
+            [PredicateAtom.TypedReader("INTEGER")] = Limits("INTEGER", CutKind.Double),
+            [PredicateAtom.TypedReader("BIGINT")] = Limits("BIGINT", CutKind.Double),
             [PredicateAtom.TypedReader("FLOAT")] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("REAL")] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("DOUBLE")] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("DECIMAL")] = Row(CutKind.Double, CutKind.Rendering),
-            [PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader)] = Limits(int.MinValue, int.MaxValue, CutKind.Below, CutKind.Above, CutKind.Double),
-            [PredicateAtom.CastReader("BIGINT", PredicateAtom.RawReader)] = Limits(long.MinValue, long.MaxValue, CutKind.Below, CutKind.Above, CutKind.Double),
+            [PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader)] = Limits("INTEGER", CutKind.Below, CutKind.Above, CutKind.Double),
+            [PredicateAtom.CastReader("BIGINT", PredicateAtom.RawReader)] = Limits("BIGINT", CutKind.Below, CutKind.Above, CutKind.Double),
             [PredicateAtom.CastReader("DOUBLE", PredicateAtom.RawReader)] = Row(CutKind.Double),
-            [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = Limits(int.MinValue, int.MaxValue, CutKind.Rendering),
-            [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = Limits(long.MinValue, long.MaxValue, CutKind.Rendering),
+            [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = Limits("INTEGER", CutKind.Rendering),
+            [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = Limits("BIGINT", CutKind.Rendering),
             [PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader)] = Row(CutKind.Double, CutKind.Rendering),
         };
 

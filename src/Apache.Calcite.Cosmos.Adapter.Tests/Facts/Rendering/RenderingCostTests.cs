@@ -44,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var times = new ConcurrentQueue<(RenderingSet Set, double Ms)>();
             var started = Stopwatch.GetTimestamp();
-            var run = RenderingCheckRun.Over(inputs(), (set, _, t) => times.Enqueue((set, t.TotalMilliseconds)));
+            var run = RenderingCheckRun.Over(inputs(), (set, t) => times.Enqueue((set, t.TotalMilliseconds)));
             Print($"run {Stopwatch.GetElapsedTime(started).TotalSeconds:N1} s, planning included; {run.Memo.Entries.Count} entries");
             foreach (var group in times.GroupBy(t => t.Set.ToString()).Append(times.GroupBy(_ => "both").Single()))
                 Print($"{group.Key}: {Centiles([.. group.Select(t => t.Ms)])}");
@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             double Mean(out int entries)
             {
                 var times = new ConcurrentQueue<double>();
-                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(new JsonFactGenerations()), (set, _, t) =>
+                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(new JsonFactGenerations()), (set, t) =>
                 {
                     if (set == RenderingCheckRun.AssertedSet)
                         times.Enqueue(t.TotalMilliseconds);
@@ -200,9 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var started = Stopwatch.GetTimestamp();
             try
             {
-                foreach (var cosmos in PlanDigests.Subtrees(harness.PlanToAsync(sql), n => n is CosmosRel))
-                    if (PlannerHarness.TableOf(cosmos) is CosmosTable table)
-                        PlannerHarness.Implement(cosmos, table.Container);
+                CosmosPlanningTimeTests.Implement(harness.PlanToAsync(sql));
             }
             catch (Exception)
             {

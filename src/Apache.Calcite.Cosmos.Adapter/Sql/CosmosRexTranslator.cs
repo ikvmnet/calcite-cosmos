@@ -1787,7 +1787,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // the service returns the value at the path, and the RETURNING clause is what told the
             // plan its type. Handled ahead of the kind switch so that every clause reaching here —
             // a projection, a predicate, a sort key, an aggregate argument — gets it without a case
-            // of its own. M10 (CosmosTranslatorFaults) takes a parsing RETURNING for one.
+            // of its own.
             if ((IsJsonAccessor(call) || CosmosTranslatorFaults.Has(CosmosTranslatorFault.M10) && IsParsingJsonValue(call))
                 && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
@@ -3619,8 +3619,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // back where it is no comparison of its own (CosmosRecheck).
             var spine = _positive?.Contains(call) == true;
 
-            // M5 (CosmosTranslatorFaults): the operands written as though no NOT enclosed them.
-            var position = _negated;
+            // WriteCallCore, the one caller, puts the position back.
             if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M5))
                 _negated = false;
 
@@ -3636,7 +3635,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     _written![(RexNode)operands.get(i)] = builder.ToString(start, builder.Length - start);
             }
 
-            _negated = position;
             builder.Append(')');
         }
 
@@ -3696,7 +3694,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             RequireOperandCount(call, 1);
 
-            // M4 (CosmosTranslatorFaults) leaves it unflipped.
             var saved = _negated;
             _negated = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M4) ? saved : saved == false;
 
@@ -3893,7 +3890,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // a NOT where its `!=` had one in the positive position.
                     WriteComparand(builder, call, op);
 
-                    // M2 (CosmosTranslatorFaults) drops the reading's tests.
                     foreach (var (path, tests) in paths)
                     {
                         builder.Append(" OR IS_NULL(").Append(path).Append(") OR NOT IS_DEFINED(").Append(path).Append(')');
@@ -3904,8 +3900,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 }
                 else
                 {
-                    // False wherever SQL's comparison is unknown, which discards the row here; M3
-                    // (CosmosTranslatorFaults) drops it.
+                    // False wherever SQL's comparison is unknown, which discards the row here.
                     if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M3) == false)
                         foreach (var (path, _) in paths)
                             builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
@@ -3919,7 +3914,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // the type rather than converting it, ikvmnet/calcite-dotnet#120 -- and SQL:2016
                     // says they are an error condition answering null, which no comparison keeps.
                     // Restricting is therefore what the standard asks for, and closer to it than
-                    // either the engine or the unrestricted pushdown. X2 (CosmosTranslatorFaults) drops it.
+                    // either the engine or the unrestricted pushdown.
                     foreach (var (path, tests) in paths)
                         if (tests is not null && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X2) == false)
                             builder.Append(AnyOfOperand(tests, path)).Append(" AND ");
@@ -4092,7 +4087,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var leftValue = StripVariantCoercion(left);
             var rightValue = StripVariantCoercion(right);
 
-            // The faults M6 to M9 (CosmosTranslatorFaults) skip a refusal here, and M7 drops the cast whatever the text.
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if ((CosmosTranslatorFaults.Has(CosmosTranslatorFault.M7) ? TryTextCastValue(left) : TryTextCastOperand(left, right)) is RexNode unwrappedLeft)
@@ -4978,7 +4972,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (value is RexCall accessor && IsJsonAccessor(accessor))
                     RequireTheEngineCouldRead(accessor, path);
 
-                // M1 (CosmosTranslatorFaults) tests the path's null set alone.
                 var rendered = path.ToString();
                 var tests = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M1) ? null : ReadingTests(value);
 
@@ -5288,7 +5281,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 {
                     builder.Append('(');
 
-                    // X1 (CosmosTranslatorFaults) lets the CASE's position through.
                     _negated = position && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X1);
                     _value = false;
                     Write(builder, (RexNode)operands.get(i));

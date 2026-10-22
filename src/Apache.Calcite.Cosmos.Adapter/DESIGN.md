@@ -6608,7 +6608,7 @@ nothing is false; the three refutations PR C reported were all of that cause.
 **A weakening is held to what the split rule's argument needs of it: every row its conjunct keeps.** Beside a residual
 conjunct the rule pushes something the conjunct implies, and Calcite rechecks the conjunct above; a weakening too strong
 drops a row before the recheck sees it, and nothing restores it (decision D8). So the rule's own site, once it has
-translated a weakening it pushes, tells the capture the residual conjunct, the node and its text — the third site, inert
+translated a weakening it pushes, tells the capture the residual conjunct and the text — the third site, inert
 as the other two are, one `volatile bool` a pushed weakening — and the check claims `Implies` of the conjunct's IR
 against the text read. Sites 1 and 2 hold the weakening's text to its own node, where the loader reads it; the third
 holds it to the conjunct.

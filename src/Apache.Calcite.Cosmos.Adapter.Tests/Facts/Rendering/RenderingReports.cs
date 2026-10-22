@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             rows.OrderBy(c => Array.IndexOf(Inputs, c.Input)).ThenBy(c => int.TryParse(c.Name, CultureInfo.InvariantCulture, out var n) ? n : -1)
                 .ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Unit).ThenBy(c => c.Position);
 
-        static void Tsv(string folder, string name, string[] header, IEnumerable<object?[]> rows) =>
+        internal static void Tsv(string folder, string name, string[] header, IEnumerable<object?[]> rows) =>
             File.WriteAllLines(Path.Combine(folder, name), [string.Join("\t", header), .. rows.Select(r => string.Join("\t", r.Select(Field)))]);
 
         static string Field(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture)?.Replace("\t", " ").Replace("\n", " ").Replace("\r", "") ?? "";

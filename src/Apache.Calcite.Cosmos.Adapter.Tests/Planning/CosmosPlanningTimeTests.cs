@@ -153,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             }
         }
 
-        static void Implement(RelNode planned)
+        internal static void Implement(RelNode planned)
         {
             foreach (var cosmos in Cosmos(planned))
                 if (PlannerHarness.TableOf(cosmos) is CosmosTable table)

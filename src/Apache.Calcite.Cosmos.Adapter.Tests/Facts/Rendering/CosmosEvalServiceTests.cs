@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             protected Fixture(string name) => _database = $"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
 
-            public Container? Container { get; private set; }
+            public Container? Container { get; protected set; }
 
             public string? Unavailable { get; private set; }
 
@@ -99,14 +99,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 30 : 120));
                     _client = new CosmosClient(endpoint, key, options);
-                    var database = (await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database;
-                    Container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("documents", "/pk"), cancellationToken: cts.Token)).Container;
+                    await Seed((await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database, cts.Token);
                 }
                 catch (Exception e)
                 {
-                    (Unavailable, Container) = (e.Message, null);
+                    Unavailable = e.Message;
                 }
             }
+
+            /// <summary>Creates what the tests read: here one container, partitioned on <c>/pk</c>.</summary>
+            protected virtual async Task Seed(Database database, CancellationToken token) =>
+                Container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("documents", "/pk"), cancellationToken: token)).Container;
 
             public ValueTask DisposeAsync()
             {

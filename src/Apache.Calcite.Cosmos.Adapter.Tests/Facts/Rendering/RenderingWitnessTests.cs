@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -19,7 +18,6 @@ using FluentAssertions;
 using Xunit;
 
 using static Apache.Calcite.Cosmos.Adapter.Sql.CosmosTranslatorFault;
-using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -52,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     check.Claimed!, check.Bound!, check.Entry!, [Document(check.Entry!.What!.Witness!)], true));
 
             foreach (var (p, c) in RenderingRecallTests.Cases)
-                cases.Add(Refuted("recall " + p, c.Sql, c.Texts.Length == 1 ? c.Texts[0] : "(" + string.Join(" AND ", c.Texts) + ")", c.Parameters, RenderingRecallTests.Replay(c.Sql, c.Texts, c.Parameters)));
+                cases.Add(Refuted("recall " + p, c.Sql, RenderingRecallTests.Where(c.Texts), c.Parameters, RenderingRecallTests.Replay(c.Sql, c.Texts, c.Parameters)));
 
             foreach (var fault in Enumerable.Range(1, 10).Select(i => Enum.Parse<CosmosTranslatorFault>("M" + i)))
                 foreach (var check in RenderingMutationTests.Checked(fault, [.. RenderingMutationTests.Triggers[fault].Select(t => t.Sql)]).Conjuncts
@@ -69,31 +67,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 cases.Add(new("gain " + gain, sql, gain, [RenderingRecallTests.Bikes], entry, [.. Agreed(entry).Select(Document)], false));
             }
 
-            var rows = new List<string> { "case\tdocument\tverdict\tcalcite\temulator\tcosmoseval\tjudged" };
-            var wrong = new List<string>();
+            var (rows, wrong, witnessed) = (new List<object?[]>(), new List<string>(), new Dictionary<int, string>());
             foreach (var (c, n) in cases.Select((c, n) => (c, n)))
             {
                 var partition = "w" + n.ToString(CultureInfo.InvariantCulture);
                 var documents = await _service.Write(partition, c.Documents.Select(Saturation.Documents.Json));
                 var table = Regex.Match(c.Sql, "FROM (\\w+) AS").Groups[1].Value;
-                var kept = (await CosmosDifferentialTests.Run(c.Sql, false, null, [(CosmosDifferentialTests.Containers.Single(m => m.Name == table), _service.Container)], null))
-                    .Select(r => Convert.ToString(r is object[] a ? a[0] : r, CultureInfo.InvariantCulture)!).ToHashSet();
+                var kept = (await RenderingRecallTests.Fixture.Calcite(c.Sql, (CosmosDifferentialTests.Containers.Single(m => m.Name == table), _service.Container))).ToHashSet();
                 foreach (var (id, observed) in await _service.Observe(partition, c.Text, c.Parameters))
                 {
                     var said = CosmosEval.On(c.Entry.What!.Form, documents[id], RenderingTarget.Emulator);
                     var apart = kept.Contains(id) != (observed == ServiceOutcomes.True);
                     var judged = said != observed ? "CosmosEval differs" : apart == c.Refutes ? (c.Refutes ? "reproduced" : "agreed") : c.Refutes ? "not reproduced" : "a witness against a proof";
-                    rows.Add(string.Join("\t", c.Name, Saturation.Documents.Json(documents[id]), c.Refutes ? "Refuted" : "Exact", kept.Contains(id), observed, said, judged));
+                    rows.Add([c.Name, Saturation.Documents.Json(documents[id]), c.Refutes ? "Refuted" : "Exact", kept.Contains(id), observed, said, judged]);
+                    if (c.Name.StartsWith("tip ", StringComparison.Ordinal))
+                        witnessed[c.Entry.Id] = judged;
                     if (judged is not ("reproduced" or "agreed"))
                         wrong.Add($"{c.Name}: {c.Text} over {Saturation.Documents.Json(documents[id])}: {judged} (Calcite keeps {kept.Contains(id)}, the emulator {observed}, CosmosEval {said})");
                 }
             }
 
-            var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
-            Directory.CreateDirectory(folder);
-            File.WriteAllLines(Path.Combine(folder, "witnesses.tsv"), rows);
-            RenderingReports.Write(run, cases.Where(c => c.Name.StartsWith("tip ", StringComparison.Ordinal)).ToDictionary(c => c.Entry.Id, c => rows.First(r => r.StartsWith(c.Name + "\t", StringComparison.Ordinal)).Split('\t')[^1]));
-            TestContext.Current.TestOutputHelper?.WriteLine($"{cases.Count} cases, {rows.Count - 1} documents, on {CosmosEmulator.Endpoint}");
+            RenderingReports.Tsv(RenderingReports.Write(run, witnessed), "witnesses.tsv", ["case", "document", "verdict", "calcite", "emulator", "cosmoseval", "judged"], rows);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{cases.Count} cases, {rows.Count} documents, on {CosmosEmulator.Endpoint}");
             wrong.Should().BeEmpty();
         }
 
@@ -121,16 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>A document holding each value at its path: a scalar as written, a structure empty, nothing where none.</summary>
-        static J.Obj Document(IReadOnlyDictionary<string, string?> cells) => RenderingDocumentSampler.Document([.. cells.Keys], [.. cells.Values.Select(v => v switch
-        {
-            null => null,
-            "object|" => new J.Obj(new(StringComparer.Ordinal)),
-            "array|" => new J.Arr([]),
-            _ when v == NullValue => new J.Null(),
-            _ when TypeOf(v) == BooleanType => new J.Bool(v == Of(true)),
-            _ when IsString(v) => new J.Str(StringOf(v)),
-            _ => IsExactNumber(v) ? new J.Num(NumberOf(v)) : (J?)new J.Huge(ApproximateOf(v)!.Value),
-        })]);
+        static J.Obj Document(IReadOnlyDictionary<string, string?> cells) => RenderingDocumentSampler.Document([.. cells.Keys], [.. cells.Values.Select(PathCellTests.Decode)]);
 
         /// <summary>A witness case: the statement, the text it sent and its values, the check, the documents, and whether they refute it.</summary>
         sealed record Case(string Name, string Sql, string Text, IReadOnlyList<CosmosParameter> Parameters, RenderingMemo.Entry Entry, IReadOnlyList<J.Obj> Documents, bool Refutes);

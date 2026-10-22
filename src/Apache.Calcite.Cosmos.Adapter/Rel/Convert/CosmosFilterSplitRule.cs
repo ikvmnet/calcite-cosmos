@@ -247,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     // The rendering check's third site, inert unless a test arms it.
                     if (Metadata.CosmosRenderingCapture.Armed)
-                        Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, weakened, text!, parameters);
+                        Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, text!, parameters);
                 }
             }
 
@@ -1066,7 +1066,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var branches = new java.util.ArrayList();
             branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));
 
-            // M11 (CosmosTranslatorFaults) drops the number.
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number) && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M11) == false)
                 branches.add(double.IsFinite(number)
                     ? EqualsOtherThanText(rexBuilder, value, NumberRenderedAs(rexBuilder, text, number))

@@ -54,12 +54,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
             Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, new JsonFactGenerations())));
 
-        readonly Action<RenderingSet, ServiceForm, TimeSpan>? Timed;
+        readonly Action<RenderingSet, TimeSpan>? Timed;
 
         /// <param name="memo">The memo, or one of its own.</param>
         /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
-        /// <param name="timed">Told each bundle's time from open to dispose, with its set and the form claimed (the cost line).</param>
-        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, ServiceForm, TimeSpan>? timed = null) =>
+        /// <param name="timed">Told each bundle's time from open to dispose, with its set (the cost line).</param>
+        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null) =>
             (Memo, Graph, Timed) = (memo ?? new RenderingMemo(), graph ?? Measured, timed);
 
         public RenderingMemo Memo { get; }
@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, ServiceForm, TimeSpan>? timed = null)
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null)
         {
             var run = new RenderingCheckRun(timed: timed);
             var all = inputs.ToList();
@@ -109,10 +109,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var started = Stopwatch.GetTimestamp();
                 var (asserted, run, alone, failure, what) = Bundle(AssertedSet);
-                Timed?.Invoke(AssertedSet, form, Stopwatch.GetElapsedTime(started));
+                Timed?.Invoke(AssertedSet, Stopwatch.GetElapsedTime(started));
                 started = Stopwatch.GetTimestamp();
                 var (beside, besideRun, _, declined, _) = Bundle(BesideSet);
-                Timed?.Invoke(BesideSet, form, Stopwatch.GetElapsedTime(started));
+                Timed?.Invoke(BesideSet, Stopwatch.GetElapsedTime(started));
                 return new RenderingMemo.Entry(id, key, asserted, run, beside, besideRun, alone, failure ?? declined, what);
             }), report);
 
