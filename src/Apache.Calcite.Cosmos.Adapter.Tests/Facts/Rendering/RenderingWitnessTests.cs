@@ -78,7 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     var said = CosmosEval.On(c.Entry.What!.Form, documents[id], RenderingTarget.Emulator);
                     var apart = kept.Contains(id) != (observed == ServiceOutcomes.True);
-                    var judged = said != observed ? "CosmosEval differs" : apart == c.Refutes ? (c.Refutes ? "reproduced" : "agreed") : c.Refutes ? "not reproduced" : "a witness against a proof";
+                    var judged = said != observed ? "CosmosEval differs" : Predicted(c, kept.Contains(id), observed) == false ? "outside S's prediction"
+                        : apart == c.Refutes ? (c.Refutes ? "reproduced" : "agreed") : c.Refutes ? "not reproduced" : "a witness against a proof";
                     rows.Add([c.Name, Saturation.Documents.Json(documents[id]), c.Refutes ? "Refuted" : "Exact", kept.Contains(id), observed, said, judged]);
                     if (c.Name.StartsWith("tip ", StringComparison.Ordinal))
                         witnessed[c.Entry.Id] = judged;
@@ -91,6 +92,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             TestContext.Current.TestOutputHelper?.WriteLine($"{cases.Count} cases, {rows.Count} documents, on {CosmosEmulator.Endpoint}");
             wrong.Should().BeEmpty();
         }
+
+        /// <summary>
+        /// Whether what the service and Calcite did with a refuting document lies in the class the refutation carries, the
+        /// form's at the root on that document: the service's outcome among its outcomes, and Calcite's keeping among its
+        /// truths. An agreed document's prediction is its verdict's, that the two keep alike.
+        /// </summary>
+        static bool Predicted(Case c, bool kept, ServiceOutcomes observed) => c.Refutes == false || c.Entry.Asserted.Refutation?.Class is { } k
+            && (k.Service & observed) != 0 && (k.Calcite & (kept ? Truths.True : ~Truths.True)) != 0;
 
         /// <summary>A refuted check's case: the document its refuting cells put at their paths.</summary>
         static Case Refuted(string name, string sql, string text, IReadOnlyList<CosmosParameter> parameters, RenderingMemo.Entry entry)

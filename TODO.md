@@ -2751,12 +2751,6 @@ across documents* and *A join of a container to itself* is the record.
 - **The witnesses run on the emulator leg alone** — *small.* `RenderingWitnessTests` and `CosmosEvalServiceTests` are
   service-gated, so on a leg with no emulator `refutations.tsv`'s emulator column reads `not run`; the witness run
   rewrites it where it runs, and writes `witnesses.tsv`, which CI archives from the Linux x64 leg alone.
-- **A witness reads S's prediction as its verdict's** — *small.* §5.5 holds the service's outcome on a witness to "S's
-  predicted outcome set for the document's cell". A refutation's class is the outcome at the refuting atom's own
-  position, which a negation above it swaps, and a composed one's sibling stands at the connective's identity, so the
-  root's set is not on the refutation; the witness test holds the document to the verdict (a refuting cell keeps apart
-  on the two, an agreed one alike) and the outcome to `CosmosEval`. Carrying the position up with the refutation would
-  let it read the set.
 - **A weakening shaped otherwise than its conjunct is unproven** — *small.* S pairs a form with an IR node only where the
   form is the join of its children's, so `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`, pushed for `NOT (c."$.category"
   = 'bikes' OR CAST(… AS DOUBLE) > 50)`, and `IS_DEFINED(c.price)` for a negated `BETWEEN` are unproven, never refuted.

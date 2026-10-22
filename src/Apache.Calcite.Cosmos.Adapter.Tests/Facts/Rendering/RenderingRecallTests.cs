@@ -43,16 +43,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         internal static readonly IReadOnlyDictionary<string, Case> Cases = new Dictionary<string, Case>
         {
-            ["P1"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", [Defined], [], M1, "$[\"metadata\"]=array (T,f)", ["2"], []),
-            ["P19"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", [Defined, "(c.category = @p0)"], [Bikes], M1, "$[\"category\"]=string|bikes; $[\"metadata\"]=array (T,f)", ["2"], []),
-            ["P2"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(T,f)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
+            ["P1"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", [Defined], [], M1, "$[\"metadata\"]=array (F,t)", ["2"], []),
+            ["P19"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", [Defined, "(c.category = @p0)"], [Bikes], M1, "$[\"category\"]=string|bikes; $[\"metadata\"]=array (F,t)", ["2"], []),
+            ["P2"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
             ["P3"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NULL", ["(NOT IS_DEFINED(c.label) OR IS_NULL(c.label))"], [], M1, Array + "(T,f)", ["6", "7"], ["4", "5", "6", "7"]),
             ["P25"] = new("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" IS NOT NULL",
-                ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(T,f)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
-            ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], M2, Array + "(U,f)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
-            ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], M2, "$[\"category\"]=string|a; " + Array + "(U,f)",
+                ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
+            ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], M2, Array + "(U,t)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
+            ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], M2, "$[\"category\"]=string|a; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "6", "7", "8", "9"], ["2", "3", "6", "7", "8", "9"]),
-            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], M2, "$[\"category\"]=strings < \"b\" in [high,nonascii,nul,surrogate,trimmed]; " + Array + "(U,f)",
+            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], M2, "$[\"category\"]=strings < \"b\" in [high,nonascii,nul,surrogate,trimmed]; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
         };
 

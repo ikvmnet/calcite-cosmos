@@ -42,9 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             [M2] = [.. new[] { "P4", "P5", "P6" }.Select(p => (RenderingRecallTests.Cases[p].Sql, (string?)RenderingRecallTests.Cases[p].Refuted))],
             [M3] = [(Products + "c.\"$.category\" <> 'bikes'", "$[\"category\"]=null (U,t)"),
                 ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" <> 'bikes'", "$[\"category\"]=null (U,t)")],
-            [M4] = [(Products + "NOT (c.\"$.category\" <> 'bikes')", "$[\"category\"]=absent (U,f)"), (RenderingRecallTests.Cases["P4"].Sql, "$[\"label\"]=array (U,f)")],
-            [M5] = [(RenderingRecallTests.Cases["P5"].Sql, "$[\"category\"]=null; $[\"label\"]=string|bikes (U,f)"),
-                (RenderingRecallTests.Cases["P6"].Sql, "$[\"category\"]=null; $[\"label\"]=boolean|false (U,f)")],
+            [M4] = [(Products + "NOT (c.\"$.category\" <> 'bikes')", "$[\"category\"]=absent (U,t)"), (RenderingRecallTests.Cases["P4"].Sql, "$[\"label\"]=array (U,t)")],
+            [M5] = [(RenderingRecallTests.Cases["P5"].Sql, "$[\"category\"]=null; $[\"label\"]=string|bikes (U,t)"),
+                (RenderingRecallTests.Cases["P6"].Sql, "$[\"category\"]=null; $[\"label\"]=boolean|false (U,t)")],
             [M6] = [(Typed + Label + " = 'true'", "$[\"label\"]=boolean|true (T,f)"), (Typed + Label + " = '30'", null)],
             [M7] = [(Typed + $"CAST({Label} AS VARCHAR) = 'true'", "$[\"label\"]=boolean|true (T,f)"), (Typed + $"CAST({Label} AS VARCHAR) = '30'", null)],
             // The first is M8's own, which no list held; under the fault the last is written as the translator's exact form.

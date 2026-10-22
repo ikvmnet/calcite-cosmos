@@ -6614,10 +6614,10 @@ trips the wire.
 mutations' and G2's, and each cell the gains preview's agreements were proved over, is one document
 (`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
 projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
-document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. S's prediction is read
-as its verdict's — a refuting cell predicts the two part, an agreed one that they do not — since a cell's class is the
-outcome at the atom's own position, which a negation above it swaps. On 2026-10-22 all 54 documents of 34 cases did as
-their verdicts said, on both images.
+document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. A refuting document's
+outcome must lie in S's predicted set: a refutation carries the class of the form at the root on its document, the
+atom's swapped by each `NOT` above it (`Refutation.Negated`) and kept through a junction, whose sibling stands at the
+connective's identity, so the service's outcome must be among its outcomes and Calcite's keeping among its truths.
 
 **Precision triages the tip's refutations by their witnesses**: reproduced is the translator's (`KnownRefutations`),
 not reproduced is false. With each later round read beside its facts the tip refutes nothing, so nothing is triaged and
