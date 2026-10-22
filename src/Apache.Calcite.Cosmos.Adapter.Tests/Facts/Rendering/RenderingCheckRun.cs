@@ -253,7 +253,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Checks a residual conjunct's weakening (spec §3.17): claimed as implied by the conjunct, and imported from the
         /// stratum it was rendered from, which assumes no conjunct but those the split rule pushes beside it, every one;
-        /// or from the root, where the facts graph reads one of those otherwise than Calcite (<see cref="ReadExactly"/>).
+        /// or from the root, where the facts graph reads one of those otherwise than Calcite (<see cref="ReadExactly(SqlPredicate)"/>).
         /// </summary>
         void CheckWeakening(RenderingInputs.Statement input, int unit, List<CosmosFilterStatement> statements, CaptureRecord record)
         {
@@ -338,7 +338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Each atom of a later round's conjunct, with the node the licence table rendered that conjunct from, where that
         /// stratum may be read beside its atoms: every conjunct it assumes is judged in this check and read by the facts
-        /// graph as Calcite reads it (<see cref="ReadExactly"/>). A cell the stratum admits nothing of is then held only by
+        /// graph as Calcite reads it (<see cref="ReadExactly(SqlPredicate)"/>). A cell the stratum admits nothing of is then held only by
         /// documents a conjunct of the same junction drops in Calcite, and so, agreeing, at the service. An atom two
         /// conjuncts share is read beneath neither, since one of them may be what the other's stratum assumes.
         /// </summary>

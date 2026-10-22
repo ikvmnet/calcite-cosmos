@@ -73,16 +73,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [InlineData("79228162514264337593543950330")]
         [InlineData("79228162514264337593543950335")]
         [InlineData("-79228162514264337593543950330")]
-        public void ADoubleEdgeNearADecimalsEndIsCut(string literal)
+        public async System.Threading.Tasks.Task ADoubleEdgeNearADecimalsEndIsCut(string literal)
         {
             var c = Of(decimal.Parse(literal, CultureInfo.InvariantCulture));
             var atom = PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.Greater, c);
             foreach (var kind in new[] { IntegerType, FractionType })
             {
-                var split = System.Threading.Tasks.Task.Run(() => PathCell.Split(P, PathValues.OfKinds(ValueSet.Of(kind)), AllBands,
-                    CutPoints.Of(atom, ServiceForm.CompareOf(CosmosServiceTest.Greater, P, c), ReaderEdgesTable.Rows[atom.Reader])).Cells);
-                split.Wait(System.TimeSpan.FromSeconds(30)).Should().BeTrue($"the {kind}s cut at {literal} are found");
-                split.Result.Should().NotBeEmpty().And.OnlyContain(cell => cell.Contains(cell.Witness()));
+                var cells = await System.Threading.Tasks.Task.Run(() => PathCell.Split(P, PathValues.OfKinds(ValueSet.Of(kind)), AllBands,
+                    CutPoints.Of(atom, ServiceForm.CompareOf(CosmosServiceTest.Greater, P, c), ReaderEdgesTable.Rows[atom.Reader])).Cells,
+                    TestContext.Current.CancellationToken).WaitAsync(System.TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+                cells.Should().NotBeEmpty().And.OnlyContain(cell => cell.Contains(cell.Witness()), $"the {kind}s cut at {literal} are found");
             }
         }
 
