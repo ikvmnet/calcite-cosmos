@@ -6540,6 +6540,11 @@ against the IR the loader reads for the same statements at the tip and refuted w
 planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
 returned while Calcite returns its own.
 
+**The gains preview is claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
+translator admit so that the conjunct is captured. The guarded inequality is Exact; the orderings' forms, `> @p0 OR
+IS_BOOL` and `< @p0 OR IS_NUMBER`, are unproven over an undeclared label, whose strings may hold U+0000, which the
+emulator orders as it stores it, and are Exact where no string can.
+
 ---
 
 ## Differential testing

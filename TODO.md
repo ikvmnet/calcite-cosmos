@@ -2738,6 +2738,12 @@ across documents* and *A join of a container to itself* is the record.
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
   where the service answers false. The column's own reading (decision D12) would refute it.
+- **The gains preview reads two of five Exact** — *small, for Stage 2.* Over typed's undeclared label the guarded
+  inequality is Exact, and the orderings' forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR
+  IS_NUMBER(c.label)`, are unproven: the label's strings may hold U+0000, which the emulator orders as U+FDD0 then `0`,
+  and `Portable` serves the emulator. They are Exact where no string can hold one, and under `Production` (a bundle of
+  their own); on the emulator each keeps Calcite's rows over typed. A declaration that keeps U+0000 out, or a set that
+  leaves the emulator out, is what Stage 2 would write them under.
 - **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
   the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
   `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
