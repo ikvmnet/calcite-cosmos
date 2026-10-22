@@ -36,15 +36,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var forced = false;
             var graph = new RenderingGraph(() => Measured, _ => forced);
-            using var first = graph.Open(RenderingSet.Emulator);
+            using var first = graph.Open(RenderingCheckRun.AssertedSet);
             var root = first.Write(NotBikes);
             first.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
             first.Claim(root, Guarded);
 
             forced = true;
-            using var second = graph.Open(RenderingSet.Emulator);
+            using var second = graph.Open(RenderingCheckRun.AssertedSet);
             forced = false;
-            using var third = graph.Open(RenderingSet.Emulator);
+            using var third = graph.Open(RenderingCheckRun.AssertedSet);
             (ReferenceEquals(second.Theory, first.Theory), ReferenceEquals(third.Theory, second.Theory)).Should().Be((false, true));
             RenderingMemo.DigestOf(second.Theory).Should().Be(RenderingMemo.DigestOf(first.Theory), "generations defined alike share memo entries");
             RenderingMemo.DigestOf(RenderingTheory.Define(Measured with { Tolerated = Truths.None })).Should().NotBe(RenderingMemo.DigestOf(first.Theory), "a planted row shares none");
@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             second.Decline(new OverflowException("planted"));
             second.Read(second.Write(NotBikes), Guarded, Verdict.Equal).Should().Match<RenderingVerdict>(v =>
                 v.Kind == RenderingVerdictKind.Unproven && v.Reason == "declined: OverflowException: planted");
-            using var fourth = graph.Open(RenderingSet.Emulator);
+            using var fourth = graph.Open(RenderingCheckRun.AssertedSet);
             (ReferenceEquals(fourth.Theory, third.Theory), third.Failure).Should().Be((false, (Exception?)null));
         }
 
@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 },
             });
 
-            using var bundle = graph.Open(RenderingSet.Emulator);
+            using var bundle = graph.Open(RenderingCheckRun.AssertedSet);
             var unequal = bundle.Write(NotBikes);
             var equal = bundle.Write(Eq(Text(LabelPath), "bikes"));
             bundle.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
@@ -93,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var claim in new[] { Verdict.Equal, Verdict.Implies })
                     bundle.Read(root, Bare, claim).Should().Match<RenderingVerdict>(v => v.Kind == RenderingVerdictKind.Unproven && v.Reason!.StartsWith("declined: RuleEvaluationException"));
 
-            using var next = graph.Open(RenderingSet.Emulator);
+            using var next = graph.Open(RenderingCheckRun.AssertedSet);
             var alone = next.Write(NotBikes);
             next.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
             next.Claim(alone, Bare);

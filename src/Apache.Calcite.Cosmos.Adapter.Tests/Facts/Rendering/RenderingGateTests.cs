@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             });
 
             // The merged atoms are another path's, unclaimed, so the claim's own rows stand: the read refuses them.
-            using var bundle = theory.Open(RenderingSet.Emulator);
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(NotBikes);
             bundle.Write(Eq(Text(P("kind")), "a"));
             bundle.Write(Eq(Text(P("kind")), "b"));
@@ -130,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Pair = (a, v, m) => Count(("outcomes", a, v), Measured.Pair(a, v, m)),
             });
 
-            using var bundle = theory.Open(RenderingSet.Emulator);
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
             var kind = P("kind");
             var label = bundle.Write(NotBikes);
             var named = bundle.Write(Eq(Text(kind), "a"));
@@ -151,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ReadWaitsForCompleted()
         {
-            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(NotBikes);
             bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, Guarded);
@@ -171,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Refuting = [.. Measured.Refuting, (RenderPosition.Pos, Verdict.Equal, new Box(Truths.True, ServiceOutcomes.True, ValueSet<string>.Empty))],
             });
 
-            using var bundle = theory.Open(RenderingSet.Emulator);
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(NotBikes);
             bundle.Import(Source, LabelPath, DeclaredString, AllBands);
             bundle.Claim(root, Bare);
@@ -187,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AFormOverAnotherPathIsNotEvaluated()
         {
             var lable = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, SqlValue.Spell(P("lable")), Of("bikes"));
-            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(NotBikes);
             bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Claim(root, lable);
@@ -237,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (chars, parted, op) in from c in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) } from op in new[] { "<", "<>" } select (c.Item1, c.Item2, op))
             {
                 var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
-                using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+                using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
                 var root = bundle.Write(Cmp(Text(LabelPath), op, Lit(high)));
                 bundle.Import(Source, LabelPath, PathValues.Anything, chars);
                 bundle.Claim(root, form);

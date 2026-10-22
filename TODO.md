@@ -2682,14 +2682,6 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point.
-- **The rendering tests beside the check run build under the emulator's set** — *small.* `RenderingCheckRun` asserts
-  `Portable` and reads `Emulator` beside it, now that the probe account has run every row's `Holds`
-  (`Runs/2026-10-21-probe-account.tsv`), and the two agree on every check it makes. Checked by hand at c09b: with
-  `ProbeRows`' default set and table made `Portable`, all 50 tests of `Tests.Facts.Rendering` hold. With every
-  `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that fail state what is the emulator's alone —
-  `Range` licensed (`WithoutAConnectiveRowNothingComposes`, `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`,
-  `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it alone measured
-  (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set; the others could move.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's

@@ -221,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             // A disjunction of the same members, claimed beside the conjunction, offers its sides the same candidates, and
             // is still no join of a conjunction's sides.
-            using (var both = ProbeTheory.Open(RenderingSet.Emulator))
+            using (var both = ProbeTheory.Open(RenderingCheckRun.AssertedSet))
             {
                 var conjunct = both.Write(LabelAndKind);
                 both.Import(Source, LabelPath, PathValues.Anything, AllBands);
@@ -250,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Then(theory.Candidate.Of(y, pos, Compute.Of(f, g, h, (w, a, b) => ServiceForm.Without(ServiceForm.Without(w, a), b))));
             });
 
-            using var bundle = theory.Open(RenderingSet.Emulator);
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(LabelAndKind);
             bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Import(Source, KindPath, PathValues.Anything, AllBands);

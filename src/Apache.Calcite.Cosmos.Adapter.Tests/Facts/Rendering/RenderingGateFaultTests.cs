@@ -145,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             foreach (var (tripped, union) in new[] { (theory, false), (ProbeTheory, true) })
             {
-                using var bundle = tripped.Open(RenderingSet.Emulator);
+                using var bundle = tripped.Open(RenderingCheckRun.AssertedSet);
                 var claimed = bundle.Write(Ne(Text(LabelPath), "bikes"));
                 var (x, y) = (bundle.Write(Eq(Text(KindPath), "a")), bundle.Write(Eq(Text(KindPath), "b")));
                 if (union)
