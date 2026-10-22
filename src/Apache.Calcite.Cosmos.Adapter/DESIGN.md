@@ -6593,9 +6593,10 @@ cast to a decimal, which keeps fifteen digits. A proof is judged on every target
 makes a document unmeasured, not a witness, and one every mode raises on is skipped (decision 2).
 
 **Source A samples each proven check's import.** Up to 64 documents set each path to values its import admits: the
-literals and their neighbours, the text other values render as, strings with a character of each band beside each
-literal where the import's classes admit it, numbers either side of 2^53, a typed atom's int-sized and beyond-int
-integers, and every kind, mixed so that each value stands in one at least. A document a stratum's facts rule out beside
+literals and their neighbours, a fraction either side of each numeric literal whose double is the literal's, the text
+other values render as, strings with a character of each band beside each literal where the import's classes admit it,
+numbers either side of 2^53, beside a typed or cast atom the type limits and either side of them and a literal's
+rendering padded with control characters, and every kind, mixed so that each value stands in one at least. A document a stratum's facts rule out beside
 the conjuncts it assumes is no declared one and is left out, and a conjunct's own proof beside a stratum is judged where
 those conjuncts hold. **Source B** plans population D's conjuncts, printed as one Calcite `WHERE` over a container the
 trial's declaration describes, and judges every proof on the trial's declared documents, whose conditional rules hold

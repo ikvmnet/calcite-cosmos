@@ -12,8 +12,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// Source A (spec §5.5): up to 64 documents from what a check imported, each path set to values its import admits —
-    /// the literals and their neighbours, the text other values render as, strings holding a character of each band beside
-    /// each literal, numbers either side of 2^53, and every kind — the paths' values mixed so that each value of each path
+    /// the literals and their neighbours, a fraction either side of each numeric literal whose double is the literal's, the
+    /// text other values render as, strings holding a character of each band beside each literal, numbers either side of
+    /// 2^53, beside a typed or cast reading the type limits and either side of them and a literal's rendering padded with
+    /// control characters Java's trim takes off, and every kind — the paths' values mixed so that each value of each path
     /// stands in one document at least.
     /// </summary>
     internal static class RenderingDocumentSampler
@@ -24,6 +26,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly string[] Texts = ["", "30", "30.0", "true"], Marks = ["", "�", "\U0001F600"];
 
         static readonly decimal[] Numbers = [30m, 30.0m, 9007199254740992m, 9007199254740993m, -1m, 2.5m];
+
+        /// <summary>Where an integer type raises, a cast saturates, and an <c>ANY</c> wraps a long into an int.</summary>
+        static readonly decimal[] Limits = [int.MaxValue + 1m, int.MinValue - 1m, 4294967297m, long.MaxValue, long.MaxValue + 1m, long.MinValue - 1m];
 
         /// <summary>The documents, each set where every path's value is one its import admits.</summary>
         public static IEnumerable<J.Obj> Sample(RenderingMemo.Claimed claim)
@@ -52,9 +57,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             J?[] kinds = [null, new J.Null(), new J.Bool(true), new J.Bool(false), new J.Obj(new(StringComparer.Ordinal)), new J.Arr([])];
             var strings = Texts.Concat(Marks).Concat(literals.Where(IsString).Select(StringOf).SelectMany(s =>
-                new[] { s, s + "\0", s + "a" }.Concat(s.Length > 0 ? [s[..^1]] : []).Concat(Marks.Select(m => s + m))));
-            var numbers = Numbers.Concat(typed ? [7m, 3_000_000_000m] : []).Concat(literals.Where(IsExactNumber).Select(NumberOf).SelectMany(c =>
-                new[] { c, c - 1, c + 1, c + 0.5m, c * 1.0m }));
+                new[] { s, s + "\0", s + "a" }.Concat(s.Length > 0 ? [s[..^1]] : []).Concat(Marks.Select(m => s + m))))
+                .Concat(typed ? literals.Where(IsExactNumber).Select(StringOf).SelectMany(r => new[] { "\u0001" + r, r + "\u001F" }) : []);
+            var numbers = Numbers.Concat(typed ? [7m, 3_000_000_000m, .. Limits] : []).Concat(literals.Where(IsExactNumber).Select(NumberOf).SelectMany(c =>
+                new[] { c, c - 1, c + 1, c + 0.5m, c * 1.0m }.Concat(c == 0 ? [] : [c + Math.Abs(c) * 4e-17m, c - Math.Abs(c) * 4e-17m])));
             return kinds.Concat(strings.Select(s => (J?)new J.Str(s))).Concat(numbers.Select(n => (J?)new J.Num(n)));
         }
 
