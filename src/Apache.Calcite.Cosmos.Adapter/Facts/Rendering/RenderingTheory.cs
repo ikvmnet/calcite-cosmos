@@ -170,7 +170,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // two spellings, and throw), the set, each import once and lattice-free, beside each atom what the facts its
         // conjunct was rendered from say its path may hold (`assumed`, anything where none is read), and the root's
         // candidate with every member of its junctions as written and each conjunction's members, nested ones flattened;
-        // the rules write the rest, the candidates beneath the root and the members of a junction's rest among them.
+        // the rules write the rest: the candidates beneath the root, the members of a member of one connective, and the
+        // members of a junction's rest.
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
@@ -380,16 +381,26 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Candidate.Of(a, q, Compute.Of(g, ServiceForm.Strip)));
             });
 
-            // Members are counted as the relation holds them, once a text, nested ones of the junction's connective in place:
-            // with three, the rest without one is a junction of the others; with two, it is the other, whose members are its own.
+            // The rest keeps the grouping of what is left, so a member of it is one as written, and its parts follow by the
+            // rule below; one left is a leaf, which has none.
             descend.DefineRule("the rest of a junction's form has every member it was not stripped of", r =>
             {
-                var (e, x, n) = r.Vars<Pred, Pred, long>("e", "x", "n");
+                var (e, x) = r.Vars<Pred, Pred>("e", "x");
                 var pos = r.Var<RenderPosition>("pos");
+                var (f, g, h, w) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("f", "g", "h", "w");
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), w.Is(Compute.Of(f, g, ServiceForm.Without)));
+                r.Where(RenderingPrimitives.FormHolds.Of(w, h));
+                r.Then(Member.Of(w, h));
+            });
+
+            // A member of a member of the junction's own connective is a part an arm may take, the licensed connective being
+            // associative: the reader writes members as written, and this is the regrouping.
+            descend.DefineRule("a member of a member of a junction's own connective is a member of the junction", r =>
+            {
                 var (f, g, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "g", "h");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Flat).Count)));
-                r.Where(Primitives.Greater.Of(n, 2L));
-                r.Then(Member.Of(Compute.Of(f, g, ServiceForm.Without), h));
+                r.When(Member.Of(f, g), Member.Of(g, h));
+                r.Where(RenderingPrimitives.FormJoins.Of(f, g));
+                r.Then(Member.Of(f, h));
             });
 
             // Never an element against an index, nor a path against one beneath it: those may be one place.

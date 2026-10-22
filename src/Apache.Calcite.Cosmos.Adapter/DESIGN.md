@@ -6537,9 +6537,11 @@ be held either way, so it is placed by both; a literal sent as a double is place
 ### A grouped claim, and the coverage line
 
 **A claim grouped as the `WHERE` writes it composes over the IR's flat junction.** A junction's parts are its members
-and those within a member of its own connective, however deep; `Claim` states each as a member, so an arm may take any,
-and the rest keeps the grouping of what is left. That is the join because the licensed connective is associative,
-commutative and idempotent, which evaluating a regrouped rest already took for granted.
+and those within a member of its own connective, however deep. `Claim` states each junction's members as written, and a
+rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; the
+rest keeps the grouping of what is left, and the rule that writes its members writes those it holds as written alone,
+so no member row names what is no part. That is the join because the licensed connective is associative, commutative
+and idempotent, which evaluating a regrouped rest already took for granted. S has 40 rules, at the line.
 
 **The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
 conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`

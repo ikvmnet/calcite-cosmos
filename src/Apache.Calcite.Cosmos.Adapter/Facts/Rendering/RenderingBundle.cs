@@ -132,8 +132,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Claims a written form for a conjunct at the root, and states as members of every junction in it its parts: each
-        /// member, and those within a member of its own connective, any of which an arm may take as the join is regrouped; and
+        /// Claims a written form for a conjunct at the root, and states the members of every junction in it as written, and
         /// of every conjunction what it is a join of, as the service may read a range across them.
         /// </summary>
         public void Claim(Pred root, ServiceForm form)
@@ -237,7 +236,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 Members(member, facts);
 
             if (form.Kind is ServiceFormKind.And or ServiceFormKind.Or)
-                facts.AddRange(form.Parts.Select(member => _theory.Member.Of(form, member)));
+                facts.AddRange(form.Members.Select(member => _theory.Member.Of(form, member)));
 
             if (form.Kind == ServiceFormKind.And)
                 facts.AddRange(form.Flat.Select(member => _theory.Conjunct.Of(form, member)));
