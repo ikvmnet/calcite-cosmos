@@ -112,8 +112,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A cell answers within what the coarse reading answers on its state, but for the raises a raw and a typed reading
-        /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column over a structure; and what
-        /// an integer type's column reads of a fraction whose double is whole, where the coarse reading raises alone.
+        /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
+        /// over a structure; and what an integer type's column reads of a fraction whose double is whole, where the coarse
+        /// reading raises alone.
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
@@ -121,8 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var wider = new List<string>();
             foreach (var atom in Atoms())
             {
-                var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) && atom.Reader != "typed:DECIMAL"
-                    ? Truths.Raises : Truths.None;
+                var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
                     if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(atom.Reader is "typed:INTEGER" or Bigint && Fractional(cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
                         wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");

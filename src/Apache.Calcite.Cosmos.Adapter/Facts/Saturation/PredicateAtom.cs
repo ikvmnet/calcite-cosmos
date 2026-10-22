@@ -934,7 +934,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 static readonly ValueSet<string> TextRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.CastOfTheAccessorParsesTheRendering");
 
-                static readonly ValueSet<string> DecimalRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.ReturningDecimalParsesTheRendering");
+                static readonly ValueSet<string> DecimalRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.ReturningDecimalParsesTheRendering",
+                    "Calcite.ColumnReadsWholeNumbersAsItsType");
 
                 public override ValueSet<string> Rests => _parsesDecimal ? DecimalRows : _overText ? TextRows : ValueSet<string>.Empty;
 
@@ -942,12 +943,35 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public override Truths OrderOn(PathCell cell, string op, string literal) => On(cell, op, literal);
 
+                public override Truths NullOn(PathCell cell) => Null(cell.Coarse) | (_parsesDecimal && cell is PathCell.Structure ? R : Truths.None);
+
+                /// <summary>
+                /// The conversion's answer, and under <c>DECIMAL</c> a <c>DECIMAL</c> column's beside it: the loader writes
+                /// <c>typed:DECIMAL</c> for both, so a cell reads their union (decision D12).
+                /// </summary>
+                Truths On(PathCell cell, string op, string literal) => Converted(cell, op, literal) | (_parsesDecimal ? Column(cell, op, literal) : Truths.None);
+
+                /// <summary>
+                /// What a <c>DECIMAL</c> column answers (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>): a number's text
+                /// compared exactly, where the clause reads a fraction through its double's rendering; null as null; and a raise
+                /// over anything else, which the reader refuses.
+                /// </summary>
+                static Truths Column(PathCell cell, string op, string literal) => cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    PathCell.Point { Value: var v } when IsNumber(v) => TryNumberOf(literal, out var c)
+                        ? Placed(op, [TryNumberOf(v, out var x) ? x.CompareTo(c) : DoubleBound.Compare(ApproximateOf(v)!.Value, c)], Truths.None) : T | F,
+                    PathCell.Numbers n => TryNumberOf(literal, out var c) ? Placed(op, [n.Side(c)], Truths.None) : T | F,
+                    _ => R,
+                };
+
                 /// <summary>
                 /// A cell's answer where the conversion places it one way: a string or a boolean over text by the reading's own
-                /// parse; a number by its double under <c>DOUBLE</c>, by value under <c>DECIMAL</c>, and as written under an integer
-                /// type's parse; elsewhere, and over a raw value, which no cell is cut for (<c>ReaderEdgesTable</c>), the state's.
+                /// parse; a number by its double under <c>DOUBLE</c>, by its rendering under <c>DECIMAL</c>, and as written under
+                /// an integer type's parse; elsewhere, and over a raw value, which no cell is cut for (<c>ReaderEdgesTable</c>),
+                /// the state's.
                 /// </summary>
-                Truths On(PathCell cell, string op, string literal)
+                Truths Converted(PathCell cell, string op, string literal)
                 {
                     if (TryNumberOf(literal, out var c) == false || _parsesDecimal && c != decimal.Truncate(c))
                         return Compare(cell.Coarse, op, literal);

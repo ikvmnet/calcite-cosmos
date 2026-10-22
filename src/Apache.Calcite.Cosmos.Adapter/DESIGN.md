@@ -6501,8 +6501,7 @@ beside every cut.
 
 **Each reader's edges are a row** (`ReaderEdgesTable`): an integer type's limits, and a cast's one either side of a
 literal, where it raises, truncates or saturates; a double edge for every reading that compares a double; and the text
-a literal renders as for a parse, which reads `"2"` as 2, so `RETURNING DECIMAL = 2` over a string has the definite cell
-`"2"`. A cast of a raw value has none, to text or to a number: each column the raw value is read through casts as its
+a literal renders as for a parse, which reads `"2"` as 2. A cast of a raw value has none, to text or to a number: each column the raw value is read through casts as its
 own, an `ANY` wrapping a long beyond an int where a `VARIANT` raises, and no row states it (`TODO.md`).
 
 **A typed reading is the union of `RETURNING` and the column, read from the code.** `RETURNING` reads an integer written
@@ -6514,8 +6513,10 @@ typed reading leaves both out (`TODO.md`), and the cells do not copy it. A cast 
 by its own grammar, trimmed as Java's `String.trim` trims, of every character up to U+0020 — Java's integer parse, a
 double parse that reads no type suffix, or `BigDecimal`'s (`Renderings`), which `IrEvalCalciteTests` holds to Calcite
 over numbers padded with control characters — and a `BIGINT` cast reads text that starts `199` and holds a colon as a
-timestamp, which no cell places. `RETURNING DECIMAL` reads a number not written as an integer through its double's
-rendering.
+timestamp, which no cell places. `typed:DECIMAL` is `RETURNING DECIMAL` and a `DECIMAL` column at once: the clause
+reads a number not written as an integer through its double's rendering and a string by its parse, the column a
+number's text exactly and raises over anything else, and the cells read both. So the string `"2"` is TRUE to
+`RETURNING DECIMAL = 2` beside the column's raise, and no cell of it is definite.
 
 **The service compares the value it holds** (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as itself, any other
 number as its double, by value. A whole number in int64, or in [2^63, 2^64), which the emulator holds as written, may
@@ -6548,7 +6549,8 @@ the refusal path they skip), and a plant is the flow's `AsyncLocal`, so a planni
 unplanted runs: what is written changes under the fault and is the tip's again after it, and each trigger it was found by
 is refuted with the least refuting cell by text — for M5 a null category beside the label `bikes`, for M9 a boolean
 `false` or a fraction, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
-since a number equal to 30 may render so or not. The controls are reported: X1's `CASE` condition, in a predicate's place, is
+since a number equal to 30 may render so or not; and M10's path over the string `"2"`, TRUE to the clause beside a
+`DECIMAL` column's raise, is unproven too, so nine of the ten are caught. The controls are reported: X1's `CASE` condition, in a predicate's place, is
 opaque to the loader, so its text is skipped as the tip's was; X2's dropped type test lets a structure through, which
 `RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
 
@@ -6623,9 +6625,8 @@ guard those facts delete is gone only where they hold: beside `kind = 'b'`, wher
 weakening is the bare bound `c.label > @p0`, implied there and unproven from the root. A residual conjunct's facts enter
 no round, so the stratum assumes nothing the check holds. A refutation is a row lost, triaged as an exact push's is.
 
-**Implied counts toward no line but soundness**, which source A samples as it does every proof — a `RETURNING DECIMAL`
-in the clause's mode alone, since S reads it as the clause's parse and `IrEval` models no column of it; coverage is the
-exact pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
+**Implied counts toward no line but soundness**, which source A samples as it does every proof, a `RETURNING DECIMAL`
+in both typed modes; coverage is the exact pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
 outside the IR, none refuted. The unproven are orderings over strings that may hold U+0000, the text cast of a raw value,
 numbers past 2^53, and a weakening shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`
 for `NOT (a OR b)` — which S composes only where the form is the join of its children's.

@@ -2754,10 +2754,12 @@ across documents* and *A join of a container to itself* is the record.
   = 'bikes' OR CAST(… AS DOUBLE) > 50)`, and `IS_DEFINED(c.price)` for a negated `BETWEEN` are unproven, never refuted.
   Reading a negated junction through De Morgan, or a presence test over the cells of every path it names, would prove
   them; the weakening checks report them beside the others.
-- **A column typed `DECIMAL` is read as `RETURNING DECIMAL`'s parse, unmeasured** — *small.* The loader writes
-  `typed:DECIMAL` for both, and `PredicateAtom` and the cells read it as the clause's parse; no `Calcite.*` row measures
-  the column, so `IrEval` has no column mode for it and source A judges such a proof in the clause's mode alone. The
-  weakening checks' ten `RETURNING DECIMAL` proofs a pull request were the first it met.
+- **`typed:DECIMAL` is the clause and a `DECIMAL` column at once, so M10 is unproven** — *small, for D12.* The loader
+  writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
+  and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
+  `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
+  definite cell: the mutation line holds nine of ten. The coarse reading leaves the column's raise over a structure out
+  of `IS NULL`. The column's own reading in the IR would give both back.
 - **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
   translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
   text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node

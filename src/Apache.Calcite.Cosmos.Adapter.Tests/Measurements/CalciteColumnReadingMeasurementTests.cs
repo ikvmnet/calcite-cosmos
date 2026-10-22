@@ -13,8 +13,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
 
     /// <summary>
-    /// What a column typed <c>BIGINT</c>, <c>INTEGER</c>, <c>DOUBLE</c> or <c>BOOLEAN</c> holds, from the JSON the
-    /// service returns to the comparison Calcite makes of it.
+    /// What a column typed <c>BIGINT</c>, <c>INTEGER</c>, <c>DOUBLE</c>, <c>DECIMAL</c> or <c>BOOLEAN</c> holds, from the
+    /// JSON the service returns to the comparison Calcite makes of it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -74,12 +74,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Readable(SqlTypeName.BOOLEAN).Ask(connection, "\"v\" = TRUE", "\"v\" <> TRUE", "\"v\" < TRUE", "\"v\" <= TRUE", "\"v\" > TRUE", "\"v\" >= TRUE", "\"v\" IS NULL").Should().Equal(
                 "TFUU", "FTUU", "FTUU", "TTUU", "FFUU", "TFUU", "FFTT");
 
+            // A number not written as an integer is read through its double where that is whole and in range: a fraction
+            // that rounds to one, and past 2^53 one written with a point. DECIMAL reads a number's text exactly, and refuses
+            // anything but a number.
+            string?[] doubled = ["9007199254740992.5", "9007199254740993.0", "5.0000000000000001", "10000000000000000000.0", "\"2\"", "{}"];
+            Reads(SqlTypeName.BIGINT, doubled).Should().Equal("9007199254740992", "9007199254740992", "5", "raises", "raises", "raises");
+            Reads(SqlTypeName.INTEGER, doubled).Should().Equal("raises", "raises", "5", "raises", "raises", "raises");
+            Reads(SqlTypeName.DECIMAL, doubled).Should().Equal("9007199254740992.5", "9007199254740993.0", "5.0000000000000001", "10000000000000000000.0", "raises", "raises");
+            MaterialisedTable.Of(SqlTypeName.BIGINT, ["9007199254740993.0"]).Ask(connection, "\"v\" = 9007199254740992", "\"v\" = 9007199254740993").Should().Equal("T", "F");
+            MaterialisedTable.Of(SqlTypeName.DECIMAL, ["2.0000000000000001", "2", "null"]).Ask(connection, "\"v\" = 2", "\"v\" > 2", "\"v\" IS NULL").Should().Equal("FTU", "TFU", "FFT");
+
             // Where RETURNING raises over what the column reads.
             MaterialisedTable.Of(new[] { "{\"v\":42.0}" }).Failure(connection, "JSON_VALUE(\"d\", '$.v' RETURNING INTEGER) = 42").Should().BeOfType<InvalidCastException>("Jackson reads 42.0 as a Double");
             MaterialisedTable.Of(new[] { "{\"v\":42}" }).Failure(connection, "JSON_VALUE(\"d\", '$.v' RETURNING BIGINT) = 42").Should().BeOfType<InvalidCastException>("Jackson reads 42 as an Integer");
         }
 
-        static string[] Reads(SqlTypeName type) => Values.Select(v =>
+        static string[] Reads(SqlTypeName type, string?[]? values = null) => (values ?? Values).Select(v =>
         {
             try
             {

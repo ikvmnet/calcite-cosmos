@@ -398,9 +398,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// A column typed <c>type</c>: what <c>CosmosJson.GetInteger</c>, <c>GetDouble</c> and <c>GetBoolean</c> read,
-        /// and a failed read, which fails the statement, where they refuse. An integer type holds a whole number in its
-        /// range, a stored <c>42.0</c> among them; a floating type any number; <c>BOOLEAN</c> a boolean.
+        /// A column typed <c>type</c>: what <c>CosmosJson.GetInteger</c>, <c>GetDouble</c>, <c>GetDecimal</c> and
+        /// <c>GetBoolean</c> read, and a failed read, which fails the statement, where they refuse. An integer type holds a
+        /// whole number in its range, a stored <c>42.0</c> among them; a floating type any number; <c>DECIMAL</c> a number's
+        /// text exactly; <c>BOOLEAN</c> a boolean.
         /// </summary>
         static SqlDatum Column(J? value, string type)
         {
@@ -434,6 +435,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     return value switch
                     {
                         J.Num n => new SqlDatum.Double(DoubleBound.Of(n.Value)),
+                        J.Huge h => new SqlDatum.Double(h.Value),
+                        _ => SqlDatum.Raise,
+                    };
+
+                case "DECIMAL":
+                    return value switch
+                    {
+                        J.Num x => new SqlDatum.Exact(x.Value),
                         J.Huge h => new SqlDatum.Double(h.Value),
                         _ => SqlDatum.Raise,
                     };

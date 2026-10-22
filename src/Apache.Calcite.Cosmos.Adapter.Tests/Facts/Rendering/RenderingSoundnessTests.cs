@@ -170,14 +170,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             public List<string> Witnesses { get; } = [];
 
             /// <summary>
-            /// Judges a proof on a document: every typed mode that answers against every target, a failure never allowed,
-            /// <c>Equal</c> keeping alike and <c>Implies</c> keeping at least Calcite's row. A mode <c>IrEval</c> does not
-            /// model — the column of a <c>RETURNING DECIMAL</c>, which S reads as the clause's parse — is left out, and a
-            /// document no mode measures is unmeasured.
+            /// Judges a proof on a document: every typed mode against every target, a failure never allowed, <c>Equal</c>
+            /// keeping alike and <c>Implies</c> keeping at least Calcite's row. A document on which a mode tosses a coin or is
+            /// not modelled is unmeasured.
             /// </summary>
             public void Judge(SqlPredicate ir, ServiceForm form, Verdict claim, J.Obj document, World world, string where)
             {
-                var (calcite, measured) = (new List<Truths>(), false);
+                var calcite = new List<Truths>();
                 foreach (var mode in Modes)
                 {
                     var tossed = world.Tossed;
@@ -188,7 +187,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                     catch (NotSupportedException)
                     {
-                        continue;
+                        Unmeasured++;
+                        return;
                     }
 
                     if (world.Tossed != tossed)
@@ -197,18 +197,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         return;
                     }
 
-                    measured = true;
                     if (truth != Truths.Raises)
                         calcite.Add(truth);
                 }
 
                 if (calcite.Count == 0)
                 {
-                    if (measured)
-                        Skipped++;
-                    else
-                        Unmeasured++;
-
+                    Skipped++;
                     return;
                 }
 

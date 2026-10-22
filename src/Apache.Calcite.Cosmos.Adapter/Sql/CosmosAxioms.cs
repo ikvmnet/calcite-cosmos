@@ -293,8 +293,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ── What Calcite compares, in the columns the reader fills: the rendering check's Calcite side ──
 
             new("Calcite.ColumnReadsWholeNumbersAsItsType",
-                "A column typed BIGINT or INTEGER reads a stored number whose value is whole and in the type's range as the type, 42.0 included, and fails the statement over a fraction, a number beyond the type, a string and a boolean; DOUBLE reads every number, BOOLEAN a boolean alone, and each compares and orders as its type. RETURNING raises over 42.0 under INTEGER and over an int-sized number under BIGINT.",
-                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteColumnReadingMeasurementTests.EachColumnReadsAndComparesAsItsType"),
+                "A column typed BIGINT or INTEGER reads a stored number written as an integer in the type's range as the type, and any other number as its double where that is whole and in the type's range: 42.0, a fraction that rounds to a whole double, and past 2^53 one written with a point as that double. It fails the statement over any other number, a string and a boolean. DOUBLE reads every number as its double, DECIMAL a number's text exactly and nothing else, BOOLEAN a boolean alone, and each compares and orders as its type. RETURNING raises over 42.0 under INTEGER and over an int-sized number under BIGINT.",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 22), "Measurements.CalciteColumnReadingMeasurementTests.EachColumnReadsAndComparesAsItsType"),
             new("Calcite.RawStringEqualityIsOrdinal",
                 "A raw value in a VARIANT, an ANY or a VARCHAR column is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not another case, not a trailing space, not a number, a boolean or a structure.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawValueIsEqualToTheStringOfItsUnitsAlone"),

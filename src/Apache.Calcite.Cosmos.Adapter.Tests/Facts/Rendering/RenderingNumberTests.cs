@@ -89,17 +89,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Verdict.Kind.Should().Be(RenderingVerdictKind.Proven);
 
         /// <summary>
-        /// <c>RETURNING DECIMAL = 2</c> over a declared string has the definite cell <c>"2"</c>, the literal's rendering: Calcite
-        /// parses it and answers TRUE, and the path written for the accessor, as M10 writes it, is refuted there.
+        /// <c>typed:DECIMAL = 2</c> is <c>RETURNING DECIMAL</c>'s parse and a <c>DECIMAL</c> column at once (decision D12): over
+        /// a declared string the cell <c>"2"</c>, the literal's rendering, is TRUE to the clause, which parses it, beside the
+        /// column's raise, so the path written for the accessor, as M10 writes it, is not refuted there; and a fraction whose
+        /// double is 2, which the clause reads as 2 and the column as itself, is TRUE or FALSE beside the service's true.
         /// </summary>
         [Fact]
-        public void TheParseOfAStringPointIsADefiniteCell()
+        public void ADecimalReadsTheClausesParseBesideTheColumns()
         {
-            var (verdict, outcomes) = Check(Cmp(Typed(BodyPath, "DECIMAL"), "=", SqlValue.Of(2m)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Body, Of(2m)), BodyPath,
-                PathValues.OfKinds(ValueSet.Of(StringType)));
-            outcomes!.Cells.Single(c => c.Cell == new PathCell.Point(Of("2"))).Class.Calcite.Should().Be(Truths.True);
-            verdict.Kind.Should().Be(RenderingVerdictKind.Refuted);
-            verdict.Refutation!.Cells.Should().Equal(ValueSet.Of(Body + "=" + Of("2")));
+            var form = ServiceForm.CompareOf(CosmosServiceTest.Equal, Body, Of(2m));
+            var (verdict, outcomes) = Check(Cmp(Typed(BodyPath, "DECIMAL"), "=", SqlValue.Of(2m)), form, BodyPath, PathValues.OfKinds(ValueSet.Of(StringType)));
+            outcomes!.Cells.Single(c => c.Cell == new PathCell.Point(Of("2"))).Class.Calcite.Should().Be(Truths.True | Truths.Raises);
+            verdict.Kind.Should().Be(RenderingVerdictKind.Unproven);
+
+            (verdict, outcomes) = Check(Cmp(Typed(BodyPath, "DECIMAL"), "=", SqlValue.Of(2m)), form, BodyPath, PathValues.OfKinds(ValueSet.Of(FractionType)));
+            outcomes!.Cells.Single(c => c.Cell.Contains(Of(2.0000000000000001m))).Class.Should().Be(new CellClass(Truths.True | Truths.False, ServiceOutcomes.True));
+            verdict.Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 
         /// <summary>

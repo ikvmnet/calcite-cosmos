@@ -51,7 +51,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             [M8] = [(Typed + Label + " <> 'true'", "$[\"label\"]=boolean|true (F,t)"), (Typed + Label + " <> '30'", null), (Typed + Label + " <> 'bikes'", "Exact")],
             [M9] = [(Typed + Label + " > 'bikes'", "$[\"label\"]=boolean|false (T,u)"), (Typed + Label + " < 'bikes'", "$[\"label\"]=fractions (T,u)"),
                 (Typed + Label + " >= '30'", "$[\"label\"]=boolean|false (T,u)")],
-            [M10] = [("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2", "$[\"body\"]=string|2 (T,f)")],
+            // A DECIMAL column, which typed:DECIMAL is too, raises over the string "2" the clause parses: no cell is definite.
+            [M10] = [("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2", "Unproven")],
             // Its weakening is what M11 changes, and what it reads is the weakening's (M11IsCaughtAsImpliedToUnproven).
             [M11] = [(Typed + Label + " = '30'", null), (Typed + $"CAST({Label} AS VARCHAR) = '30'", null),
                 ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" = '30'", null)],

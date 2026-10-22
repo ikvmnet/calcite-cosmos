@@ -246,8 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 return random.Next(2) == 0 ? SqlPredicate.AllOf(arms) : SqlPredicate.AnyOf(arms);
             }
 
-            // DECIMAL is no column the reader was measured over.
-            var types = drawn.Typed == IrEval.TypedAs.Column ? new[] { "INTEGER", "BIGINT", "DOUBLE", "BOOLEAN" } : new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
+            var types = new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
             var path = Paths[random.Next(Paths.Length)];
             SqlValue reading = random.Next(12) switch
             {
