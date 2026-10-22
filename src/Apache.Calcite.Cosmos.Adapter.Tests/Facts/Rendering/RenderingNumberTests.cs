@@ -102,6 +102,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             verdict.Refutation!.Cells.Should().Equal(ValueSet.Of(Body + "=" + Of("2")));
         }
 
+        /// <summary>
+        /// A cast's parse trims as Java does, every character up to U+0020: <c>CAST(… AS INTEGER) = 12</c> is TRUE of the string
+        /// U+0001 then 12, so its path compared with <c>"12"</c> is refuted there; and <c>BIGINT</c> reads text shaped as a
+        /// timestamp as one, which no cell says.
+        /// </summary>
+        [Fact]
+        public void ACastsParseTrimsAsJavaDoes()
+        {
+            var padded = Of("\u000112");
+            var (verdict, outcomes) = Check(Cmp(Cast("INTEGER", Text(BodyPath)), "=", SqlValue.Of(12m)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Body, Of("12")), BodyPath,
+                PathValues.OneOf(ValueSet.Of(padded, Of("5"))));
+            outcomes!.Cells.Single(c => c.Cell == new PathCell.Point(padded)).Class.Should().Be(new CellClass(Truths.True, ServiceOutcomes.False));
+            verdict.Kind.Should().Be(RenderingVerdictKind.Refuted);
+
+            var stamp = Of("1990-01-01 00:00:05");
+            Check(Cmp(Cast("BIGINT", Text(BodyPath)), "=", SqlValue.Of(5m)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Body, Of("5")), BodyPath, PathValues.OneOf(ValueSet.Of(stamp)))
+                .Outcomes!.Cells.Single(c => c.Cell == new PathCell.Point(stamp)).Class.Calcite.Should().Be(Truths.True | Truths.False | Truths.Raises);
+        }
+
         /// <summary>Checks a claim of a form for a conjunct over one path, imported whole, under the asserted set.</summary>
         static (RenderingVerdict Verdict, CellOutcomes? Outcomes) Check(SqlPredicate conjunct, ServiceForm form, JsonDocumentPath path, PathValues values, RenderingTheory? theory = null)
         {

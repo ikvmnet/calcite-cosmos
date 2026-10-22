@@ -6510,8 +6510,11 @@ double where that is whole and within the type: 42.0, a fraction that rounds to 
 integer (`CosmosJson.GetInteger`). So a `BIGINT` past 2^53 answers both ways at the literal, and a bound one off under an
 int is unproven, not refuted, since `RETURNING` raises there; the column's own reading is decision D12's. The coarse
 typed reading leaves both out (`TODO.md`), and the cells do not copy it. A cast or `RETURNING DECIMAL` reads a string
-by its own grammar — Java's integer parse, its double parse, or `BigDecimal`'s (`Renderings`) — and `RETURNING DECIMAL`
-reads a number not written as an integer through its double's rendering.
+by its own grammar, trimmed as Java's `String.trim` trims, of every character up to U+0020 — Java's integer parse, a
+double parse that reads no type suffix, or `BigDecimal`'s (`Renderings`), which `IrEvalCalciteTests` holds to Calcite
+over numbers padded with control characters — and a `BIGINT` cast reads text that starts `199` and holds a colon as a
+timestamp, which no cell places. `RETURNING DECIMAL` reads a number not written as an integer through its double's
+rendering.
 
 **The service compares the value it holds** (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as itself, any other
 number as its double, by value. A whole number in int64, or in [2^63, 2^64), which the emulator holds as written, may

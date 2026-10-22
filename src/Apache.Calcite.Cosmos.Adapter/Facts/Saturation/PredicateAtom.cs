@@ -955,10 +955,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     var (least, most) = _saturates ?? (0m, 0m);
                     switch (cell)
                     {
-                        // A boolean renders as text that spells no number, and a NaN compares as nothing Java says alike.
+                        // A boolean renders as text that spells no number, a NaN compares as nothing Java says alike, and BIGINT reads
+                        // text shaped as a timestamp as one.
                         case PathCell.Point { Value: var v } when _overText && (IsString(v) || TypeOf(v) == BooleanType):
                         {
                             var text = IsString(v) ? StringOf(v) : Renderings.BooleanText(v);
+                            if (_saturates?.Max == long.MaxValue && Renderings.ReadsAsTimestamp(text))
+                                return T | F | R;
+
                             return _roundsFrom is not null ? (Renderings.ParseDouble(text) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(DoubleBound.Of(c)), 0) : R)
                                 : _parsesDecimal ? (Renderings.ParseDecimal(text) is string n ? By(TryNumberOf(n, out var e) ? e.CompareTo(c) : DoubleBound.Compare(ApproximateOf(n)!.Value, c), 0) : R)
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;

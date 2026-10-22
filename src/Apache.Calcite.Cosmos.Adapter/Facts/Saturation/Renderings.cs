@@ -169,20 +169,29 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static double DoubleOf(string value) =>
             TryNumberOf(value, out var exact) ? (double)exact : ApproximateOf(value) ?? double.NaN;
 
-        // A cast of text to a number, as Calcite converts one: the text trimmed, then parsed by Java, which raises on what
-        // it cannot parse (CalciteJsonValueMeasurementTests); null is the raise. The grammars are compiled on first use, so
-        // that planning, which reads this class, builds none.
-        static string Trimmed(string text) => text.Trim(' ', '\t', '\n', '\r', '\f', '\v', '\0');
+        // A cast of text to a number, as Calcite converts one: the text trimmed as Java's String.trim trims, every character
+        // up to U+0020 off either end, then parsed by Java, which raises on what it cannot parse
+        // (CalciteJsonValueMeasurementTests); null is the raise. The grammars are compiled on first use, so that planning,
+        // which reads this class, builds none.
+        static string Trimmed(string text) => text.Trim(JavaTrims);
+
+        static readonly char[] JavaTrims = [.. Enumerable.Range(0, ' ' + 1).Select(c => (char)c)];
+
+        /// <summary>
+        /// Whether Calcite's cast of text to <c>BIGINT</c> reads it as a timestamp rather than parsing it: text that starts
+        /// <c>199</c>, untrimmed, and holds a colon (<c>SqlFunctions.toLong</c>), whose value hangs on the local time zone.
+        /// </summary>
+        public static bool ReadsAsTimestamp(string text) => text.StartsWith("199", StringComparison.Ordinal) && text.Contains(':');
 
         /// <summary>Java's integer parse, for <c>INTEGER</c> and <c>BIGINT</c>: a whole number within the type, or <c>null</c>.</summary>
         public static decimal? ParseInteger(string text, decimal least, decimal most) =>
             Regex.IsMatch(Trimmed(text), @"^[+-]?[0-9]+$", RegexOptions.CultureInvariant)
             && decimal.TryParse(Trimmed(text), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var whole) && whole >= least && whole <= most ? whole : null;
 
-        /// <summary>Java's double parse, for <c>DOUBLE</c>, correctly rounded; or <c>null</c>.</summary>
+        /// <summary>The double parse of <c>DOUBLE</c>, correctly rounded, which takes no type suffix; or <c>null</c>.</summary>
         public static double? ParseDouble(string text) =>
-            Regex.IsMatch(Trimmed(text), @"^[+-]?(NaN|Infinity|(([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?[fFdD]?))$", RegexOptions.CultureInvariant)
-            && double.TryParse(Trimmed(text).TrimEnd('f', 'F', 'd', 'D'), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+            Regex.IsMatch(Trimmed(text), @"^[+-]?(NaN|Infinity|(([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?))$", RegexOptions.CultureInvariant)
+            && double.TryParse(Trimmed(text), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
 
         /// <summary>
         /// <c>BigDecimal</c>'s parse, for <c>RETURNING DECIMAL</c>: the number in <see cref="JsonValues"/>' spelling, held

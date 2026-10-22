@@ -452,6 +452,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static SqlDatum Parse(string? text, string target) => text is null ? SqlDatum.Null : target switch
         {
+            "BIGINT" when Renderings.ReadsAsTimestamp(text) => throw new NotSupportedException("BIGINT reads it as a timestamp in the local time zone"),
             "INTEGER" or "BIGINT" => Renderings.ParseInteger(text, target == "INTEGER" ? int.MinValue : long.MinValue, target == "INTEGER" ? int.MaxValue : long.MaxValue) is decimal whole
                 ? new SqlDatum.Exact(whole) : SqlDatum.Raise,
             "DOUBLE" => Renderings.ParseDouble(text) is double d ? new SqlDatum.Double(d) : SqlDatum.Raise,
