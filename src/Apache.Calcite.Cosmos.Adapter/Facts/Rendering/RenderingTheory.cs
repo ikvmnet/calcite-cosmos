@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
             Under = Graph.DefineRelation<RenderingSet>("under");
             Imported = Graph.DefineFunction<JPath, PathValues>("imported");
-            Assumed = Graph.DefineFunction<JPath, PathValues>("assumed");
+            Assumed = Graph.DefineFunction<Pred, PathValues>("assumed");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
             Candidate = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("candidate");
@@ -167,15 +167,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<RenderPosition, RenderPosition> Opposite { get; }
 
         // A bundle's tables. The host writes a path's spelling beside its term (a merge of two paths would give one class
-        // two spellings, and throw), the set, each import once and lattice-free, beside it what the stratum its earliest
-        // round was rendered from says the path may hold (`assumed`, the import where none narrows it), and the root's
+        // two spellings, and throw), the set, each import once and lattice-free, beside each atom what the facts its
+        // conjunct was rendered from say its path may hold (`assumed`, anything where none is read), and the root's
         // candidate with every member of its junctions as written and each conjunction's members, nested ones flattened;
         // the rules write the rest, the candidates beneath the root and the members of a junction's rest among them.
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
         public Function<JPath, PathValues> Imported { get; }
-        public Function<JPath, PathValues> Assumed { get; }
+        public Function<Pred, PathValues> Assumed { get; }
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
         public Relation<Pred, RenderPosition, ServiceForm> Candidate { get; }
@@ -409,10 +409,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, x, k, y) = r.Vars<RenderPosition, PathValues, ValueSet<string>, PathValues>("pos", "x", "k", "y");
                 var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(p)), n.Is(Spelling.Of(p)),
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(e)), n.Is(Spelling.Of(p)),
                     rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split), y, definition.SetAside)));
+                var cuts = Compute.Of(a, f, g, definition.Cut);
+                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, cuts, definition.Split), y, k, cuts, definition.SetAside)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>
@@ -503,9 +504,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, z, v) = r.Vars<RenderPosition, CellPartition, OutcomeVector>("pos", "z", "v");
-                var mn = r.Var<AnswerMeanings>("mn");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()));
-                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, definition.Pair)));
+                var (mn, tol) = r.Vars<AnswerMeanings, Truths>("mn", "tol");
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()), tol.Is(Tolerated.Of()));
+                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, tol, definition.Pair)));
             });
 
             // The universal over cells: the cells' classes are complete (lattice-free), and the allowed ones the theory's.

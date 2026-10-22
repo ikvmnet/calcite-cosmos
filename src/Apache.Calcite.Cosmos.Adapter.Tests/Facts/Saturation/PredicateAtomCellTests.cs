@@ -41,7 +41,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static readonly JsonDocumentPath A = JsonDocumentPath.Root.Property("a");
 
-        /// <summary>Nothing known, a declared string, a non-negative integer, a domain, and a value excluded.</summary>
+        /// <summary>
+        /// Nothing known, a declared string, a non-negative integer, a domain, a value excluded, and a fraction a decimal's
+        /// cast to a double misses.
+        /// </summary>
         static readonly PathValues[] Imports =
         {
             PathValues.Anything,
@@ -49,6 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m))),
             PathValues.OneOf(ValueSet.Of(Of("30"), Of("x"), Of(30m), Of(2.5m), Of(true), NullValue)),
             PathValues.Meet(PathValues.AnythingThere, PathValues.Not(Of("x"))),
+            PathValues.OneOf(ValueSet.Of(Of(9007199254740994.4m))),
         };
 
         /// <summary>The values a cell is asked of, beside its witness: the grid's stored values and population D's.</summary>
@@ -113,25 +117,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// A cell answers within what the coarse reading answers on its state, but for the raises a raw and a typed reading
         /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
-        /// over a structure; and what an integer type's column reads of a fraction whose double is whole, where the coarse
-        /// reading raises alone.
+        /// over a structure; and where a reading compares a number's double, which the coarse reading compares by value
+        /// (<c>TODO.md</c>). A conjunct the check run reads a stratum beside is read so by neither.
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
         {
-            var wider = new List<string>();
-            foreach (var atom in Atoms())
+            var (wider, inexact) = (new List<string>(), new List<string>());
+            foreach (var atom in Atoms(boundaries: true))
             {
                 var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(atom.Reader is "typed:INTEGER" or Bigint && Fractional(cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
+                {
+                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
                         wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if (Rendering.RenderingCheckRun.ReadExactly(Predicate(atom)) && (atom.OnCell(cell) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
+                        inexact.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                }
             }
 
             wider.Should().BeEmpty();
+            inexact.Should().BeEmpty("the check run reads a stratum beside a conjunct read so as the facts graph reads it");
         }
 
         static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;
+
+        /// <summary>
+        /// Whether the coarse reading compares a number's value where Calcite compares its double: an integer type's column
+        /// and <c>DECIMAL</c>'s clause, which read a number written with a point through it, a double, and the cast to a
+        /// double, whose decimal the coarse reading converts by a cast that misses at rounding boundaries
+        /// (<c>Renderings.DoubleOf</c>).
+        /// </summary>
+        static bool Rounded(PredicateAtom atom, PathCell cell) => (cell.Coarse is PredicateAtom.State.AnyNumber || cell.Coarse is PredicateAtom.State.Scalar { Value: var v } && IsNumber(v))
+            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text";
 
         /// <summary>A cell cut at the atom's literals answers within the cell it lies in, cut at none.</summary>
         [Fact]

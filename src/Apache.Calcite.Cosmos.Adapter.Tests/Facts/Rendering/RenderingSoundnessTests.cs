@@ -57,35 +57,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Source A: each memo entry with a proof, at the root or of a conjunct at its own position, judged on documents
-        /// drawn from its import. A document a stratum's facts rule out beside the conjuncts it assumes is no declared one,
-        /// and a conjunct proven beside such a stratum's facts is judged only where those conjuncts hold.
+        /// drawn from its import. A document an atom's stratum rules out beside the conjuncts that stratum assumes is no
+        /// declared one, and a conjunct proven beside its stratum's facts is judged only where those conjuncts hold.
         /// </summary>
         internal static Tally SourceA(RenderingCheckRun run, Tally? tally = null, IReadOnlyList<J.Obj>? declared = null)
         {
             tally ??= new Tally();
             foreach (var check in run.Conjuncts.Where(c => c.Entry?.What is not null).GroupBy(c => c.Entry!.Id).Select(g => g.First()))
-                SourceA(tally, check.Entry!, check.Assumes, $"{check.Input} {check.Name}#{check.Unit}, entry {check.Entry!.Id}", declared);
+                SourceA(tally, check.Entry!, $"{check.Input} {check.Name}#{check.Unit}, entry {check.Entry!.Id}", declared);
 
             return tally;
         }
 
         /// <summary>Source A over one entry; or source B's, over a trial's declared documents, which no stratum's facts rule out.</summary>
-        internal static void SourceA(Tally tally, RenderingMemo.Entry entry, IReadOnlyDictionary<string, int[]>? assumed, string where, IReadOnlyList<J.Obj>? declared = null)
+        internal static void SourceA(Tally tally, RenderingMemo.Entry entry, string where, IReadOnlyList<J.Obj>? declared = null)
         {
-            var (claim, world, assumes) = (entry.What!, new World(entry.Id), assumed ?? new Dictionary<string, int[]>());
-            bool Holds(J.Obj d, IEnumerable<string> paths) => paths.Where(assumes.ContainsKey).SelectMany(p => assumes[p])
-                .All(i => IrEval.Truth(claim.Conjuncts[i], d, world) == Truths.True);
+            var (claim, world) = (entry.What!, new World(entry.Id));
+            bool Holds(J.Obj d, IEnumerable<int> assumed) => assumed.All(i => IrEval.Truth(claim.Conjuncts[i], d, world) == Truths.True);
 
             var proofs = Proofs(entry, claim).ToList();
             tally.Proofs += proofs.Count;
             foreach (var document in proofs.Count == 0 ? [] : declared ?? RenderingDocumentSampler.Sample(claim))
             {
-                if (declared is null && assumes.Keys.Any(p => PopulationD.Admits(claim.Imports[p].Assumed, CosmosEval.At(document, p)) == false && Holds(document, [p])))
+                if (declared is null && claim.Stated.Any(b => PopulationD.Admits(b.Assumed, CosmosEval.At(document, b.Path)) == false && Holds(document, b.Assumes)))
                     continue;
 
                 tally.Judged++;
-                foreach (var (ir, form, verdict, paths) in proofs)
-                    if (paths is null || Holds(document, paths))
+                foreach (var (ir, form, verdict, conjunct) in proofs)
+                    if (conjunct is not int i || Holds(document, claim.Stated.Where(b => b.Conjunct == i).SelectMany(b => b.Assumes)))
                         tally.Judge(ir, form, verdict, document, world, where);
             }
         }
@@ -116,17 +115,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// An entry's proofs: of the claim at its root, over every document; and of each conjunct at its own position, with
-        /// the paths it reads, over the documents where the conjuncts its strata assume hold.
+        /// An entry's proofs: of the claim at its root, over every document; and of each conjunct at its own position, by its
+        /// position, over the documents where the conjuncts its stratum assumes hold.
         /// </summary>
-        static IEnumerable<(SqlPredicate Ir, ServiceForm Form, Verdict Claim, IReadOnlyList<string>? Paths)> Proofs(RenderingMemo.Entry entry, RenderingMemo.Claimed claim)
+        static IEnumerable<(SqlPredicate Ir, ServiceForm Form, Verdict Claim, int? Conjunct)> Proofs(RenderingMemo.Entry entry, RenderingMemo.Claimed claim)
         {
             if (entry.Asserted.Kind == RenderingVerdictKind.Proven)
                 yield return (claim.Conjuncts.Count == 1 ? claim.Conjuncts[0] : new SqlPredicate.And(claim.Conjuncts), claim.Form, entry.Key.Claim, null);
 
             for (var i = 0; i < claim.Conjuncts.Count; i++)
                 if (entry.Alone[i] is { Kind: RenderingVerdictKind.Proven } && claim.Members[i] is { } member)
-                    yield return (claim.Conjuncts[i], member, entry.Key.Claim, [.. claim.Conjuncts[i].Paths.Select(SqlValue.Spell)]);
+                    yield return (claim.Conjuncts[i], member, entry.Key.Claim, i);
         }
 
         /// <summary>A population D conjunct as Calcite SQL over the container, or <c>null</c> where it holds what no statement here writes.</summary>

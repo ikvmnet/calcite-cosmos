@@ -138,6 +138,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A stratum is stated beside an atom only as a later round of the import's statement, of a path it imported, and
+        /// admitting nothing the import does not; and an atom is stated beneath one stratum. Each plant is refused.
+        /// </summary>
+        [Fact]
+        public void AStratumIsStatedOfALaterRoundBesideItsImportAlone()
+        {
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
+            var atom = Eq(Text(LabelPath), "x");
+            var strings = PathValues.OfKinds(ValueSet.Of(JsonValues.StringType));
+            bundle.Write(atom);
+            bundle.Import(Source, LabelPath, strings, JsonValues.AllBands);
+            var later = Source with { Round = Source.Round + 1 };
+
+            FluentActions.Invoking(() => bundle.Assume(Source, atom, strings)).Should().Throw<InvalidOperationException>("the root's own round is no later one");
+            FluentActions.Invoking(() => bundle.Assume(later with { Statement = "another" }, atom, strings)).Should().Throw<InvalidOperationException>("another statement's");
+            FluentActions.Invoking(() => bundle.Assume(later, Eq(Text(KindPath), "a"), strings)).Should().Throw<InvalidOperationException>("a path not imported");
+            FluentActions.Invoking(() => bundle.Assume(later, atom, PathValues.Anything)).Should().Throw<InvalidOperationException>("more than the import admits");
+            bundle.Assume(later, atom, PathValues.Meet(strings, PathValues.Not(JsonValues.Of("y"))));
+            FluentActions.Invoking(() => bundle.Assume(later, atom, PathValues.Meet(strings, PathValues.Not(JsonValues.Of("z"))))).Should().Throw<InvalidOperationException>("beneath two strata");
+        }
+
+        /// <summary>
         /// Two imports that differ spell apart, though <see cref="PathValues"/> prints them alike: one string holding a
         /// comma, against two strings, would otherwise share a memo entry and its verdict.
         /// </summary>

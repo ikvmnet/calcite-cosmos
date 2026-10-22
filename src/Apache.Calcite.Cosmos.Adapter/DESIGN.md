@@ -6448,17 +6448,29 @@ shares it in a generation, so statements rooted apart fail the run. Its facts ar
 knowing the round-1 conjuncts hold: over `kinds`, where kind is `"a"` the label is a string, so `kind = 'a' AND label =
 '30'` is sent with a bare `c.label = @p1`. From the root alone a number 30 stands beside kind `"a"`, two paths a
 conditional rule ties that S imports apart, and the check was unproven, or refuted on a cell no declared document holds
-(differential 394, 405, 410). So each path a check reads is imported from the root and, beside it, from the stratum the
-earliest round that reads it was rendered from (`assumed`), where every conjunct that stratum assumes is in the check;
-a path two statements read keeps the root's alone, and one two rounds read is read where the earlier was rendered. A cell of the root's import the stratum admits nothing
-of (`PathCell.SetAside`) is held only by documents that fail a conjunct of the same junction, and is read as one Calcite
-raises on: the service may answer anything there but a failure, and the cell refutes nothing. That is sound for the claim
-at the root: the check is the `AND` of every conjunct at `Pos`; the assumed conjuncts read the root's cells and agree,
-so on a document outside the stratum both sides drop the row, and the service is still evaluated on every cell, so no
-failure hides there. A conjunct's own verdict beside such a cell is exact where the conjuncts its stratum assumes hold,
-which is what the translator's licence promised. No fact is met: the import stays one value a path, the cells the
-stratum rules out are set aside, never removed, and a path is never read beneath a stratum that assumes its own
-conjunct, which `ALaterRoundIsReadBesideTheFactsItWasRenderedFrom` plants.
+(differential 394, 405, 410). So each atom of a later round's conjunct is stated beside what its path may hold in the
+node the licence table rendered that conjunct from (`assumed`, `RenderingBundle.Assume`). No licence is chosen among:
+an atom reads its own conjunct's stratum, and one two conjuncts share reads none, since one may be what the other's
+stratum assumes. The bundle refuses a stratum that is no later round of the import's statements, one beside a path it
+did not import, and one that admits more than the import.
+
+**A stratum is read only where the facts graph reads what it assumes as Calcite does.** Every conjunct it assumes must
+be in the check, and read by the text accessor, typed `BOOLEAN`, a cast of the accessor to an integer type, a raw value
+beside no number, or a presence test (`RenderingCheckRun.ReadExactly`), whose coarse readings leave out no truth Calcite
+gives, which `CellAnswersStayInsideTheCoarseAnswer` holds them to. A stratum resting on a coarser reading can be wrong
+where the translator relied on it: the facts graph reads typed `INTEGER` `= 5` as the integer 5 alone, where a column
+reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would be
+proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+
+**A cell the stratum admits nothing of is set aside.** It is found by cutting the stratum's value where the import was
+cut (`PathCell.SetAside`): each of its cells lies within one of the import's, and a cell their inhabitants miss holds
+only documents that fail a conjunct of the same junction. Its Calcite truths are the policy's set-aside ones
+(`tolerated`, which the `classes` rule hands in): the service may answer anything there but a failure, and the cell
+refutes nothing. That is sound for the claim at the root: the check is the `AND` of every conjunct at `Pos`; the assumed
+conjuncts agree, so on a document outside the stratum both sides drop the row, and the service is still evaluated on
+every cell, so no failure hides there. A conjunct's own verdict beside such a cell is exact where the conjuncts its
+stratum assumes hold, which is what the translator's licence promised. No fact is met: the import stays one value a
+path from one node, and a stratum narrows only the cells of its own conjunct's atoms.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
 armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the

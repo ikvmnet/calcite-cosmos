@@ -2642,6 +2642,12 @@ across documents* and *A join of a container to itself* is the record.
   which population D holds it to, so neither sees it; the split rule's window for `CAST(… AS INTEGER) = 1` drops a stored
   4294967297 an `ANY` reads as 1. S cuts no cells for a raw cast, so its checks stay unproven, until a `Calcite.*` row
   states each column's cast and both graphs read it.
+- **The coarse cast to a double reads a decimal's double by .NET's cast** — *small, and it touches plans.*
+  `Renderings.DoubleOf` casts, which rounds twice and misses at 9007199254740994.4: the coarse `CAST(… AS DOUBLE) =
+  9007199254740994` answers FALSE of a stored 9007199254740994.4 where Calcite answers TRUE, and `Renderings.SameNumber`
+  reads a raw value's number alike. `DoubleBound`, which the cells read, parses the invariant text, as spec §3.14 asks of
+  the split; the facts graph reading it would change plans at such boundaries, and `CellAnswersStayInsideTheCoarseAnswer`
+  allows the cast's cells the truth its coarse reading leaves out.
 - **`RETURNING DECIMAL` compares a stored fraction through its double's rendering** — *small, and it touches plans.*
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
@@ -2650,11 +2656,13 @@ across documents* and *A join of a container to itself* is the record.
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A path two rounds read is read where the earlier was rendered** — *small.* A later round's conjunct is read beside
-  the facts it was rendered from (`DESIGN.md`), path by path, at the stratum of the earliest round that reads the path:
-  differential 404 reads `label` in round 1 (`label <> 'x'`) and round 2 (`label > 'm'`), so the ordering is read over
-  the root's label and stays unproven, as do 394, 405 and 410's orderings over strings that may hold U+0000. Reading
-  each atom at its own round would key the stratum by atom, not path; a path two statements read keeps the root's.
+- **A stratum resting on a coarse reading is not read beside a later round** — *small, and it touches plans.* A later
+  round's conjunct is read beside the facts it was rendered from only where the facts graph reads every conjunct that
+  stratum assumes as Calcite does (`DESIGN.md`); beside a typed number, `DECIMAL`, a double or a cast of a raw value the
+  stratum may be wrong, and the translator relies on it: over a typed column, kind 5.0000000000000001 reads as 5 and a
+  label the declaration leaves free beside it may be the number 7, which the bare `c.label = "7"` a later round writes
+  drops (`AStratumAConjunctReadCoarselyRestsOnIsNotRead`). Such a check stays unproven, and the push is the facts
+  graph's to fix, with its coarse readings (*F does not read the cell readings*, below).
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The

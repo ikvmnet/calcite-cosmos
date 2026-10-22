@@ -105,8 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var claim = entry.What!;
             using var bundle = ProbeRows.ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(claim.Conjuncts.Single());
-            foreach (var (path, import) in claim.Imports)
-                bundle.Import(ProbeRows.Source, CosmosEval.PathOf(path), import.Values, import.Chars, import.Assumed);
+            RenderingCheckRun.Restate(bundle, claim);
 
             bundle.Claim(root, claim.Form);
             bundle.Run();

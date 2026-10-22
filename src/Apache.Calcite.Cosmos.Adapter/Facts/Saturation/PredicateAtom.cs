@@ -993,9 +993,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
                         }
 
-                        case PathCell.Point { Value: var v } when _overText && _roundsFrom is not null && IsNumber(v):
+                        case PathCell.Point { Value: var v } when _roundsFrom is not null && IsNumber(v):
                             return By(Math.Sign(DoubleBound.Of(v).CompareTo(DoubleBound.Of(c))), 0);
-                        case PathCell.Numbers n when _overText && _roundsFrom is not null:
+                        case PathCell.Numbers n when _roundsFrom is not null:
                             return By(n.DoubleSide(DoubleBound.Of(c)), 0);
 
                         // A number written as an integer renders as its digits, and any other as its double does

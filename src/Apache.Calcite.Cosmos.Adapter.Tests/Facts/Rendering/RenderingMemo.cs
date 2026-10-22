@@ -52,14 +52,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingRun BesideRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure, Claimed? What = null);
 
         /// <summary>
-        /// What a check claimed of which conjuncts, over what its bundle imported, each path by its spelling, and the value
-        /// each refuting cell puts at its path, <c>null</c> for none: what source A samples, and a witness is made of.
+        /// What a check claimed of which conjuncts, over what its bundle imported, each path by its spelling, and each atom
+        /// read where its conjunct was rendered, and the value each refuting cell puts at its path, <c>null</c> for none:
+        /// what source A samples, and a witness is made of.
         /// </summary>
         public sealed record Claimed(IReadOnlyList<SqlPredicate> Conjuncts, ServiceForm Form, IReadOnlyList<ServiceForm?> Members,
-            IReadOnlyDictionary<string, Imported> Imports, IReadOnlyDictionary<string, string?>? Witness);
+            IReadOnlyDictionary<string, Imported> Imports, IReadOnlyList<Beneath> Stated, IReadOnlyDictionary<string, string?>? Witness);
 
-        /// <summary>One path's import, and what the stratum it was rendered from says it may hold.</summary>
-        public sealed record Imported(PathValues Values, ValueSet<string> Chars, PathValues Assumed);
+        /// <summary>One path's import.</summary>
+        public sealed record Imported(PathValues Values, ValueSet<string> Chars);
+
+        /// <summary>
+        /// An atom of the conjunct at a position read where that conjunct was rendered: what its path may hold there, and
+        /// the positions of the conjuncts that stratum assumes, which hold of every declared document beside it.
+        /// </summary>
+        public sealed record Beneath(int Conjunct, SqlPredicate Atom, ImportSource Source, PathValues Assumed, IReadOnlyList<int> Assumes)
+        {
+            public string Path => SqlValue.Spell(Atom.Paths.Single());
+        }
 
     }
 

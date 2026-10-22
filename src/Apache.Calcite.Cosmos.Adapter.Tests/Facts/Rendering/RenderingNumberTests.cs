@@ -69,9 +69,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var planted = RenderingTheory.Define(ProbeRows.Measured with
             {
-                Pair = (atom, vector, means) =>
+                Pair = (atom, vector, means, tolerated) =>
                 {
-                    var real = CellOutcomes.Of(atom, vector, means);
+                    var real = CellOutcomes.Of(atom, vector, means, tolerated);
                     var cells = ValueSet.From(real.Cells.Select(c => atom.Reader == "typed:BIGINT" && IntSized(c.Cell) ? c with { Class = c.Class with { Calcite = Truths.Raises } } : c));
                     return real with { Cells = cells, Classes = ValueSet.From(cells.Select(c => c.Class)) };
                 },

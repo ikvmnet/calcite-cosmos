@@ -90,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             entry.Asserted.Kind.Should().Be(RenderingVerdictKind.Proven, "the mutated leaf makes the gate agree");
 
             var tally = new RenderingSoundnessTests.Tally();
-            RenderingSoundnessTests.SourceA(tally, entry, null, "G3");
+            RenderingSoundnessTests.SourceA(tally, entry, "G3");
             tally.Witnesses.Should().Contain(w => w.Contains("on {\"label\":null}: Calcite Unknown", StringComparison.Ordinal));
         }
 

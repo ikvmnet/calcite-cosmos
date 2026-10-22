@@ -143,10 +143,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A later round's conjunct is read beside the facts it was rendered from. Where kind is "a" the label is a string,
-        /// so the bare equality a second round writes for text <c>label = '30'</c> is exact: a cell the first round's
-        /// conjunct rules out, the number 30 among them, is read as one Calcite raises on, which the service's answer
-        /// there refines but for a failure. From the root alone it is Unproven. The plant: kind read beneath the stratum
-        /// that assumes its own conjunct, which proves a form that keeps every kind.
+        /// so the bare equality a second round writes for text <c>label = '30'</c> is exact: a cell of the label's atom the
+        /// first round's conjunct rules out, the number 30 among them, is read as the policy reads a raise, which the
+        /// service's answer there refines but for a failure. From the root alone it is Unproven. The plant: kind's own atom
+        /// read beneath the stratum that assumes it, which proves a form that keeps every kind, and which the check run
+        /// never states, since an atom is read beneath its own conjunct's stratum alone.
         /// </summary>
         [Fact]
         public void ALaterRoundIsReadBesideTheFactsItWasRenderedFrom()
@@ -158,14 +159,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (i, facts) => i == 0 || facts.Knows(new Cosmos.Facts.JsonFact(LabelPath, Type(JsonType.String))));
             scope.StratumOf(1).Should().Be(2);
 
-            var (root, stratum) = (RenderingCheckRun.RootOf([scope])!.Value, scope.ContextFor(OracleLicence.RenderConjunct(1)).Context);
+            var (root, stratum) = (RenderingCheckRun.RootOf([scope])!.Value, scope.ContextFor(OracleLicence.RenderConjunct(1)));
+            var rendered = new ImportSource(Source.Statement, "render conjunct 1", 2);
             var (named, labelled) = (ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(KindPath), JsonValues.Of("a")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, JsonValues.Of("30")));
-            RenderingVerdictKind Checked(ServiceForm first, params JsonDocumentPath[] beneath) => new RenderingCheckRun().Check([kind, label], All(first, labelled), [first, labelled], Verdict.Equal,
-                bundle => RenderingImporter.Import(bundle, Source, root.Context, root.Rules, theory, [KindPath, LabelPath], beneath.ToDictionary(p => p, _ => stratum))).Entry.Asserted.Kind;
+            RenderingVerdictKind Checked(ServiceForm first, params SqlPredicate[] beneath) => new RenderingCheckRun().Check([kind, label], All(first, labelled), [first, labelled], Verdict.Equal,
+                bundle => RenderingImporter.Import(bundle, Source, root.Context, root.Rules, theory, [KindPath, LabelPath], beneath.Select(a => (a, rendered, stratum.Context, stratum.Rules)))).Entry.Asserted.Kind;
 
-            (Checked(named), Checked(named, LabelPath)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
-            Checked(ServiceForm.TestOf(CosmosServiceTest.IsDefined, SqlValue.Spell(KindPath)), LabelPath, KindPath).Should().Be(RenderingVerdictKind.Proven, "the plant is what reading each path at its earliest round refuses");
+            (Checked(named), Checked(named, label)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
+            Checked(ServiceForm.TestOf(CosmosServiceTest.IsDefined, SqlValue.Spell(KindPath)), label, kind).Should().Be(RenderingVerdictKind.Proven, "the plant is what reading an atom beneath its own conjunct's stratum alone refuses");
             GC.KeepAlive(scope);
+        }
+
+        /// <summary>
+        /// A stratum is read beside a later round only where the facts graph reads every conjunct it assumes as Calcite does.
+        /// Where kind is 5 the label is a string, and a second round writes text <c>label = '7'</c> bare; but the facts graph
+        /// reads a typed <c>INTEGER</c> = 5 as kind holding the integer 5 alone, where a column reads 5.0000000000000001 as 5
+        /// too, beside a label the declaration leaves free. Read beneath that stratum the bare form would be exact and
+        /// wrong; the check run reads the label from the root, where it is not proven.
+        /// </summary>
+        [Fact]
+        public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
+        {
+            var container = new Adapter.Metadata.CosmosContainerMetadata("t", ["/kind"])
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithFactGenerations(new JsonFactGenerations());
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [
+                "SELECT c.\"id\" FROM t AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c.\"DOC\", '$.label') = '7'"], [container]));
+            var checks = run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null).ToList();
+            foreach (var c in checks)
+                TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
+
+            RenderingCheckRun.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
+            checks.Should().Contain(c => c.LaterRound, "the label is written in a later round");
+            checks.Should().OnlyContain(c => c.Entry!.Asserted.Kind != RenderingVerdictKind.Proven && c.Import!.Digest.Contains(" beneath ") == false);
         }
 
         /// <summary>

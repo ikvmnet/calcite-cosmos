@@ -19,10 +19,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyDictionary<string, ReaderEdges> Edges, IReadOnlyList<(string, string)> Parting,
         Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
         Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> Split,
-        Func<CellPartition, PathValues, CellPartition> SetAside,
+        Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, OutcomeVector, AnswerMeanings, CellOutcomes> Pair)
+        Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair)
     {
 
         /// <summary>
