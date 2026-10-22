@@ -2689,15 +2689,14 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point.
-- **The rendering tests assert under the emulator's set, and could assert `Portable`** — *small, for c12 or the commit
-  after it.* The probe account has run every row's `Holds` (`Runs/2026-10-21-probe-account.tsv`, `DESIGN.md`, *The
-  registry, read into S*), so every outcome claims both targets but the two keys they answer apart. `RenderingCheckRun`
-  arrives with c12, so nothing was switched: c12, or its follow-up, should assert `Portable` and report `Emulator`
-  beside. Checked by hand at c09b: with `ProbeRows`' default set and table made `Portable`, all 50 tests of
-  `Tests.Facts.Rendering` hold. With every `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that
-  fail state what is the emulator's alone — `Range` licensed (`WithoutAConnectiveRowNothingComposes`,
-  `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`, `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it
-  alone measured (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set.
+- **The rendering tests beside the check run build under the emulator's set** — *small.* `RenderingCheckRun` asserts
+  `Portable` and reads `Emulator` beside it, now that the probe account has run every row's `Holds`
+  (`Runs/2026-10-21-probe-account.tsv`), and the two agree on every check it makes. Checked by hand at c09b: with
+  `ProbeRows`' default set and table made `Portable`, all 50 tests of `Tests.Facts.Rendering` hold. With every
+  `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that fail state what is the emulator's alone —
+  `Range` licensed (`WithoutAConnectiveRowNothingComposes`, `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`,
+  `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it alone measured
+  (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set; the others could move.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -2714,12 +2713,11 @@ across documents* and *A join of a container to itself* is the record.
   the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
   its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
   as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
-- **The rendering check asserts under the emulator's set until c09b lands** — *small.* `RenderingCheckRun.AssertedSet`
-  is `Emulator`, because the outcomes that claim Azure rest on the probe account's record of 2026-10-16 alone, and what
-  Azure has not been run on is unsettled under `Portable` and answers widest. c09b commits D7's record and widens `On`;
-  then `AssertedSet` becomes `Portable`, and the rendering tests that build under `Emulator` move with it where they
-  hold. `Service.NotBindsTightestThenAndThenOr`, the reader's grammar, every claim rests on, is one of them: its
-  measurement sits in the measurement namespace D7 runs, and the row names the emulator alone until that run passes.
+- **The reader's grammar is measured on the emulator alone** — *small, for the next probe-account run.* Every proof the
+  check run asserts under `Portable` rests on `Service.NotBindsTightestThenAndThenOr`, which the run of 2026-10-21
+  predates. Its measurement sits in the namespace a probe-account run covers, and the row names the emulator alone until
+  such a run passes. The translator writes by the same grammar (`NOT IS_NULL(p)` unparenthesised), so a service that
+  read it otherwise would make the translator wrong too, and the check blind to it.
 - **The service-gated measurements each seed a container of their own** — *small.* The precedence measurement copies the
   fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
   documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80

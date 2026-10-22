@@ -26,9 +26,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Directory.CreateDirectory(folder);
             var rows = Ordered(run.Conjuncts).ToList();
 
-            Tsv(folder, "verdicts.tsv", ["input", "name", "unit", "statement", "conjunct", "site", "ir", "text", "verdict", "portable", "alone", "reason", "entry", "run", "open", "constrained"],
+            Tsv(folder, "verdicts.tsv", ["input", "name", "unit", "statement", "conjunct", "site", "ir", "text", "verdict", RenderingCheckRun.BesideSet.ToString().ToLowerInvariant(), "alone", "reason", "entry", "run", "open", "constrained"],
                 rows.Select(c => new object?[] { c.Input, c.Name, c.Unit, c.Statement, c.Conjunct, c.Site, c.Ir, c.Text, c.Skip is null ? Name(c.Entry?.Asserted, c) : "Skipped",
-                    Name(c.Entry?.Portable, c), Name(c.Entry?.Alone[c.Position], c), c.Skip ?? c.Entry?.Asserted.Reason, c.Entry?.Id,
+                    Name(c.Entry?.Beside, c), Name(c.Entry?.Alone[c.Position], c), c.Skip ?? c.Entry?.Asserted.Reason, c.Entry?.Id,
                     c.Entry?.AssertedRun is { } run ? $"{run.StopReason}{(run.OneNodePerClass ? "" : ", merged")}{(run.Contradicted ? ", contradicted" : "")}" : null,
                     c.Import?.DefaultedOpen, c.Import?.Constrained.Count }));
 

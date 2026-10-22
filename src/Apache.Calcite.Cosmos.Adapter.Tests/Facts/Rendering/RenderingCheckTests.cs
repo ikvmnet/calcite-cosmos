@@ -30,8 +30,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static RenderingCheckRun Run => RenderingCheckRun.PerPullRequest.Value;
 
         /// <summary>
-        /// Every input planned and implemented; every bundle the run opened, under the asserted set and under
-        /// <c>Portable</c>, completed within its count limits, still held one node per class, derived no contradiction and
+        /// Every input planned and implemented; every bundle the run opened, under the asserted set and the set beside it,
+        /// completed within its count limits, still held one node per class, derived no contradiction and
         /// declined on no engine failure: so no verdict is <c>Incomplete</c> or a <c>Conflict</c>, and none is an Unproven
         /// that S did not answer. The reports are written, and coverage is summarised.
         /// </summary>
@@ -47,9 +47,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var disciplined = new RenderingRun(RunStopReason.Completed, true, false);
             run.Failures.Should().BeEmpty();
             run.Memo.Entries.Should().NotBeEmpty();
-            run.Memo.Entries.Where(e => e.AssertedRun != disciplined || e.PortableRun != disciplined || e.Failure is not null
-                || new[] { e.Asserted, e.Portable }.Concat(e.Alone).Any(v => v?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict))
-                .Select(e => $"entry {e.Id}, {e.Key.Form}: {e.AssertedRun} {e.Asserted.Reason}; {e.PortableRun} {e.Portable.Reason}; {e.Failure?.Message}").Should().BeEmpty();
+            run.Memo.Entries.Where(e => e.AssertedRun != disciplined || e.BesideRun != disciplined || e.Failure is not null
+                || new[] { e.Asserted, e.Beside }.Concat(e.Alone).Any(v => v?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict))
+                .Select(e => $"entry {e.Id}, {e.Key.Form}: {e.AssertedRun} {e.Asserted.Reason}; {e.BesideRun} {e.Beside.Reason}; {e.Failure?.Message}").Should().BeEmpty();
         }
 
         /// <summary>
@@ -100,7 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var (entry, _) = new RenderingCheckRun().Check([Ne(Text(LabelPath), "bikes"), new SqlPredicate.Opaque(-1)], All(Guarded, ServiceForm.OpaqueOf("x", ValueSet<string>.Empty)),
                 [Guarded, null], Verdict.Equal, bundle => RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath]));
-            (entry.Asserted.Kind, entry.Portable.Kind, entry.Alone[0]!.Kind, entry.Alone[1]).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven, (RenderingVerdict?)null));
+            (entry.Asserted.Kind, entry.Beside.Kind, entry.Alone[0]!.Kind, entry.Alone[1]).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven, (RenderingVerdict?)null));
         }
 
         /// <summary>

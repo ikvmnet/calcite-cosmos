@@ -6454,9 +6454,10 @@ limits that grow with the form, since descent and evaluation peel a junction a m
 its IR, the import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a
 weakening's `Implies` holds where an exact push's `Equal` does not; the theory, because a planted row is another theory.
 A bundle that declines on an engine failure, at any call, fails the discipline line as a run stopped short does: its
-Unproven is no answer of S's. Every check is read under the asserted set and under `Portable` beside it. CI asserts
-under `Emulator` until the probe account's record lands, since what Azure has not been run on is unsettled under
-`Portable` and answers widest.
+Unproven is no answer of S's. CI asserts under `Portable`, every target the adapter serves, since the probe account's
+record of 2026-10-21 widened to Azure the outcomes it was run on; every check is read under `Emulator` beside it and
+reported, so a key the two answer apart shows where only the emulator would agree. The reader's grammar is the one
+row every proof rests on that the probe account has not run (`TODO.md`).
 
 **Two cross-checks hold the capture to what was sent.** A conjunct's text at implementation is its text at admission,
 its values inlined: both render from the stratum that admitted it. And the implementor's `WHERE` holds the conjunction

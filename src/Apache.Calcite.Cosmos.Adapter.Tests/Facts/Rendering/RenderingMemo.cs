@@ -40,12 +40,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             string.Join("\n", t.Graph.Tables.SelectMany(t.Theory.Rows).Select(row => row.ToString()).Order(StringComparer.Ordinal))))));
 
         /// <summary>
-        /// One check: the claim's verdict under the asserted set and under <see cref="RenderingSet.Portable"/>, each with the
+        /// One check: the claim's verdict under the asserted set and under the set beside it, each with the
         /// run it was read off; each checked conjunct's verdict at its own position in the first; and the engine failure
         /// either bundle declined on, which the discipline line refuses.
         /// </summary>
-        public sealed record Entry(int Id, RenderingMemoKey Key, RenderingVerdict Asserted, RenderingRun AssertedRun, RenderingVerdict Portable,
-            RenderingRun PortableRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure);
+        public sealed record Entry(int Id, RenderingMemoKey Key, RenderingVerdict Asserted, RenderingRun AssertedRun, RenderingVerdict Beside,
+            RenderingRun BesideRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure);
 
     }
 

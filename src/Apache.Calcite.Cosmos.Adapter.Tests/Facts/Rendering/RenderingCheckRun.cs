@@ -33,10 +33,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>
-        /// The set CI asserts under: the emulator's, until c09b commits the probe account's record and widens to Azure the
-        /// outcomes it was run on (<c>TODO.md</c>), when this becomes <see cref="RenderingSet.Portable"/>.
+        /// The set CI asserts under: every target the adapter serves, since the probe account's record of 2026-10-21 widened
+        /// to Azure the outcomes it was run on.
         /// </summary>
-        public const RenderingSet AssertedSet = RenderingSet.Emulator;
+        public const RenderingSet AssertedSet = RenderingSet.Portable;
+
+        /// <summary>The set every check is read under beside the asserted one, and reported, never asserted.</summary>
+        public const RenderingSet BesideSet = RenderingSet.Emulator;
 
         /// <summary>One S a process, its generations defined from the registry's rows.</summary>
         static readonly RenderingGraph Graph = new(() => ProbeRows.Measured);
@@ -81,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Checks a claim of a form for the conjunction of conjuncts, each with its own member of the form or none, under the
-        /// asserted set and under <see cref="RenderingSet.Portable"/>; memoised on the import the callback makes, which it
+        /// asserted set and under <see cref="BesideSet"/>; memoised on the import the callback makes, which it
         /// is first asked with no bundle, for the report alone.
         /// </summary>
         public (RenderingMemo.Entry Entry, ImportReport Import) Check(IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm?> members,
@@ -93,8 +96,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return (Memo.GetOrAdd(key, id =>
             {
                 var (asserted, run, alone, failure) = Bundle(AssertedSet);
-                var (portable, portableRun, _, declined) = Bundle(RenderingSet.Portable);
-                return new RenderingMemo.Entry(id, key, asserted, run, portable, portableRun, alone, failure ?? declined);
+                var (beside, besideRun, _, declined) = Bundle(BesideSet);
+                return new RenderingMemo.Entry(id, key, asserted, run, beside, besideRun, alone, failure ?? declined);
             }), report);
 
             (RenderingVerdict, RenderingRun, IReadOnlyList<RenderingVerdict?>, Exception?) Bundle(RenderingSet set)
