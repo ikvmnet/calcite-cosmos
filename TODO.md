@@ -2678,8 +2678,8 @@ across documents* and *A join of a container to itself* is the record.
   wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
   `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
 - **The probe account's run of 2026-10-19 has no record** — *small.* The Azure targets of the string functions' and the
-  stored values' rows rest on it, and `Tests/Measurements/Runs/` holds only 2026-10-16's, so an outcome on one of those
-  rows cannot claim Azure until a run of its witnesses is recorded.
+  stored values' rows rest on it, and neither record under `Tests/Measurements/Runs/`, 2026-10-16's or 2026-10-21's,
+  ran their witnesses, so an outcome on one of those rows cannot claim Azure until a run of its witnesses is recorded.
 - **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
   unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
   constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
@@ -2689,19 +2689,25 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point.
-- **What the probe account owes at D7** — *small.* Its run of the measurement namespace records every cell `Holds`
-  measures, `runs.tsv` written before any assertion fails, and c09b widens `On` to Azure where the record holds a cell
-  read as the pinning test reads it. Azure claims little now (`DESIGN.md`, *The registry, read into S*), so it owes:
-  the `IS_*` family, the comparisons and `NOT` over undefined filtered rather than projected; the `WHERE NOT` beside
-  each `NotKept`, which a later line's finer answer then claims; every literal as a parameter, 2^53 + 1 among them; the
-  catalogue's wider witnesses, a string beside `"true"`, a number beside 1, `false`, an object and an array; both orders
-  with their `>` filters, U+0000 among the strings, where code point is claimed only if Azure's `>` reads past it as
-  its `ORDER BY` does; the range outside its parted bounds, above them included, between agreeing bounds and over
-  another type, and its `>= AND <=` spelling beside `BETWEEN`; the rows that claim the emulator alone — N1, N3, the
-  constants, N14, whether Azure compares an int64 with a double by value — and `Sql.CosmosFunctionBodiesTests` for
-  N13. N8's Azure cell, `NotKept`, is matched by false or undefined, so its test passes there if Azure keeps nothing;
-  a cell Azure answers otherwise than the emulator's declared answer fails after the run is recorded, and c09b
-  declares it as a divergence.
+- **The rendering tests assert under the emulator's set, and could assert `Portable`** — *small, for c12 or the commit
+  after it.* The probe account has run every row's `Holds` (`Runs/2026-10-21-probe-account.tsv`, `DESIGN.md`, *The
+  registry, read into S*), so every outcome claims both targets but the two keys they answer apart. `RenderingCheckRun`
+  arrives with c12, so nothing was switched: c12, or its follow-up, should assert `Portable` and report `Emulator`
+  beside. Checked by hand at c09b: with `ProbeRows`' default set and table made `Portable`, all 50 tests of
+  `Tests.Facts.Rendering` hold. With every `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that
+  fail state what is the emulator's alone — `Range` licensed (`WithoutAConnectiveRowNothingComposes`,
+  `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`, `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it
+  alone measured (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set.
+- **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
+  made beforehand (its remarks), so the probe account ran the JSON type class's
+  `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
+  kinds and passed, and N13 names both targets on that. The older test reads the bodies over the document text a query
+  returns; run it when a container for it exists, or retire it to the newer one.
+- **The next probe-account run holds the projection at eleven more cells** — *small, whenever that run is approved.*
+  D7 skipped it where Azure was declared `NotKept`: `Bare/None` at false, null and absent, `Not/None` and
+  `NOT (c.v OR false)` at true, null and absent, and `Greater/String` below and equal. Those cells are filtered answers
+  now, so `Holds` checks the projection there; the emulator's agrees at each, and Azure's has answered apart from its
+  filter only over the parted range.
 - **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number only within ±2^53 and answers
   widest beyond, where `Numeric` means the value compared (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as
   itself, anything else as its correctly rounded double, the two by value. c13's double slots should place a cell by

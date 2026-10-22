@@ -157,24 +157,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Two bounds of one path whose literal parts the orders there need the range licence, which only a set whose every
         /// target answers the range pointwise holds: the emulator keeps it and Azure does not (N8), so it is licensed under
         /// the emulator and not under the portable set; bounds that part nothing compose under both, and without Range's
-        /// expectation nothing licenses it. Azure's orderings within strings, its order and its connectives, which no row
-        /// claims on Azure yet, are planted as the emulator's.
+        /// expectation nothing licenses it. Every row it reads on Azure is the registry's.
         /// </summary>
         [Fact]
         public void APartedRangeComposesOnlyWhereRangeIsLicensed()
         {
-            var planted = Measured with
-            {
-                Rows =
-                [
-                    .. ProbeRows.Rows,
-                    .. from row in ProbeRows.Rows
-                       where row.Target == RenderingTarget.Emulator && (row.Key.Test is Op.GreaterOrEqual or Op.LessOrEqual or Op.Order && row.Key.Operand == CosmosValueClass.String
-                           || row.Key.Test is Op.And or Op.Or or Op.Not && ProbeRows.Rows.Any(other => other.Key == row.Key && other.Target == RenderingTarget.Azure) == false)
-                       select row with { AxiomId = "Probe.Planted", Target = RenderingTarget.Azure },
-                ],
-            };
-
             // Strings the two orders rank alike, beneath a bound that holds the high band: each bound is exact alone.
             var high = "\uE000";
             var conjunct = And(Cmp(Text(LabelPath), ">=", Lit(high)), Cmp(Text(LabelPath), "<=", Lit("z")));
@@ -183,11 +170,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingVerdictKind Composed(RenderingTheory theory, RenderingSet set, ValueSet<string> classes) =>
                 Check(conjunct, form, theory, set, LabelPath, strings, classes).Equal.Kind;
 
-            var theory = RenderingTheory.Define(planted);
+            var theory = ProbeTheory;
             Composed(theory, RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Proven);
             Composed(theory, RenderingSet.Portable, AllBands).Should().Be(RenderingVerdictKind.Unproven);
             Composed(theory, RenderingSet.Portable, NoBand).Should().Be(RenderingVerdictKind.Proven);
-            Composed(RenderingTheory.Define(planted with { Kleene = [.. Measured.Kleene.Where(k => k.Item2.Test != Op.Range)] }), RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Unproven);
+            Composed(RenderingTheory.Define(Measured with { Kleene = [.. Measured.Kleene.Where(k => k.Item2.Test != Op.Range)] }), RenderingSet.Emulator, AllBands).Should().Be(RenderingVerdictKind.Unproven);
 
             // What is read is the conjunction as written: the same two bounds claimed for one atom, evaluated on its cells.
             RenderingVerdictKind OnOneAtom(RenderingSet set, ValueSet<string> classes) =>

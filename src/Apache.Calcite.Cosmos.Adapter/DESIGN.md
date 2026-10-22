@@ -6277,16 +6277,21 @@ probe account answered, and an outcome naming Azure must find each cell's answer
 a `WHERE`, a `WHERE NOT` beside it where one ran, the literal sent as a parameter — over every witness the test holds
 the cell to. A projection is no evidence of a filter on Azure, whose parted range projects true where its filter keeps
 nothing; nor is a literal written inline, nor an `ORDER BY` with no filter beside it. Such lines are recorded for what
-they are and back nothing. The check runs both ways, so a line read as the test reads it is claimed, by its answer or a
-later run's that means no more: evidence is neither stretched nor dropped by hand. On the record of 2026-10-16 that
-leaves Azure the boolean rows' filtered cells, the string order's `>` and the parted range's between cell, so the
-portable and production sets settle little until the probe account runs `Holds` (D7).
+they are and back nothing. The check runs both ways, so a line read as the test reads it, at a cell its row declares,
+is claimed, by its answer or a later run's that means no more: evidence is neither stretched nor dropped by hand. A line
+at a cell no outcome of its row declares was measured beside its key's and backs nothing, nor does a cell one run
+answered two ways.
+
+**The probe account has run every row's `Holds` (D7, 2026-10-21).** Its record has the 650 lines the emulator's runs
+write, read as the tests read them, and all but two answer as the emulator's do. So every cell is claimed on both
+targets and nothing is owed; the two that differ are an outcome per target, and declared: the parted range's between
+cell, which Azure keeps neither by `WHERE` nor by `WHERE NOT`, and the string order over U+0000. Its `WHERE NOT` beside
+each `NotKept` of 2026-10-16 supersedes it, so no outcome answers `NotKept` now.
 
 **The rendering tests read the registry and nothing else.** `ProbeRows` is `CosmosAxiomRows.Read` of the registry, its
-table the one S settles for the emulator's set; a test that needs Azure to answer as the emulator does plants it under
-an id no row holds. Calcite's connectives are a row like the service's, `Calcite.ConnectivesAreKleene`, its measurement
-reading its expectations off the row, so the registry alone licenses `AND`, `OR` and `NOT` under Calcite and the
-emulator.
+table the one S settles for the emulator's set; a test that needs a row the registry lacks plants it under an id no row
+holds. Calcite's connectives are a row like the service's, `Calcite.ConnectivesAreKleene`, its measurement reading its
+expectations off the row, so the registry alone licenses `AND`, `OR` and `NOT` under every set.
 
 ### The rows' vectors, held by their tests
 
@@ -6294,7 +6299,9 @@ emulator.
 of their own and reads each cell off a `WHERE`, a `WHERE NOT` and the projection. It never asks which endpoint it
 reached: an answer must mean nothing a target the outcome names did not declare, so `NotKept` is matched by false or
 undefined, and a declared divergence is held as far as a blind check can hold one, each target answering one of the
-two. Every cell is written to `runs.tsv` before any is asserted, so one run of the probe account records them all.
+two. The projection is held to the filters except at a cell declared off a `WHERE` alone or answered apart, Azure's
+parted range projecting true where its filter keeps nothing. Every cell is written to `runs.tsv` before any is
+asserted, so one run of the probe account records them all.
 
 **The catalogue has one literal per class of operand,** so a cell's witnesses are a function of the operand and the
 cell: U+E000, where the two string orders part; 2^53 + 1, where a double and an int64 part; `true`.
@@ -6306,18 +6313,20 @@ literal holds the high band U+FDD0 lies in — and a literal holding one nowhere
 whatever a path holds, and an ordering is proven only where the import holds no U+0000. The order's witnesses hold
 U+0000, and an order is the comparator that sorts them as `ORDER BY` does and places them as `>` beside each does,
 which also parts code point from a comparator that stops reading at U+0000, as Azure's `CONTAINS` does. Azure's order
-over U+0000 is unmeasured, so it claims no order until D7.
+is `CodePoint` over them: its `ORDER BY` and its `>` both put U+0000 least and read past it. So the string order is a
+key the targets answer apart, and a set serving both places a string by both comparators.
 
 **A composite is checked by composing its atoms** through `ServiceLeaf` and `ServiceCompound` on the table S settles for
-each target it names: the composition holds the measured answer, and on the emulator, whose atoms are all measured
-definite, is it. A constant is read by its row (`Service.AConstantIsItsOwnTruth`), as S reads it, and an atom Azure has
-not measured answers widest there. The guarded accessor answers values, not truths, so it stays its test's assertion.
+each target it names, and is the measured answer on each, every atom it reads being measured definite on both. A
+constant is read by its row (`Service.AConstantIsItsOwnTruth`), as S reads it. The guarded accessor answers values, not
+truths, so it stays its test's assertion.
 
 ### The family's last rows, and the range's licence
 
-**What S still lacked is measured on the emulator, and claims it alone until the probe account runs it (D7):**
-`Service.ComparisonWithinAType` (N1), `Service.ConnectivesAreKleene` (N3), `Service.TypeTestBodiesMatchTheService`
-(N13), `Service.NumbersBeyondLongCompareAsDoubles` (N14) and the constants.
+**What S still lacked is measured on the emulator and the probe account (D7):** `Service.ComparisonWithinAType` (N1),
+`Service.ConnectivesAreKleene` (N3), `Service.TypeTestBodiesMatchTheService` (N13),
+`Service.NumbersBeyondLongCompareAsDoubles` (N14) and the constants. Azure answered every cell of them as the emulator
+does, an int64 against a double by value among them.
 
 **A connective's undefined is an ordering across types, not an absent path.** S keys a side written bare by the class of
 what it holds and any other side by its truth, so undefined and absent are two operands, each witnessed in the shape
@@ -6327,9 +6336,9 @@ the other.
 **A range is licensed where its rows are pointwise.** `KleeneTables` expects a range of one path to keep a value between
 its bounds, `NOT` one outside, and neither one of another type or none, whether the bounds part the orders or not; and
 `licence` reads `Range` as it reads a connective. The emulator answers so for both kinds of bounds, in the `>= AND <=`
-spelling S reads and in `BETWEEN`, which keep alike; Azure keeps nothing between parted bounds. So `Range` is licensed
-under the emulator's set and under no set that serves Azure, and the parted range's between cell is the one declared
-divergence.
+spelling S reads and in `BETWEEN`, which keep alike; Azure keeps nothing between parted bounds, by `WHERE` or by
+`WHERE NOT`, and answers the rest as the emulator does. So `Range` is licensed under the emulator's set and under no set
+that serves Azure, and the parted range's between cell is a declared divergence.
 
 **Numbers compare by the value compared:** an int64 as itself, anything else as its correctly rounded double, the two by
 value, never both rounded. That is what `Numeric` means; S places a number only within ±2^53, where the two agree,
