@@ -1,3 +1,5 @@
+using System.Linq;
+
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
@@ -52,7 +54,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, CosmosServiceTest, bool> FormHeads { get; } = Primitive.Create<ServiceForm, CosmosServiceTest, bool>("form-heads", (f, j) =>
             f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Test == j);
 
-        /// <summary>A junction is the one form joined with the other, in either order: one is a member, the other the rest.</summary>
+        /// <summary>Two forms are junctions of one connective.</summary>
+        public static Primitive<ServiceForm, ServiceForm, bool> FormJoins { get; } = Primitive.Create<ServiceForm, ServiceForm, bool>("form-joins", (f, g) =>
+            f.Kind is ServiceFormKind.And or ServiceFormKind.Or && g.Kind == f.Kind);
+
+        /// <summary>A form is a member of another as written.</summary>
+        public static Primitive<ServiceForm, ServiceForm, bool> FormHolds { get; } = Primitive.Create<ServiceForm, ServiceForm, bool>("form-holds", (f, h) => f.Members.Contains(h));
+
+        /// <summary>A junction is the one form joined with the other, in either order: one is a part, the other the rest.</summary>
         public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormDecomposes { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-decomposes", (f, l, m) =>
             ServiceForm.Decomposes(f, l, m) || ServiceForm.Decomposes(f, m, l));
 

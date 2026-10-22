@@ -2597,7 +2597,8 @@ across documents* and *A join of a container to itself* is the record.
   run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
   full run belongs in a nightly job or in a gate before merging, a change to the translator or the
   split rule above all, and which of the two is the owner's to decide. The default being its
-  prefix, either is the pull request's run carried further, and the variable is how it asks.
+  prefix, either is the pull request's run carried further, and the variable is how it asks. The
+  rendering check reuses it (decision D6), and its 1,000 run before each of Stage 1's pull requests.
 - **What the partition run costs** — *medium.* Most of it is Calcite compiling the reduction of a
   literal's cast with Janino, under IKVM, in statements the adapter plans. A host planning through a
   connection pays the same, which makes it worth reducing for its own sake, and the cheaper it is the
@@ -2628,40 +2629,57 @@ across documents* and *A join of a container to itself* is the record.
   `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
   `RETURNING` does, which `NeverTrue` reads as leave to decide. Read from the code and modelled in `IrEval`'s column
   mode; the column measurement holds no structure. The typed cells answer the raise.
-- **The typed `DOUBLE` reading compares numbers exactly** — *small, and it touches plans.* `Typed.Equal` decides a
-  stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE` compare the doubles they
-  round to: past 2^53 two integers a unit apart are one double, and `KeptEqual` establishes the literal of a row that
-  holds the other. The typed cells compare doubles, so a cell may answer TRUE there where its state does not.
-- **The cast readings rest on no row** — *small.* `NumberCast` answers from measurements the registry has no row for
-  (`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`,
-  `ReturningDecimalParsesTheRendering`), so `PredicateAtom.Rests` is empty for a numeric cast and `RETURNING DECIMAL`,
-  and a proof through one cites nothing on Calcite's side. The rows are owed before the casts' cells are.
+- **The typed reading compares numbers exactly, and says a fraction raises alone** — *small, and it touches plans.*
+  `Typed.Equal` decides a stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE`
+  compare the doubles they round to; and an integer type's column reads any number not written as an integer as its
+  double where that is whole (`CosmosJson.GetInteger`): a fraction that rounds to one, which the coarse reading says
+  raises alone, and past 2^53 another integer, which `KeptEqual` establishes is the literal. The typed cells read both.
+- **A numeric cast of a raw value is each column's own, and the facts graph reads it as a truncation** — *medium, and it
+  touches plans.* `CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn`: an `ANY` converts the Java number
+  the reader built, so `CAST(… AS INTEGER)` wraps a long beyond an int (4294967297 is 1) and holds a double at the limit;
+  a `VARIANT` raises beyond the type, casts a string or a boolean to null, and under `BIGINT` does not read 2.5 as 2; a
+  `VARCHAR` column refuses a number. `NumberCast` reads every one as truncating and saturating, and so does `IrEval`,
+  which population D holds it to, so neither sees it; the split rule's window for `CAST(… AS INTEGER) = 1` drops a stored
+  4294967297 an `ANY` reads as 1. S cuts no cells for a raw cast, so its checks stay unproven, until a `Calcite.*` row
+  states each column's cast and both graphs read it.
+- **The coarse cast to a double reads a decimal's double by .NET's cast** — *small, and it touches plans.*
+  `Renderings.DoubleOf` casts, which rounds twice and misses at 9007199254740994.4: the coarse `CAST(… AS DOUBLE) =
+  9007199254740994` answers FALSE of a stored 9007199254740994.4 where Calcite answers TRUE, and `Renderings.SameNumber`
+  reads a raw value's number alike. `DoubleBound`, which the cells read, parses the invariant text, as spec §3.14 asks of
+  the split; the facts graph reading it would change plans at such boundaries, and `CellAnswersStayInsideTheCoarseAnswer`
+  allows the cast's cells the truth its coarse reading leaves out.
+- **`RETURNING DECIMAL` compares a stored fraction through its double's rendering** — *small, and it touches plans.*
+  Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
+  29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
+  where Calcite answers TRUE; the cells read the rendering.
+- **`JsonValues.Of(double)` keeps fifteen digits** — *small, and it touches plans.* It spells a double by .NET's cast to a
+  decimal, which reads 2^63 as 9223372036854780000, where the double is 9223372036854775808: the facts graph reads such a
+  double, from a declaration or a literal, as a number it is not. The rendering check's reader spells a double parameter
+  by its own value, or its shortest spelling where no decimal holds that.
+- **One numeric order answer serves both targets** — *small, for the next probe-account run.* `Service.IntegersOrderExactly`
+  answers `Order/Number` `numeric` on both, and `ServiceLeaf` places a whole number in int64 both as itself and as its
+  double, since the theory spells it alike written with a point, which the emulator holds as a double and Azure as an
+  int64 (`reports/verify-bytes.md`). Splitting the answer per target, `numeric` for Azure and `storednumeric` for the
+  emulator, as `Order/String` is, needs order witnesses that tell them apart: 2^54 + 1 beside 18014398509481986.0, which
+  the emulator holds as 2^54 and Azure as itself, neither tying another witness. Added to the catalogue, they leave the
+  record of 2026-10-21 short of Azure's claim (`CosmosAxiomsTests`), so the split waits on the probe account's run of
+  `IntegersOrderExactly` over them.
 - **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
   a JSON null with a null (`CosmosRexTranslator`, its equality of two values that may be null), with no registry row; one
   is owed if a written form carries a null literal.
-- **A check's later rounds are judged under round 1's facts** — *medium, before c15's precision line.* A check imports
-  from its statements' root, the only node that assumes none of the conjuncts it holds. A conjunct a later round
-  admitted, rendered knowing what the earlier ones establish, is then unproven, or refuted on a cell that knowledge
-  rules out. Three checks over `kinds` (differential 394, 405, 410) are refuted so, on `kind = "a"` beside a boolean
-  `label` and `kind = "c"` beside a boolean `ref`, which the conditional rules on `kind` exclude; they warn, and their
-  triage names the round. They are two distinct entries, and c15's precision line kills above two that need a
-  gate-specific exception, so the fix lands before c15: judging each round on its own node needs a rule over bundles'
-  verdicts, which S does not have, or the conditional rules' joint facts imported beside the paths.
-- **A check that holds a conjunct it cannot judge is unproven** — *medium, for c13's coverage.* Nothing the service
-  reads beside a checked conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct
-  beside it unproven: 70 conjuncts proven before are unproven since, most beside a numeric or cast reading the loader
-  reads as opaque. c13's typed and cast readings bring most of those into the family; what remains is c13's to count.
-- **A `WHERE` of two statements, one of more than one conjunct, has no exact join** — *small, for c13.* The IR flattens
-  a junction and the claim keeps the `WHERE`'s grouping, `((a) AND ((b) AND (c)))`, so no IR child pairs with
-  `(b) AND (c)`: differential 117–121 are unproven, 15 conjuncts, 11 of them proven before. Regrouping the claim would
-  be a form no text holds; S composing a nested form over a flat junction is the fix.
-- **`verdicts.tsv` names no cause for an Unproven, and c13 chooses its coverage basis** — *small, for c13.* §5.1's "no
-  exact join" is S's to say, read from its rows (an IR arm no member of the claim agrees with), never from an arity
-  count. The check's verdict, repeated for each conjunct it holds, is the claim made; each conjunct's own position is
-  the `alone` column. c13's 5 % line reads one of them, and says which.
-- **`refutations.tsv` names no witness document** — *small, for c15.* §5.6 lists one, the least refuting cell completed
-  into a document (§5.5); it lands with c15's witnesses and the emulator column.
+- **A stratum resting on a coarse reading is not read beside a later round** — *small, and it touches plans.* A later
+  round's conjunct is read beside the facts it was rendered from only where the facts graph reads every conjunct that
+  stratum assumes as Calcite does (`DESIGN.md`); beside a typed number, `DECIMAL`, a double or a cast of a raw value the
+  stratum may be wrong, and the translator relies on it: over a typed column, kind 5.0000000000000001 reads as 5 and a
+  label the declaration leaves free beside it may be the number 7, which the bare `c.label = "7"` a later round writes
+  drops (`AStratumAConjunctReadCoarselyRestsOnIsNotRead`). Such a check stays unproven, and the push is the facts
+  graph's to fix, with its coarse readings (*F does not read the cell readings*, below).
+- **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
+  conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
+  94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
+  coverage line reads such a conjunct at its own position, which leaves the check's `AND` licence and range need unread
+  there; bringing those terms into the IR is the fix.
 - **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
   two paths and has no `refutedat` row, so composing it again would need each path it sets to lie apart from the next
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
@@ -2689,14 +2707,6 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point.
-- **The rendering tests beside the check run build under the emulator's set** — *small.* `RenderingCheckRun` asserts
-  `Portable` and reads `Emulator` beside it, now that the probe account has run every row's `Holds`
-  (`Runs/2026-10-21-probe-account.tsv`), and the two agree on every check it makes. Checked by hand at c09b: with
-  `ProbeRows`' default set and table made `Portable`, all 50 tests of `Tests.Facts.Rendering` hold. With every
-  `RenderingSet.Emulator` in them made `Portable`, 46 hold, and the four that fail state what is the emulator's alone —
-  `Range` licensed (`WithoutAConnectiveRowNothingComposes`, `WithoutTheNonBooleanRowsABareMemberDoesNotCompose`,
-  `APartedRangeComposesOnlyWhereRangeIsLicensed`) and a key it alone measured
-  (`TheTargetsMergeIntoOneEntryForEachSettledKey`) — so they keep naming that set; the others could move.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -2707,38 +2717,121 @@ across documents* and *A join of a container to itself* is the record.
   `NOT (c.v OR false)` at true, null and absent, and `Greater/String` below and equal. Those cells are filtered answers
   now, so `Holds` checks the projection there; the emulator's agrees at each, and Azure's has answered apart from its
   filter only over the parted range.
-- **No number past ±2^53 is placed** — *medium, for c13.* `ServiceLeaf` places a number only within ±2^53 and answers
-  widest beyond, where `Numeric` means the value compared (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as
-  itself, anything else as its correctly rounded double, the two by value. c13's double slots should place a cell by
-  the value compared, not the value held: the emulator holds an integer in [2^63, 2^64) as written and compares it as
-  its double, so that band answers both sides until a row separates them, and an integer written as a fraction is held
-  as a double on the emulator and an int64 on Azure, so its cell answers both sides too.
-- **The reader's grammar is measured on the emulator alone** — *small, for the next probe-account run.* Every proof the
-  check run asserts under `Portable` rests on `Service.NotBindsTightestThenAndThenOr`, which the run of 2026-10-21
-  predates. Its measurement sits in the namespace a probe-account run covers, and the row names the emulator alone until
-  such a run passes. The translator writes by the same grammar (`NOT IS_NULL(p)` unparenthesised), so a service that
-  read it otherwise would make the translator wrong too, and the check blind to it.
+- **The reader's grammar is measured on the probe account** — *done.* Every proof the check run asserts under
+  `Portable` rests on `Service.NotBindsTightestThenAndThenOr`. The probe account's run of 2026-10-22 passed its
+  measurement, so the row names both targets. The same run held `CosmosEval`, the witnesses (53 documents) and the
+  recall and gains statements to Azure, all passing, and its 649 `Holds` cells repeat the record of 2026-10-21 exactly,
+  so no second record is committed. Still owed to a later run: the order witnesses 2^54 + 1 and 18014398509481986.0,
+  which no catalogue holds yet, for splitting `Order/Number` per target.
 - **The service-gated measurements each seed a container of their own** — *small.* The precedence measurement copies the
   fixture of the boolean-logic one (client options, emulator timeouts, a database a framework, one container, seeded
   documents, `Kept`), as most `Cosmos*MeasurementTests` do; one shared seeded-container fixture would take about 80
   lines off each.
-- **The rendering reports land beside the test assembly** — *small, for c17's CI wiring.* `TestResults/rendering/` is
-  resolved against the runner's working folder, which the xunit runner sets to the assembly's, as it does for the
-  measurements' `runs.tsv`; CI archives `TestResults` at the repository's root, so it does not yet carry them.
 - **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
   makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
-- **`D0`'s cost is measured by no test** — *small, for c17.* §4.3's timing line, taken on a free machine only, kills
-  above +5 ms a declaration (`D0` built and run, per declaration and generation) or +0.06 s on the corpus planned new
-  and armed against unarmed. It belongs in c17's `RenderingCostTests`, beside S's bundles.
-- **The population D run rooted at `D0` is 50 trials a pull request** — *small, for c17's cost line.* §4.3 asks for 200
-  and §10.3 budgets source B at 20 to 50; 50 keeps the unarmed 200, which production's root stands on, and the 5,000
-  armed stay explicit.
+- **The population D run rooted at `D0` is 50 trials a pull request** — *small.* §4.3 asks for 200 and §10.3 budgets
+  source B at 20 to 50; the check run is already above §10.3's budget (below), so 50 stay, the unarmed 200 keep
+  production's root, and the 5,000 armed stay explicit.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
   retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
   `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
   the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
   Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
   list once 0d fixes it.
+- **A statement that admits one conjunct twice has no exact join** — *small.* The IR keeps both arms, and the claim's
+  textually equal members are one row, so the rest of the junction is a junction of copies that no row gives members:
+  partitions 150 and 187 at 200 predicates, never sent. Writing a rest's members where only copies are left is the fix.
+- **A typed bound one off under an int is unproven, not refuted** — *small, for D12.* `RETURNING` raises over an integer
+  written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
+  and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
+  where the service answers false. The column's own reading (decision D12) would refute it.
+- **The gains preview reads two of five Exact, which §6's line kills** — *small, for Stage 2.* The validator ships, as
+  soundness, recall and mutations pass (plan §5). Over typed's undeclared label the guarded
+  inequality is Exact, and the orderings' forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR
+  IS_NUMBER(c.label)`, are unproven: the label's strings may hold U+0000, which the emulator orders as U+FDD0 then `0`,
+  and `Portable` serves the emulator. They are Exact where no string can hold one, and under `Production` (a bundle of
+  their own); on the emulator each keeps Calcite's rows over typed. A declaration that keeps U+0000 out, or a set that
+  leaves the emulator out, is what Stage 2 would write them under.
+- **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
+  the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
+  `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
+  Exact, counting strings and booleans alone. The column's own reading would separate the two, and `RETURNING`'s would
+  refute the plant.
+- **Source B prints what the differential's operator table plans** — *small.* A raw value is a column only at a key
+  path, so the container keys on three of the declaration's six paths and a raw reading of `b`, `o` or `o.v` is not
+  printed, nor is a parameter, `IS_DEFINED` (`CosmosOperators` is not in that table) or a literal with a control
+  character. At 30 trials 25 statements plan, holding 17 proofs over 1,360 declared documents; drawing for source B, so
+  that more of its conjuncts push and prove, would weigh it more.
+- **The witnesses run on the emulator leg alone** — *small.* `RenderingWitnessTests` and `CosmosEvalServiceTests` are
+  service-gated, so on a leg with no emulator `refutations.tsv`'s emulator column reads `not run`; the witness run
+  rewrites it where it runs, and writes `witnesses.tsv`, which CI archives from the Linux x64 leg alone.
+- **A weakening shaped otherwise than its conjunct is unproven** — *small.* S pairs a form with an IR node only where the
+  form is the join of its children's, so `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`, pushed for `NOT (c."$.category"
+  = 'bikes' OR CAST(… AS DOUBLE) > 50)`, and `IS_DEFINED(c.price)` for a negated `BETWEEN` are unproven, never refuted.
+  Reading a negated junction through De Morgan, or a presence test over the cells of every path it names, would prove
+  them; the weakening checks report them beside the others.
+- **`typed:DECIMAL` is the clause and a `DECIMAL` column at once, so M10 is unproven** — *small, for D12.* The loader
+  writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
+  and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
+  `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
+  definite cell: the mutation line holds nine of ten. The coarse reading leaves the column's raise over a structure out
+  of `IS NULL`. The column's own reading in the IR would give both back.
+- **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
+  translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
+  text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
+  is the one both render, so the texts part only where the facts do; that they agree is not checked.
+- **The rendering check skips parameters whole** — *small, for Stage 2.* A conjunct whose IR holds a parameter, or whose
+  text binds a dynamic value or an anchor slot, is skipped, and the differential's 33 statements with parameters are not
+  planned for the check at all: a parameter's value is in neither the IR nor the import, and a claim proven for the value
+  one plan bound says nothing of the next. Claiming a form over every value a parameter's type admits is the reading
+  generate mode needs anyway.
+- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are unmeasured** — *medium, for Stage 2.*
+  The loader reads a pattern as opaque, so a conjunct holding one is skipped and its check is unproven. The rows S would
+  read are owed with it: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes
+  (N6) and `LIKE` (N7) matched by code point, and how an integral number reads back (N11).
+- **Raw orderings and raw numeric equality are measured and not read** — *small, and it touches plans.* c01 measured
+  Calcite's side (`Calcite.RawNullIsSqlNull`): `ANY` raises on an ordering across types, a `VARIANT` has no ordering and
+  its `=` is exact in type. Neither `PredicateAtom`'s raw reading nor its cells read it, `IrEval` tosses a coin there,
+  and decision D3 keeps their Unproven out of the coverage line: 2 conjuncts a pull request, 18 at the gate. Reading them
+  needs the raw reading's raises (above).
+- **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
+  `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
+  verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
+  and the oracle's memo keys, which Stage 1 promised not to touch.
+- **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
+  path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
+  unproven. Partitions 1,428's `NOT (category < 'bikes')`, a second round's beside `category IN ('bikes!', 'shoes')`,
+  was refuted at its own position on a string holding U+0000, which the emulator orders as stored; read beneath its
+  stratum, where the category is one of the two, it is not. Evaluating such a pair on the path's own cells, as one atom
+  claiming both is, would decide it.
+- **A path beneath a declared scalar imports the top in round 1** — *small.* `D0` writes a row only for a path the
+  declaration mentions and holds a term of, so an element or a child of a declared path, or one beneath a declared
+  scalar or a closed object, defaults to anything, counted constrained, and a refutation over it only warns. The facts
+  graph reads such a path through a mention child (`JsonContexts.Mentioning`), which the importer could read instead. No
+  check met one: every default in the run is open.
+- **F does not read the cell readings** — *medium, and it touches plans.* `PredicateAtom.OnCell` is exact where `On`
+  is coarse: a scalar against a literal, a typed number by its double, the raw reading's raises, `RETURNING DECIMAL`'s
+  rendering. Only S reads it. The facts graph deciding from cells would close the coarse readings' gaps above and decide
+  more, and would change plans.
+- **The error policy has no strict form** — *small.* Decision 2 sets aside a raise beside a truth in every allowing box.
+  A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
+  neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
+  that needs it, as #162's temporal rewrites once did, designs it.
+- **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
+  a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
+  net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s
+  on net8.0); its shared check run 58.7 s against 46.4 s, first in a process; and on the emulator leg the service-gated
+  classes beside it about 23 s more (witnesses 15.6 s, `CosmosEval` 1.4 s, recall about 3 s, gains 0.4 s, fixtures about
+  2.4 s). Planning is most of the run: its bundles took 5.3–5.6 s of 36 s warm. The owner accepts the measured figures,
+  or D11's fallback runs the partition run at 100 predicates a pull request, about 3 s off, which moves the coverage and
+  precision lines off the 200 they are measured on.
+- **A junction's descent holds a candidate for every subset of its members** — *medium, for Stage 2's cost line.* The
+  first arm is offered each member and the second the rest, down a right-nested junction, so `Filter.DeepConjunction`'s
+  eight conjuncts cost 0.74–0.98 s, half the corpus's bundles. With 12 to 14 candidates an atom at 2–3 ms each, Stage
+  2's projection came to 1.7–3.2 s against 0.25 s, and the bundles' own line missed too (2.1–3.7 ms at the median, 12–15
+  ms at the 90th centile, against 1.5 and 5), on a machine its other work held at 93–100 %. Descent along the IR's own
+  flat arms, pairing a member with the arm whose paths it reads, would be linear; retaking the line on a free machine
+  separates the load from the shape.
 
 ---
 

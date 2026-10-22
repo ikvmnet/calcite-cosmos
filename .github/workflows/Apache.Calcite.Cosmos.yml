@@ -207,9 +207,14 @@ jobs:
 
             dotnet @argl
         }
+    # The runner sets each test's working folder to its assembly's, so what tests write there -- the rendering check's
+    # reports in TestResults/rendering, and the measurements' records -- is copied in beside the trx.
     - name: Archive Test Results
       if: always() && startsWith(env.RET, 'TestResults--')
-      run: tar czvf TestResults.tar.gz TestResults
+      shell: pwsh
+      run: |
+        Get-ChildItem tests -Recurse -Directory -Filter TestResults | ForEach-Object { Copy-Item -Recurse -Force (Join-Path $_.FullName '*') TestResults }
+        tar czvf TestResults.tar.gz TestResults
     - name: Upload Test Results
       if: always() && startsWith(env.RET, 'TestResults--')
       uses: actions/upload-artifact@v5

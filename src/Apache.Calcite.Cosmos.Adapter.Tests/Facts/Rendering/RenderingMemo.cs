@@ -7,7 +7,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -42,10 +46,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// One check: the claim's verdict under the asserted set and under the set beside it, each with the
         /// run it was read off; each checked conjunct's verdict at its own position in the first; and the engine failure
-        /// either bundle declined on, which the discipline line refuses.
+        /// either bundle declined on, which the discipline line refuses; and what the first claimed and imported.
         /// </summary>
         public sealed record Entry(int Id, RenderingMemoKey Key, RenderingVerdict Asserted, RenderingRun AssertedRun, RenderingVerdict Beside,
-            RenderingRun BesideRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure);
+            RenderingRun BesideRun, IReadOnlyList<RenderingVerdict?> Alone, Exception? Failure, Claimed? What = null);
+
+        /// <summary>
+        /// What a check claimed of which conjuncts, over what its bundle imported, each path by its spelling, and each atom
+        /// read where its conjunct was rendered, and the value each refuting cell puts at its path, <c>null</c> for none:
+        /// what source A samples, and a witness is made of.
+        /// </summary>
+        public sealed record Claimed(IReadOnlyList<SqlPredicate> Conjuncts, ServiceForm Form, IReadOnlyList<ServiceForm?> Members,
+            IReadOnlyDictionary<string, Imported> Imports, IReadOnlyList<Beneath> Stated, IReadOnlyDictionary<string, string?>? Witness);
+
+        /// <summary>One path's import.</summary>
+        public sealed record Imported(PathValues Values, ValueSet<string> Chars);
+
+        /// <summary>
+        /// An atom of the conjunct at a position read where that conjunct was rendered: what its path may hold there, and
+        /// the positions of the conjuncts that stratum assumes, which hold of every declared document beside it.
+        /// </summary>
+        public sealed record Beneath(int Conjunct, SqlPredicate Atom, ImportSource Source, PathValues Assumed, IReadOnlyList<int> Assumes)
+        {
+            public string Path => SqlValue.Spell(Atom.Paths.Single());
+        }
 
     }
 

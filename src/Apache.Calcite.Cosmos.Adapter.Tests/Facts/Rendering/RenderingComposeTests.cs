@@ -55,6 +55,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A claim grouped as a <c>WHERE</c> of two statements writes it composes over the IR's flat junction (differential
+        /// 117–121): an arm takes a part nested in a member of the junction's own connective, a guarded form among them, and
+        /// the rest keeps the grouping of what is left. A part no arm can take leaves an arm offered nothing, which the check
+        /// run reports as no exact join.
+        /// </summary>
+        [Fact]
+        public void ANestedClaimComposesOverAFlatJunction()
+        {
+            var conjunct = And(Ne(Text(LabelPath), "bikes"), Eq(Text(KindPath), "a"), Eq(Raw(CategoryPath), "x"));
+            var category = Compare(Op.Equal, Category, "x");
+            foreach (var form in new[] { All(All(Guarded, KindIsA), category), All(KindIsA, All(category, Guarded)), All(All(category, KindIsA), Guarded) })
+                Check(conjunct, form).Equal.Kind.Should().Be(RenderingVerdictKind.Proven, form.Text);
+
+            (RenderingVerdictKind, string?) Checked(ServiceForm claim) => new RenderingCheckRun().Check(((SqlPredicate.And)conjunct).Arms, claim,
+                [.. ((SqlPredicate.And)conjunct).Arms.Select(arm => arm.Paths.Single() == LabelPath ? Guarded : arm.Paths.Single() == KindPath ? KindIsA : category)], Verdict.Equal,
+                bundle => RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath, KindPath, CategoryPath])).Entry.Asserted is var v ? (v.Kind, v.Reason) : default;
+
+            Checked(All(All(Guarded, KindIsA), All(category, Is(Op.IsString, Kind)))).Should().Be((RenderingVerdictKind.Unproven, (string?)null), "a member left over");
+            Checked(All(Guarded, KindIsA)).Should().Be((RenderingVerdictKind.Unproven, "no exact join"));
+        }
+
+        /// <summary>
         /// The readable wrong answers of the first family (harness map §5), as 4b65754 wrote them, over imported anything:
         /// each root is refuted at a structure, which the text reading reads as null. P5 and P6 are refuted at the junction
         /// beneath their NOT, the label side at <c>Neg</c> and the category at the connective's identity.
@@ -199,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             // A disjunction of the same members, claimed beside the conjunction, offers its sides the same candidates, and
             // is still no join of a conjunction's sides.
-            using (var both = ProbeTheory.Open(RenderingSet.Emulator))
+            using (var both = ProbeTheory.Open(RenderingCheckRun.AssertedSet))
             {
                 var conjunct = both.Write(LabelAndKind);
                 both.Import(Source, LabelPath, PathValues.Anything, AllBands);
@@ -228,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Then(theory.Candidate.Of(y, pos, Compute.Of(f, g, h, (w, a, b) => ServiceForm.Without(ServiceForm.Without(w, a), b))));
             });
 
-            using var bundle = theory.Open(RenderingSet.Emulator);
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(LabelAndKind);
             bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
             bundle.Import(Source, KindPath, PathValues.Anything, AllBands);

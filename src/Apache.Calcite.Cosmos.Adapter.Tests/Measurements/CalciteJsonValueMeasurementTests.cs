@@ -298,6 +298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         {
             Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "a string of digits is parsed");
             Ask($"JSON_VALUE({Document("\" 30 \"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "trimmed");
+            Ask($"JSON_VALUE({Document("\"\\u00012\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("2", "of every character up to U+0020");
 
             foreach (var json in new[] { "30", "30.0", "2.5", "\"2.5\"" })
                 Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().BeNull($"{json} parses");
@@ -496,6 +497,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Ask($"CAST(JSON_VALUE({Document("\" 30 \"")}, '$.v') AS INTEGER)").Value.Should().Be("30", "a string is trimmed and parsed");
             Ask($"CAST(JSON_VALUE({Document("2147483648")}, '$.v') AS BIGINT)").Value.Should().Be("2147483648");
 
+            // Java's String.trim takes every character up to U+0020 off either end, a control character among them.
+            Ask($"CAST(JSON_VALUE({Document("\"\\u00017\"")}, '$.v') AS INTEGER)").Value.Should().Be("7", "U+0001 is trimmed");
+            Ask($"CAST(JSON_VALUE({Document("\"7\\u001F\"")}, '$.v') AS BIGINT)").Value.Should().Be("7", "and U+001F");
+            Ask($"CAST(JSON_VALUE({Document("\"\\u00011.5\"")}, '$.v') AS DOUBLE)").Value.Should().Be("1.5", "under DOUBLE too");
+            Ask($"CAST(JSON_VALUE({Document("\"\\u00A07\"")}, '$.v') AS INTEGER)").Threw.Should().NotBeNull("and U+00A0 is not");
+
+            // A long's cast reads text that starts 199 and holds a colon as a timestamp, which an int's does not.
+            Ask($"CAST(JSON_VALUE({Document("\"1990-01-01 00:00:00\"")}, '$.v') AS BIGINT)").Threw.Should().BeNull("BIGINT reads a timestamp");
+            Ask($"CAST(JSON_VALUE({Document("\"1990-01-01 00:00:00\"")}, '$.v') AS INTEGER)").Threw.Should().NotBeNull("INTEGER parses it, and fails");
+            Ask($"CAST(JSON_VALUE({Document("\"1999-12-31\"")}, '$.v') AS BIGINT)").Threw.Should().NotBeNull("with no colon BIGINT parses it");
+            Ask($"CAST(JSON_VALUE({Document("1995")}, '$.v') AS BIGINT)").Value.Should().Be("1995", "a number's rendering holds no colon");
+
             foreach (var json in new[] { "30.0", "2.5", "1e30", "2147483648", "true", "\"x\"" })
                 Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS INTEGER)").Threw.Should().NotBeNull(
                     $"an integer's parse refuses the rendering of {json}, where a cast of the number would not");
@@ -506,6 +519,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS DOUBLE)").Threw.Should().BeNull($"a double's parse reads {json}");
 
             Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS DOUBLE)").Threw.Should().NotBeNull("a boolean's rendering is no number");
+            Ask($"CAST(JSON_VALUE({Document("\"5d\"")}, '$.v') AS DOUBLE)").Threw.Should().NotBeNull("a double's type suffix is not read");
             Ask($"CAST(JSON_VALUE({Document("null")}, '$.v') AS INTEGER)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
                 answer => answer.Value == null && answer.Threw == null, "a JSON null renders as SQL null, which casts to null");
         }

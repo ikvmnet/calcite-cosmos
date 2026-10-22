@@ -58,6 +58,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
             Under = Graph.DefineRelation<RenderingSet>("under");
             Imported = Graph.DefineFunction<JPath, PathValues>("imported");
+            Assumed = Graph.DefineFunction<Pred, PathValues>("assumed");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
             Candidate = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("candidate");
@@ -69,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Agrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Proof>("agrees", ValueLattice.Min<Proof>());
             Vacuous = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, bool>("vacuous", ValueLattice.Max<bool>());
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
-            RefutedAt = Graph.DefineRelation<Refutation, JPath>("refutedat");
+            RefutedAt = Graph.DefineRelation<ValueSet<string>, JPath>("refutedat");
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
             var analysis = new TableOptions { Role = TableRole.Analysis };
             Junction = Graph.DefineRelation<Pred, Pred, Pred, CosmosServiceTest>("junction", analysis);
@@ -166,13 +167,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<RenderPosition, RenderPosition> Opposite { get; }
 
         // A bundle's tables. The host writes a path's spelling beside its term (a merge of two paths would give one class
-        // two spellings, and throw), the set, each import once and lattice-free, and the root's candidate with every
-        // member of its junctions as written and each conjunction's members, nested ones flattened; the rules write the
-        // rest, the candidates beneath the root and the members of a junction's rest among them.
+        // two spellings, and throw), the set, each import once and lattice-free, beside each atom what the facts its
+        // conjunct was rendered from say its path may hold (`assumed`, anything where none is read), and the root's
+        // candidate with every member of its junctions as written and each conjunction's members, nested ones flattened;
+        // the rules write the rest: the candidates beneath the root, the members of a member of one connective, and the
+        // members of a junction's rest.
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
         public Function<JPath, PathValues> Imported { get; }
+        public Function<Pred, PathValues> Assumed { get; }
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
         public Relation<Pred, RenderPosition, ServiceForm> Candidate { get; }
@@ -187,8 +191,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<Pred, RenderPosition, ServiceForm, Verdict, bool> Vacuous { get; }
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Refutation> Disagrees { get; }
 
-        /// <summary>The one location a refutation on an atom's cells sets; a junction's sets two, and has none.</summary>
-        public Relation<Refutation, JPath> RefutedAt { get; }
+        /// <summary>The one location a refutation on an atom's cells sets, by its cells; a junction's sets two, and has none.</summary>
+        public Relation<ValueSet<string>, JPath> RefutedAt { get; }
         public Relation<Pred, RenderPosition, ServiceForm, Verdict> Conflict { get; }
 
         /// <summary>A junction of the IR, its connective, and each arm beside the other; <see cref="First"/> names its first.</summary>
@@ -377,16 +381,26 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Candidate.Of(a, q, Compute.Of(g, ServiceForm.Strip)));
             });
 
-            // Members are counted as the relation holds them, once a text: with three, the rest without one is a junction
-            // of the others; with two, it is the other, whose members are its own.
+            // The rest keeps the grouping of what is left, so a member of it is one as written, and its parts follow by the
+            // rule below; one left is a leaf, which has none.
             descend.DefineRule("the rest of a junction's form has every member it was not stripped of", r =>
             {
-                var (e, x, n) = r.Vars<Pred, Pred, long>("e", "x", "n");
+                var (e, x) = r.Vars<Pred, Pred>("e", "x");
                 var pos = r.Var<RenderPosition>("pos");
+                var (f, g, h, w) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("f", "g", "h", "w");
+                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), w.Is(Compute.Of(f, g, ServiceForm.Without)));
+                r.Where(RenderingPrimitives.FormHolds.Of(w, h));
+                r.Then(Member.Of(w, h));
+            });
+
+            // A member of a member of the junction's own connective is a part an arm may take, the licensed connective being
+            // associative: the reader writes members as written, and this is the regrouping.
+            descend.DefineRule("a member of a member of a junction's own connective is a member of the junction", r =>
+            {
                 var (f, g, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "g", "h");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), n.Is(Compute.Of(f, w => (long)ValueSet.From(w.Members).Count)));
-                r.Where(Primitives.Greater.Of(n, 2L));
-                r.Then(Member.Of(Compute.Of(f, g, ServiceForm.Without), h));
+                r.When(Member.Of(f, g), Member.Of(g, h));
+                r.Where(RenderingPrimitives.FormJoins.Of(f, g));
+                r.Then(Member.Of(f, h));
             });
 
             // Never an element against an index, nor a path against one beneath it: those may be one place.
@@ -404,12 +418,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             partition.DefineRule("an atom's import is cut into cells, at its literals, the form's and the edges its reader names, where the form reads that path alone", r =>
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
-                var (pos, x, k) = r.Vars<RenderPosition, PathValues, ValueSet<string>>("pos", "x", "k");
+                var (pos, x, k, y) = r.Vars<RenderPosition, PathValues, ValueSet<string>, PathValues>("pos", "x", "k", "y");
                 var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), n.Is(Spelling.Of(p)),
-                    rd.Is(Compute.Of(a, y => y.Reader)), g.Is(Edges.Of(rd)));
-                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, y => y.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(n, x, k, Compute.Of(a, f, g, definition.Cut), definition.Split)));
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(e)), n.Is(Spelling.Of(p)),
+                    rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Primitives.Singleton<string>().Of(n)));
+                var cuts = Compute.Of(a, f, g, definition.Cut);
+                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, cuts, definition.Split), y, k, cuts, definition.SetAside)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>
@@ -500,9 +515,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, z, v) = r.Vars<RenderPosition, CellPartition, OutcomeVector>("pos", "z", "v");
-                var mn = r.Var<AnswerMeanings>("mn");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()));
-                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, definition.Pair)));
+                var (mn, tol) = r.Vars<AnswerMeanings, Truths>("mn", "tol");
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()), tol.Is(Tolerated.Of()));
+                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, tol, definition.Pair)));
             });
 
             // The universal over cells: the cells' classes are complete (lattice-free), and the allowed ones the theory's.
@@ -525,7 +540,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, f), o.Is(Outcomes.Of(e, f)), Ir.Atom.Of(e, p, a), kk.Is(Compute.Of(o, x => x.Classes)), y.Is(Refutes.Of(pos, v)),
                     m.Is(Primitives.Intersect<CellClass>().Of(kk, y)));
                 r.Where(RenderingPrimitives.SetNonempty.Of(m));
-                r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(o, m, Refutation.Of)), RefutedAt.Of(Compute.Of(o, m, Refutation.Of), p));
+                r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(o, m, Refutation.Of)), RefutedAt.Of(Compute.Of(Compute.Of(o, m, Refutation.Of), x => x.Cells), p));
             });
 
             gate.DefineRule("an atom is a connective's identity on some cell", r =>
@@ -581,10 +596,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
                 var (pos, j, v) = r.Vars<RenderPosition, CosmosServiceTest, Verdict>("pos", "j", "v");
                 var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
-                var (z, w) = r.Vars<Refutation, Witness>("z", "w");
+                var (z, w, c) = r.Vars<Refutation, Witness, ValueSet<string>>("z", "w", "c");
                 var (p1, p2, a2) = r.Vars<JPath, JPath, PredicateAtom>("p1", "p2", "a2");
                 r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, j), z.Is(Disagrees.Of(x, pos, l, v)), w.Is(Neutral.Of(y, m, j)),
-                    RefutedAt.Of(z, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2));
+                    c.Is(Compute.Of(z, t => t.Cells)), RefutedAt.Of(c, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
                 Composes(r, j, f);
@@ -598,7 +613,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (g, h, z) = r.Vars<ServiceForm, ServiceForm, Refutation>("g", "h", "z");
                 r.When(Candidate.Of(e, pos, g), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), h.Is(Compute.Of(g, ServiceForm.Strip)), z.Is(Disagrees.Of(a, q, h, v)));
                 Composes(r, CosmosServiceTest.Not, null);
-                r.Then(Disagrees.Of(e, pos, g, v).Is(z));
+                r.Then(Disagrees.Of(e, pos, g, v).Is(Compute.Of(z, Refutation.Negated)));
             });
         }
 

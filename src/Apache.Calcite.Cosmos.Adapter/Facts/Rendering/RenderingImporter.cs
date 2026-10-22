@@ -22,7 +22,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// read on its own. A path the node holds no <c>possible</c> row for gets the top (<see cref="PathValues.Anything"/>)
         /// and is counted: open where the declaration mentions nothing at, within or above it, constrained otherwise; a
         /// path with no <c>chars</c> row gets every class (<see cref="JsonValues.AllBands"/>), as the facts graph reads its
-        /// absence. A node that keeps no document imports nothing.
+        /// absence. A node that keeps no document imports nothing. Beside an atom <paramref name="beneath"/> names, what its
+        /// path may hold where its conjunct was rendered, a stratum beneath this node, read by that atom's cells alone: no
+        /// fact of it is met with the import's, and the cells it admits nothing of are set aside
+        /// (<see cref="RenderingBundle.Assume"/>).
         /// </summary>
         /// <param name="bundle">The bundle, not yet run; <c>null</c> for the report alone.</param>
         /// <param name="source">The node's statement, licence and round.</param>
@@ -31,10 +34,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <param name="rules">The rules the node ran; <c>null</c> where the statement knows nothing.</param>
         /// <param name="declaration">The container's declaration, which says where a default loses precision.</param>
         /// <param name="paths">The paths the bundle's atoms read.</param>
+        /// <param name="beneath">Each atom read where its conjunct was rendered: that stratum's source, node and rules.</param>
         /// <exception cref="InvalidOperationException">The bundle has run, or holds another node's imports.</exception>
         /// <exception cref="FactConflictException">A path was imported with another value.</exception>
         public static ImportReport Import(RenderingBundle? bundle, ImportSource source, Scope? node, PredicateRules? rules,
-            JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths)
+            JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths, IEnumerable<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null)
         {
             // ContextFor hands back no context where the licence keeps nothing; with rules, something was known.
             if (rules is not null && node is null or { IsContradictory: true })
@@ -60,7 +64,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 spelled.Add(Spell(path, values ?? PathValues.Anything, chars ?? JsonValues.AllBands));
             }
 
-            return new ImportReport(spelled.Count, open, ValueSet.From(constrained), "[" + string.Join(",", spelled) + "]", false);
+            var (count, stated) = (spelled.Count, new List<(SqlPredicate, PathValues)>());
+            foreach (var (atom, origin, stratum, read) in beneath ?? [])
+                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null
+                    && stratum.TryGet(read.Possible.Of(JsonFactEncoding.Path(path).ToTerm(read.Json)), out var narrower))
+                {
+                    bundle?.Assume(origin with { Node = stratum }, atom, narrower);
+                    stated.Add((atom, narrower));
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath " + Spell(path, narrower, ValueSet<string>.Empty));
+                }
+
+            return new ImportReport(count, open, ValueSet.From(constrained), "[" + string.Join(",", spelled) + "]", false, stated);
         }
 
         /// <summary>One path's import as JSON, every value quoted, so that two imports that differ never spell alike.</summary>

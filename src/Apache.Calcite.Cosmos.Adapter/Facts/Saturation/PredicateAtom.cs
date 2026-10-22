@@ -67,6 +67,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Returns the reader of a cast to a SQL type over another reader.</summary>
         public static string CastReader(string target, string inner) => "cast:" + target + ":" + inner;
 
+        /// <summary>An integer type's limits, or <c>null</c>: what its readings raise or saturate past, and S's cells are cut at.</summary>
+        public static (decimal Least, decimal Most)? IntegerLimits(string type) => type switch
+        {
+            "TINYINT" => (sbyte.MinValue, sbyte.MaxValue),
+            "SMALLINT" => (short.MinValue, short.MaxValue),
+            "INTEGER" => (int.MinValue, int.MaxValue),
+            "BIGINT" => (long.MinValue, long.MaxValue),
+            _ => null,
+        };
+
         /// <summary>A comparison with a literal.</summary>
         public static PredicateAtom Compare(string reader, string op, string literal) => new(reader, op, literal, null, false);
 
@@ -219,9 +229,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Test == DefinedTest || Reads is not Reading reading || cell is PathCell.Unknown)
                 return On(cell.Coarse);
 
-            // A comparison with a parameter reads the value as the null test does, and raises where that read does.
+            // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
+            // anything where that read finds a value.
             if (Parameter)
-                return reading.Parameter(cell.Coarse) | (reading.NullOn(cell) & Truths.Raises);
+                return reading.Parameter(cell.Coarse) | (reading.NullOn(cell) & Truths.Raises) | ((reading.NullOn(cell) & Truths.False) != 0 ? Truths.True | Truths.False | Truths.Unknown : 0);
 
             switch (Test)
             {
@@ -434,14 +445,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             public virtual Truths NullOn(PathCell cell) => Null(cell.Coarse);
 
-            /// <summary>Whether an ordering holds of a value that compares with the literal as the sign says.</summary>
+            /// <summary>Whether a comparison holds of a value that compares with the literal as the sign says.</summary>
             static bool Ordered(string op, int sign) => op switch
             {
+                PredicateAtom.Equal => sign == 0,
                 Less => sign < 0,
                 LessOrEqual => sign <= 0,
                 Greater => sign > 0,
                 _ => sign >= 0,
             };
+
+            /// <summary>What a comparison answers of values on these sides of the literal, beside what else it may; either where a side is not told.</summary>
+            static Truths Placed(string op, IEnumerable<int?> sides, Truths beside) => sides.Aggregate(beside, (truths, side) => truths | (side is int sign ? Ordered(op, sign) ? T : F : T | F));
 
             /// <summary>
             /// <c>JSON_VALUE</c> read as text, and the cast to text over a raw value, which renders an object and an array
@@ -796,50 +811,72 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 /// <summary>
                 /// The union of <c>RETURNING</c> and the column the reader fills (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>):
-                /// on a point of a measured type, its value where either reads it, beside the raise where either may raise; and
-                /// over a structure the column fails the statement, where <c>RETURNING</c> answers null.
+                /// a number of the type or a cell of them compared as either reads it, beside the raise where either may raise; a
+                /// boolean as itself; and over a structure the column fails the statement, where <c>RETURNING</c> answers null.
                 /// </summary>
-                public override Truths EqualOn(PathCell cell, string literal) => cell switch
+                public override Truths EqualOn(PathCell cell, string literal) => OrderOn(cell, PredicateAtom.Equal, literal);
+
+                public override Truths OrderOn(PathCell cell, string op, string literal) => cell switch
                 {
-                    PathCell.Point { Value: var v } when _kinds.Contains(TypeOf(v)) && _type is "INTEGER" or "BIGINT" or "DOUBLE" or "BOOLEAN" => Read(v, literal),
-                    _ => Equal(cell.Coarse, literal) | Unread(cell),
+                    PathCell.Point { Value: var v } when _type == "BOOLEAN" && op == PredicateAtom.Equal && TypeOf(v) == BooleanType => v == literal ? T : F,
+                    _ when TryNumberOf(literal, out var c) && Number(cell, op, c) is Truths truths => truths,
+                    _ => (op == PredicateAtom.Equal ? Equal(cell.Coarse, literal) : Order(cell.Coarse, op, literal)) | Unread(cell) | Whole(cell),
                 };
 
-                public override Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal) | Unread(cell);
-
-                public override Truths NullOn(PathCell cell) => Null(cell.Coarse) | Unread(cell);
+                public override Truths NullOn(PathCell cell) => Null(cell.Coarse) | Unread(cell) | (Whole(cell) & F);
 
                 static Truths Unread(PathCell cell) => cell is PathCell.Structure ? R : Truths.None;
 
-                /// <summary>What an equality answers on a point of the type.</summary>
+                /// <summary>What an integer type's column may answer of a fraction whose double is whole, which it reads.</summary>
+                Truths Whole(PathCell cell) => Limits is var (least, most) && (cell is PathCell.Numbers { Integral: false }
+                    || cell is PathCell.Point { Value: var v } && TypeOf(v) == FractionType && DoubleBound.Of(v) is var r && Math.Floor(r) == r && r >= (double)least && r < (double)most + 1) ? T | F : Truths.None;
+
+                (decimal Least, decimal Most)? Limits => IntegerLimits(_type);
+
+                /// <summary>What a comparison answers on a number, or a cell of them; <c>null</c> for a reading this does not place.</summary>
                 /// <remarks>
-                /// <c>RETURNING</c> raises over an integer spelled with a point, and under <c>BIGINT</c> over one an int holds,
-                /// and the theory spells either as the column reads it; the column raises beyond its type, but for a
-                /// <c>BIGINT</c> whose double its bound admits, which it reads as a number it does not hold (<c>TODO.md</c>).
-                /// A <c>DOUBLE</c> compares doubles, which two numbers may share.
+                /// An integer type's <c>RETURNING</c> reads an integer written so within its range, and raises over anything
+                /// else, under <c>BIGINT</c> over one an int holds. Its column reads that too, and any other number as its
+                /// double where that is whole and within the type: 42.0, a fraction that rounds to a whole double, and past
+                /// 2^53 another integer (<c>CosmosJson.GetInteger</c>). A <c>DOUBLE</c> compares doubles, correctly rounded, and
+                /// <c>RETURNING</c> raises over an integer written so.
                 /// </remarks>
-                Truths Read(string v, string literal)
+                Truths? Number(PathCell cell, string op, decimal c)
                 {
-                    var value = Renderings.SameValue(v, literal) ? T : _type == "DOUBLE" && Doubles(v).Any(d => Doubles(literal).Any(e => d == e)) ? T | F : F;
-                    switch (_type)
+                    if (Limits is null && _type != "DOUBLE" || cell is not (PathCell.Point or PathCell.Numbers) || cell is PathCell.Point { Value: var v } && IsNumber(v) == false)
+                        return null;
+
+                    var (least, most) = Limits ?? (0m, 0m);
+
+                    var d = DoubleBound.Of(c);
+                    var sides = new List<int?>();
+                    var integral = cell is PathCell.Numbers { Integral: true } || cell is PathCell.Point { Value: var v0 } && TypeOf(v0) == IntegerType;
+                    if (_type == "DOUBLE")
+                        sides.Add(cell is PathCell.Numbers n0 ? n0.DoubleSide(d) : Math.Sign(DoubleBound.Of(((PathCell.Point)cell).Value).CompareTo(d)));
+                    else if (cell is PathCell.Numbers n)
                     {
-                        case "BOOLEAN":
-                            return value;
-                        case "DOUBLE":
-                            return TypeOf(v) == FractionType ? value : value | R;
+                        // Written so and within the type, read exactly; straddling a limit, not placed.
+                        if (n.Integral && n.Side(least - 1) == 1 && n.Side(most + 1) == -1)
+                            sides.Add(n.Side(c));
+                        else if (n.Integral && n.Side(most) != 1 && n.Side(least) != -1)
+                            sides.Add(null);
+
+                        if (n.DoubleSide(DoubleBound.Of(least)) != -1 && n.DoubleSide(DoubleBound.Of(most + 1)) is not (0 or 1))
+                            sides.Add(n.RoundedSide(c));
+                    }
+                    else
+                    {
+                        var value = ((PathCell.Point)cell).Value;
+                        if (TryNumberOf(value, out var x) && x == decimal.Truncate(x) && x >= least && x <= most)
+                            sides.Add(x.CompareTo(c));
+
+                        var r = DoubleBound.Of(value);
+                        if (Math.Floor(r) == r && r >= (double)least && r < (double)most + 1)
+                            sides.Add(DoubleBound.Compare(r, c));
                     }
 
-                    var (least, most) = _type == "INTEGER" ? ((decimal)int.MinValue, (decimal)int.MaxValue) : (long.MinValue, long.MaxValue);
-                    if (TryNumberOf(v, out var x) && x >= least && x <= most)
-                        return value | R;
-
-                    return _type == "BIGINT" && Doubles(v).Any(d => d >= long.MinValue && d <= long.MaxValue) ? T | F | R : R;
+                    return Placed(op, sides, _type != "DOUBLE" || integral ? R : Truths.None);
                 }
-
-                /// <summary>The doubles a number may be read as: parsed, as the reader does, and cast from a decimal.</summary>
-                static double[] Doubles(string number) => TryNumberOf(number, out var x)
-                    ? new[] { double.Parse(x.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture), (double)x }
-                    : new[] { ApproximateOf(number) ?? double.NaN };
 
             }
 
@@ -851,7 +888,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <para>
             /// <b>What it does to a number was measured</b> (<c>CosmosRexTranslator.TryNumericCastOperand</c>):
             /// <c>INTEGER</c> and <c>BIGINT</c> truncate toward zero and saturate at their limits, and <c>DOUBLE</c> is the
-            /// number. So a number's converted value is known, and a range of numbers converts to a range.
+            /// number. So a number's converted value is known, and a range of numbers converts to a range. Over an <c>ANY</c>
+            /// column Calcite wraps a long beyond an int instead, and over a <c>VARIANT</c> raises (<c>TODO.md</c>).
             /// </para>
             /// <para>
             /// <b>Over the text accessor it is a parse of the rendering</b>, which is another measurement
@@ -894,16 +932,103 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// </summary>
                 readonly Truths _parse;
 
+                static readonly ValueSet<string> TextRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.CastOfTheAccessorParsesTheRendering");
+
+                static readonly ValueSet<string> DecimalRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.ReturningDecimalParsesTheRendering",
+                    "Calcite.ColumnReadsWholeNumbersAsItsType");
+
+                public override ValueSet<string> Rests => _parsesDecimal ? DecimalRows : _overText ? TextRows : ValueSet<string>.Empty;
+
+                public override Truths EqualOn(PathCell cell, string literal) => On(cell, PredicateAtom.Equal, literal);
+
+                public override Truths OrderOn(PathCell cell, string op, string literal) => On(cell, op, literal);
+
+                public override Truths NullOn(PathCell cell) => Null(cell.Coarse) | (_parsesDecimal && cell is PathCell.Structure ? R : Truths.None);
+
+                /// <summary>
+                /// The conversion's answer, and under <c>DECIMAL</c> a <c>DECIMAL</c> column's beside it: the loader writes
+                /// <c>typed:DECIMAL</c> for both, so a cell reads their union (decision D12).
+                /// </summary>
+                Truths On(PathCell cell, string op, string literal) => Converted(cell, op, literal) | (_parsesDecimal ? Column(cell, op, literal) : Truths.None);
+
+                /// <summary>
+                /// What a <c>DECIMAL</c> column answers (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>): a number's text
+                /// compared exactly, where the clause reads a fraction through its double's rendering; null as null; and a raise
+                /// over anything else, which the reader refuses.
+                /// </summary>
+                static Truths Column(PathCell cell, string op, string literal) => cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    PathCell.Point { Value: var v } when IsNumber(v) => TryNumberOf(literal, out var c)
+                        ? Placed(op, [TryNumberOf(v, out var x) ? x.CompareTo(c) : DoubleBound.Compare(ApproximateOf(v)!.Value, c)], Truths.None) : T | F,
+                    PathCell.Numbers n => TryNumberOf(literal, out var c) ? Placed(op, [n.Side(c)], Truths.None) : T | F,
+                    _ => R,
+                };
+
+                /// <summary>
+                /// A cell's answer where the conversion places it one way: a string or a boolean over text by the reading's own
+                /// parse; a number by its double under <c>DOUBLE</c>, by its rendering under <c>DECIMAL</c>, and as written under
+                /// an integer type's parse; elsewhere, and over a raw value, which no cell is cut for (<c>ReaderEdgesTable</c>),
+                /// the state's.
+                /// </summary>
+                Truths Converted(PathCell cell, string op, string literal)
+                {
+                    if (TryNumberOf(literal, out var c) == false || _parsesDecimal && c != decimal.Truncate(c))
+                        return Compare(cell.Coarse, op, literal);
+
+                    Truths By(int? side, Truths beside) => Placed(op, [side], beside);
+                    var (least, most) = _saturates ?? (0m, 0m);
+                    switch (cell)
+                    {
+                        // A boolean renders as text that spells no number, a NaN compares as nothing Java says alike, and BIGINT reads
+                        // text shaped as a timestamp as one.
+                        case PathCell.Point { Value: var v } when _overText && (IsString(v) || TypeOf(v) == BooleanType):
+                        {
+                            var text = IsString(v) ? StringOf(v) : Renderings.BooleanText(v);
+                            if (_saturates?.Max == long.MaxValue && Renderings.ReadsAsTimestamp(text))
+                                return T | F | R;
+
+                            return _roundsFrom is not null ? (Renderings.ParseDouble(text) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(DoubleBound.Of(c)), 0) : R)
+                                : _parsesDecimal ? (Renderings.ParseDecimal(text) is string n ? By(TryNumberOf(n, out var e) ? e.CompareTo(c) : DoubleBound.Compare(ApproximateOf(n)!.Value, c), 0) : R)
+                                : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
+                        }
+
+                        case PathCell.Point { Value: var v } when _roundsFrom is not null && IsNumber(v):
+                            return By(Math.Sign(DoubleBound.Of(v).CompareTo(DoubleBound.Of(c))), 0);
+                        case PathCell.Numbers n when _roundsFrom is not null:
+                            return By(n.DoubleSide(DoubleBound.Of(c)), 0);
+
+                        // A number written as an integer renders as its digits, and any other as its double does
+                        // (Calcite.JsonValueRendersScalarsAsText), which parses as the literal where both are a whole double.
+                        case PathCell.Point { Value: var v } when _parsesDecimal && IsNumber(v):
+                            return Rendered(op, c, Math.Sign(DoubleBound.Of(v).CompareTo(DoubleBound.Of(c))), TypeOf(v) == IntegerType && TryNumberOf(v, out var digits) ? [digits.CompareTo(c)] : []);
+                        case PathCell.Numbers n when _parsesDecimal:
+                            return Rendered(op, c, n.DoubleSide(DoubleBound.Of(c)), n.Integral ? [n.Side(c)] : []);
+
+                        // Java's integer parse of a rendering reads an integer written so, and raises on any other.
+                        case PathCell.Point { Value: var v } when _overText && _saturates is not null && IsNumber(v):
+                            return TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= least && x <= most ? By(x.CompareTo(c), R) : R;
+                        case PathCell.Numbers n when _overText:
+                            return n.Integral == false || n.Side(most) == 1 || n.Side(least) == -1 ? R
+                                : n.Side(least - 1) == 1 && n.Side(most + 1) == -1 ? By(n.Side(c), R) : Compare(cell.Coarse, op, literal);
+
+                        default:
+                            return Compare(cell.Coarse, op, literal);
+                    }
+                }
+
+                /// <summary>
+                /// What <c>RETURNING DECIMAL</c> answers of numbers read as their double's rendering on the double's side of
+                /// the literal's, and as their digits on the sides given; where either is not one way, TRUE or FALSE.
+                /// </summary>
+                static Truths Rendered(string op, decimal c, int? doubled, int?[] digits) =>
+                    Placed(op, [doubled == 0 ? (Math.Abs(c) < 1L << 53 ? 0 : null) : doubled, .. digits], Truths.None);
+
                 public NumberCast(string target, bool overText)
                 {
                     _overText = overText;
                     _parsesDecimal = target == "DECIMAL";
-                    _saturates = target switch
-                    {
-                        "INTEGER" => (int.MinValue, int.MaxValue),
-                        "BIGINT" => (long.MinValue, long.MaxValue),
-                        _ => null,
-                    };
+                    _saturates = target is "INTEGER" or "BIGINT" ? IntegerLimits(target) : null;
                     _roundsFrom = target == "DOUBLE" ? Renderings.DoubleUnitFrom : null;
                     _parse = overText && _saturates is not null ? R : Truths.None;
                 }
@@ -1075,10 +1200,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         high = numbers.Upper?.Value;
                     }
 
+                    return Between(op, low, high, c, _saturates is null || c == decimal.Truncate(c));
+                }
+
+                /// <summary>What a comparison answers of the numbers between two ends, read as closed; an end not given is open.</summary>
+                static Truths Between(string op, decimal? low, decimal? high, decimal c, bool whole)
+                {
                     bool SomeBelow(bool strict) => low is not decimal a || (strict ? a < c : a <= c);
                     bool SomeAbove(bool strict) => high is not decimal b || (strict ? b > c : b >= c);
-                    var whole = _saturates is null || c == decimal.Truncate(c);
-
                     return op switch
                     {
                         PredicateAtom.Equal => (whole && SomeBelow(false) && SomeAbove(false) ? T : 0) | (low == c && high == c ? 0 : F),

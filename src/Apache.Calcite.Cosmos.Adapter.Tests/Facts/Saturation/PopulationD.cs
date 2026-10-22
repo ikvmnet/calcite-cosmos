@@ -85,6 +85,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public static bool DeclaresNothingConditional(int seed) => new Random(unchecked(seed * 31 + 5)).Next(8) == 0;
 
         /// <summary>
+        /// A trial's draws before its conjuncts: its two streams, its world, its declaration and the documents drawn from it,
+        /// which the rendering check's source B draws as <see cref="Run"/> does.
+        /// </summary>
+        internal static (Random Random, Random Bands, World World, Declaration Declaration, J.Obj[] Documents) Trial(int seed)
+        {
+            var (random, bands) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)));
+            var declaration = Declaration.Random(random, bands, DeclaresNothingConditional(seed));
+            return (random, bands, new World(seed), declaration, [.. Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
+                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))]);
+        }
+
+        /// <summary>
         /// Runs one trial.
         /// </summary>
         /// <param name="seed">The trial's seed, which fixes the declaration, the documents, the filter and the world.</param>
@@ -92,13 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public PopulationReport Run(int seed)
         {
             var clock = Stopwatch.StartNew();
-            var random = new Random(seed);
-            var bands = new Random(unchecked(seed * 7919 + 17));
-            var world = new World(seed);
-            var declaration = Declaration.Random(random, bands, DeclaresNothingConditional(seed));
-            var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
-                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
-                .ToArray();
+            var (random, bands, world, declaration, documents) = Trial(seed);
             var conjuncts = Statements.Draw(random, declaration).Concat(Statements.Banded(bands, declaration)).ToList();
             var computed = Statements.Computed(new Random(unchecked(seed * 104729 + 31)), declaration);
             var report = new PopulationReport(seed, declaration, conjuncts);

@@ -41,8 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
-            var cuts = CutPoints.Of(Atom, form, new ReaderEdges(ValueSet<string>.Empty));
-            return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured);
+            var cuts = CutPoints.Of(Atom, form, ReaderEdgesTable.Rows[PredicateAtom.TextReader]);
+            return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured, Truths.Raises);
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);
@@ -85,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var cells = PathCell.Split(Label, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands, ValueSet<CutPoint>.Empty);
             var vector = new OutcomeVector(cells, cells.Cells.Select(_ => new CellOutcome(t | f | E, CosmosValueClass.Number)).ToList(), ValueSet<string>.Empty);
-            CellOutcomes.Of(Atom, vector, AnswerMeanings.Measured).Classes.Should().OnlyContain(k => k.Service == (t | u | E));
+            CellOutcomes.Of(Atom, vector, AnswerMeanings.Measured, Truths.Raises).Classes.Should().OnlyContain(k => k.Service == (t | u | E));
         }
 
     }

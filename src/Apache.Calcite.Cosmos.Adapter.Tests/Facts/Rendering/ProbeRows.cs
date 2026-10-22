@@ -17,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The rendering tests' fixture: the registry's rows as S reads them (<see cref="CosmosAxiomRows"/>), and no others; the
-    /// theory defined from them, once, and the emulator's table it settles; the probe's label forms
+    /// theory defined from them, once, and the table it settles for the asserted set; the probe's label forms
     /// (<c>probes/rcore/Program.cs</c>); and a bundle that checks one claim. A test that needs a row the registry lacks
     /// plants it under an id no row holds.
     /// </summary>
@@ -33,8 +33,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
 
-        /// <summary>The table S settles for the emulator's set, which CI asserts under.</summary>
-        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)));
+        /// <summary>The table S settles for the set CI asserts under.</summary>
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)));
 
         public static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
 
@@ -65,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// reads both claims; the run must complete with one node per class and no contradiction.
         /// </summary>
         public static (RenderingVerdict Equal, RenderingVerdict Implies) Check(SqlPredicate conjunct, ServiceForm form, RenderingTheory? theory = null,
-            RenderingSet set = RenderingSet.Emulator, JsonDocumentPath? path = null, PathValues? values = null, ValueSet<string>? classes = null)
+            RenderingSet set = RenderingCheckRun.AssertedSet, JsonDocumentPath? path = null, PathValues? values = null, ValueSet<string>? classes = null)
         {
             using var bundle = (theory ?? ProbeTheory).Open(set);
             var root = bundle.Write(conjunct);

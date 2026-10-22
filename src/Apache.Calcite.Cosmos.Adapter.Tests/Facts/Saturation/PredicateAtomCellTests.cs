@@ -19,8 +19,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
     /// <summary>
-    /// Calcite on one cell (<see cref="PredicateAtom.OnCell"/>), over <see cref="PredicateAtomTests"/>' grid and
-    /// <c>BIGINT</c>, on the cells of five imports cut at nothing and at the atom's literals.
+    /// Calcite on one cell (<see cref="PredicateAtom.OnCell"/>), over <see cref="PredicateAtomTests"/>' grid, <c>BIGINT</c>
+    /// and the casts it leaves out, and literals at the rounding boundaries, on the cells of five imports cut at nothing and
+    /// where the reader's edges row cuts them.
     /// </summary>
     /// <remarks>
     /// A cell's answer holds of every value in it, as <see cref="IrEval"/> reads the value through each reader the reading
@@ -33,9 +34,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         const string Bigint = "typed:BIGINT";
 
+        static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, "cast:INTEGER:raw", "cast:DOUBLE:raw", "cast:BIGINT:text"];
+
+        /// <summary>Literals where a number's double, its parse and a type's limits part cells.</summary>
+        static readonly string[] Boundaries = [Of(9007199254740993m), Of(9007199254740994m), Of(0.1m), Of(2m), Of(2147483648m)];
+
         static readonly JsonDocumentPath A = JsonDocumentPath.Root.Property("a");
 
-        /// <summary>Nothing known, a declared string, a non-negative integer, a domain, and a value excluded.</summary>
+        /// <summary>
+        /// Nothing known, a declared string, a non-negative integer, a domain, a value excluded, and a fraction a decimal's
+        /// cast to a double misses.
+        /// </summary>
         static readonly PathValues[] Imports =
         {
             PathValues.Anything,
@@ -43,10 +52,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m))),
             PathValues.OneOf(ValueSet.Of(Of("30"), Of("x"), Of(30m), Of(2.5m), Of(true), NullValue)),
             PathValues.Meet(PathValues.AnythingThere, PathValues.Not(Of("x"))),
+            PathValues.OneOf(ValueSet.Of(Of(9007199254740994.4m))),
         };
 
         /// <summary>The values a cell is asked of, beside its witness: the grid's stored values and population D's.</summary>
-        static readonly J?[] Pool = PredicateAtomTests.Stored.Select(PathCellTests.Decode).Concat(Declaration.Values).ToArray();
+        static readonly J?[] Pool = PredicateAtomTests.Stored.Select(PathCellTests.Decode).Concat(Declaration.Values)
+            .Concat([new J.Num(9007199254740993m), new J.Num(9007199254740994.4m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(2m), new J.Num(2147483648m), new J.Str("2"), new J.Str("2.5")])
+            .ToArray();
 
         /// <summary>
         /// Every value in a cell, read through every reader the atom's reading stands for, takes a truth value the cell's
@@ -58,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var faults = new List<string>();
             var (asked, tossed) = (0, 0);
             var readers = new HashSet<string>();
-            foreach (var atom in Atoms())
+            foreach (var atom in Atoms(boundaries: true))
             {
                 var predicate = Predicate(atom);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
@@ -85,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             TestContext.Current.TestOutputHelper?.WriteLine($"{asked:N0} answers checked; {tossed:N0} left out, a coin tossed");
             faults.Should().BeEmpty();
-            readers.Should().BeEquivalentTo(PredicateAtomTests.Readers.Append(Bigint), "every reading is checked on some value");
+            readers.Should().BeEquivalentTo(Readers, "every reading is checked on some value");
         }
 
         /// <summary>
@@ -104,30 +116,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A cell answers within what the coarse reading answers on its state, but for the raises a raw and a typed reading
-        /// leave out there: a <c>VARCHAR</c> column's read and a raw ordering, and a typed column over a structure.
+        /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
+        /// over a structure; and where a reading compares a number's double, which the coarse reading compares by value
+        /// (<c>TODO.md</c>). A conjunct the check run reads a stratum beside is read so by neither.
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
         {
-            var wider = new List<string>();
-            foreach (var atom in Atoms())
+            var (wider, inexact) = (new List<string>(), new List<string>());
+            foreach (var atom in Atoms(boundaries: true))
             {
-                var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) && atom.Reader != "typed:DECIMAL"
-                    ? Truths.Raises : Truths.None;
+                var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut) != 0)
+                {
+                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
                         wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if (Rendering.RenderingCheckRun.ReadExactly(Predicate(atom)) && (atom.OnCell(cell) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
+                        inexact.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                }
             }
 
             wider.Should().BeEmpty();
+            inexact.Should().BeEmpty("the check run reads a stratum beside a conjunct read so as the facts graph reads it");
         }
+
+        static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;
+
+        /// <summary>
+        /// Whether the coarse reading compares a number's value where Calcite compares its double: an integer type's column
+        /// and <c>DECIMAL</c>'s clause, which read a number written with a point through it, a double, and the cast to a
+        /// double, whose decimal the coarse reading converts by a cast that misses at rounding boundaries
+        /// (<c>Renderings.DoubleOf</c>).
+        /// </summary>
+        static bool Rounded(PredicateAtom atom, PathCell cell) => (cell.Coarse is PredicateAtom.State.AnyNumber || cell.Coarse is PredicateAtom.State.Scalar { Value: var v } && IsNumber(v))
+            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text";
 
         /// <summary>A cell cut at the atom's literals answers within the cell it lies in, cut at none.</summary>
         [Fact]
         public void ASubCellAnswersNoWider()
         {
             var wider = new List<string>();
-            foreach (var atom in Atoms())
+            foreach (var atom in Atoms(boundaries: true))
                 foreach (var (coarse, fine) in Partitions(atom))
                     foreach (var cell in fine.Cells)
                     {
@@ -149,8 +178,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             rests.Should().BeSubsetOf(CosmosAxioms.All.Select(r => r.Id));
         }
 
-        /// <summary>The grid's atoms the loader builds: each literal of the kind its reading is compared with.</summary>
-        static IEnumerable<PredicateAtom> Atoms() => PredicateAtomTests.Grid(PredicateAtomTests.Readers.Append(Bigint)).Where(atom => Literals(atom).All(literal => atom.Reader switch
+        /// <summary>
+        /// The grid's atoms the loader builds, each literal of the kind its reading is compared with; and beside the numeric
+        /// readings, the boundaries, which the coarse readings compare exactly where a double does not.
+        /// </summary>
+        static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) => PredicateAtomTests.Grid(Readers)
+            .Concat(boundaries ? from reader in Readers from literal in Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
+            .Where(atom => Literals(atom).All(literal => atom.Reader switch
         {
             PredicateAtom.RawReader => true,
             PredicateAtom.TextReader or "cast:VARCHAR:raw" => IsString(literal),
@@ -160,10 +194,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static IEnumerable<string> Literals(PredicateAtom atom) => new[] { atom.Operand }.OfType<string>().Concat(atom.Points ?? ValueSet<string>.Empty);
 
-        /// <summary>Each import, with either set of classes, cut at nothing and at the atom's literals.</summary>
+        /// <summary>Each import, with either set of classes, cut at nothing and where the reader's edges cut it (<see cref="CutPoints"/>).</summary>
         static IEnumerable<(CellPartition Coarse, CellPartition Fine)> Partitions(PredicateAtom atom)
         {
-            var literals = ValueSet.From(Literals(atom).Select(l => new CutPoint(l, CutKind.Literal)));
+            var literals = CutPoints.Of(atom, ServiceForm.BareOf(SqlValue.Spell(A)), ReaderEdgesTable.Rows.GetValueOrDefault(atom.Reader) ?? new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty));
             foreach (var values in Imports)
                 foreach (var classes in new[] { AllBands, NoBand })
                     yield return (PathCell.Split(SqlValue.Spell(A), values, classes, ValueSet<CutPoint>.Empty), PathCell.Split(SqlValue.Spell(A), values, classes, literals));
@@ -199,7 +233,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static List<string> Unkept(Func<PredicateAtom, PathCell, Truths> onCell)
         {
             var unkept = new List<string>();
-            foreach (var atom in Atoms().Where(a => a.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:BOOLEAN" && a.Parameter == false))
+            foreach (var atom in Atoms(boundaries: true).Where(a => a.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:BOOLEAN" && a.Parameter == false))
             {
                 var column = new SqlValue.Typed(A, atom.Reader.Substring("typed:".Length));
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))

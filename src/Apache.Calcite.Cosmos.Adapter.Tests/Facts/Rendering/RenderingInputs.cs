@@ -57,7 +57,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 yield return new("corpus", query.Name, query.Sql, () => harness.PlanToAsync(query.Sql));
         }
 
-        static IEnumerable<Statement> Differential(string input, IReadOnlyList<string> statements, CosmosContainerMetadata[] containers) =>
+        /// <summary>Statements over the given containers, planned as the differential plans them, each named by its index.</summary>
+        internal static IEnumerable<Statement> Differential(string input, IReadOnlyList<string> statements, CosmosContainerMetadata[] containers) =>
             statements.Select((sql, i) => new Statement(input, i.ToString(CultureInfo.InvariantCulture), sql, () => Differential(sql, containers)));
 
         /// <summary>

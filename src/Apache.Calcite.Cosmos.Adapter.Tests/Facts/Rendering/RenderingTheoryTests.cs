@@ -20,7 +20,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// S's theory, loaded and frozen: the rule count, the boxes' algebra and their definition, the merge of targets into
-    /// a set's table, a contradicting row refused at load (T6, G1), and the readers the cuts are named for.
+    /// a set's table, and the readers the cuts are named for. A contradicting row refused at load (T6) is gate fault G1
+    /// (<see cref="RenderingGateFaultTests"/>).
     /// </summary>
     public sealed class RenderingTheoryTests
     {
@@ -126,23 +127,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// T6, gate fault G1: a second row for one key and target that answers otherwise is refused at load, naming its
-        /// axiom, without faulting the theory; a definition from the right rows answers as before.
-        /// </summary>
-        [Fact]
-        public void T6_AContradictingRowIsRefusedAtLoad()
-        {
-            var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, Null);
-            var refusal = FluentActions.Invoking(() => RenderingTheory.Define(RenderingDefinition.Measured(
-                [.. ProbeRows.Rows, new("Service.Planted", key, RenderingTarget.Emulator, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
-            (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
-
-            ProbeTheory.Theory.Get(ProbeTheory.Final.Of(key, RenderingSet.Emulator)).Should().Equal(ValueSet.Of(CosmosAnswer.True));
-        }
-
-        /// <summary>
-        /// Text and raw have the row their cuts read, and every row names a reader the loader builds (<c>CosmosPredicateLoader.Value</c>
-        /// and <c>Cast</c>). A text cast of the raw value has none: over a <c>VARIANT</c> Calcite casts all but a string to
+        /// Every reader the loader builds has the row its cuts read (<c>CosmosPredicateLoader.Value</c> and <c>Cast</c>), and
+        /// every row names one. A text cast of the raw value has none: over a <c>VARIANT</c> Calcite casts all but a string to
         /// null, which its cells do not model, so an atom read through it is never evaluated.
         /// </summary>
         [Fact]
@@ -154,7 +140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
                 .ToList();
 
-            var covered = built.Take(2).ToList();
+            // A cast of the raw value is held back until a Calcite row measures it.
+            var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)).ToList();
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }

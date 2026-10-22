@@ -19,9 +19,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyDictionary<string, ReaderEdges> Edges, IReadOnlyList<(string, string)> Parting,
         Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
         Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> Split,
+        Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, OutcomeVector, AnswerMeanings, CellOutcomes> Pair)
+        Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair)
     {
 
         /// <summary>
@@ -41,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ReaderEdgesTable.Rows,
             // U+E000 and above sorts after a surrogate by UTF-16 unit and before the character it writes by code point.
             [(JsonValues.SurrogateBand, JsonValues.HighBand), (JsonValues.HighBand, JsonValues.SurrogateBand)],
-            CutPoints.Of, PathCell.Split, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of);
+            CutPoints.Of, PathCell.Split, PathCell.SetAside, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of);
 
     }
 

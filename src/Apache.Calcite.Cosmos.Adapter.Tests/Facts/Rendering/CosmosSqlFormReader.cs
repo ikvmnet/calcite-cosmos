@@ -87,9 +87,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bool b => JsonValues.Of(b),
             long l => JsonValues.Of((decimal)l),
             decimal d => JsonValues.Of(d),
-            double d => JsonValues.Of(d),
+            double d => Value(d) is decimal x ? JsonValues.Of(x) : JsonValues.Of(d),
             _ => null,
         };
+
+        /// <summary>
+        /// A double the service is sent, as the number it compares: a whole one's own value, and any other's shortest spelling,
+        /// whose double it is; never .NET's cast, which keeps fifteen digits and reads 2^63 as 9223372036854780000. <c>null</c>
+        /// where no decimal holds it, which is spelled approximately.
+        /// </summary>
+        static decimal? Value(double d) =>
+            double.IsFinite(d) == false ? null
+            : Math.Floor(d) == d && Math.Abs(d) < 7.9e28 ? (decimal)new System.Numerics.BigInteger(d)
+            : decimal.TryParse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)
+                && Cosmos.Facts.Saturation.DoubleBound.Of(x) == d ? x : null;
 
         /// <summary>
         /// A recursive descent over the text's tokens, each production answering its form and its text as written; a primary

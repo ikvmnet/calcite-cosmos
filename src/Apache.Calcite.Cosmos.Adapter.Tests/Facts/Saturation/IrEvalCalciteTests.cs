@@ -56,7 +56,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static readonly JsonDocumentPath[] Paths = { Declaration.A, Declaration.N, Declaration.V };
 
-        static readonly string[] Texts = { "30", "30.0", "true", "x", "", "1e30", "1.0E30", "abc", "7", "2.5", " 30 " };
+        static readonly string[] Texts = { "30", "30.0", "true", "x", "", "1e30", "1.0E30", "abc", "7", "2.5", " 30 ", "\u00017", "7\u001F", "\u00011.5" };
+
+        /// <summary>
+        /// What a path may hold: population D's values, and numbers padded with control characters, which Java's trim takes
+        /// off and a cast's parse then reads.
+        /// </summary>
+        static readonly J[] Values = [.. Declaration.Values, new J.Str("\u00017"), new J.Str("7\u001F"), new J.Str("\u00011.5"), new J.Str("\u001F30\u0001")];
 
         static readonly decimal[] Numbers = { 30m, 7m, -1m, 0m, 2.5m, 10m };
 
@@ -213,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static J.Obj Document(Random random)
         {
             var properties = new SortedDictionary<string, J>(StringComparer.Ordinal);
-            J? Pick() => random.Next(8) == 0 ? null : Declaration.Values[random.Next(Declaration.Values.Length)];
+            J? Pick() => random.Next(8) == 0 ? null : Values[random.Next(Values.Length)];
 
             if (Pick() is J a)
                 properties["a"] = a;
@@ -240,8 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 return random.Next(2) == 0 ? SqlPredicate.AllOf(arms) : SqlPredicate.AnyOf(arms);
             }
 
-            // DECIMAL is no column the reader was measured over.
-            var types = drawn.Typed == IrEval.TypedAs.Column ? new[] { "INTEGER", "BIGINT", "DOUBLE", "BOOLEAN" } : new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
+            var types = new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
             var path = Paths[random.Next(Paths.Length)];
             SqlValue reading = random.Next(12) switch
             {

@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var (node, rules) = scope.ContextFor(OracleLicence.RenderConjunct(conjunct));
                 var paths = scope.Statement.Conjuncts.SelectMany(c => c.Paths).Distinct().ToList();
-                using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+                using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
                 var report = RenderingImporter.Import(bundle, Source, node, rules, null, paths);
                 (report.Paths, report.Contradicted).Should().Be((paths.Count, false));
 
@@ -87,7 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AnImportAfterRunIsRefused()
         {
-            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(Ne(Text(LabelPath), "bikes"));
             RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath]);
             bundle.Claim(root, Guarded);
@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { Eq(Text(P("a")), "x") }));
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
 
-            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             RenderingImporter.Import(bundle, Source, d0, rules, theory, [P("a")]);
             RenderingImporter.Import(bundle, Source, d0, rules, theory, [P("a")]);
             FluentActions.Invoking(() => bundle.Import(Source with { Node = d0 }, P("a"), PathValues.AnythingThere, JsonValues.AllBands)).Should().Throw<FactConflictException>();
@@ -123,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ASecondSourceIsRefused()
         {
-            using (var bundle = ProbeTheory.Open(RenderingSet.Emulator))
+            using (var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet))
             {
                 RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath]);
                 FluentActions.Invoking(() => RenderingImporter.Import(bundle, Source with { Round = 2 }, null, null, null, [KindPath])).Should().Throw<InvalidOperationException>();
@@ -132,9 +132,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var theory = Declaration(new JsonFactGenerations(long.MaxValue));
             var declaration = theory.Declaration()!;
             var rules = PredicateRules.Of(declaration.Generation.Contexts);
-            using var twice = ProbeTheory.Open(RenderingSet.Emulator);
+            using var twice = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             RenderingImporter.Import(twice, Source, declaration.Context, rules, theory, [P("a")]);
             FluentActions.Invoking(() => RenderingImporter.Import(twice, Source, declaration.DeclaredPossible(), rules, theory, [P("o")])).Should().Throw<InvalidOperationException>();
+        }
+
+        /// <summary>
+        /// A stratum is stated beside an atom only as a later round of the import's statement, of a path it imported, and
+        /// admitting nothing the import does not; and an atom is stated beneath one stratum. Each plant is refused.
+        /// </summary>
+        [Fact]
+        public void AStratumIsStatedOfALaterRoundBesideItsImportAlone()
+        {
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
+            var atom = Eq(Text(LabelPath), "x");
+            var strings = PathValues.OfKinds(ValueSet.Of(JsonValues.StringType));
+            bundle.Write(atom);
+            bundle.Import(Source, LabelPath, strings, JsonValues.AllBands);
+            var later = Source with { Round = Source.Round + 1 };
+
+            FluentActions.Invoking(() => bundle.Assume(Source, atom, strings)).Should().Throw<InvalidOperationException>("the root's own round is no later one");
+            FluentActions.Invoking(() => bundle.Assume(later with { Statement = "another" }, atom, strings)).Should().Throw<InvalidOperationException>("another statement's");
+            FluentActions.Invoking(() => bundle.Assume(later, Eq(Text(KindPath), "a"), strings)).Should().Throw<InvalidOperationException>("a path not imported");
+            FluentActions.Invoking(() => bundle.Assume(later, atom, PathValues.Anything)).Should().Throw<InvalidOperationException>("more than the import admits");
+            bundle.Assume(later, atom, PathValues.Meet(strings, PathValues.Not(JsonValues.Of("y"))));
+            FluentActions.Invoking(() => bundle.Assume(later, atom, PathValues.Meet(strings, PathValues.Not(JsonValues.Of("z"))))).Should().Throw<InvalidOperationException>("beneath two strata");
         }
 
         /// <summary>
@@ -182,7 +204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             ImportReport Report(Scope? node, PredicateRules? rules)
             {
-                using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+                using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
                 var report = RenderingImporter.Import(bundle, Source, node, rules, theory, paths);
                 bundle.Scope.CountRows(ProbeTheory.Imported).Should().Be(report.Paths);
                 return report;

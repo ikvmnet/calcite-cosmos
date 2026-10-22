@@ -23,9 +23,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// and every cell holds one the import admits.
     /// </summary>
     /// <remarks>
-    /// Imports are drawn from population D's values and edges, with classes of characters, and cut at its literals and at
-    /// strings where the two orders part. A cell is asked of population D's values, the strings of every band, and what
-    /// lies either side of each cut.
+    /// Imports are drawn from population D's values and edges, with classes of characters, and cut at its literals, at
+    /// strings where the two orders part, and at the doubles numbers round to, rounding boundaries among them. A cell is
+    /// asked of population D's values, the strings of every band, and what lies either side of each cut.
     /// </remarks>
     public sealed class PathCellTests
     {
@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static readonly string[] Cuts =
         {
             Of(""), Of("30"), Of("bikes"), Of("x"), Of("true"), Of(""), Of("😀"), Of("�"),
-            Of(-1m), Of(0m), Of(2.5m), Of(7m), Of(30m), Of(1e30), Of(true), NullValue,
+            Of(-1m), Of(0m), Of(2.5m), Of(7m), Of(30m), Of(1e30), Of(true), NullValue, Of(0.1m), Of(9007199254740993m), Of(9007199254740994.4m),
         };
 
         /// <summary>Every value an import admits lies in exactly one of its cells, and a value it refuses in none.</summary>
@@ -117,13 +117,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     x = PathValues.Meet(x, PathValues.Below(new Bound(Edges[random.Next(Edges.Length)], random.Next(2) == 0)));
 
                 var classes = ValueSet.From(AllBands.Where(_ => random.Next(2) == 0));
-                yield return (("$[\"a\"]", x, classes), ValueSet.From(Some(Cuts, 4).Select(c => new CutPoint(c, CutKind.Literal))));
+                yield return (("$[\"a\"]", x, classes), ValueSet.From(Some(Cuts, 4).SelectMany(c => IsExactNumber(c) && random.Next(2) == 0
+                    ? new[] { new CutPoint(c, CutKind.Literal), new CutPoint(c, CutKind.Double) } : [new CutPoint(c, CutKind.Literal)])));
             }
         }
 
         /// <summary>
         /// The values a case's cells are asked of: an absent path, population D's, the strings of every band, and each
-        /// cut with what lies beside it — a unit more or less, U+0000 or a letter appended, a number one or a half away.
+        /// cut with what lies beside it — a unit more or less, U+0000 or a letter appended, a number one, two, a half or a
+    /// rounding's width away.
         /// </summary>
         static IEnumerable<J?> Values(ValueSet<CutPoint> cuts)
         {
@@ -137,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         .Select(s => new J.Str(s)));
 
                 if (TryNumberOf(cut, out var c))
-                    values.AddRange(new[] { c, c - 1, c + 1, c - 0.5m, c + 0.5m, c + 0.0m }.Select(n => new J.Num(n)));
+                    values.AddRange(new[] { c, c - 1, c + 1, c - 2, c + 2, c - 0.5m, c + 0.5m, c + 0.0m, c - 0.00000000000000001m, c + 0.00000000000000001m }.Select(n => new J.Num(n)));
             }
 
             return values;

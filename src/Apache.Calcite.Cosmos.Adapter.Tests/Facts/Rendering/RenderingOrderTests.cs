@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
-        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars"];
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed"];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
 
@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Violations(theory).Should().Equal("compose/planted: an agreement over some cell: a filter is a lambda");
         }
 
-        static List<string> Violations(RenderingTheory theory)
+        internal static List<string> Violations(RenderingTheory theory)
         {
             var tables = theory.Graph.Tables.ToDictionary(t => t.Name);
             var owned = theory.Graph.Tables.Where(t => theory.Theory.CountRows(t) > 0).Select(t => t.Name).Concat(BundleHost).ToHashSet();

@@ -232,17 +232,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 // Rendered, and its guards deleted, from what every pushed conjunct establishes: the
                 // stratum a conjunct no round admitted is read in, which is never its own facts.
-                var translator = statement.TranslatorFor(i, new CosmosParameterList());
+                var parameters = new CosmosParameterList();
+                var translator = statement.TranslatorFor(i, parameters);
 
                 if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is not RexNode weakened)
                     continue;
 
                 beneath ??= AlreadyApplied(filter.getInput()).ToList();
 
-                if (statement.IsApplied(weakened, beneath) == false && translator.TryTranslate(weakened, out _))
+                if (statement.IsApplied(weakened, beneath) == false && translator.TryTranslate(weakened, out var text))
                 {
                     pushable.Add(weakened);
                     beneath.Add(weakened);
+
+                    // The rendering check's third site, inert unless a test arms it.
+                    if (Metadata.CosmosRenderingCapture.Armed)
+                        Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, text!, parameters);
                 }
             }
 
@@ -1061,7 +1066,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var branches = new java.util.ArrayList();
             branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));
 
-            if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
+            if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number) && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M11) == false)
                 branches.add(double.IsFinite(number)
                     ? EqualsOtherThanText(rexBuilder, value, NumberRenderedAs(rexBuilder, text, number))
                     : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));

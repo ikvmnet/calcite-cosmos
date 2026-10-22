@@ -6069,7 +6069,8 @@ row, which is what the check against Calcite leaves out.
 `PathCell.Split` cuts one imported `PathValues`, with the classes of its strings' characters, at the values the pair
 compares with: absent, null, each structure and each boolean apart; a literal the import admits as a point, and one it
 excludes as a boundary; strings between two literals in Calcite's order, by UTF-16 unit; numbers of a kind between two
-by value. The cut points are handed in, for S's rules to choose. Every value the import admits lies in exactly one cell,
+by value, and by the double a literal rounds to (*Numbers on cells*, below). The cut points are handed in, for S's rules
+to choose. Every value the import admits lies in exactly one cell,
 and a value it refuses in none.
 
 **Every cell is inhabited, and the search for an inhabitant is complete.** A refutation names a cell, and a cell nothing
@@ -6127,9 +6128,9 @@ the identity, or a `NOT`, decides nothing without it.
 code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
 decide that for every comparison with a string, `=` and `!=` as well as an ordering, since each reads the row of the
 side an interval lies on, and a parted interval answers both sides. A point is placed by each comparator the type's
-`Order` entry names, their answers unioned, beside whatever else the entry answers. A number is placed only within
-±2^53, where a double holds it exactly: the theory spells `30` and `30.0` alike, and the service may hold either as a
-double. A boolean and a null are keyed as their own classes, which no comparator orders.
+`Order` entry names, their answers unioned, beside whatever else the entry answers. A number is placed by the value the
+service compares (*Numbers on cells*, below). A boolean and a null are keyed as their own classes, which no comparator
+orders.
 
 **A path written bare carries the class of a value that is no boolean**, and a connective over it reads that class's
 row, not unknown's. As a whole condition, where its row keeps it not, such a value is kept by neither `WHERE` nor
@@ -6417,11 +6418,12 @@ the source's parentheses and names, and every text the run captures must print b
 measured row, `Service.NotBindsTightestThenAndThenOr`, which every proof rests on in `proof-lines.tsv`: over the 27
 documents that set three paths to nothing, a null or a string, `WHERE` keeps for each pinned text what it keeps for the
 pinned tree written with every grouping explicit, which the other binding's tree does not, and `NOT c.a = @p0` keeps
-what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator of the tests in C# is trusted.
+what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator of the tests in C# is trusted. The
+emulator and the probe account (2026-10-22) both answer so, and the row names both.
 
 **The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
-parameters it bound. Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
+parameters it bound, as the split rule's weakening does (below). Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
 is allocated once a process. Armed, the observer is the flow's own, so a test planning beside it is told nothing. Two
 accessors on the statement hand the check its scope and its declaration, and the declaration says whether a rule it
 reads is conditional, for the triage; nothing in production calls them.
@@ -6441,11 +6443,35 @@ own position is read from the same run, and reported beside, never claimed.
 rounds admitted. A stratum assumes the conjuncts admitted before it, and the node a residual conjunct renders from is
 the last stratum, which assumes them all: checked there, those conjuncts would be agreed with only where they already
 hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, and every statement over one container
-shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong: a later round's
-conjunct can be unproven where its own stratum would prove it, or refuted on a cell its round's facts rule out, two
-paths a conditional rule ties together that S imports apart. Such a refutation is triaged as a warning until the
-emulator reproduces it, the triage names the round, and each counts against c15's precision line until a fix lands
-before it (`TODO.md`).
+shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong.
+
+**A later round's conjunct is read beside the facts it was rendered from.** The translator renders a round-2 conjunct
+knowing the round-1 conjuncts hold: over `kinds`, where kind is `"a"` the label is a string, so `kind = 'a' AND label =
+'30'` is sent with a bare `c.label = @p1`. From the root alone a number 30 stands beside kind `"a"`, two paths a
+conditional rule ties that S imports apart, and the check was unproven, or refuted on a cell no declared document holds
+(differential 394, 405, 410). So each atom of a later round's conjunct is stated beside what its path may hold in the
+node the licence table rendered that conjunct from (`assumed`, `RenderingBundle.Assume`). No licence is chosen among:
+an atom reads its own conjunct's stratum, and one two conjuncts share reads none, since one may be what the other's
+stratum assumes. The bundle refuses a stratum that is no later round of the import's statements, one beside a path it
+did not import, and one that admits more than the import.
+
+**A stratum is read only where the facts graph reads what it assumes as Calcite does.** Every conjunct it assumes must
+be in the check, and read by the text accessor, typed `BOOLEAN`, a cast of the accessor to an integer type, a raw value
+beside no number, or a presence test (`RenderingCheckRun.ReadExactly`), whose coarse readings leave out no truth Calcite
+gives, which `CellAnswersStayInsideTheCoarseAnswer` holds them to. A stratum resting on a coarser reading can be wrong
+where the translator relied on it: the facts graph reads typed `INTEGER` `= 5` as the integer 5 alone, where a column
+reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would be
+proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+
+**A cell the stratum admits nothing of is set aside.** It is found by cutting the stratum's value where the import was
+cut (`PathCell.SetAside`): each of its cells lies within one of the import's, and a cell their inhabitants miss holds
+only documents that fail a conjunct of the same junction. Its Calcite truths are the policy's set-aside ones
+(`tolerated`, which the `classes` rule hands in): the service may answer anything there but a failure, and the cell
+refutes nothing. That is sound for the claim at the root: the check is the `AND` of every conjunct at `Pos`; the assumed
+conjuncts agree, so on a document outside the stratum both sides drop the row, and the service is still evaluated on
+every cell, so no failure hides there. A conjunct's own verdict beside such a cell is exact where the conjuncts its
+stratum assumes hold, which is what the translator's licence promised. No fact is met: the import stays one value a
+path from one node, and a stratum narrows only the cells of its own conjunct's atoms.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
 armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the
@@ -6465,12 +6491,188 @@ of the texts its statements wrote, and reads back as itself; anything else in it
 translator, and a claim that holds it is unproven.
 
 **The reports** (`TestResults/rendering/`): `verdicts.tsv`, every conjunct a check holds with the check's verdict under
-each set and its own; `refutations.tsv`, each refuting cell and its triage, from the check's own import: a refutation
-warns where a refuting cell's path defaulted constrained, or where a cell spans two paths under conditional rules the
-facts graph reads, and otherwise fails CI; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
+each set and its own; `refutations.tsv`, each refuting cell, the value it puts at its path, what the emulator made of
+that document where the witnesses ran, and the triage, from the check's own import: a refutation warns where a refuting
+cell's path defaulted constrained, or where a cell spans two paths under conditional rules the facts graph reads, and
+otherwise fails CI, and beside them each conjunct refuted at its own position in a check that is not, reported, since
+the service is asked the junction its siblings may decide; `witnesses.tsv`, each witness the emulator ran; `vacuous-proofs.tsv`, a proof that holds only where Calcite raises, or a
 render licence that keeps nothing (#217's shape), which fails CI; `proof-lines.tsv`, the checks resting on each registry
 row, which every proof must name; and `skipped.tsv`. Every statement that fails to plan or implement fails CI too,
 rather than leaving the check smaller.
+
+### Numbers on cells
+
+**A literal's double parts its cells, since rounding never falls as a number rises.** A double compares doubles; so does
+the service any number it holds as one, an integer type's column any number not written as an integer, and `RETURNING
+DECIMAL` the rendering a double gives. Cut by value alone, the fractions beside a literal hold some whose double is the
+literal's and some whose is not, and answer both ways. So a reader's `Double` edge parts each interval at every double a
+literal rounds to that its values' doubles may reach — below it, at it, above it — which with the literal's point are
+its five slots. `Numbers` holds its double bounds closed: a double below another is at most the one before it. A decimal
+becomes a double by parsing its invariant text (`DoubleBound`), never by .NET's cast, which rounds twice and misses at
+9007199254740994.4. The search for an inhabitant halves toward the double bounds and steps beside the edge it finds, so
+an empty slot is dropped and an inhabited one never is; the property test asks each cell of values a rounding's width
+beside every cut.
+
+**Each reader's edges are a row** (`ReaderEdgesTable`): an integer type's limits, and a cast's one either side of a
+literal, where it raises, truncates or saturates; a double edge for every reading that compares a double; and the text
+a literal renders as for a parse, which reads `"2"` as 2. A cast of a raw value has none, to text or to a number: each column the raw value is read through casts as its
+own, an `ANY` wrapping a long beyond an int where a `VARIANT` raises, and no row states it (`TODO.md`).
+
+**A typed reading is the union of `RETURNING` and the column, read from the code.** `RETURNING` reads an integer written
+so and raises over anything else, `BIGINT`'s over one an int holds; the column reads that, and any other number as its
+double where that is whole and within the type: 42.0, a fraction that rounds to a whole double, past 2^53 another
+integer (`CosmosJson.GetInteger`). So a `BIGINT` past 2^53 answers both ways at the literal, and a bound one off under an
+int is unproven, not refuted, since `RETURNING` raises there; the column's own reading is decision D12's. The coarse
+typed reading leaves both out (`TODO.md`), and the cells do not copy it. A cast or `RETURNING DECIMAL` reads a string
+by its own grammar, trimmed as Java's `String.trim` trims, of every character up to U+0020 — Java's integer parse, a
+double parse that reads no type suffix, or `BigDecimal`'s (`Renderings`), which `IrEvalCalciteTests` holds to Calcite
+over numbers padded with control characters — and a `BIGINT` cast reads text that starts `199` and holds a colon as a
+timestamp, which no cell places. `typed:DECIMAL` is `RETURNING DECIMAL` and a `DECIMAL` column at once: the clause
+reads a number not written as an integer through its double's rendering and a string by its parse, the column a
+number's text exactly and raises over anything else, and the cells read both. So the string `"2"` is TRUE to
+`RETURNING DECIMAL = 2` beside the column's raise, and no cell of it is definite.
+
+**The service compares the value it holds** (`Service.NumbersBeyondLongCompareAsDoubles`): an int64 as itself, any other
+number as its double, by value. A whole number in int64, or in [2^63, 2^64), which the emulator holds as written, may
+be held either way, so it is placed by both; a literal sent as a double is placed only where that double is it.
+
+### A grouped claim, and the coverage line
+
+**A claim grouped as the `WHERE` writes it composes over the IR's flat junction.** A junction's parts are its members
+and those within a member of its own connective, however deep. `Claim` states each junction's members as written, and a
+rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; the
+rest keeps the grouping of what is left, and the rule that writes its members writes those it holds as written alone,
+so no member row names what is no part. That is the join because the licensed connective is associative, commutative
+and idempotent, which evaluating a regrouped rest already took for granted. S has 40 rules, at the line.
+
+**The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
+conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
+names `no exact join`, from S's rows, where a conjunct was never offered its own written member, and `beside a skipped
+conjunct`.
+
+### Planted faults: recall and mutations
+
+**A fault is planted where the translator writes, never where anything else reads.** The ten historical translator
+faults (M1–M10) and two controls are switches in the translator's own writers (`CosmosTranslatorFaults`): a reading's
+test dropped, a guard skipped, a refusal ignored, a position left unflipped. None sits in a recogniser the loader, the
+facts or the split rule call too, or the plant would change the IR the check reads and judge a wrong translator against
+a wrong reference: M9 ignores the verdict at `WriteComparand`'s call of `CompareOrder`, which the split rule calls
+itself, and M10 lets `WriteCallCore`'s path branch take a parsing `RETURNING` rather than change `IsJsonAccessor`, the
+gate every clause shares. Production plants nothing; unarmed, each site reads one `volatile bool` (M6, M8 and M9 only on
+the refusal path they skip), and a plant is the flow's `AsyncLocal`, so a planning thread beside a test is untouched.
+
+**Each fault is caught as the check run catches a wrong push.** Its triggers are planned and checked between two
+unplanted runs: what is written changes under the fault and is the tip's again after it, and each trigger it was found by
+is refuted with the least refuting cell by text, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
+since a number equal to 30 may render so or not; and M10's path over the string `"2"`, TRUE to the clause beside a
+`DECIMAL` column's raise, is unproven too, so nine of the ten are caught. The controls are reported: X1's `CASE` condition, in a predicate's place, is
+opaque to the loader, so its text is skipped as the tip's was; X2's dropped type test lets a structure through, which
+`RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
+
+**Recall replays what 4b65754 sent.** Its eight first-family texts (P1–P6, P19, P25), carried verbatim, are claimed
+against the IR the loader reads for the same statements at the tip and refuted with a structure cell; with M1 or M2
+planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
+returned while Calcite returns its own.
+
+**The gains preview is claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
+translator admit so that the conjunct is captured. The guarded inequality is Exact; the orderings' forms, `> @p0 OR
+IS_BOOL` and `< @p0 OR IS_NUMBER`, are unproven over an undeclared label, whose strings may hold U+0000, which the
+emulator orders as it stores it, and are Exact where no string can.
+
+### The soundness line: documents, an evaluator of the service's own, and gate faults
+
+**Every reported proof is held to documents by evaluators S does not share.** `IrEval` is Calcite's side, measured and
+held to Calcite; `CosmosEval` is the service's, a document at a time from what the rows state — a test true or false of a
+kind, a comparison within a type by its order and across types false, true or undefined, Kleene's connectives, an int64
+against a double by value, the emulator's U+0000 as it stores it, Azure's range over bounds the two string orders rank
+apart — and never through `ServiceLeaf`, `ServiceCompound` or a cell. `CosmosEvalServiceTests` holds it to the emulator:
+each of the reader's forms over a path holding each kind, kept by `WHERE`, by `WHERE NOT` and projected as it says, on
+both images, over values on which the two targets' models part — 2^53 + 1 written with a point, and strings holding
+U+0000 — so that the model held is the emulator's. A literal holding U+0000 it leaves unsaid on the emulator, which
+no row says how it sends. The reader reads a double parameter as the number the service compares, never by .NET's
+cast to a decimal, which keeps fifteen digits. A proof is judged on every target the asserted set serves and in both typed modes; a coin `IrEval` tosses
+makes a document unmeasured, not a witness, and one every mode raises on is skipped (decision 2).
+
+**Source A samples each proven check's import.** Up to 64 documents set each path to values its import admits: the
+literals and their neighbours, a fraction either side of each numeric literal whose double is the literal's, the text
+other values render as, strings with a character of each band beside each literal where the import's classes admit it,
+numbers either side of 2^53, beside a typed or cast atom the type limits and either side of them and a literal's
+rendering padded with control characters, and every kind, mixed so that each value stands in one at least. A document a stratum's facts rule out beside
+the conjuncts it assumes is no declared one and is left out, and a conjunct's own proof beside a stratum is judged where
+those conjuncts hold. **Source B** plans population D's conjuncts, printed as one Calcite `WHERE` over a container the
+trial's declaration describes, and judges every proof on the trial's declared documents, whose conditional rules hold
+together, as no sampled document's need: 30 trials a pull request, 5,000 explicit. A raw value is a column only at a key
+path, so the container's hierarchical key is three of the declaration's paths, and a parameter, `IS_DEFINED` and a
+literal with a control character are not printed.
+
+**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is refused
+at load on either target; G2, a template without the null guard, is refuted wherever source A's documents show the guard
+kept something out, and at the null for the gains preview's inequality; G3, a service evaluation answering `!=` over a
+null as false, makes the gate agree with that form, and source A finds the null label `CosmosEval` keeps; G4, the second
+disjunct's form claimed for the first under an `OR`, agrees nowhere at the root or the first disjunct, the second's own
+form agreeing on its own partition; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
+trips the wire.
+
+### Witnesses, and the precision line
+
+**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's, the
+mutations' and G2's, and each cell the gains preview's agreements were proved over, is one document
+(`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
+projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
+document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. A refuting document's
+outcome must lie in S's predicted set: a refutation carries the class of the form at the root on its document, the
+atom's swapped by each `NOT` above it (`Refutation.Negated`) and kept through a junction, whose sibling stands at the
+connective's identity, so the service's outcome must be among its outcomes and Calcite's keeping among its truths.
+
+**Precision triages the tip's refutations by their witnesses**: reproduced is the translator's (`KnownRefutations`),
+not reproduced is false. With each later round read beside its facts the tip refutes nothing, so nothing is triaged and
+nothing is false; the three refutations PR C reported were all of that cause.
+
+### Weakenings, claimed as implied
+
+**A weakening is held to what the split rule's argument needs of it: every row its conjunct keeps.** Beside a residual
+conjunct the rule pushes something the conjunct implies, and Calcite rechecks the conjunct above; a weakening too strong
+drops a row before the recheck sees it, and nothing restores it (decision D8). So the rule's own site, once it has
+translated a weakening it pushes, tells the capture the residual conjunct and the text — the third site, inert
+as the other two are, one `volatile bool` a pushed weakening — and the check claims `Implies` of the conjunct's IR
+against the text read. Sites 1 and 2 hold the weakening's text to its own node, where the loader reads it; the third
+holds it to the conjunct.
+
+**It is imported from the stratum it was rendered from.** The rule renders a weakening from the facts its residual
+conjunct renders from — the last stratum, which assumes every admitted conjunct — and pushes it beside all of them, so a
+guard those facts delete is gone only where they hold: beside `kind = 'b'`, where the label is an integer, the cast's
+weakening is the bare bound `c.label > @p0`, implied there and unproven from the root. A residual conjunct's facts enter
+no round, so the stratum assumes nothing the check holds. A refutation is a row lost, triaged as an exact push's is.
+
+**Implied counts toward no line but soundness**, which source A samples as it does every proof, a `RETURNING DECIMAL`
+in both typed modes; coverage is the exact pushes'. A weakening is unproven over strings that may hold U+0000, over a
+cast of a raw value, past 2^53, and where it is shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND
+IS_DEFINED(c.price)` for `NOT (a OR b)` — which S composes only where the form is the join of its children's.
+
+**M11 is caught as Implied → Unproven.** Without its number branch the weakening of text `label = '30'` keeps the string
+alone and loses the number 30, which Calcite may render as `30` or as `30.0`, so no cell is definite and nothing refutes
+it; the tip's weakening is implied and the planted one is not. Its switch is read only where the literal parses as a
+number.
+
+### Cost, size, and where the check runs
+
+**The check runs with every suite, once a process, and planning is most of what it costs.** The pull request's run is
+one lazy value the check, soundness and witness tests share. It plans and implements every input's statements armed,
+the corpus's one at a time and the rest two at a time, and checks each memo entry under two sets; its bundles are a
+small share of its time, and the rest is planning, which the stage's plan budgeted at 9.6 ms a statement warm on a quiet
+machine. What it costs a leg, and the emulator leg beside it, stands above the +13–17 s and +10–20 s decision D11
+accepted (`TODO.md`): the owner accepts the measured figures, or takes D11's fallback, the partition run's first 100
+predicates, which moves the coverage and precision lines off the 200 they are measured on.
+
+**The reports travel with the leg's results.** The runner sets each test's working folder to its assembly's, so
+`TestResults/rendering/` lands there, and CI's archive step copies what tests wrote there in beside the trx. Witnesses
+run on the Linux x64 leg, the one with an emulator; elsewhere `refutations.tsv`'s emulator column reads `not run`. The
+rendering tests build under the asserted set, all but four, which state what the emulator's set alone holds — `Range`
+licensed, and a key it alone measured — and name it.
+
+**A junction's descent offers its first arm each member and its second the rest**, so a right-nested junction holds a
+candidate for every subset of its members: Stage 2's projection misses its cost line on that shape, whatever the load,
+and generate mode wants descent along the IR's own arms first (`TODO.md`).
 
 ---
 

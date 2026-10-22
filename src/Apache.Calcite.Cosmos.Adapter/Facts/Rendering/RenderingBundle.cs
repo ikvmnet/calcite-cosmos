@@ -21,6 +21,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     {
 
         readonly RenderingTheory _theory;
+        readonly Dictionary<JsonDocumentPath, PathValues> _imported = [];
+        readonly Dictionary<SqlPredicate, PathValues?> _atoms = [];
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -43,6 +45,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads.</summary>
         public Pred Write(SqlPredicate predicate)
         {
+            foreach (var atom in predicate.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)))
+                _atoms.TryAdd(atom, null);
+
             var theory = _theory;
             var facts = new List<Fact>();
             var writer = new PredicateWriter(theory.Ir, path =>
@@ -81,6 +86,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 throw new InvalidOperationException($"The bundle imports from {_source}, and one bundle holds one source's facts.");
 
             _source = source;
+            _imported.TryAdd(path, values);
             var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
 
             // A differing second import is the importer's fault, not the engine's, and throws.
@@ -96,8 +102,38 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Claims a written form for a conjunct at the root, and states every member of every junction in it as written,
-        /// and of every conjunction its members with nested conjunctions' flattened in, as the service may read a range.
+        /// States what an atom's path may hold where its conjunct was rendered: a later round of one of the statements the
+        /// import is the root of, which narrows the import and is read of nothing but that conjunct's atoms. Before the run
+        /// only; an atom no call names is read as anything there.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The bundle has run; the stratum is no later round of the import's statements; the atom reads no imported path,
+        /// or was stated otherwise already.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">The value admits what the import does not.</exception>
+        public void Assume(ImportSource source, SqlPredicate atom, PathValues values)
+        {
+            if (_run is not null)
+                throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
+
+            if (_source is null || source.Round <= _source.Round || _source.Statement.Split('+').Contains(source.Statement) == false)
+                throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
+
+            if (atom.Paths.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)
+                throw new InvalidOperationException($"{atom} reads no one path the bundle imported.");
+
+            if (PathValues.Meet(values, imported) != values)
+                throw new InvalidOperationException($"{atom}'s stratum says {values}, which the import {imported} does not admit.");
+
+            if (_atoms.TryGetValue(atom, out var stated) && stated is not null && stated != values)
+                throw new InvalidOperationException($"{atom} is stated beneath two strata.");
+
+            _atoms[atom] = values;
+        }
+
+        /// <summary>
+        /// Claims a written form for a conjunct at the root, and states the members of every junction in it as written, and
+        /// of every conjunction what it is a join of, as the service may read a range across them.
         /// </summary>
         public void Claim(Pred root, ServiceForm form)
         {
@@ -110,7 +146,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Runs the check within count limits, never time, and the tripwire after it. A run the engine failed has no stop
         /// reason.
         /// </summary>
-        public RenderingRun Run(int iterationLimit = 64) => _run = Guard(() =>
+        public RenderingRun Run(int iterationLimit = 64)
+        {
+            var assumed = _atoms.ToList().Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
+            return _run = Guard(() =>
+            {
+                Scope.Assume([.. assumed]);
+                return Ran(iterationLimit);
+            }) ?? new RenderingRun(null, true, false);
+        }
+
+        RenderingRun Ran(int iterationLimit)
         {
             var report = Scope.Run(_theory.Check, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });
 
@@ -118,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();
             return new RenderingRun(report.StopReason, terms.Select(row => row.Output).Distinct().Count() == terms.Count,
                 Scope.Check(_theory.Graph.Contradiction.Of()));
-        }) ?? new RenderingRun(null, true, false);
+        }
 
         /// <summary>What the run says of a claim of a form for a conjunct at the root; Unproven where the bundle declined.</summary>
         public RenderingVerdict Read(Pred root, ServiceForm form, Verdict claim) => Guard(() => Answer(root, form, claim))
@@ -187,18 +233,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         void Members(ServiceForm form, List<Fact> facts)
         {
             foreach (var member in form.Members)
-            {
-                if (form.Kind is ServiceFormKind.And or ServiceFormKind.Or)
-                    facts.Add(_theory.Member.Of(form, member));
-
                 Members(member, facts);
-            }
+
+            if (form.Kind is ServiceFormKind.And or ServiceFormKind.Or)
+                facts.AddRange(form.Members.Select(member => _theory.Member.Of(form, member)));
 
             if (form.Kind == ServiceFormKind.And)
-                facts.AddRange(Conjuncts(form).Select(member => _theory.Conjunct.Of(form, member)));
+                facts.AddRange(form.Flat.Select(member => _theory.Conjunct.Of(form, member)));
         }
-
-        static IEnumerable<ServiceForm> Conjuncts(ServiceForm and) => and.Members.SelectMany(m => m.Kind == ServiceFormKind.And ? Conjuncts(m) : [m]);
 
     }
 
