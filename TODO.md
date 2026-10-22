@@ -2758,8 +2758,15 @@ across documents* and *A join of a container to itself* is the record.
   root's set is not on the refutation; the witness test holds the document to the verdict (a refuting cell keeps apart
   on the two, an agreed one alike) and the outcome to `CosmosEval`. Carrying the position up with the refutation would
   let it read the set.
-- **The translator's fault switch names M11 before its site** — *small, for c16.* `CosmosTranslatorFault.M11` is
-  planted at the split rule's weakening, beside shim 3.
+- **A weakening shaped otherwise than its conjunct is unproven** — *small.* S pairs a form with an IR node only where the
+  form is the join of its children's, so `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`, pushed for `NOT (c."$.category"
+  = 'bikes' OR CAST(… AS DOUBLE) > 50)`, and `IS_DEFINED(c.price)` for a negated `BETWEEN` are unproven, never refuted.
+  Reading a negated junction through De Morgan, or a presence test over the cells of every path it names, would prove
+  them; the weakening checks report them beside the others.
+- **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
+  translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
+  text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
+  is the one both render, so the texts part only where the facts do; that they agree is not checked.
 
 ---
 

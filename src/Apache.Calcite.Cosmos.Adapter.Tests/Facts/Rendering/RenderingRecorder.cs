@@ -5,11 +5,13 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
+using org.apache.calcite.rex;
+
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The observer one statement's planning arms: it keeps what the two sites write, and reads nothing of the facts while
+    /// The observer one statement's planning arms: it keeps what the three sites write, and reads nothing of the facts while
     /// planning runs, so that it opens no context planning did not.
     /// </summary>
     internal sealed class RenderingRecorder : ICosmosRenderingObserver
@@ -38,6 +40,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var names = CosmosSqlFormReader.Names(text);
             Add(new(2, statement, conjunct, text, [.. parameters.Parameters.Where(p => names.Contains(p.Name))], [], []));
+        }
+
+        // The list also holds what the attempts before the weakening bound, so its own are again those its text names.
+        public void Weakened(CosmosFilterStatement statement, int conjunct, RexNode weakened, string text, CosmosParameterList parameters)
+        {
+            var names = CosmosSqlFormReader.Names(text);
+            Add(new(3, statement, conjunct, text, [.. parameters.Parameters.Where(p => names.Contains(p.Name))],
+                [.. parameters.Comparisons.Where(c => names.Contains(c.Parameter))], [], weakened));
         }
 
         void Add(CaptureRecord record)

@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     .Select(id => resting.TryGetValue(id, out var on) ? new object?[] { id, on.Count, string.Join(" ", on) } : [id, 0, "read by no proof"]));
 
             Tsv(folder, "skipped.tsv", ["input", "category", "count"],
-                rows.Where(c => c.Skip is not null).Select(c => (c.Input, Category: c.Skip!))
+                rows.Where(c => c.Skip is not null).Select(c => (c.Input, Category: c.Site == 3 ? "weakening " + c.Skip : c.Skip!))
                     .Concat(run.Outside.Select(o => (o.Input, Category: "written outside the translator")))
                     .Concat(run.Failures.Select(f => (f.Input, Category: f.Failure.Split(':')[0])))
                     .GroupBy(s => s).OrderBy(g => Array.IndexOf(Inputs, g.Key.Input)).ThenBy(g => g.Key.Category, StringComparer.Ordinal)

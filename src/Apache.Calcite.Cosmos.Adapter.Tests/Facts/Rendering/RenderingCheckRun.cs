@@ -218,15 +218,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             // A statement never sent is claimed as Translate would write what its rounds admitted, each conjunct's names apart.
-            foreach (var statement in statements.Where(s => records.All(r => r.Statement != s || r.Site == 1)))
+            foreach (var statement in statements.Where(s => records.Any(r => r.Statement == s && r.Site == 1) && records.All(r => r.Statement != s || r.Site != 2)))
             {
-                var admitted = records.Where(r => r.Statement == statement).ToList();
+                var admitted = records.Where(r => r.Statement == statement && r.Site == 1).ToList();
                 CheckUnit(input, unit++, statements, records, admitted,
                     Built(statement, i => admitted.FirstOrDefault(r => r.Conjunct == i) is { } r ? CosmosSqlFormReader.Rename(r.Text, "_" + i) : null),
                     [.. admitted.SelectMany(r => r.Parameters.Select(p => p with { Name = p.Name + "_" + r.Conjunct }))]);
             }
 
+            // The split rule weakens each time it is asked, and a residual conjunct renders one way from its statement's facts.
+            foreach (var weakening in records.Where(r => r.Site == 3).DistinctBy(r => (r.Statement, r.Conjunct, CosmosSqlFormReader.Inline(r.Text, r.Parameters))))
+                CheckWeakening(input, unit++, statements, weakening);
+
             GC.KeepAlive(records);
+        }
+
+        /// <summary>
+        /// Checks a residual conjunct's weakening (spec §3.17): claimed as implied by the conjunct, and imported from the
+        /// stratum it was rendered from, which assumes no conjunct but those the split rule pushes beside it, every one.
+        /// </summary>
+        void CheckWeakening(RenderingInputs.Statement input, int unit, List<CosmosFilterStatement> statements, CaptureRecord record)
+        {
+            var (ir, read, statement) = (IrOf(record), CosmosSqlFormReader.Read(record.Text, record.Parameters), record.Statement);
+            var skip = Skip(record, read, record.Comparisons.Count > 0);
+            var (entry, report, round) = ((RenderingMemo.Entry?)null, (ImportReport?)null, Enumerable.Range(0, statement.Conjuncts.Count).Max(statement.StratumOf) + 1);
+            if (skip is null)
+            {
+                var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(record.Conjunct));
+                var source = new ImportSource(statement.Statement.Digest, "weakening", round);
+                (entry, report) = Check([ir], read.Form, [read.Form], Verdict.Implies,
+                    bundle => RenderingImporter.Import(bundle, source, node.Context, node.Rules, statement.DeclarationForCheck, ir.Paths));
+            }
+
+            Conjuncts.Enqueue(new Checked(input.Input, input.Name, unit, statements.IndexOf(statement), record.Conjunct, record.Site, ir.Digest, record.Text, skip, entry, 0, report,
+                statement.DeclarationForCheck.IsConditional, round > 1, RawScope(ir), null, record.Text, record.Parameters));
         }
 
         /// <summary>
@@ -368,10 +393,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// One conjunct a check holds: its input, the check's number within it, its filter statement's number and its own
-        /// index, the site its text was read from (2 where it was sent), its IR and text, why it was skipped, the check and
-        /// its position in it, the check's import, whether the declaration has conditional rules the facts graph reads, and
-        /// whether the check holds a conjunct a later round admitted, whether decision D3 leaves its Unproven out of the
-        /// coverage line, by the spelling of each path read beneath the root the positions of the conjuncts its stratum
+        /// index, the site its text was read from (2 where it was sent, 3 its weakening), its IR and text, why it was skipped,
+        /// the check and its position in it, the check's import, whether the declaration has conditional rules the facts graph
+        /// reads, and whether the check holds a conjunct a later round admitted, whether decision D3 leaves its Unproven out
+        /// of the coverage line, by the spelling of each path read beneath the root the positions of the conjuncts its stratum
         /// assumes, and the text the check claimed, with the values its parameters were bound to.
         /// </summary>
         public sealed record Checked(string Input, string Name, int Unit, int Statement, int Conjunct, int Site, string Ir, string Text, string? Skip,

@@ -6422,7 +6422,7 @@ what `(NOT c.a) = @p0` keeps. The service evaluates both sides, so no evaluator 
 
 **The capture is inert unless a test arms it.** The two sites that write a filter's conjuncts — admission, the renderer
 `CosmosOracle.Admit` is handed, and `Translate`, which the implementor appends — tell an observer each text and the
-parameters it bound. Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
+parameters it bound, as the split rule's weakening does (below). Production arms nothing; unarmed, each site reads one `volatile bool`, and the type's `AsyncLocal`
 is allocated once a process. Armed, the observer is the flow's own, so a test planning beside it is told nothing. Two
 accessors on the statement hand the check its scope and its declaration, and the declaration says whether a rule it
 reads is conditional, for the triage; nothing in production calls them.
@@ -6602,6 +6602,33 @@ their verdicts said, on both images.
 **Precision triages the tip's refutations by their witnesses**: reproduced is the translator's (`KnownRefutations`),
 not reproduced is false. With each later round read beside its facts the tip refutes nothing, so nothing is triaged and
 nothing is false; the three refutations PR C reported were all of that cause.
+
+### Weakenings, claimed as implied
+
+**A weakening is held to what the split rule's argument needs of it: every row its conjunct keeps.** Beside a residual
+conjunct the rule pushes something the conjunct implies, and Calcite rechecks the conjunct above; a weakening too strong
+drops a row before the recheck sees it, and nothing restores it (decision D8). So the rule's own site, once it has
+translated a weakening it pushes, tells the capture the residual conjunct, the node and its text — the third site, inert
+as the other two are, one `volatile bool` a pushed weakening — and the check claims `Implies` of the conjunct's IR
+against the text read. Sites 1 and 2 hold the weakening's text to its own node, where the loader reads it; the third
+holds it to the conjunct.
+
+**It is imported from the stratum it was rendered from.** The rule renders a weakening from the facts its residual
+conjunct renders from — the last stratum, which assumes every admitted conjunct — and pushes it beside all of them, so a
+guard those facts delete is gone only where they hold: beside `kind = 'b'`, where the label is an integer, the cast's
+weakening is the bare bound `c.label > @p0`, implied there and unproven from the root. A residual conjunct's facts enter
+no round, so the stratum assumes nothing the check holds. A refutation is a row lost, triaged as an exact push's is.
+
+**Implied counts toward no line but soundness**, which source A samples as it does every proof; coverage is the exact
+pushes'. Per pull request 307 weakenings are captured, 97 texts: 88 implied, 30 unproven, 189 skipped with their conjunct
+outside the IR, none refuted. The unproven are orderings over strings that may hold U+0000, the text cast of a raw value,
+numbers past 2^53, and a weakening shaped otherwise than its conjunct — `IS_DEFINED(c.category) AND IS_DEFINED(c.price)`
+for `NOT (a OR b)` — which S composes only where the form is the join of its children's.
+
+**M11 is caught as Implied → Unproven.** Without its number branch the weakening of text `label = '30'` keeps the string
+alone and loses the number 30, which Calcite may render as `30` or as `30.0`, so no cell is definite and nothing refutes
+it; the tip's weakening is implied and the planted one is not. Its switch is read only where the literal parses as a
+number.
 
 ---
 

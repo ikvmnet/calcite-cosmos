@@ -16,6 +16,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>A conjunct written into the statement sent: the text appended, and the statement's list, shared with every clause.</summary>
         void Written(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters);
 
+        /// <summary>
+        /// A residual conjunct's weakening the split rule pushes beside the admitted ones: the node, its text, and the list it
+        /// bound into, which also holds what the attempts before it bound.
+        /// </summary>
+        void Weakened(CosmosFilterStatement statement, int conjunct, org.apache.calcite.rex.RexNode weakened, string text, CosmosParameterList parameters);
+
     }
 
 }
