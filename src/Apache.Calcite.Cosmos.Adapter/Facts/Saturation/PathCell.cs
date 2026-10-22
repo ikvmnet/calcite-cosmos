@@ -378,7 +378,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     var (a, b, up) = (Math.Ceiling(low), Math.Floor(high), n.DoubleLow is not null);
                     while (a < b)
                     {
-                        var m = up ? Math.Floor(a / 2 + b / 2) : Math.Ceiling(a / 2 + b / 2);
+                        // Halved from one end, which no rounding carries onto the other: past 28 digits a / 2 + b / 2 may
+                        // round to b, and the search would stand still. Zero lies between ends of either sign.
+                        var m = a < 0 && b > 0 ? 0 : up ? a + Math.Floor((b - a) / 2) : b - Math.Floor((b - a) / 2);
                         (a, b) = (up ? DoubleBound.Of(m) < n.DoubleLow : DoubleBound.Of(m) > n.DoubleHigh) ? (up ? (m + 1, b) : (a, m - 1)) : (up ? (a, m) : (m, b));
                     }
 

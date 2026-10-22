@@ -63,6 +63,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             cells.OfType<PathCell.Numbers>().Should().NotContain(n => n.DoubleHigh == d && n.Side(c) == 1);
         }
 
+        /// <summary>
+        /// Past 28 digits halving an interval by its ends' halves rounds, and once stood still: a double edge there is cut,
+        /// and each cell's inhabitant found, in a bounded time.
+        /// </summary>
+        [Theory]
+        [InlineData("10000000000000000000000000000")]
+        [InlineData("20000000000000000000000000000")]
+        [InlineData("79228162514264337593543950330")]
+        [InlineData("79228162514264337593543950335")]
+        [InlineData("-79228162514264337593543950330")]
+        public void ADoubleEdgeNearADecimalsEndIsCut(string literal)
+        {
+            var c = Of(decimal.Parse(literal, CultureInfo.InvariantCulture));
+            var atom = PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.Greater, c);
+            foreach (var kind in new[] { IntegerType, FractionType })
+            {
+                var split = System.Threading.Tasks.Task.Run(() => PathCell.Split(P, PathValues.OfKinds(ValueSet.Of(kind)), AllBands,
+                    CutPoints.Of(atom, ServiceForm.CompareOf(CosmosServiceTest.Greater, P, c), ReaderEdgesTable.Rows[atom.Reader])).Cells);
+                split.Wait(System.TimeSpan.FromSeconds(30)).Should().BeTrue($"the {kind}s cut at {literal} are found");
+                split.Result.Should().NotBeEmpty().And.OnlyContain(cell => cell.Contains(cell.Witness()));
+            }
+        }
+
     }
 
 }
