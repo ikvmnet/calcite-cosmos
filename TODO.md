@@ -2772,8 +2772,9 @@ across documents* and *A join of a container to itself* is the record.
   writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
   and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
   `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
-  definite cell: the mutation line holds nine of ten. The coarse reading leaves the column's raise over a structure out
-  of `IS NULL`. The column's own reading in the IR would give both back.
+  definite cell: the translator's mutation line holds nine of ten. S's plant of M10 is caught, source A judging a
+  document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of `IS NULL`. The
+  column's own reading in the IR would give both back.
 - **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
   translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
   text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
@@ -2853,6 +2854,13 @@ across documents* and *A join of a container to itself* is the record.
   J's weakenings S cannot prove: a typed `DECIMAL` window past 2^53, which a double near the bound would leave out, and
   the string branch over strings that may hold U+0000 under `Emulator`. `shadow-weakening.tsv` names J's verdict at the
   weakening's key beside each; line 13b reads it from g15.
+- **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
+  statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
+  refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their
+  refutations are asserted at the atom; composing refutations in generate mode would give the cases back.
+- **G7 plants presence's dual, not the fold's** — *small.* A weakening is lattice-free, so a fold planted beside the
+  right one faults the bundle, and the definition names no fold a plant could replace. Naming
+  `RenderingWeakening.AtLeaf` in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
 - **A raw accessor compared with a parameter does not plan in the check run's harness** — *small.* `c."$.label" <> ?`
   leaves the parameter untyped beside an `ANY`, so the parameterised residual the inputs gain reads the label through
   the accessor.

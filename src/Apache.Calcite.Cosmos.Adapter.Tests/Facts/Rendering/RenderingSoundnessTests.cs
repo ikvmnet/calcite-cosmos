@@ -314,6 +314,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             public List<string> Witnesses { get; } = [];
 
+            /// <summary>Each witness as it was found: where, the form and its node and position, the document and the target.</summary>
+            public List<(string Where, ServiceForm Form, SqlPredicate Ir, RenderPosition Position, J.Obj Document, RenderingTarget Target)> Found { get; } = [];
+
             /// <summary>
             /// Judges a proof on a document: every typed mode against every target, a failure never allowed, <c>Equal</c>
             /// keeping alike and <c>Implies</c> keeping at least Calcite's row. A document on which a mode tosses a coin or is
@@ -382,6 +385,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     if (service == ServiceOutcomes.Fails || exact && calcite!.Any(t => claim == Verdict.Equal ? (t == kept) != (service == keeps) : t == kept && service != keeps))
                     {
                         Witnesses.Add($"{where}: {form.Text} for {ir} at {pos}{(exact ? "" : ", off its stratum")}, on {Documents.Json(document)}: Calcite {string.Join("|", calcite ?? [])}, {target} {service}");
+                        Found.Add((where, form, ir, pos, document, target));
                         return true;
                     }
                 }

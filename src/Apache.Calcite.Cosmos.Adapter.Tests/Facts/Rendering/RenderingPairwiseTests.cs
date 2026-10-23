@@ -33,6 +33,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void EveryTwoExactCandidatesAgree()
         {
             var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var compared = Compare(shadow);
+            var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
+            Directory.CreateDirectory(folder);
+            RenderingReports.Tsv(folder, "pairwise.tsv", ["set", "bundle", "node", "position", "of", "a", "b", "compared", "raised", "parted"], compared.Rows);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{compared.Pairs} pairs ({shadow.Pairs.Count} with the translator's text proven at one key), {compared.Seen} documents and targets compared, "
+                + $"{compared.Raised} where Calcite raises reported apart; {compared.Disagreements.Count} disagreements");
+            compared.Pairs.Should().BePositive();
+            compared.Disagreements.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// The pairs of a shadow's generate bundles compared on source A's documents: each pair, documents and targets
+        /// compared and those where Calcite raises, and each disagreement.
+        /// </summary>
+        internal static Compared Compare(RenderingGenerateRun shadow)
+        {
             var (rows, disagreements) = (new List<object?[]>(), new List<string>());
             var (pairs, compared, raised) = (0, 0, 0);
             var translated = shadow.Pairs.ToLookup(p => p.Bundle.Id);
@@ -82,14 +98,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
-            Directory.CreateDirectory(folder);
-            RenderingReports.Tsv(folder, "pairwise.tsv", ["set", "bundle", "node", "position", "of", "a", "b", "compared", "raised", "parted"], rows);
-            TestContext.Current.TestOutputHelper?.WriteLine($"{pairs} pairs ({shadow.Pairs.Count} with the translator's text proven at one key), {compared} documents and targets compared, "
-                + $"{raised} where Calcite raises reported apart; {disagreements.Count} disagreements");
-            pairs.Should().BePositive();
-            disagreements.Should().BeEmpty();
+            return new(pairs, compared, raised, disagreements, rows);
         }
+
+        /// <summary>What <see cref="Compare"/> found: pairs, documents and targets compared, those where Calcite raises, each disagreement, a row a pair.</summary>
+        internal sealed record Compared(int Pairs, int Seen, int Raised, List<string> Disagreements, List<object?[]> Rows);
 
     }
 

@@ -6587,15 +6587,15 @@ opaque to the loader, so its text is skipped as the tip's was; X2's dropped type
 `RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
 
 **Recall replays what 4b65754 sent.** Its eight first-family texts (P1–P6, P19, P25), carried verbatim, are claimed
-against the IR the loader reads for the same statements at the tip and refuted with a structure cell; with M1 or M2
-planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
-returned while Calcite returns its own.
+against the IR the loader reads for the same statements at the tip and refuted with a structure cell; offered to S as
+planted templates they are never what it sends (*Faults planted in S*); and on a service each returns the rows
+4b65754's pushdown returned while Calcite returns its own.
 
-**The gains were first claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
-translator admit so that the conjunct is captured. The guarded inequality was Exact; the orderings' forms, `> @p0 OR
-IS_BOOL` and `< @p0 OR IS_NUMBER`, unproven over an undeclared label, whose strings may hold U+0000, which the emulator
-orders as it stores it. Generate mode now proposes them itself (*The rendering graph in generate mode*), where the
-witnesses still replay the inequality's text.
+**The gains were first claimed against the IR the loader reads for each refused statement**, read off the statement
+planning read whether or not the translator admits its conjunct. The guarded inequality was Exact; the orderings'
+forms, `> @p0 OR IS_BOOL` and `< @p0 OR IS_NUMBER`, unproven over an undeclared label, whose strings may hold U+0000,
+which the emulator orders as it stores it. Generate mode now proposes them itself (*The rendering graph in generate
+mode*), where the witnesses still replay the inequality's text.
 
 ### The soundness line: documents, an evaluator of the service's own, and gate faults
 
@@ -6623,18 +6623,17 @@ together, as no sampled document's need: 30 trials a pull request, 5,000 explici
 path, so the container's hierarchical key is three of the declaration's paths, and a parameter, `IS_DEFINED` and a
 literal with a control character are not printed.
 
-**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is refused
-at load on either target; G2, a template without the null guard, is refuted wherever source A's documents show the guard
-kept something out, and at the null for the gains' inequality; G3, a service evaluation answering `!=` over a
-null as false, makes the gate agree with that form, and source A finds the null label `CosmosEval` keeps; G4, the second
-disjunct's form claimed for the first under an `OR`, agrees nowhere at the root or the first disjunct, the second's own
-form agreeing on its own partition; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
-trips the wire.
+**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is
+refused at load on either target; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
+trips the wire. G2–G4, a template without the null guard, a service evaluation answering `!=` over a null as false
+beneath it, and a disjunct's form offered to its sibling, are now planted over templates, and G6–G14 beside them, in
+generate mode (*Faults planted in S*).
 
 ### Witnesses, and the precision line
 
-**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's, the
-mutations' and G2's, and each cell the gains' exact inequality was proved over, is one document
+**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's and
+G2's, each document that shows one of S's plants of M1–M10 wrong, and each cell the gains' exact inequality was proved
+over, is one document
 (`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
 projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
 document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. A refuting document's
@@ -6934,6 +6933,65 @@ gain's text keeps Calcite's rows.
 `NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
 `EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
 `pairwise.tsv`. Nothing in planning reaches S, and the plan digests are byte-equal at the parent and at the commit.
+
+### Faults planted in S
+
+**Each of Stage 1's historical faults is planted where S would carry it, in a graph of its own**, and Stage 1's
+triggers are shadowed through it under both sets a leg plans under. The translator's own plants stay until the switch,
+when it no longer writes the family.
+- *A template is untrusted.* M1–M3 replace a template's row: the right row goes, and a rule over the same `fits` rows
+  and positions proposes the template's form with the guard or type test taken out, since a template's spelling is
+  C#'s and a row alone cannot write it wrongly. The gate refutes the planted form at the cell Stage 1 pinned, read at
+  the atom, where a `NOT` above swaps the class; nothing sends it; it is implied only where its cell keeps more rows
+  than Calcite; and the loss shows as a regression, the right form never proposed.
+- *A rule or a primitive is trusted*, so S sends or implies a wrong form, and source A, which shares none of S, finds
+  the document. M4 and M5 put a position in the wrong place, and a position is derived down the IR, so each plants
+  the descent beside the right one as well as the best that reads it: a negation's operand standing at the negation's
+  own position, a junction's arms at `Pos`. M6–M10 come through `Pair` and `Leaf`. The loader reads a cast of the
+  accessor to `VARCHAR` as the accessor itself, so M7's dropped cast is the text reading read as the raw value. M8 and
+  M9 answer a boolean's `!=` and orderings with a string by its rendering, which is the inequality and order the
+  translator borrowed from Calcite; answering `!=` false across every kind would refute the restricted form at every
+  number too, and send nothing wrong. M11 lifts a text equality's string form into `Implied` with no agreement.
+- *M10 is caught.* The check left it unproven, `typed:DECIMAL` being the clause and a column at once; source A judges a
+  document in `RETURNING` mode, where the string the clause parses as 2 is TRUE and the bare equality false.
+
+**Recall, in generate mode.** Each 4b65754 text is taken apart at its conjuncts' atoms, through a `NOT` stripped and
+through a junction by the paths each arm reads, and each part is offered as a planted template at the atoms of its
+path and position. The part a structure shows wrong is refuted at the pinned cell, never S's best, and implied only
+where that cell keeps a superset of Calcite's rows, (F,t) or (U,t) or their duals beneath a `NOT`: never P3's (T,f).
+S sends what it sent unplanted.
+
+**The gate faults, in generate mode.**
+- *G2* proposes beside every template's form that form with its null guard dropped; no node keeps a dropped form as
+  its best where source A's documents show the guard kept something out. *G3* adds the service leaf answering `!=`
+  over a null as false: the gate agrees with the dropped inequality, `Min` prefers it, S sends it, and source A finds
+  the null label. Their check-mode replays need no fault now, the conjunct read off the statement planning read; S's
+  plants of M8 and M9 beneath them change no cell of `<> 'bikes'`.
+- *G4* offers the second disjunct's form to the first; it is never the first's best nor within the root's.
+- *G6* lifts a best from an implied agreement, so the raw inequality's bare form, which keeps a null, is sent. A best
+  carries an Equal agreement by construction, so source A now judges every best as the Equal agreement it must be,
+  which an unplanted run adds nothing to, and finds the null; the pairwise check parts it from the translator's text.
+- *G7* writes presence at `Neg` as at `Pos`, which source A's Implies at `Neg` refutes. The fold's own dual is not
+  planted: a weakening is lattice-free, so a second fold beside the right one faults the bundle, which is the
+  tripwire; and a conjunction of implied members at `Neg` is looser, never wrong, but over none, where it is `TRUE`.
+- *G8* builds a negation's best from its operand's best at `Pos` where both stand; source A at the root finds it.
+- *G11* hands a conjunct its own stratum (`CosmosOracle.RenderedFrom`). The importer reads the licence table's node,
+  which renders no conjunct from its own facts, so the plant never reaches S; read beneath the node the renderer was
+  handed, S would prove the bare form, which declared documents holding no fact of the conjunct refute.
+- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7:
+  beneath it the bare label is exact and drops that document, which what S sends as built keeps.
+- *G14* fails a later round's arm on the cells its stratum sets aside; a set-aside cell tolerates anything but a
+  failure, so neither the arm nor the round's junction has an exact form, and nothing is admitted.
+
+**The witnesses run S's plants.** An untrusted plant's refuted form is read at the conjunct, beneath its `NOT`s, with
+its cells' document; a trusted one's wrong form, with the least document source A found it on where the emulator's
+model parts from Calcite. A trigger with a second conjunct or a junction above the planted atom gives none, since
+generate mode composes no refutation through a junction (`TODO.md`).
+
+**What holds it.** `RenderingGenerateMutationTests`, the ten caught and M11 beside, the tip wrong on no trigger and every
+trusted plant changing what S sends or implies; `RenderingGateFaultTests`; `RenderingRecallTests`;
+`RenderingWitnessTests`. Nothing in planning reaches S, and the plan digests are byte-equal at the parent and at the
+commit.
 
 ---
 

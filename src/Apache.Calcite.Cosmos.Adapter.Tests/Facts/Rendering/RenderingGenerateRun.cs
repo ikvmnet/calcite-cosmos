@@ -55,10 +55,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly ValueSet<string> Bands = ValueSet.From(ProbeRows.Measured.Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
 
         readonly RenderingGraph _graph;
+        readonly RenderingSet[] _sets;
+        readonly Func<SqlPredicate, bool> _readExactly;
         readonly ConcurrentDictionary<string, Lazy<Bundle>> _memo = new(StringComparer.Ordinal);
         int _next;
 
-        public RenderingGenerateRun(RenderingGraph? graph = null) => _graph = graph ?? Measured;
+        /// <param name="graph">The S it asks: the registry's, or a plant's of its own.</param>
+        /// <param name="sets">The sets it shadows under: those the legs plan under and the one beside, unless a plant asks fewer.</param>
+        /// <param name="readExactly">Whether the facts graph reads a conjunct as Calcite does, which <see cref="StratumFor"/> reads; a plant replaces it.</param>
+        public RenderingGenerateRun(RenderingGraph? graph = null, IEnumerable<RenderingSet>? sets = null, Func<SqlPredicate, bool>? readExactly = null) =>
+            (_graph, _sets, _readExactly) = (graph ?? Measured, [.. sets ?? Sets], readExactly ?? RenderingFamily.ReadExactly);
 
         /// <summary>Every generate bundle opened, once each.</summary>
         public ConcurrentQueue<Bundle> Bundles { get; } = new();
@@ -91,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void Shadow(RenderingInputs.Statement input, int index, CosmosFilterStatement statement, IReadOnlyList<CaptureRecord> records)
         {
             var shape = new Shape(input, index, statement, records);
-            foreach (var set in Sets)
+            foreach (var set in _sets)
             {
                 // First, each bundle's own time, as though S's memo held none; again, the keys and lookups alone.
                 var opened = Reconstruct(shape, set, true);
@@ -124,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var original = s.Conjuncts[originals[k]];
                 var made = k < lowered.Count && originals.Count == lowered.Count ? rewritten.Statement.Conjuncts[lowered[k]] : null;
-                foreach (var set in Sets)
+                foreach (var set in _sets)
                     Rewrites.Enqueue(made is null || original.Subterms.OfType<SqlPredicate.Opaque>().Any() && made.Subterms.OfType<SqlPredicate.Opaque>().Any()
                         ? new(s.Input.Input, s.Input.Name, s.Index, set, original, made, null, null)
                         : Pair(s, set, original, made, rewritten.Statement.Opaques));
@@ -317,11 +323,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// it assumes S admitted and the facts graph reads exactly (<see cref="RenderingFamily.ReadExactly"/>); <c>null</c>
         /// for the root, beneath which nothing is stated.
         /// </summary>
-        static Stratum? StratumFor(Shape s, int round, IEnumerable<int> admitted)
+        Stratum? StratumFor(Shape s, int round, IEnumerable<int> admitted)
         {
             var held = admitted.ToHashSet();
             for (var j = Math.Min(round, s.Nodes.Count); j >= 2; j--)
-                if (s.Nodes[j - 1] is var (node, assumes) && assumes.All(a => held.Contains(a) && RenderingFamily.ReadExactly(s.Conjuncts[a])))
+                if (s.Nodes[j - 1] is var (node, assumes) && assumes.All(a => held.Contains(a) && _readExactly(s.Conjuncts[a])))
                     return new(j, node, assumes);
 
             return null;
@@ -384,18 +390,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 var proposed = (Candidates: bundle.Failure is null ? bundle.Scope.Rows(bundle.Theory.Candidate).Count() : 0,
                     Atoms: nodes.Count(n => n is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)));
-                var forms = new List<Judged>();
+                var (forms, refuted) = (new List<Judged>(), new List<Refuted>());
                 if (bundle.Failure is null && run is { StopReason: RunStopReason.Completed, OneNodePerClass: true, Contradicted: false })
+                {
                     foreach (var node in nodes.Where(n => n.Subterms.Any(t => t is SqlPredicate.Opaque) == false))
                         foreach (var pos in Enum.GetValues<RenderPosition>())
                         {
                             var term = terms[node.Digest];
                             forms.AddRange(bundle.Agreements(term, pos).Select(a => new Judged(node, pos, a.Form, a.Claim, Judged.Agreement)));
+
+                            // The best, as the Equal agreement it must be: one a plant lifted with none is judged too.
+                            if (bundle.Scope.TryGet(bundle.Theory.BestExact.Of(term, pos), out var best) && best.Form is { } exact)
+                                forms.Add(new Judged(node, pos, exact, Verdict.Equal, Judged.Agreement));
                             if (bundle.Scope.TryGet(bundle.Theory.Implied.Of(term, pos), out var implied))
                                 forms.AddRange(implied.Select(f => new Judged(node, pos, f, Verdict.Implies, Judged.Implied)));
                             if (bundle.Scope.TryGet(bundle.Theory.Weakening.Of(term, pos), out var weakening))
                                 forms.Add(new Judged(node, pos, weakening, Verdict.Implies, Judged.Weakening));
                         }
+
+                    // Each Equal refutation of an atom's form, and the value each refuting cell sets its path to: what a witness is made of.
+                    var cells = bundle.Scope.Rows(bundle.Theory.Outcomes).Select(r => (CellOutcomes)r.Output!).SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell)))
+                        .DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
+                    foreach (var row in bundle.Scope.Rows(bundle.Theory.Disagrees).Where(r => Verdict.Equal.Equals(r.Keys[3])))
+                        if (nodes.FirstOrDefault(n => terms[n.Digest].Id.Equals(row.Keys[0])) is { } atom && row.Output is Refutation refutation)
+                            refuted.Add(new Refuted(atom, (RenderPosition)row.Keys[1], (ServiceForm)row.Keys[2], refutation,
+                                refutation.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness())));
+                }
 
                 var distinct = forms.Distinct().ToList();
                 var literals = distinct.Select(f => f.Form).DistinctBy(f => f.Text).ToList();
@@ -405,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     1 => literals[0],
                     _ => ServiceForm.JunctionOf(CosmosServiceTest.And, literals),
                 }, [.. conjunctTerms.Select(_ => (ServiceForm?)null)], stated, null) : null;
-                var generated = new Bundle(id, set, run, bundle.Failure, roots, answers, new Dictionary<string, RenderingVerdict>(), distinct, claim, elapsed, proposed);
+                var generated = new Bundle(id, set, run, bundle.Failure, roots, answers, new Dictionary<string, RenderingVerdict>(), distinct, claim, elapsed, proposed, refuted);
                 Bundles.Enqueue(generated);
                 return generated;
             })).Value;
@@ -479,12 +499,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// One bundle, read before it went: its set, run and engine failure, roots, generate mode's answer of each root or a
         /// check's verdict of each claimed conjunct, every form over IR-read atoms at both positions, what it imported and
-        /// stated (source A samples it), its time from open to the roots' answers, and the candidates its templates proposed
-        /// beside its atoms. Keyed by content, so by digests, never a statement's indices.
+        /// stated (source A samples it), its time from open to the roots' answers, the candidates its templates proposed
+        /// beside its atoms, and each form the gate refuted. Keyed by content, so by digests, never a statement's indices.
         /// </summary>
         internal sealed record Bundle(int Id, RenderingSet Set, RenderingRun? Run, Exception? Failure, IReadOnlyList<SqlPredicate> Roots,
             IReadOnlyDictionary<string, RenderingAnswer> Answers, IReadOnlyDictionary<string, RenderingVerdict> Verdicts, IReadOnlyList<Judged> Forms,
-            RenderingMemo.Claimed? Claim, double Milliseconds, (int Candidates, int Atoms) Proposed = default);
+            RenderingMemo.Claimed? Claim, double Milliseconds, (int Candidates, int Atoms) Proposed = default, IReadOnlyList<Refuted>? Refutations = null);
+
+        /// <summary>A form of an atom at a position the gate refuted as exact, and the value each refuting cell sets its path to.</summary>
+        internal sealed record Refuted(SqlPredicate Node, RenderPosition Position, ServiceForm Form, Refutation Refutation, IReadOnlyDictionary<string, string?> Witness);
 
         /// <summary>A pending conjunct in a round: whether S owns it, the translator's text of the round and its verdict, S's answer, the stratum round stated beneath, the bundle.</summary>
         internal sealed record Admission(string Input, string Name, int Statement, int Conjunct, int Round, RenderingSet Set, bool Owned, string? Text, string? TextVerdict,
