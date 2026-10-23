@@ -39,6 +39,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// cast — makes the comparison opaque rather than guessed at.
     /// </para>
     /// <para>
+    /// <b>An opaque predicate is read as a value beside its term</b> (<see cref="OpaqueReading"/>), only when a statement's
+    /// readings are first asked, which planning never does.
+    /// </para>
+    /// <para>
     /// <b>What a statement asks of later is read the same way.</b> A <c>CASE</c> condition a rewrite descends to, or a
     /// weakening asked about beside the conjuncts beneath, is read by the <see cref="Loading"/> that read the statement,
     /// so that what is opaque is numbered alike and a condition spelled as a conjunct is the conjunct's term.
@@ -63,6 +67,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Determines whether a comparison is a predicate compared with <c>TRUE</c> or <c>FALSE</c>,
+        /// and whether it is true where that predicate is or where it is false.
+        /// </summary>
+        /// <param name="call">An <c>=</c> or a <c>&lt;&gt;</c>.</param>
+        /// <param name="predicate">The side that is not the literal.</param>
+        /// <param name="same">Whether the comparison is true where the predicate is: <c>= TRUE</c> and
+        /// <c>&lt;&gt; FALSE</c>.</param>
+        internal static bool TryComparedWithBoolean(RexCall call, out RexNode predicate, out bool same)
+        {
+            predicate = null!;
+            same = false;
+
+            if (call.getOperands().size() != 2)
+                return false;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            java.lang.Boolean? literal;
+            if (right is RexLiteral r && r.getValue() is java.lang.Boolean onRight && left is not RexLiteral)
+            {
+                literal = onRight;
+                predicate = left;
+            }
+            else if (left is RexLiteral l && l.getValue() is java.lang.Boolean onLeft && right is not RexLiteral)
+            {
+                literal = onLeft;
+                predicate = right;
+            }
+            else
+            {
+                return false;
+            }
+
+            same = (KindOf(call) == SqlKind.__Enum.EQUALS) == literal.booleanValue();
+            return true;
+        }
+
+        /// <summary>
+        /// The kind of a call, by name, for the reason the translator dispatches on names.
+        /// </summary>
+        internal static SqlKind.__Enum KindOf(RexCall call)
+        {
+            return (SqlKind.__Enum)call.getKind().ordinal();
+        }
+
+        /// <summary>
+        /// Every name a call of an operator may be read by as a function of values: its own, and as <c>Computed</c>
+        /// spells a <c>TRIM</c> by its flag, a cast from text to text and a <c>CASE</c>.
+        /// </summary>
+        internal static IEnumerable<string> Spellings(SqlOperator op) => op.getKind().name() switch
+        {
+            nameof(SqlKind.__Enum.TRIM) => [op.getName(), .. new[] { org.apache.calcite.sql.fun.SqlTrimFunction.Flag.BOTH, org.apache.calcite.sql.fun.SqlTrimFunction.Flag.LEADING, org.apache.calcite.sql.fun.SqlTrimFunction.Flag.TRAILING }.Select(f => "TRIM " + f.name())],
+            nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST) => [op.getName(), "CAST"],
+            nameof(SqlKind.__Enum.CASE) => [op.getName(), "CASE"],
+            _ => [op.getName()],
+        };
+
+        /// <summary>
         /// One binding being read: the paths its fields address, how each is read, and the numbering of what is opaque,
         /// shared by everything read through it.
         /// </summary>
@@ -73,6 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
             readonly Dictionary<RexNode, long> _opaque = new();
+            readonly List<RexNode> _opaqueNodes = new();
             readonly object _lock = new();
 
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
@@ -88,7 +152,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Reads conjuncts as a statement: one IR conjunct each, beside the node it was read from.
             /// </summary>
             public PredicateStatement Statement(IReadOnlyList<RexNode> conjuncts, IEnumerable<JsonDocumentPath>? mentions = null) =>
-                new(conjuncts.Select(Read).ToArray(), conjuncts.Cast<object?>().ToArray(), mentions);
+                new(conjuncts.Select(Read).ToArray(), conjuncts.Cast<object?>().ToArray(), mentions, Reading);
+
+            /// <summary>
+            /// Reads an opaque predicate as a value: a predicate compared with a boolean literal as the predicate, which is
+            /// null exactly where it is; then the value it is, or its top call with the operands read as values and the
+            /// rest left out.
+            /// </summary>
+            OpaqueReading Reading(long id)
+            {
+                lock (_lock)
+                {
+                    var node = _opaqueNodes[(int)id];
+                    while (node is RexCall call && KindOf(call) is SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS && TryComparedWithBoolean(call, out var predicate, out _))
+                        node = predicate;
+
+                    return new(id, Value(node) ?? (node is RexCall top ? Computed(top, partial: true) : null));
+                }
+            }
 
             /// <summary>
             /// Reads one predicate — a conjunct, a <c>CASE</c> condition, a weakening — into the IR, a <c>SEARCH</c>
@@ -362,9 +443,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Spelled as the operator is, so that what the theory knows of a function is what it knows of that name. Two
             /// operators carry symbols beside their values, and the symbols are spelled into the name: a <c>TRIM</c>'s flag,
             /// <c>TRIM BOTH</c>, and a <c>CASE</c>'s conditions, which choose an arm and are no part of its value, so that it
-            /// is read as its arms. A cast is read only from text to text, a conversion being a function of its own.
+            /// is read as its arms. A cast is read only from text to text, a conversion being a function of its own. Read
+            /// <paramref name="partial"/>ly, an operand that is no value is left out rather than the call.
             /// </remarks>
-            SqlValue.Call? Computed(RexCall call)
+            SqlValue.Call? Computed(RexCall call, bool partial = false)
             {
                 var operands = Operands(call).ToList();
                 string function;
@@ -399,10 +481,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var values = new List<SqlValue>();
                 foreach (var operand in read)
                 {
-                    if (Value(operand) is not SqlValue value)
+                    if (Value(operand) is SqlValue value)
+                        values.Add(value);
+                    else if (partial == false)
                         return null;
-
-                    values.Add(value);
                 }
 
                 return new SqlValue.Call(function, values);
@@ -549,6 +631,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 {
                     id = _opaque.Count;
                     _opaque[node] = id;
+                    _opaqueNodes.Add(node);
                 }
 
                 return new SqlPredicate.Opaque(id);

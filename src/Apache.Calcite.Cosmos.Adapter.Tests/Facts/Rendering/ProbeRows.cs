@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -26,31 +27,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         public static IReadOnlyList<MeasuredOutcome> Rows { get; } = CosmosAxiomRows.Read(CosmosAxioms.All);
 
-        public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows);
+        /// <summary>
+        /// The registry's S, strict where Calcite answers null for a null as its one reader of that says
+        /// (<see cref="CosmosStrictness"/>): what production's will be defined from.
+        /// </summary>
+        public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows) with
+        {
+            StrictOperators = CosmosStrictness.Operators,
+            StrictReaders = CosmosStrictness.Readers,
+        };
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
-
-        /// <summary>
-        /// The registry's S strict where Calcite answers null for a null: every reading the loader builds, over an absent
-        /// path, and the functions the split rule's walk lists (<c>CosmosFilterSplitRule.IsNullWhereAnOperandIs</c>).
-        /// No registry row states either yet (<c>TODO.md</c>), so generate mode's tests name them.
-        /// </summary>
-        public static RenderingDefinition Strict { get; } = Measured with
-        {
-            StrictOperators = ["||", "UPPER", "LOWER", "INITCAP", "SUBSTRING", "CHAR_LENGTH", "CHARACTER_LENGTH", "POSITION", "REPLACE", "LEFT", "RIGHT", "REVERSE", "REPEAT",
-                "MOD", "ABS", "ROUND", "POWER", "SAFE_CAST"],
-            StrictReaders = [PredicateAtom.TextReader, PredicateAtom.RawReader, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader),
-                .. new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN" }.Select(PredicateAtom.TypedReader),
-                .. from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner)],
-        };
-
-        static readonly System.Lazy<RenderingTheory> Generating = new(() => RenderingTheory.Define(Strict));
-
-        /// <summary><see cref="Strict"/>'s S, once a run: generate mode's tests'.</summary>
-        public static RenderingTheory StrictTheory => Generating.Value;
 
         /// <summary>The table S settles for the set CI asserts under.</summary>
         public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)));

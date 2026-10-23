@@ -17,7 +17,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// junction goes to the callback with the truth value its arms decide it at (TRUE for a disjunction, FALSE for a
     /// conjunction) and its arms, flattened over its right-nesting. The other callback, where one is given, hears the
     /// syntax of every leaf — a predicate that is no junction or negation, with the values a comparison or a membership is
-    /// over — and of every call, with its operands.
+    /// over, and an opaque predicate with the value the loader read it as, where one is given — and of every call, with its
+    /// operands.
     /// </remarks>
     internal sealed class PredicateWriter
     {
@@ -26,15 +27,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         readonly Func<JsonDocumentPath, Term<JPath>> _path;
         readonly Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? _junction;
         readonly Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? _leaf;
+        readonly IReadOnlyDictionary<long, OpaqueReading>? _opaques;
 
         public PredicateWriter(PredicateVocabulary ir, Func<JsonDocumentPath, Term<JPath>> path,
             Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? junction = null,
-            Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? leaf = null)
+            Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? leaf = null, IReadOnlyDictionary<long, OpaqueReading>? opaques = null)
         {
             _ir = ir;
             _path = path;
             _junction = junction;
             _leaf = leaf;
+            _opaques = opaques;
         }
 
         /// <summary>
@@ -71,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 case SqlPredicate.Not n:
                     return r.Not.Of(Term(n.Operand, bookkeeping));
                 case SqlPredicate.Opaque o:
-                    return Leaf(r.Opaque.Of(o.Id), [], bookkeeping);
+                    return Leaf(r.Opaque.Of(o.Id), _opaques?.GetValueOrDefault(o.Id)?.Top is { } top ? [Value(top, bookkeeping)] : [], bookkeeping);
                 case SqlPredicate.And a:
                     return Junction(Flatten(a.Arms, x => (x as SqlPredicate.And)?.Arms), r.And, truth: false, bookkeeping);
                 case SqlPredicate.Or o:
@@ -145,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         ConstructorTerm<Args> Operands(IReadOnlyList<ConstructorTerm<Val>> operands, int from) =>
             from == operands.Count ? _ir.NoOperands.Of() : _ir.Operand.Of(operands[from], Operands(operands, from + 1));
 
-        /// <summary>Hands the leaf callback a predicate that is no junction or negation, with the values it compares or tests membership of.</summary>
+        /// <summary>Hands the leaf callback a predicate that is no junction or negation, with the values it compares, tests membership of, or is read as.</summary>
         ConstructorTerm<Pred> Leaf(ConstructorTerm<Pred> leaf, IReadOnlyList<ConstructorTerm<Val>> over, List<Fact> bookkeeping)
         {
             if (_leaf is not null)

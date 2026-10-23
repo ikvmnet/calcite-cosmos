@@ -235,6 +235,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             again.Conjuncts.Should().Equal(Opaque(0), Opaque(0));
         }
 
+        /// <summary>
+        /// An opaque conjunct is read as a value beside its term (spec g04): its top call with every operand the loader
+        /// reads; a predicate compared with a boolean as that predicate, which is null exactly where it is; an operand that
+        /// is no value left out; and a reading that is the predicate as itself. Neither the conjuncts nor the digest move.
+        /// </summary>
+        [Fact]
+        public void AnOpaqueConjunctIsReadAsAValueBesideItsTerm()
+        {
+            var upper = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), Str("X"));
+            var compared = Call(SqlStdOperatorTable.NOT_EQUALS, upper, _rex.makeLiteral(false));
+            var unread = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), _rex.makeNullLiteral(Sql(SqlTypeName.VARCHAR)));
+            var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, upper, compared, unread, JsonValue("flag", SqlTypeName.BOOLEAN)));
+
+            statement.Conjuncts.Should().Equal(Opaque(0), Opaque(1), Opaque(2), Opaque(3));
+            var read = new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)]), Lit("X")]);
+            Enumerable.Range(0, 4).Select(i => statement.Opaques[i].Top).Should().Equal(read, read, new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)])]), Typed(P("flag"), "BOOLEAN"));
+            statement.Digest.Should().Be(new PredicateStatement(statement.Conjuncts).Digest);
+        }
+
         [Fact]
         public void ADisjunctionOverTwoPathsIsNoMembership()
         {

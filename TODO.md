@@ -2829,10 +2829,12 @@ across documents* and *A join of a container to itself* is the record.
   and the type test where the facts say the path holds the type (`Guarded`); the templates always write them, so under
   such a declaration S's weakening is longer text for the same rows. The bare window, which only the facts make
   implied, is no template's: one template spells one form at a position.
-- **Generate mode's strictness is named by its tests** — *small, before generate mode serves planning.* The production
-  definition names no strict operator or reading, so outside the tests no weakening keeps a presence test. That loses
-  no rows. `ProbeRows.Strict` names every reading the loader builds, and the eighteen functions the split rule's walk
-  lists (`IsNullWhereAnOperandIs`), until measured Calcite rows hold both and a reader of them fills the definition.
+- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* The split rule's walk
+  reads a connective inside a conjunct it cannot translate for its truth or falsity, `AND` true needing every
+  conjunct's paths and `OR` false every branch's (`CollectPaths`); S reads the conjunct's top call and its operands as
+  values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
+  both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
+  `LIKE` in the IR.
 - **A generate run reports no iteration count** — *small.* `RenderingRun` says whether a run completed, not how near it
   came to 80 + 8 iterations a unit of width. So the headroom R7 asks about is unmeasured, though every bundle of the
   pull request's run completes. The cost instrument can count it.

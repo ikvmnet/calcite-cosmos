@@ -48,7 +48,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads, and its syntax
         /// beside them: each leaf, the values a comparison or a membership is over, and each call's operands.
         /// </summary>
-        public Pred Write(SqlPredicate predicate)
+        public Pred Write(SqlPredicate predicate) => Write(predicate, null);
+
+        /// <summary>
+        /// Writes a conjunct as <see cref="Write(SqlPredicate)"/> does, and beside each opaque predicate whose reading is
+        /// given the value it was read as (<see cref="PredicateStatement.Opaques"/>), with the calls in it.
+        /// </summary>
+        public Pred Write(SqlPredicate predicate, IReadOnlyDictionary<long, OpaqueReading>? opaques)
         {
             foreach (var atom in predicate.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)))
                 _atoms.TryAdd(atom, null);
@@ -62,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return term;
             }, leaf: (term, values) => term is ConstructorTerm<Pred> leaf
                 ? values.Select(v => theory.Over.Of(leaf, v)).Prepend(theory.Leaf.Of(leaf))
-                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)));
+                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques);
 
             var term = writer.Term(predicate, facts);
             return Guard(() =>

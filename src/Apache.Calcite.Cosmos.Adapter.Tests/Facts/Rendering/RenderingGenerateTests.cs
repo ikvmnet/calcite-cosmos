@@ -6,6 +6,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -13,6 +15,11 @@ using Apache.Calcite.Cosmos.Facts.Saturation;
 using Eggnog;
 
 using FluentAssertions;
+
+using org.apache.calcite.jdbc;
+using org.apache.calcite.rex;
+using org.apache.calcite.sql.fun;
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -62,12 +69,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         static Generated Generate(IReadOnlyList<SqlPredicate> roots, RenderingTheory? theory = null, RenderingSet set = RenderingCheckRun.AssertedSet,
-            IReadOnlyDictionary<JsonDocumentPath, PathValues>? values = null, ValueSet<string>? chars = null)
+            IReadOnlyDictionary<JsonDocumentPath, PathValues>? values = null, ValueSet<string>? chars = null, IReadOnlyDictionary<long, OpaqueReading>? opaques = null)
         {
-            theory ??= StrictTheory;
+            theory ??= ProbeTheory;
             using var bundle = theory.Open(set);
             var nodes = roots.SelectMany(r => r.Subterms).Distinct().ToList();
-            var terms = nodes.ToDictionary(n => n, bundle.Write);
+            var terms = nodes.ToDictionary(n => n, n => bundle.Write(n, opaques));
             foreach (var path in roots.SelectMany(r => r.Paths).Distinct())
                 bundle.Import(Source, path, values?.GetValueOrDefault(path) ?? PathValues.Anything, chars ?? AllBands);
 
@@ -229,8 +236,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Presence: a comparison read through a strict reading implies its path present at <c>Pos</c> and, beneath a
-        /// <c>NOT</c>, absent at <c>Neg</c>; through a call a row names as strict too, and a sibling's path through one no row
-        /// names; and nothing where the definition names no reading strict.
+        /// <c>NOT</c>, absent at <c>Neg</c>; and nothing where the definition names no reading strict.
         /// </summary>
         [Fact]
         public void AComparisonOverAStrictReadingImpliesItsPathPresent()
@@ -241,12 +247,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             generated.Implied(atom, RenderPosition.Neg).Should().Contain(Negated(Is(Op.IsDefined, N)));
             generated.Answers[0].Weakening.Should().Be(Is(Op.IsDefined, N));
 
-            var (upper, unlisted) = (Cmp(new SqlValue.Call("UPPER", [Text(NamePath)]), "=", Lit("X")), Cmp(new SqlValue.Call("CONCAT_WS", [Lit("-"), Text(NamePath), Text(NPath)]), "<>", Lit("x")));
-            var nested = Cmp(new SqlValue.Call("UPPER", [new SqlValue.Call("CONCAT_WS", [Text(NamePath)]), Text(NPath)]), "=", Lit("X"));
-            var calls = Generate(upper, Not(upper), unlisted, nested).Answers;
-            calls.Select(a => a.Weakening).Should().Equal(Is(Op.IsDefined, Name), Is(Op.IsDefined, Name), null, Is(Op.IsDefined, N));
+            var none = RenderingTheory.Define(Measured with { StrictOperators = [], StrictReaders = [] });
+            Generate([atom], theory: none).Implied(atom).Should().BeEmpty("a definition strict in nothing");
+        }
 
-            Generate([atom], theory: ProbeTheory).Implied(atom).Should().BeEmpty("a definition strict in nothing");
+        /// <summary>
+        /// Presence through an opaque conjunct, read by the loader beside its term and written with it (spec g04), under the
+        /// registry's strictness: <c>UPPER(c.name) = 'X'</c> implies the name present at <c>Pos</c> and absent at
+        /// <c>Neg</c>; <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c> nothing, since no row names <c>CONCAT_WS</c>; and
+        /// beside it under a strict <c>||</c>, <c>UPPER(label)</c> its own path, though its sibling gives none.
+        /// </summary>
+        [Fact]
+        public void AnOpaqueConjunctImpliesThePathsItsStrictCallsRead()
+        {
+            var types = new JavaTypeFactoryImpl();
+            var rex = new RexBuilder(types);
+            var doc = rex.makeInputRef(types.createSqlType(SqlTypeName.VARCHAR), 0);
+            RexNode Read(string path) => rex.makeCall(types.createSqlType(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_VALUE, java.util.Arrays.asList(doc, rex.makeLiteral("$." + path)));
+            var concat = rex.makeCall(SqlLibraryOperators.CONCAT_WS, rex.makeLiteral("-"), Read("name"), Read("sku"));
+            RexNode[] conjuncts =
+            [
+                rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")),
+                rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, concat, rex.makeLiteral("x")),
+                rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlStdOperatorTable.CONCAT, concat, rex.makeCall(SqlStdOperatorTable.UPPER, Read("label"))), rex.makeLiteral("x")),
+            ];
+            var statement = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement(conjuncts);
+            statement.Conjuncts.Should().AllBeOfType<SqlPredicate.Opaque>();
+
+            var (upper, unlisted, sibling) = (statement.Conjuncts[0], statement.Conjuncts[1], statement.Conjuncts[2]);
+            var generated = Generate([upper, Not(upper), unlisted, sibling], opaques: statement.Opaques);
+            generated.Run.Should().Be(Disciplined);
+            generated.Implied(upper).Should().Equal(Is(Op.IsDefined, Name));
+            generated.Implied(upper, RenderPosition.Neg).Should().Equal(Negated(Is(Op.IsDefined, Name)));
+            generated.Implied(unlisted).Should().BeEmpty();
+            generated.Answers.Select(a => a.Weakening).Should().Equal(Is(Op.IsDefined, Name), Is(Op.IsDefined, Name), null, Is(Op.IsDefined, SqlValue.Spell(LabelPath)));
         }
 
         /// <summary>
@@ -273,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             SqlPredicate[] roots = [Ne(Text(LabelPath), "bikes"), Eq(Text(KindPath), "true"), In(Raw(CategoryPath), "a", "b"), IsNull(Text(NPath)), Cmp(Cast("DOUBLE", Text(PricePath)), ">", Lit(50))];
             var shapes = RenderingTemplateRows.Fits.Select(f => f.Shape).Distinct().ToList();
-            var everything = RenderingTheory.Define(Strict with { Fits = [.. from id in System.Enum.GetValues<TemplateId>() from shape in shapes select (id, shape)] });
+            var everything = RenderingTheory.Define(Measured with { Fits = [.. from id in System.Enum.GetValues<TemplateId>() from shape in shapes select (id, shape)] });
             var generated = Generate([.. roots, .. roots.Select(Not)], theory: everything);
 
             generated.Run.Should().Be(Disciplined);
@@ -328,7 +362,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AContradictedBundleReadsNoWeakening()
         {
-            var theory = RenderingTheory.Define(Strict);
+            var theory = RenderingTheory.Define(Measured);
             theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: every candidate is refuted", r =>
             {
                 var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
@@ -357,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AMergedBundleReadsNothing()
         {
-            using var bundle = StrictTheory.Open(RenderingCheckRun.AssertedSet);
+            using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
             var root = bundle.Write(Ne(Text(LabelPath), "bikes"));
             bundle.Scope.Union(bundle.Write(Eq(Text(KindPath), "a")), bundle.Write(Eq(Text(KindPath), "b")));
             bundle.Import(Source, LabelPath, PathValues.Anything, AllBands);
@@ -388,16 +422,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     var started = Stopwatch.GetTimestamp();
                     var roots = claim.Conjuncts.Count > 1 ? [.. claim.Conjuncts, SqlPredicate.AllOf(claim.Conjuncts)] : claim.Conjuncts.ToList();
-                    using (var bundle = StrictTheory.Open(set))
+                    using (var bundle = ProbeTheory.Open(set))
                     {
                         var terms = roots.Select(bundle.Write).ToList();
                         RenderingCheckRun.Restate(bundle, claim);
                         terms.ForEach(bundle.Generate);
                         var run = bundle.RunGenerate(RenderingBundle.WidthOf(roots));
                         var answers = terms.Select(bundle.ReadBest).ToList();
-                        var lifted = bundle.Failure is null ? bundle.Scope.Rows(StrictTheory.BestExact).Select(r => ((Priced)r.Output!).Form).OfType<ServiceForm>()
-                            .Concat(bundle.Scope.Rows(StrictTheory.Implied).SelectMany(r => (ValueSet<ServiceForm>)r.Output!))
-                            .Concat(bundle.Scope.Rows(StrictTheory.Weakening).Select(r => (ServiceForm)r.Output!)).ToList() : [];
+                        var lifted = bundle.Failure is null ? bundle.Scope.Rows(ProbeTheory.BestExact).Select(r => ((Priced)r.Output!).Form).OfType<ServiceForm>()
+                            .Concat(bundle.Scope.Rows(ProbeTheory.Implied).SelectMany(r => (ValueSet<ServiceForm>)r.Output!))
+                            .Concat(bundle.Scope.Rows(ProbeTheory.Weakening).Select(r => (ServiceForm)r.Output!)).ToList() : [];
                         if (run != Disciplined || bundle.Failure is not null || answers.Any(a => a.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict) || lifted.Any(RenderingCheckRun.Opaque))
                             faults.Enqueue($"{set} {claim.Form}: {run}; {bundle.Failure?.Message}; {string.Join(", ", answers.Select(a => a.Kind + " " + a.Reason))}");
 
