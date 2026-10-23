@@ -2829,6 +2829,16 @@ across documents* and *A join of a container to itself* is the record.
   and the type test where the facts say the path holds the type (`Guarded`); the templates always write them, so under
   such a declaration S's weakening is longer text for the same rows. The bare window, which only the facts make
   implied, is no template's: one template spells one form at a position.
+- **Generate mode's strictness is named by its tests** — *small, before generate mode serves planning.* The production
+  definition names no strict operator or reading, so outside the tests no weakening keeps a presence test. That loses
+  no rows. `ProbeRows.Strict` names every reading the loader builds, and the eighteen functions the split rule's walk
+  lists (`IsNullWhereAnOperandIs`), until measured Calcite rows hold both and a reader of them fills the definition.
+- **A generate run reports no iteration count** — *small.* `RenderingRun` says whether a run completed, not how near it
+  came to 80 + 8 iterations a unit of width. So the headroom R7 asks about is unmeasured, though every bundle of the
+  pull request's run completes. The cost instrument can count it.
+- **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
+  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
+  reads a junction's reason off its arms.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s

@@ -6748,6 +6748,88 @@ one-atom conjunct the check run sends; no two string orderings of one path; the 
 sentinels inert, and the surrogate, band and grammar filters. The plan digests, byte-equal at the parent and at the
 commit.
 
+### The generate theory: positions, bests and weakenings
+
+**Fourteen rules over the check's gate, in seven strata.** Generate mode runs its own schedule beside check mode's, which
+is unchanged. Each step that derives or combines a fact is a rule; C# writes values from complete inputs and reads one
+answer.
+1. *Positions and proposals.* A root stands at `Pos` (`RenderingBundle.Generate`, as `Claim` writes a candidate). Two
+   `at` rules carry the position down: an arm stands where its junction stands, and a negation's operand at the
+   opposite position. Every node reached starts with `BestExact` = `None` and `Implied` = ∅, complete values that later
+   strata only lower or grow, so nothing reads an absence. The `spell` rule joins `at`, `atom`, `template` and `fits`,
+   and proposes `Spell`'s form.
+2. *Cells, the service, the gate* (three strata): Stage 1's, unchanged, on every candidate.
+3. *Lifts and strictness.* An exact agreement that is not vacuous and is `sendable` becomes a price under `Min`. An
+   implied one that is not vacuous, `sendable` and `rex-writable` joins `Implied` under `Union`; every Equal box lies
+   within an Implies box, so a writable exact form is a member too. Three rules state presence. A reading the
+   `strictreader` rows name is strict in its path. A call whose name a `strictop` row holds is strict in what an
+   operand is strict in, through `callarg`. A predicate `over` a strict value is null where the path is absent, so
+   neither TRUE nor FALSE there: it implies `IS_DEFINED(p)` at `Pos` and `NOT IS_DEFINED(p)` at `Neg`, which a `NOT`
+   above turns back into presence.
+4. *Bests.* A junction's best is `Joined` of its arms' bests, held by `form-is-join-of` under the connective's licence,
+   with an Equal agreement whose proof joins theirs, so the conflict rule and the proof lines carry over. A negation's
+   best is its operand's at the opposite position, stripped of a `NOT`; so `NOT (x IS NULL)` is written in `IS NOT
+   NULL`'s spelling, and a double `NOT` collapses.
+5. *Weakenings.* A leaf takes its best where that best is one of its implied forms (`best-is-implied`), and otherwise
+   the fold of its implied set, under both connectives' licences (`best-is-not-implied`). A junction joins its arms'
+   weakenings. A negation negates its operand's at the opposite position. `weakening` has no lattice, so a primitive
+   that answers one node two ways faults the bundle.
+
+The writer states what the strictness rules read beside the terms, as it states `point`: through a second callback of
+`PredicateWriter` it writes `leaf` for every predicate that is no junction or negation, `over` for both values of a
+comparison and the value of a membership, and `callarg` for each operand of a call. The facts graph passes no such
+callback and writes nothing new. Which operators and readings are strict are host rows, from the definition's
+`StrictOperators` and `StrictReaders`. The production definition names none until the registry's rows hold them, and a
+definition that names none implies no presence, which loses rows from no weakening.
+
+**Why the lifts stand apart.** No junction composes from an atom's best before that best is final. Every atom's best is
+complete when `best` starts, so each junction's best is computed once, from final arms, bottom up. `best` still reads a
+value its own stratum writes, and that is sound: a price only lowers and `priced-is-real` only turns true, so every value
+it composed from is an exact form. `weaken` runs last and reads every best and implied set complete, so exactly one of
+the two leaf rules fires for a leaf. A junction's best joins its arms' bests. Joining dedupes shared parts, so a dearer
+arm form that shares more with its sibling could join cheaper. That is not searched: the text may differ, the rows
+never do.
+
+**The round's junction is one more root.** `Through(k)` and `Before(k)` are written beside the conjuncts and share
+their terms, so the `best` rule proves the `WHERE`'s `AND`. A conjunct with no exact form leaves the junction with none,
+and the host derives nothing. Width sets the count limit: the roots' atoms, every `IN`'s points, and a junction root's
+arms, at 80 + 8 a unit (`RenderingBundle.WidthOf`, `RunGenerate`). The check run's limit is 64 + 8 a leaf, and the two
+extra strata take the 16.
+
+**One discipline for every read.** `Readable` holds that the bundle declined on no engine failure, and that its run
+completed within its limits, kept one node per class and derived no contradiction. `ReadBest`, `ReadWeakening`,
+`Agreements` and check mode's `Read` all pass it.
+- A run that stopped short reads `Incomplete`, and a merge or a contradiction reads `Conflict`. A contradicted run still
+  writes weakenings, and none is read.
+- `ReadBest` gives the best and its proof, or Unproven naming the least refuted cell and the cheapest form refuted
+  there. A junction root names none, since generate mode composes no refutation.
+- `ReadWeakening` treats `TRUE` as none: `Joined` and `Negated` fold every constant, so it is the one trivial spelling.
+- `Agreements` lists the non-vacuous agreements, which source A and the pairwise check judge.
+
+**The definition holds generate mode's rows.** The template, fits and strictness rows join the parting bands in
+`RenderingDefinition`, so a planted fault replaces one row in a graph of its own. The parting bands load as one set.
+The grammar is the Rex builder's own and loads from `RenderingRexGrammar` as one registered value.
+
+**The order test reads generate mode too.** It reads the three schedules. Beyond the universals, every other filter
+reads complete values, except those that hold of the value they are handed however it moves: `priced-is-real` and
+`form-is-join-of`. A function's value matched against a constant must be complete: `Is(false)` on a `Max<bool>` reads
+"not yet true". So `best-is-implied` and its negation read finished sets, and the lift reads a vacuity the gate
+finished a stratum before. One plant shows each refusal.
+
+**What holds it.** `RenderingGenerateTests`:
+- P1 restricted under the asserted set and `Production`, and P8 bare.
+- The negations; a junction's best; the round's junction, absent where an arm has none.
+- Nothing vacuous lifted; the band filter; a lone surrogate never admitted, though the gate agrees with it.
+- Presence at both positions and through calls; a leaf's best or its fold; no sentinel lifted.
+- Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's C4 at `Neg`.
+- A contradicted and a merged bundle reading nothing.
+- Every check of the pull request's run asked again in generate mode, riding its pass. Under both sets, 389 bundles
+  (711 roots, 468 proven) all complete within their limits; at the gate's 1,000 predicates, 921 bundles (1,605 roots,
+  1,032 proven) do too.
+
+Nothing in planning calls generate mode: S stays reachable from tests alone, and the plan digests are byte-equal at the
+parent and at the commit.
+
 ---
 
 ## Differential testing

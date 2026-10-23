@@ -12,11 +12,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// The rendering graph S: what the service answers, settled per set of targets, the agreement and the connectives each
     /// set composes through, loaded into a frozen theory; and the rules that, in a bundle beneath it, evaluate a written
     /// form beside the predicate it was written from on every cell of an atom's path, decide whether it agrees or is
-    /// refuted, and carry both through the predicate's AND, OR and NOT.
+    /// refuted, and carry both through the predicate's AND, OR and NOT; and, in generate mode, propose an atom's forms from
+    /// templates, keep the cheapest exact one of every node and build each node's weakening.
     /// </summary>
     /// <remarks>
     /// Every fact that is derived or combined is a rule here, and every universal reads complete inputs (<c>DESIGN.md</c>,
-    /// <i>The rendering graph in check mode</i>).
+    /// <i>The rendering graph in check mode</i> and <i>in generate mode</i>).
     /// </remarks>
     internal sealed class RenderingTheory
     {
@@ -80,6 +81,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Neutral = Graph.DefineFunction<Pred, ServiceForm, CosmosServiceTest, Witness>("neutral", ValueLattice.Min<Witness>());
             Disjoint = Graph.DefineRelation<JPath, JPath>("disjoint");
 
+            At = Graph.DefineRelation<Pred, RenderPosition>("at");
+            Template = Graph.DefineRelation<TemplateId, RenderPosition>("template");
+            Fits = Graph.DefineRelation<TemplateId, string>("fits");
+            PartingBands = Graph.DefineFunction<ValueSet<string>>("partingbands");
+            RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
+            StrictOp = Graph.DefineRelation<string>("strictop");
+            StrictReader = Graph.DefineRelation<string>("strictreader");
+            BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
+            Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
+            Weakening = Graph.DefineFunction<Pred, RenderPosition, ServiceForm>("weakening");
+            Leaf = Graph.DefineRelation<Pred>("leaf");
+            Over = Graph.DefineRelation<Pred, Val>("over");
+            CallArg = Graph.DefineRelation<Val, Val>("callarg");
+            Strict = Graph.DefineRelation<Val, JPath>("strict");
+
             var measure = Graph.DefineRuleset("measure");
             var allowed = Graph.DefineRuleset("allowed");
             var refutes = Graph.DefineRuleset("refutes");
@@ -108,10 +124,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineGate(definition, classes, gate, conflict);
             DefineComposition(compose);
 
+            var at = Graph.DefineRuleset("at");
+            var spell = Graph.DefineRuleset("spell");
+            var lift = Graph.DefineRuleset("lift");
+            var strict = Graph.DefineRuleset("strict");
+            var best = Graph.DefineRuleset("best");
+            var weaken = Graph.DefineRuleset("weaken");
+            DefineProposal(at, spell);
+            DefineLifts(lift, strict);
+            DefineChoice(best, weaken);
+
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
+            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, at, spell), Schedule.Saturate(partition, need, parted),
+                Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict), Schedule.Saturate(best, conflict),
+                Schedule.Saturate(weaken));
 
             Graph.Root.Freeze();
             Theory = Graph.Root.CreateChild();
@@ -135,6 +164,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// the gate on atoms; verdicts up the tree.
         /// </summary>
         public Schedule Check { get; }
+
+        /// <summary>
+        /// Generate mode's schedule: positions down the tree and the templates' forms; the cells, the service and the gate
+        /// on them as in check mode; what the gate agreed lifted, and presence through calls; the bests composed up the
+        /// tree; one weakening a node, from complete inputs.
+        /// </summary>
+        public Schedule Generate { get; }
 
         // The theory's tables: the rows as measured and as settled per set, and the agreement. `final` and `table` hold a
         // key once every target its set serves has measured it.
@@ -209,6 +245,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<Pred, ServiceForm, CosmosServiceTest, Witness> Neutral { get; }
         public Relation<JPath, JPath> Disjoint { get; }
 
+        // Generate mode's. The theory holds the templates asked at each position and the shapes each fits, the parting bands
+        // as one set, the Rex builder's grammar, and the operators and readers Calcite answers null for over a null; the host
+        // writes a root where it stands (`at`), and beside the terms each leaf, the values a comparison or membership is
+        // over and a call's operands. The rules write the rest: each node's position, its cheapest exact form (`None`
+        // until one is found), the forms it implies, and one weakening, lattice-free, which a second write faults.
+        public Relation<Pred, RenderPosition> At { get; }
+        public Relation<TemplateId, RenderPosition> Template { get; }
+        public Relation<TemplateId, string> Fits { get; }
+        public Function<ValueSet<string>> PartingBands { get; }
+        public Function<RenderingRexGrammar.Value> RexGrammar { get; }
+        public Relation<string> StrictOp { get; }
+        public Relation<string> StrictReader { get; }
+        public Function<Pred, RenderPosition, Priced> BestExact { get; }
+        public Function<Pred, RenderPosition, ValueSet<ServiceForm>> Implied { get; }
+        public Function<Pred, RenderPosition, ServiceForm> Weakening { get; }
+        public Relation<Pred> Leaf { get; }
+        public Relation<Pred, Val> Over { get; }
+        public Relation<Val, Val> CallArg { get; }
+
+        /// <summary>A value Calcite reads as null where a path is absent.</summary>
+        public Relation<Val, JPath> Strict { get; }
+
         /// <summary>
         /// Builds S from a definition and loads its theory: one batch per axiom, then the host rows, settled and frozen.
         /// </summary>
@@ -235,7 +293,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<Verdict>();
             values.RegisterEnum<Truths>();
             values.RegisterEnum<ServiceOutcomes>();
+            values.RegisterEnum<TemplateId>();
             values.Register<ServiceForm>("service form");
+            values.Register<Priced>("priced");
+            values.Register<RenderingRexGrammar.Value>("rex grammar");
             values.Register<CellClass>("cell class");
             values.Register<Box>("box");
             values.Register<Proof>("proof");
@@ -257,6 +318,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<CutPoint>();
             values.RegisterSet<MeasuredKey>();
             values.RegisterSet<CosmosServiceTest>();
+            values.RegisterSet<ServiceForm>();
         }
 
         void DefineTheory(Ruleset measure, Ruleset allowed, Ruleset refutes, Ruleset tabulate)
@@ -644,6 +706,158 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        // Positions are derived down the IR, never carried; each node they reach starts with no exact form and nothing
+        // implied, complete values the later strata only lower or grow. A template only proposes: the gate disposes.
+        void DefineProposal(Ruleset at, Ruleset spell)
+        {
+            at.DefineRule("a junction's arms stand where it stands", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                r.When(At.Of(e, pos), Junction.Of(e, x, y, j));
+                r.Then(At.Of(x, pos), BestExact.Of(x, pos).Is(Priced.None), Implied.Of(x, pos).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            at.DefineRule("a negation's operand stands at the opposite position", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q) = r.Vars<RenderPosition, RenderPosition>("pos", "q");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q));
+                r.Then(At.Of(a, q), BestExact.Of(a, q).Is(Priced.None), Implied.Of(a, q).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            spell.DefineRule("a template that fits an atom proposes its form at the atom's position", r =>
+            {
+                var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
+                var (t, n, sh) = r.Vars<TemplateId, string, string>("t", "n", "sh");
+                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh));
+                r.Then(Candidate.Of(e, pos, Compute.Of(t, pos, a, n, RenderingTemplates.Spell)));
+            });
+        }
+
+        // The gate's agreements, complete here, lifted where they rest on something and may be sent: an exact one offered at
+        // its price, an implied one the Rex builder writes as a member. Presence through calls is three rules over rows.
+        void DefineLifts(Ruleset lift, Ruleset strict)
+        {
+            lift.DefineRule("an exact agreement that rests on something and may be sent is a best candidate", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                var b = r.Var<ValueSet<string>>("b");
+                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Equal)), Vacuous.Of(e, pos, f, Verdict.Equal).Is(false), b.Is(PartingBands.Of()));
+                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                r.Then(BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
+            });
+
+            lift.DefineRule("an implied agreement that rests on something, may be sent and can be written as a Rex is implied", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                var (p, a) = r.Vars<JPath, PredicateAtom>("p", "a");
+                var (b, g) = r.Vars<ValueSet<string>, RenderingRexGrammar.Value>("b", "g");
+                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Implies)), Vacuous.Of(e, pos, f, Verdict.Implies).Is(false), Ir.Atom.Of(e, p, a),
+                    b.Is(PartingBands.Of()), g.Is(RexGrammar.Of()));
+                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                r.Where(RenderingPrimitives.RexWritable.Of(f, a, g));
+                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(f)));
+            });
+
+            strict.DefineRule("a reading Calcite answers null over an absent path is strict in its path", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(Ir.Reads.Of(v, p, k), StrictReader.Of(k));
+                r.Then(Strict.Of(v, p));
+            });
+
+            strict.DefineRule("a call whose operator answers null for a null operand is strict in what an operand is strict in", r =>
+            {
+                var (c, v, p) = r.Vars<Val, Val, JPath>("c", "v", "p");
+                var (name, args) = r.Vars<string, Args>("name", "args");
+                r.When(c.Is(Ir.Call.Of(name, args)), StrictOp.Of(name), CallArg.Of(c, v), Strict.Of(v, p));
+                r.Then(Strict.Of(c, p));
+            });
+
+            // Null where the path is absent, so neither TRUE nor FALSE there: present wherever it is kept, at either position.
+            strict.DefineRule("a predicate over a strict value implies its path present", r =>
+            {
+                var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
+                var n = r.Var<string>("n");
+                r.When(At.Of(e, pos), Over.Of(e, v), Strict.Of(v, p), n.Is(Spelling.Of(p)));
+                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(Compute.Of(n, pos, ServiceForm.Presence))));
+            });
+        }
+
+        // An exact form composes up from the arms' bests under the licence, held to exactly their join; a Min value only
+        // lowers and priced-is-real only turns true, so whatever it composed from is exact. The weakening reads every best
+        // and implied set complete: a leaf takes its best where that is a member, or what its members make together.
+        void DefineChoice(Ruleset best, Ruleset weaken)
+        {
+            best.DefineRule("a junction's best is the join of its arms' bests", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                var (bx, by) = r.Vars<Priced, Priced>("bx", "by");
+                var (l, m, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("l", "m", "h");
+                var (px, py) = r.Vars<Proof, Proof>("px", "py");
+                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), bx.Is(BestExact.Of(x, pos)), by.Is(BestExact.Of(y, pos)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bx));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(by));
+                r.When(l.Is(Compute.Of(bx, Priced.FormOf)), m.Is(Compute.Of(by, Priced.FormOf)), px.Is(Agrees.Of(x, pos, l, Verdict.Equal)), py.Is(Agrees.Of(y, pos, m, Verdict.Equal)),
+                    h.Is(Compute.Of(j, l, m, ServiceForm.Joined)));
+                r.Where(RenderingPrimitives.FormIsJoinOf.Of(h, l, m));
+                Composes(r, j, null);
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            best.DefineRule("a negation's best is its operand's best at the opposite position, negated", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q, bq) = r.Vars<RenderPosition, RenderPosition, Priced>("pos", "q", "bq");
+                var (g, h, pa) = r.Vars<ServiceForm, ServiceForm, Proof>("g", "h", "pa");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), bq.Is(BestExact.Of(a, q)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bq));
+                r.When(g.Is(Compute.Of(bq, Priced.FormOf)), pa.Is(Agrees.Of(a, q, g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
+                Composes(r, CosmosServiceTest.Not, null);
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            weaken.DefineRule("a leaf whose exact form can be written as a Rex weakens to it", r =>
+            {
+                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
+                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
+                r.Where(RenderingPrimitives.BestIsImplied.Of(b, s));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(b, Priced.FormOf)));
+            });
+
+            weaken.DefineRule("any other leaf weakens to what its implied forms make together", r =>
+            {
+                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
+                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
+                r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
+                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(s, pos, RenderingWeakening.AtLeaf)));
+            });
+
+            weaken.DefineRule("a junction's weakening joins its arms' weakenings", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                var (wx, wy) = r.Vars<ServiceForm, ServiceForm>("wx", "wy");
+                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), wx.Is(Weakening.Of(x, pos)), wy.Is(Weakening.Of(y, pos)));
+                Composes(r, j, null);
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(j, wx, wy, ServiceForm.Joined)));
+            });
+
+            weaken.DefineRule("a negation's weakening is its operand's at the opposite position, negated", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q, w) = r.Vars<RenderPosition, RenderPosition, ServiceForm>("pos", "q", "w");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), w.Is(Weakening.Of(a, q)));
+                Composes(r, CosmosServiceTest.Not, null);
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(w, ServiceForm.Negated)));
+            });
+        }
+
         /// <summary>
         /// Holds a step to a connective the set under which the bundle runs licenses and Calcite does, and a junction's
         /// form to a set that licenses whatever it needs.
@@ -661,6 +875,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var nd = r.Var<ValueSet<CosmosServiceTest>>("nd");
             r.When(nd.Is(Needs.Of(junction)));
             r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(nd, lic));
+        }
+
+        /// <summary>
+        /// Holds a step to every one of the connectives, which the set and Calcite both license: <see cref="Composes"/>'s
+        /// reads under names of its own, so the two may stand in one rule.
+        /// </summary>
+        void ComposesAll(RuleBuilder r, ValueSet<CosmosServiceTest> connectives)
+        {
+            var sa = r.Var<RenderingSet>("sa");
+            var (lica, cala) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>>("lica", "cala");
+            r.When(Under.Of(sa), lica.Is(Licensed.Of(sa)), cala.Is(Licensed.Of(RenderingSet.Calcite)));
+            r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(connectives, lica));
+            r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(connectives, cala));
         }
 
         /// <summary>
@@ -717,7 +944,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (pos, q) in KleeneTables.Opposite)
                     w.Assume(Opposite.Of(pos, q));
 
-                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated));
+                foreach (var (id, pos) in definition.Templates)
+                    w.Assume(Template.Of(id, pos));
+
+                foreach (var (id, shape) in definition.Fits)
+                    w.Assume(Fits.Of(id, shape));
+
+                foreach (var name in definition.StrictOperators)
+                    w.Assume(StrictOp.Of(name));
+
+                foreach (var reader in definition.StrictReaders)
+                    w.Assume(StrictReader.Of(reader));
+
+                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
+                    PartingBands.Of().Is(ValueSet.From(definition.Parting.SelectMany(p => new[] { p.Item1, p.Item2 }))), RexGrammar.Of().Is(RenderingRexGrammar.Written));
             });
 
             var report = Theory.Run(Settle);

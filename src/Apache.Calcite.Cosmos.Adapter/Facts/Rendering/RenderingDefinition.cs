@@ -12,6 +12,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// Everything S is defined from that a test may replace: the host rows its theory loads, and the evaluation primitives
     /// its rules call. A plant is a definition with one of them wrong, in a graph of its own.
     /// </summary>
+    /// <remarks>
+    /// Generate mode's rows are the templates asked at each position and the shapes each fits, and what Calcite answers
+    /// null for where an operand or the path it reads is null: the operators by name and the readers. The host builds
+    /// those two from measured rows and Calcite's declared policy; a definition that names none is strict in nothing, so a
+    /// weakening keeps no presence.
+    /// </remarks>
     internal sealed record RenderingDefinition(
         IReadOnlyList<MeasuredOutcome> Rows, IReadOnlyDictionary<RenderingSet, ValueSet<RenderingTarget>> Serves, AnswerMeanings Means,
         IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Kleene, IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity,
@@ -22,12 +28,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair)
+        Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
+        IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
+        IReadOnlyList<string> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
 
         /// <summary>
-        /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges and
-        /// primitives as written.
+        /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges,
+        /// templates and primitives as written; strict in nothing until the host names what is.
         /// </summary>
         public static RenderingDefinition Measured(IReadOnlyList<MeasuredOutcome> rows) => new(
             rows,
@@ -42,7 +50,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ReaderEdgesTable.Rows,
             // U+E000 and above sorts after a surrogate by UTF-16 unit and before the character it writes by code point.
             [(JsonValues.SurrogateBand, JsonValues.HighBand), (JsonValues.HighBand, JsonValues.SurrogateBand)],
-            CutPoints.Of, PathCell.Split, PathCell.SetAside, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of);
+            CutPoints.Of, PathCell.Split, PathCell.SetAside, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of,
+            RenderingTemplateRows.Templates, RenderingTemplateRows.Fits, [], []);
 
     }
 
