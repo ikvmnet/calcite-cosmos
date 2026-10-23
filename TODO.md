@@ -2825,13 +2825,6 @@ across documents* and *A join of a container to itself* is the record.
   2.4 s). Planning is most of the run: its bundles took 5.3–5.6 s of 36 s warm. The owner accepts the measured figures,
   or D11's fallback runs the partition run at 100 predicates a pull request, about 3 s off, which moves the coverage and
   precision lines off the 200 they are measured on.
-- **A junction's descent holds a candidate for every subset of its members** — *medium, for Stage 2's cost line.* The
-  first arm is offered each member and the second the rest, down a right-nested junction, so `Filter.DeepConjunction`'s
-  eight conjuncts cost 0.74–0.98 s, half the corpus's bundles. With 12 to 14 candidates an atom at 2–3 ms each, Stage
-  2's projection came to 1.7–3.2 s against 0.25 s, and the bundles' own line missed too (2.1–3.7 ms at the median, 12–15
-  ms at the 90th centile, against 1.5 and 5), on a machine its other work held at 93–100 %. Descent along the IR's own
-  flat arms, pairing a member with the arm whose paths it reads, would be linear; retaking the line on a free machine
-  separates the load from the shape.
 
 ---
 

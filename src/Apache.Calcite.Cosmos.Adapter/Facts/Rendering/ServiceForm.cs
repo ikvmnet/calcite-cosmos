@@ -140,6 +140,63 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             };
         }
 
+        /// <summary>
+        /// A junction kept to what two forms make of it, its grouping kept: every member it is a join of that neither form is
+        /// nor holds as one of the junction's own connective is taken out, as <see cref="Without(ServiceForm, ServiceForm)"/>
+        /// takes one. Whether the two are the result's parts is the caller's to check.
+        /// </summary>
+        public static ServiceForm Spanned(ServiceForm junction, ServiceForm left, ServiceForm right)
+        {
+            if (junction.Kind is not (ServiceFormKind.And or ServiceFormKind.Or))
+                throw new ArgumentException("Only a junction has parts to keep.", nameof(junction));
+
+            // What the sides hold of it: a side that is one of its parts whole, and of one built of them, each part it holds.
+            var (parts, present) = (junction.Parts.ToHashSet(), new HashSet<ServiceForm>());
+            void Hold(ServiceForm side)
+            {
+                if (parts.Contains(side) || junction.Joins(side) == false)
+                    present.Add(side);
+                else
+                    foreach (var member in side.Members)
+                        Hold(member);
+            }
+
+            Hold(left);
+            Hold(right);
+            var spanned = junction;
+            foreach (var part in Unheld(junction, present))
+                if (spanned.Kind == junction.Kind)
+                    spanned = Without(spanned, part);
+
+            return spanned;
+        }
+
+        /// <summary>
+        /// A junction kept to the parts that read one path alone, its grouping kept; the junction itself where none does,
+        /// which reads more than the path.
+        /// </summary>
+        public static ServiceForm Reading(ServiceForm junction, string path)
+        {
+            if (junction.Kind is not (ServiceFormKind.And or ServiceFormKind.Or))
+                throw new ArgumentException("Only a junction has parts to keep.", nameof(junction));
+
+            bool Alone(ServiceForm part) => part.Paths.Count > 0 && part.Paths.All(p => p == path);
+            var present = junction.Parts.Where(Alone).ToHashSet();
+            if (present.Count == 0)
+                return junction;
+
+            var reading = junction;
+            foreach (var part in Unheld(junction, present))
+                if (reading.Kind == junction.Kind)
+                    reading = Without(reading, part);
+
+            return reading;
+        }
+
+        /// <summary>A junction's greatest parts that neither are nor hold one present: a member whole, or within one of its own connective that holds one.</summary>
+        static IEnumerable<ServiceForm> Unheld(ServiceForm junction, ISet<ServiceForm> present) => junction.Members.SelectMany(m =>
+            present.Contains(m) ? [] : junction.Joins(m) && m.Parts.Any(present.Contains) ? Unheld(m, present) : new[] { m });
+
         /// <summary>Whether a junction is one of its parts joined with the rest of it.</summary>
         public static bool Decomposes(ServiceForm junction, ServiceForm left, ServiceForm right) =>
             junction.Kind is ServiceFormKind.And or ServiceFormKind.Or && junction.Parts.Contains(left) && Without(junction, left).Equals(right);

@@ -67,6 +67,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceForm.Decomposes(Pool[2], Pool[2], Pool[2]).Should().BeFalse("a leaf has no members");
         }
 
+        /// <summary>
+        /// A junction kept to what two forms make of it keeps the parts they are or hold, as written, and only where they are
+        /// its written parts is it their join; kept to one path's parts it is those parts, a leaf where one is, and itself
+        /// where none.
+        /// </summary>
+        [Fact]
+        public void SpannedAndReadingKeepTheirPartsAsWritten()
+        {
+            var (a, b, c, d, e) = (Pool[0], Pool[1], Pool[2], Pool[3], Pool[4]);
+            ServiceForm And(params ServiceForm[] members) => ServiceForm.JunctionOf(CosmosServiceTest.And, members);
+            var nested = And(And(a, b), d, And(c, e));
+
+            // A side regrouped or reordered against the claim holds its parts, but is no part, so nothing is its join.
+            foreach (var (l, m, spanned, joins) in new[] { (a, d, And(a, d), true), (d, a, And(a, d), true), (And(a, b), c, And(And(a, b), c), true),
+                (b, And(e, c), And(b, And(c, e)), false), (And(a, b), And(d, And(c, e)), nested, true) })
+            {
+                ServiceForm.Spanned(nested, l, m).Should().Be(spanned, $"{l} and {m}");
+                (ServiceForm.Decomposes(spanned, l, m) || ServiceForm.Decomposes(spanned, m, l)).Should().Be(joins, $"{spanned} into {l} and {m}");
+            }
+
+            ServiceForm.Spanned(nested, a, ServiceForm.CompareOf(CosmosServiceTest.Equal, P, Of("z"))).Should().Be(a, "a side that is no part holds nothing of it");
+            (ServiceForm.Reading(nested, P), ServiceForm.Reading(nested, Q)).Should().Be((And(And(a, b), c), And(d, e)));
+            ServiceForm.Reading(And(c, d), P).Should().Be(c);
+            ServiceForm.Reading(nested, SqlValue.Spell(JsonDocumentPath.Root.Property("other"))).Should().Be(nested, "no part reads it alone");
+        }
+
         /// <summary>Stripping takes one negation off, or puts one on, so twice is nothing on a form with at most one.</summary>
         [Fact]
         public void StripIsAnInvolutionOnNot()

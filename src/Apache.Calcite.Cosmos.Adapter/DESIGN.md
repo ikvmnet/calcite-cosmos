@@ -6229,15 +6229,31 @@ its first member and the rest, a junction rid of every copy of that member, whic
 for granted; a missing row of the grouping as written was never read. So it is evaluated only where the set licenses
 its connective. Two members read their row as written, and a junction nested as written is evaluated as nested.
 
-**Positions and pairings are derived.** A junction of the IR has a `junction` row from each arm; a negation's operand is
-a candidate for the form stripped of a `NOT` at the opposite position. The first arm is offered each member of the form,
-and the second the form without it, whose members a rule states where three or more remain; so every pairing is tried,
-and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict and its form joins
-theirs by its own connective, in either order. A node may hold candidates from two parents, so the connective is read
-where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides the same candidates and
-must not compose. A written member that the IR merged is dropped once where its text matches, `AND` and `OR` being
-idempotent; where its text differs it is left over, unproven where it falls to the first arm, and proven only where the
-second arm, an atom, evaluates it with its own on its cells, which is a proof of what was written.
+**Positions and pairings are derived, and a junction's form is composed up from its arms'.** A junction of the IR has
+a `junction` row from each arm; a negation's operand is a candidate for the form stripped of a `NOT` at the opposite
+position. A junction lies `within` each form of its own connective it is a candidate for, and an arm that is a junction
+of that connective lies within the same forms. Each arm of a junction lying within a form is offered each of its parts,
+and an atom also the form kept to the parts that read its path alone (`ServiceForm.Reading`); so every pairing is tried,
+and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict, with the form their
+forms make of the one it lies within (`ServiceForm.Spanned`: every part neither side is or holds taken out, the grouping
+kept), and only where `form-decomposes` holds that form to exactly their join, in either order: the helper builds a
+value and the filter decides. A check reads the root's agreement with the claim, so a member no arm agreed with leaves
+the root agreeing with less than was claimed, and the claim unproven. A node may hold candidates from two parents, so
+the connective is read where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides
+the same candidates and must not compose. A written member the IR merged is dropped once where its text matches, `AND`
+and `OR` being idempotent; one written twice differently, or beside a test of its own path, is proven where its atom
+evaluates the parts reading its path together on its cells, which is a proof of what was written.
+
+**Why up, not down.** A junction's form handed down — its first arm offered each member and its second the rest, whose
+members a rule restated — gave a right-nested junction of n arms a candidate for every subset of its members,
+2^n − n − 1 of them, and a run that stopped on its row limit at 13 arms. Composed up, a junction is offered at most n²
+parts, which nothing at the junction evaluates, and its atoms at most n(n + 1) where every part shares one path; a proof
+composes one form a junction where each atom agrees with one part. The premises are the old ones word for word — one
+verdict on both sides, or a definite refutation beside the identity on a disjoint location; exactly the join; the
+connective licensed by the set and by Calcite — and the need checked is the written form's, which a rest's never was.
+Only where the form comes from changed, so a proof is still one the universal over each atom's cells backs, whatever
+proposed the candidates. What it gives up: a leftover member that reads no path, a constant, or more paths than the atom
+beside it, which the old descent proved only where the IR's order of arms made that atom the last.
 
 **A refutation composes across locations a document sets apart.** A side refuted on a cell, beside a sibling that is
 the connective's identity on one of its own — `(T,t)` for `AND`, `(F,f)` for `OR` — refutes the junction on a document
@@ -6256,8 +6272,8 @@ not the IR's: the service is asked what was written, and a range written for one
 literals part nothing, is a range all the same. What licenses it is N8's rows (*The family's last rows*).
 
 **What holds it.** Plants a regression would meet: an `AND` row dropped under a pairing and under a regrouping, the
-non-boolean rows dropped, a member that differs in text dropped as the aligner did, a superset that narrows in its
-stratum, and a lambda filter.
+non-boolean rows dropped, an arm offered the rest without a member that differs in text, as the aligner dropped it,
+which proves no more than the arms make, a superset that narrows in its stratum, and a lambda filter.
 
 ### The registry, read into S
 
@@ -6540,10 +6556,11 @@ be held either way, so it is placed by both; a literal sent as a double is place
 
 **A claim grouped as the `WHERE` writes it composes over the IR's flat junction.** A junction's parts are its members
 and those within a member of its own connective, however deep. `Claim` states each junction's members as written, and a
-rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; the
-rest keeps the grouping of what is left, and the rule that writes its members writes those it holds as written alone,
-so no member row names what is no part. That is the join because the licensed connective is associative, commutative
-and idempotent, which evaluating a regrouped rest already took for granted. S has 40 rules, at the line.
+rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; a
+nested junction of the IR lies within the same form as its parent, and the form each composes keeps the claim's
+grouping of what its arms took, so the composition climbs the IR's flat spine whatever the claim's grouping. That is the
+join because the licensed connective is associative, commutative and idempotent, which evaluating a regrouped rest
+already took for granted. S has 42 rules, the descent's first arm and rest having become four; Stage 2's line is 56.
 
 **The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
 conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
@@ -6670,9 +6687,9 @@ run on the Linux x64 leg, the one with an emulator; elsewhere `refutations.tsv`'
 rendering tests build under the asserted set, all but four, which state what the emulator's set alone holds — `Range`
 licensed, and a key it alone measured — and name it.
 
-**A junction's descent offers its first arm each member and its second the rest**, so a right-nested junction holds a
-candidate for every subset of its members: Stage 2's projection misses its cost line on that shape, whatever the load,
-and generate mode wants descent along the IR's own arms first (`TODO.md`).
+**A junction's descent is polynomial in its width**, composed up from what its arms agree with (*Composition through
+AND, OR and NOT*): what is left of a bundle's cost is the floor every bundle pays, 25 to 34 iterations of five strata,
+and the compound evaluated a member at a time on its cells, which an `OR` of 16 equalities peels in 88 iterations.
 
 ---
 
