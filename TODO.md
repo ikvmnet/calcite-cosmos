@@ -2817,6 +2817,18 @@ across documents* and *A join of a container to itself* is the record.
   A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
   neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
   that needs it, as #162's temporal rewrites once did, designs it.
+- **C2 writes no side S cannot place** — *small, a loss beside J.* The window of `CAST(… AS DOUBLE) = 0.1` is bounded at
+  -0.9 and 1.1, which the split rule sends as their doubles and the service compares as such; `ServiceLeaf` places a
+  literal only where its double is it, so the template leaves such a side out, and a window with neither side is no
+  candidate. Placing a literal by the double it is sent as would give both back, here and for every comparison with one.
+- **A6 is spelled by the operator, not the literal** — *small.* `c OR IS_BOOL(p)` for `>` and `c OR IS_NUMBER(p)` for `<`
+  are exact only where every boolean's rendering, and no number's, lies above the literal, or the other way round: a
+  literal of letters below `f`. Over `'5'` or `'g'` neither is, and the ordering stays unproven; which kinds a literal
+  keeps is a fact of its characters that a rule could read, with a template per kind.
+- **C1 and C2 keep the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED`
+  and the type test where the facts say the path holds the type (`Guarded`); the templates always write them, so under
+  such a declaration S's weakening is longer text for the same rows. The bare window, which only the facts make
+  implied, is no template's: one template spells one form at a position.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s

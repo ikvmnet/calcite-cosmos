@@ -6691,6 +6691,63 @@ licensed, and a key it alone measured — and name it.
 AND, OR and NOT*): what is left of a bundle's cost is the floor every bundle pays, 25 to 34 iterations of five strata,
 and the compound evaluated a member at a time on its cells, which an `OR` of 16 equalities peels in 88 iterations.
 
+
+## The rendering graph in generate mode
+
+S's second stage writes what it proves. For each `WHERE` conjunct it owns it proposes forms from templates, its gate
+admits or refutes each exactly as in check mode, `BestExact` keeps the cheapest exact one, and `Implied` gathers what a
+residual conjunct's weakening is built from. Until the switch it is judged in tests alone, and nothing in planning
+reaches it.
+
+### Templates, prices, and the weakening's assembly
+
+**A template only proposes; the gate disposes.** A template is a core — the comparison, an `IN` as its equalities, the
+presence it tests — and a guard: A1–A4 are what the translator writes, A5, A6, C1, C2 and C4 what it pushes as a
+weakening or what the gains need. Which template is asked at which position, and of which atom's shape, are host rows
+(`RenderingTemplateRows`). A shape is the atom's reader, test and operand's kind; a parameter's is its own, which no
+row names, so a parameter atom gets presence and no candidate. `RenderingTemplates.Spell` writes from the atom's literal
+and the path's spelling, reads no fact, and is total, since Eggnog 1.1.1 runs a body's calls in no promised order: a
+pair it cannot write is an opaque sentinel, which the service leaf answers widest, a failure among it, so no box allows
+it and nothing refutes it. C3, the text-equality alternatives, is not built: its Rex would re-type the accessor, which
+Calcite reads as an assertion that raises on a string.
+
+**A1–A4 are the translator's spelling, so S proposes today's text.** Every one-atom conjunct the check run's
+statements send is its template's form, but for the two respellings R5 names: an `IN`'s points in the set's order, and
+`NOT (x IS NULL)` in `IS NOT NULL`'s spelling, which A4 proposes at `Neg` alone because its negation strips to the
+shorter form. The bare form beats a guarded one only where it is exact too, which is P8.
+
+**C2's window is what converting a number allows, on sides S can place.** A comparison through a numeric reading
+bounds the stored number by the literal moved by one each way, which converting a number moves it by less than. A side
+is written only where the service compares what it is sent as that number — a whole number an int64 holds, or one
+whose double it is — as `ServiceLeaf` places a literal, so a side S could not evaluate is left out rather than costing
+the window. Whether the window is implied is the gate's.
+
+**A price is a total order.** `Priced` is a rank, the slot a measured cost row would fill and none fills yet, the
+form's nodes, and its text. `Min` keeps one value whatever order rows arrive in, and `None`, greater than every real
+price, is a complete value from the start, so a rule reads "no exact form" (`priced-is-real`) and never an absence.
+
+**What may be sent is read off the form, against data beside it.** `sendable` refuses a literal with an unpaired
+surrogate, which the SDK refuses to send on either target, and a string ordering whose literal holds a character of a
+parting band, so that no form S sends is one bound of a range the two orders rank apart, beside any conjunct in any
+round. `rex-writable` admits a form only where the Rex builder writes every comparison, membership and test in it, by
+the grammar's rows (`RenderingRexGrammar`): a string over any reader, the accessor re-typed `ANY`; a number over a
+reader typed as one; a boolean over `RETURNING BOOLEAN`; the eight type tests, each with an in-process body; constants
+and the connectives. So the builder never meets a member it would have to leave out, which beneath an `OR` or a `NOT`
+would strengthen the weakening.
+
+**The weakening's assembly decides nothing.** `ServiceForm.Joined` flattens a member of its own connective, keeps one of
+each part in the arms' order, and folds Kleene's constants at either position; `Negated` folds both constants and strips
+one `NOT`; `RenderingWeakening.AtLeaf` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
+`Neg`, the identity for none, and prunes nothing: flattening and one part each make a presence test vanish into a
+guarded form that holds it. Whether a leaf takes its best or this fold is two rules (`best-is-implied` and its
+negation), and `form-is-join-of` holds a composed form to exactly its arms' parts, as a set.
+
+**What holds it.** `RenderingTemplatesTests`: totality over every atom the inputs load, a synthetic atom of every shape
+and a parameter; every pair the rows ask spells a form; the translator's spelling, over sample statements and over every
+one-atom conjunct the check run sends; no two string orderings of one path; the order, the join, the negation, the
+sentinels inert, and the surrogate, band and grammar filters. The plan digests, byte-equal at the parent and at the
+commit.
+
 ---
 
 ## Differential testing

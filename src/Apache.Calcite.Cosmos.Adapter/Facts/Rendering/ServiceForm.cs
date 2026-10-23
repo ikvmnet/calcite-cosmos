@@ -29,6 +29,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Paths = paths;
             Members = members;
             Text = text;
+            Nodes = kind switch
+            {
+                ServiceFormKind.Not => 1 + members[0].Nodes,
+                ServiceFormKind.And or ServiceFormKind.Or => members.Sum(m => m.Nodes) + members.Length - 1,
+                _ => 1,
+            };
         }
 
         public ServiceFormKind Kind { get; }
@@ -60,6 +66,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         bool Joins(ServiceForm member) => member.Kind == Kind && Kind is ServiceFormKind.And or ServiceFormKind.Or;
 
         public string Text { get; }
+
+        /// <summary>Its size, the price of an exact form: a leaf 1, a <c>NOT</c> one more than its operand, a junction its members and the connectives between them.</summary>
+        public int Nodes { get; }
 
         public static ServiceForm TestOf(CosmosServiceTest test, string path) => new(ServiceFormKind.Test, test, path, null, ValueSet<string>.Empty, ValueSet.Of(path), Leaf, test switch
         {
@@ -203,6 +212,41 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A negation's operand, or the negation of anything else.</summary>
         public static ServiceForm Strip(ServiceForm form) => form.Kind == ServiceFormKind.Not ? form.Members[0] : NotOf(form);
+
+        /// <summary>
+        /// Two forms joined by a connective: a junction of its own flattened into its members, one of each part kept in the
+        /// arms' order, and Kleene's constants folded whatever the position, the identity left out and the absorbing one
+        /// the whole. Only takes forms apart and puts them together; whether the join holds is the licence's. Total, as a
+        /// rule body's calls must be: no junction joins by anything else, and an opaque sentinel says so.
+        /// </summary>
+        public static ServiceForm Joined(CosmosServiceTest connective, ServiceForm left, ServiceForm right)
+        {
+            if (connective is not (CosmosServiceTest.And or CosmosServiceTest.Or))
+                return Unjoined;
+
+            var kind = connective == CosmosServiceTest.And ? ServiceFormKind.And : ServiceFormKind.Or;
+            var (identity, absorbing) = (ConstantOf(kind == ServiceFormKind.And), ConstantOf(kind == ServiceFormKind.Or));
+            var parts = new List<ServiceForm>();
+            foreach (var part in new[] { left, right }.SelectMany(arm => arm.Kind == kind ? arm.Flat : [arm]))
+            {
+                if (part.Equals(absorbing))
+                    return absorbing;
+
+                if (part.Equals(identity) == false && parts.Contains(part) == false)
+                    parts.Add(part);
+            }
+
+            return parts.Count switch { 0 => identity, 1 => parts[0], _ => JunctionOf(connective, parts) };
+        }
+
+        static readonly ServiceForm Unjoined = OpaqueOf("unjoined", ValueSet<string>.Empty);
+
+        /// <summary>A path present, at <c>Pos</c>; beneath a <c>NOT</c>, at <c>Neg</c>, what is false exactly where it is present.</summary>
+        public static ServiceForm Presence(string path, RenderPosition pos) =>
+            pos == RenderPosition.Pos ? TestOf(CosmosServiceTest.IsDefined, path) : NotOf(TestOf(CosmosServiceTest.IsDefined, path));
+
+        /// <summary>A form negated: a constant's other value, a negation's operand, or the negation of anything else.</summary>
+        public static ServiceForm Negated(ServiceForm form) => form.Kind == ServiceFormKind.Constant ? ConstantOf(form.Literal == JsonValues.Of(false)) : Strip(form);
 
         /// <inheritdoc />
         public bool Equals(ServiceForm? other) => other is not null && string.Equals(Text, other.Text, StringComparison.Ordinal);

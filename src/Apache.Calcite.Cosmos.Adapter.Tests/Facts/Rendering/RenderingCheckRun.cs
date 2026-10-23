@@ -70,6 +70,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Every text captured at either site, once a text with its values inlined: what the reader is held to.</summary>
         public ConcurrentDictionary<string, (string Text, IReadOnlyList<CosmosParameter> Parameters, bool InFamily)> Captured { get; } = new();
 
+        /// <summary>Every conjunct's IR a site wrote, by its digest: the atoms the inputs load.</summary>
+        public ConcurrentDictionary<string, SqlPredicate> Irs { get; } = new();
+
         /// <summary>
         /// What the cross-checks found: a conjunct written two ways with its values inlined, a <c>WHERE</c> that is not the
         /// conjunction of the texts its statements sent, or a text claimed that does not read back.
@@ -219,8 +222,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var records = recorder.Records;
             var statements = records.Select(r => r.Statement).Distinct().ToList();
             foreach (var record in records)
+            {
                 Captured.TryAdd(CosmosSqlFormReader.Inline(record.Text, record.Parameters), (record.Text, record.Parameters,
                     Parts(IrOf(record)).All(p => p is not (SqlPredicate.Opaque or SqlValue.Parameter))));
+                Irs.TryAdd(IrOf(record).Digest, IrOf(record));
+            }
 
             foreach (var conjunct in records.GroupBy(r => (r.Statement, r.Conjunct)).Where(g => g.Select(r => CosmosSqlFormReader.Inline(r.Text, r.Parameters)).Distinct().Count() > 1))
                 Mismatches.Enqueue($"{input.Input} {input.Name}: conjunct {conjunct.Key.Conjunct} written as {string.Join(" and as ", conjunct.Select(r => r.Text).Distinct())}");
