@@ -16,6 +16,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         readonly List<CaptureRecord> _records = [];
+        readonly List<CosmosFilterStatement> _read = [];
 
         /// <summary>Gets the records, in the order written.</summary>
         public IReadOnlyList<CaptureRecord> Records
@@ -24,6 +25,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 lock (_records)
                     return [.. _records];
+            }
+        }
+
+        /// <summary>Gets every statement whose rounds were admitted while armed, in the order first asked, a conjunct rendered or none.</summary>
+        public IReadOnlyList<CosmosFilterStatement> Read
+        {
+            get
+            {
+                lock (_records)
+                    return [.. _read];
             }
         }
 
@@ -46,6 +57,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var names = CosmosSqlFormReader.Names(text);
             Add(new(3, statement, conjunct, text, [.. parameters.Parameters.Where(p => names.Contains(p.Name))],
                 [.. parameters.Comparisons.Where(c => names.Contains(c.Parameter))], []));
+        }
+
+        void ICosmosRenderingObserver.Read(CosmosFilterStatement statement)
+        {
+            lock (_records)
+                if (_read.Contains(statement) == false)
+                    _read.Add(statement);
         }
 
         void Add(CaptureRecord record)

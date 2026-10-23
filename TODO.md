@@ -2745,13 +2745,11 @@ across documents* and *A join of a container to itself* is the record.
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
   where the service answers false. The column's own reading (decision D12) would refute it.
-- **The gains preview reads two of five Exact, which §6's line kills** — *small, for Stage 2.* The validator ships, as
-  soundness, recall and mutations pass (plan §5). Over typed's undeclared label the guarded
-  inequality is Exact, and the orderings' forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR
-  IS_NUMBER(c.label)`, are unproven: the label's strings may hold U+0000, which the emulator orders as U+FDD0 then `0`,
-  and `Portable` serves the emulator. They are Exact where no string can hold one, and under `Production` (a bundle of
-  their own); on the emulator each keeps Calcite's rows over typed. A declaration that keeps U+0000 out, or a set that
-  leaves the emulator out, is what Stage 2 would write them under.
+- **P2 and P3 land only where U+0000 is ruled out** — *small, for the owner's O1.* Generate mode sends the orderings'
+  forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR IS_NUMBER(c.label)`, exactly over a twin of `typed`
+  whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself (`RenderingGainsTests`);
+  over the undeclared label the emulator orders a U+0000 as stored, so under `Emulator` they are declined. A declaration
+  is what a user writes for them there.
 - **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
   the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
   `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
@@ -2841,6 +2839,29 @@ across documents* and *A join of a container to itself* is the record.
 - **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
   `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
   reads a junction's reason off its arms.
+- **The generate shadow follows the translator's rounds** — *small, until g15.* Its later-round nodes are the facts
+  graph's, built from what the translator admitted, so where S admits a conjunct the translator does not, or declines one
+  it pushes, the next round's node is not the one S's own loop would read. Production's sites see S's own rounds.
+- **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
+  `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
+  rows are the same. Pruning a member another implies would be a rule; `AtLeaf` decides nothing.
+- **P4's orderings are no tighter than J's** — *small, a gain not delivered.* No template excludes the nulls and
+  structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
+  `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
+  `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a tenth template row.
+- **Looser weakenings the shadow lists against J** — *small, O7's.* The text-equality alternatives (C3, not built), and
+  J's weakenings S cannot prove: a typed `DECIMAL` window past 2^53, which a double near the bound would leave out, and
+  the string branch over strings that may hold U+0000 under `Emulator`. `shadow-weakening.tsv` names J's verdict at the
+  weakening's key beside each; line 13b reads it from g15.
+- **A raw accessor compared with a parameter does not plan in the check run's harness** — *small.* `c."$.label" <> ?`
+  leaves the parameter untyped beside an `ANY`, so the parameterised residual the inputs gain reads the label through
+  the accessor.
+- **The in-process judge of an opaque weakening fills typed fields alone** — *small.* A field read as text or JSON, a
+  view's column among them, is not filled, and its conjunct is counted and left out; filling it as the reader renders it
+  would judge those too.
+- **The rewrite test pairs a lowered conjunct with its original by node** — *small.* A conjunct the rewrite deleted is
+  unpaired, and an original the loader reads as opaque, a `UUID` cast among them, is never refuted, so line 33 judges
+  only the lowerings whose original the IR reads; both are counted.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s

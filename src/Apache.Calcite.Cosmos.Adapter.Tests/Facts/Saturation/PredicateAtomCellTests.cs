@@ -118,26 +118,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// A cell answers within what the coarse reading answers on its state, but for the raises a raw and a typed reading
         /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
         /// over a structure; and where a reading compares a number's double, which the coarse reading compares by value
-        /// (<c>TODO.md</c>). A conjunct the check run reads a stratum beside is read so by neither.
+        /// (<c>TODO.md</c>). A reading the precision table calls exact is read so by neither
+        /// (<see cref="EveryExactReadingAnswersAsItsCell"/>).
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
         {
-            var (wider, inexact) = (new List<string>(), new List<string>());
+            var wider = new List<string>();
             foreach (var atom in Atoms(boundaries: true))
             {
                 var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                {
                     if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
                         wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
-                    if (Rendering.RenderingCheckRun.ReadExactly(Predicate(atom)) && (atom.OnCell(cell) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
-                        inexact.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
-                }
             }
 
             wider.Should().BeEmpty();
-            inexact.Should().BeEmpty("the check run reads a stratum beside a conjunct read so as the facts graph reads it");
+        }
+
+        /// <summary>
+        /// Every reading <see cref="ReadingPrecisionTable"/> calls exact, beside each literal it is exact beside, is read by
+        /// the facts graph as its cells answer: the coarse answer on a cell's state holds every truth the cell gives, and
+        /// what a row of each truth can be (<see cref="PredicateAtom.Kept"/>) admits every value Calcite gives that truth on,
+        /// through every reader the reading stands for. So a stratum that assumes such an atom leaves out no document Calcite
+        /// keeps. Coins are left out, counted; the table calls some reading coarse that this would hold.
+        /// </summary>
+        [Fact]
+        public void EveryExactReadingAnswersAsItsCell()
+        {
+            var (inexact, (asked, tossed)) = (new List<string>(), (0, 0));
+            var readers = new HashSet<string>();
+            foreach (var atom in Atoms(boundaries: true).Where(a => RenderingFamily.ReadExactly(Predicate(a))))
+            {
+                readers.Add(atom.Reader);
+                foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
+                {
+                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
+                        inexact.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+
+                    foreach (var value in Inside(cell))
+                        foreach (var (typed, raw) in Modes(atom))
+                        {
+                            var world = new World(asked + tossed);
+                            var truth = IrEval.Truth(Predicate(atom), Document(value), world, typed, raw);
+                            if (world.Tossed > 0)
+                            {
+                                tossed++;
+                                continue;
+                            }
+
+                            asked++;
+                            if (truth is Truths.True or Truths.False && PopulationD.Admits(atom.Kept(truth == Truths.True), value) == false)
+                                inexact.Add($"{atom} is {truth} of {PathCellTests.Show(value)} read {typed} {raw}, which a row it keeps {truth} cannot be");
+                        }
+                }
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{asked:N0} answers checked; {tossed:N0} left out, a coin tossed");
+            inexact.Should().BeEmpty("a stratum resting on a reading called exact leaves out no document Calcite keeps");
+            readers.Should().BeEquivalentTo(ReadingPrecisionTable.Rows.Keys.Where(Readers.Contains), "every row the grid reads is held");
         }
 
         static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;

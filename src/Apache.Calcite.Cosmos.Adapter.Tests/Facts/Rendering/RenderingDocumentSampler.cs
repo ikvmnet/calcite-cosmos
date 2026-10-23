@@ -5,6 +5,8 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 
+using Eggnog;
+
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
@@ -12,7 +14,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// Source A (spec §5.5): up to 64 documents from what a check imported, each path set to values its import admits —
-    /// the literals and their neighbours, a fraction either side of each numeric literal whose double is the literal's, the
+    /// the values an import names where it names them, the literals and their neighbours, a fraction either side of each numeric literal whose double is the literal's, the
     /// text other values render as, strings holding a character of each band beside each literal, numbers either side of
     /// 2^53, beside a typed or cast reading the type limits and either side of them and a literal's rendering padded with
     /// control characters Java's trim takes off, and every kind — the paths' values mixed so that each value of each path
@@ -30,23 +32,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Where an integer type raises, a cast saturates, and an <c>ANY</c> wraps a long into an int.</summary>
         static readonly decimal[] Limits = [int.MaxValue + 1m, int.MinValue - 1m, 4294967297m, long.MaxValue, long.MaxValue + 1m, long.MinValue - 1m];
 
-        /// <summary>The documents, each set where every path's value is one its import admits.</summary>
-        public static IEnumerable<J.Obj> Sample(RenderingMemo.Claimed claim)
+        /// <summary>
+        /// The documents, each set where every path's value is one its import admits: up to <paramref name="most"/>, every
+        /// combination where there are no more, as a generate bundle whose later round is stated beneath its stratum draws so
+        /// that the documents where that stratum's conjuncts hold are among them.
+        /// </summary>
+        public static IEnumerable<J.Obj> Sample(RenderingMemo.Claimed claim, int most = Most)
         {
             var literals = claim.Conjuncts.SelectMany(Literals).Concat(claim.Form.Literals).Distinct().ToList();
             var typed = claim.Conjuncts.Any(c => c.ToString()!.Contains("typed(", StringComparison.Ordinal) || c.ToString()!.Contains("cast(", StringComparison.Ordinal));
             var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
-            var values = paths.Select(p => Values(literals, typed).Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
+            var values = paths.Select(p => Values(literals, typed).Concat((claim.Imports[p].Values.Values ?? ValueSet<string>.Empty).Select(PathCellTests.Decode))
+                .Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
             if (values.Any(v => v.Count == 0))
                 yield break;
 
             // Every combination where they are few; otherwise each path's values in turn, then drawn.
-            var product = values.Aggregate(1L, (n, v) => Math.Min(n * v.Count, Most + 1));
-            var radixes = values.Select((_, i) => values.Take(i).Aggregate(1L, (n, v) => Math.Min(n * v.Count, Most + 1))).ToList();
+            var product = values.Aggregate(1L, (n, v) => Math.Min(n * v.Count, most + 1));
+            var radixes = values.Select((_, i) => values.Take(i).Aggregate(1L, (n, v) => Math.Min(n * v.Count, most + 1))).ToList();
             var (widest, random, seen) = (values.Max(v => v.Count), new Random(claim.Form.Text.Length * 31 + paths.Count), new HashSet<string>());
-            for (var j = 0; j < Most * 4 && seen.Count < Math.Min(Most, product); j++)
+            for (var j = 0; j < most * 4 && seen.Count < Math.Min(most, product); j++)
             {
-                var picked = values.Select((v, i) => product <= Most ? v[(int)(j / radixes[i] % v.Count)] : j < widest ? v[j % v.Count] : v[random.Next(v.Count)]).ToList();
+                var picked = values.Select((v, i) => product <= most ? v[(int)(j / radixes[i] % v.Count)] : j < widest ? v[j % v.Count] : v[random.Next(v.Count)]).ToList();
                 var document = Document(paths, picked);
                 if (paths.All(p => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), CosmosEval.At(document, p))) && seen.Add(Documents.Json(document)))
                     yield return document;

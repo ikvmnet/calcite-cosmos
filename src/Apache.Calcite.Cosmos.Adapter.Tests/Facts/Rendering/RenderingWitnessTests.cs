@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             cases.Add(Refuted("G2 and G3", RenderingGateFaultTests.NotBikes, RenderingGateFaultTests.Unguarded, [RenderingRecallTests.Bikes],
                 RenderingRecallTests.Replay(RenderingGateFaultTests.NotBikes, [RenderingGateFaultTests.Unguarded], [RenderingRecallTests.Bikes], M8 | M9)));
 
-            foreach (var (sql, gain) in RenderingGainsPreviewTests.Cases.Where(g => g.Reads == "Exact").Select(g => (g.Sql, g.Gain)))
+            foreach (var (sql, gain) in RenderingGainsTests.ExactEverywhere)
             {
                 var entry = RenderingRecallTests.Replay(sql, [gain], [RenderingRecallTests.Bikes], M8 | M9);
                 cases.Add(new("gain " + gain, sql, gain, [RenderingRecallTests.Bikes], entry, [.. Agreed(entry).Select(Document)], false));

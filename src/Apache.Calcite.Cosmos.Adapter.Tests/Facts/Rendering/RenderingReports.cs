@@ -78,6 +78,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The generate shadow's reports (spec g05): <c>shadow-admission.tsv</c>, each pending conjunct of each round under
+        /// each set, with its class; <c>shadow-weakening.tsv</c>, each residual's weakening beside J's; and
+        /// <c>shadow-summary.txt</c>, the classes per set and input, the regressions by reason against O2's caps, the
+        /// weakenings' classes, and each statement's bundles and S's time, first and again, by shape.
+        /// </summary>
+        public static string WriteShadow(RenderingGenerateRun shadow, int cap)
+        {
+            lock (Writing)
+            {
+                var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
+                Directory.CreateDirectory(folder);
+                var classes = shadow.Classes.ToDictionary(c => (c.Input, c.Name, c.Statement, c.Conjunct, c.Set));
+                static (int, int, string, int, int) Order(string input, string name, int statement, int conjunct) =>
+                    (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1, name, statement, conjunct);
+
+                Tsv(folder, "shadow-admission.tsv", ["input", "name", "statement", "conjunct", "round", "set", "owner", "translator", "verdict", "s", "form", "reason", "beneath", "bundle", "ms", "class", "why"],
+                    shadow.Admissions.OrderBy(a => Order(a.Input, a.Name, a.Statement, a.Conjunct)).ThenBy(a => a.Round).ThenBy(a => a.Set).Select(a =>
+                        classes.GetValueOrDefault((a.Input, a.Name, a.Statement, a.Conjunct, a.Set)) is var c ? new object?[] { a.Input, a.Name, a.Statement, a.Conjunct, a.Round, a.Set,
+                        a.Owned ? "S" : "translator", a.Text, a.TextVerdict, a.Answer.Kind, a.Answer.Best?.Text, a.Answer.Reason, a.Stratum is { } j ? "round " + j : "root", a.Bundle,
+                        a.Milliseconds.ToString("F2", CultureInfo.InvariantCulture), c?.Class, c?.Reason } : null!));
+
+                var weakenings = shadow.Weakenings.OrderBy(w => Order(w.Input, w.Name, w.Statement, w.Conjunct)).ThenBy(w => w.Set).Select(w => (Row: w, Class: RenderingGenerateRun.ClassOf(w))).ToList();
+                Tsv(folder, "shadow-weakening.tsv", ["input", "name", "statement", "conjunct", "set", "owner", "ir", "j", "j verdict", "s", "class", "bundle"],
+                    weakenings.Select(w => new object?[] { w.Row.Input, w.Row.Name, w.Row.Statement, w.Row.Conjunct, w.Row.Set, w.Row.Owned ? "S" : "translator", w.Row.Ir, w.Row.Text,
+                        w.Row.TranslatorVerdict, w.Row.Mine?.Text, w.Class, w.Row.Bundle }));
+
+                var lines = new List<string>();
+                foreach (var set in RenderingGenerateRun.Sets)
+                {
+                    var asserted = RenderingGenerateRun.AssertedSets.Contains(set) ? "asserted" : "beside";
+                    var rows = shadow.Classes.Where(c => c.Set == set).ToList();
+                    lines.Add($"{set} ({asserted}): {rows.Count} conjuncts in {rows.Select(r => (r.Input, r.Name, r.Statement)).Distinct().Count()} statements");
+                    foreach (var g in rows.GroupBy(r => r.Class).OrderBy(g => g.Key, StringComparer.Ordinal))
+                        lines.Add($"  {g.Key}: {g.Count()} ({string.Join(", ", Inputs.Select(i => $"{i} {g.Count(r => r.Input == i)}"))})");
+
+                    var regressions = rows.Where(r => r.Class == RenderingGenerateRun.Regression).ToList();
+                    lines.Add($"  regressions {regressions.Count} against the cap {cap}: " + string.Join("; ", regressions.GroupBy(r => r.Reason).Select(g => $"{g.Key} {g.Count()}")));
+                    lines.AddRange(regressions.Select(r => $"    {r.Input} {r.Name}/{r.Statement}/{r.Conjunct} ({r.Reason}): {r.Ir} sent {r.Text} [{r.TextVerdict}]"));
+                    lines.Add("  weakenings: " + string.Join(", ", weakenings.Where(w => w.Row.Set == set).GroupBy(w => w.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}")));
+
+                    var proposed = shadow.Bundles.Where(b => b.Set == set).Select(b => b.Proposed).ToList();
+                    lines.Add($"  {proposed.Count} generate bundles; {proposed.Sum(p => p.Candidates)} candidates over {proposed.Sum(p => p.Atoms)} atoms, "
+                        + $"{(double)proposed.Sum(p => p.Candidates) / Math.Max(1, proposed.Sum(p => p.Atoms)):F2} an atom");
+                    var costs = shadow.Costs.Where(c => c.Set == set).ToList();
+                    foreach (var shape in costs.GroupBy(c => c.Shape).OrderBy(g => g.Key, StringComparer.Ordinal))
+                    {
+                        var (first, again, bundles) = (shape.Select(c => c.First).Order().ToList(), shape.Select(c => c.Again).Order().ToList(), shape.Select(c => c.Bundles).Order().ToList());
+                        lines.Add($"  {shape.Key}: {first.Count} statements; bundles median {bundles[bundles.Count / 2]}, max {bundles[^1]}; S first p50 {first[first.Count / 2]:F2} p90 {first[first.Count * 9 / 10]:F2} max {first[^1]:F1} ms, "
+                            + $"total {first.Sum() / 1000:F2} s; again p50 {again[again.Count / 2]:F3} p90 {again[again.Count * 9 / 10]:F3} ms");
+                    }
+                }
+
+                File.WriteAllLines(Path.Combine(folder, "shadow-summary.txt"), lines);
+                return folder;
+            }
+        }
+
+        /// <summary>
         /// The coverage line's count by input (spec §6): each conjunct sent and not skipped, read by its check's verdict, the
         /// claim made, but by its own at its position where its check is Unproven for holding a skipped conjunct, which the
         /// line excludes with what it does to the check; an Unproven decision D3 leaves out is not counted.

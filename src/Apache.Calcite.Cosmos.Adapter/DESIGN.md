@@ -6591,10 +6591,11 @@ against the IR the loader reads for the same statements at the tip and refuted w
 planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
 returned while Calcite returns its own.
 
-**The gains preview is claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
-translator admit so that the conjunct is captured. The guarded inequality is Exact; the orderings' forms, `> @p0 OR
-IS_BOOL` and `< @p0 OR IS_NUMBER`, are unproven over an undeclared label, whose strings may hold U+0000, which the
-emulator orders as it stores it, and are Exact where no string can.
+**The gains were first claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
+translator admit so that the conjunct is captured. The guarded inequality was Exact; the orderings' forms, `> @p0 OR
+IS_BOOL` and `< @p0 OR IS_NUMBER`, unproven over an undeclared label, whose strings may hold U+0000, which the emulator
+orders as it stores it. Generate mode now proposes them itself (*The rendering graph in generate mode*), where the
+witnesses still replay the inequality's text.
 
 ### The soundness line: documents, an evaluator of the service's own, and gate faults
 
@@ -6624,7 +6625,7 @@ literal with a control character are not printed.
 
 **The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is refused
 at load on either target; G2, a template without the null guard, is refuted wherever source A's documents show the guard
-kept something out, and at the null for the gains preview's inequality; G3, a service evaluation answering `!=` over a
+kept something out, and at the null for the gains' inequality; G3, a service evaluation answering `!=` over a
 null as false, makes the gate agree with that form, and source A finds the null label `CosmosEval` keeps; G4, the second
 disjunct's form claimed for the first under an `OR`, agrees nowhere at the root or the first disjunct, the second's own
 form agreeing on its own partition; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
@@ -6633,7 +6634,7 @@ trips the wire.
 ### Witnesses, and the precision line
 
 **A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's, the
-mutations' and G2's, and each cell the gains preview's agreements were proved over, is one document
+mutations' and G2's, and each cell the gains' exact inequality was proved over, is one document
 (`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
 projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
 document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. A refuting document's
@@ -6864,6 +6865,75 @@ rule: a connective inside the term, read for its truth or falsity (`TODO.md`).
 another operator declares nothing for, the readers); the loader's reading of an opaque conjunct beside a digest that
 does not move; `RenderingGenerateTests` over the three conjuncts through the loader; and the plan digests, byte-equal
 at the parent and at the commit, the walk's boolean comparison now the loader's.
+
+### Ownership, the reading precision, and the generate shadow
+
+**Who owns a conjunct is read off the IR, never off S's answer.** `RenderingFamily.Owns` holds a conjunct with no opaque
+term and no parameter, every comparison a reading against a literal, and every reading a key of the edges rows. It
+names no shape: within the family S's Unproven is the answer (O2), declined and listed, and a parameter stays the
+translator's, whose recheck spine the printer will not write. Nothing in planning calls it yet.
+
+**Which stratum a later round may rest on is data.** `RenderingFamily.ReadExactly` reads `ReadingPrecisionTable`: the
+text accessor, `RETURNING BOOLEAN` and a cast of the accessor to an integer type exact, the raw value exact beside no
+number literal, every other reading coarse. The check run reads it there too. What makes a row exact is what a stratum
+needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
+value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
+leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` holds each row to it.
+
+**The shadow asks S what production will.** For each statement the check run plans, riding its pass, it opens the
+bundles of §4.4 in the translator's rounds: each imported from the statement's root, every pending conjunct a root
+beside `Through(k)` and `Before(k)`, a later round's atoms stated beneath `StratumFor` — the deepest node of the chain
+every conjunct of which S admitted and the facts graph reads exactly, the root otherwise — and S admitting each owned
+conjunct it proves. The composite is read where §5.2 reads it, and each residual's weakening from the round after S's
+last admission that holds it, or from one closing bundle. A bundle is remembered by its content, the opaque terms'
+readings among it, so a statement asked again opens none.
+- *It follows the translator's rounds.* Their nodes are the facts graph's, built from the translator's admissions;
+  S's own would change a later node, which only production's sites see (g15).
+- *The translator is compared at one key.* Beside each round's bundle a check bundle of the same roots, import and
+  strata claims the translator's texts, so no claimed text's parts reach `BestExact`; and J's weakening of each
+  residual is claimed implied beside the bundle S's is read from.
+- *Every statement is read.* A statement none of whose conjuncts rendered writes no text, so the capture also tells its
+  observer when a statement's rounds run, from the renderer, one `volatile bool` a conjunct asked, inert unarmed.
+- *Every leg's set is asserted on every leg.* `Production` and `Emulator` are both asserted, which holds each leg to
+  its own a fortiori, and `Portable` is reported beside. The check run's own lines stay under `Portable`, the stricter.
+
+**What each conjunct is.** Same, respelled (both exact; R5's orders, and P8 where S's form is shorter), gain, the
+translator shown wrong (its text refuted at the key), regression (the translator pushes, S owns and declines, not
+refuted) with its reason — a form the band filter refused, the round read at a shallower stratum than the
+translator's, the composite, or the conjunct on its merits — translator-written, and engine. A residual's weakening is
+the same as J's, tighter or looser on source A's documents, S's or J's alone, dropped, or pushed exactly; a looser one
+says whether O7 lists it, as the text-equality alternatives or as J's weakening unproven to S.
+
+**What holds a generated form.** Source A judges every form the shadow's bundles derived over IR-read atoms — each
+agreement at both positions, the composites among them, each implied form and each weakening — on documents drawn from
+its bundle's import, on every target its set serves: at `Pos` the service's true against Calcite's TRUE, at `Neg` its
+false against Calcite's FALSE. A form whose atoms are stated beneath a stratum is exact where the conjuncts that stratum
+assumes hold and is held to no failure elsewhere, the set-aside cells' promise. The sampler now draws the values an
+import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its conjuncts hold on some. No
+form S would send — a root's best or a residual root's weakening — may rest on documents nothing measured. Source B's
+trials are shadowed and judged on their declared documents.
+- *The pairwise check* needs no `IrEval`: two exact agreements of one node at one position, and S's best beside the
+  translator's text where the key proved both, keep alike where Calcite answers; where it raises the Equal box allows
+  any answer but a failure, and those documents are reported apart.
+- *The fact rewrite* is held at the shadow too: each conjunct it lowered, beside its original in one bundle, has its
+  best claimed for the original, which must never be refuted. An original the loader reads as opaque is never refuted;
+  it is counted.
+- *An opaque residual's weakening* is judged at the gate by Calcite itself: the conjunct's node compiled by Calcite's
+  executor, each field filled as the reader fills it through the filter's binding, over source A's documents widened to
+  the weakening's paths and the node's literals. Where Calcite keeps a row the weakening keeps it. A binding that reads
+  a field as text or JSON is left out and counted.
+
+**The gains, as forms.** P1's inequality is sent restricted under every set; P2 and P3 exactly over a twin of `typed`
+whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself; P4's inequality weakens
+tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
+P5's second arm keeps its kind and P6's weakening holds C4's form beneath its `NOT`; P8 is counted; and P7, a `LIKE` the
+translator pushes, is not S's. A parameter atom left residual weakens to its presence alone. On a service each exact
+gain's text keeps Calcite's rows.
+
+**What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
+`NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
+`EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
+`pairwise.tsv`. Nothing in planning reaches S, and the plan digests are byte-equal at the parent and at the commit.
 
 ---
 

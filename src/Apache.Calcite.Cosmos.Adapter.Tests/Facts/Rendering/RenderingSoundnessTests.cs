@@ -90,6 +90,137 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Lines 1 and 2 (spec g05): every form the generate shadow's bundles derived over IR-read atoms — each agreement at
+        /// both positions, every composite among them, each implied form and each weakening — held to source A's documents
+        /// drawn from its bundle's import, on every target its set serves, under each set a leg plans under and the one
+        /// beside; and source B's trials, each statement shadowed and judged on its declared documents. No witness, and no
+        /// form S would send judged on no measured document.
+        /// </summary>
+        [Fact]
+        public void NoGeneratedFormHasAWitness()
+        {
+            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var (a, unmeasured) = (new Dictionary<RenderingSet, Tally>(), new List<string>());
+            foreach (var set in RenderingGenerateRun.Sets)
+                unmeasured.AddRange(Generated(a[set] = new Tally(), shadow.Bundles.Where(b => b.Set == set), "source A"));
+
+            var b = new Tally();
+            var unmeasuredB = SourceB(Trials, b, generated: true);
+            foreach (var (set, tally) in a)
+                TestContext.Current.TestOutputHelper?.WriteLine($"source A, {set}: {tally}");
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"source B, generated: {b}; forms S would send judged on no measured document: {unmeasured.Count} in A, {unmeasuredB.Count} in B, reported");
+            foreach (var line in unmeasured.Take(40))
+                TestContext.Current.TestOutputHelper?.WriteLine("  unmeasured: " + line);
+
+            a[RenderingSet.Production].Proofs.Should().BePositive();
+            a.Values.SelectMany(t => t.Witnesses).Concat(b.Witnesses).Should().BeEmpty();
+            unmeasured.Should().BeEmpty("no form S would send rests on documents nothing measured");
+        }
+
+        /// <summary>
+        /// Line 1c (spec g05): every residual opaque conjunct S weakens in the pull request's run, under each set, evaluated
+        /// by Calcite in process over source A's documents drawn from its weakening bundle's import widened to the paths the
+        /// weakening reads, beside the literals the conjunct compares with; wherever Calcite keeps the row, the weakening
+        /// keeps it on every target the set serves. A document no row is, a field typed never null absent from it, is left
+        /// out; a conjunct whose binding reads a field otherwise than as its type or as the document is counted and left out.
+        /// </summary>
+        [Fact(Explicit = true)]
+        public void NoOpaqueWeakeningHasAWitnessInProcess()
+        {
+            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var (judged, kept, unread, witnesses) = (0, 0, 0, new List<string>());
+            var compiled = new Dictionary<object, Func<J.Obj, Truths?>?>(ReferenceEqualityComparer.Instance);
+            foreach (var w in shadow.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
+            {
+                var (conjunct, (fields, readings)) = w.Opaque!.Value;
+                if ((compiled.TryGetValue(conjunct, out var truth) ? truth : compiled[conjunct] = CalciteInProcess.Compile(conjunct, fields, readings)) is not { } calcite)
+                {
+                    unread++;
+                    continue;
+                }
+
+                var imports = w.Claim!.Imports.ToDictionary(i => i.Key, i => i.Value);
+                foreach (var path in w.Mine!.Paths.Where(p => imports.ContainsKey(p) == false))
+                    imports[path] = new RenderingMemo.Imported(PathValues.Anything, AllBands);
+
+                var beside = CalciteInProcess.Literals(conjunct).Distinct().Select(l => ServiceForm.CompareOf(CosmosServiceTest.Equal, w.Mine.Paths.First(), l)).ToList();
+                var claim = w.Claim with { Imports = imports, Form = beside.Count == 0 ? w.Mine : ServiceForm.JunctionOf(CosmosServiceTest.And, [w.Mine, .. beside]) };
+                foreach (var document in RenderingDocumentSampler.Sample(claim))
+                {
+                    if (calcite(document) is not { } answer)
+                        continue;
+
+                    judged++;
+                    if (answer != Truths.True)
+                        continue;
+
+                    kept++;
+                    foreach (var target in ProbeRows.Measured.Serves[w.Set])
+                        if (CosmosEval.On(w.Mine, document, target) is { } service && service != ServiceOutcomes.True)
+                            witnesses.Add($"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct}: {w.Mine.Text} for {conjunct} on {Documents.Json(document)}: Calcite keeps it, {target} {service}");
+                }
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
+            judged.Should().BePositive();
+            witnesses.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// Source A over generate bundles: each bundle's forms judged on documents drawn from its import, or a trial's declared
+        /// ones. A form of a node whose atoms are stated beneath a stratum is exact where the conjuncts that stratum assumes
+        /// hold, and held to no failure elsewhere. Returns each form S would send — a root's best, a residual root's
+        /// weakening — that no document measured.
+        /// </summary>
+        internal static List<string> Generated(Tally tally, IEnumerable<RenderingGenerateRun.Bundle> bundles, string source, IReadOnlyList<J.Obj>? declared = null)
+        {
+            var unmeasured = new List<string>();
+            foreach (var bundle in bundles.Where(b => b.Claim is not null && b.Forms.Count > 0))
+            {
+                var (claim, world, targets) = (bundle.Claim!, new World(bundle.Id), ProbeRows.Measured.Serves[bundle.Set]);
+                bool Holds(J.Obj d, IEnumerable<int> assumed) => assumed.All(i => IrEval.Truth(claim.Conjuncts[i], d, world) == Truths.True);
+                IReadOnlyList<int> Assumes(SqlPredicate node) => [.. claim.Stated.Where(s => node.Subterms.Contains(s.Atom)).SelectMany(s => s.Assumes).Distinct()];
+                var forms = bundle.Forms.Select(f => (Form: f, Assumes: Assumes(f.Node), Sent: Sent(bundle, f))).ToList();
+                var (measured, drawn, ruledOut) = (new int[forms.Count], 0, 0);
+                tally.Proofs += forms.Count;
+                foreach (var document in declared ?? RenderingDocumentSampler.Sample(claim, claim.Stated.Count > 0 ? Stated : RenderingDocumentSampler.Most))
+                {
+                    drawn++;
+                    if (declared is null && claim.Stated.Any(s => PopulationD.Admits(s.Assumed, CosmosEval.At(document, s.Path)) == false && Holds(document, s.Assumes)))
+                    {
+                        ruledOut++;
+                        continue;
+                    }
+
+                    tally.Judged++;
+                    foreach (var node in Enumerable.Range(0, forms.Count).GroupBy(i => forms[i].Form.Node.Digest))
+                    {
+                        var first = forms[node.First()];
+                        var (calcite, exact) = (Tally.Calcite(first.Form.Node, document, world), Holds(document, first.Assumes));
+                        foreach (var i in node)
+                            if (tally.Judge(calcite, forms[i].Form.Node, forms[i].Form.Form, forms[i].Form.Claim, forms[i].Form.Position, document, targets,
+                                $"{source} {bundle.Set} bundle {bundle.Id} ({forms[i].Form.What})", exact))
+                                measured[i]++;
+                    }
+                }
+
+                unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0)
+                    .Select(i => $"{source} {bundle.Set} bundle {bundle.Id}: {forms[i].Form.What} {forms[i].Form.Form.Text} for {forms[i].Form.Node}, "
+                        + $"{drawn} documents drawn, {ruledOut} ruled out, stratum assuming {string.Join(", ", forms[i].Assumes.Select(a => claim.Conjuncts[a]))}"));
+            }
+
+            return unmeasured;
+        }
+
+        /// <summary>How many documents a generate bundle whose later round is stated beneath a stratum draws, so that its stratum's conjuncts hold on some.</summary>
+        internal const int Stated = 512;
+
+        /// <summary>Whether a form is one S would send: a root's best at <c>Pos</c>, a composite's among them, or a root's weakening.</summary>
+        static bool Sent(RenderingGenerateRun.Bundle bundle, RenderingGenerateRun.Judged f) => f.Position == RenderPosition.Pos && bundle.Answers.TryGetValue(f.Node.Digest, out var answer)
+            && (f.What == RenderingGenerateRun.Judged.Agreement && f.Claim == Verdict.Equal && f.Form.Equals(answer.Best) || f.What == RenderingGenerateRun.Judged.Weakening && f.Form.Equals(answer.Weakening));
+
+        /// <summary>
         /// Source B: population D's declarations, each trial's printable conjuncts written as one Calcite <c>WHERE</c> over a
         /// container the declaration describes, planned and checked as every input is, and every proof judged on the
         /// trial's declared documents.
@@ -97,6 +228,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal static Tally SourceB(int trials)
         {
             var tally = new Tally();
+            SourceB(trials, tally, generated: false);
+            return tally;
+        }
+
+        /// <summary>
+        /// Source B into a tally: each trial's check-mode proofs, or with <paramref name="generated"/> each trial's statements
+        /// shadowed and the generate bundles' forms judged; returns the forms S would send that no declared document measured.
+        /// </summary>
+        internal static List<string> SourceB(int trials, Tally tally, bool generated)
+        {
+            var unmeasured = new List<string>();
             for (var trial = 0; trial < trials; trial++)
             {
                 var (random, _, _, declaration, documents) = PopulationD.Trial(PredicateSoundnessTests.Seed + trial);
@@ -105,13 +247,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     continue;
 
                 var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithFactGenerations(new JsonFactGenerations());
-                var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]));
+                var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]),
+                    shadow: generated ? new RenderingGenerateRun() : null);
                 tally.Statements++;
                 tally.Unplanned += run.Failures.Count;
-                SourceA(run, tally, documents);
+                if (generated)
+                    unmeasured.AddRange(Generated(tally, run.Shadow!.Bundles, $"source B trial {trial}", documents));
+                else
+                    SourceA(run, tally, documents);
             }
 
-            return tally;
+            return unmeasured;
         }
 
         /// <summary>
@@ -171,9 +317,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             /// <summary>
             /// Judges a proof on a document: every typed mode against every target, a failure never allowed, <c>Equal</c>
             /// keeping alike and <c>Implies</c> keeping at least Calcite's row. A document on which a mode tosses a coin or is
-            /// not modelled is unmeasured.
+            /// not modelled is unmeasured. Returns whether it was measured.
             /// </summary>
-            public void Judge(SqlPredicate ir, ServiceForm form, Verdict claim, J.Obj document, World world, string where)
+            public bool Judge(SqlPredicate ir, ServiceForm form, Verdict claim, J.Obj document, World world, string where) =>
+                Judge(Calcite(ir, document, world), ir, form, claim, RenderPosition.Pos, document, RenderingCheckRun.Targets, where);
+
+            /// <summary>Calcite's truths of a predicate on a document, every typed mode, its raises left out; <c>null</c> where a mode tossed a coin or is not modelled.</summary>
+            public static List<Truths>? Calcite(SqlPredicate ir, J.Obj document, World world)
             {
                 var calcite = new List<Truths>();
                 foreach (var mode in Modes)
@@ -186,42 +336,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                     catch (NotSupportedException)
                     {
-                        Unmeasured++;
-                        return;
+                        return null;
                     }
 
                     if (world.Tossed != tossed)
-                    {
-                        Unmeasured++;
-                        return;
-                    }
+                        return null;
 
                     if (truth != Truths.Raises)
                         calcite.Add(truth);
                 }
 
-                if (calcite.Count == 0)
+                return calcite;
+            }
+
+            /// <summary>
+            /// Judges a form claimed at a position against Calcite's truths on a document, on each target: at <c>Pos</c> the
+            /// service's true held to Calcite's TRUE, at <c>Neg</c> its false to Calcite's FALSE, alike for <c>Equal</c> and
+            /// at least Calcite's for <c>Implies</c>, a failure never. Off its stratum (<paramref name="exact"/> false) a form
+            /// is held to no failure alone, which measures nothing. Returns whether the document was measured.
+            /// </summary>
+            public bool Judge(List<Truths>? calcite, SqlPredicate ir, ServiceForm form, Verdict claim, RenderPosition pos, J.Obj document, IEnumerable<RenderingTarget> targets,
+                string where, bool exact = true)
+            {
+                if (calcite is null && exact)
                 {
-                    Skipped++;
-                    return;
+                    Unmeasured++;
+                    return false;
                 }
 
-                foreach (var target in RenderingCheckRun.Targets)
+                if (exact && calcite!.Count == 0)
+                {
+                    Skipped++;
+                    return false;
+                }
+
+                var (kept, keeps) = pos == RenderPosition.Pos ? (Truths.True, ServiceOutcomes.True) : (Truths.False, ServiceOutcomes.False);
+                foreach (var target in targets)
                 {
                     if (CosmosEval.On(form, document, target) is not { } service)
                     {
                         Unmeasured++;
-                        return;
+                        return false;
                     }
 
-                    if (calcite.Any(t => service == ServiceOutcomes.Fails || (claim == Verdict.Equal ? (t == Truths.True) != (service == ServiceOutcomes.True) : t == Truths.True && service != ServiceOutcomes.True)))
+                    if (service == ServiceOutcomes.Fails || exact && calcite!.Any(t => claim == Verdict.Equal ? (t == kept) != (service == keeps) : t == kept && service != keeps))
                     {
-                        Witnesses.Add($"{where}: {form.Text} for {ir}, on {Documents.Json(document)}: Calcite {string.Join("|", calcite)}, {target} {service}");
-                        return;
+                        Witnesses.Add($"{where}: {form.Text} for {ir} at {pos}{(exact ? "" : ", off its stratum")}, on {Documents.Json(document)}: Calcite {string.Join("|", calcite ?? [])}, {target} {service}");
+                        return true;
                     }
                 }
 
-                Agreed++;
+                if (exact)
+                    Agreed++;
+
+                return exact;
             }
 
             public override string ToString() => $"{Statements} statements ({Unplanned} not planned), {Proofs} proofs over {Judged} documents: {Agreed} agreed, "
