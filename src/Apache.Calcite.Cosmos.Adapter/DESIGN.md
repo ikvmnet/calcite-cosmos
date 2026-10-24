@@ -6428,9 +6428,9 @@ theory's rows, so generations defined alike share entries, a planted row shares 
 list; a primitive is no row, so a plant of one keeps a memo of its own.
 
 **Generations, as F's.** A graph's ids and epochs are finite and its pools never shrink. `RenderingGraph` defines a new
-theory from the same definition before it hands out a bundle once the graph has used half of either
-(`Usage.FractionUsed`), leaving headroom for the bundles open on it, or has interned F's limit of a million values;
-nothing disposes the old one, which is collected with its last bundle. An engine failure in any of a bundle's calls
+theory from the same definition, on a thread of its own, once the graph has used two fifths of either
+(`Usage.FractionUsed`) or interned 800,000 values, and hands it out once ready, the old one answering until then
+(*The production oracle*); nothing disposes the old one, which is collected with its last bundle. An engine failure in any of a bundle's calls
 declines it rather than throwing, and every claim of it reads Unproven, naming the failure. Running out of ids or
 epochs is the graph's, so it retires the generation at once; a fault, such as a primitive that answered one key two
 ways, is the bundle's, and the generation serves on.
@@ -7173,6 +7173,72 @@ merits, and line 2's 69 forms are measured.
 `IrEvalCalciteTests.ARawNumberInItsBoxAgreesWithCalcite` holds `IrEval`'s to Calcite; `PredicateAtomCellTests` holds
 every cell to `IrEval` through the three columns, and `ARawReadingPlacesItsTypeAndRaisesAcrossTypes` pins how tight the
 cells are; `RenderingGateTests.ARawOrderingAndANumberReadTheirColumns` pins the verdicts.
+
+### The production oracle
+
+**What it is.** `RenderingOracle` asks S as production will from g15: one generate bundle a question, of one statement
+round's roots, imported from the node the round renders from with each later round's atoms stated beneath its stratum,
+run, and each root's `ReadBest` read, its weakening beside. `CosmosRendering.Oracle` is the process's, over the
+registry's rows and `CosmosStrictness`'s lists. Nothing in planning asks it until g15, so no plan moves.
+
+**The key is what the bundle reads.** `RenderingQuestionKey` holds the roots' digests sorted, each opaque term beside
+the value it was read as (its number names it only within one loading, so two conjuncts the loader read apart may share
+a digest), the import spelled whole with every stratum stated beneath it, the set, and the frozen theory's rows hashed
+(`RenderingAnswerMemo.DigestOf`, moved from the check run's memo). No form and no question: in generate mode the form
+is the answer, and one bundle answers admission and the weakening. A parameter is spelled by its ordinal and type,
+never its value; a literal is spelled, so each new literal is a new first plan, as in F's memo; and the run's limit is
+the roots'. The importer's count of open and constrained defaults scans the declaration's mentions and is no part of
+the digest, so the oracle hands it no declaration and a key never scans them.
+
+**What is remembered.** `RenderingAnswerMemo` holds 4,096 bundles' answers, the least recently asked out first, each a
+`Lazy` the first asker computes and the others wait on. An answer is kept, `Incomplete` among them: limits are counts,
+so the same question stops alike. A decline is handed back, counted and forgotten — S unavailable, an engine failure,
+running out of ids or epochs, or a conflict, which production reads as a decline and CI fails on — since the theory's
+digest outlives a generation, and a remembered `OverflowException` would decline its key for the process. Answers
+survive a retirement: generations defined alike hash alike.
+
+**Generations off the planning thread.** Every generation, the first and each successor, is defined on a dedicated
+thread (`TaskCreationOptions.LongRunning`), its rows hashed and one question asked before it is current, so a plan never
+pays a definition, a hash, or a generation's first run. The current one is a volatile field read without a lock. Past
+two fifths of its ids or epochs, or 800,000 values interned, four fifths of F's gauge, its successor is built and
+swapped in when ready; until then it answers, past F's half too, which stands well short of the engine's own limits. A
+bundle that runs out of ids or epochs declines and retires its generation at once, and the next question waits for the
+successor. A question that finds no generation answering, before the first is built or after the current ran out,
+waits at most 5 s, and past that declines as unavailable. A definition that throws, a contradicting row or `Settle`
+stopping short, leaves S unavailable for the process, since the same rows would throw again: every question declines,
+and none throws to a plan.
+
+**The set per endpoint (O1).** `CosmosSchemaFactory` reads `serviceTarget`, `azure` by default or `emulator`, onto each
+container's metadata (`CosmosContainerMetadata.ServiceTarget`), where a host building its own tables sets it.
+`CosmosRendering.SetFor` proves Azure's statements under `Production` and the emulator's under `Emulator`, and the set
+is in the key: `label < 'a'`, over a label that may hold U+0000, is proven for Azure and declined for the emulator,
+which orders U+0000 as stored. `CosmosServiceTarget` is public, where the spec drew it internal, since a host could not
+set it otherwise. Nothing reads it in planning yet.
+
+**Cost, read as the lines are set.** Every answer carries a `RenderingCost`: a hit, a bundle or a decline; its run's
+iterations, which the bundle now keeps, and its templates' candidates; S's time from the lookup to the roots' answers;
+the bytes allocated on the asking thread; and the values the graph interned and the share of its ids or epochs used
+after. Costs add, so a query's is the sum of its questions', which g15's accumulator holds per flow; and
+`RenderingShape` reads a query's shape off the union of the atoms of every root its plan asked (§6.3), as PR A's
+measure read it, not off its widest statement. The shadow's summary reads its per-query shapes so now, and prints the
+tightest run's iterations against its limit.
+
+**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 49–102
+µs at the median and 91–431 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
+Release with the machine at 100 % (`AHitCostsMicroseconds`, four runs); §6.1's lever, spelling each frozen node's
+import once, is for above 20 µs, and is left to g15's measure on a machine with room. The first generation, built first
+in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms, hashes in 70–143 ms and asks its
+question in 14–50 ms: the rest is the process's first touch of the registry, of Calcite's operator tables that
+strictness reads, and of the JIT. In a process that has planned before, the build took 598 ms. Line 29 reads it at g15.
+
+**The tests.** `RenderingOracleTests`: `TheKeyHoldsEveryValueTheImportReads` reads every `imported`, `importedchars`
+and `assumed` row of a bundle imported as the oracle's was, and finds each spelled in the key, and keys a narrower
+node, a stratum stated otherwise, or none, apart; `AnOpaquesReadingIsInTheKey`, `AParameterNeverReachesTheKey`,
+`ADeclineIsNotRemembered`, `AnIncompleteIsRemembered`, `AFailedDefinitionDeclinesAndCounts`, and
+`AHitCostsMicroseconds`, explicit. `RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a
+successor's definition at a gate while the spent generation answers, and `ASuccessorIsBuiltOffThePlanningThread` finds
+every definition on a thread neither the asker's nor the pool's. `CosmosRenderingTests.TheTargetChoosesTheSet` holds
+the operand, the metadata and the set.
 
 ---
 

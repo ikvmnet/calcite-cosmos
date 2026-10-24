@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var ir = conjuncts.Count == 1 ? conjuncts[0] : new SqlPredicate.And(conjuncts);
             var report = import(null);
-            var key = new RenderingMemoKey(ir.Digest, report.Digest, form.Text, claim, AssertedSet, RenderingMemo.DigestOf(Graph.Current()));
+            var key = new RenderingMemoKey(ir.Digest, report.Digest, form.Text, claim, AssertedSet, RenderingAnswerMemo.DigestOf(Graph.Current()));
             return (Memo.GetOrAdd(key, id =>
             {
                 var started = Stopwatch.GetTimestamp();

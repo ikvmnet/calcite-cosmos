@@ -44,6 +44,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The engine failure the bundle declined on, if any.</summary>
         public Exception? Failure { get; private set; }
 
+        /// <summary>The iterations its run took, against its limit; none before a run, or where the engine failed it.</summary>
+        public int Iterations { get; private set; }
+
         /// <summary>
         /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads, and its syntax
         /// beside them: each leaf over the value it is, and each call's operands.
@@ -173,7 +176,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// the width its roots ask (<see cref="WidthOf"/>): two strata more than the check's, and a junction peeled an arm
         /// an iteration.
         /// </summary>
-        public RenderingRun RunGenerate(int width) => Run(_theory.Generate, 80 + 8 * width);
+        public RenderingRun RunGenerate(int width) => RunGenerateWithin(GenerateLimit(width));
+
+        /// <summary>Runs generate mode within an iteration limit of the caller's: a test's stops a run short.</summary>
+        internal RenderingRun RunGenerateWithin(int iterationLimit) => Run(_theory.Generate, iterationLimit);
+
+        /// <summary>The iterations a generate run of a width is allowed.</summary>
+        internal static int GenerateLimit(int width) => 80 + 8 * width;
 
         /// <summary>A generate run's width: the roots' atoms, every <c>IN</c>'s points, and the arms of each root that is a junction.</summary>
         public static int WidthOf(IEnumerable<SqlPredicate> roots)
@@ -196,6 +205,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         RenderingRun Ran(Schedule schedule, int iterationLimit)
         {
             var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });
+            Iterations = report.Iterations;
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();

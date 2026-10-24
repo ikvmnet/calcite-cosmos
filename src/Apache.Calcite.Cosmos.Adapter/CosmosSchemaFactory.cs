@@ -77,6 +77,16 @@ namespace Apache.Calcite.Cosmos.Adapter
         public const string EndpointOperand = "endpoint";
 
         /// <summary>
+        /// The operand naming the service the endpoint is: <c>azure</c>, the default, or <c>emulator</c>.
+        /// </summary>
+        /// <remarks>
+        /// Every container the schema exposes carries it (<see cref="CosmosContainerMetadata.ServiceTarget"/>): the
+        /// filters the adapter sends are to be held to what that service was measured to do, and the emulator stores and
+        /// orders some strings unlike Azure. A host building its own tables sets it on each container's metadata.
+        /// </remarks>
+        public const string ServiceTargetOperand = "serviceTarget";
+
+        /// <summary>
         /// The operand carrying the account key, or omitted to authenticate with Microsoft Entra ID.
         /// </summary>
         /// <remarks>
@@ -220,6 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             var lookupCache = ReadLookupCache(operand);
             var statisticsTimeToLive = ReadStatisticsTimeToLive(operand);
+            var target = ReadServiceTarget(operand);
 
             // What the containers declare is reasoned about in graphs this schema owns, one generation at a time, so
             // that what it learns goes when it does.
@@ -229,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // account: one subschema per database, which is how Cosmos nests and how Calcite nests, and
             // which needs one client rather than one per database.
             if (GetString(operand, DatabaseOperand) is not string database || database.Length == 0)
-                return CreateAccountSchema(client, containers, indexMetrics, lookupCache, generations, statisticsTimeToLive);
+                return CreateAccountSchema(client, containers, indexMetrics, lookupCache, generations, target, statisticsTimeToLive);
 
             var db = client.GetDatabase(database);
 
@@ -237,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // schema holds outlives this call. A container reference is a handle rather than a connection,
             // so binding one per table costs nothing.
             return new CosmosSchema(
-                ReadContainers(db, containers, generations, statisticsTimeToLive),
+                ReadContainers(db, containers, generations, target, statisticsTimeToLive),
                 container => new CosmosQueryExecutor(db.GetContainer(container.Name), indexMetrics),
                 lookupCache is null ? null : _ => new CosmosLookupCache(lookupCache.Value.MaxRows, lookupCache.Value.ExpireAfterWrite));
         }
@@ -260,6 +271,26 @@ namespace Apache.Calcite.Cosmos.Adapter
                 throw new ArgumentException($"Operand '{StatisticsExpireSecondsOperand}' must be a positive integer; '{seconds}' is not.");
 
             return TimeSpan.FromSeconds(expire);
+        }
+
+        /// <summary>
+        /// Reads the service the endpoint is, Azure where the operand is absent.
+        /// </summary>
+        /// <param name="operand">The model's operand map.</param>
+        /// <returns>The service.</returns>
+        /// <exception cref="ArgumentException">The value names neither service.</exception>
+        public static CosmosServiceTarget ReadServiceTarget(java.util.Map operand)
+        {
+            if (operand is null)
+                throw new ArgumentNullException(nameof(operand));
+
+            return GetString(operand, ServiceTargetOperand) switch
+            {
+                null or "" => CosmosServiceTarget.Azure,
+                var name when string.Equals(name, "azure", StringComparison.OrdinalIgnoreCase) => CosmosServiceTarget.Azure,
+                var name when string.Equals(name, "emulator", StringComparison.OrdinalIgnoreCase) => CosmosServiceTarget.Emulator,
+                var name => throw new ArgumentException($"Operand '{ServiceTargetOperand}' must be 'azure' or 'emulator'; '{name}' is not."),
+            };
         }
 
         /// <summary>
@@ -303,7 +334,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// useful where they share container names. Omitting it, which is the ordinary case here,
         /// exposes every container of every database.
         /// </remarks>
-        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<CosmosContainerDeclaration> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, Facts.JsonFactGenerations generations, TimeSpan? statisticsTimeToLive = null)
+        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<CosmosContainerDeclaration> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, Facts.JsonFactGenerations generations, CosmosServiceTarget target, TimeSpan? statisticsTimeToLive = null)
         {
             var databases = new List<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>>();
 
@@ -314,7 +345,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     foreach (var properties in iterator.ReadNextAsync(CancellationToken.None).GetAwaiter().GetResult())
                     {
                         var database = client.GetDatabase(properties.Id);
-                        databases.Add(new(properties.Id, ReadContainers(database, containers, generations, statisticsTimeToLive)));
+                        databases.Add(new(properties.Id, ReadContainers(database, containers, generations, target, statisticsTimeToLive)));
                     }
                 }
             }
@@ -455,7 +486,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Reads metadata for the named containers, or for every container in the database when
         /// none are named.
         /// </summary>
-        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<CosmosContainerDeclaration> declared, Facts.JsonFactGenerations generations, TimeSpan? statisticsTimeToLive = null)
+        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<CosmosContainerDeclaration> declared, Facts.JsonFactGenerations generations, CosmosServiceTarget target, TimeSpan? statisticsTimeToLive = null)
         {
             var containers = new List<CosmosContainerMetadata>();
 
@@ -465,6 +496,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     containers.Add(CosmosContainerMetadataReader
                         .ReadAsync(database.GetContainer(declaration.Name), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult()
                         .WithFactGenerations(generations)
+                        .WithServiceTarget(target)
                         .WithFacts(declaration.Facts)
                         .WithConstraints(declaration.Constraints ?? System.Array.Empty<Metadata.CosmosConstraint>()));
 
@@ -487,7 +519,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             using var iterator = database.GetContainerQueryIterator<ContainerProperties>();
             while (iterator.HasMoreResults)
                 foreach (var properties in iterator.ReadNextAsync(CancellationToken.None).GetAwaiter().GetResult())
-                    containers.Add(CosmosContainerMetadataReader.FromProperties(properties).WithFactGenerations(generations));
+                    containers.Add(CosmosContainerMetadataReader.FromProperties(properties).WithFactGenerations(generations).WithServiceTarget(target));
 
             return containers;
         }

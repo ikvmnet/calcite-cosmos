@@ -2826,13 +2826,13 @@ across documents* and *A join of a container to itself* is the record.
   A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
   neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
   that needs it, as #162's temporal rewrites once did, designs it.
-- **A number compared through a cast or `RETURNING DECIMAL` weakens to presence, and P6 is killed** — *medium, for the
-  owner's O7.* Both readings parse a string Calcite then compares where the service compares none, so no accessor of the
-  conjunct writes `c.price > 50` as the form means, and `rex-writable` admits no such member: K's numeric windows (C2,
-  not built), the 21 weakenings the review of PR A found tighter through one and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`
-  are gone, line 19's P6 with them. RU, never rows. A service-only carrier operator the builder sends them through,
-  never evaluated by Calcite (O7's third option, +80–150 lines), would give them back; so would a guard-aware grammar
-  row, a comparison read only beneath `IS_NUMBER` of its path, if line 13's round trip judged such a member whole.
+- **A number compared through a cast or `RETURNING DECIMAL` weakens to presence, P6 among them** — *medium, O7's listed
+  loss until Stage 3 (owner, 2026-10-24).* Both readings parse a string Calcite then compares where the service compares
+  none, so no accessor of the conjunct writes `c.price > 50` as the form means, and `rex-writable` admits no such member:
+  K's numeric windows (C2, not built), the 21 weakenings the review of PR A found tighter through one and P6's C4
+  `IS_NUMBER(c.price) AND c.price > 50` weaken to presence. RU, never rows. No carrier operator, re-typed accessor or
+  other way of sending what the Rex does not mean is built. The fix is a guarded spelling S can prove, in the shape of
+  `CASE WHEN IS_NUMBER(x) THEN CAST(x AS DOUBLE) > n ELSE FALSE END`, once the loader reads `IS_NUMBER` and `CASE`: Stage 3.
 - **C1 keeps the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED` and the
   type test where the facts say the path holds the type (`Guarded`); the template always writes them, so under such a
   declaration S's weakening is longer text for the same rows.
@@ -2847,18 +2847,33 @@ across documents* and *A join of a container to itself* is the record.
   each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
   takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
   until then.
-- **A generate run reports no iteration count** — *small, for g15's instrument.* `RenderingRun` says whether a run
-  completed, not how near it came to 80 + 8 iterations a unit of width. The review of PR A counted it once, with a
-  recorder in a copy, at the gate's 1,000 predicates: 9,712 runs, all complete, the tightest one-atom bundles at 61 of 88
-  (69 %), `PointReadSet` at 97 of 240 and the widest bundle, 11 atoms, at 71 of 256; at most 360 rows of 50,000. So the
-  base of 80, not the 8 a unit, is the margin R7 should watch, held by one-atom bundles. g15's cost accumulator counts it
-  in every run.
+- **A generate run reports no iteration count** — *done (g11).* A bundle keeps its run's iterations, the oracle's
+  `RenderingCost` carries them, and the shadow's summary prints the tightest run against its limit. The review of PR A
+  had counted them once, with a recorder in a copy, at the gate's 1,000 predicates: the tightest one-atom bundles at 61
+  of 88 (69 %), so the base of 80, not the 8 a unit, is the margin R7 should watch. g15's accumulator sums them a query.
 - **Line 2 counts D3's raw scope apart until g10** — *done (g10).* The soundness line reads a raw ordering and a raw
   comparison with a number or a boolean through each column (`IrEval.RawModes`), and counts nothing apart.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
   `RenderingPerQueryCostTests` measures both shapes on the build machine and decides it.
+- **A remembered answer spells its import afresh** — *small, §6.1's lever.* A hit reads each path's `possible` and
+  `chars` from the frozen node, spells them as JSON and hashes the key: 49–102 µs at the median and 91–431 µs at the
+  90th centile in Release with the machine at 100 % (`AHitCostsMicroseconds`, g11). §6.1 takes the lever, each frozen F
+  node's import spelled once (25–45 lines), above 20 µs at the 90th centile; g15's per-query test reads it again with
+  room on the machine, beside the again line it serves.
+- **S's first build in a process outlasts a question's wait at full load** — *small, for g15's line 29 and g16.* Built
+  first in a fresh process at 100 % load, the first generation took 6.0–8.4 s, past the 5 s a question waits before it
+  declines as unavailable (O8: the container read for that statement); warm, it defines in 267–477 ms, hashes in
+  70–143 ms and asks in 14–50 ms, so the rest is the process's first touch of the registry, of Calcite's operator tables
+  `CosmosStrictness` reads, and of the JIT. g16 starts it at the first `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine`
+  measures it paired, and its parts are where to cut if the line fails.
+- **The warm-up's answer is not printed** — *small, for g13.* Each generation answers one question before it is current;
+  `CosmosRendering.Warm` is to print that answer, so the printer is warm too, once there is a printer.
+- **The cost accumulator is g15's** — *small.* `RenderingCost` is the record the spec drew as g15's
+  `RenderingCostSample`, built at g11 in `Facts/`, and `RenderingShape` reads a query's shape off the union of the atoms
+  it asked; g15's `CosmosRenderingCost` holds their sum and the roots a flow, and the per-query test asserts the lines
+  on them. `RenderingAnswerMemo` has no `Clear` and counts no bytes an entry, which that test adds.
 - **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
   wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
   with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,
@@ -2883,10 +2898,9 @@ across documents* and *A join of a container to itself* is the record.
   near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
   `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
   unlisted.
-- **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *small, for the owner.* J's string
-  branch is unproven to S there (strings that may hold U+0000), so S sends presence. Line 19's kill says "a non-`LIKE`
-  P4 looser"; O7 accepted loss 5. Either the owner restates line 19's P4 kill as "no unlisted looser", or a guarded string
-  branch, a template of its own, delivers it tighter.
+- **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *settled (owner, 2026-10-24).*
+  Line 19's P4 kill reads "no unlisted looser", so P4's `>= '30'`, J's string branch unproven to S where strings may
+  hold U+0000, passes on O7's loss 5. A guarded string branch, a template of its own, would deliver it tighter.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
   statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
   refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their

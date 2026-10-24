@@ -41,6 +41,12 @@ new CalciteConnectionStringBuilder { Model = "inline:" + json };
 new CalciteConnectionStringBuilder { Model = "config/model.json" };
 ```
 
+**Azure or the emulator.** Add `"serviceTarget": "emulator"` to the operand when the endpoint is the Cosmos DB
+emulator; `azure`, the default, says it is Azure. The adapter is moving to prove each filter it sends against what the
+service it runs on was measured to do, and the emulator stores and orders some strings unlike Azure (Appendix E.2). For
+now the operand is read and kept on each container, and changes no plan. A host that builds its own tables sets it with
+`CosmosContainerMetadata.WithServiceTarget`.
+
 ## 4.2 One database, or a whole account
 
 **Naming a `database`** exposes that database. The schema's tables are its containers, and a query
@@ -208,8 +214,8 @@ Chapter 12 explains the lookup join and when it applies.
 
 A model is read, and its schemas built, when a connection first needs it. Building a Cosmos schema
 creates a `CosmosClient` and reads each exposed container's definition; it does not read documents.
-Errors in the operand — a missing `endpoint`, half a lookup-cache configuration, a constraint that
-does not compile — are reported then, as an exception from `OpenAsync`, usually wrapped as an error
+Errors in the operand — a missing `endpoint`, half a lookup-cache configuration, a `serviceTarget` that names
+neither service, a constraint that does not compile — are reported then, as an exception from `OpenAsync`, usually wrapped as an error
 instantiating the schema with the useful message one or two causes down.
 
 How often a model is read, and how to share one schema across many connections, is the subject of

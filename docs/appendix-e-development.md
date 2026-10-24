@@ -8,8 +8,8 @@ The Linux Cosmos DB emulator runs in Docker:
 docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
 ```
 
-Connect to `http://localhost:8081/` with the emulator's well-known key and `"connectionMode":
-"gateway"` (Chapter 5).
+Connect to `http://localhost:8081/` with the emulator's well-known key, `"connectionMode":
+"gateway"` (Chapter 5) and `"serviceTarget": "emulator"` (Chapter 4).
 
 ## E.2 How the emulator differs from Azure
 

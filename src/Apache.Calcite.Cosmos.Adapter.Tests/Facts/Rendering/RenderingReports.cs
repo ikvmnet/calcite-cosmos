@@ -134,11 +134,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var proposed = shadow.Bundles.Where(b => b.Set == set).Select(b => b.Proposed).ToList();
                     lines.Add($"  {proposed.Count} generate bundles; {proposed.Sum(p => p.Candidates)} candidates over {proposed.Sum(p => p.Atoms)} atoms, "
                         + $"{(double)proposed.Sum(p => p.Candidates) / Math.Max(1, proposed.Sum(p => p.Atoms)):F2} an atom");
-                    // A query is an input's statement as planned: every filter statement its plan asked S of, its shape the
-                    // widest of theirs, its time and bundles their sums.
+                    // Each run's iterations against its limit (R7): the base of 80 is the margin one-atom bundles hold.
+                    var runs = shadow.Bundles.Where(b => b.Set == set && b.Failure is null).Select(b => (b.Iterations, Limit: RenderingBundle.GenerateLimit(RenderingBundle.WidthOf(b.Roots)))).ToList();
+                    if (runs.Count > 0 && runs.MaxBy(r => (double)r.Iterations / r.Limit) is var (iterations, limit))
+                        lines.Add($"  iterations: the tightest run {iterations} of {limit} ({100.0 * iterations / limit:F0} %); the widest limit {runs.Max(r => r.Limit)}");
+                    // A query is an input's statement as planned: every filter statement its plan asked S of, its shape read
+                    // off the union of their atoms (§6.3), its time and bundles their sums.
                     var costs = shadow.Costs.Where(c => c.Set == set).ToList();
                     var queries = costs.GroupBy(c => (c.Input, c.Name)).Select(g => new RenderingGenerateRun.Cost(g.Key.Input, g.Key.Name, g.Count(), set,
-                        g.Select(c => c.Shape).MaxBy(Shapes.IndexOf)!, g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again))).ToList();
+                        RenderingShape.Of(g.SelectMany(c => c.Conjuncts)), g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again), [.. g.SelectMany(c => c.Conjuncts)])).ToList();
                     foreach (var (unit, timed) in new[] { ("statements", costs), ("queries", queries) })
                         foreach (var shape in timed.GroupBy(c => c.Shape).OrderBy(g => Shapes.IndexOf(g.Key)))
                         {
@@ -156,8 +160,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             static List<double> Sorted(IEnumerable<double> values) => [.. values.Order()];
         }
 
-        /// <summary>The shapes a filter is read as (spec §6.3), from the narrowest.</summary>
-        static readonly List<string> Shapes = ["1-3 conditions", "4 conditions", "5-7 conditions", "a list of 5-19", "rare"];
+        /// <summary>The shapes a query is read as (spec §6.3), from the narrowest.</summary>
+        static readonly List<string> Shapes = [.. RenderingShape.All];
+
 
         /// <summary>The order the reports keep: by input, then by a statement's place where its name is one, then by name.</summary>
         static (int Input, int Number) Key(string input, string name) => (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1);

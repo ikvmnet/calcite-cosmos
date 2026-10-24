@@ -120,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var first = opened.Sum(b => b.Milliseconds);
                 var started = Stopwatch.GetTimestamp();
                 Reconstruct(shape, set, false);
-                Costs.Enqueue(new(input.Input, input.Name, index, set, ShapeOf(shape.Conjuncts), opened.Count, first, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+                Costs.Enqueue(new(input.Input, input.Name, index, set, RenderingShape.Of(shape.Conjuncts), opened.Count, first, Stopwatch.GetElapsedTime(started).TotalMilliseconds, shape.Conjuncts));
             }
 
             Rewritten(shape);
@@ -373,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var report = Import(null);
             var opaques = roots.SelectMany(r => r.Subterms).OfType<SqlPredicate.Opaque>().Select(o => o.Id).Distinct().Order().Select(id => id + "=" + s.Opaques.GetValueOrDefault(id));
-            var key = string.Join("\n", new[] { set.ToString(), report.Digest, string.Join(",", opaques), RenderingMemo.DigestOf(_graph.Current()) }
+            var key = string.Join("\n", new[] { set.ToString(), report.Digest, string.Join(",", opaques), RenderingAnswerMemo.DigestOf(_graph.Current()) }
                 .Concat(roots.Select(r => r.Digest).Order(StringComparer.Ordinal))
                 .Concat(claims is null ? [] : claims.Select(c => s.Conjuncts[c.Key].Digest + " claims " + claimed + " " + c.Value.Text).Order(StringComparer.Ordinal)));
             return _memo.GetOrAdd(key, _ => new Lazy<Bundle>(() =>
@@ -444,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     1 => literals[0],
                     _ => ServiceForm.JunctionOf(CosmosServiceTest.And, literals),
                 }, [.. conjunctTerms.Select(_ => (ServiceForm?)null)], stated, null, s.Declaration.Rules) : null;
-                var generated = new Bundle(id, set, run, bundle.Failure, roots, answers, new Dictionary<string, RenderingVerdict>(), distinct, claim, elapsed, proposed, refuted);
+                var generated = new Bundle(id, set, run, bundle.Failure, roots, answers, new Dictionary<string, RenderingVerdict>(), distinct, claim, elapsed, proposed, refuted, bundle.Iterations);
                 Bundles.Enqueue(generated);
                 return generated;
             })).Value;
@@ -495,16 +495,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return (fewer, more) switch { (true, false) => "tighter", (false, true) => "looser" + listed, (true, true) => "parting" + listed, _ => "alike on the documents" };
         }
 
-        /// <summary>The shape of a statement's filter (§6.3): its conditions, a list of two to four counting as one, and a list of five or more apart.</summary>
-        public static string ShapeOf(IReadOnlyList<SqlPredicate> conjuncts)
-        {
-            var atoms = conjuncts.SelectMany(c => c.Subterms).Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)
-                && t is not SqlPredicate.Compare { Right: SqlValue.Parameter }).ToList();
-            var list = atoms.OfType<SqlPredicate.In>().Select(i => i.Points.Count).DefaultIfEmpty(0).Max();
-            var conditions = atoms.Count(t => t is not SqlPredicate.In { Points.Count: >= 5 });
-            return list >= 20 || conditions >= 8 ? "rare" : list >= 5 ? "a list of 5-19" : conditions switch { <= 3 => "1-3 conditions", 4 => "4 conditions", _ => "5-7 conditions" };
-        }
-
         static string? Show(RenderingVerdict? verdict, Verdict claimed = Verdict.Equal) => verdict is null ? null
             : verdict.Kind == RenderingVerdictKind.Proven ? claimed == Verdict.Equal ? "Exact" : "Implied" : verdict.Kind.ToString();
 
@@ -524,11 +514,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// One bundle, read before it went: its set, run and engine failure, roots, generate mode's answer of each root or a
         /// check's verdict of each claimed conjunct, every form over IR-read atoms at both positions, what it imported and
         /// stated (source A samples it), its time from open to the roots' answers, the candidates its templates proposed
-        /// beside its atoms, and each form the gate refuted. Keyed by content, so by digests, never a statement's indices.
+        /// beside its atoms, each form the gate refuted, and the iterations its run took. Keyed by content, so by digests, never a statement's indices.
         /// </summary>
         internal sealed record Bundle(int Id, RenderingSet Set, RenderingRun? Run, Exception? Failure, IReadOnlyList<SqlPredicate> Roots,
             IReadOnlyDictionary<string, RenderingAnswer> Answers, IReadOnlyDictionary<string, RenderingVerdict> Verdicts, IReadOnlyList<Judged> Forms,
-            RenderingMemo.Claimed? Claim, double Milliseconds, (int Candidates, int Atoms) Proposed = default, IReadOnlyList<Refuted>? Refutations = null);
+            RenderingMemo.Claimed? Claim, double Milliseconds, (int Candidates, int Atoms) Proposed = default, IReadOnlyList<Refuted>? Refutations = null, int Iterations = 0);
 
         /// <summary>A form of an atom at a position the gate refuted as exact, and the value each refuting cell sets its path to.</summary>
         internal sealed record Refuted(SqlPredicate Node, RenderPosition Position, ServiceForm Form, Refutation Refutation, IReadOnlyDictionary<string, string?> Witness);
@@ -564,7 +554,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingMemo.Claimed? Claim, (org.apache.calcite.rex.RexNode Node, (IReadOnlyList<Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) Binding) Source);
 
         /// <summary>A statement's cost under a set, by its shape: the generate bundles it opened and S's time in them, first; asked again, from the memo.</summary>
-        internal sealed record Cost(string Input, string Name, int Statement, RenderingSet Set, string Shape, int Bundles, double First, double Again);
+        internal sealed record Cost(string Input, string Name, int Statement, RenderingSet Set, string Shape, int Bundles, double First, double Again, IReadOnlyList<SqlPredicate> Conjuncts);
 
         /// <summary>A translator's text read: its form, or none where it did not read back or is no claim the check makes.</summary>
         internal sealed record Translated(string Written, ServiceForm? Form);
