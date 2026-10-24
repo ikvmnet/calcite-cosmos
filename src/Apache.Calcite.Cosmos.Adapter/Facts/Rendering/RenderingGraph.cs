@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public RenderingGraph(Func<RenderingDefinition> define, Func<GraphUsage, bool>? spent = null)
         {
             _define = define;
-            _spent = spent ?? (usage => usage.FractionUsed >= 0.5 || usage.InternedValues >= JsonFactGenerations.DefaultInternedLimit);
+            _spent = spent ?? (usage => usage.FractionUsed >= JsonFactGenerations.DefaultUsedLimit || usage.InternedValues >= JsonFactGenerations.DefaultInternedLimit);
         }
 
         /// <summary>Opens a bundle under a set on the current generation, starting one where that is spent.</summary>

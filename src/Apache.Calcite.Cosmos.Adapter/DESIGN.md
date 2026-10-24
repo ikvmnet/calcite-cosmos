@@ -805,9 +805,11 @@ beneath them, so the containers of a schema object share it: `CosmosSchemaFactor
 a default one.
 
 **A graph interns every value it is written, and never frees one**, so a graph serving queries forever grows
-forever. A generation is therefore retired once it has interned a million values. The next question starts
-a new one, and each declaration compiles itself into it when it is next asked. Nothing disposes a retired
-generation: a statement holding one of its answers keeps it alive, and once none does it is collected whole.
+forever; and its ids and epochs are finite. A generation is therefore retired once it has interned a million
+values, or used half of its ids or epochs (`Usage.FractionUsed`). The next question starts a new one, and each
+declaration compiles itself into it when it is next asked. Nothing disposes a retired generation: a statement
+holding one of its answers keeps it alive, and once none does it is collected whole. Running out of either is an
+engine failure, which loses facts and fails no plan (*F's generations before S reaches a plan*).
 
 **A query's context lives as long as its answer.** A planner asks about one statement a dozen times —
 matching a rule, converting, splitting, implementing — so a compiled declaration remembers the answers to its
@@ -7030,6 +7032,27 @@ generate mode composes no refutation through a junction (`TODO.md`).
 **What holds it.** `RenderingGenerateMutationTests`, the ten caught and M11 beside, the tip wrong on no trigger and every
 trusted plant changing what S sends or implies; `RenderingGateFaultTests`; `RenderingRecallTests`;
 `RenderingWitnessTests`.
+
+### F's generations before S reaches a plan
+
+**Why first.** g08 roots every statement at `D0`, and the switch puts S in every plan; both live in long-lived graphs, whose
+ids and epochs are finite (about 2.1 billion and 4.3 billion; Eggnog's architecture §2.12). Past either, every call that
+needs one throws `OverflowException`. S retired on `Usage.FractionUsed` and declined that exception from the start; F
+retired on interned values alone, and only `D0`'s build caught it, so anywhere else in F running out failed the plan.
+
+**What F does now.** A generation is also retired once its graph has used half of its ids or epochs
+(`JsonFactGenerations.DefaultUsedLimit`, the gauge S reads too), the other half being headroom for the contexts still open
+on it. `OverflowException` is one of F's engine failures (`JsonFactTheory.IsEngineFailure`): the context it met is released
+and its node reads its parent's, a path the context is told of is read in the context, knowing nothing, and a declaration
+that cannot compile states nothing — facts lost, none invented. Running out leaves `FractionUsed` at 1, so the next
+question starts the next generation, with no flag of its own. S's bundle and `D0`'s build share the list.
+
+**What a plan runs now.** Each read of F's current generation reads the graph's `Usage`, two counters beside the interned
+count it read before. No plan moves: the digests at 200 and 1,000 predicates are byte-equal, both frameworks.
+
+**What holds it.** `JsonFactTheoryTests.AGraphPastTheGaugeStartsTheNextGeneration`, the gauge forced to just past what a
+generation uses defining the rules, since no test can spend half of 2^31 ids; and
+`AnOverflowLosesAFactAndThrowsNothing`, a context's mention throwing as the graph would.
 
 ---
 

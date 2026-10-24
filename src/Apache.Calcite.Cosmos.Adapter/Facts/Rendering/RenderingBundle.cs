@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 if (Failure is null)
                     Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
             }
-            catch (Exception e) when (e is not FactConflictException && IsEngineFailure(e))
+            catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
             {
                 Decline(e);
             }
@@ -238,9 +238,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <inheritdoc />
         public void Dispose() => Scope.Dispose();
 
-        /// <summary>What a call into the engine declines on: the facts graph's engine failures, and running out (Arch §2.12).</summary>
-        static bool IsEngineFailure(Exception e) => JsonFactTheory.IsEngineFailure(e) || e is OverflowException;
-
         T? Guard<T>(Func<T> call)
         {
             if (Failure is not null)
@@ -250,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 return call();
             }
-            catch (Exception e) when (IsEngineFailure(e))
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
                 Decline(e);
                 return default;

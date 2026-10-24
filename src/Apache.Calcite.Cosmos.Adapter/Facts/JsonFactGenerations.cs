@@ -4,6 +4,8 @@ using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
+using Eggnog;
+
 namespace Apache.Calcite.Cosmos.Facts
 {
 
@@ -19,10 +21,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </para>
     /// <para>
     /// <b>Why there are generations.</b> A graph interns every value it is ever written — a property name, a literal, a
-    /// domain — and its pools never shrink, so a graph serving queries forever grows forever. Once a generation has
-    /// interned more than its limit it is retired: the next theory to ask starts a new one and compiles itself into it,
-    /// and the others follow as they are asked. Nothing disposes a retired generation. A statement still holding one of
-    /// its answers keeps it alive, and once none does it is collected whole, with every context beneath it.
+    /// domain — and its pools never shrink, so a graph serving queries forever grows forever; and its ids and epochs are
+    /// finite. Once a generation has interned more than its limit, or used its share of either, it is retired: the next
+    /// theory to ask starts a new one and compiles itself into it, and the others follow as they are asked. Nothing
+    /// disposes a retired generation. A statement still holding one of its answers keeps it alive, and once none does it
+    /// is collected whole, with every context beneath it.
     /// </para>
     /// <para>
     /// <b>Owned by a schema object, not by the process.</b> What a schema learns hangs off the schema, so the schema
@@ -39,11 +42,18 @@ namespace Apache.Calcite.Cosmos.Facts
         public const long DefaultInternedLimit = 1_000_000;
 
         /// <summary>
+        /// The share of its graph's ids or epochs a generation uses before it is retired: half, which leaves the rest to the
+        /// contexts still open on it, since past either every call that needs one throws.
+        /// </summary>
+        public const double DefaultUsedLimit = 0.5;
+
+        /// <summary>
         /// The generations of every theory not bound to a schema object's.
         /// </summary>
         public static JsonFactGenerations Default { get; } = new();
 
         readonly long _internedLimit;
+        readonly double _usedLimit;
         readonly object _starting = new();
         readonly ConditionalWeakTable<JsonFactTheory, JsonFactTheory> _bound = new();
         Generation? _current;
@@ -53,12 +63,16 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Initializes a new instance.
         /// </summary>
         /// <param name="internedLimit">How many values a generation interns before it is retired.</param>
-        public JsonFactGenerations(long internedLimit = DefaultInternedLimit)
+        /// <param name="usedLimit">The share of its graph's ids or epochs a generation uses before it is retired.</param>
+        public JsonFactGenerations(long internedLimit = DefaultInternedLimit, double usedLimit = DefaultUsedLimit)
         {
             if (internedLimit < 1)
                 throw new ArgumentOutOfRangeException(nameof(internedLimit));
+            if (usedLimit is not (> 0 and <= 1))
+                throw new ArgumentOutOfRangeException(nameof(usedLimit));
 
             _internedLimit = internedLimit;
+            _usedLimit = usedLimit;
         }
 
         /// <summary>
@@ -74,13 +88,13 @@ namespace Apache.Calcite.Cosmos.Facts
             get
             {
                 var current = Volatile.Read(ref _current);
-                if (current is not null && current.InternedCount <= _internedLimit)
+                if (current is not null && Spent(current.Usage) == false)
                     return current;
 
                 lock (_starting)
                 {
                     current = _current;
-                    if (current is null || current.InternedCount > _internedLimit)
+                    if (current is null || Spent(current.Usage))
                     {
                         current = new Generation(this, Interlocked.Increment(ref _started));
                         Volatile.Write(ref _current, current);
@@ -90,6 +104,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 }
             }
         }
+
+        bool Spent(GraphUsage usage) => usage.InternedValues > _internedLimit || usage.FractionUsed >= _usedLimit;
 
         /// <summary>
         /// Returns a theory stating what <paramref name="theory"/> states, reasoning in these generations; the same one
@@ -134,9 +150,9 @@ namespace Apache.Calcite.Cosmos.Facts
             public JsonContexts Contexts { get; }
 
             /// <summary>
-            /// Gets how many values the graph has interned, which never decreases.
+            /// Gets how much of its graph the generation has used: values interned, ids and epochs, none of which decreases.
             /// </summary>
-            public long InternedCount => Contexts.Graph.Values.InternedCount;
+            public GraphUsage Usage => Contexts.Graph.Usage;
 
             /// <inheritdoc />
             public override string ToString() => $"generation {Number}";

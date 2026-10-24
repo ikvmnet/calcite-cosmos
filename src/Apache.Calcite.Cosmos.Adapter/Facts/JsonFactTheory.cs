@@ -192,9 +192,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Determines whether an exception is one the engine raises for a context it could not answer for, which loses
         /// facts rather than failing a plan.
         /// </summary>
+        /// <remarks>
+        /// Running out of a graph's ids or epochs is one (<see cref="OverflowException"/>; Eggnog's architecture §2.12): it
+        /// leaves the graph's <c>FractionUsed</c> at 1, so the next question retires the generation.
+        /// </remarks>
         internal static bool IsEngineFailure(Exception e) =>
             e is RuleEvaluationException or FactConflictException or ScopeContradictedException
-                or InvalidOperationException or ObjectDisposedException;
+                or InvalidOperationException or ObjectDisposedException or OverflowException;
 
         /// <summary>
         /// Returns this declaration compiled into the current generation, compiling it where it is not.
@@ -285,9 +289,9 @@ namespace Apache.Calcite.Cosmos.Facts
                         return d0;
                     }
                 }
-                catch (Exception e) when (IsEngineFailure(e) || e is OverflowException)
+                catch (Exception e) when (IsEngineFailure(e))
                 {
-                    // Released below, as a run that stops short is; running out is a failure here, or the Lazy would keep it.
+                    // Released below, as a run that stops short is, so the Lazy keeps no exception.
                 }
 
                 d0?.Dispose();

@@ -2007,7 +2007,8 @@ of record is in its repository, as
 - **The Horn closure is gone,** with the exclusion table. `JsonFactTheory` compiles a declaration into a frozen
   context; `Derive` saturates a query's established facts beneath it; `JsonFactSet` reads the answers back. The
   public API is unchanged, and `ClaimsFor`'s two scans became questions: `HasOneScalarType` and `TryGetValue`.
-- **Generations.** One graph per schema object and generation, retired at a million interned values. Each query
+- **Generations.** One graph per schema object and generation, retired at a million interned values or half its ids
+  or epochs (g07). Each query
   context is remembered per declaration for the next 256 established sets, and released once nothing holds it.
 - **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
   four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
@@ -2733,11 +2734,10 @@ across documents* and *A join of a container to itself* is the record.
   source B at 20 to 50; the check run is already above §10.3's budget (below), so 50 stay, the unarmed 200 keep
   production's root, and the 5,000 armed stay explicit.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
-  retires its generation, but Eggnog 1.1.1 cannot lower its limits (`EGraphOptions` has none), and an
-  `OverflowException` a primitive throws arrives as a `RuleEvaluationException`, a fault. `RenderingGraphTests` tells
-  the bundle as its catch would. The facts graph still does not count `OverflowException` as an engine failure (plan
-  Stage 0d); S's bundle and `D0`'s build add it to F's list, `D0`'s so that its `Lazy` keeps no exception, and share the
-  list once 0d fixes it.
+  retires its generation, and F's context loses its facts and fails no plan (g07, one list for both), but Eggnog 1.1.1
+  cannot lower its limits (`EGraphOptions` has none), and an `OverflowException` a primitive throws arrives as a
+  `RuleEvaluationException`, a fault. `RenderingGraphTests` tells the bundle as its catch would, and
+  `JsonFactTheoryTests` a context's mention; the usage gauge is forced down, not reached.
 - **A statement that admits one conjunct twice has no exact join** — *small.* The IR keeps both arms, and the claim's
   textually equal members are one row, so the rest of the junction is a junction of copies that no row gives members:
   partitions 150 and 187 at 200 predicates, never sent. Writing a rest's members where only copies are left is the fix.
