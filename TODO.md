@@ -2816,18 +2816,16 @@ across documents* and *A join of a container to itself* is the record.
   A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
   neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
   that needs it, as #162's temporal rewrites once did, designs it.
-- **C2 writes no side S cannot place** — *small, a loss beside J.* The window of `CAST(… AS DOUBLE) = 0.1` is bounded at
-  -0.9 and 1.1, which the split rule sends as their doubles and the service compares as such; `ServiceLeaf` places a
-  literal only where its double is it, so the template leaves such a side out, and a window with neither side is no
-  candidate. Placing a literal by the double it is sent as would give both back, here and for every comparison with one.
-- **A6 is spelled by the operator, not the literal** — *small.* `c OR IS_BOOL(p)` for `>` and `c OR IS_NUMBER(p)` for `<`
-  are exact only where every boolean's rendering, and no number's, lies above the literal, or the other way round: a
-  literal of letters below `f`. Over `'5'` or `'g'` neither is, and the ordering stays unproven; which kinds a literal
-  keeps is a fact of its characters that a rule could read, with a template per kind.
-- **C1 and C2 keep the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED`
-  and the type test where the facts say the path holds the type (`Guarded`); the templates always write them, so under
-  such a declaration S's weakening is longer text for the same rows. The bare window, which only the facts make
-  implied, is no template's: one template spells one form at a position.
+- **A number compared through a cast or `RETURNING DECIMAL` weakens to presence, and P6 is killed** — *medium, for the
+  owner's O7.* Both readings parse a string Calcite then compares where the service compares none, so no accessor of the
+  conjunct writes `c.price > 50` as the form means, and `rex-writable` admits no such member: K's numeric windows (C2,
+  not built), the 21 weakenings the shadow found tighter through one and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`
+  are gone, line 19's P6 with them. RU, never rows. A service-only carrier operator the builder sends them through,
+  never evaluated by Calcite (O7's third option, +80–150 lines), would give them back; so would a guard-aware grammar
+  row, a comparison read only beneath `IS_NUMBER` of its path, if line 13's round trip judged such a member whole.
+- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED` and the
+  type test where the facts say the path holds the type (`Guarded`); the template always writes them, so under such a
+  declaration S's weakening is longer text for the same rows.
 - **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* The split rule's walk
   reads a connective inside a conjunct it cannot translate for its truth or falsity, `AND` true needing every
   conjunct's paths and `OR` false every branch's (`CollectPaths`); S reads the conjunct's top call and its operands as
@@ -2850,7 +2848,7 @@ across documents* and *A join of a container to itself* is the record.
   it pushes, the next round's node is not the one S's own loop would read. Production's sites see S's own rounds.
 - **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
   `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
-  rows are the same. Pruning a member another implies would be a rule; `AtLeaf` decides nothing.
+  rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Folded` decides nothing.
 - **P4's orderings are no tighter than J's** — *small, a gain not delivered.* No template excludes the nulls and
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
@@ -2865,7 +2863,7 @@ across documents* and *A join of a container to itself* is the record.
   refutations are asserted at the atom; composing refutations in generate mode would give the cases back.
 - **G7 plants presence's dual, not the fold's** — *small.* A weakening is lattice-free, so a fold planted beside the
   right one faults the bundle, and the definition names no fold a plant could replace. Naming
-  `RenderingWeakening.AtLeaf` in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
+  `ServiceForm.Folded` in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
 - **A raw accessor compared with a parameter does not plan in the check run's harness** — *small.* `c."$.label" <> ?`
   leaves the parameter untyped beside an `ANY`, so the parameterised residual the inputs gain reads the label through
   the accessor.

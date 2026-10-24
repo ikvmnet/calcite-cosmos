@@ -6702,42 +6702,55 @@ reaches it.
 ### Templates, prices, and the weakening's assembly
 
 **A template only proposes; the gate disposes.** A template is a core — the comparison, an `IN` as its equalities, the
-presence it tests — and a guard: A1–A4 are what the translator writes, A5, A6, C1, C2 and C4 what it pushes as a
-weakening or what the gains need. Which template is asked at which position, and of which atom's shape, are host rows
-(`RenderingTemplateRows`). A shape is the atom's reader, test and operand's kind; a parameter's is its own, which no
-row names, so a parameter atom gets presence and no candidate. `RenderingTemplates.Spell` writes from the atom's literal
-and the path's spelling, reads no fact, and is total, since Eggnog 1.1.1 runs a body's calls in no promised order: a
-pair it cannot write is an opaque sentinel, which the service leaf answers widest, a failure among it, so no box allows
-it and nothing refutes it. C3, the text-equality alternatives, is not built: its Rex would re-type the accessor, which
-Calcite reads as an assertion that raises on a string.
+presence it tests — and a guard: A1–A4 are what the translator writes, A5, A6, C1 and C4 what it pushes as a weakening
+or what the gains need. Which template is asked at which position, and of which atom's shape, are host rows
+(`RenderingTemplateRows`), and they alone: `RenderingTemplates.Spell` writes whatever pair it is asked that it can, from
+the atom's literal and reader and the path's spelling, and reads no fact. A shape is the atom's reader, test and
+operand's kind; a parameter's is its own, which no row names, so a parameter atom gets presence and no candidate.
+`Spell` is total, since Eggnog 1.1.1 runs a body's calls in no promised order: a pair it cannot write — no comparison
+to guard, no literal rendering a boolean beside A5 — is an opaque sentinel, which the service leaf answers widest, a
+failure among it, so no box allows it and nothing refutes it. A6 is two templates, one a kind, each asked at both
+positions: which kind a text ordering's literal leaves on the kept side follows from Calcite's order by code unit
+(`Calcite.TextOrderIsByCodeUnit`, `'true'` and `'false'` above the digits and `-`), and the gate reads that, never the
+operator. C3, the text-equality alternatives, is not built: its Rex would re-type the accessor, which Calcite reads as
+an assertion that raises on a string.
 
 **A1–A4 are the translator's spelling, so S proposes today's text.** Every one-atom conjunct the check run's
 statements send is its template's form, but for the two respellings R5 names: an `IN`'s points in the set's order, and
 `NOT (x IS NULL)` in `IS NOT NULL`'s spelling, which A4 proposes at `Neg` alone because its negation strips to the
 shorter form. The bare form beats a guarded one only where it is exact too, which is P8.
 
-**C2's window is what converting a number allows, on sides S can place.** A comparison through a numeric reading
-bounds the stored number by the literal moved by one each way, which converting a number moves it by less than. A side
-is written only where the service compares what it is sent as that number — a whole number an int64 holds, or one
-whose double it is — as `ServiceLeaf` places a literal, so a side S could not evaluate is left out rather than costing
-the window. Whether the window is implied is the gate's.
+**C2, the numeric window, is not built either, nor C4 over a cast.** Every reader C2 fits is a cast of the text or
+`RETURNING DECIMAL`, and each parses a string Calcite then compares where the service compares no string, so no accessor
+of the conjunct writes a number comparison over it as the form means (below), and the window is never exact, admitting
+every non-number. It could only ever be refuted or implied and unwritable, a candidate an atom for nothing. K's windows
+over those readers, and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`, wait on a carrier the builder would send them
+through: O7's third option, the owner's.
 
-**A price is a total order.** `Priced` is a rank, the slot a measured cost row would fill and none fills yet, the
-form's nodes, and its text. `Min` keeps one value whatever order rows arrive in, and `None`, greater than every real
-price, is a complete value from the start, so a rule reads "no exact form" (`priced-is-real`) and never an absence.
+**A price is a total order.** `Priced` is the form's nodes and its text. `Min` keeps one value whatever order rows
+arrive in, and `None`, greater than every real price, is a complete value from the start, so a rule reads "no exact
+form" (`priced-is-real`) and never an absence. No registry row ranks a filter form by its cost, so nothing ranks above
+the size.
 
-**What may be sent is read off the form, against data beside it.** `sendable` refuses a literal with an unpaired
-surrogate, which the SDK refuses to send on either target, and a string ordering whose literal holds a character of a
-parting band, so that no form S sends is one bound of a range the two orders rank apart, beside any conjunct in any
-round. `rex-writable` admits a form only where the Rex builder writes every comparison, membership and test in it, by
-the grammar's rows (`RenderingRexGrammar`): a string over any reader, the accessor re-typed `ANY`; a number over a
-reader typed as one; a boolean over `RETURNING BOOLEAN`; the eight type tests, each with an in-process body; constants
-and the connectives. So the builder never meets a member it would have to leave out, which beneath an `OR` or a `NOT`
-would strengthen the weakening.
+**What may be sent is read off the form, against data beside it.** `sendable` refuses a string ordering whose literal
+holds a character of a parting band, read against the parting bands loaded as data, so that no form S sends is one
+bound of a range the two orders rank apart, beside any conjunct in any round; and a literal with an unpaired surrogate,
+which the SDK refuses to send on either target. That second is one test of a concrete literal,
+`JsonValues.IsEncodable`, the one `CosmosEncodable` asks of every string a statement carries: no band can hold it, since
+a pair's units are surrogates too, and it is a property of the value the encoder is handed, which no fact about the
+documents decides. `rex-writable` admits a form only where the Rex builder writes every comparison, membership and test
+in it, by the grammar's rows (`RenderingRexGrammar`): a string over any reader, the accessor re-typed `ANY`; a number
+over a `RETURNING` of a number type, which Calcite reads as the value the service compares or raises on; a boolean over
+`RETURNING BOOLEAN`; the eight type tests, each with an in-process body; constants and the connectives. A number over a
+cast of the text or `RETURNING DECIMAL` is not written: both parse the string `"60"`, which Calcite then finds `> 49`
+where the service's `$.label > 49` finds nothing, so the Rex would not mean the form and the builder's round trip would
+refuse it. So the builder never meets a member it would have to leave out, which beneath an `OR` or a `NOT` would
+strengthen the weakening. Which reader is typed as a number is one table, the readers' type tests `T(p)`
+(`RenderingRexGrammar.TypeTests`), which the templates' guards read too.
 
 **The weakening's assembly decides nothing.** `ServiceForm.Joined` flattens a member of its own connective, keeps one of
 each part in the arms' order, and folds Kleene's constants at either position; `Negated` folds both constants and strips
-one `NOT`; `RenderingWeakening.AtLeaf` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
+one `NOT`; `ServiceForm.Folded` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
 `Neg`, the identity for none, and prunes nothing: flattening and one part each make a presence test vanish into a
 guarded form that holds it. Whether a leaf takes its best or this fold is two rules (`best-is-implied` and its
 negation), and `form-is-join-of` holds a composed form to exactly its arms' parts, as a set.
@@ -6824,7 +6837,7 @@ finished a stratum before. One plant shows each refusal.
 - The negations; a junction's best; the round's junction, absent where an arm has none.
 - Nothing vacuous lifted; the band filter; a lone surrogate never admitted, though the gate agrees with it.
 - Presence at both positions and through calls; a leaf's best or its fold; no sentinel lifted.
-- Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's C4 at `Neg`.
+- Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's cast comparison weakening to its presence at `Neg`.
 - A contradicted and a merged bundle reading nothing.
 - Every check of the pull request's run asked again in generate mode, riding its pass. Under both sets, 389 bundles
   (711 roots, 468 proven) all complete within their limits; at the gate's 1,000 predicates, 921 bundles (1,605 roots,
@@ -6932,8 +6945,9 @@ trials are shadowed and judged on their declared documents.
 **The gains, as forms.** P1's inequality is sent restricted under every set; P2 and P3 exactly over a twin of `typed`
 whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself; P4's inequality weakens
 tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
-P5's second arm keeps its kind and P6's weakening holds C4's form beneath its `NOT`; P8 is counted; and P7, a `LIKE` the
-translator pushes, is not S's. A parameter atom left residual weakens to its presence alone. On a service each exact
+P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 is killed
+on P6:** its C4 form compares the price through a cast, which no accessor writes as it means, so its weakening keeps
+presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom left residual weakens to its presence alone. On a service each exact
 gain's text keeps Calcite's rows.
 
 **What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,

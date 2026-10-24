@@ -91,6 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (ServiceForm.Reading(nested, P), ServiceForm.Reading(nested, Q)).Should().Be((And(And(a, b), c), And(d, e)));
             ServiceForm.Reading(And(c, d), P).Should().Be(c);
             ServiceForm.Reading(nested, SqlValue.Spell(JsonDocumentPath.Root.Property("other"))).Should().Be(nested, "no part reads it alone");
+            new[] { ServiceForm.Spanned(a, a, b), ServiceForm.Reading(a, P) }.Should().OnlyContain(f => f.Kind == ServiceFormKind.Opaque, "a leaf has no parts, and a rule body's call is total");
         }
 
         /// <summary>Stripping takes one negation off, or puts one on, so twice is nothing on a form with at most one.</summary>

@@ -143,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var refuted = planted.Triggers.SelectMany(t => Refuted(planted, t)).Select(r => r.Form).ToHashSet();
                 planted.Triggers.SelectMany(t => t.Bundles).SelectMany(b => b.Answers.Values).Select(a => a.Best).OfType<ServiceForm>()
-                    .Where(best => Within(best).Any(refuted.Contains)).Select(best => best.Text).Should().BeEmpty("no root sends a form the gate refuted");
+                    .Where(best => best.Subforms.Any(refuted.Contains)).Select(best => best.Text).Should().BeEmpty("no root sends a form the gate refuted");
                 planted.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("nothing S sends or implies is wrong");
                 planted.Triggers.SelectMany(t => t.Classes).Should().Contain(c => c.Class == RenderingGenerateRun.Regression, "the loss shows as a regression");
                 return;
@@ -344,9 +344,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         };
 
         static string KindOf(J? value) => value switch { J.Str => "string", J.Bool => "boolean", _ => Spelled(value) };
-
-        /// <summary>A form and every form within it.</summary>
-        static IEnumerable<ServiceForm> Within(ServiceForm form) => form.Members.SelectMany(Within).Prepend(form);
 
         /// <summary>
         /// A fault planted in S: its definition, the rules beside the right ones in its graph, whether it is trusted, and the

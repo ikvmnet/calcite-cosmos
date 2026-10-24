@@ -8,7 +8,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     /// <remarks>
     /// <c>T(p)</c> is the reading's type test: <c>IS_PRIMITIVE</c> for text, <c>IS_NUMBER</c> or <c>IS_BOOL</c> by
-    /// <c>RETURNING</c>'s type, none for a raw value or a cast.
+    /// <c>RETURNING</c>'s type, none for a raw value or a cast (<see cref="RenderingRexGrammar.TypeTests"/>).
     /// </remarks>
     internal enum TemplateId
     {
@@ -28,16 +28,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A5: text equal to <c>'true'</c> or <c>'false'</c> as the string or the boolean it renders.</summary>
         BooleanAlternatives,
 
-        /// <summary>A6: a text ordering beside the kind whose every rendering falls on the kept side.</summary>
-        ByKind,
+        /// <summary>A6 by the booleans: a text ordering or the path a boolean at <c>Pos</c>, and not one at <c>Neg</c>.</summary>
+        ByKindBoolean,
+
+        /// <summary>A6 by the numbers: a text ordering or the path a number at <c>Pos</c>, and not one at <c>Neg</c>.</summary>
+        ByKindNumber,
 
         /// <summary>C1, at <c>Pos</c>: a text comparison where the path holds a string, anything else admitted.</summary>
         StringBranch,
 
-        /// <summary>C2, at <c>Pos</c>: a numeric reading's comparison as a window on a stored number, anything else admitted.</summary>
-        Window,
-
-        /// <summary>C4, at <c>Neg</c>: a comparison where the path holds the reading's own kind.</summary>
+        /// <summary>C4, at <c>Neg</c>: a text comparison where the path holds a string.</summary>
         KindRestricted,
 
     }

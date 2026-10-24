@@ -545,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
                 r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Parting.Of(u, w));
                 r.Where(RenderingPrimitives.StringComparison.Of(g));
-                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(g, CharactersOfLiteral)));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));
                 r.Then(PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
@@ -557,9 +557,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (f, h1, h2, p) = r.Vars<ServiceForm, ServiceForm, ServiceForm, JPath>("f", "h1", "h2", "p");
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
-                var (n, u, w, l) = r.Vars<string, string, string, string>("n", "u", "w", "l");
+                var (n, u, w) = r.Vars<string, string, string>("n", "u", "w");
                 r.When(Conjunct.Of(f, h1), Conjunct.Of(f, h2), h1.IsNot(h2), n.Is(Compute.Of(h1, x => x.Path ?? "")), n.Is(Compute.Of(h2, x => x.Path ?? "")),
-                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(h1, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), b.Is(Compute.Of(h1, CharactersOfLiteral)));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h1));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h2));
                 r.Where(Primitives.Contains<string>().Of(k, u));
@@ -837,7 +837,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
                 r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
                 ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(s, pos, RenderingWeakening.AtLeaf)));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
             });
 
             weaken.DefineRule("a junction's weakening joins its arms' weakenings", r =>
@@ -878,6 +878,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             r.When(nd.Is(Needs.Of(junction)));
             r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(nd, lic));
         }
+
+        /// <summary>
+        /// The bands a form's literal holds characters of, none where it holds no literal: total, as a body's calls must be,
+        /// since Eggnog 1.1.1 may run it before the filter beside it that admits only string comparisons.
+        /// </summary>
+        static ValueSet<string> CharactersOfLiteral(ServiceForm form) => form.Literal is { } literal ? JsonValues.CharactersOf(literal) : JsonValues.NoBand;
 
         /// <summary>
         /// Holds a step to every one of the connectives, which the set and Calcite both license: <see cref="Composes"/>'s

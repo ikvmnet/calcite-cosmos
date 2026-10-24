@@ -18,13 +18,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal static class RenderingTemplateRows
     {
 
-        /// <summary>Each template and the positions it is asked at (spec §4.1).</summary>
+        /// <summary>
+        /// Each template and the positions it is asked at (spec §4.1). A6 is asked by each kind at both positions, so which
+        /// kind a text ordering's literal leaves on the kept side is the gate's.
+        /// </summary>
         public static IReadOnlyList<(TemplateId, RenderPosition)> Templates { get; } =
         [
             (Bare, RenderPosition.Pos), (Bare, RenderPosition.Neg), (Restricted, RenderPosition.Pos), (Completed, RenderPosition.Neg),
             (NullTest, RenderPosition.Pos), (NullTest, RenderPosition.Neg), (BooleanAlternatives, RenderPosition.Pos), (BooleanAlternatives, RenderPosition.Neg),
-            (ByKind, RenderPosition.Pos), (ByKind, RenderPosition.Neg), (StringBranch, RenderPosition.Pos), (Window, RenderPosition.Pos),
-            (KindRestricted, RenderPosition.Neg),
+            (ByKindBoolean, RenderPosition.Pos), (ByKindBoolean, RenderPosition.Neg), (ByKindNumber, RenderPosition.Pos), (ByKindNumber, RenderPosition.Neg),
+            (StringBranch, RenderPosition.Pos), (KindRestricted, RenderPosition.Neg),
         ];
 
         /// <summary>Each template and the shapes it fits.</summary>
@@ -33,7 +36,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static IEnumerable<(TemplateId, string)> Rows()
         {
             string[] text = [PredicateAtom.TextReader], textual = [PredicateAtom.TextReader, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)];
-            string[] casts = [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(t => PredicateAtom.CastReader(t, PredicateAtom.TextReader))];
             string[] readers = [.. ReaderEdgesTable.Rows.Keys, .. textual], strings = [StringKind, TruthKind], literals = [.. strings, NumberKind, BooleanKind];
             string[] orderings = [PredicateAtom.Less, PredicateAtom.LessOrEqual, PredicateAtom.Greater, PredicateAtom.GreaterOrEqual];
             string[] comparisons = [PredicateAtom.Equal, PredicateAtom.NotEqual, .. orderings], equalOrOrdering = [PredicateAtom.Equal, .. orderings];
@@ -47,10 +49,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Concat(Fit(Completed, readers, equalOrOrdering, literals)).Concat(Fit(Completed, readers, [PredicateAtom.InTest], [PointsKind]))
                 .Concat(Fit(NullTest, readers, [PredicateAtom.NullTest], [NoOperand]))
                 .Concat(Fit(BooleanAlternatives, textual, [PredicateAtom.Equal], [TruthKind]))
-                .Concat(Fit(ByKind, text, orderings, strings))
+                .Concat(Fit(ByKindBoolean, text, orderings, strings)).Concat(Fit(ByKindNumber, text, orderings, strings))
                 .Concat(Fit(StringBranch, textual, [PredicateAtom.NotEqual, .. orderings], strings))
-                .Concat(Fit(Window, [.. casts, PredicateAtom.TypedReader("DECIMAL")], equalOrOrdering, [NumberKind]))
-                .Concat(Fit(KindRestricted, casts, comparisons, [NumberKind])).Concat(Fit(KindRestricted, textual, comparisons, strings));
+                .Concat(Fit(KindRestricted, textual, comparisons, strings));
         }
 
     }

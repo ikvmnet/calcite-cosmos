@@ -343,8 +343,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// Determines whether a text holds no unpaired surrogate, which the SDK's encoder refuses to send
-        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>): the twin of <c>Client.CosmosEncodable.IsEncodable</c>, which
-        /// nothing under <c>Facts/</c> may reference, read unit by unit as it is.
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>), read unit by unit as it is: the one test, which
+        /// <c>Client.CosmosEncodable</c> asks of every string a statement carries, and the rendering graph's <c>sendable</c>
+        /// of every literal. No character class holds it, since a pair's units are surrogates too.
         /// </summary>
         public static bool IsEncodable(string text)
         {

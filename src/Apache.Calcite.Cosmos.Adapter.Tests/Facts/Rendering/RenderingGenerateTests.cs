@@ -337,17 +337,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// P6: <c>NOT (c.category = 'bikes' AND CAST(price AS DOUBLE) &gt; 50)</c> weakens beneath its <c>NOT</c> at
-        /// <c>Neg</c>, where the cast's comparison takes C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c>.
+        /// <c>Neg</c>. No number comparison over the cast is a member: the cast parses a string Calcite then compares, where
+        /// the service compares no string, so no accessor of the conjunct writes <c>c.price &gt; 50</c> as it means, and
+        /// C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> waits on a carrier the Rex builder would send it through (O7).
+        /// The cast's comparison weakens to its presence at <c>Neg</c>.
         /// </summary>
         [Fact]
-        public void P6WeakensAtNeg()
+        public void P6WeakensAtNegToWhatTheRexBuilderWrites()
         {
             var (category, price) = (Eq(Text(CategoryPath), "bikes"), Cmp(Cast("DOUBLE", Text(PricePath)), ">", Lit(50)));
             var root = Not(And(category, price));
             var generated = Generate(root);
-            var kindRestricted = All(Is(Op.IsNumber, Price), Compare(Op.Greater, Price, Of(50m)));
-            generated.Implied(price, RenderPosition.Neg).Should().Contain(kindRestricted);
-            generated.Weakening(price, RenderPosition.Neg)!.Parts.Prepend(generated.Weakening(price, RenderPosition.Neg)!).Should().Contain(kindRestricted);
+            generated.Implied(price, RenderPosition.Neg).Should().Equal(Negated(Is(Op.IsDefined, Price)));
+            generated.Weakening(price, RenderPosition.Neg).Should().Be(Negated(Is(Op.IsDefined, Price)));
             var answer = generated.Answers.Single();
             answer.Best.Should().BeNull();
             var arms = ((SqlPredicate.And)((SqlPredicate.Not)root).Operand).Arms;

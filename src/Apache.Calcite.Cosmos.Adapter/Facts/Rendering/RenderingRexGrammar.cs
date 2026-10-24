@@ -15,10 +15,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// member it would have to leave out, which beneath an <c>OR</c> or a <c>NOT</c> would strengthen a weakening.
     /// </summary>
     /// <remarks>
-    /// A string literal over any reader, the accessor re-typed <c>ANY</c> as the split rule's <c>RawValue</c> does; a number
-    /// only over a reader typed as one, a <c>RETURNING</c> or a cast, and a boolean only over <c>RETURNING BOOLEAN</c>, each
-    /// a literal of its accessor's own type; the type tests the translator writes, each with an in-process body
+    /// <para>
+    /// A string literal over any reader, the accessor re-typed <c>ANY</c> as the split rule's <c>RawValue</c> does. A
+    /// number only over a <c>RETURNING</c> of a number type and a boolean only over <c>RETURNING BOOLEAN</c>, each a
+    /// literal of its accessor's own type, which Calcite reads as the value the service compares or raises on: a reader
+    /// whose type test (<see cref="TypeTests"/>) is <c>IS_NUMBER</c> or <c>IS_BOOL</c>. Not over a cast of the text nor
+    /// <c>RETURNING DECIMAL</c>, which parse a string Calcite then compares where the service compares no string, so no
+    /// accessor of the conjunct means the form. The type tests the translator writes, each with an in-process body
     /// (<c>CosmosTypeTestImplementor</c>). Stated before its builder (spec g14), which is held to every row.
+    /// </para>
     /// </remarks>
     internal static class RenderingRexGrammar
     {
@@ -26,32 +31,29 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Reader classes: every reader, one typed as a number, <c>RETURNING BOOLEAN</c>.</summary>
         public const string AnyReader = "any", NumberReader = "number", BooleanReader = "boolean";
 
-        static readonly string[] Numbers = ["TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL"];
-
-        /// <summary>Which literals a comparison or an <c>IN</c> may hold over which class of reader, by the literal's JSON type.</summary>
-        public static IReadOnlyList<(string ReaderClass, string LiteralClass)> Comparisons { get; } =
-        [
-            (AnyReader, JsonValues.StringType),
-            (NumberReader, JsonValues.IntegerType),
-            (NumberReader, JsonValues.FractionType),
-            (BooleanReader, JsonValues.BooleanType),
-        ];
-
-        /// <summary>The tests the builder writes.</summary>
-        public static IReadOnlyList<CosmosServiceTest> Tests { get; } =
-        [
-            CosmosServiceTest.IsDefined, CosmosServiceTest.IsNull, CosmosServiceTest.IsPrimitive, CosmosServiceTest.IsString,
-            CosmosServiceTest.IsNumber, CosmosServiceTest.IsBool, CosmosServiceTest.IsObject, CosmosServiceTest.IsArray,
-        ];
+        /// <summary>
+        /// Each reader's type test, <c>T(p)</c>, as the translator writes it beside a reading (<c>TypeTestOf</c>): the text
+        /// accessor's <c>IS_PRIMITIVE</c>, and a scalar <c>RETURNING</c>'s by its type. The templates guard by it, and a
+        /// reader typed as a number or a boolean is its class here; a raw value, a cast and <c>RETURNING DECIMAL</c> have none.
+        /// </summary>
+        public static IReadOnlyDictionary<string, CosmosServiceTest> TypeTests { get; } = new Dictionary<string, CosmosServiceTest>(
+            new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE" }.Select(t => KeyValuePair.Create(PredicateAtom.TypedReader(t), CosmosServiceTest.IsNumber)))
+        {
+            [PredicateAtom.TypedReader("BOOLEAN")] = CosmosServiceTest.IsBool,
+            [PredicateAtom.TextReader] = CosmosServiceTest.IsPrimitive,
+        };
 
         /// <summary>The rows as one value, which <c>rex-writable</c> reads as <c>sendable</c> reads the parting bands.</summary>
-        public static Value Written { get; } = new(ValueSet.From(Comparisons.Select(c => c.ReaderClass + "/" + c.LiteralClass)), ValueSet.From(Tests));
+        public static Value Written { get; } = new(
+            ValueSet.Of(AnyReader + "/" + JsonValues.StringType, NumberReader + "/" + JsonValues.IntegerType, NumberReader + "/" + JsonValues.FractionType, BooleanReader + "/" + JsonValues.BooleanType),
+            ValueSet.Of(CosmosServiceTest.IsDefined, CosmosServiceTest.IsNull, CosmosServiceTest.IsPrimitive, CosmosServiceTest.IsString, CosmosServiceTest.IsNumber,
+                CosmosServiceTest.IsBool, CosmosServiceTest.IsObject, CosmosServiceTest.IsArray));
 
         /// <summary>A reader's class: one typed as a number, <c>RETURNING BOOLEAN</c>, or its own name.</summary>
-        public static string ClassOf(string reader) => reader.Split(':') switch
+        public static string ClassOf(string reader) => TypeTests.GetValueOrDefault(reader) switch
         {
-            ["typed" or "cast", var type, ..] when Numbers.Contains(type) => NumberReader,
-            ["typed", "BOOLEAN"] => BooleanReader,
+            CosmosServiceTest.IsNumber => NumberReader,
+            CosmosServiceTest.IsBool => BooleanReader,
             _ => reader,
         };
 

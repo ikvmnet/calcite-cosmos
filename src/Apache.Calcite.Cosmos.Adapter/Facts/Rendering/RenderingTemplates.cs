@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -13,9 +12,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// Writes the form a template proposes for an atom at a position, from the atom's literal, points and reader and the
-    /// spelling of its path: writing, which reads no fact and decides nothing, the gate disposing of what it writes. Total
-    /// over every pair, as a rule body's calls must be, Eggnog 1.1.1 running them in no promised order: a pair outside a
-    /// template's own tests, or one it cannot write, is the sentinel, opaque and so answered widest, which no box allows.
+    /// spelling of its path: writing, which reads no fact and decides nothing. Which pairs are asked is the rows', and
+    /// which forms hold the gate's, so it writes whatever it is asked that it can. Total over every pair, as a rule body's
+    /// calls must be, Eggnog 1.1.1 running them in no promised order: a pair it cannot write — no comparison, no literal
+    /// rendering a boolean beside A5 — is the sentinel, opaque and so answered widest, which no box allows.
     /// </summary>
     internal static class RenderingTemplates
     {
@@ -43,30 +43,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ServiceForm? Write(TemplateId id, bool pos, PredicateAtom atom, string path)
         {
-            // A comparison with its literal, whose core is never null; or an IN, a null test or a presence test.
-            var (core, literal, op) = (Core(atom, path), atom.Operand, atom.Operand is null ? null : Op(atom.Test));
-            var (ordering, text) = (op is Less or LessOrEqual or Greater or GreaterOrEqual, literal is not null && JsonValues.IsString(literal));
+            // The core is the comparison with its literal, an IN as its equalities, or the presence it tests; none for a null test.
+            var (core, literal) = (Core(atom, path), atom.Operand);
             var (defined, isNull) = (ServiceForm.TestOf(IsDefined, path), ServiceForm.TestOf(IsNull, path));
-            ServiceForm[] typed = ReadingTest(atom.Reader) is { } t ? [ServiceForm.TestOf(t, path)] : [], untyped = [.. typed.Select(ServiceForm.NotOf)];
+            ServiceForm[] typed = RenderingRexGrammar.TypeTests.TryGetValue(atom.Reader, out var t) ? [ServiceForm.TestOf(t, path)] : [], untyped = [.. typed.Select(ServiceForm.NotOf)];
             ServiceForm Completed(IEnumerable<ServiceForm> cores) => Any([.. cores, isNull, ServiceForm.NotOf(defined), .. untyped])!;
             ServiceForm Restricted() => All([defined, ServiceForm.NotOf(isNull), .. typed])!;
+            ServiceForm ByKind(CosmosServiceTest kind) => pos ? Any([core!, ServiceForm.TestOf(kind, path)])! : All([core!, ServiceForm.NotOf(ServiceForm.TestOf(kind, path))])!;
 
-            return (id, pos) switch
+            return id switch
             {
-                (TemplateId.Bare, _) => core,
-                (TemplateId.Restricted, true) when op == NotEqual => All([.. Restricted().Members, core!]),
-                (TemplateId.Completed, false) when op is Equal || ordering => Completed([core!]),
-                (TemplateId.Completed, false) when atom.Test == PredicateAtom.InTest => Any(Points(atom).Select(p => Completed([ServiceForm.CompareOf(Equal, path, p)]))),
-                (TemplateId.NullTest, _) when atom.Test == PredicateAtom.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
-                (TemplateId.BooleanAlternatives, _) when op == Equal && KindOf(literal!) == TruthKind && Alternatives(core!, literal!, path) is var alternatives =>
-                    pos ? Any(alternatives) : Completed(alternatives),
-                (TemplateId.ByKind, _) when ordering && text => pos
-                    ? Any([core!, ServiceForm.TestOf(op is Greater or GreaterOrEqual ? IsBool : IsNumber, path)])
-                    : All([core!, ServiceForm.NotOf(ServiceForm.TestOf(op is Greater or GreaterOrEqual ? IsNumber : IsBool, path))]),
-                (TemplateId.StringBranch, true) when (op == NotEqual || ordering) && text => All([defined, Any([ServiceForm.NotOf(ServiceForm.TestOf(IsString, path)), core!])!]),
-                (TemplateId.Window, true) when (op == Equal || ordering) && Window(op!.Value, literal!, path) is { } window =>
-                    All([defined, Any([ServiceForm.NotOf(ServiceForm.TestOf(IsNumber, path)), window])!]),
-                (TemplateId.KindRestricted, false) when op is not null && KindTest(atom.Reader) is { } kind => All([ServiceForm.TestOf(kind, path), core!]),
+                TemplateId.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
+                _ when core is null => null,
+                TemplateId.Bare => core,
+                TemplateId.Restricted => All([.. Restricted().Members, core]),
+                TemplateId.Completed when atom.Test == PredicateAtom.InTest => Any(Points(atom).Select(p => Completed([ServiceForm.CompareOf(Equal, path, p)]))),
+                TemplateId.Completed => Completed([core]),
+                TemplateId.BooleanAlternatives when literal is not null && KindOf(literal) == TruthKind => pos ? Any(Alternatives(core, literal, path)) : Completed(Alternatives(core, literal, path)),
+                TemplateId.ByKindBoolean => ByKind(IsBool),
+                TemplateId.ByKindNumber => ByKind(IsNumber),
+                TemplateId.StringBranch => All([defined, Any([ServiceForm.NotOf(ServiceForm.TestOf(IsString, path)), core])!]),
+                TemplateId.KindRestricted => All([ServiceForm.TestOf(IsString, path), core]),
                 _ => null,
             };
         }
@@ -84,52 +81,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>
         static ServiceForm[] Alternatives(ServiceForm core, string literal, string path) =>
             [core, ServiceForm.CompareOf(Equal, path, JsonValues.Of(JsonValues.StringOf(literal) == "true"))];
-
-        /// <summary>
-        /// C2's window on the stored number: each side the bound moved by one, which converting a number moves it by less
-        /// than, left out where the service is not sent it as itself; none where no side is left.
-        /// </summary>
-        static ServiceForm? Window(CosmosServiceTest op, string literal, string path)
-        {
-            if (JsonValues.TryNumberOf(literal, out var bound) == false)
-                return null;
-
-            var above = op is Equal or Greater or GreaterOrEqual ? Moved(bound, -1) : null;
-            var below = op is Equal or Less or LessOrEqual ? Moved(bound, 1) : null;
-            return All(new[] { above is null ? null : ServiceForm.CompareOf(Greater, path, above), below is null ? null : ServiceForm.CompareOf(Less, path, below) }.OfType<ServiceForm>());
-        }
-
-        /// <summary>
-        /// A bound moved by one, where the service compares what it is sent as that number, as <c>ServiceLeaf</c> places a
-        /// literal: a whole number an int64 holds, sent as one, or a number whose double it is.
-        /// </summary>
-        static string? Moved(decimal bound, int by)
-        {
-            if (by < 0 ? bound < decimal.MinValue + 1 : bound > decimal.MaxValue - 1)
-                return null;
-
-            var moved = bound + by;
-            var sent = moved == decimal.Truncate(moved) && moved >= long.MinValue && moved <= long.MaxValue || DoubleBound.Compare(DoubleBound.Of(moved), moved) == 0;
-            return sent ? JsonValues.Of(moved) : null;
-        }
-
-        /// <summary><c>T(p)</c>, the reading's type test, as the translator writes it: text's, and a scalar <c>RETURNING</c>'s by its type.</summary>
-        static CosmosServiceTest? ReadingTest(string reader) => reader == PredicateAtom.TextReader ? IsPrimitive : TypeOfReading(reader, "typed:") switch
-        {
-            "BOOLEAN" => IsBool,
-            "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" or "FLOAT" or "REAL" or "DOUBLE" => IsNumber,
-            _ => null,
-        };
-
-        /// <summary>C4's kind: a string for text or a text cast, a number for a cast to one.</summary>
-        static CosmosServiceTest? KindTest(string reader) => reader == PredicateAtom.TextReader ? IsString : TypeOfReading(reader, "cast:") switch
-        {
-            "VARCHAR" => IsString,
-            "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" or "FLOAT" or "REAL" or "DOUBLE" or "DECIMAL" => IsNumber,
-            _ => null,
-        };
-
-        static string? TypeOfReading(string reader, string prefix) => reader.StartsWith(prefix, StringComparison.Ordinal) ? reader[prefix.Length..].Split(':')[0] : null;
 
         static CosmosServiceTest? Op(string test) => test switch
         {

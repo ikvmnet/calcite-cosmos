@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var tip = RenderingGenerateMutationTests.Tip.Value.Triggers.First(t => t.Sql == c.Sql).Classes;
             var sent = shadow.Classes.Where(k => k.Name == name).ToList();
             sent.Select(k => (k.Set, k.Ir, k.Form?.Text)).Should().BeEquivalentTo(tip.Select(k => (k.Set, k.Ir, k.Form?.Text)), "S sends its own form");
-            sent.Should().NotContain(k => k.Form != null && k.Form.Parts.Prepend(k.Form).Any(f => f.Equals(refuted[0].Piece.Form) || f.Equals(ServiceForm.Strip(refuted[0].Piece.Form))),
+            sent.Should().NotContain(k => k.Form != null && k.Form.Subforms.Any(f => f.Equals(refuted[0].Piece.Form) || f.Equals(ServiceForm.Strip(refuted[0].Piece.Form))),
                 "nothing S sends holds the wrong part");
         }
 

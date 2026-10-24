@@ -155,20 +155,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// No template writes two string orderings of one path: the pair <c>parted</c> rule reads only a claim's
-        /// <c>conjunct</c> rows, so a template that wrote a range would never be held to <c>Range</c>. The window's two
-        /// bounds are numbers, which part no order.
+        /// <c>conjunct</c> rows, so a template that wrote a range would never be held to <c>Range</c>.
         /// </summary>
         [Fact]
-        public void NoTemplateWritesTwoOrderingsOfOnePath()
-        {
-            var forms = from atom in Synthetic(plain: false) from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>()
-                        select RenderingTemplates.Spell(id, pos, atom, Path);
-            forms.Where(f => Parts(f).Count(g => RenderingPrimitives.StringOrdering.Function(g)) > 1).Select(f => f.Text).Should().BeEmpty();
-            forms.Any(f => Parts(f).Count(g => g.Kind == ServiceFormKind.Compare && g.Test is CosmosServiceTest.Greater or CosmosServiceTest.Less) == 2).Should().BeTrue("the window bounds both sides");
-        }
+        public void NoTemplateWritesTwoOrderingsOfOnePath() => (from atom in Synthetic(plain: false) from id in System.Enum.GetValues<TemplateId>()
+                from pos in System.Enum.GetValues<RenderPosition>() select RenderingTemplates.Spell(id, pos, atom, Path))
+            .Where(f => f.Subforms.Count(g => RenderingPrimitives.StringOrdering.Function(g)) > 1).Select(f => f.Text).Should().BeEmpty();
 
         /// <summary>
-        /// A price orders by rank, then nodes, then text, a total order agreeing with equality, every real price below
+        /// A price orders by nodes, then text, a total order agreeing with equality, every real price below
         /// <see cref="Priced.None"/>; a form's nodes count its leaves, its negations and its connectives.
         /// </summary>
         [Fact]
@@ -178,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var forms = new[] { a, b, ServiceForm.NotOf(b), All(b, a), Any(b, ServiceForm.NotOf(a)), All(b, Any(a, b), ServiceForm.NotOf(a)), ServiceForm.ConstantOf(true) };
             forms.Select(f => f.Nodes).Should().Equal(1, 1, 2, 3, 4, 8, 1);
 
-            var prices = forms.Select(Priced.Of).Append(Priced.None).Append(new Priced(1, 1, a)).Append(Priced.None with { }).ToList();
+            var prices = forms.Select(Priced.Of).Append(Priced.None).Append(new Priced(9, a)).Append(Priced.None with { }).ToList();
             foreach (var p in prices)
                 foreach (var q in prices)
                 {
@@ -229,10 +224,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingPrimitives.FormIsJoinOf.Function(Any(a, b), All(a, b), a).Should().BeFalse("an AND is no part of an OR's flattening");
 
             var implied = ValueSet.Of(b, a, All(a, ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), b));
-            RenderingWeakening.AtLeaf(implied, RenderPosition.Pos).Should().Be(ServiceForm.Joined(and, ServiceForm.Joined(and, implied[0], implied[1]), implied[2]));
-            RenderingWeakening.AtLeaf(implied, RenderPosition.Neg).Should().Be(Any([.. implied]));
-            (RenderingWeakening.AtLeaf(ValueSet<ServiceForm>.Empty, RenderPosition.Pos), RenderingWeakening.AtLeaf(ValueSet<ServiceForm>.Empty, RenderPosition.Neg)).Should().Be((yes, no));
-            RenderingWeakening.AtLeaf(ValueSet.Of(a), RenderPosition.Neg).Should().Be(a);
+            ServiceForm.Folded(implied, RenderPosition.Pos).Should().Be(ServiceForm.Joined(and, ServiceForm.Joined(and, implied[0], implied[1]), implied[2]));
+            ServiceForm.Folded(implied, RenderPosition.Neg).Should().Be(Any([.. implied]));
+            (ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Pos), ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Neg)).Should().Be((yes, no));
+            ServiceForm.Folded(ValueSet.Of(a), RenderPosition.Neg).Should().Be(a);
         }
 
         /// <summary>Negating folds both constants and strips one <c>NOT</c>; presence is <c>IS_DEFINED</c>, beneath a <c>NOT</c> its negation.</summary>
@@ -273,8 +268,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The Rex builder writes a string comparison over any reader, a number over one typed as a number, a boolean over
-        /// <c>RETURNING BOOLEAN</c> alone, every type test, constants and the connectives over them; nothing else.
+        /// The Rex builder writes a string comparison over any reader, a number over a <c>RETURNING</c> of a number type,
+        /// never over a cast of the text nor <c>RETURNING DECIMAL</c>, which parse a string the service compares as none, a
+        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test, constants and the connectives over them; nothing else.
         /// </summary>
         [Fact]
         public void RexWritableFollowsTheGrammar()
@@ -288,19 +284,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var cases = new (ServiceForm Form, string Reader, bool Writes)[]
             {
                 (Compare(s), text, true), (Compare(s), raw, true), (Compare(s), integer, true), (Compare(s), cast, true),
-                (Compare(n), integer, true), (Compare(f), cast, true), (Compare(n), PredicateAtom.TypedReader("DECIMAL"), true),
+                (Compare(n), integer, true), (Compare(f), PredicateAtom.TypedReader("DOUBLE"), true), (Compare(f), cast, false), (Compare(n), PredicateAtom.TypedReader("DECIMAL"), false),
+                (Compare(n), PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader), false),
                 (Compare(n), text, false), (Compare(n), raw, false), (Compare(n), boolean, false), (Compare(n), PredicateAtom.CastReader("VARCHAR", raw), false),
                 (Compare(t), boolean, true), (Compare(t), raw, false), (Compare(t), text, false), (Compare(JsonValues.NullValue), raw, false),
                 (ServiceForm.InOf(Path, ValueSet.Of(s, JsonValues.Of("y"))), raw, true), (ServiceForm.InOf(Path, ValueSet.Of(s, n)), raw, false), (ServiceForm.InOf(Path, ValueSet.Of(s, n)), integer, true),
                 (ServiceForm.ConstantOf(false), raw, true), (ServiceForm.BareOf(Path), boolean, false), (ServiceForm.OpaqueOf("IS_STRING(c.x)", ValueSet.Of(Path)), raw, false),
-                (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), cast, true),
-                (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), cast, false),
+                (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), integer, true),
+                (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), cast, false),
+                (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), integer, false),
             };
 
             cases.Select(c => (c.Form.Text, c.Reader, Writes(c.Form, c.Reader))).Should().Equal(cases.Select(c => (c.Form.Text, c.Reader, c.Writes)));
-            RenderingRexGrammar.Tests.Should().Equal(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
+            RenderingRexGrammar.Written.Tests.Should().BeEquivalentTo(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
                 "every IS_* test the translator writes has an in-process body");
-            RenderingRexGrammar.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
+            RenderingRexGrammar.Written.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
         }
 
         /// <summary>The sentinels are inert: claimed for an atom, neither agrees nor is refuted, at either verdict.</summary>
@@ -308,7 +306,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheSentinelsAgreeWithNothingAndAreRefutedByNothing()
         {
             var atom = Ne(OracleFixture.Text(LabelPath), "bikes");
-            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), RenderingTemplates.Spell(TemplateId.Window, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
+            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), RenderingTemplates.Spell(TemplateId.BooleanAlternatives, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
             {
                 sentinel.Kind.Should().Be(ServiceFormKind.Opaque);
                 var (equal, implies) = Check(atom, sentinel);
@@ -331,7 +329,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An atom of every reader, test and kind of operand; plain, one ordinary literal of each kind, or with the literals
-        /// that test the window's arithmetic and the band and surrogate filters beside them.
+        /// that test the edges of numbers and the band and surrogate filters beside them.
         /// </summary>
         static IEnumerable<PredicateAtom> Synthetic(bool plain)
         {
@@ -356,8 +354,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 yield return PredicateAtom.IsDefined(reader);
             }
         }
-
-        static IEnumerable<ServiceForm> Parts(ServiceForm form) => form.Members.SelectMany(Parts).Prepend(form);
 
     }
 
