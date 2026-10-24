@@ -6626,8 +6626,8 @@ literal with a control character are not printed.
 **The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is
 refused at load on either target; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
 trips the wire. G2–G4, a template without the null guard, a service evaluation answering `!=` over a null as false
-beneath it, and a disjunct's form offered to its sibling, are now planted over templates, and G6–G14 beside them, in
-generate mode (*Faults planted in S*).
+beneath it, and a disjunct's form offered to its sibling, are now planted over templates, and G6–G8, G11, G12 and G14
+beside them, in generate mode (*Faults planted in S*).
 
 ### Witnesses, and the precision line
 
@@ -6961,7 +6961,8 @@ path and position. The part a structure shows wrong is refuted at the pinned cel
 where that cell keeps a superset of Calcite's rows, (F,t) or (U,t) or their duals beneath a `NOT`: never P3's (T,f).
 S sends what it sent unplanted.
 
-**The gate faults, in generate mode.**
+**The gate faults, in generate mode.** G9, G10 and G13 plant what is not built yet, the production memo, the oracle's
+generations and the Rex builder, and come with them.
 - *G2* proposes beside every template's form that form with its null guard dropped; no node keeps a dropped form as
   its best where source A's documents show the guard kept something out. *G3* adds the service leaf answering `!=`
   over a null as false: the gate agrees with the dropped inequality, `Min` prefers it, S sends it, and source A finds
