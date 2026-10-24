@@ -224,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The declaration in one generation: its frozen context, and <c>D0</c> beneath it once an armed statement asks.
+        /// The declaration in one generation: its frozen context, and <c>D0</c> beneath it once the first statement asks.
         /// </summary>
         sealed class Compiled
         {

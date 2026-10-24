@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object)), Outright(P("x", "y"), Present)));
 
         /// <summary>
-        /// Every path a statement reads is imported as the node the licence chose holds it: round 1's node, armed, is
+        /// Every path a statement reads is imported as the node the licence chose holds it: round 1's node is
         /// <c>D0</c>, over every container the plan digests plan over, every path each mentions, a child of each and a
         /// path none mentions; and a later round's, a stratum, narrowed by the conjunct admitted before.
         /// </summary>
@@ -70,8 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var theory = generations.Bind(container.Facts);
                 mentioned += theory.MentionedPaths.Count;
                 var paths = theory.MentionedPaths.SelectMany(p => new[] { p, p.Property("zz") }).Append(P("unmentioned"));
-                using (StatementTerms.ArmDeclaredPossible())
-                    Compare(new CosmosOracle(theory, generations).Admit(new PredicateStatement(paths.Select(p => new SqlPredicate.IsDefined(Raw(p))).ToArray())), 0);
+                Compare(new CosmosOracle(theory, generations).Admit(new PredicateStatement(paths.Select(p => new SqlPredicate.IsDefined(Raw(p))).ToArray())), 0);
             }
 
             var a = Eq(Text(P("a")), "x");
@@ -104,7 +103,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var generations = new JsonFactGenerations(long.MaxValue);
             var theory = Declaration(generations);
-            using var armed = StatementTerms.ArmDeclaredPossible();
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { Eq(Text(P("a")), "x") }));
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
 
@@ -184,16 +182,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var paths = new[] { P("a"), P("o", "b"), P("x"), P("x", "y"), P("c"), P("c", "d") };
             var statement = new PredicateStatement(paths.Select(p => new SqlPredicate.IsDefined(Raw(p))).ToArray());
 
-            // Armed, D0 holds a and x.y; o.b lies beneath o and x above x.y; c and c.d are spoken of nowhere.
-            CosmosStatementScope scope;
-            using (StatementTerms.ArmDeclaredPossible())
-                scope = new CosmosOracle(theory, generations).Admit(statement);
+            // D0 holds a and x.y; o.b lies beneath o and x above x.y; c and c.d are spoken of nowhere.
+            var scope = new CosmosOracle(theory, generations).Admit(statement);
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
             Report(d0, rules).Should().Match<ImportReport>(r => r.Paths == 6 && r.DefaultedOpen == 2 && r.Constrained.Count == 2 && r.Contradicted == false);
 
-            // Unarmed, the declaration's own context holds no possible row: every mentioned path's default is constrained.
-            var (context, unarmed) = new CosmosOracle(theory, generations).Admit(statement).ContextFor(OracleLicence.RenderConjunct(0));
-            Report(context, unarmed).Should().Match<ImportReport>(r => r.DefaultedOpen == 2 && r.Constrained.Count == 4);
+            // The declaration's own context holds no possible row: every mentioned path's default is constrained.
+            Report(theory.Declaration()!.Context, rules).Should().Match<ImportReport>(r => r.DefaultedOpen == 2 && r.Constrained.Count == 4);
 
             // A node that keeps no document: a declared string equal to two values.
             var nothing = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { Eq(Text(P("a")), "x"), Eq(Text(P("a")), "y") }));

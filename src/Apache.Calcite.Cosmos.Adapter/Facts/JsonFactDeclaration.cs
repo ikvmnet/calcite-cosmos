@@ -15,8 +15,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <param name="Declared">The context as a fact set: what every statement's root reads, so that the paths a root is
     /// told of are the declaration's, shared by every statement beneath it.</param>
     /// <param name="DeclaredPossible">The context's <c>D0</c>, a frozen child with a <c>possible</c> row for every path the
-    /// declaration mentions, opened on first call; <c>null</c> where it states nothing. An armed statement is rooted there
-    /// (<see cref="StatementTerms.ArmDeclaredPossible"/>).</param>
+    /// declaration mentions, opened on first call; <c>null</c> where it states nothing. Every statement is rooted there
+    /// (<see cref="StatementTerms.Root"/>).</param>
     internal sealed record JsonFactDeclaration(JsonFactGenerations.Generation Generation, Scope Context, JsonFactVocabulary Vocabulary, JsonFactSet Declared, Func<Scope?> DeclaredPossible);
 
 }

@@ -386,10 +386,9 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
 frozen child of that context: a `declared(p)` row for every path the declaration mentions and holds a term of, and the
 one local rule above, so `Decide` narrows each path from the declaration's tables as it narrows an atom's. It is built
 once a declaration and generation, however many planning threads ask, and is `null` where nothing is mentioned or its
-run does not complete. A statement is rooted there only in a flow `StatementTerms.ArmDeclaredPossible` armed; the
-oracle remembers an armed tree apart, and production arms nothing. The root's view is still the declaration's own fact
-set, and a stratum's `possible` meets `D0`'s, which is no narrower, so no verdict or plan changes (`DESIGN.md`, *The
-declaration's `possible` rows: `D0`*).
+run does not complete. Every statement is rooted there, or at the context where it has none. The root's view is still
+the declaration's own fact set, and a stratum's `possible` meets `D0`'s, which is no narrower, so no verdict or plan
+changes (`DESIGN.md`, *The declaration's `possible` rows: `D0`*).
 
 **What a computed string's characters are** (10 rules, ruleset `characters`), asked by a string function's rule of its
 argument (`JsonFactSet.CharactersOf`), in a context made for the question beneath the one the facts are read from:
@@ -418,10 +417,9 @@ verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value'
 - `CosmosOracleReplayTests`: the fact family's defects, each answered by the general rules through the planner's
   statement;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
-- `DeclaredPossibleTests`: `D0`'s rows against a stratum holding an atom over each path, on every container the plan
-  digests plan over and population D's first 64 declarations; one build under sixteen threads; and an armed statement
-  rooted at `D0` and remembered apart. `PlanDigestTests.TheDeclarationsPossibleRowsChangeNoPlan` (explicit) plans every
-  input with the switch off and on, and requires the same digests;
+- `DeclaredPossibleTests`: `D0`'s rows against a stratum of the context holding an atom over each path, on every
+  container the plan digests plan over and population D's first 64 declarations; one build under sixteen threads; and a
+  statement rooted at `D0`, or at the context where a declaration has none;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, one in eight with no
   conditional rule as a container that declares no schema has, random filters over their paths, and 64 documents drawn
   from each declaration and not from its filter; from a stream of their own, patterns, `enum`s and `const`s of strings
@@ -430,7 +428,8 @@ verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value'
   `chars` among them; every claim and verdict each licence's scope answers; what each scope says of each computed
   string's characters, against the string Calcite's runtime computes; every `holds`, verdict and `possible` row; every
   `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
-  each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
+  each conjunct was handed to render from; and the conjuncts called redundant. Every statement is rooted at `D0`, so
+  its rows are among those checked. 200 trials a run, 5,000 on request;
 - `CharactersTests` and `CosmosOracleCharactersTests`: what the theory derives of a path's characters, by the rules
   and through the oracle's strata; `ComputedCharactersTests`, of a computed string's, and `StringCallsTests`, the
   table of what each function draws held to Calcite's runtime over every code point;

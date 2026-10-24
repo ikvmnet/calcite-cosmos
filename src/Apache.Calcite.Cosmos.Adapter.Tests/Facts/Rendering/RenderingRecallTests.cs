@@ -194,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Claims a text, joined from its conjuncts' as <c>Translate</c> joins them, for the conjuncts of the statement
-        /// planning read, imported as the check run imports them: from their root, <c>D0</c> armed. The statement is read
+        /// planning read, imported as the check run imports them: from their root, <c>D0</c>. The statement is read
         /// whether the translator admits its conjuncts or not, so no fault need make it.
         /// </summary>
         internal static RenderingMemo.Entry Replay(string sql, IReadOnlyList<string> texts, IReadOnlyList<CosmosParameter> parameters, RenderingCheckRun? run = null)
@@ -212,12 +212,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return entry;
         }
 
-        /// <summary>The filter statement planning a statement read whose conjuncts are as many as given, <c>D0</c> armed.</summary>
+        /// <summary>The filter statement planning a statement read whose conjuncts are as many as given.</summary>
         static CosmosFilterStatement Statement(string sql, int conjuncts)
         {
             var recorder = new RenderingRecorder();
             using (recorder.Arm())
-            using (StatementTerms.ArmDeclaredPossible())
                 RenderingInputs.Differential("recall", [sql], RenderingInputs.Containers).Single().Plan();
 
             return recorder.Read.First(s => s.Statement.Conjuncts.Count == conjuncts);

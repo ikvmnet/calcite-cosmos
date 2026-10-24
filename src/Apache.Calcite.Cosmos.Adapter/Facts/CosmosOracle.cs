@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns the tree of contexts for a statement, remembered by its digest and its root in the current generation.
+        /// Returns the tree of contexts for a statement, remembered by its digest in the current generation.
         /// </summary>
         StatementTerms Terms(PredicateStatement statement)
         {
@@ -166,8 +166,8 @@ namespace Apache.Calcite.Cosmos.Facts
             if (declaration is null)
                 return StatementTerms.Unknowing(statement);
 
-            // A tree rooted at D0 is remembered apart from one rooted at the declaration's own context.
-            var key = (StatementTerms.DeclaredPossibleArmed ? "d0|" : "") + statement.Digest;
+            // Every tree of a generation has one root, the declaration's D0 or its context, so the digest alone keys it.
+            var key = statement.Digest;
 
             lock (_memoLock)
             {

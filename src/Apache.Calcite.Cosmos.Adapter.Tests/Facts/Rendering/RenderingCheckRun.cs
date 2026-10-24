@@ -26,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The check run (spec §5.3, as Appendix E amends it): each input planned and implemented in a flow armed for the
-    /// capture and for <c>D0</c>, then what the service is asked together checked as one junction in S: each <c>WHERE</c>
+    /// capture, then what the service is asked together checked as one junction in S: each <c>WHERE</c>
     /// sent, and each statement never sent as the conjunction its rounds admitted (<c>DESIGN.md</c>, <i>A check is what
     /// the service is asked together</i>).
     /// </summary>
@@ -199,7 +199,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var recorder = new RenderingRecorder();
             var queries = new List<(string? Where, int From, int To)>();
             using (recorder.Arm())
-            using (StatementTerms.ArmDeclaredPossible())
             {
                 RelNode planned;
                 try

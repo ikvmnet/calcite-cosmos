@@ -292,20 +292,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// <c>D0</c> stating that every path the declaration mentions is there: a <c>possible</c> row of
         /// <see cref="PathValues.AnythingThere"/> where its rule writes <see cref="PathValues.Anything"/>, which a document
-        /// without an optional path refutes. Armed, so that every statement is rooted at <c>D0</c>.
+        /// without an optional path refutes.
         /// </summary>
         [Fact]
-        public void ADeclaredPathReadAsThereInD0IsCaught()
-        {
-            using var arming = StatementTerms.ArmDeclaredPossible();
-            Caught(Planted(rules =>
-                rules.Decide.DefineRule("planted: a path the declaration states a fact of is there", r =>
-                {
-                    var p = r.Var<JPath>("p");
-                    r.When(rules.Declared.Of(p));
-                    r.Then(rules.Possible.Of(p).Is(PathValues.AnythingThere));
-                })), "possible");
-        }
+        public void ADeclaredPathReadAsThereInD0IsCaught() => Caught(Planted(rules =>
+            rules.Decide.DefineRule("planted: a path the declaration states a fact of is there", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(rules.Declared.Of(p));
+                r.Then(rules.Possible.Of(p).Is(PathValues.AnythingThere));
+            })), "possible");
 
         /// <summary>
         /// The predicate rules of a graph of the test's own, planted.

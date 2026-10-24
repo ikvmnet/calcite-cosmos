@@ -213,12 +213,12 @@ mutation tests beside it hold the check itself to documents and to the translato
 - **The asserted set is `Portable`:** a proof must hold on every service the adapter serves, Azure and
   the emulator. Each check is read under the emulator's set beside it, and reported.
 - **`COSMOS_PARTITION_GATE=1`** takes it to the partition run's 1,000 predicates, as it does the
-  differential's. Run it so, with the two explicit checks of the planner, before a pull request that
+  differential's. Run it so, with the explicit check of the planner, before a pull request that
   changes the translator, the split rule or the rows:
 
   ```sh
   COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
-  COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingCaptureTests.CaptureChangesNoPlan     -method Apache.Calcite.Cosmos.Adapter.Tests.Planning.PlanDigestTests.TheDeclarationsPossibleRowsChangeNoPlan
+  COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingCaptureTests.CaptureChangesNoPlan
   ```
 
 - **The reports** land in `TestResults/rendering/` beside the test assembly, which CI archives with each

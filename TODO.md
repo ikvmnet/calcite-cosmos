@@ -2730,9 +2730,8 @@ across documents* and *A join of a container to itself* is the record.
   lines off each.
 - **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
   makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
-- **The population D run rooted at `D0` is 50 trials a pull request** — *small.* §4.3 asks for 200 and §10.3 budgets
-  source B at 20 to 50; the check run is already above §10.3's budget (below), so 50 stay, the unarmed 200 keep
-  production's root, and the 5,000 armed stay explicit.
+- **The population D run rooted at `D0` is 50 trials a pull request** — *done (g08).* Production roots every statement
+  at `D0`, so the 200 trials a run and the 5,000 on request are rooted there, and the 50 armed beside them retired.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
   retires its generation, and F's context loses its facts and fails no plan (g07, one list for both), but Eggnog 1.1.1
   cannot lower its limits (`EGraphOptions` has none), and an `OverflowException` a primitive throws arrives as a

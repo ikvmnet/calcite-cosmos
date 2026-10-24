@@ -6373,16 +6373,17 @@ other six narrow from the declaration's tables as they narrow an atom's path. It
 generation, however many planning threads ask (`Lazy`, `ExecutionAndPublication`), and is `null` where nothing is
 mentioned or its run does not complete.
 
-**Production carries it nowhere.** The rule is local, so it is active only in `D0` and beneath it. A statement is rooted
-at `D0` only in a flow that `StatementTerms.ArmDeclaredPossible` armed (an `AsyncLocal`), the oracle keys an armed tree
-`d0|` apart from an unarmed one, and production arms nothing. Unarmed, what runs is the `declared` table's definition in
-each graph, a `Lazy` per compiled declaration, and one read of the switch per statement tree and per memo lookup.
+**Every statement is rooted there.** `StatementTerms` roots a statement's tree at `D0`, or at the declaration's context
+where it has none, so every stratum lies beneath `D0`, where the local rule is idle. A generation's trees share one
+root, and the oracle remembers a tree by its digest alone. Until g08 a statement was
+rooted there only in a flow a test armed, keyed apart, and production armed nothing (*`D0`, every statement's root*,
+below).
 
 **It changes no verdict, fact set or plan.** The root's view is still the declaration's own fact set (`ViewOf` compares
 the root's scope by reference), so the translator's round-1 facts are unchanged. A stratum's row for an atom's path
 starts from `D0`'s instead of `Anything`, and `D0`'s, read from tables the stratum inherits, is no narrower than the
-stratum's, so the meet is the stratum's own. The plan digests with the switch off and on, each in generations of its
-own, are byte-equal.
+stratum's, so the meet is the stratum's own. The plan digests with statements rooted at the context and at `D0` are
+byte-equal.
 
 **`D0` keeps a declared domain as stated.** For a path an atom reads, a stratum keeps only the domain's values of a type
 the path may hold (the last rule of what a predicate establishes), and `D0` holds no atom. So where a declaration states
@@ -6390,7 +6391,7 @@ a domain beside narrower types, `D0`'s row lists values of a kind it excludes. I
 `PathValues.Admits` and `PathCell.Split` read a value only of a kind the row allows; it is the spelling that differs.
 
 **`D0` makes no term.** It writes a row only for a path the declaration's context holds a term of: it runs no rule of
-JSON, and a term made there would put into every stratum beneath it a path the unarmed stratum never holds. A body atom
+JSON, and a term made there would put into every stratum beneath it a path no stratum of the context holds. A body atom
 of a rule the theory cannot read is mentioned and never made, and has no row. A path the round-1 view mentions lazily,
 an element or a child of a declared path, has none either; the importer counts each as a default.
 
@@ -6460,7 +6461,7 @@ own position is read from the same run, and reported beside, never claimed.
 **The import is the statements' root.** A bundle takes one source, and a check holds every conjunct its statements'
 rounds admitted. A stratum assumes the conjuncts admitted before it, and the node a residual conjunct renders from is
 the last stratum, which assumes them all: checked there, those conjuncts would be agreed with only where they already
-hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, and every statement over one container
+hold. The root (`D0`) assumes none; it is the node round 1 renders from, and every statement over one container
 shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong.
 
 **A later round's conjunct is read beside the facts it was rendered from.** The translator renders a round-2 conjunct
@@ -6492,7 +6493,7 @@ stratum assumes hold, which is what the translator's licence promised. No fact i
 path from one node, and a stratum narrows only the cells of its own conjunct's atoms.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
-armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the
+armed for the capture, and read only afterwards, so the importer opens nothing planning did not; the
 corpus's statements share a harness and are planned one at a time, the rest two at a time. A bundle runs within count
 limits that grow with the form, since descent and evaluation peel a junction a member at a time. A check is memoised by
 its IR, the import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a
@@ -7053,6 +7054,27 @@ count it read before. No plan moves: the digests at 200 and 1,000 predicates are
 **What holds it.** `JsonFactTheoryTests.AGraphPastTheGaugeStartsTheNextGeneration`, the gauge forced to just past what a
 generation uses defining the rules, since no test can spend half of 2^31 ids; and
 `AnOverflowLosesAFactAndThrowsNothing`, a context's mention throwing as the graph would.
+
+### `D0`, every statement's root
+
+**Why before the oracle.** Every bundle S opens imports from its statement's root, and round 1 renders from it. The
+declaration's context holds no `possible` row, so rooted there a round-1 conjunct imports the top for every path it
+reads, counted constrained, and S proves little of it. The check run and the shadow were rooted at `D0` by a test's
+switch; g11's oracle and g12's admission import from production's root, so production roots there first, in a commit of
+its own that changes no plan.
+
+**What F does now.** `StatementTerms` roots every statement at `D0`, or at the declaration's context where it has none
+(nothing mentioned, or a run that stopped short). The switch, its `AsyncLocal` and the oracle's `d0|` key prefix are
+gone. A planning path now builds `D0` once a declaration and generation, on the first statement asked of it, and opens
+every stratum and every question's context beneath it, where the local rule is idle, rather than beneath the context.
+
+**What it costs, and what holds it.** `D0`'s build is F's time: 1.8–5.6 ms a declaration at the median at 16 % load
+(Stage 1), 5.3–15.0 ms with the machine saturated. The corpus planned new rooted at `D0` against the context differed by
+a median of −0.40 s (quartiles −0.84 to +0.25 s) saturated, and −0.05 to +0.08 s at Stage 1: below the noise. The plan
+digests before and after are byte-equal at 200 and 1,000 predicates, both frameworks, the evidence
+`TheDeclarationsPossibleRowsChangeNoPlan` gave with the switch off and on; it retires with the switch, as does the cost
+test that timed the corpus both ways. Population D's 200 trials a run and 5,000 on request root at `D0`, so the 50 armed
+trials beside them retire; `DeclaredPossibleTests` still compares `D0`'s rows with a stratum rooted at the context.
 
 ---
 
