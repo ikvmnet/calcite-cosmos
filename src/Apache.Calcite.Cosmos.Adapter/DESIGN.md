@@ -6916,27 +6916,41 @@ readings among it, so a statement asked again opens none.
 - *Every leg's set is asserted on every leg.* `Production` and `Emulator` are both asserted, which holds each leg to
   its own a fortiori, and `Portable` is reported beside. The check run's own lines stay under `Portable`, the stricter.
 
-**What each conjunct is.** Same, respelled (both exact; R5's orders, and P8 where S's form is shorter), gain, the
-translator shown wrong (its text refuted at the key), regression (the translator pushes, S owns and declines, not
-refuted) with its reason — a form the band filter refused, the round read at a shallower stratum than the
-translator's, the composite, or the conjunct on its merits — translator-written, and engine. A residual's weakening is
-the same as J's, tighter or looser on source A's documents, S's or J's alone, dropped, or pushed exactly; a looser one
-says whether O7 lists it, as the text-equality alternatives or as J's weakening unproven to S.
+**What each conjunct is, read off rows the shadow holds.** Same; respelled, where S's form and the translator's text
+are both exact at the key (R5's orders, and P8 where S's form is shorter); S's alone exact, where the translator's text
+is not, which no switch listing may read as cosmetic; gain; the translator shown wrong (its text refuted at the key);
+regression (the translator pushes, S owns and declines, not refuted) with its reason; translator-written; and engine. A
+regression's reason claims no more than a row says: a form the gate agreed exact that the band filter refused, by S's
+own bands; the translator's text exact at the key, so a form no template proposes; a stratum shallower than the
+translator's, which names no cause; the composite; or the conjunct on its merits. A residual's weakening is the same as
+J's, tighter or looser on source A's documents, S's or J's alone, dropped, or pushed exactly. A looser one says whether
+O7 lists it, read from J's verdict at the weakening's key and the grammar's rows and never from J's shape: implied but
+holding a member the Rex builder cannot write over the conjunct's readings (loss 1, the text-equality alternatives'
+number branch among them, and now K's windows over a cast), or present and unproven to S (loss 5). One whose J verdict
+is missing or refuted is unlisted.
 
 **What holds a generated form.** Source A judges every form the shadow's bundles derived over IR-read atoms — each
 agreement at both positions, the composites among them, each implied form and each weakening — on documents drawn from
 its bundle's import, on every target its set serves: at `Pos` the service's true against Calcite's TRUE, at `Neg` its
 false against Calcite's FALSE. A form whose atoms are stated beneath a stratum is exact where the conjuncts that stratum
-assumes hold and is held to no failure elsewhere, the set-aside cells' promise. The sampler now draws the values an
-import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its conjuncts hold on some. No
-form S would send — a root's best or a residual root's weakening — may rest on documents nothing measured. Source B's
-trials are shadowed and judged on their declared documents.
+assumes hold in any mode Calcite may read them in, `RETURNING` or a column, and is held to no failure elsewhere, the
+set-aside cells' promise. **The judge never rests on the stratum it judges.** A document is ruled out only where the
+container's declaration rejects it, each rule's body and head read by an evaluator of the declaration's own over the
+paths the document sets; never by what the facts graph says a stratum admits, which a coarse reading may narrow. So a
+stratum fault — G12's coarse reading, G11's own facts — shows as a witness of line 1 itself. The check run's source A
+reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
+draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
+conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
+nothing measured, but those in D3's raw scope (a raw ordering, or a raw comparison with a number or a boolean), which
+IrEval reads no raise of until g10 and which are counted apart, as the coverage line counts them. Source B's trials are
+shadowed and judged on their declared documents.
 - *The pairwise check* needs no `IrEval`: two exact agreements of one node at one position, and S's best beside the
   translator's text where the key proved both, keep alike where Calcite answers; where it raises the Equal box allows
   any answer but a failure, and those documents are reported apart.
-- *The fact rewrite* is held at the shadow too: each conjunct it lowered, beside its original in one bundle, has its
-  best claimed for the original, which must never be refuted. An original the loader reads as opaque is never refuted;
-  it is counted.
+- *The fact rewrite* is held by Calcite itself: each conjunct it lowered is asked of S, and S's best is held to the
+  original's node compiled by Calcite's executor through the filter's binding, on source A's documents beside the
+  original's literals, so a UUID or instant cast the loader reads as opaque is judged too. A lowering to the stored
+  form in the wrong case is caught. A conjunct the rewrite deleted is unpaired, and counted.
 - *An opaque residual's weakening* is judged at the gate by Calcite itself: the conjunct's node compiled by Calcite's
   executor, each field filled as the reader fills it through the filter's binding, over source A's documents widened to
   the weakening's paths and the node's literals. Where Calcite keeps a row the weakening keeps it. A binding that reads
@@ -6947,8 +6961,8 @@ whose declaration keeps U+0000 out of the label, and under `Production` over `ty
 tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
 P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 is killed
 on P6:** its C4 form compares the price through a cast, which no accessor writes as it means, so its weakening keeps
-presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom left residual weakens to its presence alone. On a service each exact
-gain's text keeps Calcite's rows.
+presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom
+left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
 
 **What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
 `NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
@@ -6980,14 +6994,15 @@ when it no longer writes the family.
 through a junction by the paths each arm reads, and each part is offered as a planted template at the atoms of its
 path and position. The part a structure shows wrong is refuted at the pinned cell, never S's best, and implied only
 where that cell keeps a superset of Calcite's rows, (F,t) or (U,t) or their duals beneath a `NOT`: never P3's (T,f).
-S sends what it sent unplanted.
+S sends what it sent unplanted. Until the switch the translator writes the family, so under its fault it still writes
+each text again (g16 retires that half).
 
 **The gate faults, in generate mode.** G9, G10 and G13 plant what is not built yet, the production memo, the oracle's
 generations and the Rex builder, and come with them.
 - *G2* proposes beside every template's form that form with its null guard dropped; no node keeps a dropped form as
   its best where source A's documents show the guard kept something out. *G3* adds the service leaf answering `!=`
-  over a null as false: the gate agrees with the dropped inequality, `Min` prefers it, S sends it, and source A finds
-  the null label. Their check-mode replays need no fault now, the conjunct read off the statement planning read; S's
+  over a null as false: the gate agrees with the dropped inequality, `Min` prefers it, S sends it, source A finds the
+  null label, and the pairwise check parts the two exact candidates there. Their check-mode replays need no fault now, the conjunct read off the statement planning read; S's
   plants of M8 and M9 beneath them change no cell of `<> 'bikes'`.
 - *G4* offers the second disjunct's form to the first; it is never the first's best nor within the root's.
 - *G6* lifts a best from an implied agreement, so the raw inequality's bare form, which keeps a null, is sent. A best
@@ -6997,11 +7012,13 @@ generations and the Rex builder, and come with them.
   planted: a weakening is lattice-free, so a second fold beside the right one faults the bundle, which is the
   tripwire; and a conjunction of implied members at `Neg` is looser, never wrong, but over none, where it is `TRUE`.
 - *G8* builds a negation's best from its operand's best at `Pos` where both stand; source A at the root finds it.
-- *G11* hands a conjunct its own stratum (`CosmosOracle.RenderedFrom`). The importer reads the licence table's node,
-  which renders no conjunct from its own facts, so the plant never reaches S; read beneath the node the renderer was
-  handed, S would prove the bare form, which declared documents holding no fact of the conjunct refute.
+- *G11* hands a conjunct its own stratum. Planted in the oracle (`CosmosOracle.RenderedFrom`) it never reaches S, the
+  importer reading the licence table's node, which renders no conjunct from its own facts; so it is planted where it
+  acts, the shadow stating a round's conjunct beneath its own facts with the licence table's assumptions kept. S then
+  proves the bare form, and line 1 itself finds the null label it keeps.
 - *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7:
-  beneath it the bare label is exact and drops that document, which what S sends as built keeps.
+  beneath it the bare label is exact and drops that document, which what S sends as built keeps, and line 1 itself
+  finds a document whose label is the number 7 beside a kind a column reads as 5.
 - *G14* fails a later round's arm on the cells its stratum sets aside; a set-aside cell tolerates anything but a
   failure, so neither the arm nor the round's junction has an exact form, and nothing is admitted.
 

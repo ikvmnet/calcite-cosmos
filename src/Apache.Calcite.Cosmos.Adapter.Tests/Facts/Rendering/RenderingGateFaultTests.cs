@@ -104,8 +104,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// G3, the key generate-mode fault: G2's planted template beneath a service evaluation mutated to answer <c>!=</c>
         /// over a null as false. The gate then agrees with the guard-dropped inequality, <c>Min</c> prefers it, and S sends
         /// it; source A finds the document with a null label, where <see cref="CosmosEval"/> says the service keeps it and
-        /// Calcite does not. So it does of the preview's text the check claims beneath the mutation and S's plants of M8 and
-        /// M9, which the gate agrees with. The witnesses run that document on the emulator.
+        /// Calcite does not, and the pairwise check parts the two exact candidates there. So source A does of the preview's
+        /// text the check claims beneath the mutation and S's plants of M8 and M9, which the gate agrees with. The witnesses
+        /// run that document on the emulator.
         /// </summary>
         [Fact]
         public void G3_AMutatedServiceEvaluationIsFoundBySourceA()
@@ -115,6 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             TestContext.Current.TestOutputHelper?.WriteLine(string.Join("; ", sent.Select(f => f?.Text)));
             sent.Should().NotBeEmpty().And.OnlyContain(f => Unguard(Restricted).Equals(f), "the mutated leaf makes the gate agree, and Min prefers it");
             SourceA(shadow).Witnesses.Should().Contain(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal));
+            RenderingPairwiseTests.Compare(shadow).Disagreements.Should().Contain(d => d.Contains("(candidates)", StringComparison.Ordinal) && d.Contains("{\"label\":null}", StringComparison.Ordinal));
 
             var entry = RenderingRecallTests.Replay(NotBikes, [Unguarded], [RenderingRecallTests.Bikes], new RenderingCheckRun(graph: new RenderingGraph(() => ByRendering(Measured) is var d ? d with { Leaf = NullUnequalIsFalse(d.Leaf) } : d)));
             entry.Asserted.Kind.Should().Be(RenderingVerdictKind.Proven, "the mutated leaf makes the gate agree");
@@ -262,13 +264,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// G11 (#117's shape): the stratum a conjunct is rendered from replaced by one holding its own facts, through the plant
-        /// <see cref="CosmosOracle.RenderedFrom"/>. The importer reads the licence table's node, which assumes no conjunct it
-        /// renders, so S proves the guarded form. Read beneath the node the renderer was handed, S would prove the bare one,
-        /// and source B's declared documents where the conjunct's own facts do not hold refute it.
+        /// G11 (#117's shape): the stratum a conjunct is rendered from replaced by one holding its own facts. Planted in the
+        /// oracle (<see cref="CosmosOracle.RenderedFrom"/>) it never reaches S, the importer reading the licence table's node,
+        /// which assumes no conjunct it renders. Planted where it acts, the node the shadow states a round's conjunct beneath
+        /// with the licence table's assumptions kept, S proves the bare form, and line 1 itself finds the null label it keeps.
         /// </summary>
         [Fact]
-        public void G11_AConjunctsOwnStratumIsNeverWhatTheImporterReads()
+        public void G11_AConjunctReadBeneathItsOwnStratumIsFoundByLineOne()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
             var declaration = generations.Bind(Theory(Outright(LabelPath, Present)));
@@ -288,30 +290,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             handed.Should().ContainSingle().Which.Node.Assumes(conjunct).Should().BeTrue("the plant hands the conjunct its own facts");
             scope.AssumedIn(OracleLicence.RenderConjunct(0)).Should().BeEmpty("the licence table renders no conjunct from its own facts");
 
-            var root = RenderingCheckRun.RootOf([scope])!.Value;
-            ServiceForm? Best(bool beneath)
+            var container = new CosmosContainerMetadata("t", ["/kind"]).WithFacts([Outright(LabelPath, Present)]).WithFactGenerations(new JsonFactGenerations());
+            foreach (var planted in new[] { false, true })
             {
-                using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
-                var term = bundle.Write(conjunct);
-                RenderingImporter.Import(bundle, new ImportSource("g11", "declaration", 1), root.Context, root.Rules, declaration, [LabelPath],
-                    beneath ? [(conjunct, new ImportSource("g11", "render conjunct 0", 2), handed[0].Node.Scope, handed[0].Rules)] : null);
-                bundle.Generate(term);
-                bundle.RunGenerate(1).Should().Be(Disciplined);
-                return bundle.ReadBest(term).Best;
+                var shadow = RenderingCheckRun.Over(RenderingInputs.Differential("own stratum", [NotBikes.Replace("FROM typed", "FROM t", StringComparison.Ordinal)], [container]),
+                    shadow: new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, renderedFrom: planted ? (statement, _) => statement.ContextFor(OracleLicence.Kept) : null)).Shadow!;
+                shadow.Classes.Where(c => c.Ir == conjunct.Digest).Select(c => c.Form).Should().NotBeEmpty().And.OnlyContain(f => (planted ? Bare : Restricted).Equals(f), planted ? "planted" : "as built");
+                SourceA(shadow).Witnesses.Any(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal)).Should().Be(planted, "line 1 finds the null label the bare form keeps");
             }
 
-            var (honest, planted) = (Best(false), Best(true));
-            (honest, planted).Should().Be((Restricted, Bare));
-
-            J.Obj Document(J? label) => new(new(StringComparer.Ordinal) { ["label"] = label! });
-            J.Obj[] declared = [Document(new J.Null()), Document(new J.Arr([])), Document(new J.Str("bikes")), Document(new J.Str("x")), Document(new J.Bool(true))];
-            var (tallies, world) = (new Dictionary<bool, RenderingSoundnessTests.Tally> { [false] = new(), [true] = new() }, new World(11));
-            foreach (var document in declared)
-                foreach (var (beneath, form) in new[] { (false, honest!), (true, planted!) })
-                    tallies[beneath].Judge(RenderingSoundnessTests.Tally.Calcite(conjunct, document, world), conjunct, form, Verdict.Equal, RenderPosition.Pos, document, RenderingCheckRun.Targets, "G11");
-
-            tallies[false].Witnesses.Should().BeEmpty();
-            tallies[true].Witnesses.Should().Contain(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal));
             GC.KeepAlive(scope);
         }
 
@@ -321,7 +308,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// 5.0000000000000001 as 5 too, beside a label the declaration leaves free. S states nothing beneath that stratum, so
         /// what it sends for the statement under each set — admitted forms and weakenings — keeps the document of kind
         /// 5.0000000000000001 and label 7, as Calcite does. The plant, a stratum read as exact whatever it rests on, sends
-        /// the bare label and drops it.
+        /// the bare label and drops it, and line 1 itself finds a document with the number 7 as its label.
         /// </summary>
         [Fact]
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
@@ -345,6 +332,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")} {set}: {string.Join(" AND ", sent.Select(f => f.Text))}: keeps {kept}");
                     kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
                 }
+
+                SourceA(shadow).Witnesses.Any(w => w.Contains("\"label\":7}", StringComparison.Ordinal)).Should().Be(planted, planted ? "planted" : "as built");
             }
         }
 
@@ -450,7 +439,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bundle.RunGenerate(RenderingBundle.WidthOf(roots)).Should().Be(Disciplined);
 
             var forms = (from n in nodes from pos in System.Enum.GetValues<RenderPosition>() from a in bundle.Agreements(terms[n], pos) select (n, pos, a.Form, a.Claim)).ToList();
-            var claim = RenderingCheckRun.Claimed(bundle, roots, ServiceForm.ConstantOf(true), [.. roots.Select(_ => (ServiceForm?)null)], [], null);
+            var claim = RenderingCheckRun.Claimed(bundle, roots, ServiceForm.ConstantOf(true), [.. roots.Select(_ => (ServiceForm?)null)], [], null, null);
             var (tally, world) = (new RenderingSoundnessTests.Tally(), new World(8));
             foreach (var document in RenderingDocumentSampler.Sample(claim))
                 foreach (var (n, pos, form, claimed) in forms)

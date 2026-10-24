@@ -2853,10 +2853,16 @@ across documents* and *A join of a container to itself* is the record.
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
   `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a tenth template row.
-- **Looser weakenings the shadow lists against J** — *small, O7's.* The text-equality alternatives (C3, not built), and
-  J's weakenings S cannot prove: a typed `DECIMAL` window past 2^53, which a double near the bound would leave out, and
-  the string branch over strings that may hold U+0000 under `Emulator`. `shadow-weakening.tsv` names J's verdict at the
-  weakening's key beside each; line 13b reads it from g15.
+- **Looser weakenings the shadow lists against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
+  grammar's rows: J's implied but holding a member the Rex builder cannot write (the text-equality alternatives' number
+  branch, C3, and K's windows over a cast), and J's unproven to S (a typed `DECIMAL` window past 2^53, which a double
+  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
+  `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
+  unlisted.
+- **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *small, for the owner.* J's string
+  branch is unproven to S there (strings that may hold U+0000), so S sends presence. Line 19's kill says "a non-`LIKE`
+  P4 looser"; O7 accepted loss 5. Either the owner restates line 19's P4 kill as "no unlisted looser", or a guarded string
+  branch (a tenth template row) delivers it tighter.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
   statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
   refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their
@@ -2870,9 +2876,9 @@ across documents* and *A join of a container to itself* is the record.
 - **The in-process judge of an opaque weakening fills typed fields alone** — *small.* A field read as text or JSON, a
   view's column among them, is not filled, and its conjunct is counted and left out; filling it as the reader renders it
   would judge those too.
-- **The rewrite test pairs a lowered conjunct with its original by node** — *small.* A conjunct the rewrite deleted is
-  unpaired, and an original the loader reads as opaque, a `UUID` cast among them, is never refuted, so line 33 judges
-  only the lowerings whose original the IR reads; both are counted.
+- **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
+  Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
+  is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s

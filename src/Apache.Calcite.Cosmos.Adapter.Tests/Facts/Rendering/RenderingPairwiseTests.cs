@@ -62,17 +62,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (groups.Count == 0)
                     continue;
 
+                // Line 1's documents and stratum, read by the one definition both lines judge by.
                 var (claim, world, targets) = (bundle.Claim!, new World(bundle.Id), ProbeRows.Measured.Serves[bundle.Set]);
-                bool Holds(J.Obj d, IEnumerable<int> assumed) => assumed.All(i => IrEval.Truth(claim.Conjuncts[i], d, world) == Truths.True);
-                var documents = RenderingDocumentSampler.Sample(claim, claim.Stated.Count > 0 ? RenderingSoundnessTests.Stated : RenderingDocumentSampler.Most)
-                    .Where(d => claim.Stated.Any(s => PopulationD.Admits(s.Assumed, CosmosEval.At(d, s.Path)) == false && Holds(d, s.Assumes)) == false).ToList();
+                var documents = RenderingSoundnessTests.Draw(claim).Where(d => RenderingSoundnessTests.RuledOut(claim, d) == false).ToList();
                 foreach (var (node, pos, a, b, of) in groups)
                 {
                     pairs++;
-                    var assumes = claim.Stated.Where(s => node.Subterms.Contains(s.Atom)).SelectMany(s => s.Assumes).Distinct().ToList();
+                    var assumes = RenderingSoundnessTests.Assumes(claim, node);
                     var keeps = pos == RenderPosition.Pos ? ServiceOutcomes.True : ServiceOutcomes.False;
                     var (seen, apart, parted) = (0, 0, 0);
-                    foreach (var document in documents.Where(d => Holds(d, assumes)))
+                    foreach (var document in documents.Where(d => RenderingSoundnessTests.Holds(claim, d, world, assumes)))
                     {
                         var raises = RenderingSoundnessTests.Tally.Calcite(node, document, world) is { Count: 0 };
                         foreach (var target in targets)

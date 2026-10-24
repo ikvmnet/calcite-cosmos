@@ -45,8 +45,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The targets the asserted set serves, each of which a proof must hold on.</summary>
         public static IEnumerable<RenderingTarget> Targets => ProbeRows.Measured.Serves[AssertedSet];
 
-        /// <summary>One S a process, its generations defined from the registry's rows.</summary>
-        static readonly RenderingGraph Measured = new(() => ProbeRows.Measured);
+        /// <summary>One S a process, its generations defined from the registry's rows, which the shadow asks too.</summary>
+        internal static readonly RenderingGraph Measured = new(() => ProbeRows.Measured);
 
         readonly RenderingGraph Graph;
 
@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// is first asked with no bundle, for the report alone, and recording the atoms it stated beneath their strata.
         /// </summary>
         public (RenderingMemo.Entry Entry, ImportReport Import) Check(IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm?> members,
-            Verdict claim, Func<RenderingBundle?, ImportReport> import, IReadOnlyList<RenderingMemo.Beneath>? stated = null)
+            Verdict claim, Func<RenderingBundle?, ImportReport> import, IReadOnlyList<RenderingMemo.Beneath>? stated = null, IReadOnlyList<JsonFactRule>? rules = null)
         {
             var ir = conjuncts.Count == 1 ? conjuncts[0] : new SqlPredicate.And(conjuncts);
             var report = import(null);
@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 bundle.Claim(root, form);
 
                 // A count limit, never time: descent and evaluation peel a junction a member at a time, so it grows with the form.
-                var run = bundle.Run(64 + 8 * Leaves(form));
+                var run = bundle.Run(CheckLimit([form]));
                 // No exact join (spec §5.1), read from S's rows: a conjunct its own written member was never offered to.
                 var verdict = bundle.Read(root, form, claim);
                 if (verdict is { Kind: RenderingVerdictKind.Unproven, Reason: null } && bundle.Failure is null
@@ -147,13 +147,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     verdict = verdict with { Reason = "no exact join" };
 
                 return (verdict, run, [.. each.Select((c, i) => members[i] is { } member ? bundle.Read(c, member, claim) : null)], bundle.Failure,
-                    bundle.Failure is null && set == AssertedSet ? Claimed(bundle, conjuncts, form, members, stated ?? [], verdict.Refutation) : null);
+                    bundle.Failure is null && set == AssertedSet ? Claimed(bundle, conjuncts, form, members, stated ?? [], verdict.Refutation, rules) : null);
             }
         }
 
-        /// <summary>What a bundle claimed and imported, read off its rows, the atoms stated beneath their strata, and the value at each of a refutation's cells.</summary>
+        /// <summary>
+        /// What a bundle claimed and imported, read off its rows, the atoms stated beneath their strata, the value at each of a
+        /// refutation's cells, and the declaration's rules, by which source A rules a document out.
+        /// </summary>
         internal static RenderingMemo.Claimed Claimed(RenderingBundle bundle, IReadOnlyList<SqlPredicate> conjuncts, ServiceForm form, IReadOnlyList<ServiceForm?> members,
-            IReadOnlyList<RenderingMemo.Beneath> stated, Refutation? refutation)
+            IReadOnlyList<RenderingMemo.Beneath> stated, Refutation? refutation, IReadOnlyList<JsonFactRule>? rules)
         {
             var (scope, theory) = (bundle.Scope, bundle.Theory);
             IReadOnlyDictionary<object, T> Rows<T>(Function<JPath, T> table) => scope.Rows(table).ToDictionary(r => r.Keys[0], r => (T)r.Output!);
@@ -161,12 +164,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var cells = refutation is null ? [] : scope.Rows(theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
                 .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
             return new(conjuncts, form, members, Rows(theory.Spelling).Where(s => values.ContainsKey(s.Key)).ToDictionary(s => s.Value, s => new RenderingMemo.Imported(values[s.Key], chars[s.Key])),
-                stated, refutation?.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness()));
+                stated, refutation?.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness()), rules);
         }
 
         /// <summary>Checks another form, and its members, for what an entry claimed, over what it imported and stated.</summary>
         public RenderingMemo.Entry Recheck(RenderingMemo.Claimed claimed, ServiceForm form, IReadOnlyList<ServiceForm?> members) =>
-            Check(claimed.Conjuncts, form, members, Verdict.Equal, bundle => Restate(bundle, claimed), claimed.Stated).Entry;
+            Check(claimed.Conjuncts, form, members, Verdict.Equal, bundle => Restate(bundle, claimed), claimed.Stated, claimed.Rules).Entry;
 
         /// <summary>Imports what a check imported into another bundle, and states what it stated, from a root of the same statements.</summary>
         internal static ImportReport Restate(RenderingBundle? bundle, RenderingMemo.Claimed claimed)
@@ -300,7 +303,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     ? statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(record.Conjunct)) : RootOf([statement.ScopeForCheck])!.Value;
                 var source = new ImportSource(statement.Statement.Digest, "weakening", round);
                 (entry, report) = Check([ir], read.Form, [read.Form], Verdict.Implies,
-                    bundle => RenderingImporter.Import(bundle, source, node.Context, node.Rules, statement.DeclarationForCheck, ir.Paths));
+                    bundle => RenderingImporter.Import(bundle, source, node.Context, node.Rules, statement.DeclarationForCheck, ir.Paths), rules: statement.DeclarationForCheck.Rules);
             }
 
             Conjuncts.Enqueue(new Checked(input.Input, input.Name, unit, statements.IndexOf(statement), record.Conjunct, record.Site, ir.Digest, record.Text, skip, entry, 0, report,
@@ -340,7 +343,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ImportReport Import(RenderingBundle? bundle) => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck,
                     conjuncts.SelectMany(c => c.Paths), beneath.Select(b => (b.Atom, b.Source, b.Node, b.Rules)));
                 var stated = (Import(null).Stated ?? []).Select(s => beneath.First(b => b.Atom == s.Atom) is var b ? new RenderingMemo.Beneath(b.Conjunct, s.Atom, b.Source, s.Assumed, b.Assumes) : null!).ToList();
-                (entry, report) = Check(conjuncts, claimed.Form, [.. reads.Select((r, i) => skips[i] is null ? r.Form : null)], Verdict.Equal, Import, stated);
+                (entry, report) = Check(conjuncts, claimed.Form, [.. reads.Select((r, i) => skips[i] is null ? r.Form : null)], Verdict.Equal, Import, stated, held[0].Statement.DeclarationForCheck.Rules);
             }
 
             var (conditional, later) = (held[0].Statement.DeclarationForCheck.IsConditional, held.Any(r => r.Statement.StratumOf(r.Conjunct) > 1));
@@ -412,7 +415,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Decision D3, read off the IR's readers and tests: a raw ordering, or a raw <c>=</c>, <c>&lt;&gt;</c> or <c>IN</c>
         /// with a number or a boolean, whose Unproven the coverage line leaves out.
         /// </summary>
-        static bool RawScope(SqlPredicate conjunct) => conjunct.Subterms.Any(term => term switch
+        internal static bool RawScope(SqlPredicate conjunct) => conjunct.Subterms.Any(term => term switch
         {
             SqlPredicate.Compare { Left: SqlValue.Raw } c => c.Op is not (PredicateAtom.Equal or PredicateAtom.NotEqual)
                 || c.Right is SqlValue.Literal { Value: var v } && JsonValues.IsString(v) == false,
@@ -429,6 +432,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal static bool Opaque(ServiceForm form) => form.Kind == ServiceFormKind.Opaque || form.Members.Any(Opaque);
 
         internal static int Leaves(ServiceForm form) => form.Members.Count == 0 ? 1 : form.Members.Sum(Leaves);
+
+        /// <summary>A check's count limit over the forms it claims: 64 iterations and 8 a leaf, since descent and evaluation peel a junction a member at a time.</summary>
+        internal static int CheckLimit(IEnumerable<ServiceForm> forms) => 64 + 8 * forms.Sum(Leaves);
 
         /// <summary>Every predicate and value in the IR, depth first.</summary>
         static IEnumerable<object> Parts(SqlPredicate predicate) => predicate.Subterms.SelectMany(term => term switch
