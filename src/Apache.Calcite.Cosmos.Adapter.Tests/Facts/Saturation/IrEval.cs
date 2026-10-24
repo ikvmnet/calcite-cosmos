@@ -42,12 +42,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <item>a column typed as <c>typed</c> reads (<see cref="TypedAs.Column"/>) holds what the adapter's reader makes of
     /// the value, which is not what <c>RETURNING</c> asserts (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>);</item>
     /// <item><c>raw</c> is one of three columns (<see cref="RawAs"/>), whose comparisons and null were measured
-    /// (<c>Calcite.RawStringEqualityIsOrdinal</c>, <c>Calcite.RawNullIsSqlNull</c>).</item>
+    /// (<c>Calcite.RawStringEqualityIsOrdinal</c>, <c>Calcite.RawNullIsSqlNull</c>), and so was the cast of one to text
+    /// (<c>Calcite.CastOfARawValueToText</c>).</item>
     /// </list>
     /// <para>
     /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter, a raw number
-    /// in a <c>VARIANT</c> compared with a number whose SQL type the IR does not keep, the cast to text over a raw value,
-    /// and a numeric cast over one where it is not a number.
+    /// in a <c>VARIANT</c> compared with a number whose SQL type the IR does not keep, an <c>ANY</c>'s structure cast to
+    /// text, the cast to text over a raw value read through no named column, which is the facts graph's rendering, and a
+    /// numeric cast over one where it is not a number.
     /// </para>
     /// </remarks>
     static class IrEval
@@ -149,6 +151,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 default:
                     throw new NotSupportedException(predicate.GetType().Name);
             }
+        }
+
+        /// <summary>
+        /// The columns to read a predicate's raw values through: where it casts one to text, which each column casts its own
+        /// way, a <c>VARIANT</c>, an <c>ANY</c> and, where every raw literal is a string, a <c>VARCHAR</c>; otherwise none named.
+        /// </summary>
+        public static IReadOnlyList<RawAs?> RawModes(SqlPredicate predicate)
+        {
+            static (SqlValue? Value, string[] Literals) Reading(SqlPredicate term) => term switch
+            {
+                SqlPredicate.Compare c => (c.Left, c.Right is SqlValue.Literal l ? [l.Value] : []),
+                SqlPredicate.In i => (i.Value, i.Points.ToArray()),
+                SqlPredicate.IsNull n => (n.Value, []),
+                _ => (null, []),
+            };
+
+            var read = predicate.Subterms.Select(Reading).ToList();
+
+            if (read.Any(r => r.Value is SqlValue.Cast { Target: "VARCHAR" or "CHAR", Value: SqlValue.Raw }) == false)
+                return [null];
+
+            return read.Where(r => r.Value is SqlValue.Raw).SelectMany(r => r.Literals).All(IsString) ? [RawAs.Variant, RawAs.Any, RawAs.Varchar] : [RawAs.Variant, RawAs.Any];
         }
 
         /// <summary><c>NOT</c>: TRUE and FALSE swap, UNKNOWN and a raise stay.</summary>
@@ -551,6 +575,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Raw:
                     return world.Choose(T | F | U, question);
 
+                case SqlValue.Cast { Target: "VARCHAR" or "CHAR" } when raw is RawAs column && CastText(stored, column) is SqlDatum text:
+                    return Compare(op, text, Datum(value));
+
                 case SqlValue.Cast { Target: "VARCHAR" or "CHAR" }:
                     return RawText(op, stored, StringOf(value), world, question);
 
@@ -639,8 +666,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// A comparison over the cast to text of a raw value: a scalar renders as the accessor renders it, and a null and
-        /// a structure as a coin admits.
+        /// The cast to text of a stored value through one column (<c>Calcite.CastOfARawValueToText</c>): a string is itself
+        /// and a null null; a <c>VARIANT</c> casts a number or a boolean to null and raises over a structure, a
+        /// <c>VARCHAR</c> column reads nothing else, and an <c>ANY</c> renders a scalar as Java renders the reader's box, a
+        /// long in its digits. An <c>ANY</c>'s structure, Java's map or list, is <c>null</c>: <see cref="RawText"/>'s coin.
+        /// </summary>
+        static SqlDatum? CastText(J stored, RawAs raw) => (stored, raw) switch
+        {
+            (J.Null, _) => SqlDatum.Null,
+            (J.Str s, _) => new SqlDatum.Text(s.Value),
+            (_, RawAs.Varchar) or (J.Obj or J.Arr, RawAs.Variant) => SqlDatum.Raise,
+            (_, RawAs.Variant) => SqlDatum.Null,
+            (J.Bool b, _) => new SqlDatum.Text(b.Value ? "true" : "false"),
+            (J.Num n, _) when IntegerSpelled(n) && n.Value >= long.MinValue && n.Value <= long.MaxValue => new SqlDatum.Text(n.Value.ToString(CultureInfo.InvariantCulture)),
+            (J.Num n, _) => new SqlDatum.Text(JavaDouble(DoubleBound.Of(n.Value))),
+            (J.Huge h, _) => new SqlDatum.Text(JavaDouble(h.Value)),
+            _ => null,
+        };
+
+        /// <summary>
+        /// A comparison over the cast to text of a raw value read through no named column, or an <c>ANY</c>'s structure: a
+        /// scalar renders as the accessor renders it, and a null and a structure as a coin admits.
         /// </summary>
         static Truths RawText(string op, J stored, string text, World world, string question)
         {
@@ -679,6 +725,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             return (reading, stored) switch
             {
                 (_, null) => T,
+                (SqlValue.Cast { Target: "VARCHAR" or "CHAR" }, _) when raw is RawAs column => CastText(stored, column) switch { SqlDatum.NullDatum => T, SqlDatum.Raised => R, _ => F },
                 (SqlValue.Raw, J.Null) => T,
                 (SqlValue.Raw, J.Str) => F,
                 (SqlValue.Raw, _) => raw == RawAs.Varchar ? R : F,

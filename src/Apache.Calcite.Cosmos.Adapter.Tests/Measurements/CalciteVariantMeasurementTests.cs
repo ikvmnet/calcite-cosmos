@@ -107,6 +107,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// A cast of a raw value to text is each column's own: a string is itself and a null null in each; a <c>VARIANT</c>
+        /// casts a number and a boolean to null and raises over a structure; an <c>ANY</c> renders each as Java renders the
+        /// reader's box, a long in its digits and any other number as its double; and a <c>VARCHAR</c> column reads a string
+        /// alone.
+        /// </summary>
+        [Fact]
+        public void ACastOfARawValueToTextIsEachColumnsOwn()
+        {
+            using var connection = MaterialisedTable.Open();
+            var scalars = Values.Take(11).Concat(Values.Skip(13)).Append("99999999999999999999").Append("9223372036854775807").ToArray();
+            string[] asked = [.. new[] { "IS NULL", "= 'bikes'", "= '42'", "= '42.0'", "= 'true'", "= '1.0E20'", "= '9223372036854775807'", "< 'a'" }.Select(t => "CAST(\"v\" AS VARCHAR) " + t)];
+
+            MaterialisedTable.Of(SqlTypeName.VARIANT, scalars).Ask(connection, asked).Should().Equal(
+                "FFFFFFFTTTTTTTT", "TFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FTFTFFFUUUUUUUU");
+            MaterialisedTable.Of(SqlTypeName.ANY, scalars).Ask(connection, asked).Should().Equal(
+                "FFFFFFFFFFFTTFF", "TFFFFFFFFFFUUFF", "FFFFFFFTFFFUUFF", "FFFFFFFFTFFUUFF", "FFFFFFFFFTFUUFF", "FFFFFFFFFFFUUTF", "FFFFFFFFFFFUUFT", "FTFTFFFTTFFUUTT");
+            MaterialisedTable.Of(SqlTypeName.ANY, Values.Skip(11).Take(2)).Ask(connection, "CAST(\"v\" AS VARCHAR) = '{a=1}'", "CAST(\"v\" AS VARCHAR) = '[1]'").Should().Equal("TF", "FT");
+            foreach (var structure in Values.Skip(11).Take(2))
+                (MaterialisedTable.Of(SqlTypeName.VARIANT, [structure]).Failure(connection, "CAST(\"v\" AS VARCHAR) IS NULL")?.Message).Should().Contain("VariantValue", $"a VARIANT casts no {structure}");
+
+            MaterialisedTable.Of(SqlTypeName.VARCHAR, Strings).Ask(connection, asked[0], asked[1], asked[^1]).Should().Equal("FFFFFFFTT", "TFFFFFFUU", "FTFTFFFUU");
+            MaterialisedTable.Of(SqlTypeName.VARCHAR, ["42"]).Failure(connection, asked[0]).Should().BeOfType<CosmosMaterializationException>("a VARCHAR column reads no number");
+        }
+
+        /// <summary>
         /// A numeric cast of a raw value is each column's own, which no row states, so the rendering check cuts no cells for
         /// one (<c>ReaderEdgesTable</c>): an <c>ANY</c> converts the Java number the reader built, wrapping a long beyond an
         /// int and holding a double at the limit, and parses a string; a <c>VARIANT</c> raises beyond the type and casts a

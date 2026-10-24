@@ -354,19 +354,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Judge(Calcite(ir, document, world), ir, form, claim, RenderPosition.Pos, document, RenderingCheckRun.Targets, where);
 
             /// <summary>
-            /// Calcite's truths of a predicate on a document, every typed mode, its raises left out; <c>null</c> where a mode
-            /// tossed a coin or is not modelled, unless <paramref name="raises"/> asks for what the modelled modes say.
+            /// Calcite's truths of a predicate on a document, every typed mode and, beside a text cast of a raw value, every
+            /// column (<see cref="IrEval.RawModes"/>), its raises left out; <c>null</c> where a mode tossed a coin or is not
+            /// modelled, unless <paramref name="raises"/> asks for what the modelled modes say.
             /// </summary>
             public static List<Truths>? Calcite(SqlPredicate ir, J.Obj document, World world, bool raises = false)
             {
                 var calcite = new List<Truths>();
-                foreach (var mode in Modes)
+                foreach (var (mode, column) in from mode in Modes from column in IrEval.RawModes(ir) select (mode, column))
                 {
                     var tossed = world.Tossed;
                     Truths truth;
                     try
                     {
-                        truth = IrEval.Truth(ir, document, world, mode);
+                        truth = IrEval.Truth(ir, document, world, mode, column);
                     }
                     catch (NotSupportedException)
                     {

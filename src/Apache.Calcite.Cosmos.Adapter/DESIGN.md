@@ -6041,8 +6041,9 @@ opaque conjunct no round admits: another statement than the one that was sent.
 **A reading in the IR is several readers to Calcite, and each is measured where the reader fills it.** `typed` is a
 `RETURNING` and a column the reader types; `raw` is a promoted path's `VARIANT`, an `ANY` and a `VARCHAR` column. No
 expression over a JSON literal yields any of those columns, so `Tests/Measurements/MaterialisedTable.cs` scans rows
-through `CosmosJson.GetValue` itself. Five `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
-named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite on random predicates. What a cell
+through `CosmosJson.GetValue` itself. Six `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
+named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite, on random predicates and, for the
+cast of a raw value to text, over a fixed set. What a cell
 answers is the union over the readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose
 `=` and null test never raise, which is what `PredicateAtom`'s raw reading answers for; the raises it leaves out are in
 `TODO.md`.
@@ -6057,6 +6058,12 @@ SQL null, so `NOT (raw = 'bikes')` keeps neither. A value of another type is une
 `VARCHAR` column's read. `ANY` raises on an ordering across types. A `VARIANT` has no ordering at all, the statement
 failing to compile, and is equal to a number boxed with its own SQL type alone, `BIGINT` for a JSON integer and `DOUBLE`
 otherwise, which the IR does not keep: raw numeric `=` stays a coin in `IrEval`.
+
+**A raw value cast to text is each column's own too** (`Calcite.CastOfARawValueToText`). A string is itself and a null
+null in each. A `VARIANT` casts a number and a boolean to null and raises over an object or an array; an `ANY` renders
+each value as Java renders the reader's box, a long in its digits, any other number as Java spells its double, an object
+as `{a=1}`; and a `VARCHAR` column reads a string alone. `IrEval` reads the cast through a named column; unnamed, it
+keeps the facts graph's rendering, which population D holds F to (`TODO.md`).
 
 **Text orders by UTF-16 code unit** (`Calcite.TextOrderIsByCodeUnit`) and the service by code point, so the two part
 where one string holds U+E000 or above and another a supplementary character.
@@ -6163,9 +6170,9 @@ theory writes paths with, refuses one.
 **S is a frozen theory and a bundle per statement round.** `RenderingTheory` loads the measured rows one batch per
 axiom, so a second row for one key and target that answers otherwise is refused whole and named, and then the host rows:
 the sets each target serves, what an answer means, the agreement's boxes, the 225 classes they range over, and each
-reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text and raw have
-one, and a text cast of the raw value has none, since over a `VARIANT` Calcite casts all but a string to null where its
-cells, modelled on the rendering, say otherwise (`TODO.md`). Its rules settle the rows and derive the classes each box
+reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text, raw and, since
+g09, the text cast of a raw value have one; a numeric cast of a raw value has none, each column casting it its own way
+(`TODO.md`). Its rules settle the rows and derive the classes each box
 allows and refutes; then it freezes, and every bundle is a child of it. A `RenderingBundle` holds one round's conjuncts
 as the shared vocabulary's terms, each path's import written once before the run, and the forms claimed for the
 conjuncts; it is run once, read, and disposed.
@@ -7075,6 +7082,47 @@ digests before and after are byte-equal at 200 and 1,000 predicates, both framew
 `TheDeclarationsPossibleRowsChangeNoPlan` gave with the switch off and on; it retires with the switch, as does the cost
 test that timed the corpus both ways. Population D's 200 trials a run and 5,000 on request root at `D0`, so the 50 armed
 trials beside them retire; `DeclaredPossibleTests` still compares `D0`'s rows with a stratum rooted at the context.
+
+### The cast of a raw value to text
+
+**Why it was the translator's.** `Owns` holds a conjunct only where every reading has an edges row, and
+`CAST(c."$.category" AS VARCHAR)` had none: its cells read it as the rendering, where over a `VARIANT` Calcite casts a
+number or a boolean to null. So the translator wrote it beside S, outside the family, and O2's residue listed it:
+differential 206 and 236 a pull request, five more at the gate. What it lacked was one measurement in process.
+
+**What Calcite does is a row** (`Calcite.CastOfARawValueToText`, *Calcite's side, measured in process*). Over a value
+that is no string the three columns part: a `VARIANT` answers null, an `ANY` its rendering, a `VARCHAR` column fails
+the statement, and over a structure the `VARIANT` raises too.
+
+**What S reads.** The reader has an edges row with no edges, as text has: it answers at the literals alone. On a cell
+`PredicateAtom.OnCell` reads it as `RawText`, the union of the three columns: a string exactly as text, a null as null,
+and anything else as the `ANY`'s rendering beside the `VARIANT`'s null and the raises. A long renders in its digits,
+which hold no point, and any other number as Java spells its double, which always holds one; so a cell reads a text
+without a point as a rendering only of a long it holds, and one with a point only where its numbers reach the text's
+double. Under decision 2 the raises refute nothing. The union proves `c.category = "b"` for `CAST(…) = 'b'`, refutes
+`NOT (c.category = "b")` for its negation on a stored null, which every column reads as null, and over a boolean finds a
+`VARIANT`'s UNKNOWN beside an `ANY`'s TRUE, which no form keeps alike; so S declines the negation, and the translator's
+guarded form for it is implied and no more.
+
+**What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
+graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
+`Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.
+
+**What moved in the shadow,** at 200 predicates, under every set. S owns 12 conjuncts more. 206 and 236 are the same
+form as the translator's; partition 584's disjunction holding the cast is respelled; 588's `NOT (CAST(…) <> 'Sprint!')`
+is a gain; the other eight are declined alike. The regressions are unchanged. Three weakenings J held unproven at the
+key are now implied there, and stay looser as O7's loss 1, the number or boolean member being no string comparison the
+Rex builder writes; two S had read as J's are tighter than J's now, and 588's is pushed exactly. The check run reads 206 and 236 Exact.
+At 1,000 predicates 41 rows move: partitions 1371, 1650 and 1908 are the same as the translator's, and 1372 and 1651,
+`NOT (CAST(…) = 'x')`, are regressions on their merits, 36 under `Production` and 44 under `Emulator` against O2's 53.
+The translator's guarded form keeps there a number or a boolean that a `VARIANT` reads as null and Calcite drops: a
+decline that is a correctness fix, which no form proves and the `VARCHAR` column's raise keeps S from refuting.
+
+**What holds it.** `CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn` pins the row;
+`IrEvalCalciteTests.TheCastOfARawValueToTextAgreesWithCalcite` holds `IrEval`'s cast, through each column, to
+Calcite; `PredicateAtomCellTests` holds every cell to `IrEval` through the three columns, a long's digits and a
+double's spellings among the literals; and the soundness line judges every form over the cast through each column
+(`IrEval.RawModes`). `RenderingGateTests.ACastToTextOverARawValueReadsItsThreeColumns` pins the three verdicts above.
 
 ---
 

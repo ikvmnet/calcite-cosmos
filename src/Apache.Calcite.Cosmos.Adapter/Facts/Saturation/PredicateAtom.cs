@@ -398,7 +398,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     var inner = rest.Substring(colon + 1);
                     return (target, inner) switch
                     {
-                        ("VARCHAR" or "CHAR", RawReader) => new Text(structures: true),
+                        ("VARCHAR", RawReader) => new RawText(),
+                        ("CHAR", RawReader) => new Text(structures: true),
                         ("VARCHAR" or "CHAR", TextReader) => new Text(structures: false),
                         ("INTEGER" or "BIGINT" or "DOUBLE", TextReader or RawReader) => new NumberCast(target, inner == TextReader),
                         _ => null,
@@ -459,8 +460,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             static Truths Placed(string op, IEnumerable<int?> sides, Truths beside) => sides.Aggregate(beside, (truths, side) => truths | (side is int sign ? Ordered(op, sign) ? T : F : T | F));
 
             /// <summary>
-            /// <c>JSON_VALUE</c> read as text, and the cast to text over a raw value, which renders an object and an array
-            /// as well and whose rendering of a null has not been measured.
+            /// <c>JSON_VALUE</c> read as text, and the cast to text over a raw value as the facts graph reads it, an
+            /// <c>ANY</c>'s rendering, which renders an object and an array as well and whose null it leaves open.
             /// </summary>
             /// <remarks>
             /// A string renders as itself and a boolean as Calcite's lowercase <c>true</c> or <c>false</c>. A number
@@ -470,7 +471,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// That is the rendering preimage: <c>'30'</c> admits the string <c>"30"</c> and the number 30, and a declared
             /// string leaves only the first.
             /// </remarks>
-            sealed class Text : Reading
+            class Text : Reading
             {
 
                 readonly bool _structures;
@@ -646,6 +647,81 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// <c>+</c>, below where it starts above <c>9</c>, and either otherwise.
                 /// </summary>
                 static int? FirstUnit(string text) => text.Length == 0 || text[0] < '+' ? 1 : text[0] > '9' ? -1 : null;
+
+            }
+
+            /// <summary>
+            /// The cast to text of a raw value on a cell: the union of its three columns (<c>Calcite.CastOfARawValueToText</c>).
+            /// Each casts a string to itself and a null to null; a <c>VARIANT</c> casts a number or a boolean to null and
+            /// raises over a structure, an <c>ANY</c> renders each as Java renders the reader's box, and a <c>VARCHAR</c>
+            /// column reads a string alone. The facts graph reads the rendering alone (<c>TODO.md</c>).
+            /// </summary>
+            sealed class RawText : Text
+            {
+
+                static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.CastOfARawValueToText", "Calcite.TextOrderIsByCodeUnit");
+
+                public RawText() : base(structures: true)
+                {
+                }
+
+                public override ValueSet<string> Rests => Rows;
+
+                static bool Textual(PathCell cell) => cell is PathCell.Strings || cell is PathCell.Point { Value: var v } && IsString(v);
+
+                static bool Numeric(PathCell cell) => cell is PathCell.Numbers || cell is PathCell.Point { Value: var v } && IsNumber(v);
+
+                /// <summary>What a cell no string lies in reads beside the rendering: a <c>VARIANT</c>'s null, or its raise over a structure, and a <c>VARCHAR</c> column's raise.</summary>
+                static Truths Beside(PathCell cell) => cell is PathCell.Structure ? R : U | R;
+
+                /// <summary>
+                /// Whether a number of the cell may render as the text through an <c>ANY</c>: a long as its digits, which hold no
+                /// point, and any other number as Java spells its double, which always holds one and parses back to the double.
+                /// </summary>
+                static bool MayRender(PathCell cell, string text)
+                {
+                    if (Renderings.MayBeNumberText(text) == false)
+                        return false;
+
+                    if (text.Contains('.'))
+                        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) == false || cell switch
+                        {
+                            PathCell.Point { Value: var v } => DoubleBound.Of(v) == d,
+                            PathCell.Numbers n => n.DoubleSide(d) is not (-1 or 1),
+                            _ => true,
+                        };
+
+                    return text.IndexOfAny(['e', 'E']) < 0 && Renderings.TryExactNumber(text, out var x) && x >= long.MinValue && x <= long.MaxValue && cell switch
+                    {
+                        PathCell.Point { Value: var v } => TryNumberOf(v, out var y) && y == x,
+                        PathCell.Numbers n => n.Integral && n.Contains(Of(x)),
+                        _ => true,
+                    };
+                }
+
+                public override Truths EqualOn(PathCell cell, string literal) => IsString(literal) == false ? Equal(cell.Coarse, literal) : cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    _ when Textual(cell) => base.EqualOn(cell, literal),
+                    _ when Numeric(cell) => (MayRender(cell, StringOf(literal)) ? T | F : F) | Beside(cell),
+                    _ => base.EqualOn(cell, literal) | Beside(cell),
+                };
+
+                public override Truths OrderOn(PathCell cell, string op, string literal) => IsString(literal) == false ? Order(cell.Coarse, op, literal) : cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    _ when Textual(cell) => base.OrderOn(cell, op, literal),
+                    _ => base.OrderOn(cell, op, literal) | Beside(cell),
+                };
+
+                public override Truths NullOn(PathCell cell) => cell switch
+                {
+                    PathCell.Absent or PathCell.Null => T,
+                    _ when Textual(cell) => F,
+                    PathCell.Structure => F | R,
+                    PathCell.Point or PathCell.Numbers => T | F | R,
+                    _ => Null(cell.Coarse),
+                };
 
             }
 

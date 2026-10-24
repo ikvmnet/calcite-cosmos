@@ -197,15 +197,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A text cast of the raw value has no edges row, so the written form is never evaluated: over a <c>VARIANT</c>
-        /// Calcite casts a boolean to null, where the service compares it.
+        /// A text cast of the raw value reads its three columns on a cell (<c>Calcite.CastOfARawValueToText</c>): its
+        /// equality with a string is the service's, a stored null is null in each, so <c>NOT</c> over the bare equality is
+        /// refuted there, and over a boolean a <c>VARIANT</c>'s null and an <c>ANY</c>'s rendering part, so the guarded form
+        /// the translator writes is implied and no more.
         /// </summary>
         [Fact]
-        public void ACastToTextOverARawValueIsNeverEvaluated()
+        public void ACastToTextOverARawValueReadsItsThreeColumns()
         {
-            var form = ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
-            var (equal, implies) = Check(Not(Eq(Cast("VARCHAR", Raw(LabelPath)), "b")), form);
-            (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
+            var (cast, bare) = (Cast("VARCHAR", Raw(LabelPath)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
+            var guarded = Negated(Any(bare, ServiceForm.TestOf(CosmosServiceTest.IsNull, Label), Negated(ServiceForm.TestOf(CosmosServiceTest.IsDefined, Label))));
+            static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
+
+            Kinds(Check(Eq(cast, "b"), bare)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Eq(cast, "b")), Negated(bare))).Should().Be((RenderingVerdictKind.Refuted, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Eq(cast, "b")), guarded)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
         }
 
         /// <summary>

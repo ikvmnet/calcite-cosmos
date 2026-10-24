@@ -2686,16 +2686,20 @@ across documents* and *A join of a container to itself* is the record.
   sibling's; a refutation two junctions deep is unproven. The first family's wrong answers need one.
 - **Only sibling properties are disjoint locations** — *small.* `$.a.b` and `$.c` lie apart in every document, but the
   `disjoint` rule derives it only for two properties of one parent, so a refutation across them is unproven.
-- **A text cast of a raw value is read as its rendering, and over a `VARIANT` it is null** — *medium, a wrong answer,
-  and it touches plans.* Over a promoted path's `VARIANT` column Calcite casts every boolean and number to `NULL`
-  (measured in process through `MaterialisedTable`: `true`, `false`, `42`, `2.5` all read `NULL`; `ANY` renders them).
-  `PredicateAtom`'s cast reading (`cast:VARCHAR:raw`, `Text` over structures) answers a boolean or a number as its
-  rendering, and so does the translator (`CosmosRexTranslator.IsDocumentValueType`: "Calcite's cast over either is the
-  value's own rendering"). Over a present boolean the facts graph decides `NOT (CAST(raw(flag) AS VARCHAR) = 'x')`
-  `Always` and `CAST(raw(flag) AS VARCHAR) IS NULL` `Never`, where Calcite answers `UNKNOWN` and `TRUE`, and `WHERE NOT
-  (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")` keeps the booleans too. The reading
-  wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
-  `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
+- **The facts graph reads a text cast of a raw value as its rendering, and over a `VARIANT` it is null** — *medium, a
+  wrong answer, and it touches plans.* Over a promoted path's `VARIANT` column Calcite casts every boolean and number to
+  `NULL` and raises over a structure; an `ANY` renders them; a `VARCHAR` column reads a string alone
+  (`Calcite.CastOfARawValueToText`). `PredicateAtom`'s coarse cast reading (`cast:VARCHAR:raw`, `Text` over structures)
+  answers a boolean or a number as its rendering, and so does the translator (`CosmosRexTranslator.IsDocumentValueType`:
+  "Calcite's cast over either is the value's own rendering"). Over a present boolean the facts graph decides `NOT
+  (CAST(raw(flag) AS VARCHAR) = 'x')` `Always` and `CAST(raw(flag) AS VARCHAR) IS NULL` `Never`, where Calcite answers
+  `UNKNOWN` and `TRUE`, and `WHERE NOT (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")`
+  keeps the booleans too. S reads the union of the three columns on its cells since g09 (`RawText`), and `IrEval` reads
+  the cast through a named column; F's reading, and the unnamed `IrEval` population D holds it to, want the same union.
+- **The text reading's preimage of a number reads its value, where Calcite renders its double** — *small.* `JSON_VALUE`
+  renders a fraction as Java spells its double, so a stored `0.10000000000000001` reads `'0.1'` (measured in process),
+  which `Renderings.MayRenderAs` says no number of another value renders as; the text reading's cells inherit it. A
+  service that holds numbers as doubles returns no such spelling. The cast's cells (g09) read a number's double.
 - **The probe account's run of 2026-10-19 has no record** — *small.* The Azure targets of the string functions' and the
   stored values' rows rest on it, and neither record under `Tests/Measurements/Runs/`, 2026-10-16's or 2026-10-21's,
   ran their witnesses, so an outcome on one of those rows cannot claim Azure until a run of its witnesses is recorded.
