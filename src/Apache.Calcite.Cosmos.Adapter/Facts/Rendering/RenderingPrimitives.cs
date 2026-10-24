@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -64,6 +65,38 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A junction is the one form joined with the other, in either order: one is a part, the other the rest.</summary>
         public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormDecomposes { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-decomposes", (f, l, m) =>
             ServiceForm.Decomposes(f, l, m) || ServiceForm.Decomposes(f, m, l));
+
+        /// <summary>A form's flat parts, as a set, are the two forms': each side's own where it is a junction of the form's connective.</summary>
+        public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormIsJoinOf { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-is-join-of", (h, l, m) =>
+            FlatParts(h, h.Kind).ToHashSet().SetEquals(FlatParts(l, h.Kind).Concat(FlatParts(m, h.Kind))));
+
+        /// <summary>A price is of a form: an exact form was found.</summary>
+        public static Primitive<Priced, bool> PricedIsReal { get; } = Primitive.Create<Priced, bool>("priced-is-real", p => p.Form is not null);
+
+        /// <summary>A node's best is real and one of its implied forms.</summary>
+        public static Primitive<Priced, ValueSet<ServiceForm>, bool> BestIsImplied { get; } = Primitive.Create<Priced, ValueSet<ServiceForm>, bool>("best-is-implied", (b, s) =>
+            b.Form is { } f && s.Contains(f));
+
+        /// <summary>A node has no best, or one none of its implied forms is: the first's negation.</summary>
+        public static Primitive<Priced, ValueSet<ServiceForm>, bool> BestIsNotImplied { get; } = Primitive.Create<Priced, ValueSet<ServiceForm>, bool>("best-is-not-implied", (b, s) =>
+            b.Form is not { } f || s.Contains(f) == false);
+
+        /// <summary>
+        /// A form may be sent: no literal holds an unpaired surrogate, which the SDK refuses to send on either target
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>); and no string ordering's literal holds a character of a
+        /// parting band, so that nothing S sends is one bound of a range the two orders rank apart.
+        /// </summary>
+        public static Primitive<ServiceForm, ValueSet<string>, bool> Sendable { get; } = Primitive.Create<ServiceForm, ValueSet<string>, bool>("sendable", (f, bands) =>
+            f.Literals.All(l => JsonValues.IsString(l) == false || JsonValues.IsEncodable(JsonValues.StringOf(l))) && f.Subforms.All(g => PartsBands(g, bands) == false));
+
+        /// <summary>The Rex builder writes a form over the atom's reader: every comparison, membership and test of it is in the grammar.</summary>
+        public static Primitive<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool> RexWritable { get; } =
+            Primitive.Create<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool>("rex-writable", (f, a, g) => g.Writes(f, a.Reader));
+
+        static IEnumerable<ServiceForm> FlatParts(ServiceForm form, ServiceFormKind kind) =>
+            form.Kind == kind && kind is ServiceFormKind.And or ServiceFormKind.Or ? form.Flat : [form];
+
+        static bool PartsBands(ServiceForm form, ValueSet<string> bands) => StringOrdering.Function(form) && JsonValues.CharactersOf(form.Literal!).Overlaps(bands);
 
     }
 

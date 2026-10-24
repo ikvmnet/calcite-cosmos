@@ -57,8 +57,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A claim grouped as a <c>WHERE</c> of two statements writes it composes over the IR's flat junction (differential
         /// 117–121): an arm takes a part nested in a member of the junction's own connective, a guarded form among them, and
-        /// the rest keeps the grouping of what is left. A part no arm can take leaves an arm offered nothing, which the check
-        /// run reports as no exact join.
+        /// the junction's form is composed up from its arms', the grouping kept. A test beside a conjunct's own part, of its
+        /// own path, is evaluated with it on the atom's cells; a member reading a path no conjunct reads is left over,
+        /// unprovable on its merits; and a conjunct whose own member the claim lacks is offered nothing it can evaluate, which
+        /// the check run reports as no exact join.
         /// </summary>
         [Fact]
         public void ANestedClaimComposesOverAFlatJunction()
@@ -72,7 +74,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [.. ((SqlPredicate.And)conjunct).Arms.Select(arm => arm.Paths.Single() == LabelPath ? Guarded : arm.Paths.Single() == KindPath ? KindIsA : category)], Verdict.Equal,
                 bundle => RenderingImporter.Import(bundle, Source, null, null, null, [LabelPath, KindPath, CategoryPath])).Entry.Asserted is var v ? (v.Kind, v.Reason) : default;
 
-            Checked(All(All(Guarded, KindIsA), All(category, Is(Op.IsString, Kind)))).Should().Be((RenderingVerdictKind.Unproven, (string?)null), "a member left over");
+            Checked(All(All(Guarded, KindIsA), All(category, Is(Op.IsString, Kind)))).Should().Be((RenderingVerdictKind.Proven, (string?)null), "kind's two parts read its path alone");
+            Checked(All(All(Guarded, KindIsA), All(category, Is(Op.IsString, Metadata)))).Should().Be((RenderingVerdictKind.Unproven, (string?)null), "a member left over");
             Checked(All(Guarded, KindIsA)).Should().Be((RenderingVerdictKind.Unproven, "no exact join"));
         }
 
@@ -206,11 +209,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Descent proposes every member to the IR's first arm and the rest to its second, and a junction composes only
-        /// where its form is exactly the join: swapped members and a member written twice alike prove. A member written
-        /// twice differently is left over: unproven where it falls to the first arm, which is offered members one at a
-        /// time, and proven where the second arm evaluates it with its own on its cells. A plant that drops it, as the
-        /// aligner did, is refused.
+        /// Descent offers every arm every part of the form its junction lies within, and the junction's form is composed up
+        /// from what its arms agree with, held to exactly their join: swapped members, a member written twice alike and a
+        /// conjunct written twice differently prove, an atom evaluating the parts that read its path alone together on its
+        /// cells. A member reading a path no arm reads is left over, unprovable on its merits: the junction agrees only with
+        /// the part of the claim its arms make, so a plant that offers an arm the rest without it, as the aligner dropped
+        /// it, proves no more.
         /// </summary>
         [Fact]
         public void EveryPairingIsTriedAndOnlyAnExactJoinComposes()
@@ -233,11 +237,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     .Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven));
             }
 
-            var leftOver = All(Guarded, KindIsA, All(Is(Op.IsString, Kind), KindIsA));
-            var (equal, implies) = Check(LabelAndKind, leftOver);
-            (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
+            var twice = Check(LabelAndKind, All(Guarded, KindIsA, All(Is(Op.IsString, Kind), KindIsA)));
+            (twice.Equal.Kind, twice.Implies.Kind).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven), "kind's two forms are evaluated together on its cells");
             Check(LabelAndKind, All(Guarded, KindIsA, All(Negated(Is(Op.IsNull, Label)), Is(Op.IsPrimitive, Label), Bare))).Equal.Kind
                 .Should().Be(RenderingVerdictKind.Proven, "label's two guarded forms are evaluated together on its cells");
+
+            var leftOver = All(Guarded, KindIsA, Is(Op.IsString, Metadata));
+            var (equal, implies) = Check(LabelAndKind, leftOver);
+            (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
 
             var theory = RenderingTheory.Define(Measured);
             theory.Graph.Rulesets.Single(r => r.Name == "descend").DefineRule("planted: the rest without a member that differs in text", r =>
@@ -256,7 +263,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bundle.Import(Source, KindPath, PathValues.Anything, AllBands);
             bundle.Claim(root, leftOver);
             bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
-            bundle.Scope.Rows(theory.Agrees).Should().Contain(row => row.Keys[2].Equals(Guarded), "the plant offered the label side its own member alone");
+            bundle.Scope.Rows(theory.Agrees).Should().Contain(row => row.Keys[2].Equals(Guarded), "the label side agrees with its own member alone");
+            bundle.Read(root, All(Guarded, KindIsA), Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Proven, "the part of the claim the arms make");
             bundle.Read(root, leftOver, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 

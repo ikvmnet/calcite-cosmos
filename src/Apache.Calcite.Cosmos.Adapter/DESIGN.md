@@ -6229,15 +6229,31 @@ its first member and the rest, a junction rid of every copy of that member, whic
 for granted; a missing row of the grouping as written was never read. So it is evaluated only where the set licenses
 its connective. Two members read their row as written, and a junction nested as written is evaluated as nested.
 
-**Positions and pairings are derived.** A junction of the IR has a `junction` row from each arm; a negation's operand is
-a candidate for the form stripped of a `NOT` at the opposite position. The first arm is offered each member of the form,
-and the second the form without it, whose members a rule states where three or more remain; so every pairing is tried,
-and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict and its form joins
-theirs by its own connective, in either order. A node may hold candidates from two parents, so the connective is read
-where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides the same candidates and
-must not compose. A written member that the IR merged is dropped once where its text matches, `AND` and `OR` being
-idempotent; where its text differs it is left over, unproven where it falls to the first arm, and proven only where the
-second arm, an atom, evaluates it with its own on its cells, which is a proof of what was written.
+**Positions and pairings are derived, and a junction's form is composed up from its arms'.** A junction of the IR has
+a `junction` row from each arm; a negation's operand is a candidate for the form stripped of a `NOT` at the opposite
+position. A junction lies `within` each form of its own connective it is a candidate for, and an arm that is a junction
+of that connective lies within the same forms. Each arm of a junction lying within a form is offered each of its parts,
+and an atom also the form kept to the parts that read its path alone (`ServiceForm.Reading`); so every pairing is tried,
+and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict, with the form their
+forms make of the one it lies within (`ServiceForm.Spanned`: every part neither side is or holds taken out, the grouping
+kept), and only where `form-decomposes` holds that form to exactly their join, in either order: the helper builds a
+value and the filter decides. A check reads the root's agreement with the claim, so a member no arm agreed with leaves
+the root agreeing with less than was claimed, and the claim unproven. A node may hold candidates from two parents, so
+the connective is read where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides
+the same candidates and must not compose. A written member the IR merged is dropped once where its text matches, `AND`
+and `OR` being idempotent; one written twice differently, or beside a test of its own path, is proven where its atom
+evaluates the parts reading its path together on its cells, which is a proof of what was written.
+
+**Why up, not down.** A junction's form handed down — its first arm offered each member and its second the rest, whose
+members a rule restated — gave a right-nested junction of n arms a candidate for every subset of its members,
+2^n − n − 1 of them, and a run that stopped on its row limit at 13 arms. Composed up, a junction is offered at most n²
+parts, which nothing at the junction evaluates, and its atoms at most n(n + 1) where every part shares one path; a proof
+composes one form a junction where each atom agrees with one part. The premises are the old ones word for word — one
+verdict on both sides, or a definite refutation beside the identity on a disjoint location; exactly the join; the
+connective licensed by the set and by Calcite — and the need checked is the written form's, which a rest's never was.
+Only where the form comes from changed, so a proof is still one the universal over each atom's cells backs, whatever
+proposed the candidates. What it gives up: a leftover member that reads no path, a constant, or more paths than the atom
+beside it, which the old descent proved only where the IR's order of arms made that atom the last.
 
 **A refutation composes across locations a document sets apart.** A side refuted on a cell, beside a sibling that is
 the connective's identity on one of its own — `(T,t)` for `AND`, `(F,f)` for `OR` — refutes the junction on a document
@@ -6256,8 +6272,8 @@ not the IR's: the service is asked what was written, and a range written for one
 literals part nothing, is a range all the same. What licenses it is N8's rows (*The family's last rows*).
 
 **What holds it.** Plants a regression would meet: an `AND` row dropped under a pairing and under a regrouping, the
-non-boolean rows dropped, a member that differs in text dropped as the aligner did, a superset that narrows in its
-stratum, and a lambda filter.
+non-boolean rows dropped, an arm offered the rest without a member that differs in text, as the aligner dropped it,
+which proves no more than the arms make, a superset that narrows in its stratum, and a lambda filter.
 
 ### The registry, read into S
 
@@ -6540,10 +6556,11 @@ be held either way, so it is placed by both; a literal sent as a double is place
 
 **A claim grouped as the `WHERE` writes it composes over the IR's flat junction.** A junction's parts are its members
 and those within a member of its own connective, however deep. `Claim` states each junction's members as written, and a
-rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; the
-rest keeps the grouping of what is left, and the rule that writes its members writes those it holds as written alone,
-so no member row names what is no part. That is the join because the licensed connective is associative, commutative
-and idempotent, which evaluating a regrouped rest already took for granted. S has 40 rules, at the line.
+rule states a member of a member of one connective a member of the outer junction, so an arm may take any part; a
+nested junction of the IR lies within the same form as its parent, and the form each composes keeps the claim's
+grouping of what its arms took, so the composition climbs the IR's flat spine whatever the claim's grouping. That is the
+join because the licensed connective is associative, commutative and idempotent, which evaluating a regrouped rest
+already took for granted. S has 42 rules, the descent's first arm and rest having become four; Stage 2's line is 56.
 
 **The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
 conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
@@ -6570,14 +6587,15 @@ opaque to the loader, so its text is skipped as the tip's was; X2's dropped type
 `RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
 
 **Recall replays what 4b65754 sent.** Its eight first-family texts (P1–P6, P19, P25), carried verbatim, are claimed
-against the IR the loader reads for the same statements at the tip and refuted with a structure cell; with M1 or M2
-planted the tip writes each again, conjunct by conjunct; and on a service each returns the rows 4b65754's pushdown
-returned while Calcite returns its own.
+against the IR the loader reads for the same statements at the tip and refuted with a structure cell; offered to S as
+planted templates they are never what it sends (*Faults planted in S*); and on a service each returns the rows
+4b65754's pushdown returned while Calcite returns its own.
 
-**The gains preview is claimed against the IR the loader reads for each refused statement**, which M8 and M9 let the
-translator admit so that the conjunct is captured. The guarded inequality is Exact; the orderings' forms, `> @p0 OR
-IS_BOOL` and `< @p0 OR IS_NUMBER`, are unproven over an undeclared label, whose strings may hold U+0000, which the
-emulator orders as it stores it, and are Exact where no string can.
+**The gains were first claimed against the IR the loader reads for each refused statement**, read off the statement
+planning read whether or not the translator admits its conjunct. The guarded inequality was Exact; the orderings'
+forms, `> @p0 OR IS_BOOL` and `< @p0 OR IS_NUMBER`, unproven over an undeclared label, whose strings may hold U+0000,
+which the emulator orders as it stores it. Generate mode now proposes them itself (*The rendering graph in generate
+mode*), where the witnesses still replay the inequality's text.
 
 ### The soundness line: documents, an evaluator of the service's own, and gate faults
 
@@ -6605,18 +6623,17 @@ together, as no sampled document's need: 30 trials a pull request, 5,000 explici
 path, so the container's hierarchical key is three of the declaration's paths, and a parameter, `IS_DEFINED` and a
 literal with a control character are not printed.
 
-**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is refused
-at load on either target; G2, a template without the null guard, is refuted wherever source A's documents show the guard
-kept something out, and at the null for the gains preview's inequality; G3, a service evaluation answering `!=` over a
-null as false, makes the gate agree with that form, and source A finds the null label `CosmosEval` keeps; G4, the second
-disjunct's form claimed for the first under an `OR`, agrees nowhere at the root or the first disjunct, the second's own
-form agreeing on its own partition; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
-trips the wire.
+**The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is
+refused at load on either target; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
+trips the wire. G2–G4, a template without the null guard, a service evaluation answering `!=` over a null as false
+beneath it, and a disjunct's form offered to its sibling, are now planted over templates, and G6–G8, G11, G12 and G14
+beside them, in generate mode (*Faults planted in S*).
 
 ### Witnesses, and the precision line
 
-**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's, the
-mutations' and G2's, and each cell the gains preview's agreements were proved over, is one document
+**A verdict's cells are documents the emulator runs.** Each refuting cell of the tip's refutations, the recall's and
+G2's, each document that shows one of S's plants of M1–M10 wrong, and each cell the gains' exact inequality was proved
+over, is one document
 (`PathCell.Witness`), written to a database of the witnesses' own. The text sent runs as a `WHERE`, under `NOT` and
 projected, which must say the same, and the statement runs in Calcite over the same documents: a refuting cell's
 document must keep apart on the two, an agreed one alike, and the outcome must be `CosmosEval`'s. A refuting document's
@@ -6670,9 +6687,349 @@ run on the Linux x64 leg, the one with an emulator; elsewhere `refutations.tsv`'
 rendering tests build under the asserted set, all but four, which state what the emulator's set alone holds — `Range`
 licensed, and a key it alone measured — and name it.
 
-**A junction's descent offers its first arm each member and its second the rest**, so a right-nested junction holds a
-candidate for every subset of its members: Stage 2's projection misses its cost line on that shape, whatever the load,
-and generate mode wants descent along the IR's own arms first (`TODO.md`).
+**A junction's descent is polynomial in its width**, composed up from what its arms agree with (*Composition through
+AND, OR and NOT*): what is left of a bundle's cost is the floor every bundle pays, 25 to 34 iterations of five strata,
+and the compound evaluated a member at a time on its cells, which an `OR` of 16 equalities peels in 88 iterations.
+
+
+## The rendering graph in generate mode
+
+S's second stage writes what it proves. For each `WHERE` conjunct it owns it proposes forms from templates, its gate
+admits or refutes each exactly as in check mode, `BestExact` keeps the cheapest exact one, and `Implied` gathers what a
+residual conjunct's weakening is built from. Until the switch it is judged in tests alone: nothing in planning reaches
+it, and every commit's plan digests are byte-equal to its parent's, which the subsections below take as read.
+
+### Templates, prices, and the weakening's assembly
+
+**A template only proposes; the gate disposes.** A template is a core — the comparison, an `IN` as its equalities, the
+presence it tests — and a guard: A1–A4 are what the translator writes, A5, A6, C1 and C4 what it pushes as a weakening
+or what the gains need. Which template is asked at which position, and of which atom's shape, are host rows
+(`RenderingTemplateRows`), and they alone: `RenderingTemplates.Spell` writes whatever pair it is asked that it can, from
+the atom's literal and reader and the path's spelling, and reads no fact. A shape is the atom's reader, test and
+operand's kind; a parameter's is its own, which no row names, so a parameter atom gets presence and no candidate.
+`Spell` is total, since Eggnog 1.1.1 runs a body's calls in no promised order: a pair it cannot write — no comparison
+to guard, no literal rendering a boolean beside A5 — is an opaque sentinel, which the service leaf answers widest, a
+failure among it, so no box allows it and nothing refutes it. A6 is two templates, one a kind, each asked at both
+positions: which kind a text ordering's literal leaves on the kept side follows from Calcite's order by code unit
+(`Calcite.TextOrderIsByCodeUnit`, `'true'` and `'false'` above the digits and `-`), and the gate reads that, never the
+operator. C3, the text-equality alternatives, is not built: its Rex would re-type the accessor, which Calcite reads as
+an assertion that raises on a string.
+
+**A1–A4 are the translator's spelling, so S proposes today's text.** Every one-atom conjunct the check run's
+statements send is its template's form, but for the two respellings R5 names: an `IN`'s points in the set's order, and
+`NOT (x IS NULL)` in `IS NOT NULL`'s spelling, which A4 proposes at `Neg` alone because its negation strips to the
+shorter form. The bare form beats a guarded one only where it is exact too, which is P8.
+
+**C2, the numeric window, is not built either, nor C4 over a cast.** Every reader C2 fits is a cast of the text or
+`RETURNING DECIMAL`, and each parses a string Calcite then compares where the service compares no string, so no accessor
+of the conjunct writes a number comparison over it as the form means (below), and the window is never exact, admitting
+every non-number. It could only ever be refuted or implied and unwritable, a candidate an atom for nothing. K's windows
+over those readers, and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`, wait on a carrier the builder would send them
+through: O7's third option, the owner's.
+
+**A price is a total order.** `Priced` is the form's nodes and its text. `Min` keeps one value whatever order rows
+arrive in, and `None`, greater than every real price, is a complete value from the start, so a rule reads "no exact
+form" (`priced-is-real`) and never an absence. No registry row ranks a filter form by its cost, so nothing ranks above
+the size.
+
+**What may be sent is read off the form, against data beside it.** `sendable` refuses a string ordering whose literal
+holds a character of a parting band, read against the parting bands loaded as data, so that no form S sends is one
+bound of a range the two orders rank apart, beside any conjunct in any round; and a literal with an unpaired surrogate,
+which the SDK refuses to send on either target. That second is one test of a concrete literal,
+`JsonValues.IsEncodable`, the one `CosmosEncodable` asks of every string a statement carries: no band can hold it, since
+a pair's units are surrogates too, and it is a property of the value the encoder is handed, which no fact about the
+documents decides. `rex-writable` admits a form only where the Rex builder writes every comparison, membership and test
+in it, by the grammar's rows (`RenderingRexGrammar`): a string over any reader, the accessor re-typed `ANY`; a number
+over a `RETURNING` of a number type, which Calcite reads as the value the service compares or raises on; a boolean over
+`RETURNING BOOLEAN`; the eight type tests, each with an in-process body; constants and the connectives. A number over a
+cast of the text or `RETURNING DECIMAL` is not written: both parse the string `"60"`, which Calcite then finds `> 49`
+where the service's `$.label > 49` finds nothing, so the Rex would not mean the form and the builder's round trip would
+refuse it. So the builder never meets a member it would have to leave out, which beneath an `OR` or a `NOT` would
+strengthen the weakening. Which reader is typed as a number is one table, the readers' type tests `T(p)`
+(`RenderingRexGrammar.TypeTests`), which the templates' guards read too.
+
+**The weakening's assembly decides nothing.** `ServiceForm.Joined` flattens a member of its own connective, keeps one of
+each part in the arms' order, and folds Kleene's constants at either position; `Negated` folds both constants and strips
+one `NOT`; `ServiceForm.Folded` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
+`Neg`, the identity for none, and prunes nothing: flattening and one part each make a presence test vanish into a
+guarded form that holds it. Whether a leaf takes its best or this fold is two rules (`best-is-implied` and its
+negation), and `form-is-join-of` holds a composed form to exactly its arms' parts, as a set.
+
+**What holds it.** `RenderingTemplatesTests`: totality over every atom the inputs load, a synthetic atom of every shape
+and a parameter; every pair the rows ask spells a form; the translator's spelling, over every one-atom conjunct the check
+run sends and a sample of the one shape it sends none of; no two string orderings of one path; the order, the join, the
+negation, the sentinels inert, and the surrogate, band and grammar filters.
+
+### The generate theory: positions, bests and weakenings
+
+**Fourteen rules over the check's gate, in seven strata.** Generate mode runs its own schedule beside check mode's, which
+is unchanged. Each step that derives or combines a fact is a rule; C# writes values from complete inputs and reads one
+answer.
+1. *Positions and proposals.* A root stands at `Pos` (`RenderingBundle.Generate`, as `Claim` writes a candidate). Two
+   `at` rules carry the position down: an arm stands where its junction stands, and a negation's operand at the
+   opposite position. Every node reached starts with `BestExact` = `None` and `Implied` = ∅, complete values that later
+   strata only lower or grow, so nothing reads an absence. The `spell` rule joins `at`, `atom`, `template` and `fits`,
+   and proposes `Spell`'s form.
+2. *Cells, the service, the gate* (three strata): Stage 1's, unchanged, on every candidate.
+3. *Lifts and strictness.* An exact agreement that is not vacuous and is `sendable` becomes a price under `Min`. An
+   implied one that is not vacuous, `sendable` and `rex-writable` joins `Implied` under `Union`; every Equal box lies
+   within an Implies box, so a writable exact form is a member too. Three rules state presence. A reading the
+   `strictreader` rows name is strict in its path. A call whose name a `strictop` row holds is strict in what an
+   operand is strict in, through `callarg`. A predicate `over` a strict value is null where the path is absent, so
+   neither TRUE nor FALSE there: it implies `IS_DEFINED(p)` at `Pos` and `NOT IS_DEFINED(p)` at `Neg`, which a `NOT`
+   above turns back into presence.
+4. *Bests.* A junction's best is `Joined` of its arms' bests, held by `form-is-join-of` under the connective's licence,
+   with an Equal agreement whose proof joins theirs, so the conflict rule and the proof lines carry over. A negation's
+   best is its operand's at the opposite position, stripped of a `NOT`; so `NOT (x IS NULL)` is written in `IS NOT
+   NULL`'s spelling, and a double `NOT` collapses.
+5. *Weakenings.* A leaf takes its best where that best is one of its implied forms (`best-is-implied`), and otherwise
+   the fold of its implied set, under both connectives' licences (`best-is-not-implied`). A junction joins its arms'
+   weakenings. A negation negates its operand's at the opposite position. `weakening` has no lattice, so a primitive
+   that answers one node two ways faults the bundle.
+
+The writer states what the strictness rules read beside the terms, as it states `point`: through a second callback of
+`PredicateWriter` it writes `leaf` for every predicate that is no junction or negation, `over` the value that predicate
+is, and `callarg` for each operand of every call. A comparison is the call of its operator over both operands; a
+membership, `IN` over its value; a null or presence test, `IS NULL` or `IS_DEFINED` over its value; an opaque term, the
+value the loader read it as. So which predicate is null where its operand is, is the `strictop` rows' and never a case
+the writer picks. The facts graph passes no such callback and builds what it always built, allocating nothing new.
+Which operators and readings are strict are host rows, from the definition's `StrictOperators` and `StrictReaders`,
+read from the registry (*Strictness from rows*, below). A definition that names none implies no presence, which loses
+rows from no weakening.
+
+**Why the lifts stand apart.** No junction composes from an atom's best before that best is final. Every atom's best is
+complete when `best` starts, so each junction's best is computed once, from final arms, bottom up. `best` still reads a
+value its own stratum writes, and that is sound: a price only lowers and `priced-is-real` only turns true, so every value
+it composed from is an exact form. `weaken` runs last and reads every best and implied set complete, so exactly one of
+the two leaf rules fires for a leaf. A junction's best joins its arms' bests. Joining dedupes shared parts, so a dearer
+arm form that shares more with its sibling could join cheaper. That is not searched: the text may differ, the rows
+never do.
+
+**The round's junction is one more root.** `Through(k)` and `Before(k)` are written beside the conjuncts and share
+their terms, so the `best` rule proves the `WHERE`'s `AND`. A conjunct with no exact form leaves the junction with none,
+and the host derives nothing. Width sets the count limit: the roots' atoms, every `IN`'s points, and a junction root's
+arms, at 80 + 8 a unit (`RenderingBundle.WidthOf`, `RunGenerate`). The check run's limit is 64 + 8 a leaf, and the two
+extra strata take the 16.
+
+**One discipline for every read.** `Guard` answers for a bundle that declined on an engine failure, and inside it
+`Readable` holds that the run completed within its limits, kept one node per class and derived no contradiction.
+`ReadBest`, `Agreements` and check mode's `Read` all pass it.
+- A run that stopped short reads `Incomplete`, and a merge or a contradiction reads `Conflict`. A contradicted run still
+  writes weakenings, and none is read.
+- `ReadBest` gives the best and its proof, or Unproven naming the least refuted cell and the cheapest form refuted
+  there; a junction root names none, since generate mode composes no refutation. Beside either it gives the weakening,
+  `TRUE` read as none: `Joined` and `Negated` fold every constant, so it is the one trivial spelling.
+- `Agreements` lists the non-vacuous agreements, which source A and the pairwise check judge.
+
+**The definition holds generate mode's rows.** The template, fits and strictness rows join the parting bands in
+`RenderingDefinition`, so a planted fault replaces one row in a graph of its own. The parting bands load as one set.
+The grammar is the Rex builder's own and loads from `RenderingRexGrammar` as one registered value.
+
+**The order test reads generate mode too.** It reads the three schedules. Beyond the universals, every other filter
+reads complete values, except those that hold of the value they are handed however it moves: `priced-is-real` and
+`form-is-join-of`. A function's value matched against a constant must be complete: `Is(false)` on a `Max<bool>` reads
+"not yet true". So `best-is-implied` and its negation read finished sets, and the lift reads a vacuity the gate
+finished a stratum before. One plant shows each refusal.
+
+**What holds it.** `RenderingGenerateTests`:
+- P1 restricted under the asserted set and `Production`, and P8 bare.
+- The negations; a junction's best; the round's junction, absent where an arm has none.
+- Nothing vacuous lifted; the band filter; a lone surrogate never admitted, though the gate agrees with it.
+- Presence at both positions and through calls; a leaf's best or its fold; no sentinel lifted.
+- Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's cast comparison weakening to its presence at `Neg`.
+- A contradicted and a merged bundle reading nothing.
+
+Every run over the inputs completing within its limits, with one node per class, no contradiction, no decline and no
+sentinel lifted, is the shadow's assert (`RenderingShadowTests`), over the bundles in the shape production opens them.
+
+### Strictness from rows, and what an opaque conjunct is read as
+
+**What Calcite answers null for is measured, or Calcite's own declaration.** Two `Calcite.*` rows hold it as data, in a
+row's `Subjects`: the functions the split rule's walk listed as code, null wherever an operand is null in every form
+each takes (`Calcite.ListedFunctionsAreNullOverANullOperand`), and every reading the loader builds, null over an absent
+path (`Calcite.ReadingsAreNullOverAnAbsentPath`). Each row's pinning test reads its subjects and measures each in
+process, every operand position of every form and every column a reading fills, so a name added to a row is measured
+or refused. The first holds `IN` over literals too, which Calcite declares nothing of and the IR's membership is.
+Beside them Calcite declares `Strong.Policy.ANY` of the comparisons, `LIKE`, the arithmetic, the cast, `NOT`, `ITEM`,
+`TRIM`, `FLOOR`, `CEIL` and `EXTRACT`. `CosmosStrictness` is the one reader of the three, into the definition's
+`strictop` and `strictreader` rows; the rules join them, and no rule was added.
+
+**One row an operator, met by name in S.** The loader spells a call by its operator's name, a `TRIM` by its flag and a
+cast from text to text as `CAST`, so the IR cannot tell apart two operators of one name. The reader writes one row for
+each operator under each name it is read by — the standard table's, every library's, the adapter's and the geography
+functions' — strict or not by that operator's own declaration or measurement, and combines nothing. `strictop` is a
+`Min` over booleans, so the theory meets the rows of a name as it loads them: a name is strict only where every
+operator it may stand for is, and that conclusion is Eggnog's. It holds `EXTRACT` not strict, since a library also
+names a path into XML so and declares nothing of it; the loader never reads an `EXTRACT` as a value, its unit being no
+value, so nothing is lost. `CAST` would be held not strict too, since `TRY_CAST` is read by the same name, so the row
+measures `TRY_CAST` beside `SAFE_CAST`. A call no row and no declaration names is strict in nothing.
+
+**An opaque conjunct is read as a value beside its term.** `Loading.Opaque` keeps the node it numbered, and a
+statement's `Opaques` reads each when first asked, which planning never does: the only new work on a planning path is
+keeping that node, and handing a statement the reading where its loading numbered an opaque term at all; nothing read
+enters a term, a digest or a memo key. The reading is the predicate's top call, its operands read as values at every
+depth and the rest left out, since a strict call is null where any one operand is; and a predicate that is a reading, a
+boolean column, is the reading. A predicate compared with `TRUE` is that comparison's call, so `=` being strict is the
+row's, not the loader's: no peel stands in for it, and the split rule keeps its own. `RenderingBundle.Write` writes it
+with `over` and its calls' `callarg` rows, so `UPPER(c.name) = 'X'` implies the name present at `Pos` and absent at `Neg`,
+`CONCAT_WS('-', name, sku) <> 'x'` implies nothing, and a strict call's operand beside a `CONCAT_WS` still gives its
+path. Presence stops at the call that answers over a null, so beside a null test or a `CASE` a sibling's path is
+still given, where the split rule refused any expression that observes absence. What it reads less than the split
+rule: a connective inside the term, read for its truth or falsity (`TODO.md`).
+
+**What holds it.** The two rows' measurements; `CosmosStrictnessTests`, reading S's lattice (the declared and measured
+names strict, a name another operator declares nothing for not); the loader's reading of an opaque conjunct beside a
+digest that does not move; `RenderingGenerateTests` over the three conjuncts through the loader.
+
+### Ownership, the reading precision, and the generate shadow
+
+**Who owns a conjunct is read off the IR, never off S's answer.** `RenderingFamily.Owns` holds a conjunct with no opaque
+term and no parameter, every comparison a reading against a literal, and every reading a key of the edges rows. It
+names no shape: within the family S's Unproven is the answer (O2), declined and listed, and a parameter stays the
+translator's, whose recheck spine the printer will not write. Nothing in planning calls it yet.
+
+**Which stratum a later round may rest on is data.** `RenderingFamily.ReadExactly` reads `ReadingPrecisionTable`: the
+text accessor, `RETURNING BOOLEAN` and a cast of the accessor to an integer type exact, the raw value exact beside no
+number literal, every other reading coarse. The check run reads it there too. What makes a row exact is what a stratum
+needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
+value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
+leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` holds each row to it.
+
+**The shadow asks S what production will.** For each statement the check run plans, riding its pass, it opens the
+bundles of §4.4 in the translator's rounds: each imported from the statement's root, every pending conjunct a root
+beside `Through(k)` and `Before(k)`, a later round's atoms stated beneath `StratumFor` — the deepest node of the chain
+every conjunct of which S admitted and the facts graph reads exactly, the root otherwise — and S admitting each owned
+conjunct it proves. The composite is read where §5.2 reads it, and each residual's weakening from the round after S's
+last admission that holds it, or from one closing bundle. A bundle is remembered by its content, the opaque terms'
+readings among it, so a statement asked again opens none.
+- *It follows the translator's rounds.* Their nodes are the facts graph's, built from the translator's admissions;
+  S's own would change a later node, which only production's sites see (g15).
+- *The translator is compared at one key.* Beside each round's bundle a check bundle of the same roots, import and
+  strata claims the translator's texts, so no claimed text's parts reach `BestExact`; and J's weakening of each
+  residual is claimed implied beside the bundle S's is read from.
+- *Every statement is read.* A statement none of whose conjuncts rendered writes no text, so the capture also tells its
+  observer when a statement's rounds run, from the renderer, one `volatile bool` a conjunct asked, inert unarmed.
+- *Every leg's set is asserted on every leg.* `Production` and `Emulator` are both asserted, which holds each leg to
+  its own a fortiori, and `Portable` is reported beside. The check run's own lines stay under `Portable`, the stricter.
+
+**What each conjunct is, read off rows the shadow holds.** Same; respelled, where S's form and the translator's text
+are both exact at the key (R5's orders, and P8 where S's form is shorter); S's alone exact, where the translator's text
+is not, which no switch listing may read as cosmetic; gain; the translator shown wrong (its text refuted at a key as
+deep as its own round's stratum: where S admitted a conjunct in an earlier round, from a shallower stratum, the text is
+claimed beside S's form there and its refutation says nothing of the translator's own round);
+regression (the translator pushes, S owns and declines, not refuted) with its reason; translator-written; and engine. A
+regression's reason claims no more than a row says: a form the gate agreed exact that the band filter refused, by S's
+own bands; the translator's text exact at the key, so a form no template proposes; a stratum shallower than the
+translator's, which names no cause; the composite; or the conjunct on its merits. A residual's weakening is the same as
+J's, tighter or looser on source A's documents, S's or J's alone, dropped, or pushed exactly. A looser one says whether
+O7 lists it, read from J's verdict at the weakening's key and the grammar's rows and never from J's shape: implied but
+holding a member the Rex builder cannot write over the conjunct's readings (loss 1, the text-equality alternatives'
+number branch among them, and now K's windows over a cast), or present and unproven to S (loss 5). One whose J verdict
+is missing or refuted is unlisted.
+
+**What holds a generated form.** Source A judges every form the shadow's bundles derived over IR-read atoms — each
+agreement at both positions, the composites among them, each implied form and each weakening — on documents drawn from
+its bundle's import, on every target its set serves: at `Pos` the service's true against Calcite's TRUE, at `Neg` its
+false against Calcite's FALSE. A form whose atoms are stated beneath a stratum is exact where the conjuncts that stratum
+assumes hold in any mode Calcite may read them in, `RETURNING` or a column, and is held to no failure elsewhere, the
+set-aside cells' promise. **The judge never rests on the stratum it judges.** A document is ruled out only where the
+container's declaration rejects it, each rule's body and head read by an evaluator of the declaration's own over the
+paths the document sets; never by what the facts graph says a stratum admits, which a coarse reading may narrow. So a
+stratum fault — G12's coarse reading, G11's own facts — shows as a witness of line 1 itself. The check run's source A
+reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
+draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
+conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
+nothing measured, but those in D3's raw scope (a raw ordering, or a raw comparison with a number or a boolean), which
+IrEval reads no raise of until g10 and which are counted apart, as the coverage line counts them. Source B's trials are
+shadowed and judged on their declared documents.
+- *The pairwise check* needs no `IrEval`: two exact agreements of one node at one position, and S's best beside the
+  translator's text where the key proved both, keep alike where Calcite answers; where it raises the Equal box allows
+  any answer but a failure, and those documents are reported apart.
+- *The fact rewrite* is held by Calcite itself: each conjunct it lowered is asked of S, and S's best is held to the
+  original's node compiled by Calcite's executor through the filter's binding, on source A's documents beside the
+  original's literals, so a UUID or instant cast the loader reads as opaque is judged too. A lowering to the stored
+  form in the wrong case is caught. A conjunct the rewrite deleted is unpaired, and counted.
+- *An opaque residual's weakening* is judged at the gate by Calcite itself: the conjunct's node compiled by Calcite's
+  executor, each field filled as the reader fills it through the filter's binding, over source A's documents widened to
+  the weakening's paths and the node's literals. Where Calcite keeps a row the weakening keeps it. A binding that reads
+  a field as text or JSON is left out and counted.
+
+**The gains, as forms.** P1's inequality is sent restricted under every set; P2 and P3 exactly over a twin of `typed`
+whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself; P4's inequality weakens
+tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
+P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 is killed
+on P6:** its C4 form compares the price through a cast, which no accessor writes as it means, so its weakening keeps
+presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom
+left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
+
+**What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
+`NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
+`EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
+`pairwise.tsv`. The summary gives S's time and bundles by shape twice: of each statement, and of each query, every
+statement its plan asked S of, the shape the widest of theirs, as §6.3's lines read cost. The machine's load is
+recorded beside it by whoever runs it; no figure carries a line before g15.
+
+### Faults planted in S
+
+**Each of Stage 1's historical faults is planted where S would carry it, in a graph of its own**, and Stage 1's
+triggers are shadowed through it under both sets a leg plans under. The translator's own plants stay until the switch,
+when it no longer writes the family.
+- *A template is untrusted.* M1–M3 replace a template's row: the right row goes, and a rule over the same `fits` rows
+  and positions proposes the template's form with the guard or type test taken out, since a template's spelling is
+  C#'s and a row alone cannot write it wrongly. The gate refutes the planted form at the cell Stage 1 pinned, read at
+  the atom, where a `NOT` above swaps the class; nothing sends it; it is implied only where its cell keeps more rows
+  than Calcite; and the loss shows as a regression, the right form never proposed.
+- *A rule or a primitive is trusted*, so S sends or implies a wrong form, and source A, which shares none of S, finds
+  the document. M4 and M5 put a position in the wrong place, and a position is derived down the IR, so each plants
+  the descent beside the right one as well as the best that reads it: a negation's operand standing at the negation's
+  own position, a junction's arms at `Pos`. M6–M10 come through `Pair` and `Leaf`. The loader reads a cast of the
+  accessor to `VARCHAR` as the accessor itself, so M7's dropped cast is the text reading read as the raw value. M8 and
+  M9 answer a boolean's `!=` and orderings with a string by its rendering, which is the inequality and order the
+  translator borrowed from Calcite; answering `!=` false across every kind would refute the restricted form at every
+  number too, and send nothing wrong. M11 lifts a text equality's string form into `Implied` with no agreement.
+- *M10 is caught.* The check left it unproven, `typed:DECIMAL` being the clause and a column at once; source A judges a
+  document in `RETURNING` mode, where the string the clause parses as 2 is TRUE and the bare equality false.
+
+**Recall, in generate mode.** Each 4b65754 text is taken apart at its conjuncts' atoms, through a `NOT` stripped and
+through a junction by the paths each arm reads, and each part is offered as a planted template at the atoms of its
+path and position. The part a structure shows wrong is refuted at the pinned cell, never S's best, and implied only
+where that cell keeps a superset of Calcite's rows, (F,t) or (U,t) or their duals beneath a `NOT`: never P3's (T,f).
+S sends what it sent unplanted. Until the switch the translator writes the family, so under its fault it still writes
+each text again (g16 retires that half).
+
+**The gate faults, in generate mode.** G9, G10 and G13 plant what is not built yet, the production memo, the oracle's
+generations and the Rex builder, and come with them.
+- *G2* proposes beside every template's form that form with its null guard dropped; no node keeps a dropped form as
+  its best where source A's documents show the guard kept something out. *G3* adds the service leaf answering `!=`
+  over a null as false: the gate agrees with the dropped inequality, `Min` prefers it, S sends it, source A finds the
+  null label, and the pairwise check parts the two exact candidates there. Their check-mode replays need no fault now, the conjunct read off the statement planning read; S's
+  plants of M8 and M9 beneath them change no cell of `<> 'bikes'`.
+- *G4* offers the second disjunct's form to the first; it is never the first's best nor within the root's.
+- *G6* lifts a best from an implied agreement, so the raw inequality's bare form, which keeps a null, is sent. A best
+  carries an Equal agreement by construction, so source A now judges every best as the Equal agreement it must be,
+  which an unplanted run adds nothing to, and finds the null; the pairwise check parts it from the translator's text.
+- *G7* writes presence at `Neg` as at `Pos`, which source A's Implies at `Neg` refutes. The fold's own dual is not
+  planted: a weakening is lattice-free, so a second fold beside the right one faults the bundle, which is the
+  tripwire; and a conjunction of implied members at `Neg` is looser, never wrong, but over none, where it is `TRUE`.
+- *G8* builds a negation's best from its operand's best at `Pos` where both stand; source A at the root finds it.
+- *G11* hands a conjunct its own stratum. Planted in the oracle (`CosmosOracle.RenderedFrom`) it never reaches S, the
+  importer reading the licence table's node, which renders no conjunct from its own facts; so it is planted where it
+  acts, the shadow stating a round's conjunct beneath its own facts with the licence table's assumptions kept. S then
+  proves the bare form, and line 1 itself finds the null label it keeps.
+- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7:
+  beneath it the bare label is exact and drops that document, which what S sends as built keeps, and line 1 itself
+  finds a document whose label is the number 7 beside a kind a column reads as 5.
+- *G14* fails a later round's arm on the cells its stratum sets aside; a set-aside cell tolerates anything but a
+  failure, so neither the arm nor the round's junction has an exact form, and nothing is admitted.
+
+**The witnesses run S's plants.** An untrusted plant's refuted form is read at the conjunct, beneath its `NOT`s, with
+its cells' document; a trusted one's wrong form, with the least document source A found it on where the emulator's
+model parts from Calcite. A trigger with a second conjunct or a junction above the planted atom gives none, since
+generate mode composes no refutation through a junction (`TODO.md`).
+
+**What holds it.** `RenderingGenerateMutationTests`, the ten caught and M11 beside, the tip wrong on no trigger and every
+trusted plant changing what S sends or implies; `RenderingGateFaultTests`; `RenderingRecallTests`;
+`RenderingWitnessTests`.
 
 ---
 

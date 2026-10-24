@@ -28,10 +28,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         const string Typed = "SELECT c.\"id\" FROM typed AS c WHERE ", Label = "JSON_VALUE(c.\"DOC\", '$.label')", Products = "SELECT c.\"id\" FROM products AS c WHERE ";
 
-        /// <summary>The differential's containers, in generations of their own.</summary>
-        internal static readonly Adapter.Metadata.CosmosContainerMetadata[] Containers =
-            [.. CosmosDifferentialTests.Containers.Select(c => c.WithFactGenerations(new JsonFactGenerations()))];
-
         /// <summary>
         /// Each fault's triggers, the differential's but the one M8 needed: what each must read under the fault, a refutation
         /// spelled as its cells and class, or <c>Exact</c>; or <c>null</c>, reported only, where no cell is definite.
@@ -129,7 +125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal static RenderingCheckRun Checked(CosmosTranslatorFault faults, params string[] statements)
         {
             using (CosmosTranslatorFaults.Plant(faults))
-                return RenderingCheckRun.Over(RenderingInputs.Differential("mutation", statements, Containers));
+                return RenderingCheckRun.Over(RenderingInputs.Differential("mutation", statements, RenderingInputs.Containers));
         }
 
         /// <summary>Every conjunct a run's statements wrote, at either site, in order.</summary>
@@ -137,12 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             run.Conjuncts.OrderBy(c => int.Parse(c.Name, System.Globalization.CultureInfo.InvariantCulture)).ThenBy(c => c.Unit).ThenBy(c => c.Position).Select(c => $"{c.Name}#{c.Unit} {c.Site}: {c.Text}");
 
         /// <summary>A verdict as the triggers pin it: a refutation's cells and class, or <c>Exact</c>, or its kind.</summary>
-        internal static string Show(RenderingVerdict verdict) => verdict switch
-        {
-            { Refutation: { } r } => string.Join("; ", r.Cells.AsEnumerable()) + " " + r.Class,
-            { Kind: RenderingVerdictKind.Proven } => "Exact",
-            _ => verdict.Kind.ToString(),
-        };
+        internal static string Show(RenderingVerdict verdict) => RenderingGenerateMutationTests.Show(verdict);
 
     }
 

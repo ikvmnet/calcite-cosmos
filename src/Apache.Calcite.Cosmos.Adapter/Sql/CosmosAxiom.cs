@@ -15,7 +15,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// namespace: <c>Measurements.CosmosJsonTypeMeasurementTests.IsPrimitiveIsFalseOverAnAbsentPath</c>.</param>
     /// <param name="Outcomes">What the measurement answered, key by key, as the rendering graph reads it
     /// (<see cref="CosmosAxiomRows"/>); each names the targets that ran it, within <paramref name="MeasuredOn"/>.</param>
+    /// <param name="Subjects">What the statement holds of, by the names a reader takes as data: the functions or the
+    /// readings of a strictness row (<c>Metadata.CosmosStrictness</c>), each one its pinning test measures.</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
-        IReadOnlyList<CosmosOutcome>? Outcomes = null);
+        IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null);
 
 }

@@ -30,8 +30,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ValueSet<CellClass> Refutes(RenderPosition pos, Verdict v) => ProbeTheory.Theory.Get(ProbeTheory.Refutes.Of(pos, v));
 
+        /// <summary>Stage 2's line: check mode's 42 (design 2) and generate mode's 14.</summary>
         [Fact]
-        public void TheTheoryHasAtMostFortyRules() => ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(40);
+        public void TheTheoryHasAtMostFiftySixRules() => ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(56);
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
         [Fact]

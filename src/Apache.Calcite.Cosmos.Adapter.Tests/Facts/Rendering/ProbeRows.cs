@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -26,7 +27,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         public static IReadOnlyList<MeasuredOutcome> Rows { get; } = CosmosAxiomRows.Read(CosmosAxioms.All);
 
-        public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows);
+        /// <summary>
+        /// The registry's S, strict where Calcite answers null for a null as its one reader of that says
+        /// (<see cref="CosmosStrictness"/>): what production's will be defined from.
+        /// </summary>
+        public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows) with
+        {
+            StrictOperators = CosmosStrictness.Operators,
+            StrictReaders = CosmosStrictness.Readers,
+        };
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 

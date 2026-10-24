@@ -54,10 +54,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// What a check claimed of which conjuncts, over what its bundle imported, each path by its spelling, and each atom
         /// read where its conjunct was rendered, and the value each refuting cell puts at its path, <c>null</c> for none:
-        /// what source A samples, and a witness is made of.
+        /// what source A samples, and a witness is made of; and the rules of the declaration the statements read, which
+        /// say which documents exist, independently of what the facts graph made of them.
         /// </summary>
         public sealed record Claimed(IReadOnlyList<SqlPredicate> Conjuncts, ServiceForm Form, IReadOnlyList<ServiceForm?> Members,
-            IReadOnlyDictionary<string, Imported> Imports, IReadOnlyList<Beneath> Stated, IReadOnlyDictionary<string, string?>? Witness);
+            IReadOnlyDictionary<string, Imported> Imports, IReadOnlyList<Beneath> Stated, IReadOnlyDictionary<string, string?>? Witness,
+            IReadOnlyList<JsonFactRule>? Rules = null);
 
         /// <summary>One path's import.</summary>
         public sealed record Imported(PathValues Values, ValueSet<string> Chars);

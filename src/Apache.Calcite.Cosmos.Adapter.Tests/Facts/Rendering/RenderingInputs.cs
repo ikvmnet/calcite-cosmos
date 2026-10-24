@@ -25,6 +25,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class RenderingInputs
     {
 
+        /// <summary>The differential's containers, in generations of their own: what the plants and the recall plan over.</summary>
+        public static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithFactGenerations(new JsonFactGenerations()))];
+
         /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
         /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
@@ -47,6 +50,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 yield return new("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds));
             }
         }
+
+        /// <summary>
+        /// A parameter atom left residual beside an admitted equality (spec g05), whose weakening is presence alone: the
+        /// check run's, beside <see cref="All"/>, which the plan digests plan and so does not grow. A text inequality over
+        /// <c>typed</c>'s undeclared label, which the translator does not push against a parameter; over the accessor, whose
+        /// text types the parameter, where a raw accessor's <c>ANY</c> leaves it untyped and the statement fails to plan.
+        /// </summary>
+        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
+        public static Statement Parameterised(JsonFactGenerations? generations = null)
+        {
+            var containers = CosmosDifferentialTests.Containers.Select(c => generations is null ? c : c.WithFactGenerations(generations)).ToArray();
+            return Differential("probe", [ParameterisedSql], containers).Single() with { Name = ParameterisedResidual };
+        }
+
+        internal const string ParameterisedResidual = "a parameterised residual",
+            ParameterisedSql = "SELECT c.\"id\" FROM typed AS c WHERE c.\"$.category\" = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <> ?";
 
         /// <summary>The planner corpus, planned through one harness.</summary>
         /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>

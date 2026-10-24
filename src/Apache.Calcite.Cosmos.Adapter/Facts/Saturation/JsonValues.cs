@@ -341,6 +341,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static ValueSet<string> Stored(ValueSet<string> written) =>
             written.Contains(SurrogateBand) && written.Contains(HighBand) == false ? ValueSet.From(written.Append(HighBand)) : written;
 
+        /// <summary>
+        /// Determines whether a text holds no unpaired surrogate, which the SDK's encoder refuses to send
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>), read unit by unit as it is: the one test, which
+        /// <c>Client.CosmosEncodable</c> asks of every string a statement carries, and the rendering graph's <c>sendable</c>
+        /// of every literal. No character class holds it, since a pair's units are surrogates too.
+        /// </summary>
+        public static bool IsEncodable(string text)
+        {
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                    i++;
+                else if (char.IsSurrogate(text[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
         static bool TrimmedWithin(int lo, int hi)
         {
             foreach (var (from, to) in Trimmed)

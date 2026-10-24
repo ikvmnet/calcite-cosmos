@@ -188,6 +188,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 lock (_lock)
                     return _scope ??= Oracle.Admit(Statement, (i, facts) =>
                     {
+                        // The shadow's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
+                        if (CosmosRenderingCapture.Armed)
+                            CosmosRenderingCapture.Observer?.Read(this);
+
                         var parameters = new CosmosParameterList();
                         if (Translator(facts, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
                             return false;
@@ -205,6 +209,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>The declaration the statement reasons from, for the rendering check's importer.</summary>
         internal JsonFactTheory DeclarationForCheck => Oracle.Theory;
+
+        /// <summary>The binding the conjuncts read their fields through, for the rendering check's in-process judge of a weakening.</summary>
+        internal (IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) BindingForCheck => (_fields, _readings);
+
+        /// <summary>
+        /// The statement the declared-fact rewrite leaves of this one, through the same binding, or this one where nothing
+        /// was rewritten: for the rendering check's rewrite test. Nothing in planning calls it.
+        /// </summary>
+        internal CosmosFilterStatement RewrittenForCheck => CosmosFactRewriter.Rewrite(Condition, _fields, _container, _rootAlias, _rexBuilder, _readings) is var rewritten
+            && ReferenceEquals(rewritten, Condition) == false ? Of(rewritten, _fields, _readings, _container, _rexBuilder, _rootAlias) : this;
 
         CosmosRexTranslator Translator(JsonFactSet facts, CosmosParameterList parameters) =>
             new(_rexBuilder, _fields, parameters, facts, null, _container, _readings);

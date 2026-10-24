@@ -12,11 +12,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// The rendering graph S: what the service answers, settled per set of targets, the agreement and the connectives each
     /// set composes through, loaded into a frozen theory; and the rules that, in a bundle beneath it, evaluate a written
     /// form beside the predicate it was written from on every cell of an atom's path, decide whether it agrees or is
-    /// refuted, and carry both through the predicate's AND, OR and NOT.
+    /// refuted, and carry both through the predicate's AND, OR and NOT; and, in generate mode, propose an atom's forms from
+    /// templates, keep the cheapest exact one of every node and build each node's weakening.
     /// </summary>
     /// <remarks>
     /// Every fact that is derived or combined is a rule here, and every universal reads complete inputs (<c>DESIGN.md</c>,
-    /// <i>The rendering graph in check mode</i>).
+    /// <i>The rendering graph in check mode</i> and <i>in generate mode</i>).
     /// </remarks>
     internal sealed class RenderingTheory
     {
@@ -75,9 +76,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var analysis = new TableOptions { Role = TableRole.Analysis };
             Junction = Graph.DefineRelation<Pred, Pred, Pred, CosmosServiceTest>("junction", analysis);
             First = Graph.DefineRelation<Pred, Pred>("first", analysis);
+            Within = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("within");
             Needs = Graph.DefineFunction<ServiceForm, ValueSet<CosmosServiceTest>>("needs", ValueLattice.Union<CosmosServiceTest>());
             Neutral = Graph.DefineFunction<Pred, ServiceForm, CosmosServiceTest, Witness>("neutral", ValueLattice.Min<Witness>());
             Disjoint = Graph.DefineRelation<JPath, JPath>("disjoint");
+
+            At = Graph.DefineRelation<Pred, RenderPosition>("at");
+            Template = Graph.DefineRelation<TemplateId, RenderPosition>("template");
+            Fits = Graph.DefineRelation<TemplateId, string>("fits");
+            PartingBands = Graph.DefineFunction<ValueSet<string>>("partingbands");
+            RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
+            StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>());
+            StrictReader = Graph.DefineRelation<string>("strictreader");
+            BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
+            Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
+            Weakening = Graph.DefineFunction<Pred, RenderPosition, ServiceForm>("weakening");
+            Leaf = Graph.DefineRelation<Pred>("leaf");
+            Over = Graph.DefineRelation<Pred, Val>("over");
+            CallArg = Graph.DefineRelation<Val, Val>("callarg");
+            Strict = Graph.DefineRelation<Val, JPath>("strict");
 
             var measure = Graph.DefineRuleset("measure");
             var allowed = Graph.DefineRuleset("allowed");
@@ -107,10 +124,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineGate(definition, classes, gate, conflict);
             DefineComposition(compose);
 
+            var at = Graph.DefineRuleset("at");
+            var spell = Graph.DefineRuleset("spell");
+            var lift = Graph.DefineRuleset("lift");
+            var strict = Graph.DefineRuleset("strict");
+            var best = Graph.DefineRuleset("best");
+            var weaken = Graph.DefineRuleset("weaken");
+            DefineProposal(at, spell);
+            DefineLifts(lift, strict);
+            DefineChoice(best, weaken);
+
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
+            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, at, spell), Schedule.Saturate(partition, need, parted),
+                Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict), Schedule.Saturate(best, conflict),
+                Schedule.Saturate(weaken));
 
             Graph.Root.Freeze();
             Theory = Graph.Root.CreateChild();
@@ -134,6 +164,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// the gate on atoms; verdicts up the tree.
         /// </summary>
         public Schedule Check { get; }
+
+        /// <summary>
+        /// Generate mode's schedule: positions down the tree and the templates' forms; the cells, the service and the gate
+        /// on them as in check mode; what the gate agreed lifted, and presence through calls; the bests composed up the
+        /// tree; one weakening a node, from complete inputs.
+        /// </summary>
+        public Schedule Generate { get; }
 
         // The theory's tables: the rows as measured and as settled per set, and the agreement. `final` and `table` hold a
         // key once every target its set serves has measured it.
@@ -170,8 +207,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // two spellings, and throw), the set, each import once and lattice-free, beside each atom what the facts its
         // conjunct was rendered from say its path may hold (`assumed`, anything where none is read), and the root's
         // candidate with every member of its junctions as written and each conjunction's members, nested ones flattened;
-        // the rules write the rest: the candidates beneath the root, the members of a member of one connective, and the
-        // members of a junction's rest.
+        // the rules write the rest: the forms each junction lies within, the candidates beneath the root, and the members
+        // of a member of one connective.
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
@@ -198,9 +235,38 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A junction of the IR, its connective, and each arm beside the other; <see cref="First"/> names its first.</summary>
         public Relation<Pred, Pred, Pred, CosmosServiceTest> Junction { get; }
         public Relation<Pred, Pred> First { get; }
+
+        /// <summary>
+        /// A junction, a position and a form of its own connective it lies within: one it is a candidate for, or one its
+        /// parent of that connective lies within. Its arms take the form's parts, and its own forms are built up from theirs.
+        /// </summary>
+        public Relation<Pred, RenderPosition, ServiceForm> Within { get; }
         public Function<ServiceForm, ValueSet<CosmosServiceTest>> Needs { get; }
         public Function<Pred, ServiceForm, CosmosServiceTest, Witness> Neutral { get; }
         public Relation<JPath, JPath> Disjoint { get; }
+
+        // Generate mode's. The theory holds the templates asked at each position and the shapes each fits, the parting bands
+        // as one set, the Rex builder's grammar, whether each name the IR reads a call by is null over a null operand (one
+        // row an operator, which the lattice meets, so a name is strict only where every operator it stands for is), and the
+        // readers Calcite answers null for over an absent path; the host writes a root where it stands (`at`), and beside
+        // the terms each leaf over the value it is and each call's operands. The rules write the rest: each node's position, its cheapest exact form (`None`
+        // until one is found), the forms it implies, and one weakening, lattice-free, which a second write faults.
+        public Relation<Pred, RenderPosition> At { get; }
+        public Relation<TemplateId, RenderPosition> Template { get; }
+        public Relation<TemplateId, string> Fits { get; }
+        public Function<ValueSet<string>> PartingBands { get; }
+        public Function<RenderingRexGrammar.Value> RexGrammar { get; }
+        public Function<string, bool> StrictOp { get; }
+        public Relation<string> StrictReader { get; }
+        public Function<Pred, RenderPosition, Priced> BestExact { get; }
+        public Function<Pred, RenderPosition, ValueSet<ServiceForm>> Implied { get; }
+        public Function<Pred, RenderPosition, ServiceForm> Weakening { get; }
+        public Relation<Pred> Leaf { get; }
+        public Relation<Pred, Val> Over { get; }
+        public Relation<Val, Val> CallArg { get; }
+
+        /// <summary>A value Calcite reads as null where a path is absent.</summary>
+        public Relation<Val, JPath> Strict { get; }
 
         /// <summary>
         /// Builds S from a definition and loads its theory: one batch per axiom, then the host rows, settled and frozen.
@@ -228,7 +294,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<Verdict>();
             values.RegisterEnum<Truths>();
             values.RegisterEnum<ServiceOutcomes>();
+            values.RegisterEnum<TemplateId>();
             values.Register<ServiceForm>("service form");
+            values.Register<Priced>("priced");
+            values.Register<RenderingRexGrammar.Value>("rex grammar");
             values.Register<CellClass>("cell class");
             values.Register<Box>("box");
             values.Register<Proof>("proof");
@@ -250,6 +319,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<CutPoint>();
             values.RegisterSet<MeasuredKey>();
             values.RegisterSet<CosmosServiceTest>();
+            values.RegisterSet<ServiceForm>();
         }
 
         void DefineTheory(Ruleset measure, Ruleset allowed, Ruleset refutes, Ruleset tabulate)
@@ -344,9 +414,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        // Positions and pairings are derived, never carried: a junction's first arm is proposed each member of its form and
-        // its second the rest, so the gate decides which pairing holds; a negation's operand takes the form stripped of a
-        // NOT at the opposite position.
+        // Positions and pairings are derived, never carried: every arm of a junction lying within a form is proposed each
+        // part of it, so the gate decides which pairing holds, and the junction's own forms are composed up from what its
+        // arms agreed with (design 2, DESIGN.md); a negation's operand takes the form stripped of a NOT at the opposite
+        // position.
         void DefineDescent(Ruleset structure, Ruleset descend, Ruleset disjoint)
         {
             structure.DefineRule("a conjunction's arms are its junction's sides", r =>
@@ -363,14 +434,45 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Junction.Of(e, a, b, CosmosServiceTest.Or), Junction.Of(e, b, a, CosmosServiceTest.Or), First.Of(e, a));
             });
 
-            descend.DefineRule("a junction's first arm takes each member of its form, and its second the rest", r =>
+            // A form of a junction's own connective is what the junction and every junction of that connective beneath it lie
+            // within; each arm of them is offered each part of it, and the compose rules build the junctions' forms up from
+            // the parts their arms agree with or are refuted on, never a subset of it no arm has taken.
+            descend.DefineRule("a junction lies within each form of its own connective it is a candidate for", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j, f) = r.Vars<RenderPosition, CosmosServiceTest, ServiceForm>("pos", "j", "f");
+                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, j));
+                r.Where(RenderingPrimitives.FormHeads.Of(f, j));
+                r.Then(Within.Of(e, pos, f), Needs.Of(f).Is(ValueSet<CosmosServiceTest>.Empty));
+            });
+
+            descend.DefineRule("an arm of a junction that is a junction of its connective lies within what the junction lies within", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (u, w) = r.Vars<Pred, Pred>("u", "w");
+                var (pos, j, f) = r.Vars<RenderPosition, CosmosServiceTest, ServiceForm>("pos", "j", "f");
+                r.When(Within.Of(e, pos, f), Junction.Of(e, x, y, j), Junction.Of(y, u, w, j));
+                r.Then(Within.Of(y, pos, f));
+            });
+
+            descend.DefineRule("each arm of a junction takes each part of a form it lies within", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
                 var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
                 var (f, g) = r.Vars<ServiceForm, ServiceForm>("f", "g");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Junction.Of(e, x, y, j), Member.Of(f, g));
-                r.Where(RenderingPrimitives.FormHeads.Of(f, j));
-                r.Then(Candidate.Of(x, pos, g), Candidate.Of(y, pos, Compute.Of(f, g, ServiceForm.Without)), Needs.Of(f).Is(ValueSet<CosmosServiceTest>.Empty));
+                r.When(Within.Of(e, pos, f), Junction.Of(e, x, y, j), Member.Of(f, g));
+                r.Then(Candidate.Of(x, pos, g));
+            });
+
+            // A conjunct written twice, or with a member beside it that reads its path alone, is one atom's: offered the
+            // junction of every part reading that path, the atom evaluates them together on its cells.
+            descend.DefineRule("an atom of a junction takes the part of a form it lies within that reads its path alone", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j, f) = r.Vars<RenderPosition, CosmosServiceTest, ServiceForm>("pos", "j", "f");
+                var (p, a, n) = r.Vars<JPath, PredicateAtom, string>("p", "a", "n");
+                r.When(Within.Of(e, pos, f), Junction.Of(e, x, y, j), Ir.Atom.Of(x, p, a), n.Is(Spelling.Of(p)));
+                r.Then(Candidate.Of(x, pos, Compute.Of(f, n, ServiceForm.Reading)));
             });
 
             descend.DefineRule("a negation's operand is a candidate for the form's operand at the opposite position", r =>
@@ -379,18 +481,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (pos, q, g) = r.Vars<RenderPosition, RenderPosition, ServiceForm>("pos", "q", "g");
                 r.When(Candidate.Of(e, pos, g), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q));
                 r.Then(Candidate.Of(a, q, Compute.Of(g, ServiceForm.Strip)));
-            });
-
-            // The rest keeps the grouping of what is left, so a member of it is one as written, and its parts follow by the
-            // rule below; one left is a leaf, which has none.
-            descend.DefineRule("the rest of a junction's form has every member it was not stripped of", r =>
-            {
-                var (e, x) = r.Vars<Pred, Pred>("e", "x");
-                var pos = r.Var<RenderPosition>("pos");
-                var (f, g, h, w) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("f", "g", "h", "w");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Member.Of(f, g), Member.Of(f, h), h.IsNot(g), w.Is(Compute.Of(f, g, ServiceForm.Without)));
-                r.Where(RenderingPrimitives.FormHolds.Of(w, h));
-                r.Then(Member.Of(w, h));
             });
 
             // A member of a member of the junction's own connective is a part an arm may take, the licensed connective being
@@ -455,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
                 r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Parting.Of(u, w));
                 r.Where(RenderingPrimitives.StringComparison.Of(g));
-                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(g, CharactersOfLiteral)));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));
                 r.Then(PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
@@ -467,9 +557,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (f, h1, h2, p) = r.Vars<ServiceForm, ServiceForm, ServiceForm, JPath>("f", "h1", "h2", "p");
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
-                var (n, u, w, l) = r.Vars<string, string, string, string>("n", "u", "w", "l");
+                var (n, u, w) = r.Vars<string, string, string>("n", "u", "w");
                 r.When(Conjunct.Of(f, h1), Conjunct.Of(f, h2), h1.IsNot(h2), n.Is(Compute.Of(h1, x => x.Path ?? "")), n.Is(Compute.Of(h2, x => x.Path ?? "")),
-                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(h1, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), b.Is(Compute.Of(h1, CharactersOfLiteral)));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h1));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h2));
                 r.Where(Primitives.Contains<string>().Of(k, u));
@@ -565,19 +655,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // than one parent, so the connective is checked where the step is taken, not only where the sides were offered.
         void DefineComposition(Ruleset compose)
         {
-            compose.DefineRule("a junction agrees where both sides agree on one verdict and its form is exactly their join", r =>
+            // The junction's form is the part of the form it lies within that its sides make, so it is built from what agreed,
+            // and held to exactly their join; the need checked is the written form's, the one the service is asked.
+            compose.DefineRule("a junction agrees where both sides agree on one verdict, as the part of a form it lies within that they make", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
                 var (pos, j, v) = r.Vars<RenderPosition, CosmosServiceTest, Verdict>("pos", "j", "v");
-                var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
+                var (f, l, m, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("f", "l", "m", "h");
                 var (pl, pr) = r.Vars<Proof, Proof>("pl", "pr");
                 var (vl, vr) = r.Vars<bool, bool>("vl", "vr");
-                r.When(Candidate.Of(e, pos, f), First.Of(e, x), Junction.Of(e, x, y, j), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)),
-                    vl.Is(Vacuous.Of(x, pos, l, v)), vr.Is(Vacuous.Of(y, pos, m, v)));
-                r.Where(RenderingPrimitives.FormHeads.Of(f, j));
-                r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
+                r.When(Within.Of(e, pos, f), First.Of(e, x), Junction.Of(e, x, y, j), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)),
+                    vl.Is(Vacuous.Of(x, pos, l, v)), vr.Is(Vacuous.Of(y, pos, m, v)), h.Is(Compute.Of(f, l, m, ServiceForm.Spanned)));
+                r.Where(RenderingPrimitives.FormDecomposes.Of(h, l, m));
                 Composes(r, j, f);
-                r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(pl, pr, Proof.Join)), Vacuous.Of(e, pos, f, v).Is(vl), Vacuous.Of(e, pos, f, v).Is(vr));
+                r.Then(Agrees.Of(e, pos, h, v).Is(Compute.Of(pl, pr, Proof.Join)), Vacuous.Of(e, pos, h, v).Is(vl), Vacuous.Of(e, pos, h, v).Is(vr));
             });
 
             compose.DefineRule("a negation agrees where its operand agrees at the opposite position", r =>
@@ -591,19 +682,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Agrees.Of(e, pos, g, v).Is(p), Vacuous.Of(e, pos, g, v).Is(vp));
             });
 
-            compose.DefineRule("a junction is refuted where one side is refuted and the other is its identity on another location", r =>
+            compose.DefineRule("a junction is refuted where one side is refuted and the other is its identity on another location, as the part of a form it lies within that they make", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
                 var (pos, j, v) = r.Vars<RenderPosition, CosmosServiceTest, Verdict>("pos", "j", "v");
-                var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
+                var (f, l, m, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("f", "l", "m", "h");
                 var (z, w, c) = r.Vars<Refutation, Witness, ValueSet<string>>("z", "w", "c");
                 var (p1, p2, a2) = r.Vars<JPath, JPath, PredicateAtom>("p1", "p2", "a2");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, j), z.Is(Disagrees.Of(x, pos, l, v)), w.Is(Neutral.Of(y, m, j)),
-                    c.Is(Compute.Of(z, t => t.Cells)), RefutedAt.Of(c, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2));
-                r.Where(RenderingPrimitives.FormHeads.Of(f, j));
-                r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
+                r.When(Within.Of(e, pos, f), Junction.Of(e, x, y, j), z.Is(Disagrees.Of(x, pos, l, v)), w.Is(Neutral.Of(y, m, j)),
+                    c.Is(Compute.Of(z, t => t.Cells)), RefutedAt.Of(c, p1), Ir.Atom.Of(y, p2, a2), Disjoint.Of(p1, p2), h.Is(Compute.Of(f, l, m, ServiceForm.Spanned)));
+                r.Where(RenderingPrimitives.FormDecomposes.Of(h, l, m));
                 Composes(r, j, f);
-                r.Then(Disagrees.Of(e, pos, f, v).Is(Compute.Of(z, w, Refutation.With)));
+                r.Then(Disagrees.Of(e, pos, h, v).Is(Compute.Of(z, w, Refutation.With)));
             });
 
             compose.DefineRule("a negation is refuted where its operand is refuted at the opposite position", r =>
@@ -614,6 +704,159 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, g), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), h.Is(Compute.Of(g, ServiceForm.Strip)), z.Is(Disagrees.Of(a, q, h, v)));
                 Composes(r, CosmosServiceTest.Not, null);
                 r.Then(Disagrees.Of(e, pos, g, v).Is(Compute.Of(z, Refutation.Negated)));
+            });
+        }
+
+        // Positions are derived down the IR, never carried; each node they reach starts with no exact form and nothing
+        // implied, complete values the later strata only lower or grow. A template only proposes: the gate disposes.
+        void DefineProposal(Ruleset at, Ruleset spell)
+        {
+            at.DefineRule("a junction's arms stand where it stands", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                r.When(At.Of(e, pos), Junction.Of(e, x, y, j));
+                r.Then(At.Of(x, pos), BestExact.Of(x, pos).Is(Priced.None), Implied.Of(x, pos).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            at.DefineRule("a negation's operand stands at the opposite position", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q) = r.Vars<RenderPosition, RenderPosition>("pos", "q");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q));
+                r.Then(At.Of(a, q), BestExact.Of(a, q).Is(Priced.None), Implied.Of(a, q).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            spell.DefineRule("a template that fits an atom proposes its form at the atom's position", r =>
+            {
+                var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
+                var (t, n, sh) = r.Vars<TemplateId, string, string>("t", "n", "sh");
+                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh));
+                r.Then(Candidate.Of(e, pos, Compute.Of(t, pos, a, n, RenderingTemplates.Spell)));
+            });
+        }
+
+        // The gate's agreements, complete here, lifted where they rest on something and may be sent: an exact one offered at
+        // its price, an implied one the Rex builder writes as a member. Presence through calls is three rules over rows.
+        void DefineLifts(Ruleset lift, Ruleset strict)
+        {
+            lift.DefineRule("an exact agreement that rests on something and may be sent is a best candidate", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                var b = r.Var<ValueSet<string>>("b");
+                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Equal)), Vacuous.Of(e, pos, f, Verdict.Equal).Is(false), b.Is(PartingBands.Of()));
+                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                r.Then(BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
+            });
+
+            lift.DefineRule("an implied agreement that rests on something, may be sent and can be written as a Rex is implied", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                var (p, a) = r.Vars<JPath, PredicateAtom>("p", "a");
+                var (b, g) = r.Vars<ValueSet<string>, RenderingRexGrammar.Value>("b", "g");
+                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Implies)), Vacuous.Of(e, pos, f, Verdict.Implies).Is(false), Ir.Atom.Of(e, p, a),
+                    b.Is(PartingBands.Of()), g.Is(RexGrammar.Of()));
+                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                r.Where(RenderingPrimitives.RexWritable.Of(f, a, g));
+                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(f)));
+            });
+
+            strict.DefineRule("a reading Calcite answers null over an absent path is strict in its path", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(Ir.Reads.Of(v, p, k), StrictReader.Of(k));
+                r.Then(Strict.Of(v, p));
+            });
+
+            strict.DefineRule("a call whose operator answers null for a null operand is strict in what an operand is strict in", r =>
+            {
+                var (c, v, p) = r.Vars<Val, Val, JPath>("c", "v", "p");
+                var (name, args) = r.Vars<string, Args>("name", "args");
+                r.When(c.Is(Ir.Call.Of(name, args)), StrictOp.Of(name).Is(true), CallArg.Of(c, v), Strict.Of(v, p));
+                r.Then(Strict.Of(c, p));
+            });
+
+            // A leaf is over the value it is, a comparison the call of its operator: null where the path is absent, so neither
+            // TRUE nor FALSE there, it holds the path present wherever it is kept, at either position.
+            strict.DefineRule("a predicate over a strict value implies its path present", r =>
+            {
+                var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
+                var n = r.Var<string>("n");
+                r.When(At.Of(e, pos), Over.Of(e, v), Strict.Of(v, p), n.Is(Spelling.Of(p)));
+                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(Compute.Of(n, pos, ServiceForm.Presence))));
+            });
+        }
+
+        // An exact form composes up from the arms' bests under the licence, held to exactly their join; a Min value only
+        // lowers and priced-is-real only turns true, so whatever it composed from is exact. The weakening reads every best
+        // and implied set complete: a leaf takes its best where that is a member, or what its members make together.
+        void DefineChoice(Ruleset best, Ruleset weaken)
+        {
+            best.DefineRule("a junction's best is the join of its arms' bests", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                var (bx, by) = r.Vars<Priced, Priced>("bx", "by");
+                var (l, m, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("l", "m", "h");
+                var (px, py) = r.Vars<Proof, Proof>("px", "py");
+                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), bx.Is(BestExact.Of(x, pos)), by.Is(BestExact.Of(y, pos)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bx));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(by));
+                r.When(l.Is(Compute.Of(bx, Priced.FormOf)), m.Is(Compute.Of(by, Priced.FormOf)), px.Is(Agrees.Of(x, pos, l, Verdict.Equal)), py.Is(Agrees.Of(y, pos, m, Verdict.Equal)),
+                    h.Is(Compute.Of(j, l, m, ServiceForm.Joined)));
+                r.Where(RenderingPrimitives.FormIsJoinOf.Of(h, l, m));
+                Composes(r, j, null);
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            best.DefineRule("a negation's best is its operand's best at the opposite position, negated", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q, bq) = r.Vars<RenderPosition, RenderPosition, Priced>("pos", "q", "bq");
+                var (g, h, pa) = r.Vars<ServiceForm, ServiceForm, Proof>("g", "h", "pa");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), bq.Is(BestExact.Of(a, q)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bq));
+                r.When(g.Is(Compute.Of(bq, Priced.FormOf)), pa.Is(Agrees.Of(a, q, g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
+                Composes(r, CosmosServiceTest.Not, null);
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            weaken.DefineRule("a leaf whose exact form can be written as a Rex weakens to it", r =>
+            {
+                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
+                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
+                r.Where(RenderingPrimitives.BestIsImplied.Of(b, s));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(b, Priced.FormOf)));
+            });
+
+            weaken.DefineRule("any other leaf weakens to what its implied forms make together", r =>
+            {
+                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
+                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
+                r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
+                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
+            });
+
+            weaken.DefineRule("a junction's weakening joins its arms' weakenings", r =>
+            {
+                var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                var (wx, wy) = r.Vars<ServiceForm, ServiceForm>("wx", "wy");
+                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), wx.Is(Weakening.Of(x, pos)), wy.Is(Weakening.Of(y, pos)));
+                Composes(r, j, null);
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(j, wx, wy, ServiceForm.Joined)));
+            });
+
+            weaken.DefineRule("a negation's weakening is its operand's at the opposite position, negated", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                var (pos, q, w) = r.Vars<RenderPosition, RenderPosition, ServiceForm>("pos", "q", "w");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), w.Is(Weakening.Of(a, q)));
+                Composes(r, CosmosServiceTest.Not, null);
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(w, ServiceForm.Negated)));
             });
         }
 
@@ -634,6 +877,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var nd = r.Var<ValueSet<CosmosServiceTest>>("nd");
             r.When(nd.Is(Needs.Of(junction)));
             r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(nd, lic));
+        }
+
+        /// <summary>
+        /// The bands a form's literal holds characters of, none where it holds no literal: total, as a body's calls must be,
+        /// since Eggnog 1.1.1 may run it before the filter beside it that admits only string comparisons.
+        /// </summary>
+        static ValueSet<string> CharactersOfLiteral(ServiceForm form) => form.Literal is { } literal ? JsonValues.CharactersOf(literal) : JsonValues.NoBand;
+
+        /// <summary>
+        /// Holds a step to every one of the connectives, which the set and Calcite both license: <see cref="Composes"/>'s
+        /// reads under names of its own, so the two may stand in one rule.
+        /// </summary>
+        void ComposesAll(RuleBuilder r, ValueSet<CosmosServiceTest> connectives)
+        {
+            var sa = r.Var<RenderingSet>("sa");
+            var (lica, cala) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>>("lica", "cala");
+            r.When(Under.Of(sa), lica.Is(Licensed.Of(sa)), cala.Is(Licensed.Of(RenderingSet.Calcite)));
+            r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(connectives, lica));
+            r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(connectives, cala));
         }
 
         /// <summary>
@@ -690,7 +952,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (pos, q) in KleeneTables.Opposite)
                     w.Assume(Opposite.Of(pos, q));
 
-                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated));
+                foreach (var (id, pos) in definition.Templates)
+                    w.Assume(Template.Of(id, pos));
+
+                foreach (var (id, shape) in definition.Fits)
+                    w.Assume(Fits.Of(id, shape));
+
+                foreach (var (name, strict) in definition.StrictOperators)
+                    w.Assume(StrictOp.Of(name).Is(strict));
+
+                foreach (var reader in definition.StrictReaders)
+                    w.Assume(StrictReader.Of(reader));
+
+                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
+                    PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));
             });
 
             var report = Theory.Run(Settle);

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 namespace Apache.Calcite.Cosmos.Adapter.Client
 {
 
@@ -20,7 +22,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// pattern, a value or a stored form states, and a string the service stores never holds a lone surrogate: an escaped
     /// one is stored as U+FFFD, and raw bytes that are not UTF-8 are refused where they are read
     /// (<see cref="CosmosJson"/>). Whether a pair is complete is a property of the value as the encoder is handed it,
-    /// which no fact about the documents decides, and is read here unit by unit.
+    /// which no fact about the documents decides, and is read unit by unit by <see cref="JsonValues.IsEncodable"/>, the
+    /// one test, which the rendering graph's <c>sendable</c> reads too.
     /// </para>
     /// </remarks>
     internal static class CosmosEncodable
@@ -35,15 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             switch (value)
             {
                 case string text:
-                    for (var i = 0; i < text.Length; i++)
-                    {
-                        if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-                            i++;
-                        else if (char.IsSurrogate(text[i]))
-                            return false;
-                    }
-
-                    return true;
+                    return JsonValues.IsEncodable(text);
 
                 case IDictionary<string, object?> members:
                     foreach (var (name, member) in members)

@@ -15,8 +15,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The definition-time order test: every rule S's two schedules run, read off its rendering, against the strata it runs
-    /// in, so that no verdict can fire over a set a rule is still growing (critic-validation F1, which reported
+    /// The definition-time order test: every rule S's three schedules run, read off its rendering, against the strata it
+    /// runs in, so that no verdict can fire over a set a rule is still growing (critic-validation F1, which reported
     /// <c>exact=True</c> beside a disagreeing cell from a run that completed).
     /// </summary>
     /// <remarks>
@@ -30,22 +30,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <b>What it asserts.</b> No head merges classes. No bundle rule writes a table the host or the theory owns, and no
     /// theory ruleset runs in a bundle. Both arguments of a universal (<c>set-subset</c>, <c>truths-within</c>,
     /// <c>outcomes-within</c>) and every input of a lattice-free head are complete. The superset of a <c>set-subset</c>
-    /// and the container of a <c>set-contains</c> never narrow in their stratum or after. No filter is a lambda. Only the
-    /// conflict rule derives the contradiction.
+    /// and the container of a <c>set-contains</c> never narrow in their stratum or after. Every other filter reads
+    /// complete values, but those that hold of the value they are handed whatever it later moves to
+    /// (<see cref="Monotone"/>: a <c>Min</c> price only lowers, so once real it stays real); and a function's value
+    /// matched against a constant, as <c>Is(false)</c> on a <c>Max&lt;bool&gt;</c> reads "not yet true", is complete:
+    /// so <c>best-is-implied</c> and its negation, and the lift's vacuity, read no absence. No filter is a lambda. Only
+    /// the conflict rule derives the contradiction.
     /// </para>
     /// </remarks>
     public sealed class RenderingOrderTests
     {
 
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
-        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed"];
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg"];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
 
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 
+        /// <summary>
+        /// The filters that hold of the value they are handed however it moves on: <c>priced-is-real</c>, since a price
+        /// only lowers and <c>None</c> is the top, and <c>form-is-join-of</c>, which judges the forms at hand and concludes
+        /// nothing of the value they were read from.
+        /// </summary>
+        static readonly string[] Monotone = ["priced-is-real", "form-is-join-of"];
+
         [Fact]
         public void TheScheduleReadsNoUniversalOverADomainThatMoves() => Violations(ProbeRows.ProbeTheory).Should().BeEmpty();
+
+        /// <summary>
+        /// Generate mode's plants: a leaf's choice between its best and the fold made in the stratum that still lowers its
+        /// best, and the lift's vacuity read in the stratum that writes it. Each would read a value that moves.
+        /// </summary>
+        [Fact]
+        public void AChoiceOrAVacuityReadWhileItMovesIsRefused()
+        {
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            theory.Graph.Rulesets.Single(r => r.Name == "best").DefineRule("planted: a leaf weakens to its fold before its best is final", r =>
+            {
+                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
+                r.When(theory.Leaf.Of(e), b.Is(theory.BestExact.Of(e, pos)), s.Is(theory.Implied.Of(e, pos)));
+                r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
+                r.Then(theory.Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
+            });
+            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: an exact agreement not yet vacuous is a best", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                r.When(theory.Vacuous.Of(e, pos, f, Verdict.Equal).Is(false));
+                r.Then(theory.BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
+            });
+
+            Violations(theory).Should().Contain("best/planted: a leaf weakens to its fold before its best is final: best-is-not-implied reads bestexact, which moves in its stratum")
+                .And.Contain("gate/planted: an exact agreement not yet vacuous is a best: a constant matched against vacuous reads vacuous, which moves in its stratum");
+        }
 
         /// <summary>
         /// The plant after F1: a stratum grows a set of classes and reads it with <c>set-subset</c>, so the universal may
@@ -123,9 +161,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var tables = theory.Graph.Tables.ToDictionary(t => t.Name);
             var owned = theory.Graph.Tables.Where(t => theory.Theory.CountRows(t) > 0).Select(t => t.Name).Concat(BundleHost).ToHashSet();
             var settle = Strata(theory.Settle);
-            var check = Strata(theory.Check);
-            var violations = settle.Keys.Intersect(check.Keys).Select(name => $"the theory's {name} runs in a bundle").ToList();
-            foreach (var (strata, bundle) in new[] { (settle, false), (check, true) })
+            var (check, generate) = (Strata(theory.Check), Strata(theory.Generate));
+            var violations = settle.Keys.Intersect(check.Keys.Union(generate.Keys)).Select(name => $"the theory's {name} runs in a bundle").ToList();
+            foreach (var (strata, bundle) in new[] { (settle, false), (check, true), (generate, true) })
             {
                 var rules = theory.Graph.Rulesets.Where(r => strata.ContainsKey(r.Name)).SelectMany(r => r.Rules)
                     .Select(rule => (Stratum: strata[rule.Ruleset.Name], Name: rule.Ruleset.Name + "/" + rule.Name, Read: new Reading(Parse(rule.ToString(), tables.Keys), tables)))
@@ -152,6 +190,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                             Refuse(primitive, arguments[0], Narrows, "narrows");
                     }
 
+                    foreach (var (filter, arguments) in read.Filters.Where(f => Universals.Concat(Monotone).Append("set-contains").Append("<lambda>").Contains(f.Primitive) == false))
+                        foreach (var argument in arguments)
+                            Refuse(filter, argument, Grows, "moves");
+
+                    foreach (var table in read.Matched.Where(Grows))
+                        violations.Add($"{name}: a constant matched against {table} reads {table}, which moves in its stratum");
+
                     foreach (var (table, value) in read.Sets.Where(s => Lattice(s.Table) is null))
                         Refuse("the lattice-free " + table, value, Grows, "grows");
 
@@ -166,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            return violations;
+            return [.. violations.Distinct()];
         }
 
         /// <summary>The stratum of each ruleset: the index of the top-level step of the sequence it runs in.</summary>
@@ -260,10 +305,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         else
                             lets.Add((fact.Items[1].Token!, fact.Items[2]));
                     }
+                    else if (fact.Head == "=" && fact.Items![1].Head is { } matched && tables.ContainsKey(matched))
+                    {
+                        Matched.Add(matched);
+                    }
                     else if (fact.Head is { } filter && filter != "!=" && tables.ContainsKey(filter) == false)
                     {
                         LambdaFilter |= filter == "<lambda>";
                         Calls.AddRange(Applications(fact));
+                        Filters.Add((filter, fact.Items!.Skip(1).ToList()));
                     }
                 }
 
@@ -298,6 +348,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             public string Ruleset { get; }
 
             public List<(string Primitive, List<Node> Arguments)> Calls { get; } = [];
+
+            /// <summary>The body's filters as written, each with its arguments; their nested applications are among <see cref="Calls"/>.</summary>
+            public List<(string Primitive, List<Node> Arguments)> Filters { get; } = [];
+
+            /// <summary>The functions whose value the body matches against a constant.</summary>
+            public List<string> Matched { get; } = [];
 
             public List<string> Writes { get; } = [];
 

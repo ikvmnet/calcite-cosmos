@@ -15,7 +15,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// Beside a comparison or a membership with literals it always states each literal as a <c>point</c>. What a junction's
     /// arms mean is the caller's — the facts graph numbers them for its split, the rendering graph records each — so each
     /// junction goes to the callback with the truth value its arms decide it at (TRUE for a disjunction, FALSE for a
-    /// conjunction) and its arms, flattened over its right-nesting.
+    /// conjunction) and its arms, flattened over its right-nesting. The other callback, where one is given, hears every
+    /// leaf — a predicate that is no junction or negation — with the value it is: a comparison, a membership or a test as
+    /// the call of its operator over its operands (<see cref="In"/>, <see cref="IsNull"/>, <see cref="IsDefined"/>), and
+    /// an opaque predicate as the value the loader read it as, where one is given; and every call, with its operands. Which
+    /// of those calls is null where an operand is, is rows', never the writer's. The facts graph passes neither, and the
+    /// writer then builds what it always built.
     /// </remarks>
     internal sealed class PredicateWriter
     {
@@ -23,18 +28,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         readonly PredicateVocabulary _ir;
         readonly Func<JsonDocumentPath, Term<JPath>> _path;
         readonly Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? _junction;
+        readonly Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? _leaf;
+        readonly IReadOnlyDictionary<long, SqlValue>? _opaques;
+
+        /// <summary>The names a membership, a null test and a presence test are read by as calls: Calcite's operators'.</summary>
+        public const string In = "IN", IsNull = "IS NULL", IsDefined = "IS_DEFINED";
 
         public PredicateWriter(PredicateVocabulary ir, Func<JsonDocumentPath, Term<JPath>> path,
-            Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? junction = null)
+            Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? junction = null,
+            Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? leaf = null, IReadOnlyDictionary<long, SqlValue>? opaques = null)
         {
             _ir = ir;
             _path = path;
             _junction = junction;
+            _leaf = leaf;
+            _opaques = opaques;
         }
 
         /// <summary>
-        /// Builds a predicate's term, and states beside it the points of every atom in it and what the callback states of
-        /// every junction.
+        /// Builds a predicate's term, and states beside it the points of every atom in it and what the callbacks state of
+        /// every junction, leaf and call.
         /// </summary>
         public ConstructorTerm<Pred> Term(SqlPredicate predicate, List<Fact> bookkeeping)
         {
@@ -47,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     if (c.Right is SqlValue.Literal literal)
                         bookkeeping.Add(r.Point.Of(compare, literal.Value));
 
-                    return compare;
+                    return _leaf is null ? compare : Leaf(compare, new SqlValue.Call(c.Op, [c.Left, c.Right]), bookkeeping);
                 }
                 case SqlPredicate.In i:
                 {
@@ -55,16 +68,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     foreach (var point in i.Points)
                         bookkeeping.Add(r.Point.Of(membership, point));
 
-                    return membership;
+                    return _leaf is null ? membership : Leaf(membership, new SqlValue.Call(In, [i.Value]), bookkeeping);
                 }
                 case SqlPredicate.IsNull n:
-                    return r.IsNull.Of(Value(n.Value));
+                    return _leaf is null ? r.IsNull.Of(Value(n.Value)) : Leaf(r.IsNull.Of(Value(n.Value)), new SqlValue.Call(IsNull, [n.Value]), bookkeeping);
                 case SqlPredicate.IsDefined d:
-                    return r.IsDefined.Of(Value(d.Value));
+                    return _leaf is null ? r.IsDefined.Of(Value(d.Value)) : Leaf(r.IsDefined.Of(Value(d.Value)), new SqlValue.Call(IsDefined, [d.Value]), bookkeeping);
                 case SqlPredicate.Not n:
                     return r.Not.Of(Term(n.Operand, bookkeeping));
                 case SqlPredicate.Opaque o:
-                    return r.Opaque.Of(o.Id);
+                    return _leaf is null ? r.Opaque.Of(o.Id) : Leaf(r.Opaque.Of(o.Id), _opaques?.GetValueOrDefault(o.Id), bookkeeping);
                 case SqlPredicate.And a:
                     return Junction(Flatten(a.Arms, x => (x as SqlPredicate.And)?.Arms), r.And, truth: false, bookkeeping);
                 case SqlPredicate.Or o:
@@ -127,6 +140,33 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         ConstructorTerm<Args> Operands(IReadOnlyList<SqlValue> operands, int from) =>
             from == operands.Count ? _ir.NoOperands.Of() : _ir.Operand.Of(Value(operands[from]), Operands(operands, from + 1));
+
+        /// <summary>Hands the leaf callback a predicate that is no junction or negation, with the value it is, where there is one.</summary>
+        ConstructorTerm<Pred> Leaf(ConstructorTerm<Pred> leaf, SqlValue? value, List<Fact> bookkeeping)
+        {
+            bookkeeping.AddRange(_leaf!(leaf, value is null ? [] : [Read(value, bookkeeping)]));
+            return leaf;
+        }
+
+        /// <summary>A value's term as <see cref="Value"/> builds it, every call in it handed to the leaf callback with its operands.</summary>
+        ConstructorTerm<Val> Read(SqlValue value, List<Fact> bookkeeping)
+        {
+            switch (value)
+            {
+                case SqlValue.Call c:
+                    var operands = c.Operands.Select(operand => Read(operand, bookkeeping)).ToList();
+                    var call = _ir.Call.Of(c.Function, Operands(operands, 0));
+                    bookkeeping.AddRange(_leaf!(call, operands));
+                    return call;
+                case SqlValue.Cast c:
+                    return _ir.Cast.Of(c.Target, Read(c.Value, bookkeeping));
+                default:
+                    return Value(value);
+            }
+        }
+
+        ConstructorTerm<Args> Operands(IReadOnlyList<ConstructorTerm<Val>> operands, int from) =>
+            from == operands.Count ? _ir.NoOperands.Of() : _ir.Operand.Of(operands[from], Operands(operands, from + 1));
 
     }
 

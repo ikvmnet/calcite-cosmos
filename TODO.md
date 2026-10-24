@@ -2745,13 +2745,11 @@ across documents* and *A join of a container to itself* is the record.
   written the other way, and `BIGINT`'s over an int-sized one, so an integer type's cells hold a raise beside their truth
   and none refutes: `_ts > 1700000001` written for `> 1700000000` is unproven, the column answering TRUE at 1700000001
   where the service answers false. The column's own reading (decision D12) would refute it.
-- **The gains preview reads two of five Exact, which §6's line kills** — *small, for Stage 2.* The validator ships, as
-  soundness, recall and mutations pass (plan §5). Over typed's undeclared label the guarded
-  inequality is Exact, and the orderings' forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR
-  IS_NUMBER(c.label)`, are unproven: the label's strings may hold U+0000, which the emulator orders as U+FDD0 then `0`,
-  and `Portable` serves the emulator. They are Exact where no string can hold one, and under `Production` (a bundle of
-  their own); on the emulator each keeps Calcite's rows over typed. A declaration that keeps U+0000 out, or a set that
-  leaves the emulator out, is what Stage 2 would write them under.
+- **P2 and P3 land only where U+0000 is ruled out** — *small, for the owner's O1.* Generate mode sends the orderings'
+  forms, `c.label > @p0 OR IS_BOOL(c.label)` and `c.label < @p0 OR IS_NUMBER(c.label)`, exactly over a twin of `typed`
+  whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself (`RenderingGainsTests`);
+  over the undeclared label the emulator orders a U+0000 as stored, so under `Emulator` they are declined. A declaration
+  is what a user writes for them there.
 - **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
   the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
   `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
@@ -2774,8 +2772,9 @@ across documents* and *A join of a container to itself* is the record.
   writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
   and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
   `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
-  definite cell: the mutation line holds nine of ten. The coarse reading leaves the column's raise over a structure out
-  of `IS NULL`. The column's own reading in the IR would give both back.
+  definite cell: the translator's mutation line holds nine of ten. S's plant of M10 is caught, source A judging a
+  document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of `IS NULL`. The
+  column's own reading in the IR would give both back.
 - **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
   translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
   text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
@@ -2817,6 +2816,85 @@ across documents* and *A join of a container to itself* is the record.
   A strict policy — Equal only where Calcite never raises, Implies keeping the cells it raises on for the recheck — is
   neither defined nor loaded, and would not compose through `AND`, for the reason a service failure does not. A rewrite
   that needs it, as #162's temporal rewrites once did, designs it.
+- **A number compared through a cast or `RETURNING DECIMAL` weakens to presence, and P6 is killed** — *medium, for the
+  owner's O7.* Both readings parse a string Calcite then compares where the service compares none, so no accessor of the
+  conjunct writes `c.price > 50` as the form means, and `rex-writable` admits no such member: K's numeric windows (C2,
+  not built), the 21 weakenings the review of PR A found tighter through one and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`
+  are gone, line 19's P6 with them. RU, never rows. A service-only carrier operator the builder sends them through,
+  never evaluated by Calcite (O7's third option, +80–150 lines), would give them back; so would a guard-aware grammar
+  row, a comparison read only beneath `IS_NUMBER` of its path, if line 13's round trip judged such a member whole.
+- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED` and the
+  type test where the facts say the path holds the type (`Guarded`); the template always writes them, so under such a
+  declaration S's weakening is longer text for the same rows.
+- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* The split rule's walk
+  reads a connective inside a conjunct it cannot translate for its truth or falsity, `AND` true needing every
+  conjunct's paths and `OR` false every branch's (`CollectPaths`); S reads the conjunct's top call and its operands as
+  values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
+  both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
+  `LIKE` in the IR.
+- **The shadow's read at admission is an inert site before g15's** — *small, O4's inventory.* The capture tells its
+  observer when a statement's rounds run, from the renderer `CosmosOracle.Admit` is handed: one `volatile bool` read for
+  each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
+  takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
+  until then.
+- **A generate run reports no iteration count** — *small, for g15's instrument.* `RenderingRun` says whether a run
+  completed, not how near it came to 80 + 8 iterations a unit of width. The review of PR A counted it once, with a
+  recorder in a copy, at the gate's 1,000 predicates: 9,712 runs, all complete, the tightest one-atom bundles at 61 of 88
+  (69 %), `PointReadSet` at 97 of 240 and the widest bundle, 11 atoms, at 71 of 256; at most 360 rows of 50,000. So the
+  base of 80, not the 8 a unit, is the margin R7 should watch, held by one-atom bundles. g15's cost accumulator counts it
+  in every run.
+- **Line 2 counts D3's raw scope apart until g10** — *small.* IrEval reads no raise of a raw ordering, so a form over
+  one is judged on no measured document. At the gate's 1,000 predicates 69 forms S would send are such, weakenings over
+  `raw(id) < 'shoes'` and its kind and junctions holding one; none falls outside D3's scope, and the pull request's 200
+  hold none. g10's raw raises in IrEval measure them, and the exemption goes with D3's denominator rule.
+- **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
+  or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
+  (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
+  `RenderingPerQueryCostTests` measures both shapes on the build machine and decides it.
+- **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
+  wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
+  with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,
+  osx-x64 net8.0, ran 2.4 times linux-x64 net10.0 on `main`, so its increment is the one to read; past the budget, O5's
+  levers (`Portable` reported at the gate alone, among them).
+- **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
+  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
+  reads a junction's reason off its arms.
+- **The generate shadow follows the translator's rounds** — *small, until g15.* Its later-round nodes are the facts
+  graph's, built from what the translator admitted, so where S admits a conjunct the translator does not, or declines one
+  it pushes, the next round's node is not the one S's own loop would read. Production's sites see S's own rounds.
+- **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
+  `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
+  rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Folded` decides nothing.
+- **P4's orderings are no tighter than J's** — *small, a gain not delivered.* No template excludes the nulls and
+  structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
+  `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
+  `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a template of its own.
+- **Looser weakenings the shadow lists against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
+  grammar's rows: J's implied but holding a member the Rex builder cannot write (the text-equality alternatives' number
+  branch, C3, and K's windows over a cast), and J's unproven to S (a typed `DECIMAL` window past 2^53, which a double
+  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
+  `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
+  unlisted.
+- **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *small, for the owner.* J's string
+  branch is unproven to S there (strings that may hold U+0000), so S sends presence. Line 19's kill says "a non-`LIKE`
+  P4 looser"; O7 accepted loss 5. Either the owner restates line 19's P4 kill as "no unlisted looser", or a guarded string
+  branch, a template of its own, delivers it tighter.
+- **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
+  statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
+  refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their
+  refutations are asserted at the atom; composing refutations in generate mode would give the cases back.
+- **G7 plants presence's dual, not the fold's** — *small.* A weakening is lattice-free, so a fold planted beside the
+  right one faults the bundle, and the definition names no fold a plant could replace. Naming
+  `ServiceForm.Folded` in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
+- **A raw accessor compared with a parameter does not plan in the check run's harness** — *small.* `c."$.label" <> ?`
+  leaves the parameter untyped beside an `ANY`, so the parameterised residual the inputs gain reads the label through
+  the accessor.
+- **The in-process judge of an opaque weakening fills typed fields alone** — *small.* A field read as text or JSON, a
+  view's column among them, is not filled, and its conjunct is counted and left out; filling it as the reader renders it
+  would judge those too.
+- **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
+  Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
+  is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s
@@ -2825,13 +2903,6 @@ across documents* and *A join of a container to itself* is the record.
   2.4 s). Planning is most of the run: its bundles took 5.3–5.6 s of 36 s warm. The owner accepts the measured figures,
   or D11's fallback runs the partition run at 100 predicates a pull request, about 3 s off, which moves the coverage and
   precision lines off the 200 they are measured on.
-- **A junction's descent holds a candidate for every subset of its members** — *medium, for Stage 2's cost line.* The
-  first arm is offered each member and the second the rest, down a right-nested junction, so `Filter.DeepConjunction`'s
-  eight conjuncts cost 0.74–0.98 s, half the corpus's bundles. With 12 to 14 candidates an atom at 2–3 ms each, Stage
-  2's projection came to 1.7–3.2 s against 0.25 s, and the bundles' own line missed too (2.1–3.7 ms at the median, 12–15
-  ms at the 90th centile, against 1.5 and 5), on a machine its other work held at 93–100 %. Descent along the IR's own
-  flat arms, pairing a member with the arm whose paths it reads, would be linear; retaking the line on a free machine
-  separates the load from the shape.
 
 ---
 

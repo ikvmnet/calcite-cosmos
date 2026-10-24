@@ -121,10 +121,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claims.Should().OnlyHaveUniqueItems();
         }
 
+        /// <summary>A row read as data, by its outcomes or its subjects, names a test that says it pins the row.</summary>
         [Fact]
-        public void EveryRowWithOutcomesNamesAPinningTestThatCarriesItsId()
+        public void EveryRowReadAsDataNamesAPinningTestThatCarriesItsId()
         {
-            foreach (var axiom in WithOutcomes)
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 

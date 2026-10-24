@@ -1,13 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
 
 using FluentAssertions;
 
@@ -21,9 +26,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// Recall (spec §6): the eight first-family wrong answers 4b65754 sent (<c>soundness.md</c> §2), each text as that
-    /// commit wrote it, replayed against the IR the loader reads at the tip and refuted at its root with the cell that
-    /// shows it; with its fault planted, the tip writes the text again; and on a service the text keeps what it kept then.
+    /// Recall (spec §6, g06): the eight first-family wrong answers 4b65754 sent (<c>soundness.md</c> §2), each text as
+    /// that commit wrote it, replayed against the IR the loader reads at the tip and refuted at its root with the cell that
+    /// shows it; offered to S as a planted template for its statement, never what S sends; and on a service the text keeps
+    /// what it kept then.
     /// </summary>
     public sealed class RenderingRecallTests : IClassFixture<RenderingRecallTests.Fixture>
     {
@@ -39,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Each case: the differential's statement, the text 4b65754 sent for each conjunct (its probe's output, verbatim),
-        /// the values it bound, the fault that writes it again, the refutation, and the ids the service and Calcite kept.
+        /// the values it bound, the refutation, and the ids the service and Calcite kept.
         /// </summary>
         internal static readonly IReadOnlyDictionary<string, Case> Cases = new Dictionary<string, Case>
         {
@@ -63,19 +69,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public RenderingRecallTests(Fixture service) => _service = service;
 
         /// <summary>
-        /// The text is refuted against the tip's IR, with the cell S names, the least refuting one by text; under its fault
-        /// the tip writes it again, each conjunct's text as 4b65754 wrote it; and unplanted, it does not.
+        /// The text is refuted against the tip's IR, with the cell S names, the least refuting one by text. Offered to S as a
+        /// planted template for its statement, each conjunct's text at its atoms, it is never S's best. The part a structure
+        /// shows wrong is refuted as exact at the pinned cell, read at its atom. It is implied only where that cell keeps a
+        /// superset of Calcite's rows: (F,t) or (U,t), (T,f) or (U,f) beneath a <c>NOT</c>, inside the Implies box; never
+        /// P3's (T,f). S sends its own form, under each set a leg plans under. Until the switch the translator writes the
+        /// family (g16), so under its fault it writes the text again, and unplanted it does not.
         /// </summary>
         [Theory]
         [MemberData(nameof(Names))]
-        public void IsRefutedAndWrittenAgainUnderItsFault(string p)
+        public void IsRefutedAndNeverSentInItsPlace(string p)
         {
             var c = Cases[p];
-            RenderingMutationTests.Show(Replay(c.Sql, c.Texts, c.Parameters).Asserted).Should().Be(c.Refuted);
-            Sent(RenderingMutationTests.Checked(c.Fault, c.Sql)).Should().Equal(c.Texts);
-            Sent(RenderingMutationTests.Checked(None, c.Sql)).Should().NotEqual(c.Texts);
+            RenderingGenerateMutationTests.Show(Replay(c.Sql, c.Texts, c.Parameters).Asserted).Should().Be(c.Refuted);
+            Written(RenderingMutationTests.Checked(c.Fault, c.Sql)).Should().Equal(c.Texts);
+            Written(RenderingMutationTests.Checked(None, c.Sql)).Should().NotEqual(c.Texts);
+            static IEnumerable<string> Written(RenderingCheckRun run) => run.Conjuncts.Where(r => r.Site == 2).OrderBy(r => r.Unit).ThenBy(r => r.Conjunct).Select(r => r.Text);
 
-            static IEnumerable<string> Sent(RenderingCheckRun run) => run.Conjuncts.Where(r => r.Site == 2).OrderBy(r => r.Unit).ThenBy(r => r.Conjunct).Select(r => r.Text);
+            var (run, pieces) = Offered.Value;
+            run.Failures.Should().BeEmpty();
+            var (shadow, name) = (run.Shadow!, Cases.Keys.ToList().IndexOf(p).ToString(CultureInfo.InvariantCulture));
+            var ids = shadow.Admissions.Where(a => a.Name == name).Select(a => a.Bundle).Concat(shadow.Weakenings.Where(w => w.Name == name).Select(w => w.Bundle ?? 0)).ToHashSet();
+            var bundles = shadow.Bundles.Where(b => ids.Contains(b.Id)).ToList();
+            var refuted = pieces[p].SelectMany(piece => bundles.SelectMany(b => b.Refutations ?? [])
+                .Where(r => r.Node.Digest == piece.Atom.Digest && r.Position == piece.Position && r.Form.Equals(piece.Form)).Select(r => (Piece: piece, Spelled: RenderingGenerateMutationTests.Show(r.Refutation))))
+                .Distinct().ToList();
+            var implied = refuted.Select(r => r.Piece).Where(piece => bundles.SelectMany(b => b.Forms).Any(f => f.What == RenderingGenerateRun.Judged.Implied && f.Node.Digest == piece.Atom.Digest
+                && f.Position == piece.Position && f.Form.Equals(piece.Form))).ToList();
+            foreach (var piece in pieces[p])
+                TestContext.Current.TestOutputHelper?.WriteLine($"{piece.Atom} at {piece.Position}: {piece.Form.Text}");
+            TestContext.Current.TestOutputHelper?.WriteLine($"refuted: {string.Join("; ", refuted.Select(r => r.Spelled))}; implied: {implied.Count}");
+
+            refuted.Should().ContainSingle("one part is wrong");
+            refuted[0].Spelled.Should().Be(AtAtom(c.Refuted, refuted[0].Piece.Path, refuted[0].Piece.Position), "it is refuted at the pinned cell");
+            implied.Should().OnlyContain(piece => Keeps(refuted[0].Spelled, piece.Position), "a part is implied only where its cell keeps more than Calcite does");
+            if (p == "P3")
+                implied.Should().BeEmpty("P3's cell drops a row Calcite keeps");
+
+            var tip = RenderingGenerateMutationTests.Tip.Value.Triggers.First(t => t.Sql == c.Sql).Classes;
+            var sent = shadow.Classes.Where(k => k.Name == name).ToList();
+            sent.Select(k => (k.Set, k.Ir, k.Form?.Text)).Should().BeEquivalentTo(tip.Select(k => (k.Set, k.Ir, k.Form?.Text)), "S sends its own form");
+            sent.Should().NotContain(k => k.Form != null && k.Form.Subforms.Any(f => f.Equals(refuted[0].Piece.Form) || f.Equals(ServiceForm.Strip(refuted[0].Piece.Form))),
+                "nothing S sends holds the wrong part");
+        }
+
+        /// <summary>
+        /// Every case's statement shadowed in a graph of its own, each conjunct's text taken apart at its atoms and offered
+        /// there as a planted template: a rule proposing each part at every atom of its path at its position.
+        /// </summary>
+        static readonly Lazy<(RenderingCheckRun Run, IReadOnlyDictionary<string, IReadOnlyList<Piece>> Pieces)> Offered = new(() =>
+        {
+            var pieces = Cases.ToDictionary(c => c.Key, c => (IReadOnlyList<Piece>)[.. Pieces(c.Value)]);
+            var graph = new RenderingGraph(() => ProbeRows.Measured, _ => false);
+            var theory = graph.Current();
+            foreach (var (path, pos, form) in pieces.Values.SelectMany(x => x).Select(x => (x.Path, x.Position, x.Form)).Distinct())
+                theory.Graph.Rulesets.Single(r => r.Name == "spell").DefineRule($"planted: 4b65754's {form.Text} at {path}, {pos}", r =>
+                {
+                    var (e, q, a) = r.Vars<Pred, JPath, PredicateAtom>("e", "q", "a");
+                    var n = r.Var<string>("n");
+                    r.When(theory.At.Of(e, pos), theory.Ir.Atom.Of(e, q, a), n.Is(theory.Spelling.Of(q)));
+                    r.Where(n, x => x == path);
+                    r.Then(theory.Candidate.Of(e, pos, form));
+                });
+
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("recall", [.. Cases.Values.Select(c => c.Sql)], RenderingInputs.Containers),
+                shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+            GC.KeepAlive(graph);
+            return (run, pieces);
+        });
+
+        /// <summary>A case's texts taken apart at its conjuncts' atoms, through a <c>NOT</c> stripped and through a junction by the paths each arm reads.</summary>
+        static IEnumerable<Piece> Pieces(Case c)
+        {
+            var statement = Statement(c.Sql, c.Texts.Length);
+            var pieces = statement.Statement.Conjuncts.Zip(c.Texts, (ir, text) => Apart(ir, CosmosSqlFormReader.Read(text, c.Parameters).Form, RenderPosition.Pos)).SelectMany(x => x).ToList();
+            GC.KeepAlive(statement);
+            return pieces;
+        }
+
+        static IEnumerable<Piece> Apart(SqlPredicate ir, ServiceForm form, RenderPosition pos) => ir switch
+        {
+            SqlPredicate.Not n => Apart(n.Operand, ServiceForm.Strip(form), pos == RenderPosition.Pos ? RenderPosition.Neg : RenderPosition.Pos),
+            SqlPredicate.And a => a.Arms.SelectMany(arm => Apart(arm, Part(form, arm), pos)),
+            SqlPredicate.Or o => o.Arms.SelectMany(arm => Apart(arm, Part(form, arm), pos)),
+            _ => [new Piece(ir, SqlValue.Spell(ir.Paths.Single()), pos, form)],
+        };
+
+        /// <summary>The members of a junction's form that read the paths an arm reads, joined as the form joins them.</summary>
+        static ServiceForm Part(ServiceForm form, SqlPredicate arm)
+        {
+            var paths = arm.Paths.Select(SqlValue.Spell).ToHashSet();
+            var members = form.Members.Where(m => m.Paths.All(paths.Contains)).ToList();
+            return members.Count == 1 ? members[0] : ServiceForm.JunctionOf(form.Test, members);
+        }
+
+        /// <summary>Whether a refuting class keeps more rows than Calcite at a position: kept by the service where Calcite does not keep it.</summary>
+        static bool Keeps(string refuted, RenderPosition pos) => refuted.EndsWith(pos == RenderPosition.Pos ? "(F,t)" : "(T,f)", StringComparison.Ordinal)
+            || refuted.EndsWith(pos == RenderPosition.Pos ? "(U,t)" : "(U,f)", StringComparison.Ordinal);
+
+        /// <summary>A pinned refutation read at an atom: the cell of its path, and the class swapped beneath a <c>NOT</c>.</summary>
+        static string AtAtom(string pinned, string path, RenderPosition pos)
+        {
+            var at = pinned.LastIndexOf(" (", StringComparison.Ordinal);
+            var cell = pinned[..at].Split("; ").Single(x => x.StartsWith(path + "=", StringComparison.Ordinal));
+            var @class = pinned[(at + 1)..];
+            return cell + " " + (pos == RenderPosition.Neg ? new string([.. @class.Select(ch => ch switch { 'T' => 'F', 'F' => 'T', 't' => 'f', 'f' => 't', _ => ch })]) : @class);
         }
 
         /// <summary>
@@ -95,29 +193,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Claims a text, joined from its conjuncts' as <c>Translate</c> joins them, for the conjuncts a statement's planning
-        /// admitted, imported as the check run imports them: from their root, <c>D0</c> armed.
+        /// Claims a text, joined from its conjuncts' as <c>Translate</c> joins them, for the conjuncts of the statement
+        /// planning read, imported as the check run imports them: from their root, <c>D0</c> armed. The statement is read
+        /// whether the translator admits its conjuncts or not, so no fault need make it.
         /// </summary>
-        internal static RenderingMemo.Entry Replay(string sql, IReadOnlyList<string> texts, IReadOnlyList<CosmosParameter> parameters, CosmosTranslatorFault faults = None,
-            RenderingCheckRun? run = null)
+        internal static RenderingMemo.Entry Replay(string sql, IReadOnlyList<string> texts, IReadOnlyList<CosmosParameter> parameters, RenderingCheckRun? run = null)
         {
-            var recorder = new RenderingRecorder();
-            using (CosmosTranslatorFaults.Plant(faults))
-            using (recorder.Arm())
-            using (StatementTerms.ArmDeclaredPossible())
-                RenderingInputs.Differential("recall", [sql], RenderingMutationTests.Containers).Single().Plan();
-
-            var held = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).OrderBy(r => r.Conjunct).ToList();
-            held.Should().HaveCount(texts.Count, "each text is one admitted conjunct's");
-            var root = RenderingCheckRun.RootOf(held.Select(r => r.Statement.ScopeForCheck).Distinct())!.Value;
-            var conjuncts = held.Select(r => r.Statement.Statement.Conjuncts[r.Conjunct]).ToList();
+            var statement = Statement(sql, texts.Count);
+            var root = RenderingCheckRun.RootOf([statement.ScopeForCheck])!.Value;
+            var conjuncts = statement.Statement.Conjuncts;
             var claimed = CosmosSqlFormReader.Read(Where(texts), parameters);
             claimed.Written.Should().Be(Where(texts), "the text reads back as itself");
-            var source = new ImportSource(held[0].Statement.Statement.Digest, "declaration", 1);
+            var source = new ImportSource(statement.Statement.Digest, "declaration", 1);
             var entry = (run ?? new RenderingCheckRun()).Check(conjuncts, claimed.Form, [.. texts.Select(t => CosmosSqlFormReader.Read(t, parameters).Form)], Verdict.Equal,
-                bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths))).Entry;
-            GC.KeepAlive(held);
+                bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths)),
+                rules: statement.DeclarationForCheck.Rules).Entry;
+            GC.KeepAlive(statement);
             return entry;
+        }
+
+        /// <summary>The filter statement planning a statement read whose conjuncts are as many as given, <c>D0</c> armed.</summary>
+        static CosmosFilterStatement Statement(string sql, int conjuncts)
+        {
+            var recorder = new RenderingRecorder();
+            using (recorder.Arm())
+            using (StatementTerms.ArmDeclaredPossible())
+                RenderingInputs.Differential("recall", [sql], RenderingInputs.Containers).Single().Plan();
+
+            return recorder.Read.First(s => s.Statement.Conjuncts.Count == conjuncts);
         }
 
         /// <summary>Conjuncts' texts joined as <c>Translate</c> joins them.</summary>
@@ -125,6 +228,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>A recall case (<see cref="Cases"/>).</summary>
         internal sealed record Case(string Sql, string[] Texts, CosmosParameter[] Parameters, CosmosTranslatorFault Fault, string Refuted, string[] Pushed, string[] Calcite);
+
+        /// <summary>A part of a case's text, offered at an atom of its path at a position.</summary>
+        internal sealed record Piece(SqlPredicate Atom, string Path, RenderPosition Position, ServiceForm Form);
 
         /// <summary>A database of its own, named by the framework, holding the differential's products and typed documents.</summary>
         public class Fixture : CosmosEvalServiceTests.Fixture

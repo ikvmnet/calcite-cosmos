@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
 using Test = Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest;
 
@@ -301,6 +303,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.RawNullIsSqlNull",
                 "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal"),
+            new("Calcite.ReadingsAreNullOverAnAbsentPath",
+                "Every reading the predicate loader builds is null over an absent path: the text accessor; RETURNING of each scalar type, and a column of each; the raw value in a VARIANT, an ANY and a VARCHAR column; a cast of the accessor or of the raw value to INTEGER, BIGINT or DOUBLE; and a cast of the raw value to VARCHAR. Read as data by the rendering graph's strict readings (CosmosStrictness).",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 23), "Measurements.CalciteNullStrictnessMeasurementTests.EveryReadingIsNullOverAnAbsentPath",
+                Subjects: [PredicateAtom.TextReader, PredicateAtom.RawReader,
+                    .. new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN" }.Select(PredicateAtom.TypedReader),
+                    .. from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner),
+                    PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)]),
+            new("Calcite.ListedFunctionsAreNullOverANullOperand",
+                "||, UPPER, LOWER, INITCAP, SUBSTRING, CHAR_LENGTH, CHARACTER_LENGTH, POSITION, REPLACE, LEFT, RIGHT, REVERSE, REPEAT, MOD, ABS, ROUND, POWER, SAFE_CAST, TRY_CAST and IN over literals are null wherever an operand is null, in every form each takes, though Calcite declares no null policy for them. Read as data by the rendering graph's strict operators (CosmosStrictness).",
+                CosmosAxiomTarget.Calcite, new(2026, 10, 23), "Measurements.CalciteNullStrictnessMeasurementTests.EachListedFunctionIsNullOverANullOperand",
+                Subjects: ["||", "UPPER", "LOWER", "INITCAP", "SUBSTRING", "CHAR_LENGTH", "CHARACTER_LENGTH", "POSITION", "REPLACE", "LEFT", "RIGHT", "REVERSE", "REPEAT",
+                    "MOD", "ABS", "ROUND", "POWER", "SAFE_CAST", "TRY_CAST", "IN"]),
             new("Calcite.TextOrderIsByCodeUnit",
                 "Text compares by UTF-16 code unit, as String.compareTo does: U+E000 and U+FFFD above U+1F600, which code point order puts above both, and 'true' and 'false' above 'bikes', '30' below.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
