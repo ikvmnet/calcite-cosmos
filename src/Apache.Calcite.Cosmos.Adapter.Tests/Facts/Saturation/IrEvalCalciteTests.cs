@@ -186,6 +186,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(20)));
         }
 
+        /// <summary>
+        /// A raw number through an <c>ANY</c>, in the box the reader built (<c>Calcite.RawNullIsSqlNull</c>): a long by its
+        /// value and any other number by its double's exact value, 2^53 + 1 written with a point and a stored 0.1 among them.
+        /// </summary>
+        [Fact]
+        public void ARawNumberInItsBoxAgreesWithCalcite()
+        {
+            string[] values = ["9007199254740993", "9007199254740993.0", "0.1", "30", "30.0", "29.9999999999999999"];
+            var asked = (from n in new[] { 9007199254740993m, 0.1m, 30m } from op in new[] { "=", "<", ">" } select new SqlPredicate.Compare(op, new SqlValue.Raw(Declaration.A), SqlValue.Of(n))).ToArray();
+            var world = new World(0);
+            string Evaluated(SqlPredicate p) => string.Concat(values.Select(v => Letter(IrEval.Truth(p,
+                new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = new J.Num(decimal.Parse(v, CultureInfo.InvariantCulture)) }), world, IrEval.TypedAs.Returning, IrEval.RawAs.Any))));
+
+            using var connection = MaterialisedTable.Open();
+            Assert.Equal(asked.Select(Evaluated), MaterialisedTable.Of(SqlTypeName.ANY, values).Ask(connection, [.. asked.Select(p => $"\"v\" {p.Op} {NumberOf(((SqlValue.Literal)p.Right).Value).ToString(CultureInfo.InvariantCulture)}")]));
+        }
+
         static string Letter(Truths truth) => truth switch
         {
             Truths.True => "T",

@@ -6043,10 +6043,10 @@ opaque conjunct no round admits: another statement than the one that was sent.
 expression over a JSON literal yields any of those columns, so `Tests/Measurements/MaterialisedTable.cs` scans rows
 through `CosmosJson.GetValue` itself. Six `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
 named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite, on random predicates and, for the
-cast of a raw value to text, over a fixed set. What a cell
-answers is the union over the readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose
-`=` and null test never raise, which is what `PredicateAtom`'s raw reading answers for; the raises it leaves out are in
-`TODO.md`.
+cast of a raw value to text and a raw number in its box, over a fixed set. What a cell answers is the union over the
+readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose `=` and null test never raise,
+which is what the facts graph's raw reading answers for; the raises it leaves out are in `TODO.md`, and the soundness
+line names each column wherever they part (`IrEval.RawModes`).
 
 **The column reader is not `RETURNING`** (`Calcite.ColumnReadsWholeNumbersAsItsType`). The column reads a whole number
 as its type whatever its spelling, `42.0` under `INTEGER` and `42` under `BIGINT`, where `RETURNING` raises over both,
@@ -6055,9 +6055,12 @@ and fails the statement over a fraction, a number beyond the type, a string or a
 **The raw columns agree on strings and null, and part elsewhere** (`Calcite.RawStringEqualityIsOrdinal`,
 `Calcite.RawNullIsSqlNull`). A string is equal to the string of its UTF-16 units alone, and a null or an absent path is
 SQL null, so `NOT (raw = 'bikes')` keeps neither. A value of another type is unequal in `VARIANT` and `ANY`, and fails a
-`VARCHAR` column's read. `ANY` raises on an ordering across types. A `VARIANT` has no ordering at all, the statement
-failing to compile, and is equal to a number boxed with its own SQL type alone, `BIGINT` for a JSON integer and `DOUBLE`
-otherwise, which the IR does not keep: raw numeric `=` stays a coin in `IrEval`.
+`VARCHAR` column's read. `ANY` raises on an ordering across types, and within one orders as the type: a string by its
+UTF-16 units, as a `VARCHAR` column does, and a number in the box the reader built, a long by its value and any other
+number by its double's exact value, so `9007199254740993.0` is below 2^53 + 1 and a stored `0.1` above `0.1`. A
+`VARIANT` has no ordering at all, the statement failing to compile, and is equal to a number boxed with its own SQL type
+alone, `BIGINT` for a JSON integer and `DOUBLE` otherwise, which the IR does not keep: its numeric `=` stays a coin in
+`IrEval`.
 
 **A raw value cast to text is each column's own too** (`Calcite.CastOfARawValueToText`). A string is itself and a null
 null in each. A `VARIANT` casts a number and a boolean to null and raises over an object or an array; an `ANY` renders
@@ -6092,7 +6095,8 @@ string fixes add come through unchanged.
 
 **`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
 its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
-literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell;
+literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell,
+a raw ordering and a raw equality with a number read their columns (*The raw reading's raises*, below);
 a typed equality on a point reads its value as the column and as `RETURNING` read it; and `IN` is the `OR` of its
 points' equalities, each as its reading answers it on the cell. Making `On` exact on a scalar instead would change the
 facts graph's verdicts wherever a domain is known.
@@ -6573,9 +6577,9 @@ join because the licensed connective is associative, commutative and idempotent,
 already took for granted. S has 42 rules, the descent's first arm and rest having become four; Stage 2's line is 56.
 
 **The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
-conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
-names `no exact join`, from S's rows, where a conjunct was never offered its own written member, and `beside a skipped
-conjunct`.
+conjunct**, which the line excludes with what it does to the check; decision D3's Unproven, left out until S read the
+raw reading's raises, is counted. `verdicts.tsv` names `no exact join`, from S's rows, where a conjunct was never
+offered its own written member, and `beside a skipped conjunct`.
 
 ### Planted faults: recall and mutations
 
@@ -6949,9 +6953,8 @@ stratum fault — G12's coarse reading, G11's own facts — shows as a witness o
 reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
 draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
 conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
-nothing measured, but those in D3's raw scope (a raw ordering, or a raw comparison with a number or a boolean), which
-IrEval reads no raise of until g10 and which are counted apart, as the coverage line counts them. Source B's trials are
-shadowed and judged on their declared documents.
+nothing measured; a raw ordering, or a raw comparison with a number or a boolean, is judged through each column
+(*The raw reading's raises*). Source B's trials are shadowed and judged on their declared documents.
 - *The pairwise check* needs no `IrEval`: two exact agreements of one node at one position, and S's best beside the
   translator's text where the key proved both, keep alike where Calcite answers; where it raises the Equal box allows
   any answer but a failure, and those documents are reported apart.
@@ -7123,6 +7126,53 @@ decline that is a correctness fix, which no form proves and the `VARCHAR` column
 Calcite; `PredicateAtomCellTests` holds every cell to `IrEval` through the three columns, a long's digits and a
 double's spellings among the literals; and the soundness line judges every form over the cast through each column
 (`IrEval.RawModes`). `RenderingGateTests.ACastToTextOverARawValueReadsItsThreeColumns` pins the three verdicts above.
+
+### The raw reading's raises
+
+**Why it was unproven.** On a cell S read a raw ordering as the facts graph does, any truth beside a raise, and a raw
+equality with a number as UNKNOWN beside every string: no string ordering over `id` was exact, though every column
+orders a string by its units. `IrEval` tossed a coin on a raw ordering, so no document measured a form over one.
+Decision D3 left their Unproven out of Stage 1's coverage line, and PR A's line 2 counted their forms apart.
+
+**What Calcite does is the row's** (`Calcite.RawNullIsSqlNull`, *Calcite's side, measured in process*). A `VARIANT`
+has no ordering; an `ANY` orders within a type as the type and raises across types; a `VARCHAR` column, beside a
+string, orders a string by its units and fails to read anything else. An `ANY` compares a number in the box the reader
+built, a long by its value and any other number by its double's exact value, and a `VARIANT` is equal to a number boxed
+with its own type alone, which the IR does not keep. The row now says so, measured on 2^53 + 1 written with a point and
+a stored `0.1`.
+
+**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns. An ordering places a value of the
+literal's type — a string by its units, a boolean false first, a number by `PathCell.SidesOf` — beside the `VARIANT`'s
+raise, and across types is the raise alone, which under decision 2 any answer but a failure refines. `SidesOf` is the
+service leaf's own reading of a number, moved to the cell: a whole number within a long both by its value and by its
+double, any other by its double, and a literal neither a long nor a double placed nowhere. An equality with a number
+is FALSE of any other type and of a number no box reading equals, and TRUE or FALSE of one a box may equal, since the
+`VARIANT`'s is the literal's. The raw reader's edges row cuts at a number literal's double, where a double's box
+changes its answer. So `c.id < "shoes"` is exact for `raw(id) < 'shoes'` under `Production`, and under `Emulator` where
+no string may hold U+0000.
+
+**What F reads is unchanged.** The coarse raw reading answers as it did, and the cell methods are S's alone, so no
+plan moves: the digests at 200 and 1,000 predicates are byte-equal, both frameworks. The facts graph still reads a raw
+number by its value where an `ANY` reads one not written as a long by its double (`TODO.md`).
+
+**What `IrEval` reads.** Through a named column, a number in its box. The soundness line names every column for a
+predicate that orders a raw value or compares one with a number or a boolean (`IrEval.RawModes`), so each document is
+measured through each column but at the `VARIANT`'s numeric coin; unnamed, `IrEval` keeps the facts graph's coin, which
+population D holds F to. Line 2 counts nothing apart, and the coverage line counts D3's Unproven.
+
+**What moved.** At 200 predicates no shadow class moves: D3's one conjunct there, differential 237's
+`raw(category) IN (30, '30')`, stays a regression on its merits, a `VARIANT` boxing the 30 as no document's number may.
+Source A's unmeasured documents fall from 972 to 134 under each set, and the shadow derives 42 forms more under
+`Production`. At 1,000 predicates the 18 raw orderings over `id` are S's under `Production`, 12 the same as the
+translator's and 6 respelled shorter without the null guards an ordering's UNKNOWN makes vacuous: 18 regressions where
+there were 36, against O2's 53. Under `Emulator` they stay, `id`'s strings holding U+0000 for all the import says, which
+the emulator orders as stored: a correctness fix there, as the text orderings are. The three raw `IN`s stay on their
+merits, and line 2's 69 forms are measured.
+
+**What holds it.** `CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal` pins the boxes;
+`IrEvalCalciteTests.ARawNumberInItsBoxAgreesWithCalcite` holds `IrEval`'s to Calcite; `PredicateAtomCellTests` holds
+every cell to `IrEval` through the three columns, and `ARawReadingPlacesItsTypeAndRaisesAcrossTypes` pins how tight the
+cells are; `RenderingGateTests.ARawOrderingAndANumberReadTheirColumns` pins the verdicts.
 
 ---
 

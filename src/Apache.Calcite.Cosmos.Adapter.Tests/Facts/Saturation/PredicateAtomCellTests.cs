@@ -188,10 +188,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Whether the coarse reading compares a number's value where Calcite compares its double: an integer type's column
         /// and <c>DECIMAL</c>'s clause, which read a number written with a point through it, a double, and the cast to a
         /// double, whose decimal the coarse reading converts by a cast that misses at rounding boundaries
-        /// (<c>Renderings.DoubleOf</c>).
+        /// (<c>Renderings.DoubleOf</c>); and the raw value, whose box holds a number not written as a long as its double.
         /// </summary>
         static bool Rounded(PredicateAtom atom, PathCell cell) => (cell.Coarse is PredicateAtom.State.AnyNumber || cell.Coarse is PredicateAtom.State.Scalar { Value: var v } && IsNumber(v))
-            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text";
+            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text" or PredicateAtom.RawReader;
+
+        /// <summary>
+        /// The raw reading's raises (<c>Calcite.RawNullIsSqlNull</c>): an ordering places a string by its units and a number
+        /// in its box beside a <c>VARIANT</c>'s raise, and raises alone across types; an equality with a number is FALSE of
+        /// another type, and TRUE or FALSE of a number a box may equal, the <c>VARIANT</c>'s being the literal's.
+        /// </summary>
+        [Fact]
+        public void ARawReadingPlacesItsTypeAndRaisesAcrossTypes()
+        {
+            const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
+            var (below, around, thirty) = (PredicateAtom.Compare(PredicateAtom.RawReader, "<", Of("b")), PredicateAtom.Compare(PredicateAtom.RawReader, "<", Of(9007199254740993m)),
+                PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of(30m)));
+
+            new[] { new PathCell.Point(Of("a")), new PathCell.Strings(Of("b"), null, ValueSet<string>.Empty, AllBands), new PathCell.Point(Of(7m)), (PathCell)new PathCell.Null() }
+                .Select(below.OnCell).Should().Equal(T | R, F | R, R, U | R);
+            new[] { new PathCell.Point(Of(9007199254740992m)), new PathCell.Point(Of(9007199254740993m)), new PathCell.Point(Of(true)) }.Select(around.OnCell).Should().Equal(T | R, T | F | R, R);
+            new[] { new PathCell.Point(Of("30")), new PathCell.Point(Of(30m)), new PathCell.Point(Of(31m)), (PathCell)new PathCell.Null() }.Select(thirty.OnCell).Should().Equal(F, T | F, F, U);
+        }
 
         /// <summary>A cell cut at the atom's literals answers within the cell it lies in, cut at none.</summary>
         [Fact]

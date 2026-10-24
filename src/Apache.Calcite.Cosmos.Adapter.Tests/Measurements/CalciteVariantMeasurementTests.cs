@@ -65,7 +65,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// A null and an absent path are SQL null in each column. A value of another type is unequal; an ordering across
         /// types raises; a <c>VARCHAR</c> column reads a string alone; and a <c>VARIANT</c> has no ordering, and is equal
-        /// to a number boxed with its own SQL type alone.
+        /// to a number boxed with its own SQL type alone. Within a type <c>ANY</c> orders as the type, and a number in its
+        /// box: a long by its value, any other number by its double's.
         /// </summary>
         /// <remarks>
         /// <c>GetVariant</c> boxes an integer as <c>BIGINT</c> and any other number as <c>DOUBLE</c>, and the validator
@@ -95,6 +96,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             MaterialisedTable.Of(SqlTypeName.ANY, Strings).Ask(connection, "\"v\" < 'bikes'", "\"v\" < U&'\\E000'").Should().Equal("FTFTFFFUU", "TTTTFFTUU");
             MaterialisedTable.Of(SqlTypeName.ANY, new[] { "42", "42.0", "null", null }).Ask(connection, "\"v\" < 42.5", "\"v\" > 42.5").Should().Equal("TTUU", "FFUU");
             MaterialisedTable.Of(SqlTypeName.ANY, new[] { "true", "false", "null", null }).Ask(connection, "\"v\" < TRUE").Should().Equal("FTUU");
+
+            // A number in its box: a long by its value, and any other by its double's, 2^53 + 1 written with a point being 2^53.
+            MaterialisedTable.Of(SqlTypeName.ANY, ["9007199254740993", "9007199254740993.0", "0.1"]).Ask(connection, "\"v\" = 9007199254740993", "\"v\" < 9007199254740993",
+                "\"v\" = 0.1", "\"v\" > 0.1").Should().Equal("TFF", "FTT", "FFF", "TTT");
             var (text, numbers, booleans, structures) = (Values.Take(1), Values.Skip(7).Take(2), Values.Skip(9).Take(2), Values.Skip(11).Take(2));
             foreach (var (literal, others) in new[] { ("'bikes'", numbers.Concat(booleans)), ("42", text.Concat(booleans)), ("TRUE", text.Concat(numbers)) })
                 foreach (var value in others.Concat(structures))

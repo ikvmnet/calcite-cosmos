@@ -12,13 +12,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// with no row is cut nowhere, so an atom read by it is never evaluated and stays unproven.
     /// </summary>
     /// <remarks>
-    /// Text, raw and the cast of a raw value to text answer at the literals alone, the last as each of its columns does
-    /// (<c>Calcite.CastOfARawValueToText</c>). An integer type raises past its limits, and a cast to one truncates within
-    /// one of a literal and saturates at them. A double compares doubles, and so does the service a number it holds as one,
-    /// an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>), and <c>DECIMAL</c> one
-    /// it renders; and a parse of the rendering reads the literal's text as the literal. A numeric cast of the raw value has
-    /// no row, since no <c>Calcite.*</c> row measures one (<c>TODO.md</c>): over a <c>VARIANT</c> Calcite raises on a number
-    /// beyond the type, and over an <c>ANY</c> wraps a long beyond an int.
+    /// Text and the cast of a raw value to text answer at the literals alone, the last as each of its columns does
+    /// (<c>Calcite.CastOfARawValueToText</c>); raw at a number's double too, which the box of a number not written as a
+    /// long compares (<c>Calcite.RawNullIsSqlNull</c>). An integer type raises past its limits, and a cast to one
+    /// truncates within one of a literal and saturates at them. A double compares doubles, and so does the service a
+    /// number it holds as one, an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>),
+    /// and <c>DECIMAL</c> one it renders; and a parse of the rendering reads the literal's text as the literal. A numeric
+    /// cast of the raw value has no row, since no <c>Calcite.*</c> row measures one (<c>TODO.md</c>): over a
+    /// <c>VARIANT</c> Calcite raises on a number beyond the type, and over an <c>ANY</c> wraps a long beyond an int.
     /// </remarks>
     internal static class ReaderEdgesTable
     {
@@ -31,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = new Dictionary<string, ReaderEdges>
         {
             [PredicateAtom.TextReader] = Row(),
-            [PredicateAtom.RawReader] = Row(),
+            [PredicateAtom.RawReader] = Row(CutKind.Double),
             [PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)] = Row(),
             [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
             [PredicateAtom.TypedReader("TINYINT")] = Limits("TINYINT", CutKind.Double),

@@ -215,6 +215,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A raw ordering reads its columns on a cell (<c>Calcite.RawNullIsSqlNull</c>): a string is placed by its units and
+        /// any other type raises, so the bare ordering and its negation are exact under <c>Production</c>, and under
+        /// <c>Portable</c> where no string may hold U+0000; an equality with a number is exact over strings and implied
+        /// where a number a <c>VARIANT</c> may hold in another box is there.
+        /// </summary>
+        [Fact]
+        public void ARawOrderingAndANumberReadTheirColumns()
+        {
+            var (less, thirty) = (ServiceForm.CompareOf(CosmosServiceTest.Less, Label, Of("b")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of(30m)));
+            var (strings, withoutNul) = (PathValues.OfKinds(ValueSet.Of(StringType)), ValueSet.From(AllBands.Where(c => c != NulClass)));
+            static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
+
+            Kinds(Check(Cmp(Raw(LabelPath), "<", Lit("b")), less, set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Cmp(Raw(LabelPath), "<", Lit("b"))), Negated(less), set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Cmp(Raw(LabelPath), "<", Lit("b")), less, path: LabelPath, values: PathValues.Anything, classes: withoutNul)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Eq(Raw(LabelPath), 30m), thirty, path: LabelPath, values: strings)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Eq(Raw(LabelPath), 30m), thirty)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
+        }
+
+        /// <summary>
         /// The emulator orders a string holding U+0000 as it stores it, so over strings an ordering is proven only where
         /// none may hold one, and nothing is proven against a literal holding one; an equality with ASCII is, whatever
         /// they hold (T1).

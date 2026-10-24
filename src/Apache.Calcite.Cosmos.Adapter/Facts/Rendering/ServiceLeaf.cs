@@ -162,24 +162,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// both until a run of the probe account separates them (<c>TODO.md</c>); a literal sent as a double is placed
         /// against only where that double is it.
         /// </summary>
-        static CosmosValueClass[]? Numeric(PathCell cell, decimal c)
-        {
-            var d = DoubleBound.Of(c);
-            if ((c == decimal.Truncate(c) && c >= long.MinValue && c <= long.MaxValue) == false && DoubleBound.Compare(d, c) != 0)
-                return null;
-
-            int?[] sides = cell switch
-            {
-                PathCell.Point { Value: var v } when TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue =>
-                    [x.CompareTo(c), new PathCell.Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)],
-                PathCell.Point { Value: var v } => [Math.Sign(DoubleBound.Of(v).CompareTo(d)) is var side && side == 0 ? DoubleBound.Compare(d, c) : side],
-                PathCell.Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value <= long.MaxValue) => [n.Side(c), n.RoundedSide(c)],
-                PathCell.Numbers n => [n.RoundedSide(c)],
-                _ => [null],
-            };
-
-            return sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
-        }
+        static CosmosValueClass[]? Numeric(PathCell cell, decimal c) => cell.SidesOf(c) is not { } sides ? null
+            : sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
 
         static CosmosValueClass? ClassOf(PathCell cell) => cell switch
         {

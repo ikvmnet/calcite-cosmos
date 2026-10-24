@@ -165,15 +165,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// The coverage line's count by input (spec §6): each conjunct sent and not skipped, read by its check's verdict, the
         /// claim made, but by its own at its position where its check is Unproven for holding a skipped conjunct, which the
-        /// line excludes with what it does to the check; an Unproven decision D3 leaves out is not counted.
+        /// line excludes with what it does to the check.
         /// </summary>
         public static IReadOnlyDictionary<string, (int Unproven, int Counted)> Coverage(RenderingCheckRun run)
         {
             var skipping = Skipping(run);
             return run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null)
-                .Select(c => (c.Input, c.RawScope, Kind: c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven && skipping.Contains((c.Input, c.Name, c.Unit))
+                .Select(c => (c.Input, Kind: c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven && skipping.Contains((c.Input, c.Name, c.Unit))
                     ? c.Entry.Alone[c.Position]?.Kind ?? RenderingVerdictKind.Unproven : c.Entry.Asserted.Kind))
-                .Where(c => (c.Kind == RenderingVerdictKind.Unproven && c.RawScope) == false)
                 .GroupBy(c => c.Input).ToDictionary(g => g.Key, g => (g.Count(c => c.Kind == RenderingVerdictKind.Unproven), g.Count()));
         }
 

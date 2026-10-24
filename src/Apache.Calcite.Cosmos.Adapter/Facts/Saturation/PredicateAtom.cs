@@ -456,6 +456,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 _ => sign >= 0,
             };
 
+            /// <summary>Whether a cell holds numbers alone.</summary>
+            static bool Numeric(PathCell cell) => cell is PathCell.Numbers || cell is PathCell.Point { Value: var v } && IsNumber(v);
+
             /// <summary>What a comparison answers of values on these sides of the literal, beside what else it may; either where a side is not told.</summary>
             static Truths Placed(string op, IEnumerable<int?> sides, Truths beside) => sides.Aggregate(beside, (truths, side) => truths | (side is int sign ? Ordered(op, sign) ? T : F : T | F));
 
@@ -669,8 +672,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 static bool Textual(PathCell cell) => cell is PathCell.Strings || cell is PathCell.Point { Value: var v } && IsString(v);
 
-                static bool Numeric(PathCell cell) => cell is PathCell.Numbers || cell is PathCell.Point { Value: var v } && IsNumber(v);
-
                 /// <summary>What a cell no string lies in reads beside the rendering: a <c>VARIANT</c>'s null, or its raise over a structure, and a <c>VARCHAR</c> column's raise.</summary>
                 static Truths Beside(PathCell cell) => cell is PathCell.Structure ? R : U | R;
 
@@ -781,20 +782,39 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// The union of the three columns a raw value is read through (<c>Calcite.RawStringEqualityIsOrdinal</c>,
                 /// <c>Calcite.RawNullIsSqlNull</c>): a null is SQL null in each, a string is equal to the one with its units
                 /// alone, and a value of another type is unequal in a <c>VARIANT</c> and an <c>ANY</c> and fails a
-                /// <c>VARCHAR</c> column's read — which is raw beside a string literal alone. A number literal is left coarse:
-                /// a <c>VARIANT</c> is equal to a number of its own SQL type alone, which the IR does not keep.
+                /// <c>VARCHAR</c> column's read — which is raw beside a string literal alone. A number is equal to a number
+                /// literal through its box in an <c>ANY</c>, and in a <c>VARIANT</c> only where the literal's box, which the
+                /// IR does not keep, is its own: so TRUE or FALSE where any reading of the box is equal, and FALSE where none.
                 /// </summary>
-                public override Truths EqualOn(PathCell cell, string literal) => IsNumber(literal) || TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : cell switch
+                public override Truths EqualOn(PathCell cell, string literal) => TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : cell switch
                 {
                     PathCell.Absent or PathCell.Null => U,
+                    _ when IsNumber(literal) => Numeric(cell) == false ? F
+                        : TryNumberOf(literal, out var c) && cell.SidesOf(c) is { } sides && sides.All(s => s is int side && side != 0) ? F : T | F,
                     PathCell.Point { Value: var v } when TypeOf(v) == TypeOf(literal) => v == literal ? T : F,
                     PathCell.Strings => IsString(literal) && cell.Contains(literal) ? T | F : F,
                     PathCell.Point { Value: var v } when IsString(v) => F,
                     _ => IsString(literal) ? F | R : F,
                 };
 
-                /// <summary>A <c>VARIANT</c> has no ordering, and an <c>ANY</c> raises on one across types: the state's answer, or the raise.</summary>
-                public override Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal) | R;
+                /// <summary>
+                /// A <c>VARIANT</c> has no ordering, the statement failing to compile, so every cell may raise. An <c>ANY</c>
+                /// orders a value of the literal's type as the type — a string by its UTF-16 units, a boolean false first, a
+                /// number through its box — and raises across types, and a <c>VARCHAR</c> column, beside a string, orders a
+                /// string so and fails to read anything else: the raise alone across types.
+                /// </summary>
+                public override Truths OrderOn(PathCell cell, string op, string literal) => R | cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    // A double literal 0 orders a stored -0.0 below it, as Double.compareTo does.
+                    _ when IsNumber(literal) => Numeric(cell) == false ? Truths.None
+                        : TryNumberOf(literal, out var c) && cell.SidesOf(c) is { } sides ? Placed(op, c == 0 && sides.Contains(0) ? [.. sides, null] : sides, Truths.None) : T | F,
+                    PathCell.Point { Value: var v } when TypeOf(v) == TypeOf(literal) => Ordered(op, Math.Sign(string.CompareOrdinal(v, literal))) ? T : F,
+                    PathCell.Strings { High: string high } when IsString(literal) && string.CompareOrdinal(high, literal) <= 0 => Ordered(op, -1) ? T : F,
+                    PathCell.Strings { Low: string low } when IsString(literal) && string.CompareOrdinal(low, literal) >= 0 => Ordered(op, 1) ? T : F,
+                    PathCell.Strings when IsString(literal) => T | F,
+                    _ => Truths.None,
+                };
 
                 /// <summary>True of a null alone; and a <c>VARCHAR</c> column fails to read anything but a string.</summary>
                 public override Truths NullOn(PathCell cell) => cell switch

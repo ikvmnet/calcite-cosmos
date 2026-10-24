@@ -2617,8 +2617,13 @@ across documents* and *A join of a container to itself* is the record.
   `Raises`, which `NeverTrue` and `AlwaysFalse` read as leave to decide. `id` and `_etag` hold strings, so the first
   needs a field typed `VARCHAR` and read as stored; whether a plan reaches any of the three is unchecked. `IrEval`
   reads them through a named column alone, and unnamed stays inside the table, so population D does not yet hold the
-  table to them. Adding `Raises` changes verdicts; and the rendering graph's raw cells, which union the three columns,
-  meet the same raise outside the coarse answer.
+  table to them. Adding `Raises` changes verdicts. The rendering graph's raw cells read them since g10, the raise alone
+  across types, outside the coarse answer.
+- **The facts graph reads a raw number by its value, where an `ANY` reads one by its box** — *small, and it touches
+  plans.* An `ANY` holds a number not written as a long as its double (`Calcite.RawNullIsSqlNull`), so a stored
+  `29.9999999999999999` is equal to 30 and `9007199254740993.0` below 2^53 + 1. The coarse raw equality says no number of
+  another value equals the literal, so `NeverTrue` may decide it over a path whose numbers round onto the literal; the
+  precision table calls raw beside a number coarse, so no stratum rests on it. S's cells read the box (g10).
 - **A `BIGINT` compared with a fraction raises near its limit** — *small.* Calcite raises comparing 2^63 − 1 in a
   `BIGINT` column with `42.5`, where it compares 2^53 + 1. Neither mode of `IrEval` models it, and nothing it is held
   to reaches it; the typed orderings over number cells should.
@@ -2711,7 +2716,8 @@ across documents* and *A join of a container to itself* is the record.
   `<=`, `>` and `>=` over strings only where the import says they hold no U+0000; `=` and `!=` with ASCII are exact
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
-  comparator as code point.
+  comparator as code point. Since g10 that includes the raw orderings over `id`: the gate's 18 are S's under
+  `Production` and declined under `Emulator`, where nothing keeps U+0000 out of an `id`.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -2791,11 +2797,12 @@ across documents* and *A join of a container to itself* is the record.
   The loader reads a pattern as opaque, so a conjunct holding one is skipped and its check is unproven. The rows S would
   read are owed with it: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes
   (N6) and `LIKE` (N7) matched by code point, and how an integral number reads back (N11).
-- **Raw orderings and raw numeric equality are measured and not read** — *small, and it touches plans.* c01 measured
-  Calcite's side (`Calcite.RawNullIsSqlNull`): `ANY` raises on an ordering across types, a `VARIANT` has no ordering and
-  its `=` is exact in type. Neither `PredicateAtom`'s raw reading nor its cells read it, `IrEval` tosses a coin there,
-  and decision D3 keeps their Unproven out of the coverage line: 2 conjuncts a pull request, 18 at the gate. Reading them
-  needs the raw reading's raises (above).
+- **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
+  reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
+  with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
+  holding 30 the equality is TRUE or FALSE. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
+  text-equality alternatives write, stay in O2's residue on their merits. Keeping a boxed literal's type in the IR would
+  decide them, and changes F's terms.
 - **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
@@ -2846,10 +2853,8 @@ across documents* and *A join of a container to itself* is the record.
   (69 %), `PointReadSet` at 97 of 240 and the widest bundle, 11 atoms, at 71 of 256; at most 360 rows of 50,000. So the
   base of 80, not the 8 a unit, is the margin R7 should watch, held by one-atom bundles. g15's cost accumulator counts it
   in every run.
-- **Line 2 counts D3's raw scope apart until g10** — *small.* IrEval reads no raise of a raw ordering, so a form over
-  one is judged on no measured document. At the gate's 1,000 predicates 69 forms S would send are such, weakenings over
-  `raw(id) < 'shoes'` and its kind and junctions holding one; none falls outside D3's scope, and the pull request's 200
-  hold none. g10's raw raises in IrEval measure them, and the exemption goes with D3's denominator rule.
+- **Line 2 counts D3's raw scope apart until g10** — *done (g10).* The soundness line reads a raw ordering and a raw
+  comparison with a number or a boolean through each column (`IrEval.RawModes`), and counts nothing apart.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
