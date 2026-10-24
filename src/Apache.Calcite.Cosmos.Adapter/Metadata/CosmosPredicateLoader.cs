@@ -39,8 +39,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// cast — makes the comparison opaque rather than guessed at.
     /// </para>
     /// <para>
-    /// <b>An opaque predicate is read as a value beside its term</b> (<see cref="OpaqueReading"/>), only when a statement's
-    /// readings are first asked, which planning never does.
+    /// <b>An opaque predicate is read as a value beside its term</b> (<see cref="PredicateStatement.Opaques"/>), only when
+    /// a statement's readings are first asked, which planning never does.
     /// </para>
     /// <para>
     /// <b>What a statement asks of later is read the same way.</b> A <c>CASE</c> condition a rewrite descends to, or a
@@ -64,53 +64,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 return node;
             }
-        }
-
-        /// <summary>
-        /// Determines whether a comparison is a predicate compared with <c>TRUE</c> or <c>FALSE</c>,
-        /// and whether it is true where that predicate is or where it is false.
-        /// </summary>
-        /// <param name="call">An <c>=</c> or a <c>&lt;&gt;</c>.</param>
-        /// <param name="predicate">The side that is not the literal.</param>
-        /// <param name="same">Whether the comparison is true where the predicate is: <c>= TRUE</c> and
-        /// <c>&lt;&gt; FALSE</c>.</param>
-        internal static bool TryComparedWithBoolean(RexCall call, out RexNode predicate, out bool same)
-        {
-            predicate = null!;
-            same = false;
-
-            if (call.getOperands().size() != 2)
-                return false;
-
-            var left = (RexNode)call.getOperands().get(0);
-            var right = (RexNode)call.getOperands().get(1);
-
-            java.lang.Boolean? literal;
-            if (right is RexLiteral r && r.getValue() is java.lang.Boolean onRight && left is not RexLiteral)
-            {
-                literal = onRight;
-                predicate = left;
-            }
-            else if (left is RexLiteral l && l.getValue() is java.lang.Boolean onLeft && right is not RexLiteral)
-            {
-                literal = onLeft;
-                predicate = right;
-            }
-            else
-            {
-                return false;
-            }
-
-            same = (KindOf(call) == SqlKind.__Enum.EQUALS) == literal.booleanValue();
-            return true;
-        }
-
-        /// <summary>
-        /// The kind of a call, by name, for the reason the translator dispatches on names.
-        /// </summary>
-        internal static SqlKind.__Enum KindOf(RexCall call)
-        {
-            return (SqlKind.__Enum)call.getKind().ordinal();
         }
 
         /// <summary>
@@ -151,25 +104,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// Reads conjuncts as a statement: one IR conjunct each, beside the node it was read from.
             /// </summary>
-            public PredicateStatement Statement(IReadOnlyList<RexNode> conjuncts, IEnumerable<JsonDocumentPath>? mentions = null) =>
-                new(conjuncts.Select(Read).ToArray(), conjuncts.Cast<object?>().ToArray(), mentions, Reading);
+            public PredicateStatement Statement(IReadOnlyList<RexNode> conjuncts, IEnumerable<JsonDocumentPath>? mentions = null)
+            {
+                // Its opaque predicates are read when first asked, through this reading, which none is held to where none was read.
+                var read = conjuncts.Select(Read).ToArray();
+                return new(read, conjuncts.Cast<object?>().ToArray(), mentions, _opaqueNodes.Count > 0 ? Reading : null);
+            }
 
             /// <summary>
-            /// Reads an opaque predicate as a value: a predicate compared with a boolean literal as the predicate, which is
-            /// null exactly where it is; then the value it is, or its top call with the operands read as values and the
-            /// rest left out.
+            /// Reads an opaque predicate as a value: the value it is, or its call with each operand read as a value where it
+            /// is one and left out where it is not, at every depth. A predicate compared with <c>TRUE</c> is that call too,
+            /// whose strictness is the rows' (<c>strictop</c> of <c>=</c>), never the loader's.
             /// </summary>
-            OpaqueReading Reading(long id)
+            SqlValue? Reading(long id)
             {
                 lock (_lock)
-                {
-                    var node = _opaqueNodes[(int)id];
-                    while (node is RexCall call && KindOf(call) is SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS && TryComparedWithBoolean(call, out var predicate, out _))
-                        node = predicate;
-
-                    return new(id, Value(node) ?? (node is RexCall top ? Computed(top, partial: true) : null));
-                }
+                    return Partially(_opaqueNodes[(int)id]);
             }
+
+            SqlValue? Partially(RexNode node) => Value(node) ?? (node is RexCall call ? Computed(call, partial: true) : null);
 
             /// <summary>
             /// Reads one predicate — a conjunct, a <c>CASE</c> condition, a weakening — into the IR, a <c>SEARCH</c>
@@ -481,7 +434,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var values = new List<SqlValue>();
                 foreach (var operand in read)
                 {
-                    if (Value(operand) is SqlValue value)
+                    if ((partial ? Partially(operand) : Value(operand)) is SqlValue value)
                         values.Add(value);
                     else if (partial == false)
                         return null;

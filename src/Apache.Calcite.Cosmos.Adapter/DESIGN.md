@@ -6776,11 +6776,14 @@ answer.
    that answers one node two ways faults the bundle.
 
 The writer states what the strictness rules read beside the terms, as it states `point`: through a second callback of
-`PredicateWriter` it writes `leaf` for every predicate that is no junction or negation, `over` for both values of a
-comparison and the value of a membership, and `callarg` for each operand of a call. The facts graph passes no such
-callback and writes nothing new. Which operators and readings are strict are host rows, from the definition's
-`StrictOperators` and `StrictReaders`, read from the registry (*Strictness from rows*, below). A definition that names
-none implies no presence, which loses rows from no weakening.
+`PredicateWriter` it writes `leaf` for every predicate that is no junction or negation, `over` the value that predicate
+is, and `callarg` for each operand of every call. A comparison is the call of its operator over both operands; a
+membership, `IN` over its value; a null or presence test, `IS NULL` or `IS_DEFINED` over its value; an opaque term, the
+value the loader read it as. So which predicate is null where its operand is, is the `strictop` rows' and never a case
+the writer picks. The facts graph passes no such callback and builds what it always built, allocating nothing new.
+Which operators and readings are strict are host rows, from the definition's `StrictOperators` and `StrictReaders`,
+read from the registry (*Strictness from rows*, below). A definition that names none implies no presence, which loses
+rows from no weakening.
 
 **Why the lifts stand apart.** No junction composes from an atom's best before that best is final. Every atom's best is
 complete when `best` starts, so each junction's best is computed once, from final arms, bottom up. `best` still reads a
@@ -6837,33 +6840,37 @@ row's `Subjects`: the functions the split rule's walk listed as code, null where
 each takes (`Calcite.ListedFunctionsAreNullOverANullOperand`), and every reading the loader builds, null over an absent
 path (`Calcite.ReadingsAreNullOverAnAbsentPath`). Each row's pinning test reads its subjects and measures each in
 process, every operand position of every form and every column a reading fills, so a name added to a row is measured
-or refused. Beside them Calcite declares `Strong.Policy.ANY` of the comparisons, `LIKE`, the arithmetic, the cast,
-`NOT`, `ITEM`, `TRIM`, `FLOOR`, `CEIL` and `EXTRACT`. `CosmosStrictness` is the one reader of the three, into the
-definition's `strictop` and `strictreader` rows; the rules join them, and no rule was added.
+or refused. The first holds `IN` over literals too, which Calcite declares nothing of and the IR's membership is.
+Beside them Calcite declares `Strong.Policy.ANY` of the comparisons, `LIKE`, the arithmetic, the cast, `NOT`, `ITEM`,
+`TRIM`, `FLOOR`, `CEIL` and `EXTRACT`. `CosmosStrictness` is the one reader of the three, into the definition's
+`strictop` and `strictreader` rows; the rules join them, and no rule was added.
 
-**By name, because the IR names a call by its name.** The loader spells a call by its operator's name, a `TRIM` by its
-flag and a cast from text to text as `CAST`, so a name is strict only where every operator it may stand for is: in the
-standard table, every library's, the adapter's and the geography functions'. That drops `EXTRACT`, which a library
-also names for a path into XML and declares nothing of; the loader never reads an `EXTRACT` as a value, its unit being
-no value, so nothing is lost. It would have dropped `CAST` too, since `TRY_CAST` is read by the same name, so the row
+**One row an operator, met by name in S.** The loader spells a call by its operator's name, a `TRIM` by its flag and a
+cast from text to text as `CAST`, so the IR cannot tell apart two operators of one name. The reader writes one row for
+each operator under each name it is read by — the standard table's, every library's, the adapter's and the geography
+functions' — strict or not by that operator's own declaration or measurement, and combines nothing. `strictop` is a
+`Min` over booleans, so the theory meets the rows of a name as it loads them: a name is strict only where every
+operator it may stand for is, and that conclusion is Eggnog's. It holds `EXTRACT` not strict, since a library also
+names a path into XML so and declares nothing of it; the loader never reads an `EXTRACT` as a value, its unit being no
+value, so nothing is lost. `CAST` would be held not strict too, since `TRY_CAST` is read by the same name, so the row
 measures `TRY_CAST` beside `SAFE_CAST`. A call no row and no declaration names is strict in nothing.
 
 **An opaque conjunct is read as a value beside its term.** `Loading.Opaque` keeps the node it numbered, and a
 statement's `Opaques` reads each when first asked, which planning never does: the only new work on a planning path is
-keeping that node and a lazy value a statement never opens, and nothing read enters a term, a digest or a memo key. The
-reading is the predicate's top call, its operands read as values and the rest left out, since a strict call is null
-where any one operand is; a predicate compared with a boolean is read as the predicate, null exactly where it is; and a
-predicate that is a reading, a boolean column, is the reading. `RenderingBundle.Write` writes it with `over` and its
-calls' `callarg` rows, so `UPPER(c.name) = 'X'` implies the name present at `Pos` and absent at `Neg`,
+keeping that node, and handing a statement the reading where its loading numbered an opaque term at all; nothing read
+enters a term, a digest or a memo key. The reading is the predicate's top call, its operands read as values at every
+depth and the rest left out, since a strict call is null where any one operand is; and a predicate that is a reading, a
+boolean column, is the reading. A predicate compared with `TRUE` is that comparison's call, so `=` being strict is the
+row's, not the loader's: no peel stands in for it, and the split rule keeps its own. `RenderingBundle.Write` writes it
+with `over` and its calls' `callarg` rows, so `UPPER(c.name) = 'X'` implies the name present at `Pos` and absent at `Neg`,
 `CONCAT_WS('-', name, sku) <> 'x'` implies nothing, and a strict call's operand beside a `CONCAT_WS` still gives its
 path. Presence stops at the call that answers over a null, so beside a null test or a `CASE` a sibling's path is
 still given, where the split rule refused any expression that observes absence. What it reads less than the split
 rule: a connective inside the term, read for its truth or falsity (`TODO.md`).
 
-**What holds it.** The two rows' measurements; `CosmosStrictnessTests` (the declared and measured names, a name
-another operator declares nothing for, the readers); the loader's reading of an opaque conjunct beside a digest that
-does not move; `RenderingGenerateTests` over the three conjuncts through the loader; and the plan digests, byte-equal
-at the parent and at the commit, the walk's boolean comparison now the loader's.
+**What holds it.** The two rows' measurements; `CosmosStrictnessTests`, reading S's lattice (the declared and measured
+names strict, a name another operator declares nothing for not); the loader's reading of an opaque conjunct beside a
+digest that does not move; `RenderingGenerateTests` over the three conjuncts through the loader.
 
 ### Ownership, the reading precision, and the generate shadow
 

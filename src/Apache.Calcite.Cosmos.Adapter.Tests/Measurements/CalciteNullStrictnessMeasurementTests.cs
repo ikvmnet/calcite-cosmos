@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 using Apache.Calcite.Data;
@@ -66,16 +67,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             ["POWER"] = [("POWER({0}, {1})", "xx")],
             ["SAFE_CAST"] = [("SAFE_CAST({0} AS INTEGER)", "s"), ("SAFE_CAST({0} AS DOUBLE)", "n")],
             ["TRY_CAST"] = [("TRY_CAST({0} AS INTEGER)", "s"), ("TRY_CAST({0} AS DOUBLE)", "n")],
+            ["IN"] = [("{0} IN ('12', 'x')", "s"), ("{0} IN (2, 3)", "n")],
         };
 
         /// <summary>
         /// Each listed function is null wherever an operand is: in every form, each operand alone read from a column that
         /// is null on the first row and holds the constant's value on the second, the others the constants.
         /// </summary>
-        [Fact, CosmosPins("Calcite.ListedFunctionsAreNullOverANullOperand")]
+        [Fact, CosmosPins(CosmosStrictness.Functions)]
         public void EachListedFunctionIsNullOverANullOperand()
         {
-            var names = CosmosAxioms.Get("Calcite.ListedFunctionsAreNullOverANullOperand").Subjects!;
+            var names = CosmosAxioms.Get(CosmosStrictness.Functions).Subjects!;
             names.Where(n => Forms.ContainsKey(n) == false).Should().BeEmpty("every name the row holds is measured");
 
             var table = new MaterialisedTable([("s", SqlTypeName.VARCHAR), ("n", SqlTypeName.INTEGER), ("x", SqlTypeName.DOUBLE)],
@@ -96,10 +98,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// column through the value the reader makes of nothing. With the path present each answers or raises, a
         /// <c>RETURNING</c> asserting its type (<c>Calcite.ReturningAsserts</c>), and neither is a null.
         /// </summary>
-        [Fact, CosmosPins("Calcite.ReadingsAreNullOverAnAbsentPath")]
+        [Fact, CosmosPins(CosmosStrictness.Readings)]
         public void EveryReadingIsNullOverAnAbsentPath()
         {
-            var readers = CosmosAxioms.Get("Calcite.ReadingsAreNullOverAnAbsentPath").Subjects!;
+            var readers = CosmosAxioms.Get(CosmosStrictness.Readings).Subjects!;
             static Func<string?, MaterialisedTable> Document() => value => MaterialisedTable.Of([value is null ? "{}" : "{\"p\":" + value + "}"]);
             static Func<string?, MaterialisedTable> Column(SqlTypeName type) => value => MaterialisedTable.Of(type, [value]);
             var raw = new[] { SqlTypeName.VARIANT, SqlTypeName.ANY, SqlTypeName.VARCHAR };

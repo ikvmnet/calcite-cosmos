@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Fits = Graph.DefineRelation<TemplateId, string>("fits");
             PartingBands = Graph.DefineFunction<ValueSet<string>>("partingbands");
             RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
-            StrictOp = Graph.DefineRelation<string>("strictop");
+            StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>());
             StrictReader = Graph.DefineRelation<string>("strictreader");
             BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
             Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
@@ -246,16 +246,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<JPath, JPath> Disjoint { get; }
 
         // Generate mode's. The theory holds the templates asked at each position and the shapes each fits, the parting bands
-        // as one set, the Rex builder's grammar, and the operators and readers Calcite answers null for over a null; the host
-        // writes a root where it stands (`at`), and beside the terms each leaf, the values a comparison or membership is
-        // over and a call's operands. The rules write the rest: each node's position, its cheapest exact form (`None`
+        // as one set, the Rex builder's grammar, whether each name the IR reads a call by is null over a null operand (one
+        // row an operator, which the lattice meets, so a name is strict only where every operator it stands for is), and the
+        // readers Calcite answers null for over an absent path; the host writes a root where it stands (`at`), and beside
+        // the terms each leaf over the value it is and each call's operands. The rules write the rest: each node's position, its cheapest exact form (`None`
         // until one is found), the forms it implies, and one weakening, lattice-free, which a second write faults.
         public Relation<Pred, RenderPosition> At { get; }
         public Relation<TemplateId, RenderPosition> Template { get; }
         public Relation<TemplateId, string> Fits { get; }
         public Function<ValueSet<string>> PartingBands { get; }
         public Function<RenderingRexGrammar.Value> RexGrammar { get; }
-        public Relation<string> StrictOp { get; }
+        public Function<string, bool> StrictOp { get; }
         public Relation<string> StrictReader { get; }
         public Function<Pred, RenderPosition, Priced> BestExact { get; }
         public Function<Pred, RenderPosition, ValueSet<ServiceForm>> Implied { get; }
@@ -771,11 +772,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (c, v, p) = r.Vars<Val, Val, JPath>("c", "v", "p");
                 var (name, args) = r.Vars<string, Args>("name", "args");
-                r.When(c.Is(Ir.Call.Of(name, args)), StrictOp.Of(name), CallArg.Of(c, v), Strict.Of(v, p));
+                r.When(c.Is(Ir.Call.Of(name, args)), StrictOp.Of(name).Is(true), CallArg.Of(c, v), Strict.Of(v, p));
                 r.Then(Strict.Of(c, p));
             });
 
-            // Null where the path is absent, so neither TRUE nor FALSE there: present wherever it is kept, at either position.
+            // A leaf is over the value it is, a comparison the call of its operator: null where the path is absent, so neither
+            // TRUE nor FALSE there, it holds the path present wherever it is kept, at either position.
             strict.DefineRule("a predicate over a strict value implies its path present", r =>
             {
                 var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
@@ -950,8 +952,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (id, shape) in definition.Fits)
                     w.Assume(Fits.Of(id, shape));
 
-                foreach (var name in definition.StrictOperators)
-                    w.Assume(StrictOp.Of(name));
+                foreach (var (name, strict) in definition.StrictOperators)
+                    w.Assume(StrictOp.Of(name).Is(strict));
 
                 foreach (var reader in definition.StrictReaders)
                     w.Assume(StrictReader.Of(reader));

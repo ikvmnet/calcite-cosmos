@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,10 +16,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// rows (<c>RenderingDefinition.StrictOperators</c>, <c>StrictReaders</c>).
     /// </summary>
     /// <remarks>
-    /// An operator is strict where Calcite declares <c>Strong.Policy.ANY</c> of it or the row measured it, and by the name
-    /// the loader reads its call by (<see cref="CosmosPredicateLoader.Spellings"/>), so a name is strict only where every
-    /// operator it may stand for — standard, any library's, the adapter's, the geography functions' — is. A call nothing
-    /// names is strict in nothing, which drops a presence test from a weakening and no rows.
+    /// One row an operator, under each name the loader reads its call by (<see cref="CosmosPredicateLoader.Spellings"/>):
+    /// strict where Calcite declares <c>Strong.Policy.ANY</c> of it or the row measured its name, and not otherwise. The
+    /// operators are the standard table's, every library's, the adapter's and the geography functions'. Nothing is combined
+    /// here: the IR names a call by its name alone, and the theory's lattice meets the rows of one name, so a name is strict
+    /// only where every operator it may stand for is. A call nothing names is strict in nothing, which drops a presence
+    /// test from a weakening and no rows.
     /// </remarks>
     internal static class CosmosStrictness
     {
@@ -31,13 +32,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>The row of the readings measured null over an absent path.</summary>
         public const string Readings = "Calcite.ReadingsAreNullOverAnAbsentPath";
 
-        /// <summary>Every name, in the IR's spelling, whose every operator Calcite declares or was measured null over a null operand.</summary>
-        public static IReadOnlyList<string> Operators { get; } = Strict(CosmosAxioms.Get(Functions).Subjects!);
+        /// <summary>Each operator, by every name in the IR's spelling it is read by, and whether Calcite declares or was measured null over a null operand.</summary>
+        public static IReadOnlyList<(string Name, bool Strict)> Operators { get; } = Read(CosmosAxioms.Get(Functions).Subjects!);
 
         /// <summary>Every reader, in <c>PredicateAtom</c>'s spelling, measured null over an absent path.</summary>
         public static IReadOnlyList<string> Readers { get; } = CosmosAxioms.Get(Readings).Subjects!;
 
-        static IReadOnlyList<string> Strict(IReadOnlyList<string> measured)
+        static IReadOnlyList<(string Name, bool Strict)> Read(IReadOnlyList<string> measured)
         {
             var tables = new[]
             {
@@ -47,15 +48,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 Geography.Sql.GeographyOperatorTable.Instance(),
             };
 
-            var spelled = from table in tables
-                          let list = table.getOperatorList()
-                          from i in Enumerable.Range(0, list.size())
-                          let op = (SqlOperator)list.get(i)
-                          from name in CosmosPredicateLoader.Spellings(op)
-                          select (Name: name, Strict: Strong.policy(op) == Strong.Policy.ANY || measured.Contains(op.getName()));
-
-            return [.. spelled.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.All(s => s.Strict))
-                .SelectMany(g => g.Select(s => s.Name)).Distinct().Order(StringComparer.Ordinal)];
+            return [.. (from table in tables
+                        let list = table.getOperatorList()
+                        from i in Enumerable.Range(0, list.size())
+                        let op = (SqlOperator)list.get(i)
+                        from name in CosmosPredicateLoader.Spellings(op)
+                        select (name, Strong.policy(op) == Strong.Policy.ANY || measured.Contains(op.getName()))).Distinct()];
         }
 
     }

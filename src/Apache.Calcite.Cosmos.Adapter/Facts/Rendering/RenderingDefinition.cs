@@ -14,9 +14,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     /// <remarks>
     /// Generate mode's rows are the templates asked at each position and the shapes each fits, and what Calcite answers
-    /// null for where an operand or the path it reads is null: the operators by name and the readers. The host builds
-    /// those two from measured rows and Calcite's declared policy; a definition that names none is strict in nothing, so a
-    /// weakening keeps no presence.
+    /// null for where an operand or the path it reads is null: each operator by the name the IR reads it by, strict or not,
+    /// and the strict readers. The host reads those from measured rows and Calcite's declared policy, one row an operator;
+    /// a definition that names none is strict in nothing, so a weakening keeps no presence.
     /// </remarks>
     internal sealed record RenderingDefinition(
         IReadOnlyList<MeasuredOutcome> Rows, IReadOnlyDictionary<RenderingSet, ValueSet<RenderingTarget>> Serves, AnswerMeanings Means,
@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
         Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
-        IReadOnlyList<string> StrictOperators, IReadOnlyList<string> StrictReaders)
+        IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
 
         /// <summary>

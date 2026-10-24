@@ -636,7 +636,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var operands = call.getOperands();
 
-            switch (Metadata.CosmosPredicateLoader.KindOf(call))
+            switch (KindOf(call))
             {
                 // Every conjunct is true where the conjunction is, and every branch false where the
                 // disjunction is.
@@ -672,7 +672,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // false, and null exactly where it is null -- so it is read as the predicate, for its
                 // truth or its falsity. Read as a value instead it needed only what its operands need as
                 // values, which for a compound is what every operand needs, and declined the rest.
-                case SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS when Metadata.CosmosPredicateLoader.TryComparedWithBoolean(call, out var predicate, out var same):
+                case SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS when TryComparedWithBoolean(call, out var predicate, out var same):
                     return CollectPaths(predicate, same ? reading : Negated(reading), translator, rootAlias);
 
                 // Anything else needs every operand, each as a value, only where it is null for a null
@@ -726,7 +726,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (Strong.policy(call) == Strong.Policy.ANY)
                 return true;
 
-            if (Metadata.CosmosPredicateLoader.KindOf(call) == SqlKind.__Enum.SEARCH)
+            if (KindOf(call) == SqlKind.__Enum.SEARCH)
                 return call.getOperands().size() == 2
                     && call.getOperands().get(1) is RexLiteral literal
                     && literal.getValue() is org.apache.calcite.util.Sarg sarg
@@ -794,6 +794,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             return common;
+        }
+
+        /// <summary>
+        /// Determines whether a comparison is a predicate compared with <c>TRUE</c> or <c>FALSE</c>,
+        /// and whether it is true where that predicate is or where it is false.
+        /// </summary>
+        /// <param name="call">An <c>=</c> or a <c>&lt;&gt;</c>.</param>
+        /// <param name="predicate">The side that is not the literal.</param>
+        /// <param name="same">Whether the comparison is true where the predicate is: <c>= TRUE</c> and
+        /// <c>&lt;&gt; FALSE</c>.</param>
+        static bool TryComparedWithBoolean(RexCall call, out RexNode predicate, out bool same)
+        {
+            predicate = null!;
+            same = false;
+
+            if (call.getOperands().size() != 2)
+                return false;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            java.lang.Boolean? literal;
+            if (right is RexLiteral r && r.getValue() is java.lang.Boolean onRight && left is not RexLiteral)
+            {
+                literal = onRight;
+                predicate = left;
+            }
+            else if (left is RexLiteral l && l.getValue() is java.lang.Boolean onLeft && right is not RexLiteral)
+            {
+                literal = onLeft;
+                predicate = right;
+            }
+            else
+            {
+                return false;
+            }
+
+            same = (KindOf(call) == SqlKind.__Enum.EQUALS) == literal.booleanValue();
+            return true;
+        }
+
+        /// <summary>
+        /// The kind of a call, by name, for the reason the translator dispatches on names.
+        /// </summary>
+        static SqlKind.__Enum KindOf(RexCall call)
+        {
+            return (SqlKind.__Enum)call.getKind().ordinal();
         }
 
         /// <summary>

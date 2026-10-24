@@ -2834,6 +2834,11 @@ across documents* and *A join of a container to itself* is the record.
   values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
   both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
   `LIKE` in the IR.
+- **The shadow's read at admission is an inert site before g15's** — *small, O4's inventory.* The capture tells its
+  observer when a statement's rounds run, from the renderer `CosmosOracle.Admit` is handed: one `volatile bool` read for
+  each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
+  takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
+  until then.
 - **A generate run reports no iteration count** — *small.* `RenderingRun` says whether a run completed, not how near it
   came to 80 + 8 iterations a unit of width. So the headroom R7 asks about is unmeasured, though every bundle of the
   pull request's run completes. The cost instrument can count it.

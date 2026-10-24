@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             GC.KeepAlive(rewritten);
         }
 
-        Rewrite Pair(Shape s, RenderingSet set, SqlPredicate original, SqlPredicate made, IReadOnlyDictionary<long, OpaqueReading> opaques)
+        Rewrite Pair(Shape s, RenderingSet set, SqlPredicate original, SqlPredicate made, IReadOnlyDictionary<long, SqlValue> opaques)
         {
             SqlPredicate[] roots = [original, made];
             ImportReport Import(RenderingBundle bundle) => RenderingImporter.Import(bundle, s.Source, s.Root.Context, s.Root.Rules, s.Declaration, roots.SelectMany(r => r.Paths));
@@ -352,7 +352,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 beneath.Select(b => (b.Atom, new ImportSource(s.Statement.Statement.Digest, "render round " + b.Stratum.Round, b.Stratum.Round), b.Stratum.Node, s.Root.Rules)));
 
             var report = Import(null);
-            var opaques = roots.SelectMany(r => r.Subterms).OfType<SqlPredicate.Opaque>().Select(o => o.Id).Distinct().Order().Select(id => id + "=" + s.Opaques.GetValueOrDefault(id)?.Top);
+            var opaques = roots.SelectMany(r => r.Subterms).OfType<SqlPredicate.Opaque>().Select(o => o.Id).Distinct().Order().Select(id => id + "=" + s.Opaques.GetValueOrDefault(id));
             var key = string.Join("\n", new[] { set.ToString(), report.Digest, string.Join(",", opaques), RenderingMemo.DigestOf(_graph.Current()) }
                 .Concat(roots.Select(r => r.Digest).Order(StringComparer.Ordinal))
                 .Concat(claims is null ? [] : claims.Select(c => s.Conjuncts[c.Key].Digest + " claims " + claimed + " " + c.Value.Text).Order(StringComparer.Ordinal)));
@@ -585,7 +585,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             public int Count { get; }
 
-            public IReadOnlyDictionary<long, OpaqueReading> Opaques { get; }
+            public IReadOnlyDictionary<long, SqlValue> Opaques { get; }
 
             public bool[] Owned { get; }
 

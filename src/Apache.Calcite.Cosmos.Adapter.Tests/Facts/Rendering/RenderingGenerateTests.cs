@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         static Generated Generate(IReadOnlyList<SqlPredicate> roots, RenderingTheory? theory = null, RenderingSet set = RenderingCheckRun.AssertedSet,
-            IReadOnlyDictionary<JsonDocumentPath, PathValues>? values = null, ValueSet<string>? chars = null, IReadOnlyDictionary<long, OpaqueReading>? opaques = null)
+            IReadOnlyDictionary<JsonDocumentPath, PathValues>? values = null, ValueSet<string>? chars = null, IReadOnlyDictionary<long, SqlValue>? opaques = null)
         {
             theory ??= ProbeTheory;
             using var bundle = theory.Open(set);
