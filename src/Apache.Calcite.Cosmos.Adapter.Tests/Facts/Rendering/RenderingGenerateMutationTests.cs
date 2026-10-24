@@ -148,7 +148,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             foreach (var t in planted.Triggers.Where(t => t.Caught is not null))
             {
-                var (path, values) = (t.Caught![..t.Caught.IndexOf('=')], t.Caught[(t.Caught.IndexOf('=') + 1)..].Split(" or "));
+                var caught = t.Caught!;
+                var (path, values) = (caught[..caught.IndexOf('=')], caught[(caught.IndexOf('=') + 1)..].Split(" or "));
                 t.Judged.Values.SelectMany(j => j.Found).Should().Contain(f => values.Contains(Spelled(CosmosEval.At(f.Document, path))) || values.Contains(KindOf(CosmosEval.At(f.Document, path))),
                     $"{plant.Name} over {t.Sql}");
             }
