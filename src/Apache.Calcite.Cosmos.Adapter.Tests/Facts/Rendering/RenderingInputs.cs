@@ -25,6 +25,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class RenderingInputs
     {
 
+        /// <summary>The differential's containers, in generations of their own: what the plants and the recall plan over.</summary>
+        public static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithFactGenerations(new JsonFactGenerations()))];
+
         /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
         /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>

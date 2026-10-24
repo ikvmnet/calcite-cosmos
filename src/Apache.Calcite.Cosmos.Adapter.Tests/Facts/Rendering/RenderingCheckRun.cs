@@ -161,8 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (scope, theory) = (bundle.Scope, bundle.Theory);
             IReadOnlyDictionary<object, T> Rows<T>(Function<JPath, T> table) => scope.Rows(table).ToDictionary(r => r.Keys[0], r => (T)r.Output!);
             var (values, chars) = (Rows(theory.Imported), Rows(theory.ImportedChars));
-            var cells = refutation is null ? [] : scope.Rows(theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
-                .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
+            var cells = refutation is null ? [] : Cells(bundle);
             return new(conjuncts, form, members, Rows(theory.Spelling).Where(s => values.ContainsKey(s.Key)).ToDictionary(s => s.Value, s => new RenderingMemo.Imported(values[s.Key], chars[s.Key])),
                 stated, refutation?.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness()), rules);
         }
@@ -290,7 +289,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Checks a residual conjunct's weakening (spec §3.17): claimed as implied by the conjunct, and imported from the
         /// stratum it was rendered from, which assumes no conjunct but those the split rule pushes beside it, every one;
-        /// or from the root, where the facts graph reads one of those otherwise than Calcite (<see cref="ReadExactly(SqlPredicate)"/>).
+        /// or from the root, where the facts graph reads one of those otherwise than Calcite (<see cref="RenderingFamily.ReadExactly"/>).
         /// </summary>
         void CheckWeakening(RenderingInputs.Statement input, int unit, List<CosmosFilterStatement> statements, CaptureRecord record)
         {
@@ -299,7 +298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (entry, report, round) = ((RenderingMemo.Entry?)null, (ImportReport?)null, Enumerable.Range(0, statement.Conjuncts.Count).Max(statement.StratumOf) + 1);
             if (skip is null)
             {
-                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => ReadExactly(statement.Statement.Conjuncts[j]))
+                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => RenderingFamily.ReadExactly(statement.Statement.Conjuncts[j]))
                     ? statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(record.Conjunct)) : RootOf([statement.ScopeForCheck])!.Value;
                 var source = new ImportSource(statement.Statement.Digest, "weakening", round);
                 (entry, report) = Check([ir], read.Form, [read.Form], Verdict.Implies,
@@ -375,21 +374,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Each atom of a later round's conjunct, with the node the licence table rendered that conjunct from, where that
         /// stratum may be read beside its atoms: every conjunct it assumes is judged in this check and read by the facts
-        /// graph as Calcite reads it (<see cref="ReadExactly(SqlPredicate)"/>). A cell the stratum admits nothing of is then held only by
+        /// graph as Calcite reads it (<see cref="RenderingFamily.ReadExactly"/>). A cell the stratum admits nothing of is then held only by
         /// documents a conjunct of the same junction drops in Calcite, and so, agreeing, at the service. An atom two
         /// conjuncts share is read beneath neither, since one of them may be what the other's stratum assumes.
         /// </summary>
         static List<(int Conjunct, SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules, int[] Assumes)> Beneath(List<CaptureRecord> held, List<string?> skips)
         {
             var judged = Enumerable.Range(0, held.Count).Where(i => skips[i] is null).ToList();
-            var shared = judged.SelectMany(i => Atoms(IrOf(held[i])).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+            var shared = Shared(judged.Select(i => IrOf(held[i])));
             var beneath = new List<(int, SqlPredicate, ImportSource, Scope?, PredicateRules?, int[])>();
             foreach (var i in judged)
             {
                 var (statement, conjunct) = (held[i].Statement, held[i].Conjunct);
                 var assumes = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(conjunct))
                     .Select(j => judged.FirstOrDefault(k => held[k].Statement == statement && held[k].Conjunct == j, -1)).ToArray();
-                if (statement.StratumOf(conjunct) <= 1 || assumes.Any(k => k < 0 || ReadExactly(IrOf(held[k])) == false))
+                if (statement.StratumOf(conjunct) <= 1 || assumes.Any(k => k < 0 || RenderingFamily.ReadExactly(IrOf(held[k])) == false))
                     continue;
 
                 var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(conjunct));
@@ -400,16 +399,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return beneath;
         }
 
+        /// <summary>The atoms two conjuncts share, which neither's stratum is stated beneath, since one may be what the other's assumes.</summary>
+        internal static HashSet<SqlPredicate> Shared(IEnumerable<SqlPredicate> conjuncts) =>
+            [.. conjuncts.SelectMany(c => Atoms(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key)];
+
+        /// <summary>Each cell a bundle's outcomes cut, by its spelling, with its path: what a refutation's cells name.</summary>
+        internal static Dictionary<string, (string Path, PathCell Cell)> Cells(RenderingBundle bundle) => bundle.Scope.Rows(bundle.Theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
+            .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
+
         /// <summary>The atoms of a conjunct that read one path: what a cell of it is cut for.</summary>
         internal static IEnumerable<SqlPredicate> Atoms(SqlPredicate conjunct) =>
             conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque) && t.Paths.Count() == 1);
-
-        /// <summary>
-        /// Whether the facts graph reads every atom of a conjunct as Calcite does on TRUE and FALSE, so that what a stratum
-        /// that assumes it holds says of the documents is so: the reading precision's rows (<see cref="ReadingPrecisionTable"/>),
-        /// read as production will read them.
-        /// </summary>
-        internal static bool ReadExactly(SqlPredicate conjunct) => RenderingFamily.ReadExactly(conjunct);
 
         /// <summary>
         /// Decision D3, read off the IR's readers and tests: a raw ordering, or a raw <c>=</c>, <c>&lt;&gt;</c> or <c>IN</c>

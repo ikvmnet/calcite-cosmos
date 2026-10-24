@@ -188,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var c in checks)
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
-            RenderingCheckRun.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
+            RenderingFamily.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
             checks.Should().Contain(c => c.LaterRound, "the label is written in a later round");
             checks.Should().OnlyContain(c => c.Entry!.Asserted.Kind != RenderingVerdictKind.Proven && c.Import!.Digest.Contains(" beneath ") == false);
         }

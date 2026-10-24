@@ -112,7 +112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         public void Shadow(RenderingInputs.Statement input, int index, CosmosFilterStatement statement, IReadOnlyList<CaptureRecord> records)
         {
-            var shape = new Shape(input, index, statement, records, _renderedFrom);
+            var shape = Shape.Of(input, index, statement, records, _renderedFrom);
             foreach (var set in _sets)
             {
                 // First, each bundle's own time, as though S's memo held none; again, the keys and lookups alone.
@@ -290,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     : s.Round[i] > 0 ? (Regression, Why(s, i, voided, bundles, askedUnder.GetValueOrDefault(i), verdict))
                     : form is not null ? (Gain, null)
                     : (Alike, (string?)null);
-                Classes.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, @class, reason, digest, text?.Written, text?.Form, Show(verdict), form, a.Round, s.Round[i]));
+                Classes.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, @class, reason, digest, text?.Written, text?.Form, Show(verdict), form, s.Round[i]));
             }
 
             // Residuals: J weakened what the translator left above; S weakens what it leaves, read from one bundle.
@@ -364,7 +364,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var conjunctTerms = conjuncts.Select(i => s.Conjuncts[i]).ToList();
             var roots = conjunctTerms.Concat(junctions.OfType<SqlPredicate>()).DistinctBy(r => r.Digest).ToList();
-            var shared = conjunctTerms.SelectMany(c => RenderingCheckRun.Atoms(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+            var shared = RenderingCheckRun.Shared(conjunctTerms);
             var beneath = conjuncts.Where(i => strata[i] is not null)
                 .SelectMany(i => RenderingCheckRun.Atoms(s.Conjuncts[i]).Distinct().Where(a => shared.Contains(a) == false).Select(a => (Conjunct: i, Atom: a, Stratum: strata[i]!))).ToList();
             ImportReport Import(RenderingBundle? bundle) => RenderingImporter.Import(bundle, s.Source, s.Root.Context, s.Root.Rules, s.Declaration, roots.SelectMany(r => r.Paths),
@@ -428,8 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         }
 
                     // Each Equal refutation of an atom's form, and the value each refuting cell sets its path to: what a witness is made of.
-                    var cells = bundle.Scope.Rows(bundle.Theory.Outcomes).Select(r => (CellOutcomes)r.Output!).SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell)))
-                        .DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
+                    var cells = RenderingCheckRun.Cells(bundle);
                     foreach (var row in bundle.Scope.Rows(bundle.Theory.Disagrees).Where(r => Verdict.Equal.Equals(r.Keys[3])))
                         if (nodes.FirstOrDefault(n => terms[n.Digest].Id.Equals(row.Keys[0])) is { } atom && row.Output is Refutation refutation)
                             refuted.Add(new Refuted(atom, (RenderPosition)row.Keys[1], (ServiceForm)row.Keys[2], refutation,
@@ -539,10 +538,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A conjunct's class under a set: its reason where it is a regression, its IR, the translator's text, form and verdict,
-        /// S's form and round, and the translator's round.
+        /// S's form, and the translator's round.
         /// </summary>
         internal sealed record Classed(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, string Class, string? Reason, string Ir, string? Text,
-            ServiceForm? TextForm, string? TextVerdict, ServiceForm? Form, int Round, int TranslatorRound);
+            ServiceForm? TextForm, string? TextVerdict, ServiceForm? Form, int TranslatorRound);
 
         /// <summary>
         /// A residual's weakening under a set: J's text and form where J wrote one, and its verdict claimed implied at the
@@ -570,81 +569,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal sealed record Translated(string Written, ServiceForm? Form);
 
         /// <summary>What one statement brings to every set: its conjuncts, ownership, the translator's rounds, nodes and texts.</summary>
-        sealed class Shape
+        sealed record Shape(RenderingInputs.Statement Input, int Index, CosmosFilterStatement Statement, bool[] Owned, int[] Round, bool Residual, int Rounds,
+            (Scope? Context, PredicateRules? Rules) Root, IReadOnlyList<(Scope? Node, IReadOnlyList<int> Assumes)> Nodes, Stratum?[] Planted,
+            IReadOnlyDictionary<int, Translated> Texts, IReadOnlyDictionary<int, Translated> Weakened)
         {
+            public IReadOnlyList<SqlPredicate> Conjuncts => Statement.Statement.Conjuncts;
+            public int Count => Conjuncts.Count;
+            public IReadOnlyDictionary<long, SqlValue> Opaques => Statement.Statement.Opaques;
+            public JsonFactTheory Declaration => Statement.DeclarationForCheck;
+            public ImportSource Source => new(Statement.Statement.Digest, "declaration", 1);
 
-            public Shape(RenderingInputs.Statement input, int index, CosmosFilterStatement statement, IReadOnlyList<CaptureRecord> records,
+            /// <summary>
+            /// Reads a statement after its planning: its conjuncts' owners and the translator's round of each, zero for a
+            /// residual; round j's node at j − 1 and the conjuncts it assumes; the rounds a bundle is opened for, the
+            /// translator's strata and the round that admitted nothing where it asked one; a plant's stratum for a conjunct's
+            /// own round; and the translator's texts and weakenings, read back.
+            /// </summary>
+            public static Shape Of(RenderingInputs.Statement input, int index, CosmosFilterStatement statement, IReadOnlyList<CaptureRecord> records,
                 Func<CosmosStatementScope, int, (Scope? Context, PredicateRules? Rules)?>? renderedFrom)
             {
-                (Input, Index, Statement) = (input, index, statement);
-                var scope = statement.ScopeForCheck;
-                Conjuncts = statement.Statement.Conjuncts;
-                Count = Conjuncts.Count;
-                Opaques = statement.Statement.Opaques;
-                Owned = [.. Conjuncts.Select(RenderingFamily.Owns)];
-                Round = [.. Enumerable.Range(0, Count).Select(scope.StratumOf)];
-                Residual = scope.Residual.Count > 0;
-                Root = RenderingCheckRun.RootOf([scope])!.Value;
-                Declaration = statement.DeclarationForCheck;
-                Source = new ImportSource(statement.Statement.Digest, "declaration", 1);
+                var (scope, conjuncts) = (statement.ScopeForCheck, statement.Statement.Conjuncts);
+                int[] round = [.. Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf)];
+                var (strata, residual) = (scope.Strata.Count, scope.Residual.Count > 0);
 
                 // The chain: round j's node and what it assumes, read through a conjunct it rendered; the last, a residual's.
-                var strata = scope.Strata.Count;
-                Nodes = [.. Enumerable.Range(1, strata + (Residual ? 1 : 0)).Select(j => j <= strata ? scope.Strata[j - 1][0] : scope.Residual[0])
+                (Scope?, IReadOnlyList<int>)[] nodes = [.. Enumerable.Range(1, strata + (residual ? 1 : 0)).Select(j => j <= strata ? scope.Strata[j - 1][0] : scope.Residual[0])
                     .Select(i => (scope.ContextFor(OracleLicence.RenderConjunct(i)).Context, scope.AssumedIn(OracleLicence.RenderConjunct(i))))];
 
                 // A plant's node for a conjunct's own round, stated as the round after, with the licence table's assumptions (G11).
-                Planted = [.. Enumerable.Range(0, Count).Select(i => renderedFrom?.Invoke(scope, i) is { } node
-                    ? new Stratum(Math.Max(1, Round[i]) + 1, node.Context, scope.AssumedIn(OracleLicence.RenderConjunct(i))) : null)];
+                Stratum?[] planted = [.. Enumerable.Range(0, conjuncts.Count).Select(i => renderedFrom?.Invoke(scope, i) is { } node
+                    ? new Stratum(Math.Max(1, round[i]) + 1, node.Context, scope.AssumedIn(OracleLicence.RenderConjunct(i))) : null)];
 
                 // The translator asked a round that admitted nothing where its chain ended complete and keeping something;
                 // otherwise production closes in a bundle of its own.
-                Rounds = strata + (Residual && scope.Complete && scope.IsContradictory(OracleLicence.RenderConjunct(scope.Residual[0])) == false ? 1 : 0);
+                var rounds = strata + (residual && scope.Complete && scope.IsContradictory(OracleLicence.RenderConjunct(scope.Residual[0])) == false ? 1 : 0);
 
                 Translated Read(CaptureRecord r) => CosmosSqlFormReader.Read(r.Text, r.Parameters) is var read
                     && RenderingCheckRun.Skip(r, read, r.Comparisons.Count + r.Rechecks.Count > 0) is null ? new(r.Text, read.Form) : new(r.Text, null);
-                Texts = records.Where(r => r.Statement == statement && r.Site == 1).GroupBy(r => r.Conjunct).ToDictionary(g => g.Key, g => Read(g.First()));
-                Weakened = records.Where(r => r.Statement == statement && r.Site == 3).GroupBy(r => r.Conjunct).ToDictionary(g => g.Key, g => Read(g.First()));
+                Dictionary<int, Translated> Site(int site) => records.Where(r => r.Statement == statement && r.Site == site).GroupBy(r => r.Conjunct).ToDictionary(g => g.Key, g => Read(g.First()));
+                return new(input, index, statement, [.. conjuncts.Select(RenderingFamily.Owns)], round, residual, rounds, RenderingCheckRun.RootOf([scope])!.Value, nodes, planted,
+                    Site(1), Site(3));
             }
-
-            public RenderingInputs.Statement Input { get; }
-
-            public int Index { get; }
-
-            public CosmosFilterStatement Statement { get; }
-
-            public IReadOnlyList<SqlPredicate> Conjuncts { get; }
-
-            public int Count { get; }
-
-            public IReadOnlyDictionary<long, SqlValue> Opaques { get; }
-
-            public bool[] Owned { get; }
-
-            /// <summary>The translator's round of each conjunct, zero for a residual.</summary>
-            public int[] Round { get; }
-
-            public bool Residual { get; }
-
-            /// <summary>The rounds a bundle is opened for: the translator's strata, and the round that admitted nothing where it asked one.</summary>
-            public int Rounds { get; }
-
-            public (Scope? Context, PredicateRules? Rules) Root { get; }
-
-            public JsonFactTheory Declaration { get; }
-
-            public ImportSource Source { get; }
-
-            /// <summary>A plant's stratum for each conjunct's own round, <c>null</c> for none.</summary>
-            public Stratum?[] Planted { get; }
-
-            /// <summary>Round j's node at j − 1, and the conjuncts it assumes.</summary>
-            public IReadOnlyList<(Scope? Node, IReadOnlyList<int> Assumes)> Nodes { get; }
-
-            public IReadOnlyDictionary<int, Translated> Texts { get; }
-
-            public IReadOnlyDictionary<int, Translated> Weakened { get; }
-
         }
 
     }

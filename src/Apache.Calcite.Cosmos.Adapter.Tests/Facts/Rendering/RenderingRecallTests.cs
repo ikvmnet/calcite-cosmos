@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     r.Then(theory.Candidate.Of(e, pos, form));
                 });
 
-            var run = RenderingCheckRun.Over(RenderingInputs.Differential("recall", [.. Cases.Values.Select(c => c.Sql)], RenderingGenerateMutationTests.Containers),
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("recall", [.. Cases.Values.Select(c => c.Sql)], RenderingInputs.Containers),
                 shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
             GC.KeepAlive(graph);
             return (run, pieces);
@@ -218,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var recorder = new RenderingRecorder();
             using (recorder.Arm())
             using (StatementTerms.ArmDeclaredPossible())
-                RenderingInputs.Differential("recall", [sql], RenderingGenerateMutationTests.Containers).Single().Plan();
+                RenderingInputs.Differential("recall", [sql], RenderingInputs.Containers).Single().Plan();
 
             return recorder.Read.First(s => s.Statement.Conjuncts.Count == conjuncts);
         }

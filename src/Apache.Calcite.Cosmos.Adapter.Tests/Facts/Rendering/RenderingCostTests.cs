@@ -211,8 +211,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static List<double> Sorted(IEnumerable<double> values) => [.. values.Order()];
 
-        /// <summary>The nearest-rank centile.</summary>
-        static double At(List<double> sorted, double q) => sorted[Math.Max(0, (int)Math.Ceiling(q * sorted.Count) - 1)];
+        /// <summary>The nearest-rank centile, which every cost report reads.</summary>
+        internal static double At(List<double> sorted, double q) => sorted[Math.Max(0, (int)Math.Ceiling(q * sorted.Count) - 1)];
 
         static string Centiles(List<double> values)
         {

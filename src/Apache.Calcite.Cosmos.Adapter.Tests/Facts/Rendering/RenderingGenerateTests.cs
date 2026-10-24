@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -35,8 +31,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <summary>
     /// Generate mode's theory (spec g03), on synthetic bundles: the forms it keeps for an atom, through <c>NOT</c> and a
     /// junction, and for the round's junction; what it never lifts; presence; the weakening at a leaf, a junction and a
-    /// negation; the one discipline every read passes; and every run over the check run's inputs completing within its
-    /// limits.
+    /// negation; and the one discipline every read passes. Every run over the inputs completing within its limits is the
+    /// shadow's (<c>RenderingShadowTests</c>).
     /// </summary>
     public sealed class RenderingGenerateTests
     {
@@ -382,7 +378,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var answer = bundle.ReadBest(root);
             (answer.Kind, answer.Best, answer.Weakening).Should().Be((RenderingVerdictKind.Conflict, (ServiceForm?)null, (ServiceForm?)null));
             answer.Reason.Should().StartWith("agreed and refuted");
-            bundle.ReadWeakening(root).Should().BeNull();
             bundle.Agreements(root, RenderPosition.Pos).Should().BeEmpty();
         }
 
@@ -401,56 +396,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bundle.RunGenerate(1).OneNodePerClass.Should().BeFalse();
             var answer = bundle.ReadBest(root);
             (answer.Kind, answer.Best, answer.Weakening, answer.Reason).Should().Be((RenderingVerdictKind.Conflict, (ServiceForm?)null, (ServiceForm?)null, "tripwire: a rule merged two terms"));
-            bundle.ReadWeakening(root).Should().BeNull();
-        }
-
-        /// <summary>
-        /// Every check the pull request's run made, asked again of generate mode under the asserted set and the one beside
-        /// it, riding its pass: each conjunct a root, and beside them their junction where there are two or more, imported
-        /// and stated as the check was. Every run completes within its limits with one node per class and no
-        /// contradiction, declines on nothing, and no best, implied form or weakening is a sentinel. Counts and each
-        /// bundle's time, open to dispose, are reported.
-        /// </summary>
-        [Fact]
-        public void EveryGenerateRunCompletes()
-        {
-            var claims = RenderingCheckRun.PerPullRequest.Value.Memo.Entries.Select(e => e.What).OfType<RenderingMemo.Claimed>().ToList();
-            claims.Should().NotBeEmpty();
-            var faults = new ConcurrentQueue<string>();
-            foreach (var set in new[] { RenderingCheckRun.AssertedSet, RenderingCheckRun.BesideSet })
-            {
-                var (times, counts) = (new ConcurrentBag<double>(), new int[3]);
-                Parallel.ForEach(claims, new ParallelOptions { MaxDegreeOfParallelism = 2 }, claim =>
-                {
-                    var started = Stopwatch.GetTimestamp();
-                    var roots = claim.Conjuncts.Count > 1 ? [.. claim.Conjuncts, SqlPredicate.AllOf(claim.Conjuncts)] : claim.Conjuncts.ToList();
-                    using (var bundle = ProbeTheory.Open(set))
-                    {
-                        var terms = roots.Select(bundle.Write).ToList();
-                        RenderingCheckRun.Restate(bundle, claim);
-                        terms.ForEach(bundle.Generate);
-                        var run = bundle.RunGenerate(RenderingBundle.WidthOf(roots));
-                        var answers = terms.Select(bundle.ReadBest).ToList();
-                        var lifted = bundle.Failure is null ? bundle.Scope.Rows(ProbeTheory.BestExact).Select(r => ((Priced)r.Output!).Form).OfType<ServiceForm>()
-                            .Concat(bundle.Scope.Rows(ProbeTheory.Implied).SelectMany(r => (ValueSet<ServiceForm>)r.Output!))
-                            .Concat(bundle.Scope.Rows(ProbeTheory.Weakening).Select(r => (ServiceForm)r.Output!)).ToList() : [];
-                        if (run != Disciplined || bundle.Failure is not null || answers.Any(a => a.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict) || lifted.Any(RenderingCheckRun.Opaque))
-                            faults.Enqueue($"{set} {claim.Form}: {run}; {bundle.Failure?.Message}; {string.Join(", ", answers.Select(a => a.Kind + " " + a.Reason))}");
-
-                        Interlocked.Add(ref counts[0], roots.Count);
-                        Interlocked.Add(ref counts[1], answers.Count(a => a.Kind == RenderingVerdictKind.Proven));
-                        Interlocked.Add(ref counts[2], answers.Count(a => a.Weakening is not null));
-                    }
-
-                    times.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                });
-
-                var ms = times.Order().ToList();
-                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: {ms.Count} bundles, {counts[0]} roots, {counts[1]} proven, {counts[2]} weakened; " +
-                    $"a bundle p50 {ms[ms.Count / 2]:N2} ms, p90 {ms[ms.Count * 9 / 10]:N2} ms, max {ms[^1]:N1} ms; total {ms.Sum() / 1000:N2} s");
-            }
-
-            faults.Should().BeEmpty();
         }
 
     }

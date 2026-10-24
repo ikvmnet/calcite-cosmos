@@ -247,15 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void G8_ANegationsBestFromItsOperandsPosFormIsFoundBySourceA()
         {
             var theory = RenderingTheory.Define(Measured);
-            theory.Graph.Rulesets.Single(r => r.Name == "best").DefineRule("planted: a negation's best is its operand's best at Pos, negated", r =>
-            {
-                var (e, a, pos) = r.Vars<Pred, Pred, RenderPosition>("e", "a", "pos");
-                var (b, g, h, pa) = r.Vars<Priced, ServiceForm, ServiceForm, Proof>("b", "g", "h", "pa");
-                r.When(theory.At.Of(e, pos), e.Is(theory.Ir.Not.Of(a)), b.Is(theory.BestExact.Of(a, RenderPosition.Pos)));
-                r.Where(RenderingPrimitives.PricedIsReal.Of(b));
-                r.When(g.Is(Compute.Of(b, Priced.FormOf)), pa.Is(theory.Agrees.Of(a, RenderPosition.Pos, g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
-                r.Then(theory.Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), theory.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
-            });
+            RenderingGenerateMutationTests.NegationBestFrom(theory, "planted: a negation's best is its operand's best at Pos, negated", _ => RenderPosition.Pos);
 
             var atom = Eq(Text(LabelPath), "bikes");
             var (best, judged) = Generated(theory, atom, Not(atom));
@@ -397,19 +389,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ? vector with { Outcomes = [.. vector.Outcomes.Zip(cells.Cells, (o, cell) => cell is PathCell.Null ? o with { Outcomes = ServiceOutcomes.False } : o)] }
                 : vector;
 
-        /// <summary>A graph of a plant's own, never spent, defined from the registry's definition as changed and holding the rules given beside the right ones.</summary>
-        static RenderingGraph Planted(Func<RenderingDefinition, RenderingDefinition>? define = null, Action<RenderingTheory>? rules = null)
-        {
-            var graph = new RenderingGraph(() => define?.Invoke(Measured) ?? Measured, _ => false);
-            rules?.Invoke(graph.Current());
-            return graph;
-        }
+        static RenderingGraph Planted(Func<RenderingDefinition, RenderingDefinition>? define = null, Action<RenderingTheory>? rules = null) =>
+            RenderingGenerateMutationTests.Graph(define ?? (d => d), rules ?? (_ => { }));
 
-        /// <summary>Statements planned as the differential plans them, shadowed through a graph under the sets the legs plan under.</summary>
         static RenderingGenerateRun Shadowed(RenderingGraph graph, params string[] statements)
         {
-            var run = RenderingCheckRun.Over(RenderingInputs.Differential("gate fault", statements, RenderingGenerateMutationTests.Containers),
-                shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+            var run = RenderingGenerateMutationTests.Shadowed(graph, "gate fault", statements);
             run.Failures.Should().BeEmpty();
             return run.Shadow!;
         }

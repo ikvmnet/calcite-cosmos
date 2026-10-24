@@ -28,24 +28,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingTemplatesTests
     {
 
-        const string Products = "SELECT c.\"id\" FROM products AS c WHERE ", Typed = "SELECT c.\"id\" FROM typed AS c WHERE ";
-
-        const string Category = "c.\"$.category\"", Text = "JSON_VALUE(c.\"DOC\", '$.label')", Price = "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)";
-
         static readonly string Path = SqlValue.Spell(LabelPath);
 
-        /// <summary>Statements whose one conjunct the translator writes, each with the template whose form its text is.</summary>
-        static readonly (string Sql, TemplateId Template)[] Written =
-        [
-            (Products + Category + " = 'bikes'", TemplateId.Bare), (Products + Category + " <> 'bikes'", TemplateId.Restricted), (Products + Category + " < 'm'", TemplateId.Bare),
-            (Products + $"NOT ({Category} = 'bikes')", TemplateId.Completed), (Products + $"NOT ({Category} <> 'bikes')", TemplateId.Bare),
-            (Products + Category + " IN ('bikes', 'shoes')", TemplateId.Bare),
-            (Products + Category + " IS NULL", TemplateId.NullTest), (Products + Category + " IS NOT NULL", TemplateId.NullTest),
-            (Typed + Text + " = 'bikes'", TemplateId.Bare), (Typed + $"NOT ({Text} = 'bikes')", TemplateId.Completed),
-            (Typed + Text + " IS NULL", TemplateId.NullTest), (Typed + Text + " IS NOT NULL", TemplateId.NullTest),
-            (Typed + Price + " <> 30", TemplateId.Restricted), (Typed + Price + " > 30", TemplateId.Bare), (Typed + $"NOT ({Price} = 30)", TemplateId.Completed),
-            (Typed + Price + " IS NULL", TemplateId.NullTest),
-        ];
+        /// <summary>
+        /// Statements whose one conjunct the translator writes, each with the template whose form its text is: those whose
+        /// reader, test and position no one-atom conjunct of the check run sends, which the run's own conjuncts hold the rest of.
+        /// </summary>
+        static readonly (string Sql, TemplateId Template)[] Written = [("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" < 'm'", TemplateId.Bare)];
 
         /// <summary>
         /// Every template at both positions over every atom the inputs load, a synthetic atom of every shape and literal
@@ -95,9 +84,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A1–A4 over single atoms are what the translator writes, beneath its <c>NOT</c> where an atom stands at <c>Neg</c>:
-        /// each sample statement's one conjunct, written at admission and read back, is its template's form for the atom
-        /// the loader reads; and so is every one-atom conjunct the check run's statements send but the respellings R5
-        /// names, an <c>IN</c>'s points in the set's order and <c>NOT (x IS NULL)</c> in <c>IS NOT NULL</c>'s spelling.
+        /// every one-atom conjunct the check run's statements send is its template's form for the atom the loader reads, but
+        /// the respellings R5 names, an <c>IN</c>'s points in the set's order and <c>NOT (x IS NULL)</c> in <c>IS NOT NULL</c>'s
+        /// spelling; and so is a sample statement's, written at admission and read back, where the run sends none of its shape.
         /// </summary>
         [Fact]
         public void EveryTemplateSpellsWhatTheTranslatorWrites()
@@ -106,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var recorder = new RenderingRecorder();
                 using (recorder.Arm())
-                    RenderingInputs.Differential("templates", [sql], RenderingMutationTests.Containers).Single().Plan();
+                    RenderingInputs.Differential("templates", [sql], RenderingInputs.Containers).Single().Plan();
 
                 var admitted = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).ToList();
                 admitted.Should().ContainSingle(sql);
@@ -248,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ALoneSurrogateLiteralIsNotSendable()
         {
-            var bands = ValueSet.From(Measured.Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
+            var bands = Measured.PartingBands;
             bool Sendable(CosmosServiceTest op, string literal, bool nested = false) =>
                 RenderingPrimitives.Sendable.Function(nested ? Any(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), ServiceForm.CompareOf(op, Path, JsonValues.Of(literal))) : ServiceForm.CompareOf(op, Path, JsonValues.Of(literal)), bands);
 

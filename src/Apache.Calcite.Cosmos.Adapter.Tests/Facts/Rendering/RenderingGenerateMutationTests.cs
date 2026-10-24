@@ -36,9 +36,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         const string Typed = "SELECT c.\"id\" FROM typed AS c WHERE ", Label = "JSON_VALUE(c.\"DOC\", '$.label')", Products = "SELECT c.\"id\" FROM products AS c WHERE ";
 
-        /// <summary>The differential's containers, in generations of their own.</summary>
-        internal static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithFactGenerations(new JsonFactGenerations()))];
-
         static string Recall(string p) => RenderingRecallTests.Cases[p].Sql;
 
         /// <summary>
@@ -171,10 +168,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static Planted Shadowed(Plant plant)
         {
-            var graph = new RenderingGraph(() => plant.Define(ProbeRows.Measured), _ => false);
-            plant.Rules(graph.Current());
+            var graph = Graph(plant.Define, plant.Rules);
             var statements = plant.Triggers.Select(t => t.Sql).ToList();
-            var run = RenderingCheckRun.Over(RenderingInputs.Differential("mutation " + plant.Name, statements, Containers), shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+            var run = Shadowed(graph, "mutation " + plant.Name, statements);
             var shadow = run.Shadow!;
             var triggers = new List<Trigger>();
             foreach (var (sql, caught) in plant.Triggers)
@@ -192,6 +188,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             GC.KeepAlive(graph);
             return new(plant, run, triggers);
         }
+
+        /// <summary>A graph of a plant's own, never spent, defined from the registry's definition as changed and holding the rules given beside the right ones.</summary>
+        internal static RenderingGraph Graph(Func<RenderingDefinition, RenderingDefinition> define, Action<RenderingTheory> rules)
+        {
+            var graph = new RenderingGraph(() => define(ProbeRows.Measured), _ => false);
+            rules(graph.Current());
+            return graph;
+        }
+
+        /// <summary>Statements planned as the differential plans them, shadowed through a graph under the sets the legs plan under.</summary>
+        internal static RenderingCheckRun Shadowed(RenderingGraph graph, string input, IReadOnlyList<string> statements) =>
+            RenderingCheckRun.Over(RenderingInputs.Differential(input, statements, RenderingInputs.Containers), shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+
+        /// <summary>A planted best: a negation's operand's best at the position <paramref name="at"/> gives, negated, as the negation's.</summary>
+        internal static void NegationBestFrom(RenderingTheory t, string name, Func<Var<RenderPosition>, Term<RenderPosition>> at) =>
+            t.Graph.Rulesets.Single(r => r.Name == "best").DefineRule(name, r =>
+            {
+                var (e, a, pos) = r.Vars<Pred, Pred, RenderPosition>("e", "a", "pos");
+                var (b, g, h, pa) = r.Vars<Priced, ServiceForm, ServiceForm, Proof>("b", "g", "h", "pa");
+                r.When(t.At.Of(e, pos), e.Is(t.Ir.Not.Of(a)), b.Is(t.BestExact.Of(a, at(pos))));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(b));
+                r.When(g.Is(Compute.Of(b, Priced.FormOf)), pa.Is(t.Agrees.Of(a, at(pos), g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
+                r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
 
         /// <summary>
         /// An untrusted plant: a template's rows at the positions given replaced by a rule that proposes, of every shape the
@@ -234,15 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.When(t.At.Of(e, pos), e.Is(t.Ir.Not.Of(a)));
                 r.Then(t.At.Of(a, pos), t.BestExact.Of(a, pos).Is(Priced.None), t.Implied.Of(a, pos).Is(ValueSet<ServiceForm>.Empty));
             });
-            t.Graph.Rulesets.Single(r => r.Name == "best").DefineRule("planted M4: a negation's best is its operand's best at its own position, negated", r =>
-            {
-                var (e, a, pos) = r.Vars<Pred, Pred, RenderPosition>("e", "a", "pos");
-                var (b, g, h, pa) = r.Vars<Priced, ServiceForm, ServiceForm, Proof>("b", "g", "h", "pa");
-                r.When(t.At.Of(e, pos), e.Is(t.Ir.Not.Of(a)), b.Is(t.BestExact.Of(a, pos)));
-                r.Where(RenderingPrimitives.PricedIsReal.Of(b));
-                r.When(g.Is(Compute.Of(b, Priced.FormOf)), pa.Is(t.Agrees.Of(a, pos, g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
-                r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
-            });
+            NegationBestFrom(t, "planted M4: a negation's best is its operand's best at its own position, negated", pos => pos);
         }
 
         /// <summary>M5: a junction's arms also stand at <c>Pos</c>, and their bests there make the junction's, whatever its position.</summary>

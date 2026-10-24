@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
@@ -34,9 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
             var compared = Compare(shadow);
-            var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
-            Directory.CreateDirectory(folder);
-            RenderingReports.Tsv(folder, "pairwise.tsv", ["set", "bundle", "node", "position", "of", "a", "b", "compared", "raised", "parted"], compared.Rows);
+            RenderingReports.WritePairwise(compared);
             TestContext.Current.TestOutputHelper?.WriteLine($"{compared.Pairs} pairs ({shadow.Pairs.Count} with the translator's text proven at one key), {compared.Seen} documents and targets compared, "
                 + $"{compared.Raised} where Calcite raises reported apart; {compared.Disagreements.Count} disagreements");
             compared.Pairs.Should().BePositive();

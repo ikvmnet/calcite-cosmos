@@ -6696,8 +6696,8 @@ and the compound evaluated a member at a time on its cells, which an `OR` of 16 
 
 S's second stage writes what it proves. For each `WHERE` conjunct it owns it proposes forms from templates, its gate
 admits or refutes each exactly as in check mode, `BestExact` keeps the cheapest exact one, and `Implied` gathers what a
-residual conjunct's weakening is built from. Until the switch it is judged in tests alone, and nothing in planning
-reaches it.
+residual conjunct's weakening is built from. Until the switch it is judged in tests alone: nothing in planning reaches
+it, and every commit's plan digests are byte-equal to its parent's, which the subsections below take as read.
 
 ### Templates, prices, and the weakening's assembly
 
@@ -6756,10 +6756,9 @@ guarded form that holds it. Whether a leaf takes its best or this fold is two ru
 negation), and `form-is-join-of` holds a composed form to exactly its arms' parts, as a set.
 
 **What holds it.** `RenderingTemplatesTests`: totality over every atom the inputs load, a synthetic atom of every shape
-and a parameter; every pair the rows ask spells a form; the translator's spelling, over sample statements and over every
-one-atom conjunct the check run sends; no two string orderings of one path; the order, the join, the negation, the
-sentinels inert, and the surrogate, band and grammar filters. The plan digests, byte-equal at the parent and at the
-commit.
+and a parameter; every pair the rows ask spells a form; the translator's spelling, over every one-atom conjunct the check
+run sends and a sample of the one shape it sends none of; no two string orderings of one path; the order, the join, the
+negation, the sentinels inert, and the surrogate, band and grammar filters.
 
 ### The generate theory: positions, bests and weakenings
 
@@ -6812,14 +6811,14 @@ and the host derives nothing. Width sets the count limit: the roots' atoms, ever
 arms, at 80 + 8 a unit (`RenderingBundle.WidthOf`, `RunGenerate`). The check run's limit is 64 + 8 a leaf, and the two
 extra strata take the 16.
 
-**One discipline for every read.** `Readable` holds that the bundle declined on no engine failure, and that its run
-completed within its limits, kept one node per class and derived no contradiction. `ReadBest`, `ReadWeakening`,
-`Agreements` and check mode's `Read` all pass it.
+**One discipline for every read.** `Guard` answers for a bundle that declined on an engine failure, and inside it
+`Readable` holds that the run completed within its limits, kept one node per class and derived no contradiction.
+`ReadBest`, `Agreements` and check mode's `Read` all pass it.
 - A run that stopped short reads `Incomplete`, and a merge or a contradiction reads `Conflict`. A contradicted run still
   writes weakenings, and none is read.
 - `ReadBest` gives the best and its proof, or Unproven naming the least refuted cell and the cheapest form refuted
-  there. A junction root names none, since generate mode composes no refutation.
-- `ReadWeakening` treats `TRUE` as none: `Joined` and `Negated` fold every constant, so it is the one trivial spelling.
+  there; a junction root names none, since generate mode composes no refutation. Beside either it gives the weakening,
+  `TRUE` read as none: `Joined` and `Negated` fold every constant, so it is the one trivial spelling.
 - `Agreements` lists the non-vacuous agreements, which source A and the pairwise check judge.
 
 **The definition holds generate mode's rows.** The template, fits and strictness rows join the parting bands in
@@ -6839,12 +6838,9 @@ finished a stratum before. One plant shows each refusal.
 - Presence at both positions and through calls; a leaf's best or its fold; no sentinel lifted.
 - Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's cast comparison weakening to its presence at `Neg`.
 - A contradicted and a merged bundle reading nothing.
-- Every check of the pull request's run asked again in generate mode, riding its pass. Under both sets, 389 bundles
-  (711 roots, 468 proven) all complete within their limits; at the gate's 1,000 predicates, 921 bundles (1,605 roots,
-  1,032 proven) do too.
 
-Nothing in planning calls generate mode: S stays reachable from tests alone, and the plan digests are byte-equal at the
-parent and at the commit.
+Every run over the inputs completing within its limits, with one node per class, no contradiction, no decline and no
+sentinel lifted, is the shadow's assert (`RenderingShadowTests`), over the bundles in the shape production opens them.
 
 ### Strictness from rows, and what an opaque conjunct is read as
 
@@ -6967,7 +6963,9 @@ left residual weakens to its presence alone. On a service each exact gain's text
 **What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
 `NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
 `EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
-`pairwise.tsv`. Nothing in planning reaches S, and the plan digests are byte-equal at the parent and at the commit.
+`pairwise.tsv`. The summary gives S's time and bundles by shape twice: of each statement, and of each query, every
+statement its plan asked S of, the shape the widest of theirs, as §6.3's lines read cost. The machine's load is
+recorded beside it by whoever runs it; no figure carries a line before g15.
 
 ### Faults planted in S
 
@@ -7029,8 +7027,7 @@ generate mode composes no refutation through a junction (`TODO.md`).
 
 **What holds it.** `RenderingGenerateMutationTests`, the ten caught and M11 beside, the tip wrong on no trigger and every
 trusted plant changing what S sends or implies; `RenderingGateFaultTests`; `RenderingRecallTests`;
-`RenderingWitnessTests`. Nothing in planning reaches S, and the plan digests are byte-equal at the parent and at the
-commit.
+`RenderingWitnessTests`.
 
 ---
 

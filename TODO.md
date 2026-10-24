@@ -2837,9 +2837,21 @@ across documents* and *A join of a container to itself* is the record.
   each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
   takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
   until then.
-- **A generate run reports no iteration count** — *small.* `RenderingRun` says whether a run completed, not how near it
-  came to 80 + 8 iterations a unit of width. So the headroom R7 asks about is unmeasured, though every bundle of the
-  pull request's run completes. The cost instrument can count it.
+- **A generate run reports no iteration count** — *small, for g15's instrument.* `RenderingRun` says whether a run
+  completed, not how near it came to 80 + 8 iterations a unit of width. The review of PR A counted it once, with a
+  recorder in a copy, at the gate's 1,000 predicates: 9,712 runs, all complete, the tightest one-atom bundles at 61 of 88
+  (69 %), `PointReadSet` at 97 of 240 and the widest bundle, 11 atoms, at 71 of 256; at most 360 rows of 50,000. So the
+  base of 80, not the 8 a unit, is the margin R7 should watch, held by one-atom bundles. g15's cost accumulator counts it
+  in every run.
+- **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
+  or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
+  (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
+  `RenderingPerQueryCostTests` measures both shapes on the build machine and decides it.
+- **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
+  wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
+  with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,
+  osx-x64 net8.0, ran 2.4 times linux-x64 net10.0 on `main`, so its increment is the one to read; past the budget, O5's
+  levers (`Portable` reported at the gate alone, among them).
 - **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
   `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
   reads a junction's reason off its arms.

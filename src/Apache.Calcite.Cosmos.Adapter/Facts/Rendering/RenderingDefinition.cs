@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -32,6 +33,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
         IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
+
+        /// <summary>The parting bands as one set, which <c>sendable</c> reads.</summary>
+        public ValueSet<string> PartingBands => ValueSet.From(Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
 
         /// <summary>
         /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges,

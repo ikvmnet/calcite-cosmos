@@ -24,28 +24,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The translator's exact pushes are S's, but for the regressions each with its reason, reported against the cap; the
-        /// reports are written. No bundle stopped short, conflicted or declined, and the shadow failed on no statement.
+        /// reports are written. No bundle stopped short, conflicted or declined, none lifted a sentinel (line 20, in the
+        /// shape production opens bundles), and the shadow failed on no statement.
         /// </summary>
         [Fact]
         public void TheTranslatorsExactPushesAreS()
         {
             var run = RenderingCheckRun.PerPullRequest.Value;
             var shadow = run.Shadow!;
-            var folder = RenderingReports.WriteShadow(shadow, Cap);
-            foreach (var set in RenderingGenerateRun.Sets)
-            {
-                var rows = shadow.Classes.Where(c => c.Set == set).ToList();
-                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: " + string.Join(", ", rows.GroupBy(r => r.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}"))
-                    + $"; regressions by reason: " + string.Join(", ", rows.Where(r => r.Class == RenderingGenerateRun.Regression).GroupBy(r => r.Reason).Select(g => $"{g.Key} {g.Count()}"))
-                    + $" (cap {Cap})");
-            }
+            foreach (var line in RenderingReports.WriteShadow(shadow, Cap).Where(l => l.StartsWith("    ", StringComparison.Ordinal) == false))
+                TestContext.Current.TestOutputHelper?.WriteLine(line);
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"reports in {folder}; {shadow.Bundles.Count} generate bundles");
             run.Failures.Where(f => f.Failure.StartsWith("shadows", StringComparison.Ordinal)).Should().BeEmpty();
             shadow.Classes.Should().NotBeEmpty();
             shadow.Classes.Where(c => c.Class == RenderingGenerateRun.Engine).Select(c => $"{c.Set} {c.Input} {c.Name}/{c.Statement}/{c.Conjunct}").Should().BeEmpty();
             shadow.Bundles.Where(b => b.Failure is not null || b.Run != new RenderingRun(Eggnog.RunStopReason.Completed, true, false))
                 .Select(b => $"bundle {b.Id} {b.Set}: {b.Run} {b.Failure?.Message}").Should().BeEmpty();
+            shadow.Bundles.SelectMany(b => b.Forms.Select(f => f.Form).Concat(b.Answers.Values.SelectMany(a => new[] { a.Best, a.Weakening }).OfType<ServiceForm>()))
+                .Where(RenderingCheckRun.Opaque).Select(f => f.Text).Distinct().Should().BeEmpty("no sentinel is lifted");
         }
 
         /// <summary>

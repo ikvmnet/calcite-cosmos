@@ -34,10 +34,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 return Written(run, _witnessed = witnessed ?? _witnessed);
         }
 
-        static string Written(RenderingCheckRun run, IReadOnlyDictionary<int, string>? witnessed)
+        /// <summary>The reports' folder, made where it is not.</summary>
+        static string Folder()
         {
             var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);
+            return folder;
+        }
+
+        static string Written(RenderingCheckRun run, IReadOnlyDictionary<int, string>? witnessed)
+        {
+            var folder = Folder();
             var rows = Ordered(run.Conjuncts).ToList();
             var skipping = Skipping(run);
 
@@ -77,21 +84,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return folder;
         }
 
+        /// <summary>The pairwise check's report, <c>pairwise.tsv</c>: a row a pair.</summary>
+        public static void WritePairwise(RenderingPairwiseTests.Compared compared)
+        {
+            lock (Writing)
+                Tsv(Folder(), "pairwise.tsv", ["set", "bundle", "node", "position", "of", "a", "b", "compared", "raised", "parted"], compared.Rows);
+        }
+
         /// <summary>
         /// The generate shadow's reports (spec g05): <c>shadow-admission.tsv</c>, each pending conjunct of each round under
         /// each set, with its class; <c>shadow-weakening.tsv</c>, each residual's weakening beside J's; and
         /// <c>shadow-summary.txt</c>, the classes per set and input, the regressions by reason against O2's caps, the
-        /// weakenings' classes, and each statement's bundles and S's time, first and again, by shape.
+        /// weakenings' classes, and S's time, first and again, and the bundles opened, by shape: of each statement, and of
+        /// each query, every statement its plan asked S of. Returns the summary's lines.
         /// </summary>
-        public static string WriteShadow(RenderingGenerateRun shadow, int cap)
+        public static List<string> WriteShadow(RenderingGenerateRun shadow, int cap)
         {
             lock (Writing)
             {
-                var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
-                Directory.CreateDirectory(folder);
+                var folder = Folder();
                 var classes = shadow.Classes.ToDictionary(c => (c.Input, c.Name, c.Statement, c.Conjunct, c.Set));
-                static (int, int, string, int, int) Order(string input, string name, int statement, int conjunct) =>
-                    (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1, name, statement, conjunct);
+                static (int, int, string, int, int) Order(string input, string name, int statement, int conjunct) => (Key(input, name).Input, Key(input, name).Number, name, statement, conjunct);
 
                 Tsv(folder, "shadow-admission.tsv", ["input", "name", "statement", "conjunct", "round", "set", "owner", "translator", "verdict", "s", "form", "reason", "beneath", "bundle", "ms", "class", "why"],
                     shadow.Admissions.OrderBy(a => Order(a.Input, a.Name, a.Statement, a.Conjunct)).ThenBy(a => a.Round).ThenBy(a => a.Set).Select(a =>
@@ -121,19 +134,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var proposed = shadow.Bundles.Where(b => b.Set == set).Select(b => b.Proposed).ToList();
                     lines.Add($"  {proposed.Count} generate bundles; {proposed.Sum(p => p.Candidates)} candidates over {proposed.Sum(p => p.Atoms)} atoms, "
                         + $"{(double)proposed.Sum(p => p.Candidates) / Math.Max(1, proposed.Sum(p => p.Atoms)):F2} an atom");
+                    // A query is an input's statement as planned: every filter statement its plan asked S of, its shape the
+                    // widest of theirs, its time and bundles their sums.
                     var costs = shadow.Costs.Where(c => c.Set == set).ToList();
-                    foreach (var shape in costs.GroupBy(c => c.Shape).OrderBy(g => g.Key, StringComparer.Ordinal))
-                    {
-                        var (first, again, bundles) = (shape.Select(c => c.First).Order().ToList(), shape.Select(c => c.Again).Order().ToList(), shape.Select(c => c.Bundles).Order().ToList());
-                        lines.Add($"  {shape.Key}: {first.Count} statements; bundles median {bundles[bundles.Count / 2]}, max {bundles[^1]}; S first p50 {first[first.Count / 2]:F2} p90 {first[first.Count * 9 / 10]:F2} max {first[^1]:F1} ms, "
-                            + $"total {first.Sum() / 1000:F2} s; again p50 {again[again.Count / 2]:F3} p90 {again[again.Count * 9 / 10]:F3} ms");
-                    }
+                    var queries = costs.GroupBy(c => (c.Input, c.Name)).Select(g => new RenderingGenerateRun.Cost(g.Key.Input, g.Key.Name, g.Count(), set,
+                        g.Select(c => c.Shape).MaxBy(Shapes.IndexOf)!, g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again))).ToList();
+                    foreach (var (unit, timed) in new[] { ("statements", costs), ("queries", queries) })
+                        foreach (var shape in timed.GroupBy(c => c.Shape).OrderBy(g => Shapes.IndexOf(g.Key)))
+                        {
+                            var (first, again, bundles) = (Sorted(shape.Select(c => c.First)), Sorted(shape.Select(c => c.Again)), Sorted(shape.Select(c => (double)c.Bundles)));
+                            lines.Add($"  {shape.Key}: {first.Count} {unit}{(unit == "queries" ? $" of {shape.Sum(q => q.Statement)} statements" : "")}; bundles median {RenderingCostTests.At(bundles, 0.5)}, "
+                                + $"max {bundles[^1]}; S first p50 {RenderingCostTests.At(first, 0.5):F2} p90 {RenderingCostTests.At(first, 0.9):F2} max {first[^1]:F1} ms, total {first.Sum() / 1000:F2} s; "
+                                + $"again p50 {RenderingCostTests.At(again, 0.5):F3} p90 {RenderingCostTests.At(again, 0.9):F3} ms");
+                        }
                 }
 
                 File.WriteAllLines(Path.Combine(folder, "shadow-summary.txt"), lines);
-                return folder;
+                return lines;
             }
+
+            static List<double> Sorted(IEnumerable<double> values) => [.. values.Order()];
         }
+
+        /// <summary>The shapes a filter is read as (spec §6.3), from the narrowest.</summary>
+        static readonly List<string> Shapes = ["1-3 conditions", "4 conditions", "5-7 conditions", "a list of 5-19", "rare"];
+
+        /// <summary>The order the reports keep: by input, then by a statement's place where its name is one, then by name.</summary>
+        static (int Input, int Number) Key(string input, string name) => (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1);
 
         /// <summary>
         /// The coverage line's count by input (spec §6): each conjunct sent and not skipped, read by its check's verdict, the
@@ -203,8 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             rows.Where(c => c.Entry is not null).GroupBy(c => (c.Input, c.Name, c.Unit)).Select(g => g.First());
 
         static IEnumerable<RenderingCheckRun.Checked> Ordered(IEnumerable<RenderingCheckRun.Checked> rows) =>
-            rows.OrderBy(c => Array.IndexOf(Inputs, c.Input)).ThenBy(c => int.TryParse(c.Name, CultureInfo.InvariantCulture, out var n) ? n : -1)
-                .ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Unit).ThenBy(c => c.Position);
+            rows.OrderBy(c => Key(c.Input, c.Name)).ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Unit).ThenBy(c => c.Position);
 
         internal static void Tsv(string folder, string name, string[] header, IEnumerable<object?[]> rows) =>
             File.WriteAllLines(Path.Combine(folder, name), [string.Join("\t", header), .. rows.Select(r => string.Join("\t", r.Select(Field)))]);

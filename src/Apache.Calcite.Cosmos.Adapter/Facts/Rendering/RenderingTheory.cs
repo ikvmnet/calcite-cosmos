@@ -965,7 +965,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     w.Assume(StrictReader.Of(reader));
 
                 w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
-                    PartingBands.Of().Is(ValueSet.From(definition.Parting.SelectMany(p => new[] { p.Item1, p.Item2 }))), RexGrammar.Of().Is(RenderingRexGrammar.Written));
+                    PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));
             });
 
             var report = Theory.Run(Settle);

@@ -216,12 +216,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public RenderingAnswer ReadBest(Pred root) => Guard(() => Best(root)) ?? new(RenderingVerdictKind.Unproven, null, null, null, Declined);
 
         /// <summary>
-        /// The weakening generate mode wrote for a root at <c>Pos</c>; <c>null</c> where the run may not be read, where none
-        /// was written, or where it is <c>TRUE</c>, the one trivial spelling once every constant is folded.
-        /// </summary>
-        public ServiceForm? ReadWeakening(Pred root) => Guard(() => Readable(out _, out _) ? Weakened(root) : null);
-
-        /// <summary>
         /// Every agreement the run derived of a node at a position that rests on something, each form with the verdict it
         /// holds for: what source A and the pairwise check judge. None where the run may not be read.
         /// </summary>
@@ -272,14 +266,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         string Declined => $"declined: {Failure!.GetType().Name}: {Failure.Message}";
 
         /// <summary>
-        /// The one discipline every read passes: the bundle declined on no engine failure, and its run completed within its
-        /// limits, still held one node per class and derived no contradiction. Where it did not, what a read says instead.
+        /// The one discipline every read passes, inside <see cref="Guard{T}"/>, which answers for a bundle that declined: its
+        /// run completed within its limits, still held one node per class and derived no contradiction. Where it did not,
+        /// what a read says instead.
         /// </summary>
         bool Readable(out RenderingVerdictKind kind, out string? reason)
         {
             // A merge would let an agreement pass between two terms; no rule merges, so one is a rule that is wrong.
-            (kind, reason) = Failure is not null ? (RenderingVerdictKind.Unproven, Declined)
-                : _run is not { StopReason: RunStopReason.Completed } ? (RenderingVerdictKind.Incomplete, _run is null ? "not run" : "stopped: " + _run.StopReason)
+            (kind, reason) = _run is not { StopReason: RunStopReason.Completed } ? (RenderingVerdictKind.Incomplete, _run is null ? "not run" : "stopped: " + _run.StopReason)
                 : _run.OneNodePerClass == false ? (RenderingVerdictKind.Conflict, "tripwire: a rule merged two terms")
                 : _run.Contradicted ? (RenderingVerdictKind.Conflict, "agreed and refuted: " + string.Join("; ", Scope.Rows(_theory.Conflict)))
                 : (RenderingVerdictKind.Proven, null);
