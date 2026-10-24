@@ -223,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Whether a document is none the container holds: a rule of its declaration whose body holds of it and whose head
-        /// does not, read by an evaluator of the declaration's own (<see cref="Declaration.Holds(J.Obj, JsonFact)"/>), never by
+        /// does not, read by an evaluator of the declaration's own (<c>Declaration.Holds</c>), never by
         /// the facts graph a stratum rests on, whose reading may be coarse. A document sets the imported paths alone, so a rule
         /// that reads another path is one the paths it leaves out could satisfy, and rules nothing out; nor does one holding
         /// a claim that evaluator does not read.
