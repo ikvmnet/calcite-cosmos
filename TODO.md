@@ -2843,6 +2843,10 @@ across documents* and *A join of a container to itself* is the record.
   (69 %), `PointReadSet` at 97 of 240 and the widest bundle, 11 atoms, at 71 of 256; at most 360 rows of 50,000. So the
   base of 80, not the 8 a unit, is the margin R7 should watch, held by one-atom bundles. g15's cost accumulator counts it
   in every run.
+- **Line 2 counts D3's raw scope apart until g10** — *small.* IrEval reads no raise of a raw ordering, so a form over
+  one is judged on no measured document. At the gate's 1,000 predicates 69 forms S would send are such, weakenings over
+  `raw(id) < 'shoes'` and its kind and junctions holding one; none falls outside D3's scope, and the pull request's 200
+  hold none. g10's raw raises in IrEval measure them, and the exemption goes with D3's denominator rule.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.

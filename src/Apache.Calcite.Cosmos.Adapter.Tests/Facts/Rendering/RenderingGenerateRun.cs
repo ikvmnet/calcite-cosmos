@@ -186,8 +186,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var strata = pending.Where(i => admitted.ContainsKey(i) == false).ToDictionary(i => i, i => s.Planted[i] ?? stratum);
                 foreach (var (i, a) in admitted)
                     strata[i] = a.Stratum;
+                // The key a translator's text is claimed at: its round's stratum, or S's own where S admitted it earlier.
                 foreach (var i in pending.Where(i => s.Round[i] == k))
-                    askedUnder[i] = stratum?.Round;
+                    askedUnder[i] = strata[i]?.Round;
 
                 var bundle = Ask(s, set, [.. strata.Keys.Order()], strata, [through, before]);
                 opened.Add(bundle);
@@ -284,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var text = s.Texts.GetValueOrDefault(i);
                 var (@class, reason) = engine ? (Engine, null)
                     : s.Owned[i] == false ? (Written, null)
-                    : s.Round[i] > 0 && verdict?.Kind == RenderingVerdictKind.Refuted ? (ShownWrong, null)
+                    : s.Round[i] > 0 && verdict?.Kind == RenderingVerdictKind.Refuted && (askedUnder.GetValueOrDefault(i) ?? 1) >= s.Round[i] ? (ShownWrong, null)
                     : s.Round[i] > 0 && form is not null && text?.Form is null ? (Unread, null)
                     : s.Round[i] > 0 && form is not null ? (form.Equals(text!.Form) ? Same : verdict?.Kind == RenderingVerdictKind.Proven ? Respelled : ExactToSAlone, null)
                     : s.Round[i] > 0 ? (Regression, Why(s, i, voided, bundles, askedUnder.GetValueOrDefault(i), verdict))

@@ -6914,7 +6914,9 @@ readings among it, so a statement asked again opens none.
 
 **What each conjunct is, read off rows the shadow holds.** Same; respelled, where S's form and the translator's text
 are both exact at the key (R5's orders, and P8 where S's form is shorter); S's alone exact, where the translator's text
-is not, which no switch listing may read as cosmetic; gain; the translator shown wrong (its text refuted at the key);
+is not, which no switch listing may read as cosmetic; gain; the translator shown wrong (its text refuted at a key as
+deep as its own round's stratum: where S admitted a conjunct in an earlier round, from a shallower stratum, the text is
+claimed beside S's form there and its refutation says nothing of the translator's own round);
 regression (the translator pushes, S owns and declines, not refuted) with its reason; translator-written; and engine. A
 regression's reason claims no more than a row says: a form the gate agreed exact that the band filter refused, by S's
 own bands; the translator's text exact at the key, so a form no template proposes; a stratum shallower than the
