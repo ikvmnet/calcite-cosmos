@@ -2819,7 +2819,7 @@ across documents* and *A join of a container to itself* is the record.
 - **A number compared through a cast or `RETURNING DECIMAL` weakens to presence, and P6 is killed** — *medium, for the
   owner's O7.* Both readings parse a string Calcite then compares where the service compares none, so no accessor of the
   conjunct writes `c.price > 50` as the form means, and `rex-writable` admits no such member: K's numeric windows (C2,
-  not built), the 21 weakenings the shadow found tighter through one and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`
+  not built), the 21 weakenings the review of PR A found tighter through one and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`
   are gone, line 19's P6 with them. RU, never rows. A service-only carrier operator the builder sends them through,
   never evaluated by Calcite (O7's third option, +80–150 lines), would give them back; so would a guard-aware grammar
   row, a comparison read only beneath `IS_NUMBER` of its path, if line 13's round trip judged such a member whole.
@@ -2864,7 +2864,7 @@ across documents* and *A join of a container to itself* is the record.
 - **P4's orderings are no tighter than J's** — *small, a gain not delivered.* No template excludes the nulls and
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
-  `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a tenth template row.
+  `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a template of its own.
 - **Looser weakenings the shadow lists against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
   grammar's rows: J's implied but holding a member the Rex builder cannot write (the text-equality alternatives' number
   branch, C3, and K's windows over a cast), and J's unproven to S (a typed `DECIMAL` window past 2^53, which a double
@@ -2874,7 +2874,7 @@ across documents* and *A join of a container to itself* is the record.
 - **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *small, for the owner.* J's string
   branch is unproven to S there (strings that may hold U+0000), so S sends presence. Line 19's kill says "a non-`LIKE`
   P4 looser"; O7 accepted loss 5. Either the owner restates line 19's P4 kill as "no unlisted looser", or a guarded string
-  branch (a tenth template row) delivers it tighter.
+  branch, a template of its own, delivers it tighter.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
   statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
   refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their
