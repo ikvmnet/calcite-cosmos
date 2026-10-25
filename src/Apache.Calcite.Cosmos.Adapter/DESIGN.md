@@ -7141,11 +7141,17 @@ built, a long by its value and any other number by its double's exact value, and
 with its own type alone, which the IR does not keep. The row now says so, measured on 2^53 + 1 written with a point and
 a stored `0.1`.
 
-**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns. An ordering places a value of the
-literal's type — a string by its units, a boolean false first, a number by `PathCell.SidesOf` — beside the `VARIANT`'s
-raise, and across types is the raise alone, which under decision 2 any answer but a failure refines. `SidesOf` is the
-service leaf's own reading of a number, moved to the cell: a whole number within a long both by its value and by its
-double, any other by its double, and a literal neither a long nor a double placed nowhere. An equality with a number
+**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns, each as `RawColumnsTable` states it:
+whether it reads a value of each kind, whether it orders, what its cast to text makes of each kind. The table is the
+rows' facts as data, asserted beside their measurement, and the cells only look it up. An ordering places a value of
+the literal's type — a string by its units, a boolean false first, a number by `PathCell.SidesOf` — beside the
+`VARIANT`'s raise, and across types is the raise alone, which under decision 2 any answer but a failure refines.
+`SidesOf` places a number as a box holds it, a whole number within a long by its value, its double or both as its
+caller's row reads one, any other by its double, and a literal neither a long nor a double nowhere; the service leaf
+and the raw cells each name their own readings, both today since the theory spells 30 and 30.0 alike, so that a run of
+the probe account that separates the service's moves no Calcite cell. Two doubles compare by `Double.compareTo`, which
+puts a stored -0.0 below a double 0 (measured), and the IR spells that 0 as any other, so an ordering against 0 over
+a cell holding 0 reads TRUE or FALSE. An equality with a number
 is FALSE of any other type and of a number no box reading equals, and TRUE or FALSE of one a box may equal, since the
 `VARIANT`'s is the literal's. The raw reader's edges row cuts at a number literal's double, where a double's box
 changes its answer. So `c.id < "shoes"` is exact for `raw(id) < 'shoes'` under `Production`, and under `Emulator` where

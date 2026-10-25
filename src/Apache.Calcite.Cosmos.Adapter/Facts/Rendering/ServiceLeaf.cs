@@ -162,7 +162,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// both until a run of the probe account separates them (<c>TODO.md</c>); a literal sent as a double is placed
         /// against only where that double is it.
         /// </summary>
-        static CosmosValueClass[]? Numeric(PathCell cell, decimal c) => cell.SidesOf(c) is not { } sides ? null
+        static CosmosValueClass[]? Numeric(PathCell cell, decimal c) => cell.SidesOf(c, byValue: true, byDouble: true) is not { } sides ? null
             : sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
 
         static CosmosValueClass? ClassOf(PathCell cell) => cell switch

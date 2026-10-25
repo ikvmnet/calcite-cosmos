@@ -134,24 +134,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         };
 
         /// <summary>
-        /// Where the cell's numbers lie against a number as a value is boxed, by the service
-        /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>) and by Calcite's raw columns (<c>Calcite.RawNullIsSqlNull</c>):
-        /// a whole number within a long by its value, which the theory spells alike written with a point, so both ways, and
-        /// any other by its double, by value. A side for each reading, <c>null</c> where not every number lies one way; none
-        /// for a cell of no number; and <c>null</c> for a number neither a long nor a double, which no box holds as itself.
+        /// Where the cell's numbers lie against a number as a box holds it: a whole number within a long by its value, its
+        /// double, or both, as the caller's row reads one, and any other by its double, by value. A side for each reading,
+        /// <c>null</c> where not every number lies one way; none for a cell of no number; and <c>null</c> for a number
+        /// neither a long nor a double, which no box holds as itself.
         /// </summary>
-        public int?[]? SidesOf(decimal c)
+        public int?[]? SidesOf(decimal c, bool byValue, bool byDouble)
         {
+            static bool IsLong(decimal x) => x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue;
+
             var d = DoubleBound.Of(c);
-            if ((c == decimal.Truncate(c) && c >= long.MinValue && c <= long.MaxValue) == false && DoubleBound.Compare(d, c) != 0)
+            if (IsLong(c) == false && DoubleBound.Compare(d, c) != 0)
                 return null;
 
+            int?[] Whole(int? exact, int? rounded) => (byValue, byDouble) switch { (true, true) => [exact, rounded], (true, false) => [exact], _ => [rounded] };
             return this switch
             {
-                Point { Value: var v } when TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue =>
-                    [x.CompareTo(c), new Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)],
+                Point { Value: var v } when TryNumberOf(v, out var x) && IsLong(x) => Whole(x.CompareTo(c), new Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)),
                 Point { Value: var v } when IsNumber(v) => [DoubleBound.Of(v).CompareTo(d) is var side && side == 0 ? DoubleBound.Compare(d, c) : Math.Sign(side)],
-                Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value <= long.MaxValue) => [n.Side(c), n.RoundedSide(c)],
+                Numbers n when n.Integral && (n.Upper is not Bound u || u.Value >= long.MinValue) && (n.Lower is not Bound l || l.Value <= long.MaxValue) => Whole(n.Side(c), n.RoundedSide(c)),
                 Numbers n => [n.RoundedSide(c)],
                 _ => [],
             };

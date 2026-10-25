@@ -2808,6 +2808,12 @@ across documents* and *A join of a container to itself* is the record.
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
   and the oracle's memo keys, which Stage 1 promised not to touch.
+- **The raw cells take the union of their three columns in C#** — *medium, Stage 3, beside D12.* What each column makes
+  of each kind of value is host data (`RawColumnsTable`), asserted by the rows' pinning tests; but `PredicateAtom`'s raw
+  and cast cells look it up and union the columns themselves, and the `Calcite.*` rows carry no outcomes S reads. The
+  Eggnog home: the table as `Calcite`-target rows read through `CosmosAxiomRows.Read`, a column row per reader, and one
+  rule taking the union under a `Truths` lattice, C# keeping only the primitives that read a literal (`MayRender`,
+  `SidesOf`, the ordinal placement). S is at the rule line, so it waits for Stage 3.
 - **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
   path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
   unproven. Partitions 1,428's `NOT (category < 'bikes')`, a second round's beside `category IN ('bikes!', 'shoes')`,
