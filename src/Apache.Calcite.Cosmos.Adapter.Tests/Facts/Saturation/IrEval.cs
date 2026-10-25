@@ -239,6 +239,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static bool IntegerSpelled(J.Num number) => number.Value.ToString(CultureInfo.InvariantCulture).IndexOfAny(new[] { '.', 'E', 'e' }) < 0;
 
+        /// <summary>A number written as an integer within a long: what a reader boxes as a long.</summary>
+        static bool LongSpelled(J.Num number) => IntegerSpelled(number) && number.Value >= long.MinValue && number.Value <= long.MaxValue;
+
         /// <summary>
         /// Spells a double as Java's <c>Double.toString</c> does: plain between a thousandth and ten million, with at least
         /// one digit after the point, and otherwise <c>d.dddE±n</c>.
@@ -450,7 +453,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     // beyond any of them.
                     if (value is not J.Num n)
                         return SqlDatum.Raise;
-                    if (IntegerSpelled(n) && n.Value >= long.MinValue && n.Value <= long.MaxValue)
+                    if (LongSpelled(n))
                         return n.Value >= least && n.Value <= most ? new SqlDatum.Exact(n.Value) : SqlDatum.Raise;
 
                     var d = DoubleBound.Of(n.Value);
@@ -626,7 +629,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var value = stored switch
             {
                 J.Str s => new SqlDatum.Text(s.Value),
-                J.Num n when IntegerSpelled(n) && n.Value >= long.MinValue && n.Value <= long.MaxValue => new SqlDatum.Exact(n.Value),
+                J.Num n when LongSpelled(n) => new SqlDatum.Exact(n.Value),
                 J.Num n => new SqlDatum.Double(DoubleBound.Of(n.Value)),
                 J.Huge h => new SqlDatum.Double(h.Value),
                 J.Bool b => new SqlDatum.Boolean(b.Value),
@@ -683,7 +686,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             (_, RawAs.Varchar) or (J.Obj or J.Arr, RawAs.Variant) => SqlDatum.Raise,
             (_, RawAs.Variant) => SqlDatum.Null,
             (J.Bool b, _) => new SqlDatum.Text(b.Value ? "true" : "false"),
-            (J.Num n, _) when IntegerSpelled(n) && n.Value >= long.MinValue && n.Value <= long.MaxValue => new SqlDatum.Text(n.Value.ToString(CultureInfo.InvariantCulture)),
+            (J.Num n, _) when LongSpelled(n) => new SqlDatum.Text(n.Value.ToString(CultureInfo.InvariantCulture)),
             (J.Num n, _) => new SqlDatum.Text(JavaDouble(DoubleBound.Of(n.Value))),
             (J.Huge h, _) => new SqlDatum.Text(JavaDouble(h.Value)),
             _ => null,

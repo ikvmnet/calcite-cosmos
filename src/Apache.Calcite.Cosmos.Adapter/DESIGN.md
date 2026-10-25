@@ -6738,8 +6738,10 @@ shorter form. The bare form beats a guarded one only where it is exact too, whic
 `RETURNING DECIMAL`, and each parses a string Calcite then compares where the service compares no string, so no accessor
 of the conjunct writes a number comparison over it as the form means (below), and the window is never exact, admitting
 every non-number. It could only ever be refuted or implied and unwritable, a candidate an atom for nothing. K's windows
-over those readers, and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`, wait on a carrier the builder would send them
-through: O7's third option, the owner's.
+over those readers and P6's C4 `IS_NUMBER(c.price) AND c.price > 50` are O7's loss 1, listed until Stage 3 (owner,
+2026-10-24): no carrier operator, re-typed accessor or other way of sending what the Rex does not mean is built. The fix
+is a guarded spelling S can prove, in the shape of `CASE WHEN IS_NUMBER(x) THEN CAST(x AS DOUBLE) > n ELSE FALSE END`,
+once the loader reads `IS_NUMBER` and `CASE`.
 
 **A price is a total order.** `Priced` is the form's nodes and its text. `Min` keeps one value whatever order rows
 arrive in, and `None`, greater than every real price, is a complete value from the start, so a rule reads "no exact
@@ -6970,16 +6972,18 @@ nothing measured; a raw ordering, or a raw comparison with a number or a boolean
 **The gains, as forms.** P1's inequality is sent restricted under every set; P2 and P3 exactly over a twin of `typed`
 whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself; P4's inequality weakens
 tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
-P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 is killed
-on P6:** its C4 form compares the price through a cast, which no accessor writes as it means, so its weakening keeps
-presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom
-left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
+P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 passes with
+P6 listed** (owner, 2026-10-24): its C4 form compares the price through a cast, which no accessor writes as it means, so
+its weakening keeps presence beneath the `NOT` where J's carried K's window, O7's loss 1 with every number comparison
+over a cast or `RETURNING DECIMAL` until Stage 3's guarded spelling. P4's kill reads "no unlisted looser", so its `>=
+'30'`, looser under `Emulator` and `Portable` where J's string branch is unproven to S, passes on O7's loss 5. A
+parameter atom left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
 
 **What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
 `NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
 `EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
 `pairwise.tsv`. The summary gives S's time and bundles by shape twice: of each statement, and of each query, every
-statement its plan asked S of, the shape the widest of theirs, as §6.3's lines read cost. The machine's load is
+statement its plan asked S of, the shape read off the union of their atoms, as §6.3's lines read cost. The machine's load is
 recorded beside it by whoever runs it; no figure carries a line before g15.
 
 ### Faults planted in S
@@ -7052,8 +7056,8 @@ needs one throws `OverflowException`. S retired on `Usage.FractionUsed` and decl
 retired on interned values alone, and only `D0`'s build caught it, so anywhere else in F running out failed the plan.
 
 **What F does now.** A generation is also retired once its graph has used half of its ids or epochs
-(`JsonFactGenerations.DefaultUsedLimit`, the gauge S reads too), the other half being headroom for the contexts still open
-on it. `OverflowException` is one of F's engine failures (`JsonFactTheory.IsEngineFailure`): the context it met is released
+(`JsonFactGenerations.DefaultUsedLimit`), the other half being headroom for the contexts still open on it; S builds its
+successor earlier, at four fifths of it (*The production oracle*). `OverflowException` is one of F's engine failures (`JsonFactTheory.IsEngineFailure`): the context it met is released
 and its node reads its parent's, a path the context is told of is read in the context, knowing nothing, and a declaration
 that cannot compile states nothing — facts lost, none invented. Running out leaves `FractionUsed` at 1, so the next
 question starts the next generation, with no flag of its own. S's bundle and `D0`'s build share the list.

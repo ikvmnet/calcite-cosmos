@@ -80,9 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// The operand naming the service the endpoint is: <c>azure</c>, the default, or <c>emulator</c>.
         /// </summary>
         /// <remarks>
-        /// Every container the schema exposes carries it (<see cref="CosmosContainerMetadata.ServiceTarget"/>): the
-        /// filters the adapter sends are to be held to what that service was measured to do, and the emulator stores and
-        /// orders some strings unlike Azure. A host building its own tables sets it on each container's metadata.
+        /// Every container the schema exposes carries it (<see cref="CosmosContainerMetadata.ServiceTarget"/>); a host
+        /// building its own tables sets it there.
         /// </remarks>
         public const string ServiceTargetOperand = "serviceTarget";
 

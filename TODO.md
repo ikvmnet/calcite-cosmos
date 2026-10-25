@@ -2741,8 +2741,6 @@ across documents* and *A join of a container to itself* is the record.
   lines off each.
 - **A body atom of a rule the theory cannot read has no `D0` row** — *small.* `D0` makes no term, and the context never
   makes one for such an atom, though it is mentioned; its import defaults, counted constrained.
-- **The population D run rooted at `D0` is 50 trials a pull request** — *done (g08).* Production roots every statement
-  at `D0`, so the 200 trials a run and the 5,000 on request are rooted there, and the 50 armed beside them retired.
 - **Running out of ids or epochs is reached by no test** — *small.* A bundle that meets `OverflowException` declines and
   retires its generation, and F's context loses its facts and fails no plan (g07, one list for both), but Eggnog 1.1.1
   cannot lower its limits (`EGraphOptions` has none), and an `OverflowException` a primitive throws arrives as a
@@ -2854,12 +2852,6 @@ across documents* and *A join of a container to itself* is the record.
   each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
   takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
   until then.
-- **A generate run reports no iteration count** — *done (g11).* A bundle keeps its run's iterations, the oracle's
-  `RenderingCost` carries them, and the shadow's summary prints the tightest run against its limit. The review of PR A
-  had counted them once, with a recorder in a copy, at the gate's 1,000 predicates: the tightest one-atom bundles at 61
-  of 88 (69 %), so the base of 80, not the 8 a unit, is the margin R7 should watch. g15's accumulator sums them a query.
-- **Line 2 counts D3's raw scope apart until g10** — *done (g10).* The soundness line reads a raw ordering and a raw
-  comparison with a number or a boolean through each column (`IrEval.RawModes`), and counts nothing apart.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
@@ -2907,9 +2899,8 @@ across documents* and *A join of a container to itself* is the record.
   near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
   `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
   unlisted.
-- **Line 19 reads P4's `>= '30'` looser under `Emulator`, which O7's loss 5 lists** — *settled (owner, 2026-10-24).*
-  Line 19's P4 kill reads "no unlisted looser", so P4's `>= '30'`, J's string branch unproven to S where strings may
-  hold U+0000, passes on O7's loss 5. A guarded string branch, a template of its own, would deliver it tighter.
+- **A guarded string branch would deliver P4's `>= '30'` tighter under `Emulator`** — *small.* It passes line 19 on O7's
+  loss 5; the branch would be a template of its own.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
   statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
   refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their

@@ -712,12 +712,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         CosmosServiceTarget _serviceTarget;
 
         /// <summary>
-        /// Gets the service the container's statements run on, Azure unless a model or a host says otherwise.
+        /// Gets the service the container's statements run on (<see cref="CosmosServiceTarget"/>), Azure unless a model or a
+        /// host says otherwise; no plan reads it yet.
         /// </summary>
-        /// <remarks>
-        /// The filters the adapter sends are to be held to what this service was measured to do, so a container on the
-        /// emulator is planned for the emulator. Read now and kept, and no plan reads it yet.
-        /// </remarks>
         public CosmosServiceTarget ServiceTarget => _serviceTarget;
 
         /// <summary>
