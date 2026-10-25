@@ -7483,6 +7483,71 @@ reasoning's `Warmed`, so that the first plan pays neither S's first question nor
 translator's text for P1. When implementation
 prints (g16), each node reads the fault switch's `volatile bool`, and a junction its members as they are.
 
+### The weakening as a Rex
+
+**What it writes.** `Sql/RenderingRexBuilder.Build` writes the weakening S read for a residual conjunct as the Rex the
+split rule pushes beneath it (g16): writing code, which decides nothing about a document. It writes over the conjunct's
+own accessors, which the loader reads (`CosmosPredicateLoader.Loading.AccessorsOf`): for each path, its raw value — a raw
+reading itself, a rendering or a typed `JSON_VALUE` re-typed `ANY` by `RawValue`, moved here from the split rule, whose J
+calls it here until g18 — and an accessor typed as a number or a boolean. A comparison with a string is written over the
+raw value; with a number or a boolean over the typed accessor, as it stands; a type test as its `CosmosOperators` call
+over the raw value; an `IN` as its points' equalities, the membership the loader reads back; a constant, `NOT`, `AND`
+and `OR` as Calcite's, in the form's order. A view's column that is no rendering has no raw value to re-type: the
+translator writes a cast to `ANY` only over a rendering, and re-typing every accessor left 81 of the pull request's
+weakenings under the three sets unwritten (`IS_DEFINED(CAST($1):ANY)` over a raw string column). So the builder is
+handed a path's raw value and its typed accessor apart, not one node a path as the spec drew it.
+
+**Never a member left out.** Beneath an `OR` or an odd number of `NOT`s a member left out strengthens the weakening and
+drops rows Calcite keeps. A node outside the grammar — a path no accessor reads, a literal its accessor holds no class
+of, a bare path, an opaque form — makes the whole weakening `null`, and none is pushed: sound, since each residual's
+weakening is its own conjunct of the filter beneath. `rex-writable` admits into `implied` only what the grammar writes,
+so only a fault makes one. Nothing proves the Rex in production: a claim a weakening would cost each residual
+statement's first plan a bundle, for what CI holds over every shape S can hold.
+
+**The translator writes its guard around a comparison.** Calcite's comparison is unknown over a null; the service's
+`!=` keeps a stored null, and its `=` is false of one, which a `NOT` keeps. So the translator writes `IS_DEFINED(p) AND
+NOT IS_NULL(p) [AND T(p)] AND` before a `!=` at `Pos`, and `OR IS_NULL(p) OR NOT IS_DEFINED(p) [OR NOT T(p)]` after
+any comparison at `Neg` (`WriteComparison`), and the Rex of a member there is tighter than the member, by a stored null
+(and, through a typed accessor, a value of another type, on which Calcite raises). The spec's round trip — the text read
+back as exactly the member, and each member `Equal` to its Rex — cannot hold at those positions, where 129 comparisons of
+the pull request's 809 weakenings under the asserted sets stand. Two other answers were measured and not taken. Writing
+the stored null into the Rex (`OR p IS NULL AND IS_DEFINED(p)`) makes it mean the member, but check mode cannot prove one
+comparison `Equal` to a compound reading, and the disjunct only admits rows the conjunct rejects. A grammar that refuses
+those positions drops the restricted and completed templates from every weakening, looser than J.
+Neither is needed: the guard costs no row a comparison keeps, since Calcite's comparison is unknown over a null whatever
+the reader, and S holds that of every shape.
+
+**What holds it** (line 13). `RenderingRexBuilderTests`:
+- *The round trip.* The Rex's text reads back as the member with each comparison as the translator writes that
+  comparison's own Rex where it stands, every other node, grouping and order the member's. Each comparison's text is
+  proven `Equal` to the loader's reading of its Rex, so what is sent is what Calcite reads, and where the text is the
+  translator's guard the member is proven to imply the Rex: the Rex is never the looser. A type test reads back as
+  itself, `IS_DEFINED` proven `Equal` to its reading, each other with its in-process body. A comparison whose Rex reads
+  as one of the conjunct's own atoms — the bare form of a typed or raw atom — Calcite reads as the conjunct itself, and
+  is held to the atom directly: the translator is not exact for some (a typed `REAL`, a `DOUBLE` past 2^53: the residue
+  S declines) and refuses others (a raw string ordering it cannot prove from no facts).
+- `EveryWritableShapeRoundTrips`, exhaustive over the grammar: every atom the loader reads over each accessor kind —
+  text, raw, a `RETURNING` of each kind of number, `BOOLEAN` and `DECIMAL`, the casts, a view's four kinds of column —
+  with each comparison and literal class, an `IN`, a null test and presence, generated under each asserted set, an
+  accessor's atoms in one bundle, the path free and, under `Emulator`, holding no U+0000, where its order parts from
+  Calcite's. Of 1,138 shapes, the 240 outside the grammar (a number over a cast, `RETURNING DECIMAL` or a raw value)
+  build nothing and the 898 it writes build; the 792 S holds implied round trip, 712 written as themselves, and each is
+  written as a form its atom implies. So the guard costs no row a leaf keeps, and through the connectives, Kleene's on
+  both sides (`Calcite.ConnectivesAreKleene`), none a conjunct keeps.
+- `EveryPushedWeakeningRoundTrips`, riding the check run's pass: the 809 weakenings S gives a residual under the asserted
+  sets, 2,289 at the gate, each built over its conjunct's accessors, translated from its stratum's facts, and claimed at
+  the import of the bundle it was read from, under `Emulator` over strings holding no U+0000 as above: at the gate a
+  text ordering beneath a `NOT`, over a label that may hold one, is otherwise Unproven, the emulator's order and not the
+  builder's, and S's own admission declines what it cannot prove there. 732 are written as themselves (1,987 at the
+  gate), the rest under the translator's guard; 93 comparisons (223) read as their conjunct's own atoms.
+- `TheSameFormBuildsTheSameRex`: one form builds one Rex by Calcite's equality, read as one term, which the loop guard
+  finds beneath by identity. `AWeakeningIsPushedOnce` (#210, over S): each of the 719 weakenings that adds something
+  (2,106 at the gate) is applied beneath once pushed, so the split rule matching the residual again pushes it no more.
+- G13 (line 18): a builder planted to drop a disjunct is caught by both round trips.
+
+**What runs unarmed.** The split rule's J calls `RenderingRexBuilder.RawValue`, the same lines it held. Nothing in
+planning reads a conjunct's accessors or builds a weakening until g16's site W, so no plan moves.
+
 ---
 
 ## Differential testing

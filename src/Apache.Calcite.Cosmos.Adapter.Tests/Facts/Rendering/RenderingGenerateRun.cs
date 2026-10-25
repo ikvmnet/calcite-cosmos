@@ -313,7 +313,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var j = s.Weakened.GetValueOrDefault(i);
                 Weakenings.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, s.Conjuncts[i].Digest, j?.Written, j?.Form, Show(theirs.GetValueOrDefault(i), Verdict.Implies), mine, residual.Contains(i), s.Round[i] > 0,
                     weakening?.Id, weakening?.Claim, s.Owned[i], mine is not null && s.Conjuncts[i].Subterms.Any(t => t is SqlPredicate.Opaque) ? (s.Statement.Conjuncts[i], s.Statement.BindingForCheck) : null,
-                    j?.Form is not { } theirsForm || Writable(theirsForm, s.Conjuncts[i])));
+                    j?.Form is not { } theirsForm || Writable(theirsForm, s.Conjuncts[i]), mine is not null ? s.Statement : null));
             }
         }
 
@@ -573,12 +573,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A residual's weakening under a set: J's text and form where J wrote one, and its verdict claimed implied at the
         /// weakening's key, S's, whether S leaves it residual and
         /// whether the translator pushed it, the bundle S's was read from and its import, whether S owns it, and for an opaque
-        /// conjunct S weakens, its node and the binding it reads its fields through, which Calcite evaluates in process.
+        /// conjunct S weakens, its node and the binding it reads its fields through, which Calcite evaluates in process; and
+        /// for every weakening S gives, its statement, whose accessors the Rex builder writes it over (g14).
         /// </summary>
         internal sealed record Weakened(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, string Ir, string? Text, ServiceForm? Translator, string? TranslatorVerdict,
             ServiceForm? Mine, bool Residual, bool Pushed, int? Bundle, RenderingMemo.Claimed? Claim, bool Owned,
             (org.apache.calcite.rex.RexNode Conjunct, (IReadOnlyList<Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) Binding)? Opaque = null,
-            bool TranslatorWritable = true);
+            bool TranslatorWritable = true, CosmosFilterStatement? Source = null);
 
         /// <summary>
         /// A conjunct the rewrite changed under a set: the original and what it became, <c>null</c> where it was deleted; S's

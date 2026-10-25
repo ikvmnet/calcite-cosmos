@@ -389,6 +389,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
+            /// Each path a conjunct reads, by its spelling (<see cref="SqlValue.Spell"/>), and how: the node its raw value
+            /// is and an accessor typed as a number or a boolean, which the Rex builder writes a weakening's members over.
+            /// </summary>
+            /// <remarks>
+            /// Each largest node read as a reading of a path, inside an opaque term too, and beneath a cast the reading it
+            /// converts, a cast being no accessor. The raw value is a raw reading itself, and a rendering or a typed
+            /// <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed otherwise
+            /// has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first of each is
+            /// kept, as the builder must write one form one way.
+            /// </remarks>
+            public IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(RexNode conjunct, RexBuilder rexBuilder)
+            {
+                var accessors = new Dictionary<string, RenderingRexBuilder.Accessor>(StringComparer.Ordinal);
+
+                void Walk(RexNode node)
+                {
+                    node = CosmosRexTranslator.StripRedundantTextCast(node);
+                    var value = Value(node);
+                    if (value is { PathRead: JsonDocumentPath path } && value is not SqlValue.Cast)
+                    {
+                        var raw = value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null;
+                        var typed = value is SqlValue.Typed { Type: var type }
+                            && Cosmos.Facts.Rendering.RenderingRexGrammar.TypeTests.ContainsKey(Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type)) ? node : null;
+                        var held = accessors.GetValueOrDefault(SqlValue.Spell(path));
+                        accessors[SqlValue.Spell(path)] = new(held?.Raw ?? raw, held?.Typed ?? typed);
+                        return;
+                    }
+
+                    if (node is RexCall call)
+                        foreach (var operand in Operands(call))
+                            Walk(operand);
+                }
+
+                lock (_lock)
+                    Walk(Expand(conjunct));
+
+                return accessors;
+            }
+
+            /// <summary>
             /// Reads a function of values: its operator's name, and each operand read as a value; <c>null</c> where one is
             /// not read.
             /// </summary>

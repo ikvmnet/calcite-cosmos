@@ -25,8 +25,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// the null guard, a service evaluation mutated beneath it, a candidate contaminated across two disjuncts of one path,
     /// a union; and in generate mode a best lifted from an implied agreement, presence written at <c>Neg</c> as at
     /// <c>Pos</c>, a negation's best from its operand's at <c>Pos</c>, the importer reading a conjunct's own stratum, a
-    /// later round read beneath a stratum resting on a coarse reading, and a composite whose later arm fails where its
-    /// stratum sets cells aside. Every one is caught.
+    /// later round read beneath a stratum resting on a coarse reading, a Rex builder that drops a disjunct, and a composite
+    /// whose later arm fails where its stratum sets cells aside. Every one is caught.
     /// </summary>
     public sealed class RenderingGateFaultTests
     {
@@ -327,6 +327,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 SourceA(shadow).Witnesses.Any(w => w.Contains("\"label\":7}", StringComparison.Ordinal)).Should().Be(planted, planted ? "planted" : "as built");
             }
+        }
+
+        /// <summary>
+        /// G13 (critic finding 2): a Rex builder planted to drop a disjunct, the last of the first <c>OR</c> it meets, which
+        /// strengthens a weakening and drops rows Calcite keeps. Both round trips catch it: over every shape the grammar
+        /// writes, and over every weakening the pull request's run would push; as built, neither finds anything.
+        /// </summary>
+        [Fact]
+        public void G13_ABuilderThatDropsADisjunctIsCaughtByBothRoundTrips()
+        {
+            static ServiceForm Dropped(ServiceForm form)
+            {
+                if (form.Kind == ServiceFormKind.Or)
+                    return form.Members.Count == 2 ? form.Members[0] : ServiceForm.JunctionOf(CosmosServiceTest.Or, form.Members.Take(form.Members.Count - 1));
+
+                for (var i = 0; i < form.Members.Count; i++)
+                    if (Dropped(form.Members[i]) is var dropped && dropped.Equals(form.Members[i]) == false)
+                        return form.Kind == ServiceFormKind.Not ? ServiceForm.NotOf(dropped) : ServiceForm.JunctionOf(form.Test, form.Members.Select((m, j) => j == i ? dropped : m));
+
+                return form;
+            }
+
+            static RenderingRexBuilderTests.Builder Planted(RenderingRexBuilderTests.Builder build) => form => build(Dropped(form));
+
+            var (shapes, pushed) = (RenderingRexBuilderTests.Shapes(Planted, first: true).Problems, RenderingRexBuilderTests.Pushed(Planted, first: true).Problems);
+            TestContext.Current.TestOutputHelper?.WriteLine($"over the grammar: {shapes.FirstOrDefault()}; over the run's weakenings: {pushed.FirstOrDefault()}");
+            shapes.Should().Contain(p => p.Contains("altered", StringComparison.Ordinal), "the grammar's round trip catches it");
+            pushed.Should().Contain(p => p.Contains("altered", StringComparison.Ordinal), "the pushed weakenings' round trip catches it");
         }
 
         /// <summary>

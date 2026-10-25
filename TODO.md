@@ -2903,6 +2903,22 @@ across documents* and *A join of a container to itself* is the record.
 - **The printer reads its fault switch at each node** — *small, O4's inventory, from g16.* `RenderingPrinterFaults` is
   read, one `volatile bool`, for each path name, `NOT` and junction a print writes; nothing prints in planning until
   implementation does at the switch, when the count of inert sites O4 accepted grows by those reads.
+- **Site W gates S's weakening on the translator** — *small, for g15 and g16.* The spec's site W builds S's weakening
+  (`RenderingRexBuilder`) and asks `TryTranslate`, as J's is asked. A weakening holding its conjunct's own comparison that
+  the translator refuses from the stratum's facts, as a raw string ordering it cannot prove, is then pushed by nothing
+  where J pushes presence: the grammar's round trip shows the shape (a raw column's orderings), and none is in the pull
+  request's weakenings. g15's shadow classes such a residual dropped; with S writing, the inner filter's statement asks S
+  of every member the loader reads, so the gate need only be the translator's for a member S does not own, which g16
+  decides.
+- **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
+  only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
+  residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
+  as J writes `IS_DEFINED` over it, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
+  inputs meets it. The column's document accessor, where the binding holds one, would give it a raw value.
+- **The grammar's round trip costs a leg seconds** — *small, O5.* `EveryWritableShapeRoundTrips` took 9.3 s at 100 %
+  load in a process of its own, S defined (1,138 shapes; a generate bundle an accessor and set, and a check bundle a
+  claim, a comparison's once a set). Line 32 reads it in the leg's wall time. If PR C's legs pass O5's budget, an atom's
+  claims go into one check bundle.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.

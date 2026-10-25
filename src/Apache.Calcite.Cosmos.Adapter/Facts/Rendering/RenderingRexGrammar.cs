@@ -16,13 +16,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A string literal over any reader, the accessor re-typed <c>ANY</c> as the split rule's <c>RawValue</c> does. A
-    /// number only over a <c>RETURNING</c> of a number type and a boolean only over <c>RETURNING BOOLEAN</c>, each a
-    /// literal of its accessor's own type, which Calcite reads as the value the service compares or raises on: a reader
-    /// whose type test (<see cref="TypeTests"/>) is <c>IS_NUMBER</c> or <c>IS_BOOL</c>. Not over a cast of the text nor
+    /// A string literal over any reader, over the path's raw value (<c>RenderingRexBuilder.RawValue</c>). A number only
+    /// over a <c>RETURNING</c> of a number type and a boolean only over <c>RETURNING BOOLEAN</c>, each a literal of its
+    /// accessor's own type, which Calcite reads as the value the service compares or raises on: a reader whose type test
+    /// (<see cref="TypeTests"/>) is <c>IS_NUMBER</c> or <c>IS_BOOL</c>. Not over a cast of the text nor
     /// <c>RETURNING DECIMAL</c>, which parse a string Calcite then compares where the service compares no string, so no
     /// accessor of the conjunct means the form. The type tests the translator writes, each with an in-process body
-    /// (<c>CosmosTypeTestImplementor</c>). Stated before its builder (spec g14), which is held to every row.
+    /// (<c>CosmosTypeTestImplementor</c>). The builder, <c>RenderingRexBuilder</c>, writes every row, held by
+    /// <c>RenderingRexBuilderTests</c> over every shape S can hold.
     /// </para>
     /// </remarks>
     internal static class RenderingRexGrammar

@@ -232,11 +232,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>S's weakening of a conjunct left residual, read from the bundle that answered it; none where S gave none.</summary>
         internal ServiceForm? Weakening(int conjunct) => _weakenings[conjunct];
 
+        /// <summary>Each path a conjunct reads, by its spelling, and its accessor: what the Rex builder writes its weakening over.</summary>
+        internal IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(int conjunct) => _loading.AccessorsOf(Conjuncts[conjunct], _rexBuilder);
+
         /// <summary>The statement's scope, for the rendering check's importer.</summary>
         internal CosmosStatementScope ScopeForCheck => Scope;
 
         /// <summary>The declaration the statement reasons from, for the rendering check's importer.</summary>
         internal JsonFactTheory DeclarationForCheck => Oracle.Theory;
+
+        /// <summary>The builder the strata render through, for the rendering check's Rex builder round trip.</summary>
+        internal RexBuilder RexBuilderForCheck => _rexBuilder;
 
         /// <summary>The binding the conjuncts read their fields through, for the rendering check's in-process judge of a weakening.</summary>
         internal (IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) BindingForCheck => (_fields, _readings);

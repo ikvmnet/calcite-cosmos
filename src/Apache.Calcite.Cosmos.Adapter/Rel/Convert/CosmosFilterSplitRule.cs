@@ -410,7 +410,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(accessor, out var path) == false || path is null || path.ToString() == rootAlias)
                 return null;
 
-            var raw = RawValue(rexBuilder, accessor);
+            var raw = RenderingRexBuilder.RawValue(rexBuilder, accessor);
 
             var rawSubject = ReferenceEquals(subject, accessor)
                 ? raw
@@ -456,30 +456,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             return null;
         }
-
-        /// <summary>
-        /// Names the raw value at the path a rendering reads, so that a comparison written over it is
-        /// the one the service makes.
-        /// </summary>
-        /// <remarks>
-        /// Typed <c>ANY</c>, which is what says "the raw value at this path" rather than "its
-        /// rendering": written over the accessor as it stands the translator would decline the
-        /// comparison, rightly, since that node means the rendering everywhere else. An accessor is
-        /// re-typed in place. A field bound to one is cast instead: a reference re-typed says the same
-        /// thing, but a host transposing the filter through the projection replaces the reference with
-        /// the projection's expression, and the type that said it goes with it. A cast is a call of
-        /// its own and survives, and the translator renders a cast to <c>ANY</c> over a rendering as the
-        /// path.
-        /// </remarks>
-        static RexNode RawValue(RexBuilder rexBuilder, RexNode accessor)
-        {
-            var any = rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY);
-
-            return accessor is RexCall call
-                ? rexBuilder.makeCall(any, call.getOperator(), call.getOperands())
-                : rexBuilder.makeCast(any, accessor);
-        }
-
 
         /// <summary>
         /// Determines whether an expression is of a character type.
@@ -1061,7 +1037,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // the string branch to the test the conjunct failed, and rightly: as a translation it is
             // not exact. As a branch of what the conjunct implies it is, and this is that.
             if (translator.IsTextRendering(value))
-                value = RawValue(rexBuilder, value);
+                value = RenderingRexBuilder.RawValue(rexBuilder, value);
 
             var branches = new java.util.ArrayList();
             branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));
