@@ -87,31 +87,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns a number, held exactly where a decimal can hold it.
         /// </summary>
         /// <remarks>
-        /// A <see cref="double"/> is already a rounding of whatever was written, so converting it is no
-        /// further loss: <c>1.5</c> becomes <c>1.5m</c>, and equals the exact <c>1.5</c> a query writes.
-        /// One a decimal cannot represent — too large, too small, or not finite — stays a double.
+        /// Held as the double's own value: <c>1.5</c> becomes <c>1.5m</c>, and equals the exact <c>1.5</c> a query
+        /// writes. One no decimal holds exactly — most fractions, and magnitudes past 96 bits
+        /// (<see cref="Saturation.JsonValues.TryExactly"/>) — stays a double, never the fifteen digits .NET's cast keeps.
         /// </remarks>
-        public static JsonScalar From(double value)
-        {
-            if (double.IsFinite(value) && TryDecimal(value, out var exact))
-                return new(Kind.Decimal, number: exact);
-
-            return new(Kind.Double, approximate: value);
-        }
-
-        static bool TryDecimal(double value, out decimal exact)
-        {
-            try
-            {
-                exact = (decimal)value;
-                return exact != 0 || value == 0;
-            }
-            catch (OverflowException)
-            {
-                exact = 0;
-                return false;
-            }
-        }
+        public static JsonScalar From(double value) =>
+            Saturation.JsonValues.TryExactly(value, out var exact) ? new(Kind.Decimal, number: exact) : new(Kind.Double, approximate: value);
 
         /// <summary>
         /// Converts a CLR value as a host or an engine hands one over, or answers <c>false</c> where it

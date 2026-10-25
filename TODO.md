@@ -2658,10 +2658,11 @@ across documents* and *A join of a container to itself* is the record.
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
   where Calcite answers TRUE; the cells read the rendering.
-- **`JsonValues.Of(double)` keeps fifteen digits** — *small, and it touches plans.* It spells a double by .NET's cast to a
-  decimal, which reads 2^63 as 9223372036854780000, where the double is 9223372036854775808: the facts graph reads such a
-  double, from a declaration or a literal, as a number it is not. The rendering check's reader spells a double parameter
-  by its own value, or its shortest spelling where no decimal holds that.
+- **`RETURNING DECIMAL`'s cells parse a text past 28 places as a decimal rounds it** — *small, a wrong answer on S's
+  cells, before g15.* `Renderings.ParseDecimal` parses with .NET's decimal, which reads `1e-50` as 0 and
+  `2.00000000000000000000000000001` as 2, where `BigDecimal` reads each exactly; so a stored string holding such a text
+  is placed equal to the whole literal Calcite finds unequal. Reaching it needs an import that holds the string. The
+  side wants an exact comparison of the text's digits with the literal, unknown where a double ties.
 - **One numeric order answer serves both targets** — *small, for the next probe-account run.* `Service.IntegersOrderExactly`
   answers `Order/Number` `numeric` on both, and `ServiceLeaf` places a whole number in int64 both as itself and as its
   double, since the theory spells it alike written with a point, which the emulator holds as a double and Azure as an

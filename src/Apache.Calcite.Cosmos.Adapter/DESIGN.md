@@ -7174,6 +7174,31 @@ merits, and line 2's 69 forms are measured.
 every cell to `IrEval` through the three columns, and `ARawReadingPlacesItsTypeAndRaisesAcrossTypes` pins how tight the
 cells are; `RenderingGateTests.ARawOrderingAndANumberReadTheirColumns` pins the verdicts.
 
+### A number literal, as Calcite evaluates it
+
+**What was wrong.** The loader read an approximate literal through `JsonScalar.From(double)`, whose cast to a decimal
+keeps fifteen significant digits: `1.0000000000000002E0` became 1, and 2^53 9007199254740990. Every cell, S's and F's,
+compares the IR's literal by its value, so the raw cells g10 sharpened proved `c.category != 1` for `<>
+CAST(1.0000000000000002E0 AS VARIANT)`, which keeps a stored 1.0000000000000002 Calcite drops; and the facts graph read
+`raw = 1 AND text = '1.0000000000000002'` as a contradiction and planned a statement Calcite keeps a row for as empty
+`Values`. No soundness line could see it: the cells, `IrEval` and the judge all read the loaded IR.
+
+**What it reads now.** A number literal is the value Calcite evaluates, exactly, or its conjunct is opaque: an
+approximate one is its double's own value (`JsonValues.TryExactly`, a REAL's its float's), and one no decimal holds
+exactly — most fractions, a negative zero — is no literal. `JsonScalar.From(double)` and `JsonValues.Of(double)` hold
+a double so too, never by .NET's cast. So `1.5E0` and 2^53 are read as themselves, `0.1E0` is opaque, and both
+findings are gone.
+
+**What moved.** No plan. One line of the plan digests at 200 predicates reads another IR: differential 453's pushed
+weakening, `OR(… = '9007199254740992', … = 9.007199254740992E15)`, whose number arm the loader read as 9007199254740990,
+now reads 2^53; its plan, its text and its parameters are the same. In the shadow that conjunct was S exact where the
+translator's text is unproven, for the literal misread; at 2^53, where a typed `DOUBLE`'s rounding and the service's
+reading held wide part, it is a regression on its merits: 12 under `Production` and 18 under `Emulator`, against 25.
+
+**What holds it.** `CosmosPredicateLoaderTests.ANumberLiteralIsReadAsCalcitesValueOrNotAtAll` holds every number
+literal, against a typed reading and boxed for a `VARIANT`, to Calcite's value of it, and
+`AnApproximateLiteralPrunesNoPlanItsDoubleKeeps` plans the statement F pruned.
+
 ### The production oracle
 
 **What it is.** `RenderingOracle` asks S as production will from g15: one generate bundle a question, of one statement
