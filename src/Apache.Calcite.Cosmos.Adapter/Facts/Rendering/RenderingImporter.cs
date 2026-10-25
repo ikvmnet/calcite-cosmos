@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -16,6 +18,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     internal static class RenderingImporter
     {
+
+        /// <summary>
+        /// What each frozen node holds of a path, or a stratum of an atom's path, read and spelled once (spec §6.1's lever):
+        /// a node never changes, so a remembered answer's key is read off here, and a node collected takes its own along.
+        /// </summary>
+        static readonly ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>> Readings = new();
+
+        static (PathValues? Values, ValueSet<string>? Chars, string Spelled) ReadOf(Scope node, PredicateRules rules, JsonDocumentPath path, bool chars) =>
+            Readings.GetValue(node, _ => new()).GetOrAdd((rules, path, chars), key =>
+            {
+                var term = JsonFactEncoding.Path(key.Path).ToTerm(key.Rules.Json);
+                var values = node.TryGet(key.Rules.Possible.Of(term), out var possible) ? possible : null;
+                var held = key.Chars && node.TryGet(key.Rules.Json.Chars.Of(term), out var c) ? c : null;
+                return (values, held, Spell(key.Path, values ?? PathValues.Anything, key.Chars ? held ?? JsonValues.AllBands : ValueSet<string>.Empty));
+            });
 
         /// <summary>
         /// Copies the node's <c>possible</c> and <c>chars</c> rows for each path into the bundle, before its run, each table
@@ -47,31 +64,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var (open, constrained, spelled) = (0, new List<string>(), new List<string>());
             foreach (var path in paths.Distinct().OrderBy(SqlValue.Spell, StringComparer.Ordinal))
             {
-                var (values, chars) = ((PathValues?)null, (ValueSet<string>?)null);
-                if (node is not null && rules is not null)
-                {
-                    var term = JsonFactEncoding.Path(path).ToTerm(rules.Json);
-                    values = node.TryGet(rules.Possible.Of(term), out var possible) ? possible : null;
-                    chars = node.TryGet(rules.Json.Chars.Of(term), out var held) ? held : null;
-                }
-
+                var (values, chars, spelling) = node is not null && rules is not null ? ReadOf(node, rules, path, true) : (null, null, Spell(path, PathValues.Anything, JsonValues.AllBands));
                 if (values is null && declaration?.MentionedPaths.Any(m => path.IsWithin(m) || m.IsWithin(path)) == true)
                     constrained.Add(SqlValue.Spell(path));
                 else if (values is null)
                     open++;
 
                 bundle?.Import(source with { Node = node }, path, values ?? PathValues.Anything, chars ?? JsonValues.AllBands);
-                spelled.Add(Spell(path, values ?? PathValues.Anything, chars ?? JsonValues.AllBands));
+                spelled.Add(spelling);
             }
 
             var (count, stated) = (spelled.Count, new List<(SqlPredicate, PathValues)>());
             foreach (var (atom, origin, stratum, read) in beneath ?? [])
-                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null
-                    && stratum.TryGet(read.Possible.Of(JsonFactEncoding.Path(path).ToTerm(read.Json)), out var narrower))
+                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false) is { Values: { } narrower } beneathIt)
                 {
                     bundle?.Assume(origin with { Node = stratum }, atom, narrower);
                     stated.Add((atom, narrower));
-                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath " + Spell(path, narrower, ValueSet<string>.Empty));
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath " + beneathIt.Spelled);
                 }
 
             return new ImportReport(count, open, ValueSet.From(constrained), "[" + string.Join(",", spelled) + "]", false, stated);

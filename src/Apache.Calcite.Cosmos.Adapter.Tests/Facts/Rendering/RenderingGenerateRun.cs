@@ -65,8 +65,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         readonly Func<SqlPredicate, bool> _readExactly;
         readonly Func<CosmosStatementScope, int, (Scope? Context, PredicateRules? Rules)?>? _renderedFrom;
         readonly ConcurrentDictionary<string, Lazy<Bundle>> _memo = new(StringComparer.Ordinal);
+        readonly RenderingOracle? _oracle;
+        readonly int _askOracleEvery;
         ValueSet<string>? _bands;
-        int _next;
+        int _next, _oracleAsked;
 
         /// <param name="graph">The S it asks: the registry's, or a plant's of its own.</param>
         /// <param name="sets">The sets it shadows under: those the legs plan under and the one beside, unless a plant asks fewer.</param>
@@ -75,9 +77,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A plant's node a conjunct is stated beneath in its own round, with the licence table's assumptions kept (G11); none
         /// in the registry's run, which states a round beneath <see cref="StratumFor"/> alone.
         /// </param>
+        /// <param name="askOracleEvery">Every how many generate bundles the production oracle is asked the same question too; never where 0.</param>
         public RenderingGenerateRun(RenderingGraph? graph = null, IEnumerable<RenderingSet>? sets = null, Func<SqlPredicate, bool>? readExactly = null,
-            Func<CosmosStatementScope, int, (Scope? Context, PredicateRules? Rules)?>? renderedFrom = null) =>
-            (_graph, _sets, _readExactly, _renderedFrom) = (graph ?? RenderingCheckRun.Measured, [.. sets ?? Sets], readExactly ?? RenderingFamily.ReadExactly, renderedFrom);
+            Func<CosmosStatementScope, int, (Scope? Context, PredicateRules? Rules)?>? renderedFrom = null, int askOracleEvery = 0)
+        {
+            (_graph, _sets, _readExactly, _renderedFrom, _askOracleEvery) = (graph ?? RenderingCheckRun.Measured, [.. sets ?? Sets], readExactly ?? RenderingFamily.ReadExactly, renderedFrom, askOracleEvery);
+            _oracle = askOracleEvery > 0 ? new RenderingOracle(_graph, wait: Timeout.InfiniteTimeSpan) : null;
+        }
+
+        /// <summary>How many generate bundles the production oracle was asked beside, and where its answer or key parted from the shadow's.</summary>
+        public int OracleAsked => Volatile.Read(ref _oracleAsked);
+
+        /// <inheritdoc cref="OracleAsked"/>
+        public ConcurrentQueue<string> OracleParted { get; } = new();
 
         /// <summary>The parting bands as S holds them, the graph's own: a plant's where it planted some.</summary>
         ValueSet<string> Bands => _bands ??= _graph.Current() is var theory ? theory.Theory.Get(theory.PartingBands.Of()) : ValueSet<string>.Empty;
@@ -120,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var first = opened.Sum(b => b.Milliseconds);
                 var started = Stopwatch.GetTimestamp();
                 Reconstruct(shape, set, false);
-                Costs.Enqueue(new(input.Input, input.Name, index, set, RenderingShape.Of(shape.Conjuncts), opened.Count, first, Stopwatch.GetElapsedTime(started).TotalMilliseconds, shape.Conjuncts));
+                Costs.Enqueue(new(input.Input, input.Name, index, set, ShapeOf(shape.Conjuncts), opened.Count, first, Stopwatch.GetElapsedTime(started).TotalMilliseconds, shape.Conjuncts));
             }
 
             Rewritten(shape);
@@ -368,14 +380,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var shared = RenderingCheckRun.Shared(conjunctTerms);
             var beneath = conjuncts.Where(i => strata[i] is not null)
                 .SelectMany(i => RenderingCheckRun.Atoms(s.Conjuncts[i]).Distinct().Where(a => shared.Contains(a) == false).Select(a => (Conjunct: i, Atom: a, Stratum: strata[i]!))).ToList();
-            ImportReport Import(RenderingBundle? bundle) => RenderingImporter.Import(bundle, s.Source, s.Root.Context, s.Root.Rules, s.Declaration, roots.SelectMany(r => r.Paths),
-                beneath.Select(b => (b.Atom, new ImportSource(s.Statement.Statement.Digest, "render round " + b.Stratum.Round, b.Stratum.Round), b.Stratum.Node, s.Root.Rules)));
+            var stratified = beneath.Select(b => (b.Atom, new ImportSource(s.Statement.Statement.Digest, "render round " + b.Stratum.Round, b.Stratum.Round), b.Stratum.Node, s.Root.Rules)).ToList();
+            ImportReport Import(RenderingBundle? bundle) => RenderingImporter.Import(bundle, s.Source, s.Root.Context, s.Root.Rules, s.Declaration, roots.SelectMany(r => r.Paths), stratified);
 
-            var report = Import(null);
-            var opaques = roots.SelectMany(r => r.Subterms).OfType<SqlPredicate.Opaque>().Select(o => o.Id).Distinct().Order().Select(id => id + "=" + s.Opaques.GetValueOrDefault(id));
-            var key = string.Join("\n", new[] { set.ToString(), report.Digest, string.Join(",", opaques), RenderingAnswerMemo.DigestOf(_graph.Current()) }
-                .Concat(roots.Select(r => r.Digest).Order(StringComparer.Ordinal))
-                .Concat(claims is null ? [] : claims.Select(c => s.Conjuncts[c.Key].Digest + " claims " + claimed + " " + c.Value.Text).Order(StringComparer.Ordinal)));
+            // The production key, so that the shadow keys as the oracle does; a check's claims beside it.
+            var question = RenderingQuestionKey.Of(roots, s.Opaques, Import(null), set, RenderingAnswerMemo.DigestOf(_graph.Current()));
+            var key = string.Join("\n", [question.ToString(), .. (claims ?? new Dictionary<int, ServiceForm>()).Select(c => s.Conjuncts[c.Key].Digest + " claims " + claimed + " " + c.Value.Text).Order(StringComparer.Ordinal)]);
             return _memo.GetOrAdd(key, _ => new Lazy<Bundle>(() =>
             {
                 var id = Interlocked.Increment(ref _next);
@@ -408,6 +418,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 // S's time is production's: to the roots' answers, before what the tests read beside them.
                 var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+
+                // The oracle production asks, asked the same question: its own bundle must answer each root alike, under one key.
+                if (_oracle is not null && id % _askOracleEvery == 0)
+                {
+                    Interlocked.Increment(ref _oracleAsked);
+                    var asked = _oracle.Ask(set, roots, s.Opaques, s.Source, s.Root.Context, s.Root.Rules, stratified);
+                    foreach (var r in roots.Where(r => (asked.Of(r).Kind, asked.Of(r).Best, asked.Of(r).Weakening) != (answers[r.Digest].Kind, answers[r.Digest].Best, answers[r.Digest].Weakening)))
+                        OracleParted.Enqueue($"bundle {id} {set} {r}: the shadow's {answers[r.Digest].Kind} {answers[r.Digest].Best} beside the oracle's {asked.Of(r).Kind} {asked.Of(r).Best} {asked.Of(r).Reason}");
+                    if (asked.Key != question)
+                        OracleParted.Enqueue($"bundle {id} {set}: keyed apart");
+                }
                 var proposed = (Candidates: bundle.Failure is null ? bundle.Scope.Rows(bundle.Theory.Candidate).Count() : 0,
                     Atoms: nodes.Count(n => n is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)));
                 var (forms, refuted) = (new List<Judged>(), new List<Refuted>());
@@ -493,6 +514,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 _ => "",
             };
             return (fewer, more) switch { (true, false) => "tighter", (false, true) => "looser" + listed, (true, true) => "parting" + listed, _ => "alike on the documents" };
+        }
+
+        /// <summary>
+        /// The shape a cost line is read under (§6.3), off the union of the atoms asked: an atom is a predicate other than a
+        /// junction, a negation or an opaque term, holding no parameter; a list is an <c>IN</c> of five or more points, one of
+        /// two to four counting as one condition.
+        /// </summary>
+        public static string ShapeOf(IEnumerable<SqlPredicate> asked)
+        {
+            var atoms = asked.SelectMany(r => r.Subterms).Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)
+                && t is not (SqlPredicate.Compare { Left: SqlValue.Parameter } or SqlPredicate.Compare { Right: SqlValue.Parameter })).DistinctBy(t => t.Digest).ToList();
+            var list = atoms.OfType<SqlPredicate.In>().Select(i => i.Points.Count).DefaultIfEmpty(0).Max();
+            var conditions = atoms.Count(t => t is not SqlPredicate.In { Points.Count: >= 5 });
+            return list >= 20 || conditions >= 8 ? "rare" : list >= 5 ? "a list of 5-19" : conditions switch { <= 3 => "1-3 conditions", 4 => "4 conditions", _ => "5-7 conditions" };
         }
 
         static string? Show(RenderingVerdict? verdict, Verdict claimed = Verdict.Equal) => verdict is null ? null

@@ -26,8 +26,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingGraphTests
     {
 
-        static readonly SqlPredicate NotBikes = Ne(Text(LabelPath), "bikes");
-
         /// <summary>
         /// Past the gauge, a generation's successor is built while the generation goes on answering, and swapped in once
         /// ready: defined alike, so the two share memo entries, where a planted row shares none. A retired generation serves
@@ -76,23 +74,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Every generation, the first and each successor, is defined on a dedicated thread: never the one that opens a
-        /// bundle, nor one of the pool's, which planning threads may be.
+        /// bundle, nor one of the pool's, which planning threads may be, and under none of the asker's async locals.
         /// </summary>
         [Fact]
         public void ASuccessorIsBuiltOffThePlanningThread()
         {
-            var (forced, defined) = (false, new ConcurrentQueue<(int Thread, bool Pooled)>());
+            var (forced, defined, planning) = (false, new ConcurrentQueue<(int Thread, bool Pooled, string? Local)>(), new AsyncLocal<string>());
             var graph = new RenderingGraph(() =>
             {
-                defined.Enqueue((Environment.CurrentManagedThreadId, Thread.CurrentThread.IsThreadPoolThread));
+                defined.Enqueue((Environment.CurrentManagedThreadId, Thread.CurrentThread.IsThreadPoolThread, planning.Value));
                 return Measured;
             }, _ => forced);
+            planning.Value = "planning";
             graph.Open(RenderingCheckRun.AssertedSet).Dispose();
             forced = true;
             graph.Open(RenderingCheckRun.AssertedSet).Dispose();
             forced = false;
             SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue();
-            defined.Should().HaveCount(2).And.OnlyContain(d => d.Thread != Environment.CurrentManagedThreadId && d.Pooled == false);
+            defined.Should().HaveCount(2).And.OnlyContain(d => d.Thread != Environment.CurrentManagedThreadId && d.Pooled == false && d.Local == null);
+        }
+
+        /// <summary>
+        /// A successor's build that throws, the definition having built once, is no row's fault: S stays available and the
+        /// current answers; the next is started after the retry, and swapped in.
+        /// </summary>
+        [Fact]
+        public void ASuccessorsFailureLeavesTheCurrentAnswering()
+        {
+            var (forced, defined) = (false, 0);
+            var graph = new RenderingGraph(() => Interlocked.Increment(ref defined) == 2 ? throw new OutOfMemoryException("planted") : Measured, _ => forced, retry: TimeSpan.Zero);
+            var first = graph.Current();
+            forced = true;
+            graph.Current();
+            SpinWait.SpinUntil(() => graph.SuccessorFailures == 1, TimeSpan.FromMinutes(1)).Should().BeTrue();
+            (graph.Available, ReferenceEquals(graph.Current(), first)).Should().Be((true, true));
+            SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue();
+            forced = false;
+            (ReferenceEquals(graph.Current(), first), graph.SuccessorFailures, graph.Available).Should().Be((false, 1, true));
         }
 
         /// <summary>

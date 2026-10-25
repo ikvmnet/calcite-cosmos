@@ -12,12 +12,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     internal static class CosmosRendering
     {
 
-        /// <summary>The process's oracle; its graph is defined on a thread of its own once it is first warmed or asked.</summary>
-        public static RenderingOracle Oracle { get; } = new(new RenderingGraph(() => RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All)) with
+        static readonly System.Lazy<RenderingDefinition> Defined = new(() => RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All)) with
         {
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
-        }));
+        });
+
+        /// <summary>The registry's S, read on first use, the first build's thread in production: what every generation, and the tests, are defined from.</summary>
+        public static RenderingDefinition Definition => Defined.Value;
+
+        /// <summary>The process's oracle; its graph is defined on a thread of its own once it is first warmed or asked.</summary>
+        public static RenderingOracle Oracle { get; } = new(new RenderingGraph(() => Definition));
 
         /// <summary>The set a statement is proven under: what Azure was measured to do, or the emulator (O1).</summary>
         public static RenderingSet SetFor(CosmosServiceTarget target) => target == CosmosServiceTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;

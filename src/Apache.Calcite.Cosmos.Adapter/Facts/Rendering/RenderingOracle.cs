@@ -67,7 +67,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Generate mode's answer of each root, from one bundle: imported from <paramref name="root"/>, each atom
         /// <paramref name="beneath"/> names stated beneath its stratum, run, and read; the remembered answer where one is
-        /// filed under the question's key. A decline is returned and counted, and never remembered.
+        /// filed under the question's key, whether a generation answers or not. A decline is returned and counted, never
+        /// remembered, and nothing throws: a node its owner let go, and so disposed, declines too, so the caller keeps the
+        /// node's owner reachable (<see cref="CosmosStatementScope.ContextFor"/>).
         /// </summary>
         /// <param name="set">The set the statement is planned under.</param>
         /// <param name="roots">The pending conjuncts and the round's junctions.</param>
@@ -79,19 +81,39 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public RenderingBundleAnswer Ask(RenderingSet set, IReadOnlyList<SqlPredicate> roots, IReadOnlyDictionary<long, SqlValue>? opaques, ImportSource source,
             Scope? root, PredicateRules? rules, IReadOnlyList<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null)
         {
-            var (started, allocated) = (Stopwatch.GetTimestamp(), GC.GetAllocatedBytesForCurrentThread());
-            RenderingBundleAnswer answer;
+            var started = Stopwatch.GetTimestamp();
+            var paths = roots.SelectMany(r => r.Paths).ToList();
+            RenderingBundleAnswer? answer = null;
             var hit = false;
-            if (_graph.TryCurrent(_wait, out var theory) == false)
-                answer = Declined(roots, Unavailable, _graph.Failure?.Message ?? "no generation within " + _wait);
-            else
+            ImportReport? import = null;
+            try
             {
                 // The import is spelled from the node alone: the declaration's mentions only count its defaults.
-                var paths = roots.SelectMany(r => r.Paths).ToList();
-                var key = RenderingQuestionKey.Of(roots, opaques, RenderingImporter.Import(null, source, root, rules, null, paths, beneath), set, RenderingAnswerMemo.DigestOf(theory));
-                answer = Memo.GetOrAdd(key, () => Generated(key, theory, set, roots, opaques, source, root, rules, paths, beneath), out hit);
+                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath);
+            }
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
+            {
+                answer = Declined(roots, Engine, e.GetType().Name + ": " + e.Message);
             }
 
+            // A remembered answer needs no generation: every generation defined alike hashes alike, so a hit is served while
+            // none answers, the first built or a successor building.
+            if (import is not null && _graph.Digest is { } digest)
+                answer = Memo.GetOrAdd(RenderingQuestionKey.Of(roots, opaques, import, set, digest), null, out hit);
+
+            if (import is not null && answer is null)
+            {
+                if (_graph.TryCurrent(_wait, out var theory) == false)
+                    answer = Declined(roots, Unavailable, _graph.Failure?.Message ?? "no generation within " + _wait);
+                else
+                {
+                    var key = RenderingQuestionKey.Of(roots, opaques, import, set, RenderingAnswerMemo.DigestOf(theory));
+                    answer = Memo.GetOrAdd(key, () => Generated(key, theory, set, roots, opaques, source, root, rules, paths, beneath), out hit)!;
+                }
+            }
+
+            // A waiter handed an answer another asker's bundle declined counts the decline alone.
+            hit &= answer!.Declined is null;
             if (hit)
                 Interlocked.Increment(ref _hits);
             else if (answer.Cost.Bundles > 0)
@@ -100,54 +122,44 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (answer.Declined is not null)
                 Interlocked.Increment(ref _declines);
 
-            return answer with
-            {
-                Cost = (hit ? RenderingCost.None with { Hits = 1, Declines = answer.Cost.Declines } : answer.Cost) with
-                {
-                    Elapsed = Stopwatch.GetElapsedTime(started), Allocated = GC.GetAllocatedBytesForCurrentThread() - allocated,
-                },
-            };
+            return answer with { Cost = (hit ? RenderingCost.None with { Hits = 1 } : answer.Cost) with { Elapsed = Stopwatch.GetElapsedTime(started) } };
         }
 
-        /// <summary>One bundle's answers; declined on an engine failure, and running out of ids or epochs retires the generation.</summary>
+        /// <summary>
+        /// One bundle's answers: declined on an engine failure, from opening the bundle to reading it, and a conflict, and
+        /// running out of ids or epochs retires the generation.
+        /// </summary>
         RenderingBundleAnswer Generated(RenderingQuestionKey key, RenderingTheory theory, RenderingSet set, IReadOnlyList<SqlPredicate> roots, IReadOnlyDictionary<long, SqlValue>? opaques,
             ImportSource source, Scope? root, PredicateRules? rules, List<JsonDocumentPath> paths, IReadOnlyList<(SqlPredicate, ImportSource, Scope?, PredicateRules?)>? beneath)
         {
-            var interned = theory.Graph.Usage.InternedValues;
-            RenderingBundle bundle;
+            RenderingBundleAnswer Failed(Exception e)
+            {
+                if (e is OverflowException)
+                    theory.RanOut = true;
+
+                return Declined(roots, Engine, e.GetType().Name + ": " + e.Message) with { Key = key, Cost = new(0, 1, 1, 0, TimeSpan.Zero) };
+            }
+
             try
             {
-                bundle = theory.Open(set);
-            }
-            catch (OverflowException e)
-            {
-                theory.RanOut = true;
-                return Declined(roots, Engine, e.Message) with { Key = key };
-            }
-
-            using (bundle)
-            {
+                using var bundle = theory.Open(set);
                 var asked = roots.DistinctBy(r => r.Digest).ToList();
                 var terms = asked.Select(r => bundle.Write(r, opaques)).ToList();
-                var candidates = 0;
-                try
-                {
-                    RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath);
-                    foreach (var term in terms)
-                        bundle.Generate(term);
+                RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath);
+                foreach (var term in terms)
+                    bundle.Generate(term);
 
-                    bundle.RunGenerateWithin(_limit(RenderingBundle.WidthOf(asked)));
-                    candidates = bundle.Failure is null ? (int)bundle.Scope.CountRows(theory.Candidate) : 0;
-                }
-                catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
-                {
-                    bundle.Decline(e);
-                }
-
+                bundle.RunGenerateWithin(_limit(RenderingBundle.WidthOf(asked)));
                 var answers = asked.Select((r, i) => (r.Digest, Answer: bundle.ReadBest(terms[i]))).ToDictionary(a => a.Digest, a => a.Answer);
-                var declined = bundle.Failure is not null ? Engine : answers.Values.Any(a => a.Kind == RenderingVerdictKind.Conflict) ? Conflict : null;
-                var usage = theory.Graph.Usage;
-                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, candidates, TimeSpan.Zero, 0, usage.InternedValues - interned, usage.FractionUsed));
+                if (bundle.Failure is { } failure)
+                    return Failed(failure);
+
+                var declined = answers.Values.Any(a => a.Kind == RenderingVerdictKind.Conflict) ? Conflict : null;
+                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, TimeSpan.Zero));
+            }
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
+            {
+                return Failed(e);
             }
         }
 

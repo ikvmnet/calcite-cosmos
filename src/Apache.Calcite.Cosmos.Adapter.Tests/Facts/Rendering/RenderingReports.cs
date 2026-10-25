@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     // off the union of their atoms (§6.3), its time and bundles their sums.
                     var costs = shadow.Costs.Where(c => c.Set == set).ToList();
                     var queries = costs.GroupBy(c => (c.Input, c.Name)).Select(g => new RenderingGenerateRun.Cost(g.Key.Input, g.Key.Name, g.Count(), set,
-                        RenderingShape.Of(g.SelectMany(c => c.Conjuncts)), g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again), [.. g.SelectMany(c => c.Conjuncts)])).ToList();
+                        RenderingGenerateRun.ShapeOf(g.SelectMany(c => c.Conjuncts)), g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again), [.. g.SelectMany(c => c.Conjuncts)])).ToList();
                     foreach (var (unit, timed) in new[] { ("statements", costs), ("queries", queries) })
                         foreach (var shape in timed.GroupBy(c => c.Shape).OrderBy(g => Shapes.IndexOf(g.Key)))
                         {
@@ -161,8 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>The shapes a query is read as (spec §6.3), from the narrowest.</summary>
-        static readonly List<string> Shapes = [.. RenderingShape.All];
-
+        static readonly List<string> Shapes = ["1-3 conditions", "4 conditions", "5-7 conditions", "a list of 5-19", "rare"];
 
         /// <summary>The order the reports keep: by input, then by a statement's place where its name is one, then by name.</summary>
         static (int Input, int Number) Key(string input, string name) => (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1);

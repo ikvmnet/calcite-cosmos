@@ -2864,23 +2864,25 @@ across documents* and *A join of a container to itself* is the record.
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
   `RenderingPerQueryCostTests` measures both shapes on the build machine and decides it.
-- **A remembered answer spells its import afresh** — *small, §6.1's lever.* A hit reads each path's `possible` and
-  `chars` from the frozen node, spells them as JSON and hashes the key: 49–102 µs at the median and 91–431 µs at the
-  90th centile in Release with the machine at 100 % (`AHitCostsMicroseconds`, g11). §6.1 takes the lever, each frozen F
-  node's import spelled once (25–45 lines), above 20 µs at the 90th centile; g15's per-query test reads it again with
-  room on the machine, beside the again line it serves.
 - **S's first build in a process outlasts a question's wait at full load** — *small, for g15's line 29 and g16.* Built
   first in a fresh process at 100 % load, the first generation took 6.0–8.4 s, past the 5 s a question waits before it
   declines as unavailable (O8: the container read for that statement); warm, it defines in 267–477 ms, hashes in
   70–143 ms and asks in 14–50 ms, so the rest is the process's first touch of the registry, of Calcite's operator tables
-  `CosmosStrictness` reads, and of the JIT. g16 starts it at the first `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine`
-  measures it paired, and its parts are where to cut if the line fails.
+  `CosmosStrictness` reads, and of the JIT. A plan waits once, not a wait a question. g16 starts it at the first
+  `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine` measures it paired, with the build's parts (define, hash, warm
+  up), which are where to cut if the line fails.
 - **The warm-up's answer is not printed** — *small, for g13.* Each generation answers one question before it is current;
   `CosmosRendering.Warm` is to print that answer, so the printer is warm too, once there is a printer.
 - **The cost accumulator is g15's** — *small.* `RenderingCost` is the record the spec drew as g15's
-  `RenderingCostSample`, built at g11 in `Facts/`, and `RenderingShape` reads a query's shape off the union of the atoms
-  it asked; g15's `CosmosRenderingCost` holds their sum and the roots a flow, and the per-query test asserts the lines
-  on them. `RenderingAnswerMemo` has no `Clear` and counts no bytes an entry, which that test adds.
+  `RenderingCostSample`: hits, bundles, declines, iterations and time. g15's `CosmosRenderingCost` sums it and holds the
+  roots a flow, and the per-query test reads a query's shape off their atoms' union (`RenderingGenerateRun.ShapeOf`) and
+  asserts the lines; candidates, bytes and the graph's use join the record there, with the reader that needs them.
+  `RenderingAnswerMemo` has no `Clear` and counts no bytes an entry, which that test adds.
+- **A successor's failed build is retried, not fatal** — *small, for the owner.* Spec §6.2 makes a definition that
+  throws S's end for the process, since the same rows would throw again; that holds of the first definition alone. A
+  successor's build, the same definition built once already, fails only for want of memory or the like, so the current
+  generation answers on and the next build starts 10 s later (`RenderingGraph.DefaultRetry`). If it fails for ever, S
+  answers from the current until it runs out, then declines as unavailable but for remembered answers (O8).
 - **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
   wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
   with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,

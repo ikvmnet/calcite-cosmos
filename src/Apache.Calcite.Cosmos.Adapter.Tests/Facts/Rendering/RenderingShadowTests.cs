@@ -45,6 +45,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The oracle production asks answers as the shadow's bundles do: asked the same question beside one generate bundle
+        /// in sixteen, each root's verdict, best and weakening alike, under the key the shadow files it under. Until g15 routes
+        /// the shadow through it, this holds the two copies of the bundle to each other.
+        /// </summary>
+        [Fact]
+        public void TheProductionOracleAnswersAsTheShadowsBundles()
+        {
+            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            shadow.OracleAsked.Should().BeGreaterThan(50);
+            shadow.OracleParted.Should().BeEmpty();
+        }
+
+        /// <summary>
         /// The parameterised residual the inputs gain (spec g05): its parameter atom is the translator's, not S's, and its
         /// weakening, under each set and in each statement that holds it, is the presence its strict reading gives alone,
         /// since no template spells a parameter.

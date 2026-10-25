@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -33,12 +34,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <summary>
     /// The production oracle (spec g11): its key holds every value a bundle reads, an opaque term's reading among them, and
     /// no parameter's value; a decline is counted and forgotten, a run that stopped short remembered; and where S cannot be
-    /// defined, or is not ready within the wait, every question declines and nothing throws.
+    /// defined, or is not ready within the wait, every question declines, a remembered answer is still served, and nothing
+    /// throws.
     /// </summary>
     public sealed class RenderingOracleTests
     {
 
-        static RenderingOracle Oracle(Func<int, int>? limit = null) => new(new RenderingGraph(() => Measured), limit: limit);
+        /// <summary>An oracle of its own whose questions wait for the first build however long it takes, as a busy CI host needs.</summary>
+        static RenderingOracle Oracle(Func<int, int>? limit = null) => new(new RenderingGraph(() => Measured), wait: Timeout.InfiniteTimeSpan, limit: limit);
 
         static RenderingOracle.RenderingBundleAnswer Ask(RenderingOracle oracle, IReadOnlyList<SqlPredicate> roots, IReadOnlyDictionary<long, SqlValue>? opaques = null) =>
             oracle.Ask(RenderingCheckRun.AssertedSet, roots, opaques, Source, null, null);
@@ -47,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A statement of two rounds: <c>a = 'x'</c> admitted in the first, from <c>D0</c>, and <c>a &lt;&gt; 'y'</c> rendered
         /// in the second, from the stratum where <c>a</c> is <c>'x'</c>. Every value its bundle reads — each path's
         /// <c>possible</c> and <c>chars</c>, and the atom stated beneath its stratum — is spelled in the key, and narrowing
-        /// any of them, or stating nothing beneath, keys the question apart.
+        /// any of them, or stating nothing beneath, keys the question apart. A node its owner let go declines.
         /// </summary>
         [Fact]
         public void TheKeyHoldsEveryValueTheImportReads()
@@ -97,6 +100,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             others.Select(o => o.Key!.Import).Append(key.Import).Should().OnlyHaveUniqueItems();
             Asked(d0, stratum).Cost.Hits.Should().Be(1, "the same question again is the remembered answer");
             oracle.Counts.Should().Be((1L, 4L, 0L));
+
+            // A node is its scope's, disposed once its owner lets it go: asked over one it never read, the oracle declines and
+            // throws nothing.
+            var gone = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { first, second, Eq(Text(P("o", "b")), "z") }), (i, _) => i == 0).ContextFor(OracleLicence.RenderConjunct(1)).Context!;
+            gone.Dispose();
+            Asked(d0, gone).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == RenderingOracle.Engine && a.Key == null && a.Of(second).Reason!.Contains("ObjectDisposedException"));
             GC.KeepAlive(scope);
         }
 
@@ -145,9 +154,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A bundle the engine failed — here a primitive that throws while the test says so — declines: counted, its roots
         /// Unproven and named, and forgotten, so the same question asked again opens a bundle that answers, and is remembered.
+        /// Eight askers at once of one key share one bundle, and a waiter handed another's decline counts no hit.
         /// </summary>
         [Fact]
-        public async System.Threading.Tasks.Task ADeclineIsNotRemembered()
+        public async Task ADeclineIsNotRemembered()
         {
             var failing = false;
             var oracle = new RenderingOracle(new RenderingGraph(() => Measured with
@@ -156,16 +166,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }));
             await oracle.Ready;
 
-            var conjunct = Ne(Text(LabelPath), "bikes");
             Volatile.Write(ref failing, true);
-            var declined = Ask(oracle, [conjunct]);
+            var declined = Ask(oracle, [NotBikes]);
             Volatile.Write(ref failing, false);
-            (declined.Declined, declined.Of(conjunct).Kind, oracle.Memo.Count).Should().Be((RenderingOracle.Engine, RenderingVerdictKind.Unproven, 0));
-            declined.Of(conjunct).Reason.Should().StartWith("declined: RuleEvaluationException");
+            (declined.Declined, declined.Of(NotBikes).Kind, oracle.Memo.Count).Should().Be((RenderingOracle.Engine, RenderingVerdictKind.Unproven, 0));
+            declined.Of(NotBikes).Reason.Should().StartWith("declined: engine: RuleEvaluationException");
 
-            Ask(oracle, [conjunct]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == null && a.Of(conjunct).Kind == RenderingVerdictKind.Proven);
-            Ask(oracle, [conjunct]).Cost.Hits.Should().Be(1);
+            Ask(oracle, [NotBikes]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == null && a.Of(NotBikes).Kind == RenderingVerdictKind.Proven);
+            Ask(oracle, [NotBikes]).Cost.Hits.Should().Be(1);
             oracle.Counts.Should().Be((1L, 2L, 1L));
+
+            var shared = Oracle();
+            await Together(() => Ask(shared, [Ne(Text(LabelPath), "boots")]));
+            shared.Counts.Should().Be((7L, 1L, 0L));
+            Volatile.Write(ref failing, true);
+            await Together(() => Ask(oracle, [Ne(Text(LabelPath), "shoes")]));
+            Volatile.Write(ref failing, false);
+            (oracle.Counts.Hits, oracle.Counts.Declines).Should().Be((1L, 9L), "a waiter handed a decline counts it as one");
+        }
+
+        /// <summary>Eight threads of their own asking at once.</summary>
+        static async Task Together(Action ask)
+        {
+            using var together = new Barrier(8);
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Factory.StartNew(() =>
+            {
+                together.SignalAndWait();
+                ask();
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
         }
 
         /// <summary>
@@ -176,51 +204,82 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AnIncompleteIsRemembered()
         {
             var oracle = Oracle(limit: _ => 3);
-            var conjunct = Ne(Text(LabelPath), "bikes");
-            var first = Ask(oracle, [conjunct]);
-            (first.Declined, first.Of(conjunct).Kind).Should().Be(((string?)null, RenderingVerdictKind.Incomplete));
+            var first = Ask(oracle, [NotBikes]);
+            (first.Declined, first.Of(NotBikes).Kind).Should().Be(((string?)null, RenderingVerdictKind.Incomplete));
             first.Cost.Iterations.Should().BeInRange(1, 3);
-            Ask(oracle, [conjunct]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Cost.Hits == 1 && a.Of(conjunct).Kind == RenderingVerdictKind.Incomplete);
+            Ask(oracle, [NotBikes]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Cost.Hits == 1 && a.Of(NotBikes).Kind == RenderingVerdictKind.Incomplete);
             oracle.Counts.Should().Be((1L, 1L, 0L));
         }
 
         /// <summary>
         /// S unavailable declines every question and throws nothing: a definition that throws — a row contradicting
-        /// another, G1's — for the rest of the process; a build not finished within the wait, until it is.
+        /// another, G1's — or whose generate mode fails its warm-up, for the rest of the process; a build not finished within
+        /// the wait, until it is, each question of a plan waiting no longer than the first.
         /// </summary>
         [Fact]
-        public async System.Threading.Tasks.Task AFailedDefinitionDeclinesAndCounts()
+        public async Task AFailedDefinitionDeclinesAndCounts()
         {
             var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
             var failed = new RenderingOracle(new RenderingGraph(() => RenderingDefinition.Measured([.. Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)])));
             await failed.Ready;
-            var conjunct = Ne(Text(LabelPath), "bikes");
             foreach (var _ in Enumerable.Range(0, 2))
-                Ask(failed, [conjunct]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == RenderingOracle.Unavailable && a.Key == null
-                    && a.Of(conjunct).Kind == RenderingVerdictKind.Unproven && a.Of(conjunct).Weakening == null && a.Of(conjunct).Reason!.StartsWith("declined: unavailable"));
+                Ask(failed, [NotBikes]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == RenderingOracle.Unavailable && a.Key == null
+                    && a.Of(NotBikes).Kind == RenderingVerdictKind.Unproven && a.Of(NotBikes).Weakening == null && a.Of(NotBikes).Reason!.StartsWith("declined: unavailable"));
             (failed.Available, failed.Counts, failed.Memo.Count).Should().Be((false, (0L, 0L, 2L), 0));
+
+            var broken = new RenderingOracle(new RenderingGraph(() => Measured with { Leaf = (_, _, _, _) => throw new InvalidOperationException("planted") }));
+            await broken.Ready;
+            broken.Available.Should().BeFalse("a generation whose every run fails would decline every question at a bundle's cost");
 
             using var gate = new ManualResetEventSlim(false);
             var waiting = new RenderingOracle(new RenderingGraph(() =>
             {
                 gate.Wait();
                 return Measured;
-            }), wait: TimeSpan.FromMilliseconds(50));
-            Ask(waiting, [conjunct]).Declined.Should().Be(RenderingOracle.Unavailable, "a question waits for the build no longer than it is told");
+            }), wait: TimeSpan.FromMilliseconds(200));
+            var plan = Stopwatch.StartNew();
+            foreach (var label in new[] { "a", "b", "c", "d", "e", "f", "g", "h" })
+                Ask(waiting, [Ne(Text(LabelPath), label)]).Declined.Should().Be(RenderingOracle.Unavailable, "a question waits for the build no longer than it is told");
+            plan.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1), "eight questions wait one wait, not eight");
             gate.Set();
             await waiting.Ready;
-            (Ask(waiting, [conjunct]).Of(conjunct).Kind, waiting.Available, waiting.Counts).Should().Be((RenderingVerdictKind.Proven, true, (0L, 1L, 1L)));
+            (Ask(waiting, [NotBikes]).Of(NotBikes).Kind, waiting.Available, waiting.Counts).Should().Be((RenderingVerdictKind.Proven, true, (0L, 1L, 8L)));
+        }
+
+        /// <summary>
+        /// A remembered answer is served while no generation answers — the current ran out and its successor is building —
+        /// since generations defined alike hash alike; a question not remembered waits, and declines.
+        /// </summary>
+        [Fact]
+        public async Task ARememberedAnswerIsServedWhileNoGenerationAnswers()
+        {
+            using var gate = new ManualResetEventSlim(true);
+            var graph = new RenderingGraph(() =>
+            {
+                gate.Wait();
+                return Measured;
+            });
+            var oracle = new RenderingOracle(graph, wait: TimeSpan.FromMilliseconds(50));
+            await oracle.Ready;
+            Ask(oracle, [NotBikes]).Declined.Should().BeNull();
+
+            gate.Reset();
+            graph.Current().RanOut = true;
+            (Ask(oracle, [NotBikes]).Cost.Hits, Ask(oracle, [Ne(Text(LabelPath), "shoes")]).Declined).Should().Be((1, RenderingOracle.Unavailable));
+            gate.Set();
+            SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue();
+            Ask(oracle, [Ne(Text(LabelPath), "shoes")]).Of(Ne(Text(LabelPath), "shoes")).Kind.Should().Be(RenderingVerdictKind.Proven);
         }
 
         /// <summary>
         /// What a remembered answer costs, its key built from a frozen <c>D0</c> included: every container the plan digests
-        /// plan over that declares something, a comparison over each path it mentions, first asked, then timed asked again
-        /// five times. Reported, in microseconds, beside the first generation's build; the lever (§6.1), spelling the import
-        /// once a node, is taken above 20 µs at the 90th centile. Explicit: run it in Release with <c>-showLiveOutput</c> and
-        /// record the machine's load beside.
+        /// plan over that declares something, a comparison over each path it mentions, first asked, then asked again five
+        /// times, by the oracle's own clock. Reported, in microseconds, beside the first generation's build; the lever (§6.1),
+        /// spelling the import once a node, is taken above 20 µs at the 90th centile. Explicit: run it in Release with
+        /// <c>-showLiveOutput</c> and record the machine's load beside.
         /// </summary>
         [Fact(Explicit = true)]
-        public async System.Threading.Tasks.Task AHitCostsMicroseconds()
+        public async Task AHitCostsMicroseconds()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
             var oracle = Oracle();
@@ -247,40 +306,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             for (var round = 0; round < 5; round++)
                 foreach (var question in questions)
                 {
-                    var started = Stopwatch.GetTimestamp();
                     var answer = question();
-                    micros.Add(Stopwatch.GetElapsedTime(started).TotalMicroseconds);
                     answer.Cost.Hits.Should().Be(1);
+                    micros.Add(answer.Cost.Elapsed.TotalMicroseconds);
                 }
 
             micros.Sort();
             TestContext.Current.TestOutputHelper?.WriteLine($"{questions.Count} questions, {micros.Count} hits: p50 {RenderingCostTests.At(micros, 0.5):F1} µs, "
                 + $"p90 {RenderingCostTests.At(micros, 0.9):F1} µs, max {micros[^1]:F1} µs; {oracle.Counts}; the first generation built in {build.TotalMilliseconds:F0} ms");
-
-            // The build's parts, again on this thread: the definition, its rows hashed, and its first question.
-            var parts = new List<TimeSpan>();
-            var clock = Stopwatch.GetTimestamp();
-            void Lap()
-            {
-                parts.Add(Stopwatch.GetElapsedTime(clock));
-                clock = Stopwatch.GetTimestamp();
-            }
-
-            var defined = RenderingTheory.Define(Measured);
-            Lap();
-            RenderingAnswerMemo.DigestOf(defined);
-            Lap();
-            using (var bundle = defined.Open(RenderingSet.Production))
-            {
-                var root = bundle.Write(Ne(Text(LabelPath), "bikes"));
-                bundle.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
-                bundle.Generate(root);
-                bundle.RunGenerate(1);
-                bundle.ReadBest(root);
-            }
-
-            Lap();
-            TestContext.Current.TestOutputHelper?.WriteLine($"again: defined in {parts[0].TotalMilliseconds:F0} ms, hashed in {parts[1].TotalMilliseconds:F0} ms, asked in {parts[2].TotalMilliseconds:F0} ms");
             GC.KeepAlive(scopes);
         }
 

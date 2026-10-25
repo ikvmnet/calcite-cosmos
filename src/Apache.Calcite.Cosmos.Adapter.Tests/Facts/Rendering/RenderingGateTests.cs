@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingGateTests
     {
 
-        static readonly SqlPredicate NotBikes = Ne(Text(LabelPath), "bikes");
+        static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
 
         static readonly PathValues DeclaredString = PathValues.OfKinds(ValueSet.Of(StringType));
 
@@ -207,8 +207,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (cast, bare) = (Cast("VARCHAR", Raw(LabelPath)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
             var guarded = Negated(Any(bare, ServiceForm.TestOf(CosmosServiceTest.IsNull, Label), Negated(ServiceForm.TestOf(CosmosServiceTest.IsDefined, Label))));
-            static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
-
             Kinds(Check(Eq(cast, "b"), bare)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
             Kinds(Check(Not(Eq(cast, "b")), Negated(bare))).Should().Be((RenderingVerdictKind.Refuted, RenderingVerdictKind.Proven));
             Kinds(Check(Not(Eq(cast, "b")), guarded)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
@@ -225,7 +223,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (less, thirty) = (ServiceForm.CompareOf(CosmosServiceTest.Less, Label, Of("b")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of(30m)));
             var (strings, withoutNul) = (PathValues.OfKinds(ValueSet.Of(StringType)), ValueSet.From(AllBands.Where(c => c != NulClass)));
-            static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
 
             Kinds(Check(Cmp(Raw(LabelPath), "<", Lit("b")), less, set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
             Kinds(Check(Not(Cmp(Raw(LabelPath), "<", Lit("b"))), Negated(less), set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));

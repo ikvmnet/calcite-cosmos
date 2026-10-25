@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var generations = new JsonFactGenerations();
             return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, generations).Append(RenderingInputs.Parameterised(generations)),
-                shadow: new RenderingGenerateRun());
+                shadow: new RenderingGenerateRun(askOracleEvery: 16));
         });
 
         readonly Action<RenderingSet, TimeSpan>? Timed;

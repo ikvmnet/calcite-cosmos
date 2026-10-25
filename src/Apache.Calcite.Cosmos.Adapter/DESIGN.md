@@ -7226,7 +7226,11 @@ the digest, so the oracle hands it no declaration and a key never scans them.
 so the same question stops alike. A decline is handed back, counted and forgotten — S unavailable, an engine failure,
 running out of ids or epochs, or a conflict, which production reads as a decline and CI fails on — since the theory's
 digest outlives a generation, and a remembered `OverflowException` would decline its key for the process. Answers
-survive a retirement: generations defined alike hash alike.
+survive a retirement: generations defined alike hash alike. So a remembered answer is served whether a generation answers
+or not: the graph keeps the current generation's digest, the key is built under it and looked up first, and only a miss
+waits for a generation. After a run out of ids, or while a successor builds, the questions a statement asked before are
+hits, not waits and declines. A node is read for its key inside the same guard as the bundle: one its owner let go is
+disposed, and the question declines rather than throwing, so the caller keeps the node's owner reachable.
 
 **Generations off the planning thread.** Every generation, the first and each successor, is defined on a dedicated
 thread (`TaskCreationOptions.LongRunning`), its rows hashed and one question asked before it is current, so a plan never
@@ -7235,9 +7239,15 @@ two fifths of its ids or epochs, or 800,000 values interned, four fifths of F's 
 swapped in when ready; until then it answers, past F's half too, which stands well short of the engine's own limits. A
 bundle that runs out of ids or epochs declines and retires its generation at once, and the next question waits for the
 successor. A question that finds no generation answering, before the first is built or after the current ran out,
-waits at most 5 s, and past that declines as unavailable. A definition that throws, a contradicting row or `Settle`
-stopping short, leaves S unavailable for the process, since the same rows would throw again: every question declines,
-and none throws to a plan.
+waits for the build at most 5 s from when a question first waited on it, so a plan of many questions waits once, and
+past that declines as unavailable. The first definition that throws, a contradicting row or `Settle` stopping short,
+leaves S unavailable for the process, since the same rows would throw again: every question declines, and none throws
+to a plan. So does one whose warm-up question fails in the engine or conflicts, which would otherwise decline every
+question at a bundle's cost. A successor is the definition that already built once, so its failure is no row's — memory
+short while two generations live, at the moment that is likeliest — and the spec's rationale does not reach it: the
+current answers on, the failure is counted, and the next build starts after 10 s. A generation is published under the
+lock builds start under, so an asker still holding the one it replaced starts no second build, and every build runs
+under no caller's execution context.
 
 **The set per endpoint (O1).** `CosmosSchemaFactory` reads `serviceTarget`, `azure` by default or `emulator`, onto each
 container's metadata (`CosmosContainerMetadata.ServiceTarget`), where a host building its own tables sets it.
@@ -7246,18 +7256,19 @@ is in the key: `label < 'a'`, over a label that may hold U+0000, is proven for A
 which orders U+0000 as stored. `CosmosServiceTarget` is public, where the spec drew it internal, since a host could not
 set it otherwise. Nothing reads it in planning yet.
 
-**Cost, read as the lines are set.** Every answer carries a `RenderingCost`: a hit, a bundle or a decline; its run's
-iterations, which the bundle now keeps, and its templates' candidates; S's time from the lookup to the roots' answers;
-the bytes allocated on the asking thread; and the values the graph interned and the share of its ids or epochs used
-after. Costs add, so a query's is the sum of its questions', which g15's accumulator holds per flow; and
-`RenderingShape` reads a query's shape off the union of the atoms of every root its plan asked (§6.3), as PR A's
-measure read it, not off its widest statement. The shadow's summary reads its per-query shapes so now, and prints the
-tightest run's iterations against its limit.
+**Cost, read as the lines are set.** Every answer carries a `RenderingCost`: a hit, a bundle or a decline, a waiter
+handed another asker's decline counting the decline alone; its run's iterations, which the bundle now keeps; and S's
+time from the lookup to the roots' answers. g15's accumulator sums them a query. The tests read a query's shape off the
+union of the atoms of every root its plan asked (§6.3, `RenderingGenerateRun.ShapeOf`), as PR A's measure read it, not
+off its widest statement; the shadow's summary reads its per-query shapes so, and prints the tightest run's iterations
+against its limit.
 
-**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 49–102
-µs at the median and 91–431 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
-Release with the machine at 100 % (`AHitCostsMicroseconds`, four runs); §6.1's lever, spelling each frozen node's
-import once, is for above 20 µs, and is left to g15's measure on a machine with room. The first generation, built first
+**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59 µs
+at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
+Release with the machine at 65–100 % (`AHitCostsMicroseconds`, three runs), the import's spelling most of it. §6.1's
+lever is taken: `RenderingImporter` reads and spells what each frozen node holds of a path once, in a table the node
+takes with it when collected, and the same questions took 13–23 µs at the median and 16–31 µs at the 90th centile, the
+machine at 43–71 %. The first generation, built first
 in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms, hashes in 70–143 ms and asks its
 question in 14–50 ms: the rest is the process's first touch of the registry, of Calcite's operator tables that
 strictness reads, and of the JIT. In a process that has planned before, the build took 598 ms. Line 29 reads it at g15.
@@ -7265,11 +7276,16 @@ strictness reads, and of the JIT. In a process that has planned before, the buil
 **The tests.** `RenderingOracleTests`: `TheKeyHoldsEveryValueTheImportReads` reads every `imported`, `importedchars`
 and `assumed` row of a bundle imported as the oracle's was, and finds each spelled in the key, and keys a narrower
 node, a stratum stated otherwise, or none, apart; `AnOpaquesReadingIsInTheKey`, `AParameterNeverReachesTheKey`,
-`ADeclineIsNotRemembered`, `AnIncompleteIsRemembered`, `AFailedDefinitionDeclinesAndCounts`, and
-`AHitCostsMicroseconds`, explicit. `RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a
-successor's definition at a gate while the spent generation answers, and `ASuccessorIsBuiltOffThePlanningThread` finds
-every definition on a thread neither the asker's nor the pool's. `CosmosRenderingTests.TheTargetChoosesTheSet` holds
-the operand, the metadata and the set.
+`ADeclineIsNotRemembered`, eight askers at once among it, `AnIncompleteIsRemembered`, `AFailedDefinitionDeclinesAndCounts`,
+eight questions over a held build waiting one wait, `ARememberedAnswerIsServedWhileNoGenerationAnswers`, and
+`AHitCostsMicroseconds`, explicit, which times hits by the oracle's own clock.
+`RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a successor's definition at a gate while the
+spent generation answers, `ASuccessorIsBuiltOffThePlanningThread` finds every definition on a thread neither the
+asker's nor the pool's and under none of its async locals, and `ASuccessorsFailureLeavesTheCurrentAnswering` fails one.
+`CosmosRenderingTests.TheTargetChoosesTheSet` holds the operand, the metadata and the set. Until g15 routes the shadow
+through the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionOracleAnswersAsTheShadowsBundles`
+asks the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the
+key alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from `CosmosRendering.Definition`.
 
 ---
 

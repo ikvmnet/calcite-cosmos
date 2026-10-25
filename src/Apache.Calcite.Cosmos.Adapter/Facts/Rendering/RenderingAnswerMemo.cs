@@ -51,15 +51,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// The answer filed under a key, computed the first time it is asked, and whether it was filed already or being
-        /// computed; a declined one, or one whose computation threw, is forgotten once handed back.
+        /// computed; none where it is not and nothing computes it. A declined one, or one whose computation threw, is
+        /// forgotten once handed back.
         /// </summary>
-        public RenderingOracle.RenderingBundleAnswer GetOrAdd(RenderingQuestionKey key, Func<RenderingOracle.RenderingBundleAnswer> compute, out bool hit)
+        public RenderingOracle.RenderingBundleAnswer? GetOrAdd(RenderingQuestionKey key, Func<RenderingOracle.RenderingBundleAnswer>? compute, out bool hit)
         {
             Lazy<RenderingOracle.RenderingBundleAnswer> answer;
             lock (_entries)
             {
                 if (hit = _entries.TryGetValue(key, out var node))
                     _recent.Remove(node!);
+                else if (compute is null)
+                    return null;
                 else
                     _entries.Add(key, node = new((key, new(compute))));
 
