@@ -32,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Initializes a new instance, with generations of the default limits and a rendering oracle over the registry's
-        /// definition, its graph not yet built.
+        /// definition, its graph not yet built, which prints each generation's warm-up answer as it is built.
         /// </summary>
         public CosmosReasoning() :
             this(new JsonFactGenerations())
@@ -52,8 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
 
-            // Made, never started: its graph is defined on a thread of its own once something first asks it.
-            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition));
+            // Made, never started: its graph is defined on a thread of its own once something first asks it, and each
+            // generation's warm-up answer printed there.
+            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition,
+                exercised: (question, answer) => Warmed = CosmosRendering.Print(question, answer)));
         }
 
         /// <summary>
@@ -72,6 +74,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// their keys are spelled from.
         /// </summary>
         public RenderingOracle Rendering { get; }
+
+        /// <summary>What the rendering graph's last generation printed its warm-up answer as; none before the first is built.</summary>
+        internal string? Warmed { get; private set; }
 
     }
 

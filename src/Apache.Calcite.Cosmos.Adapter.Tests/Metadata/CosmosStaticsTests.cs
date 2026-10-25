@@ -148,6 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Sql.CosmosStringFunctions", ["Counted", "Mapped", "Searched", "Trimmed", "Verdicts"], StaticFact, "what the service's string functions were measured to refuse"),
             ("Adapter.Sql.CosmosTranslatorFaults", ["Armed", "Current"], TestArm, "the translator's fault a test plants for its flow"),
             ("Adapter.Sql.CosmosTypeTestImplementor", ["Bodies"], StaticFact, "the in-process bodies of the type tests"),
+            ("Adapter.Sql.RenderingPrinterFaults", ["Armed", "Current"], TestArm, "the printer's fault a test plants for its flow"),
 
             ("Facts.AdmissionRound.Answer", ["None"], StaticFact, "the answer that admits nothing, immutable"),
             ("Facts.JsonDocumentPath", ["Root"], StaticFact, "the root path"),

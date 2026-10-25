@@ -303,7 +303,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     : s.Round[i] > 0 ? (Regression, Why(s, i, voided, bundles, askedUnder.GetValueOrDefault(i), verdict))
                     : form is not null ? (Gain, null)
                     : (Alike, (string?)null);
-                Classes.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, @class, reason, digest, text?.Written, text?.Form, Show(verdict), form, s.Round[i]));
+                Classes.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, @class, reason, digest, text?.Written, text?.Form, Show(verdict), form, s.Round[i], text?.Parameters));
             }
 
             // Residuals: J weakened what the translator left above; S weakens what it leaves, read from one bundle.
@@ -564,10 +564,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A conjunct's class under a set: its reason where it is a regression, its IR, the translator's text, form and verdict,
-        /// S's form, and the translator's round.
+        /// S's form, the translator's round, and the values the translator's text bound, which the printer is held to (g13).
         /// </summary>
         internal sealed record Classed(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, string Class, string? Reason, string Ir, string? Text,
-            ServiceForm? TextForm, string? TextVerdict, ServiceForm? Form, int TranslatorRound);
+            ServiceForm? TextForm, string? TextVerdict, ServiceForm? Form, int TranslatorRound, IReadOnlyList<Apache.Calcite.Cosmos.Adapter.Sql.CosmosParameter>? Bound = null);
 
         /// <summary>
         /// A residual's weakening under a set: J's text and form where J wrote one, and its verdict claimed implied at the
@@ -591,8 +591,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A statement's cost under a set, by its shape: the generate bundles it opened and S's time in them, first; asked again, from the memo.</summary>
         internal sealed record Cost(string Input, string Name, int Statement, RenderingSet Set, string Shape, int Bundles, double First, double Again, IReadOnlyList<SqlPredicate> Conjuncts);
 
-        /// <summary>A translator's text read: its form, or none where it did not read back or is no claim the check makes.</summary>
-        internal sealed record Translated(string Written, ServiceForm? Form);
+        /// <summary>A translator's text read: its form, or none where it did not read back or is no claim the check makes; and the values it bound.</summary>
+        internal sealed record Translated(string Written, ServiceForm? Form, IReadOnlyList<Apache.Calcite.Cosmos.Adapter.Sql.CosmosParameter> Parameters);
 
         /// <summary>What one statement brings to every set: its conjuncts, ownership, the translator's rounds, nodes and texts.</summary>
         sealed record Shape(RenderingInputs.Statement Input, int Index, CosmosFilterStatement Statement, bool[] Owned, int[] Round, bool Residual, int Rounds,
@@ -631,7 +631,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var rounds = strata + (residual && scope.Complete && scope.IsContradictory(OracleLicence.RenderConjunct(scope.Residual[0])) == false ? 1 : 0);
 
                 Translated Read(CaptureRecord r) => CosmosSqlFormReader.Read(r.Text, r.Parameters) is var read
-                    && RenderingCheckRun.Skip(r, read, r.Comparisons.Count + r.Rechecks.Count > 0) is null ? new(r.Text, read.Form) : new(r.Text, null);
+                    && RenderingCheckRun.Skip(r, read, r.Comparisons.Count + r.Rechecks.Count > 0) is null ? new(r.Text, read.Form, r.Parameters) : new(r.Text, null, r.Parameters);
                 Dictionary<int, Translated> Site(int site) => records.Where(r => r.Statement == statement && r.Site == site).GroupBy(r => r.Conjunct).ToDictionary(g => g.Key, g => Read(g.First()));
                 return new(input, index, statement, [.. conjuncts.Select(RenderingFamily.Owns)], round, residual, rounds, RenderingCheckRun.RootOf([scope])!.Value, nodes, planted,
                     Site(1), Site(3));

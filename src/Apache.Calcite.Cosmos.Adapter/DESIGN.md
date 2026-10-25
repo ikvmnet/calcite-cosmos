@@ -7433,6 +7433,56 @@ it was read once a conjunct asked. Nothing asks after the last round, `StratumFo
 S's graph, its memo or a bundle. Each filter statement holds two arrays, S's forms and weakenings by conjunct, empty
 until g15's arm; implementation (g16) prints the first and the split rule's weakening reads the second.
 
+### The printer
+
+**What it writes.** `Sql/RenderingPrinter.Print` writes a form S chose as the text the service is sent: writing code,
+which decides nothing about a document and is held by what reads it back. It writes in the translator's spelling, so a
+form S chose as the translator wrote it prints the translator's text: a test `IS_x(p)`, a comparison `(p op @pN)`, an
+`IN` `(p IN (@p0, …))`, a junction its members parenthesised in the form's order, a `NOT` over a test bare, as the
+translator's guards write `NOT IS_NULL(p)`, and over anything else parenthesised, as `WriteNot` does. A path is the root
+alias and each name through `CosmosSql.WritePropertyAccess`, from the spelling the conjunct's IR gives it. An opaque
+form is refused: only the check reader and the sentinels make one, and no rule lifts a sentinel. The names of tests and
+operators are the form's own (`ServiceForm.NameOf`, `OperatorOf`), so a form's text and its print cannot spell one apart.
+
+**Every literal is bound as the translator binds it.** The spec drew a whole number a `long` holds as a `long` and
+anything else as a double. The translator does otherwise: Calcite holds an exact literal as a `DECIMAL`, whole or not,
+and `GetLiteralValue` binds it through `TryGetExactNumberValue`, which gives the decimal, unless the number is whole and
+its double another number, then the `long` the service holds exactly past 2^53, and declines where neither carries it.
+Of the numbers the gate's plan digests bind, 238 are decimals, 41 doubles and 16 longs, every long past 2^53. So
+the printer binds the number a form holds the same way, its double read from its invariant text; one held
+approximately, which no decimal is, as its double; and refuses one neither carries, as the translator declines it.
+`CosmosParameterList.Add` refuses a lone surrogate, which `sendable` keeps out of every form S sends. There is no
+recheck spine: S owns no parameter.
+
+**What the form cannot say is the type Calcite gave a literal.** A number compared through a reading Calcite types
+approximate, `RETURNING DOUBLE`, is typed `DOUBLE` with it, and the translator binds a double; the form holds the
+number, and the printer binds the decimal. To the service they are one number: within 2^53 an integer and a double
+compare alike, and past it the decimal is the double's own value, held exactly. Nor does the form keep a decimal's
+scale, `30.0` against `30`, which the loader's spelling drops. Of the conjuncts S chose as the translator wrote them,
+158 a pull request and 275 at the gate, every one prints the translator's text byte for byte, each parameter of the
+translator's value, type and scale, but 2 and 8: J's text-equality number branch, its accessor re-typed to `DOUBLE`,
+which an inner filter admits and S's weakening replaces at the switch (O7, loss 1). Were the switch's rehearsal to list
+others, the printer would be handed each comparison's reading beside the form (`TODO.md`).
+
+**What holds it** (line 14). `RenderingPrinterTests`, riding the check run's pass: every best of every bundle the shadow
+opened, 310 forms under the three sets a pull request and 665 at the gate, prints a text `CosmosSqlFormReader` reads back as that form, written as it was
+printed, and printed again from what was read, the same text and values; the same-form conjuncts above; each kind's
+spelling; and each literal against `TryGetExactNumberValue` itself, refusals included. The reader reads no `IN`, bare
+path or constant, and S chose none; those three are held by their spelling alone.
+
+**Its faults** (line 17, O4). `RenderingPrinterFault` M12–M16, planted through `RenderingPrinterFaults`, an `AsyncLocal`
+arm as the translator's: an `OR` in an `AND` unparenthesised, a junction's last member dropped, a `NOT` over a bare
+comparison, each comparison of a junction and each point of an `IN` bound with its neighbour's value, a property's first
+letter's case flipped. Each is caught by the round trip over the forms S chose, on every form it can change: 22, 206,
+10, 91 and 307 of the pull request's 310, and 50, 485, 55, 211 and 662 of the gate's 665 (M16 cannot change a name with
+no letter first, `_ts`). A plant reaches no flow that did not plant it.
+
+**What runs unarmed.** Nothing in planning prints at this commit. The printer runs where S's oracle is warmed, which no
+plan does yet: each schema's rendering graph prints each generation's warm-up answer on the build's thread, kept as its
+reasoning's `Warmed`, so that the first plan pays neither S's first question nor the printer's JIT; it is the
+translator's text for P1. When implementation
+prints (g16), each node reads the fault switch's `volatile bool`, and a junction its members as they are.
+
 ---
 
 ## Differential testing

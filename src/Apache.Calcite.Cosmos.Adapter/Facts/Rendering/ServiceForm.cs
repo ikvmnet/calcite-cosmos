@@ -73,7 +73,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The form and every form within it, through any connective: unlike <see cref="Parts"/>, which keeps to its own.</summary>
         public IEnumerable<ServiceForm> Subforms => Members.SelectMany(m => m.Subforms).Prepend(this);
 
-        public static ServiceForm TestOf(CosmosServiceTest test, string path) => new(ServiceFormKind.Test, test, path, null, ValueSet<string>.Empty, ValueSet.Of(path), Leaf, test switch
+        public static ServiceForm TestOf(CosmosServiceTest test, string path) =>
+            new(ServiceFormKind.Test, test, path, null, ValueSet<string>.Empty, ValueSet.Of(path), Leaf, NameOf(test) + "(" + path + ")");
+
+        public static ServiceForm CompareOf(CosmosServiceTest op, string path, string literal) =>
+            new(ServiceFormKind.Compare, op, path, literal, ValueSet.Of(literal), ValueSet.Of(path), Leaf, "(" + path + " " + OperatorOf(op) + " " + SqlValue.Quote(literal) + ")");
+
+        /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
+        public static string NameOf(CosmosServiceTest test) => test switch
         {
             CosmosServiceTest.IsDefined => "IS_DEFINED",
             CosmosServiceTest.IsNull => "IS_NULL",
@@ -84,9 +91,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosServiceTest.IsObject => "IS_OBJECT",
             CosmosServiceTest.IsArray => "IS_ARRAY",
             _ => throw new ArgumentOutOfRangeException(nameof(test), test, null),
-        } + "(" + path + ")");
+        };
 
-        public static ServiceForm CompareOf(CosmosServiceTest op, string path, string literal) => new(ServiceFormKind.Compare, op, path, literal, ValueSet.Of(literal), ValueSet.Of(path), Leaf, "(" + path + " " + op switch
+        /// <summary>A comparison's operator in the service's SQL, which a form's text and the printer both spell it by.</summary>
+        public static string OperatorOf(CosmosServiceTest op) => op switch
         {
             CosmosServiceTest.Equal => "=",
             CosmosServiceTest.NotEqual => "!=",
@@ -95,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosServiceTest.Greater => ">",
             CosmosServiceTest.GreaterOrEqual => ">=",
             _ => throw new ArgumentOutOfRangeException(nameof(op), op, null),
-        } + " " + SqlValue.Quote(literal) + ")");
+        };
 
         public static ServiceForm InOf(string path, ValueSet<string> literals) =>
             new(ServiceFormKind.In, CosmosServiceTest.In, path, null, literals, ValueSet.Of(path), Leaf, "(" + path + " IN (" + string.Join(", ", literals.Select(SqlValue.Quote)) + "))");

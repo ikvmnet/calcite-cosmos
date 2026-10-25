@@ -36,6 +36,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Func<RenderingDefinition> _define;
         readonly Func<GraphUsage, bool> _ageing;
         readonly TimeSpan _retry;
+        readonly Action<SqlPredicate, RenderingAnswer>? _exercised;
         readonly object _starting = new();
         volatile RenderingTheory? _current;
         volatile Exception? _failure;
@@ -47,11 +48,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <param name="define">The definition every generation is built from.</param>
         /// <param name="ageing">Whether a generation's graph is far enough gone to build its successor; a test forces it.</param>
         /// <param name="retry">How long after a successor's build failed the next is started.</param>
-        public RenderingGraph(Func<RenderingDefinition> define, Func<GraphUsage, bool>? ageing = null, TimeSpan? retry = null)
+        /// <param name="exercised">
+        /// Told the warm-up question and its answer on the build's thread, which production prints so that its printer is
+        /// warm too; what it throws fails the generation, as the question's own failure does.
+        /// </param>
+        public RenderingGraph(Func<RenderingDefinition> define, Func<GraphUsage, bool>? ageing = null, TimeSpan? retry = null, Action<SqlPredicate, RenderingAnswer>? exercised = null)
         {
             _define = define;
             _ageing = ageing ?? (usage => usage.FractionUsed >= SuccessorUsed || usage.InternedValues >= SuccessorInterned);
             _retry = retry ?? DefaultRetry;
+            _exercised = exercised;
         }
 
         /// <summary>
@@ -207,16 +213,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// One question through generate mode, so that a plan never pays the first one a generation's rules are run for; a
         /// definition whose generate mode fails or conflicts on it is no generation.
         /// </summary>
-        static void Exercise(RenderingTheory theory)
+        void Exercise(RenderingTheory theory)
         {
             var label = JsonDocumentPath.Root.Property("label");
+            var question = new SqlPredicate.Compare("<>", new SqlValue.Text(label), SqlValue.Of("bikes"));
             using var bundle = theory.Open(RenderingSet.Production);
-            var root = bundle.Write(new SqlPredicate.Compare("<>", new SqlValue.Text(label), SqlValue.Of("bikes")));
+            var root = bundle.Write(question);
             bundle.Import(new ImportSource("warm", "warm", 0), label, PathValues.Anything, JsonValues.AllBands);
             bundle.Generate(root);
             bundle.RunGenerate(1);
             if (bundle.ReadBest(root) is var answer && (bundle.Failure is not null || answer.Kind == RenderingVerdictKind.Conflict))
                 throw new InvalidOperationException("S's generate mode failed its warm-up question: " + answer.Reason, bundle.Failure);
+
+            _exercised?.Invoke(question, answer);
         }
 
     }

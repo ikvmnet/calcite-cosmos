@@ -2889,6 +2889,20 @@ across documents* and *A join of a container to itself* is the record.
   that admitted nothing, where every residual is a root, or, where the rounds stopped at a child that did not complete,
   from a bundle g15's renderer opens when the split rule first asks for it, stated beneath `StratumFor` of where they
   stopped.
+- **The printer binds the number a form holds, not the type Calcite gave its literal** — *small, for g16's rehearsal.*
+  A number compared through a reading Calcite types approximate (`RETURNING DOUBLE`) is bound by the translator as a
+  double and by the printer as the decimal the form holds, and a decimal's scale (`30.0`) is not in the form: the same
+  number to the service, but another parameter in the plan digest. Of the same-form conjuncts, 2 of 158 a pull request
+  and 8 of 275 at the gate are such, all J's re-typed text-equality number branch, which the switch stops pushing (O7,
+  loss 1), and none differs in scale. If the Writes-armed rehearsal lists others, `Print` takes each comparison's
+  reading beside the form, from the conjunct's IR, and binds a number compared through an approximate one as a double:
+  about 15 lines, at g16.
+- **The reader reads no `IN`, bare path or constant** — *small.* `CosmosSqlFormReader` reads each as opaque, so the
+  printer's round trip cannot hold one; S chooses none (no template proposes an `IN` until N4, and `sendable` lifts no
+  constant), and their spelling is held by a unit test alone. A template that proposes one brings the reader with it.
+- **The printer reads its fault switch at each node** — *small, O4's inventory, from g16.* `RenderingPrinterFaults` is
+  read, one `volatile bool`, for each path name, `NOT` and junction a print writes; nothing prints in planning until
+  implementation does at the switch, when the count of inert sites O4 accepted grows by those reads.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
@@ -2900,8 +2914,6 @@ across documents* and *A join of a container to itself* is the record.
   `CosmosStrictness` reads, and of the JIT. A plan waits once, not a wait a question. g16 starts it at the first
   `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine` measures it paired, with the build's parts (define, hash, warm
   up), which are where to cut if the line fails.
-- **The warm-up's answer is not printed** — *small, for g13.* Each generation answers one question before it is current;
-  its build is to print that answer, so the printer is warm too, once there is a printer.
 - **The cost accumulator is g15's** — *small.* `RenderingCost` is the record the spec drew as g15's
   `RenderingCostSample`: hits, bundles, declines, iterations and time. g15's `CosmosRenderingCost` sums it and holds the
   roots a flow, and the per-query test reads a query's shape off their atoms' union (`RenderingGenerateRun.ShapeOf`) and
