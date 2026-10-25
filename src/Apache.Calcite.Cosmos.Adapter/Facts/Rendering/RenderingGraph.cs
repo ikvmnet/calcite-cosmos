@@ -98,6 +98,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 Start(null, waiting: false);
         }
 
+        /// <summary>The current generation's use of its graph, read without a lock; none before the first is built.</summary>
+        public GraphUsage? Usage => _current?.Graph.Usage;
+
         /// <summary>Opens a bundle under a set on the current generation, waiting for one where none answers.</summary>
         /// <exception cref="InvalidOperationException">A definition threw.</exception>
         public RenderingBundle Open(RenderingSet set)

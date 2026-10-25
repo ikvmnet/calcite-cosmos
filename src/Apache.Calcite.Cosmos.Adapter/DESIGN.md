@@ -6964,15 +6964,15 @@ needs: the coarse answer on a cell's state holds every truth the cell gives, and
 value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
 leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` holds each row to it.
 
-**The shadow asks S what production will.** For each statement the check run plans, riding its pass, it opens the
-bundles of §4.4 in the translator's rounds: each imported from the statement's root, every pending conjunct a root
+**The shadow asks S what production will.** For each statement the check run plans, riding its pass, it reads the
+bundles of §4.4 in the translator's rounds — production's own from g15 (*The shadow in production code*): each imported from the statement's root, every pending conjunct a root
 beside `Through(k)` and `Before(k)`, a later round's atoms stated beneath `StratumFor` — the deepest node of the chain
 every conjunct of which S admitted and the facts graph reads exactly, the root otherwise — and S admitting each owned
 conjunct it proves. The composite is read where §5.2 reads it, and each residual's weakening from the round after S's
 last admission that holds it, or from one closing bundle. A bundle is remembered by its content, the opaque terms'
 readings among it, so a statement asked again opens none.
 - *It follows the translator's rounds.* Their nodes are the facts graph's, built from the translator's admissions;
-  S's own would change a later node, which only production's sites see (g15).
+  S's own would change a later node, which only the sites writing see (the rehearsal).
 - *The translator is compared at one key.* Beside each round's bundle a check bundle of the same roots, import and
   strata claims the translator's texts, so no claimed text's parts reach `BestExact`; and J's weakening of each
   residual is claimed implied beside the bundle S's is read from.
@@ -7267,12 +7267,12 @@ literal, against a typed reading and boxed for a `VARIANT`, to Calcite's value o
 
 ### The production oracle
 
-**What it is.** `RenderingOracle` asks S as production will from g15: one generate bundle a question, of one statement
+**What it is.** `RenderingOracle` asks S as production's sites do from g15: one generate bundle a question, of one statement
 round's roots, imported from the node the round renders from with each later round's atoms stated beneath its stratum,
 run, and each root's `ReadBest` read, its weakening beside. Each schema object has one, `CosmosReasoning.Rendering`,
 beside its `JsonFactGenerations`, over the registry's rows and `CosmosStrictness`'s lists. Those are read once a process
-(`CosmosRendering.Definition`): fixed facts, not something a schema learns. Nothing in planning asks it until g15, so
-no plan moves.
+(`CosmosRendering.Definition`): fixed facts, not something a schema learns. Planning asks it only where a test arms
+the shadow, so no plan moves.
 
 **One a schema object, and nothing the process's but the definition.** The factory makes one reasoning a schema object
 (an account one for all its databases), a host's `CosmosSchema` or `CosmosAccountSchema` one for the containers it is
@@ -7287,8 +7287,8 @@ a child scope's values into its graph, whose pools "are permanent and shared by 
 counts every scope's ids and epochs on the graph's counters, so a frozen theory shared between schemas would share
 what each schema's questions taught it. A sealed root nothing can enter would be a fixed fact, and could be shared;
 Eggnog offers none yet (`TODO.md`). Made is not built: the graph is defined on its own thread the first time it is
-warmed or asked, and until the switch nothing in planning does either, so a schema made and planned builds no S
-(`EachSchemaObjectReasonsInItsOwn`).
+warmed or asked, and until the switch nothing in planning does either but under a test's arm, so a schema made and
+planned builds no S (`EachSchemaObjectReasonsInItsOwn`).
 
 **The key is what the bundle reads.** `RenderingQuestionKey` holds the roots' digests sorted, each opaque term beside
 the value it was read as (its number names it only within one loading, so two conjuncts the loader read apart may share
@@ -7378,11 +7378,8 @@ definition on a thread neither the asker's nor the pool's and under none of its 
 `ASuccessorsFailureLeavesTheCurrentAnswering` fails one. `CosmosRenderingTests.TheTargetChoosesTheSet` holds the
 operand, the metadata and the set, asked of a reasoning of its own that both containers are bound to.
 `CosmosReasoningTests` holds two schemas to two oracles and a made schema to no build, and `ASchemasGraphsCost`,
-explicit, reads what one schema's graphs hold (*What one schema's graphs hold*). Until g15 routes the shadow through
-the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionOracleAnswersAsTheShadowsBundles` asks
-the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the key
-alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from
-`CosmosRendering.Definition`.
+explicit, reads what one schema's graphs hold (*What one schema's graphs hold*). From g15 the shadow asks through the
+oracle, so the bundle is written once, and the tests define S from `CosmosRendering.Definition`.
 
 ### Admission asked once a round
 
@@ -7433,8 +7430,8 @@ none of them and the translator answers as it did; the test holds the rule for a
 **What runs unarmed.** A round allocates its record, its pending array, the closure that names each conjunct's node and
 the list of what the translator rendered, and makes one call; the capture's `volatile bool` is read once a round, where
 it was read once a conjunct asked. Nothing asks after the last round, `StratumFor` is not called, and nothing reaches
-S's graph, its memo or a bundle. Each filter statement holds two arrays, S's forms and weakenings by conjunct, empty
-until g15's arm; implementation (g16) prints the first and the split rule's weakening reads the second.
+S's graph, its memo or a bundle. Each filter statement holds two arrays, S's forms and weakenings by conjunct, filled
+only where the shadow writes; implementation prints the first and the split rule's weakening reads the second.
 
 ### The printer
 
@@ -7549,7 +7546,103 @@ the reader, and S holds that of every shape.
 - G13 (line 18): a builder planted to drop a disjunct is caught by both round trips.
 
 **What runs unarmed.** The split rule's J calls `RenderingRexBuilder.RawValue`, the same lines it held. Nothing in
-planning reads a conjunct's accessors or builds a weakening until g16's site W, so no plan moves.
+planning reads a conjunct's accessors or builds a weakening but site W where a test arms the shadow (g15), so no plan
+moves.
+
+### The shadow in production code
+
+**What it is.** S beside the translator at production's four sites (spec g15), armed only by tests: admission asks S
+once a round (site A), the split rule builds S's weakening of each residual (W), implementation prints S's form (P), and
+the residual projection rule says where it fires by S's split (R). `CosmosRenderingShadow` holds a `volatile bool`, a
+flow's arm in an `AsyncLocal` — who is told (`ICosmosRenderingShadowObserver`), whether the sites take S's answers
+(`Writes`), and the set to prove under, each container's own where none — and the process's arm, which the whole-suite
+rehearsal sets from `COSMOS_RENDERING_WRITES` as the test assembly loads, the shared test reasoning's S build started
+there as the switch starts it at the first table. Every site asks through `CosmosRendering.Ask`, which is
+`RenderingOracle.Ask`, of an observer's oracle or else the statement's schema's, its container's reasoning's: one bundle
+code path, the oracle's, whatever asks.
+
+**S's side of an admission** is `CosmosFilterRendering`, one a set the flow asks under, the statement's own first. A
+round's bundle holds every pending conjunct and every conjunct S admitted, imported from the statement's root, a
+conjunct's atoms stated beneath its stratum — `StratumFor` of the round's node over what S admitted, the root where none
+qualifies — but an atom two conjuncts share; and `Through(k)` and `Before(k)` beside. The scope's lock is held, so the
+chain it reads is the rounds' so far. Writing, the translator is not asked of an owned conjunct, its "no" is S's (O2,
+O8), S admits what it proved, the scope asks after the last round whether S's admissions stand, and where the composite
+is not proven runs the rounds again with S admitting nothing: what the switch does, flipped by one default. Beside the
+translator, the rounds are the translator's, and what S proves is what it would admit in them.
+
+**What it came to** is read once the rounds are done, when the split rule or implementation first asks: the composite
+where §5.2 reads it (`Through(k)` of the last round S admitted in where it admitted all it was asked, else `Before` of
+the round after, else `Before` in one closing bundle); S's forms, void where the composite is not; the residuals; and
+each one's weakening, from the last round after S's last admission that holds them all, the closing bundle where it
+opened, round 1 where S's admissions were voided, or else from a closing bundle opened then, stated beneath `StratumFor`
+of where the rounds stopped — never the last stratum a later question opened, which a coarse reading may narrow. A
+closing bundle is opened only where a statement asks for it.
+
+**A statement Volcano reads again asks nothing new.** Volcano reads one condition as many nodes, each a statement of
+the same terms (`CosmosOracle` keeps one tree a digest), whose rounds ask the same questions of the same frozen nodes. The
+merged-view hierarchy's first plan asks S 449 questions over 25 keys, where the spec drew about 23 statements a plan: at
+the oracle's 20 µs a hit, 9–27 ms each later plan, against line 30's 10. So the oracle keeps what each statement's terms
+were answered (`RenderingOracle.Answered`, weak on the terms), by set and theory and a question named within them — its
+conjuncts, the node each is stated beneath, since a node names its import within its terms, the junctions and the opaque
+terms' readings — and a question asked before is handed its answer with no key built. A test's plant reads a node no key
+names and is asked afresh, a decline is never kept, and the oracle's memory cleared takes what the terms kept with it,
+so that a measure's first plan asks again.
+
+**W, P and R.** Writing, the split rule pushes S's weakening of every residual, built as a Rex over the conjunct's
+accessors and held by `IsApplied` and `TryTranslate` as J's was, and calls no J; implementation prints the form admission
+kept into the statement's list, asking S nothing; the capture is told of S's prints as of the translator's texts.
+Beside the translator, the split rule also makes S's split under each set and tells the shadow each weakening's text,
+implementation prints S's form into a list of its own, and the residual projection rule says whether it fires by each
+split, the class *projection placement*.
+
+**The shadow judges production's bundles.** `RenderingGenerateRun` is the observer: its own oracle over its graph, so
+that a plant's graph is the one production asks and each key's first question opens a bundle, which the oracle's hook
+lets the shadow read before it goes. After planning, a check bundle of each recorded question's roots, import and strata
+claims the translator's texts: one key by construction. Moved onto production's sites, it answers as the reconstructing
+harness did, row for row: the pull request's 5,670 admission rows and 2,925 weakening rows under the three sets are
+g14's, every class, form, reason and stratum; 1,078 bundles under `Production`, 1,232 candidates over 830 atoms. PR B's
+cross-check of the two copies of the bundle goes with the copy.
+
+**The cost instrument.** `CosmosRenderingCost` is an `AsyncLocal` list a test arms around a plan; each question `Ask`
+answers adds a `RenderingCostSample`: the site and set, the roots, the oracle's count and time, the candidates proposed,
+the bytes the thread allocated, the graph's use before and after, and, where the test hands it the thread's processor
+clock, the thread's own time, which a busy host stretches far less than the wall's. Unmeasured, `Ask` is the oracle's
+call alone.
+
+**What it costs, on the build machine.** `RenderingPerQueryCostTests`, Release `net10.0`, four processes a fact, S
+writing, on a host of 4 cores and 8 threads at 100 % load at the median and the 90th centile of every sample. S's wall
+time on a first plan, median / 90th centile: 1–3 conditions 8–21 / 53–76 ms (line 23: 30 / 75), 5–7 conditions 33–56 /
+95–237 ms and lists of 5–19 21–109 / 68–357 ms (lines 24 and 25: 120 / 160); again 0.002–0.034 / 0.003–0.044 ms, no
+bundle (26); no filter, no bundle (27); the rare shapes 41–670 ms, none above 1 s and none failing (28). The hierarchy's
+first plan 0.97–1.59 s (0.70 s at 89 % load), a later one 5–10 ms at the median over fresh connections and 1.2–1.8 ms
+over kept ones (line 30: 1.0 s; 10 ms). These move with the host, one process's reading up to three times another's,
+while S's share of the plan holds: 3.3–4.0 % of the hierarchy's first plan, which itself took 28–40 s against 22 s at
+89 % load. S's thread time, which a thread waiting to run does not gain, reads 4.6–11.9 / 21–28 ms for 1–3 conditions,
+14–38 / 36–84 ms for 5–7, 12–45 / 32–112 ms for lists, 0.48–0.62 s for the hierarchy's first plan, and 3.3–8.5 ms at the
+median for a later one over fresh connections, 7.8–13.7 ms at most, a collection on the thread among it: within each
+pass line but that last. Over a fresh connection the containers' statement trees are new, so the answers their terms
+kept are not there, and the plan's questions reach the oracle's memory, which spells each new node's import. The first
+plan in a process, paired with S off over three runs of five pairs, differs by −0.77, −0.34 and +1.21 s at the median,
+−0.47 s over all fifteen, each pair −2.5 to +2.7 s (line 29: 0.5 s, killed above 1.0 s): S's build costs the process
+0.9–2.9 s of processor time, which a saturated host takes from the plan.
+
+**What runs unarmed.** Site A reads one `volatile bool` a round, W one a split, P one a filter written; R has none of its
+own. Nothing is allocated, nothing reaches S, and each statement holds three fields more. Armed beside the translator,
+the sites ask S and judge its weakenings in the facts graph; neither changes what the translator is asked, so no plan
+moves, which `CaptureChangesNoPlan` holds at the gate with the shadow armed.
+
+**What holds it.** `RenderingShadowTests`: line 6 asserted — under each set the legs plan under no more regressions than
+O2's cap, each for a reason O2 lists; line 13b — no weakening looser than J's but O7's listed losses, none dropped;
+`TheShadowJudgesTheBundlesProductionOpened`; `NoProjectionReachesS` (§8), S asked only of a `WHERE`'s conjuncts and
+their junctions. `RenderingGainsTests` holds line 19 on what is sent: P1 as the printer writes it, P5 in the text its
+pushed Rex translates to, P6 a listed loss there too. `RenderingGateFaultTests`: G9, the key without the characters,
+the strata stated, the set, the theory's digest or an opaque's reading, two questions differing in that alone handed one
+answer; G10, a run that stopped short and a contradicted bundle admitting and weakening nothing, and a generation
+retired between admission and implementation changing nothing implementation prints. `RenderingConformanceTests` (C6,
+line 4) runs every form S chose under `Emulator`, printed, on the emulator over one document per cell its bundle cut.
+`PlanDigestTests.RepeatsOpenNoBundle` rides the determinism test's two passes. `RenderingPerQueryCostTests` holds lines
+23–30, explicit, on S's wall time, the machine's load and S's thread time read beside, every reading printed before any
+is judged.
 
 ---
 

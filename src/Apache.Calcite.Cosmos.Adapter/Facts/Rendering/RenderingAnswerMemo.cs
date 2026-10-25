@@ -42,6 +42,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
         }
 
+        /// <summary>How many times it has forgotten every answer: what a cache in front of it names its answers by.</summary>
+        public int Epoch { get; private set; }
+
+        /// <summary>Forgets every answer, so that each question is asked of S again: a first plan, for the per-query cost test.</summary>
+        public void Clear()
+        {
+            lock (_entries)
+            {
+                _entries.Clear();
+                _recent.Clear();
+                Epoch++;
+            }
+        }
+
         /// <summary>
         /// The frozen theory's rows, hashed once a theory: generations defined alike share answers, and a planted row shares
         /// none. A primitive is no row, so a plant of one keeps a memo of its own.

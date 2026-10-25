@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly object _lock = new();
         Admission? _admission;
 
-        /// <summary>The admission whose rounds are running, under the lock: what <see cref="StratumFor"/> reads meanwhile.</summary>
+        /// <summary>The admission whose rounds are running, under the lock: what <see cref="StratumFor(StatementTerms.Node, Func{int, bool})"/> reads meanwhile.</summary>
         Admission? _admitting;
 
         internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
@@ -119,11 +119,23 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <param name="node">The round's node, or where the rounds stopped.</param>
         /// <param name="inBundle">Whether a conjunct is in the bundle: S's, through the round's junction.</param>
-        internal StatementTerms.Node StratumFor(StatementTerms.Node node, Func<int, bool> inBundle)
+        internal StatementTerms.Node StratumFor(StatementTerms.Node node, Func<int, bool> inBundle) => StratumFor(node, inBundle, null).Node;
+
+        /// <summary>
+        /// <see cref="StratumFor(StatementTerms.Node, Func{int, bool})"/>, with the node's depth in the chain, zero for the root,
+        /// and the conjuncts it assumes by index; under a plant's reading precision where one is given (G12).
+        /// </summary>
+        internal (StatementTerms.Node Node, int Depth, IReadOnlyList<int> Assumes) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool>? readExactly)
         {
             lock (_lock)
-                return (_admitting ?? Admitted).StratumFor(node, inBundle);
+                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? RenderingFamily.ReadExactly);
         }
+
+        /// <summary>Where the rounds stopped: the last round's node, or the child that stopped them; never the last stratum opened after.</summary>
+        internal StatementTerms.Node Stopped => Admitted.Stopped;
+
+        /// <summary>The tree of contexts the statement is admitted in, which every statement of its digest shares within a generation.</summary>
+        internal StatementTerms Terms => _terms;
 
         /// <summary>
         /// The strata, admitted the first time something asks of them.
@@ -156,12 +168,15 @@ namespace Apache.Calcite.Cosmos.Facts
 
             StatementTerms.Node _final;
 
+            /// <summary>Where the rounds stopped.</summary>
+            public StatementTerms.Node Stopped { get; private set; }
+
             public Admission(CosmosStatementScope scope)
             {
                 _scope = scope;
                 Round = new int[scope.Statement.Conjuncts.Count];
                 Before = new StatementTerms.Node?[Round.Length];
-                _final = scope._terms.Root;
+                _final = Stopped = scope._terms.Root;
                 Strata = Array.Empty<IReadOnlyList<int>>();
                 Residual = Array.Empty<int>();
 
@@ -239,7 +254,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     }
                 }
 
-                _final = node;
+                _final = Stopped = node;
                 Strata = strata;
                 Residual = Enumerable.Range(0, count).Where(i => Round[i] == 0).ToArray();
                 return byS;
@@ -253,15 +268,15 @@ namespace Apache.Calcite.Cosmos.Facts
             /// The deepest node of the chain at or above <paramref name="node"/> every conjunct of which it assumes is in the
             /// bundle and read exactly; the root, which assumes none, where none is, and for a node not of the chain.
             /// </summary>
-            public StatementTerms.Node StratumFor(StatementTerms.Node node, Func<int, bool> inBundle)
+            public (StatementTerms.Node, int, IReadOnlyList<int>) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool> readExactly)
             {
                 // The chain's j-th node assumes what rounds 1 to j admitted.
                 var conjuncts = _scope.Statement.Conjuncts;
                 for (var j = _chain.LastIndexOf(node); j > 0; j--)
-                    if (Enumerable.Range(0, Round.Length).All(i => Round[i] == 0 || Round[i] > j || inBundle(i) && RenderingFamily.ReadExactly(conjuncts[i])))
-                        return _chain[j];
+                    if (Enumerable.Range(0, Round.Length).All(i => Round[i] == 0 || Round[i] > j || inBundle(i) && readExactly(conjuncts[i])))
+                        return (_chain[j], j, [.. Enumerable.Range(0, Round.Length).Where(i => Round[i] > 0 && Round[i] <= j)]);
 
-                return _chain[0];
+                return (_chain[0], 0, []);
             }
 
             public int[] Round { get; }

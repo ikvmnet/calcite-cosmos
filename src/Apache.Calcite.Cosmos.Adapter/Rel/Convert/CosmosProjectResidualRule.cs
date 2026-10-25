@@ -216,7 +216,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // columns, and race the filter rules for every filter in the plan. Split is the filter
             // rules' own decision, facts established by sibling conjuncts included, so the two cannot
             // disagree about which conjuncts render.
-            var (pushable, residual) = CosmosFilterSplitRule.Split(filter, _convention.Container);
+            // Site R: S's weakenings decide whether this fires, which the shadow is told beside the translator's split.
+            var (pushable, residual) = CosmosFilterSplitRule.Split(filter, _convention.Container, projecting: true);
             if (pushable.Count > 0 || residual.Count == 0)
                 return false;
 

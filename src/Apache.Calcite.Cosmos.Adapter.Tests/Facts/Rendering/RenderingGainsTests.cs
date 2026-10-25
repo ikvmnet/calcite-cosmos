@@ -19,11 +19,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The gains line (spec g05; line 19, the forms half; gates map §5), read off the generate shadow of each statement
-    /// under each set: P1 sent exactly; P2 and P3 exactly over a mixed-kind twin of <c>typed</c> whose declaration keeps
-    /// U+0000 out of the label, and under <c>Production</c>; P4's comparisons weakened tighter than J, or as O7 lists; P5's
-    /// second arm keeping its kind; P6, killed, its comparison over a cast no member the Rex builder writes; P8 counted;
-    /// P7, already pushed, not S's to regress. On a service each exact gain keeps Calcite's rows.
+    /// The gains line (spec g05, g15; line 19; gates map §5), read off the generate shadow of each statement under each
+    /// set, as production's sites asked S: P1 sent exactly, as the printer writes it; P2 and P3 exactly over a mixed-kind
+    /// twin of <c>typed</c> whose declaration keeps U+0000 out of the label, and under <c>Production</c>; P4's comparisons
+    /// weakened tighter than J, or as O7 lists; P5's second arm keeping its kind, in the text its pushed Rex translates
+    /// to; P6, O7's listed loss, its comparison over a cast no member the Rex builder writes; P8 counted; P7, already
+    /// pushed, not S's to regress. On a service each exact gain keeps Calcite's rows.
     /// </summary>
     public sealed class RenderingGainsTests : IClassFixture<RenderingGainsTests.Fixture>
     {
@@ -105,6 +106,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (sql, twin, sets, form, text) in Exact)
             {
                 CosmosSqlFormReader.Read(text, [RenderingRecallTests.Bikes]).Form.Should().Be(form, text);
+                RenderingPrinter.Print(form, new Dictionary<string, Apache.Calcite.Cosmos.Facts.JsonDocumentPath> { [Label] = ProbeRows.LabelPath }, "c", new CosmosParameterList())
+                    .Should().Be(text, "the printer writes S's form as listed");
                 foreach (var set in RenderingGenerateRun.Sets)
                 {
                     var classes = twin ? Classes(Twinned.Value, sql, set, TwinSql) : Classes(Plain.Value, sql, set, PlainSql);
@@ -139,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// P5 as restated (§4.3): probe T4's disjunction, each kind spelled per arm, has no exact form, and its weakening
-        /// keeps the second arm's <c>c.kind = 'c'</c>. P6 is O7's listed loss until Stage 3: its weakening beneath the
+        /// keeps the second arm's <c>c.kind = 'c'</c>, in the text its Rex translates to as the split rule would push it. P6 is O7's listed loss until Stage 3: its weakening beneath the
         /// <c>NOT</c> holds no comparison of the price with a number, since the cast parses a string Calcite then compares
         /// where the service compares no string, so no accessor of the conjunct writes C4's
         /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> as it means. Stage 3's guarded spelling, once the loader reads
@@ -157,9 +160,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set} P5: " + string.Join("; ", t4.Select(w => w.Mine!.Text)));
                 t4.Should().NotBeEmpty().And.OnlyContain(w => w.Mine!.Members.Any(arm => arm.Subforms.Contains(kindC)), $"P5 under {set}");
 
+                // What the split rule pushes for it (site W): the Rex S's weakening builds, as the translator writes it.
+                var pushed = Probe.Value.Shadow!.Pushes.Where(w => w.Set == set && w.Form.Kind == ServiceFormKind.Or).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set} P5 pushed: " + string.Join("; ", pushed.Select(w => w.Text)));
+                pushed.Should().NotBeEmpty().And.OnlyContain(w => w.Text != null && w.Text.Contains("(c.kind = @p", StringComparison.Ordinal), $"P5's pushed text under {set}");
+
                 var p6 = Plain.Value.Shadow!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).ToList();
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set} P6: " + string.Join("; ", p6.Select(w => w.Mine?.Text)));
                 p6.Should().NotBeEmpty().And.OnlyContain(w => w.Mine == null || w.Mine.Subforms.All(f => f.Kind != ServiceFormKind.Compare || f.Path != price), $"P6 under {set}");
+                Plain.Value.Shadow!.Pushes.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).Should().OnlyContain(w => w.Text == null || w.Text.Contains("c.price >", StringComparison.Ordinal) == false,
+                    $"P6's pushed text under {set} compares no price");
             }
         }
 

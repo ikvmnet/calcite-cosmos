@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>The reports' folder, made where it is not.</summary>
-        static string Folder()
+        internal static string Folder()
         {
             var folder = Path.GetFullPath(Path.Combine("TestResults", "rendering"));
             Directory.CreateDirectory(folder);

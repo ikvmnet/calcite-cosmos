@@ -53,13 +53,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The pull request's run, once a process, in a reasoning of its own: the partition run's 200 predicates, or 1,000 at
-        /// the gate; and generate mode's shadow over every statement it plans, riding its pass.
+        /// the gate; and generate mode's shadow over every statement it plans, told by production's sites as it plans.
         /// </summary>
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
         {
             var reasoning = new CosmosReasoning();
             return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)),
-                shadow: new RenderingGenerateRun(askOracleEvery: 16));
+                shadow: new RenderingGenerateRun());
         });
 
         readonly Action<RenderingSet, TimeSpan>? Timed;
@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <param name="memo">The memo, or one of its own.</param>
         /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
         /// <param name="timed">Told each bundle's time from open to dispose, with its set (the cost line).</param>
-        /// <param name="shadow">Generate mode's shadow, asked of each statement once its checks are made; none where <c>null</c>.</param>
+        /// <param name="shadow">Generate mode's shadow, armed at production's sites while each statement plans and read once its checks are made; none where <c>null</c>.</param>
         public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null) =>
             (Memo, Graph, Timed, Shadow) = (memo ?? new RenderingMemo(), graph ?? Measured, timed, shadow);
 
@@ -208,6 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var recorder = new RenderingRecorder();
             var queries = new List<(string? Where, int From, int To)>();
             using (recorder.Arm())
+            using (Shadow is { } observer ? CosmosRenderingShadow.Arm(observer) : null)
             {
                 RelNode planned;
                 try
@@ -288,8 +289,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var weakening in records.Where(r => r.Site == 3).DistinctBy(r => (r.Statement, r.Conjunct, CosmosSqlFormReader.Inline(r.Text, r.Parameters))))
                 CheckWeakening(input, unit++, statements, weakening);
 
-            // The shadow reads the same scopes, after planning, each statement's records its own; and the statements none of
-            // whose conjuncts rendered, which wrote none.
+            // The shadow reads what production's sites asked of S, after planning, each statement's records its own; and the
+            // statements none of whose conjuncts rendered, which wrote none.
             var read = statements.Concat(recorder.Read.Except(statements)).ToList();
             if (Shadow is { } shadow)
                 foreach (var statement in read)

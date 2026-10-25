@@ -4,6 +4,7 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
+
 using FluentAssertions;
 
 using Xunit;
@@ -12,9 +13,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The generate shadow over the pull request's run (spec g05; line 6): every statement shadowed under each set, no
-    /// conjunct in the engine's class, and the translator's exact pushes S declines reported by reason against O2's cap,
-    /// which line 6 asserts from g15.
+    /// The generate shadow over the pull request's run, told by production's sites (spec g15; lines 6 and 13b): every
+    /// statement shadowed under each set, no conjunct in the engine's class, the translator's exact pushes S declines no
+    /// more than O2's cap and each for a listed reason, and no weakening looser than J's but O7's listed losses.
     /// </summary>
     public sealed class RenderingShadowTests
     {
@@ -22,10 +23,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>O2's residue: 25 a pull request, 53 at the gate's 1,000 predicates.</summary>
         static int Cap => CosmosDifferentialTests.PartitionedPredicates > 200 ? 53 : 25;
 
+        /// <summary>O2's reasons a regression may have: R4's band filter, a stratum read at the root, the composite, or the conjunct on its merits.</summary>
+        static readonly string[] Listed = [RenderingGenerateRun.BandFilter, RenderingGenerateRun.Shallower, RenderingGenerateRun.Composite, RenderingGenerateRun.OnItsMerits];
+
         /// <summary>
-        /// The translator's exact pushes are S's, but for the regressions each with its reason, reported against the cap; the
-        /// reports are written. No bundle stopped short, conflicted or declined, none lifted a sentinel (line 20, in the
-        /// shape production opens bundles), and the shadow failed on no statement.
+        /// Line 6: the translator's exact pushes are S's, but for the regressions, under each set the legs plan under no more
+        /// than O2's cap, each for a reason O2 lists; the reports are written. No bundle stopped short, conflicted or declined,
+        /// none lifted a sentinel (line 20, in the bundles production opens), and the shadow failed on no statement.
         /// </summary>
         [Fact]
         public void TheTranslatorsExactPushesAreS()
@@ -38,23 +42,89 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             run.Failures.Where(f => f.Failure.StartsWith("shadows", StringComparison.Ordinal)).Should().BeEmpty();
             shadow.Classes.Should().NotBeEmpty();
             shadow.Classes.Where(c => c.Class == RenderingGenerateRun.Engine).Select(c => $"{c.Set} {c.Input} {c.Name}/{c.Statement}/{c.Conjunct}").Should().BeEmpty();
+            shadow.Declines.Should().BeEmpty("no question declines in CI");
             shadow.Bundles.Where(b => b.Failure is not null || b.Run != new RenderingRun(Eggnog.RunStopReason.Completed, true, false))
                 .Select(b => $"bundle {b.Id} {b.Set}: {b.Run} {b.Failure?.Message}").Should().BeEmpty();
             shadow.Bundles.SelectMany(b => b.Forms.Select(f => f.Form).Concat(b.Answers.Values.SelectMany(a => new[] { a.Best, a.Weakening }).OfType<ServiceForm>()))
                 .Where(RenderingCheckRun.Opaque).Select(f => f.Text).Distinct().Should().BeEmpty("no sentinel is lifted");
+
+            foreach (var set in RenderingGenerateRun.AssertedSets)
+            {
+                var regressions = shadow.Classes.Where(c => c.Set == set && c.Class == RenderingGenerateRun.Regression).ToList();
+                regressions.Count.Should().BeLessThanOrEqualTo(Cap, $"O2's cap under {set}");
+                regressions.Where(r => Listed.Contains(r.Reason) == false).Select(r => $"{r.Input} {r.Name}/{r.Statement}/{r.Conjunct}: {r.Reason}").Should().BeEmpty($"every regression under {set} has a reason O2 lists");
+            }
         }
 
         /// <summary>
-        /// The oracle production asks answers as the shadow's bundles do: asked the same question beside one generate bundle
-        /// in sixteen, each root's verdict, best and weakening alike, under the key the shadow files it under. Until g15 routes
-        /// the shadow through it, this holds the two copies of the bundle to each other.
+        /// Line 13b: no residual whose J weakening the shadow saw is sent looser than J's, or with none, under each set the legs
+        /// plan under, but O7's listed losses — J's holding a member the Rex builder cannot write, or J's unproven to S.
         /// </summary>
         [Fact]
-        public void TheProductionOracleAnswersAsTheShadowsBundles()
+        public void NoWeakeningIsLooserThanJsButTheListedLosses()
         {
             var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
-            shadow.OracleAsked.Should().BeGreaterThan(50);
-            shadow.OracleParted.Should().BeEmpty();
+            foreach (var set in RenderingGenerateRun.AssertedSets)
+            {
+                var classes = shadow.Weakenings.Where(w => w.Set == set).Select(w => (Row: w, Class: RenderingGenerateRun.ClassOf(w))).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: " + string.Join(", ", classes.GroupBy(c => c.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}")));
+                classes.Where(c => c.Class is "dropped" or "translator-only" or "looser" or "parting").Select(c => $"{c.Row.Input} {c.Row.Name}/{c.Row.Statement}/{c.Row.Conjunct}: {c.Class}, J {c.Row.Text}, S {c.Row.Mine?.Text}")
+                    .Should().BeEmpty($"under {set}, only O7's listed losses are looser");
+            }
+        }
+
+        /// <summary>
+        /// The bundles the shadow judges are production's: every question a site asked was answered under a key whose bundle the
+        /// oracle's hook let the shadow read, each round's row names it, and asked again after planning every question was a
+        /// hit — one bundle code path, the oracle's.
+        /// </summary>
+        [Fact]
+        public void TheShadowJudgesTheBundlesProductionOpened()
+        {
+            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var keys = shadow.Bundles.Select(b => b.Key).ToHashSet();
+            shadow.Asked.Should().NotBeEmpty();
+            shadow.Admissions.Where(a => a.Bundle == 0).Select(a => $"{a.Set} {a.Input} {a.Name}/{a.Statement}/{a.Conjunct}").Should().BeEmpty("every round's bundle was read");
+            shadow.Bundles.Should().OnlyContain(b => b.Key != null, "each bundle is filed under the oracle's key");
+            keys.Count.Should().Be(shadow.Bundles.Count, "a key's bundle is opened once");
+            var (hits, bundles, declines) = shadow.Oracle.Counts;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Asked.Count} questions; the oracle: {hits} hits, {bundles} bundles, {declines} declines");
+            (bundles, declines).Should().Be((shadow.Bundles.Count, 0L), "the oracle opened each bundle the shadow read, and no other");
+        }
+
+        /// <summary>
+        /// Spec §8's guard: S is asked only of a <c>WHERE</c>'s conjuncts and the junctions of them, through filter admission
+        /// (site A) and the split — the split rule's (W) and the residual projection rule's (R) — and never of a projected
+        /// expression. Planned: the <c>CASE</c> whose branch reads a refusing <c>BIGINT</c>, which the projection split pushes
+        /// as a column (<c>TODO.md</c>), alone and beside a filter; and projections over a filter wholly residual, the
+        /// residual projection rule's statements, beside one that renders.
+        /// </summary>
+        [Fact]
+        public void NoProjectionReachesS()
+        {
+            const string Case = "CASE WHEN LOWER(JSON_VALUE(c.\"DOC\", '$.e')) = 'x' THEN JSON_VALUE(c.\"DOC\", '$.w' RETURNING BIGINT) END AS \"w\"";
+            string[] sql =
+            [
+                $"SELECT c.\"id\", {Case} FROM strings AS c",
+                $"SELECT c.\"id\", {Case} FROM strings AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') <> 'a'",
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a') AS \"a\" FROM strings AS c WHERE SOUNDEX(JSON_VALUE(c.\"DOC\", '$.s')) = 'A120'",
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a') AS \"a\" FROM strings AS c WHERE SOUNDEX(JSON_VALUE(c.\"DOC\", '$.s')) = 'A120' AND JSON_VALUE(c.\"DOC\", '$.b') <> 'x'",
+            ];
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("projection", sql, [.. CosmosDifferentialTests.Containers]), shadow: new RenderingGenerateRun(sets: [RenderingSet.Production]));
+            run.Failures.Should().BeEmpty();
+            var shadow = run.Shadow!;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Asked.Count} questions; placements: " + string.Join("; ", shadow.Placements.Select(p => $"{p.Name}/{p.Statement} translator {p.Translator}, S {p.Mine}")));
+            shadow.Asked.Should().NotBeEmpty();
+            foreach (var (statement, question) in shadow.Asked)
+            {
+                var conjuncts = statement.Statement.Conjuncts;
+                question.Site.Should().BeOneOf(Adapter.Metadata.CosmosFilterRendering.Admission, Adapter.Metadata.CosmosFilterRendering.Weakening);
+                question.Roots.Should().OnlyContain(r => conjuncts.Contains(r) || r is Cosmos.Facts.SqlPredicate.And && ((Cosmos.Facts.SqlPredicate.And)r).Arms.All(conjuncts.Contains),
+                    "S is asked of a WHERE's conjuncts and their junctions alone");
+                question.Roots.SelectMany(r => r.Paths).Select(Cosmos.Facts.SqlValue.Spell).Should().NotContain(["$[\"e\"]", "$[\"w\"]"], "nothing the CASE projects reaches S");
+            }
+
+            shadow.Placements.Should().NotBeEmpty("the residual projection rule asked the split (site R)");
         }
 
         /// <summary>

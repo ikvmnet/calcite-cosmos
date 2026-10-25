@@ -1,17 +1,21 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
     /// What production's rendering graph S is defined from: the registry's rows, strict where Calcite answers null for a
-    /// null as its one reader of that says, read once a process, being facts fixed in the assembly; and the set a
-    /// container's statements are proven under. Each schema's oracle is its reasoning's
-    /// (<see cref="CosmosReasoning.Rendering"/>). Nothing in planning asks one yet.
+    /// null as its one reader of that says, read once a process, being facts fixed in the assembly; the set a container's
+    /// statements are proven under; and the one path every site asks S through. Each schema's oracle is its reasoning's
+    /// (<see cref="CosmosReasoning.Rendering"/>). Planning asks one only where a test arms the shadow
+    /// (<see cref="CosmosRenderingShadow"/>).
     /// </summary>
     internal static class CosmosRendering
     {
@@ -35,6 +39,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>The set a statement is proven under: what Azure was measured to do, or the emulator (O1).</summary>
         public static RenderingSet SetFor(CosmosServiceTarget target) => target == CosmosServiceTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
+
+        /// <summary>
+        /// Asks S one question through an oracle, the statement's schema's or a test's (<see cref="RenderingOracle.Ask"/>):
+        /// the one bundle code path every site takes, and where the flow is measured (<see cref="CosmosRenderingCost"/>), what
+        /// it cost: the oracle's count and time, the candidates proposed, the bytes the thread allocated, and the graph's use.
+        /// </summary>
+        internal static RenderingOracle.RenderingBundleAnswer Ask(RenderingOracle oracle, string site, RenderingSet set, IReadOnlyList<SqlPredicate> roots,
+            IReadOnlyDictionary<long, SqlValue>? opaques, ImportSource source, Eggnog.Scope? root, PredicateRules? rules,
+            IReadOnlyList<(SqlPredicate Atom, ImportSource Source, Eggnog.Scope? Node, PredicateRules? Rules)> beneath,
+            Action<RenderingBundle, IReadOnlyList<Pred>, ImportReport, RenderingRun, TimeSpan>? opened)
+        {
+            if (CosmosRenderingCost.Measuring == false)
+                return oracle.Ask(set, roots, opaques, source, root, rules, beneath, opened);
+
+            var (bytes, before, candidates, clock) = (System.GC.GetAllocatedBytesForCurrentThread(), oracle.Usage, 0, CosmosRenderingCost.ThreadClock);
+            var started = clock?.Invoke();
+            var answer = oracle.Ask(set, roots, opaques, source, root, rules, beneath, (bundle, terms, import, run, elapsed) =>
+            {
+                candidates = bundle.Failure is null ? bundle.Scope.Rows(bundle.Theory.Candidate).Count() : 0;
+                opened?.Invoke(bundle, terms, import, run, elapsed);
+            });
+            CosmosRenderingCost.Add(new(site, set, roots, answer.Cost, candidates, System.GC.GetAllocatedBytesForCurrentThread() - bytes, before, oracle.Usage, clock?.Invoke() - started));
+            return answer;
+        }
+
+        /// <summary>An answer a statement of the same terms was given for the same question, handed again: a hit, counted where the flow is measured.</summary>
+        internal static RenderingOracle.RenderingBundleAnswer Reused(RenderingOracle oracle, string site, RenderingSet set, IReadOnlyList<SqlPredicate> roots,
+            RenderingOracle.RenderingBundleAnswer answer, TimeSpan elapsed)
+        {
+            answer = answer with { Cost = RenderingCost.None with { Hits = 1, Elapsed = elapsed } };
+            if (CosmosRenderingCost.Measuring)
+                CosmosRenderingCost.Add(new(site, set, roots, answer.Cost, 0, 0, oracle.Usage, oracle.Usage));
+
+            return answer;
+        }
 
     }
 

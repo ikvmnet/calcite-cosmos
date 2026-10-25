@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
-using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
 
@@ -14,8 +14,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The capture changes no plan: every plan digest is the same with a recorder armed as without, each arm in a reasoning
-    /// of its own.
+    /// The capture and the shadow change no plan: every plan digest is the same with a recorder and the generate shadow armed
+    /// as without, each arm in a reasoning of its own — S asked at all four of production's sites, under every set, beside
+    /// the translator (spec g15, line 21).
     /// </summary>
     public sealed class RenderingCaptureTests
     {
@@ -30,8 +31,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static void Unchanged(Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements)
         {
-            var recorder = new RenderingRecorder();
-            PlanDigests.Unchanged(recorder.Arm, statements, _ => recorder.Records.Should().NotBeEmpty("the capture was armed"));
+            var (recorder, shadow) = (new RenderingRecorder(), new RenderingShadowCounter());
+            PlanDigests.Unchanged(() => new Both(recorder.Arm(), CosmosRenderingShadow.Arm(shadow, writes: false)), statements, _ =>
+            {
+                recorder.Records.Should().NotBeEmpty("the capture was armed");
+                TestContext.Current.TestOutputHelper?.WriteLine($"the shadow: {shadow.Counts}");
+                (shadow.Counts.Opened, shadow.Counts.Printed).Should().Match<(int Opened, int Printed)>(c => c.Opened > 0 && c.Printed > 0, "S was asked at admission and printed at implementation");
+            });
+        }
+
+        sealed class Both(IDisposable first, IDisposable second) : IDisposable
+        {
+
+            public void Dispose()
+            {
+                second.Dispose();
+                first.Dispose();
+            }
+
         }
 
     }
