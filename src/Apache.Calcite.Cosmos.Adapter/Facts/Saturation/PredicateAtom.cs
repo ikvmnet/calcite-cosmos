@@ -1075,7 +1075,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 return T | F | R;
 
                             return _roundsFrom is not null ? (Renderings.ParseDouble(text) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(DoubleBound.Of(c)), 0) : R)
-                                : _parsesDecimal ? (Renderings.ParseDecimal(text) is string n ? By(TryNumberOf(n, out var e) ? e.CompareTo(c) : DoubleBound.Compare(ApproximateOf(n)!.Value, c), 0) : R)
+                                : _parsesDecimal ? (Renderings.DecimalSide(text, c) is int side ? By(side, 0) : R)
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
                         }
 

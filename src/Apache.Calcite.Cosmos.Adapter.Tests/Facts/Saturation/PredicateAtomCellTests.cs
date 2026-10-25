@@ -211,6 +211,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new[] { new PathCell.Point(Of("30")), new PathCell.Point(Of(30m)), new PathCell.Point(Of(31m)), (PathCell)new PathCell.Null() }.Select(thirty.OnCell).Should().Equal(F, T | F, F, U);
         }
 
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> reads a stored text as <c>BigDecimal</c> does, exactly at any length: <c>1e-50</c> is no
+        /// zero, a text past 28 places no whole number, and an exponent past an <c>int</c> raises, as Java's parse does; beside
+        /// the raise of the column a typed reading stands for too. A rendering is read as a decimal only where one holds it.
+        /// </summary>
+        [Fact]
+        public void ADecimalReturningReadsATextExactlyPastADecimal()
+        {
+            const Truths T = Truths.True, F = Truths.False, R = Truths.Raises;
+            Truths On(string op, decimal literal, string text) => PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), op, Of(literal)).OnCell(new PathCell.Point(Of(text)));
+
+            new[] { "1e-50", "-0.0e5", "0E99999999999" }.Select(t => On("=", 0m, t)).Should().Equal(F | R, T | R, R);
+            new[] { "2.00000000000000000000000000001", "2.000000000000000000000000000000000", "200e-2" }.Select(t => On("=", 2m, t)).Should().Equal(F | R, T | R, T | R);
+            new[] { "2.00000000000000000000000000001", "1.99999999999999999999999999999", "1e400", "-1e400" }.Select(t => On(">", 2m, t)).Should().Equal(T | R, F | R, T | R, F | R);
+
+            Renderings.ParseDecimal("1e-50").Should().NotBe(Of(0m)).And.Match(n => IsExactNumber(n!) == false, "no decimal holds it");
+            Renderings.ParseDecimal("2.00000000000000000000000000001").Should().Match(n => IsExactNumber(n!) == false);
+            Renderings.ParseDecimal("2.50").Should().Be(Of(2.5m));
+            Renderings.ParseDecimal("1e28").Should().Be(Of(10000000000000000000000000000m));
+            (Renderings.TryExactNumber("1.0E-50", out _), Renderings.TryExactNumber("0.00000000000000000000000000001", out _), Renderings.TryExactNumber("2.50", out var x), x)
+                .Should().Be((false, false, true, 2.5m), "a rendering is read as a decimal only where one holds it");
+        }
+
         /// <summary>A cell cut at the atom's literals answers within the cell it lies in, cut at none.</summary>
         [Fact]
         public void ASubCellAnswersNoWider()

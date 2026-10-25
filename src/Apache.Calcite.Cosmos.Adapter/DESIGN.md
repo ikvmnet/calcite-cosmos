@@ -6607,7 +6607,10 @@ typed reading leaves both out (`TODO.md`), and the cells do not copy it. A cast 
 by its own grammar, trimmed as Java's `String.trim` trims, of every character up to U+0020 — Java's integer parse, a
 double parse that reads no type suffix, or `BigDecimal`'s (`Renderings`), which `IrEvalCalciteTests` holds to Calcite
 over numbers padded with control characters — and a `BIGINT` cast reads text that starts `199` and holds a colon as a
-timestamp, which no cell places. `typed:DECIMAL` is `RETURNING DECIMAL` and a `DECIMAL` column at once: the clause
+timestamp, which no cell places. `BigDecimal`'s is read exactly, as digits and a power of ten, and compared with the
+literal so: .NET's decimal parse read `1e-50` as 0 and a text past 28 places rounded, each an exact spelling of another
+number, so a stored string holding one was placed equal to a whole literal Calcite finds unequal. A text no decimal
+holds is spelled approximately, and a rendering is read as a decimal only where one holds it. `typed:DECIMAL` is `RETURNING DECIMAL` and a `DECIMAL` column at once: the clause
 reads a number not written as an integer through its double's rendering and a string by its parse, the column a
 number's text exactly and raises over anything else, and the cells read both. So the string `"2"` is TRUE to
 `RETURNING DECIMAL = 2` beside the column's raise, and no cell of it is definite.

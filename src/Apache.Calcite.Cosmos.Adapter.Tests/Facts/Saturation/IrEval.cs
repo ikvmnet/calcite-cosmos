@@ -494,7 +494,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             "INTEGER" or "BIGINT" => Renderings.ParseInteger(text, target == "INTEGER" ? int.MinValue : long.MinValue, target == "INTEGER" ? int.MaxValue : long.MaxValue) is decimal whole
                 ? new SqlDatum.Exact(whole) : SqlDatum.Raise,
             "DOUBLE" => Renderings.ParseDouble(text) is double d ? new SqlDatum.Double(d) : SqlDatum.Raise,
-            "DECIMAL" => Renderings.ParseDecimal(text) is string number ? Datum(number) : SqlDatum.Raise,
+            "DECIMAL" => Renderings.ParseDecimal(text) is string number ? IsExactNumber(number) ? Datum(number) : new SqlDatum.Decimal(text) : SqlDatum.Raise,
             _ => throw new NotSupportedException(target),
         };
 
@@ -513,6 +513,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 (SqlDatum.Text a, SqlDatum.Text b) => Math.Sign(string.CompareOrdinal(a.Value, b.Value)),
                 (SqlDatum.Exact a, SqlDatum.Exact b) => a.Value.CompareTo(b.Value),
+                (SqlDatum.Decimal a, SqlDatum.Exact b) => Renderings.DecimalSide(a.Spelled, b.Value)!.Value,
+                (SqlDatum.Exact a, SqlDatum.Decimal b) => -Renderings.DecimalSide(b.Spelled, a.Value)!.Value,
                 (SqlDatum.Boolean a, SqlDatum.Boolean b) => a.Value.CompareTo(b.Value),
                 _ when Number(left) is double a && Number(right) is double b => a.CompareTo(b),
                 _ => throw new InvalidOperationException($"No comparison of {left} with {right}: the generator built one the loader never does."),
@@ -537,6 +539,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             SqlDatum.Exact e => DoubleBound.Of(e.Value),
             SqlDatum.Double d => d.Value,
+            SqlDatum.Decimal d => Renderings.ParseDouble(d.Spelled),
             _ => null,
         };
 

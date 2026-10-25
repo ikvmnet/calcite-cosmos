@@ -66,9 +66,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (TryExactly(value, out var exact))
                 return Of(exact);
 
-            var integral = Math.Floor(value) == value && double.IsInfinity(value) == false;
-            return (integral ? IntegerType : FractionType) + "|" + Approximate + value.ToString("R", CultureInfo.InvariantCulture);
+            return Approximately(value, Math.Floor(value) == value && double.IsInfinity(value) == false);
         }
+
+        /// <summary>
+        /// A number held only as the double nearest it, of the kind given, even where a decimal holds that double: a text
+        /// past a decimal's places, whose double is another number.
+        /// </summary>
+        public static string Approximately(double value, bool integral) =>
+            (integral ? IntegerType : FractionType) + "|" + Approximate + value.ToString("R", CultureInfo.InvariantCulture);
 
         /// <summary>
         /// The decimal a double is, exactly, or <c>false</c> where none is: most fractions, whose value needs more than 28
