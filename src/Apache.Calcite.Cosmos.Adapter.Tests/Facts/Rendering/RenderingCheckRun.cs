@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -92,6 +93,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>Text a <c>WHERE</c> holds that no site wrote: written outside the translator.</summary>
         public ConcurrentQueue<(string Input, string Name, string Text)> Outside { get; } = new();
+
+        /// <summary>A statement admitted more than once, or one holding a conjunct S owns admitted while its plan was implemented.</summary>
+        public ConcurrentQueue<(string Input, string Name, string Why)> Readmitted { get; } = new();
+
+        /// <summary>How many statements were admitted, and how many of those first while implementing, owning nothing.</summary>
+        public (long Statements, long UnownedAtImplementation) Admissions => (Interlocked.Read(ref _admissions), Interlocked.Read(ref _unownedAtImplementation));
+
+        long _admissions, _unownedAtImplementation;
 
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
@@ -211,6 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return;
                 }
 
+                recorder.Implementing = true;
                 foreach (var cosmos in PlanDigests.Subtrees(planned, n => n is CosmosRel))
                 {
                     if (PlannerHarness.TableOf(cosmos) is not CosmosTable table)
@@ -228,6 +238,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         Failures.Enqueue((input.Input, input.Name, "implements: " + PlanDigests.Failure(e)));
                     }
                 }
+            }
+
+            // A statement admits once, in planning: implementation finds admission's statement by its node and binding. The
+            // unnest rule asks its element filter under a placeholder alias, so implementation admits that one afresh; its
+            // element paths are opaque in the IR, so S owns none of it and the translator's answer is the one it gave.
+            foreach (var admitted in recorder.Admissions.GroupBy(a => a.Statement))
+            {
+                Interlocked.Increment(ref _admissions);
+                var owned = admitted.Key.Statement.Conjuncts.Any(RenderingFamily.Owns);
+                if (admitted.Count() > 1 || owned && admitted.Any(a => a.Implementing))
+                    Readmitted.Enqueue((input.Input, input.Name, $"{admitted.Count()} admissions, {admitted.Count(a => a.Implementing)} implementing: {admitted.Key.Statement.Digest}"));
+                else if (admitted.Any(a => a.Implementing))
+                    Interlocked.Increment(ref _unownedAtImplementation);
             }
 
             // Read after the statement, never during its planning: the importer opens nothing planning did not.

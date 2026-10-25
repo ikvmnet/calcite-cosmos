@@ -149,6 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Sql.CosmosTranslatorFaults", ["Armed", "Current"], TestArm, "the translator's fault a test plants for its flow"),
             ("Adapter.Sql.CosmosTypeTestImplementor", ["Bodies"], StaticFact, "the in-process bodies of the type tests"),
 
+            ("Facts.AdmissionRound.Answer", ["None"], StaticFact, "the answer that admits nothing, immutable"),
             ("Facts.JsonDocumentPath", ["Root"], StaticFact, "the root path"),
             ("Facts.JsonFactSet", ["Empty"], StaticFact, "the empty set"),
             ("Facts.JsonFactTheory", ["Empty"], StaticFact, "the theory of no rules, unbound, which compiles nothing"),

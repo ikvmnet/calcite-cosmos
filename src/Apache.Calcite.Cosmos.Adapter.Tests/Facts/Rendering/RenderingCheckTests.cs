@@ -101,6 +101,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Implementation never admits again (spec §5.2): every statement object the run's plans admitted, counted across
+        /// planning and implementation, admitted once, and one holding a conjunct S owns in planning, since implementation
+        /// finds admission's statement by its condition node and binding. One admitted afresh would ask S again, and a run
+        /// that then stopped short would make <c>Translate</c> throw for a plan Volcano chose. The unnest's element filters,
+        /// asked in planning under a placeholder alias, are admitted at implementation, and own nothing.
+        /// </summary>
+        [Fact]
+        public void ImplementationNeverAdmitsAgain()
+        {
+            var (statements, unowned) = Run.Admissions;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{statements} statements admitted, {Run.Readmitted.Count} again; {unowned} first while implementing, owning nothing");
+            statements.Should().BePositive();
+            Run.Readmitted.Select(r => $"{r.Input} {r.Name}: {r.Why}").Should().BeEmpty();
+        }
+
+        /// <summary>
         /// What the service is asked together is checked together: two statements one <c>WHERE</c> holds are one check, and
         /// a check that holds a conjunct it cannot judge is never proven, so that neither the <c>AND</c> licence nor the
         /// range need escapes through a conjunct left out. A conjunct proven alone beside an opaque one is the plant.

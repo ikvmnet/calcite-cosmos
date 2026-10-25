@@ -2704,7 +2704,8 @@ across documents* and *A join of a container to itself* is the record.
   stratum may be wrong, and the translator relies on it: over a typed column, kind 5.0000000000000001 reads as 5 and a
   label the declaration leaves free beside it may be the number 7, which the bare `c.label = "7"` a later round writes
   drops (`AStratumAConjunctReadCoarselyRestsOnIsNotRead`). Such a check stays unproven, and the push is the facts
-  graph's to fix, with its coarse readings (*F does not read the cell readings*, below).
+  graph's to fix, with its coarse readings (*F does not read the cell readings*, below). Generate mode states nothing
+  beneath such a stratum: production's `CosmosStatementScope.StratumFor` (g12) gives the root.
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
@@ -2871,10 +2872,23 @@ across documents* and *A join of a container to itself* is the record.
   both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
   `LIKE` in the IR.
 - **The shadow's read at admission is an inert site before g15's** — *small, O4's inventory.* The capture tells its
-  observer when a statement's rounds run, from the renderer `CosmosOracle.Admit` is handed: one `volatile bool` read for
-  each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
+  observer when a statement's rounds run, from the renderer `CosmosOracle.Admit` is handed: one `volatile bool` read a
+  round (g12; it was one a conjunct asked), unarmed in production, beside the capture's two sites and the fault plants. g15's site A
   takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
   until then.
+- **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
+  `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
+  container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the
+  filter admits again at implementation (three statements a pull request: `Unnest.FilteredElement`, `Unnest.TwoArrays`
+  twice). The translator answers alike, and S owns none of it while element paths are opaque in the IR
+  (`CosmosDocumentPaths`), so `ImplementationNeverAdmitsAgain` holds the rule for statements with an owned conjunct.
+  Once the IR reads an element path, the rule asks under the alias implementation binds, or the statement is found
+  without it.
+- **The closing call is asked only where S admitted something** — *small, for g15.* With nothing of S's admitted there
+  is no composite, so the scope asks nothing after the last round; a residual's weakening is then read from the round
+  that admitted nothing, where every residual is a root, or, where the rounds stopped at a child that did not complete,
+  from a bundle g15's renderer opens when the split rule first asks for it, stated beneath `StratumFor` of where they
+  stopped.
 - **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
   or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
   (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.

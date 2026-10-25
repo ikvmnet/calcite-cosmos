@@ -1,4 +1,5 @@
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -23,10 +24,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         void Weakened(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters);
 
         /// <summary>
-        /// A statement whose rounds are being admitted, told once for each conjunct a round asks, whether it renders or not:
-        /// what generate mode's shadow reads.
+        /// A statement whose rounds are being admitted, told once a round, whether any conjunct renders or not: what generate
+        /// mode's shadow reads, and how often a statement admits.
         /// </summary>
-        void Read(CosmosFilterStatement statement);
+        void Read(CosmosFilterStatement statement, AdmissionRound round);
 
     }
 

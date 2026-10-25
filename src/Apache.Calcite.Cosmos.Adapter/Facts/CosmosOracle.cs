@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Eggnog;
 
@@ -58,9 +59,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </para>
     /// <para>
     /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader.Loading</c> reads one
-    /// off a <c>RexNode</c>, or build one from <see cref="SqlPredicate"/>s), then <see cref="Admit"/> it with a renderer —
-    /// the translator's <c>TryTranslate</c> over the facts it is handed, as <c>CosmosFilterStatement</c> admits a filter —
-    /// and ask the <see cref="CosmosStatementScope"/> that comes back.
+    /// off a <c>RexNode</c>, or build one from <see cref="SqlPredicate"/>s), then admit it with a renderer — handed each
+    /// round whole (<see cref="AdmissionRound"/>), as <c>CosmosFilterStatement</c> admits a filter, or asked of each
+    /// conjunct over the facts it is handed — and ask the <see cref="CosmosStatementScope"/> that comes back.
     /// </para>
     /// </remarks>
     internal sealed class CosmosOracle
@@ -151,13 +152,22 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="statement">The statement.</param>
         /// <param name="renders">Whether conjunct <c>i</c> renders given these facts; <c>null</c> to admit nothing.</param>
         /// <returns>The statement's scope.</returns>
-        public CosmosStatementScope Admit(PredicateStatement statement, Func<int, JsonFactSet, bool>? renders = null)
-        {
-            if (statement is null)
-                throw new ArgumentNullException(nameof(statement));
+        public CosmosStatementScope Admit(PredicateStatement statement, Func<int, JsonFactSet, bool>? renders = null) =>
+            Admitting(statement, renders is null ? null : round => new([.. round.Pending.Where(i => renders(i, round.NodeFor(i).View))], []));
 
-            return new CosmosStatementScope(Terms(statement), statement, renders, _theory.MentionedPaths, RenderedFrom);
-        }
+        /// <summary>
+        /// Admits a statement's conjuncts a round at a time: the renderer is handed each round whole, says which of its
+        /// pending conjuncts the translator rendered and which S proved, and after the last is asked whether S's stand
+        /// (<see cref="AdmissionRound"/>).
+        /// </summary>
+        /// <param name="statement">The statement.</param>
+        /// <param name="renders">What each round admits.</param>
+        /// <returns>The statement's scope.</returns>
+        public CosmosStatementScope Admit(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer> renders) =>
+            Admitting(statement, renders ?? throw new ArgumentNullException(nameof(renders)));
+
+        CosmosStatementScope Admitting(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders) =>
+            new(Terms(statement ?? throw new ArgumentNullException(nameof(statement))), statement, renders, _theory.MentionedPaths, RenderedFrom);
 
         /// <summary>
         /// Returns the tree of contexts for a statement, remembered by its digest in the current generation.

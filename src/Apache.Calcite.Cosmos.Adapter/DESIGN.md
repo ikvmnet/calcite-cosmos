@@ -6974,7 +6974,7 @@ readings among it, so a statement asked again opens none.
   strata claims the translator's texts, so no claimed text's parts reach `BestExact`; and J's weakening of each
   residual is claimed implied beside the bundle S's is read from.
 - *Every statement is read.* A statement none of whose conjuncts rendered writes no text, so the capture also tells its
-  observer when a statement's rounds run, from the renderer, one `volatile bool` a conjunct asked, inert unarmed.
+  observer when a statement's rounds run, from the renderer, one `volatile bool` a round, inert unarmed.
 - *Every leg's set is asserted on every leg.* `Production` and `Emulator` are both asserted, which holds each leg to
   its own a fortiori, and `Portable` is reported beside. The check run's own lines stay under `Portable`, the stricter.
 
@@ -7380,6 +7380,58 @@ the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionO
 the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the key
 alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from
 `CosmosRendering.Definition`.
+
+### Admission asked once a round
+
+**What changed.** `CosmosStatementScope` hands its renderer each round whole (`AdmissionRound`): the round's number and
+node, the conjuncts still pending in index order, those S admitted in earlier rounds, and the node each conjunct is
+rendered from, the round's but where a test plants another. One question a round is what lets S answer a round's owned
+conjuncts in one bundle from g15, imported from the statement's root as `RenderingOracle.Ask` imports, and the
+translator answer each of the rest as before. Until then the filter's renderer asks the translator of every pending
+conjunct, in order, from the round's node, as each conjunct was asked alone, and S proves nothing, so every plan is
+byte-equal. The rounds themselves are unchanged: what a round admits enters only the next stratum (#117's shape), a
+round that admits nothing ends them, and so does a child that did not complete or keeps nothing. The per-conjunct
+`CosmosOracle.Admit` stays for the tests, a three-line adapter over the round.
+
+**The answer says S's apart.** The spec drew the renderer returning the set a round admitted. A set does not say who
+admitted, and three things need it: the round's junction, whose arms are S's alone (`Through(k)`, `Before(k)`); which
+stratum a later round may rest on; and the composite, which voids S's admissions and none of the translator's. So
+`AdmissionRound.Answer` holds what the translator rendered and what S proved apart, and the scope hands S's back on each
+later round as `AdmittedByS`.
+
+**Which stratum a later round is stated beneath** is legality, and the scope's: `StratumFor(node, inBundle)` walks the
+chain up from the round's node to the deepest node every conjunct of which it assumes is in the bundle and read exactly
+by the facts graph (`RenderingFamily.ReadExactly`, the reading precision's rows), and gives the root, which assumes
+none, where no node qualifies, and for a node not of the chain. A stratum resting on a coarse reading — a typed number,
+`DECIMAL`, a double, a cast of a raw value, a raw value beside a number — may leave out cells Calcite keeps, and one
+resting on the translator's conjunct rests on a proof S does not hold; either way S states nothing beneath it and proves
+from the root, the shadow's *a stratum read at the root*. The renderer asks it while the rounds run, so it reads the
+chain so far under the statement's lock, and asked after it answers alike.
+
+**The whole `WHERE`.** S's admissions stand only where their `AND` is proven, and the host concludes nothing from their
+parts. After the last round, and only where S admitted something, the renderer is asked once more (`Closing`) which of
+S's admissions stand: every one where the composite is proven — `Through(k)` of the last round S admitted in, where that
+round admitted all it asked S; else `Before(k)` of a round after; else `Before` in one closing bundle, stated beneath
+`StratumFor` of where the rounds stopped, which answers the residuals' weakenings too — and none where it is not. Then
+the rounds run again from the root with S admitting nothing (`Again`): an owned conjunct is residual, never handed to
+the translator (O2, O8), and the scope drops any conjunct the renderer still calls S's. The rounds run again once, in
+the same admission; the closing call is not repeated, since S admitted nothing.
+
+**One admission a statement.** Implementation finds admission's statement by condition node and binding
+(`CosmosFilterStatement.Of`), so it prints what admission chose and asks S nothing. A statement it did not find would
+admit afresh — through the memo, or a bundle that could stop short and make `Translate` throw for a plan Volcano chose.
+`RenderingCheckTests.ImplementationNeverAdmitsAgain` counts each statement object's admissions over the check run's
+pass, while it plans and while it implements: the capture now tells its observer once a round, with the round, so an
+admission is its first round. Of the 1,446 statements a pull request plans, each admits once, and three first while
+implementing: the unnest's element filters, which `CosmosUnnestRule` asks in planning under a placeholder alias, so
+implementation, binding the alias it allocates, finds no statement. Their element paths are opaque in the IR, so S owns
+none of them and the translator answers as it did; the test holds the rule for a statement with a conjunct S owns.
+
+**What runs unarmed.** A round allocates its record, its pending array, the closure that names each conjunct's node and
+the list of what the translator rendered, and makes one call; the capture's `volatile bool` is read once a round, where
+it was read once a conjunct asked. Nothing asks after the last round, `StratumFor` is not called, and nothing reaches
+S's graph, its memo or a bundle. Each filter statement holds two arrays, S's forms and weakenings by conjunct, empty
+until g15's arm; implementation (g16) prints the first and the split rule's weakening reads the second.
 
 ---
 

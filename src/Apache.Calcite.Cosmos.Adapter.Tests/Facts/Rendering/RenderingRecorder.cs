@@ -4,6 +4,7 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -17,6 +18,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         readonly List<CaptureRecord> _records = [];
         readonly List<CosmosFilterStatement> _read = [];
+        readonly List<(CosmosFilterStatement Statement, bool Implementing)> _admissions = [];
 
         /// <summary>Gets the records, in the order written.</summary>
         public IReadOnlyList<CaptureRecord> Records
@@ -37,6 +39,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return [.. _read];
             }
         }
+
+        /// <summary>
+        /// Gets each admission a statement began while armed, its first round, and whether implementation had begun: a
+        /// statement admits once, in planning (<c>ImplementationNeverAdmitsAgain</c>).
+        /// </summary>
+        public IReadOnlyList<(CosmosFilterStatement Statement, bool Implementing)> Admissions
+        {
+            get
+            {
+                lock (_records)
+                    return [.. _admissions];
+            }
+        }
+
+        /// <summary>Whether the flow's plan is being implemented; set once planning is done.</summary>
+        public bool Implementing { get; set; }
 
         /// <summary>Records every conjunct the flow writes until disposed.</summary>
         public IDisposable Arm() => CosmosRenderingCapture.Arm(this);
@@ -59,11 +77,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [.. parameters.Comparisons.Where(c => names.Contains(c.Parameter))], []));
         }
 
-        void ICosmosRenderingObserver.Read(CosmosFilterStatement statement)
+        void ICosmosRenderingObserver.Read(CosmosFilterStatement statement, AdmissionRound round)
         {
             lock (_records)
+            {
                 if (_read.Contains(statement) == false)
                     _read.Add(statement);
+
+                // An admission begins at its first round; the rounds run again where S's composite fails are the same one.
+                if (round is { Number: 1, Again: false, Closing: false })
+                    _admissions.Add((statement, Implementing));
+            }
         }
 
         void Add(CaptureRecord record)

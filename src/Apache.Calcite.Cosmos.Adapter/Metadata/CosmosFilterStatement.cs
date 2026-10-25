@@ -6,6 +6,7 @@ using System.Text;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -78,6 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly RexBuilder _rexBuilder;
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
+        readonly ServiceForm?[] _forms, _weakenings;
         readonly object _lock = new();
         CosmosStatementScope? _scope;
         IReadOnlyList<int>? _redundant;
@@ -97,6 +99,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Conjuncts = ConjunctsOf(condition);
             Statement = _loading.Statement(Conjuncts);
+            _forms = new ServiceForm?[Conjuncts.Count];
+            _weakenings = new ServiceForm?[Conjuncts.Count];
         }
 
         /// <summary>
@@ -184,30 +188,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
 
         /// <summary>
-        /// The statement, admitted by the translator stratum by stratum the first time a question asks of a stratum.
+        /// The statement, admitted stratum by stratum the first time a question asks of a stratum.
         /// </summary>
         CosmosStatementScope Scope
         {
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, (i, facts) =>
-                    {
-                        // The shadow's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
-                        if (CosmosRenderingCapture.Armed)
-                            CosmosRenderingCapture.Observer?.Read(this);
-
-                        var parameters = new CosmosParameterList();
-                        if (Translator(facts, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
-                            return false;
-
-                        if (CosmosRenderingCapture.Armed)
-                            CosmosRenderingCapture.Observer?.Admitted(this, i, text!, parameters);
-
-                        return true;
-                    });
+                    return _scope ??= Oracle.Admit(Statement, Render);
             }
         }
+
+        /// <summary>
+        /// One round of admission: the translator asked of each pending conjunct, in order, from the node the round hands it.
+        /// S admits nothing until g15's arm, so it is never asked after the last round and <see cref="Form"/> and
+        /// <see cref="Weakening"/> stay empty.
+        /// </summary>
+        AdmissionRound.Answer Render(AdmissionRound round)
+        {
+            // The shadow's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
+            if (CosmosRenderingCapture.Armed)
+                CosmosRenderingCapture.Observer?.Read(this, round);
+
+            var translated = new List<int>();
+            foreach (var i in round.Pending)
+            {
+                var parameters = new CosmosParameterList();
+                if (Translator(round.NodeFor(i).View, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
+                    continue;
+
+                if (CosmosRenderingCapture.Armed)
+                    CosmosRenderingCapture.Observer?.Admitted(this, i, text!, parameters);
+
+                translated.Add(i);
+            }
+
+            return new(translated, Array.Empty<int>());
+        }
+
+        /// <summary>The form S chose for a conjunct it admitted, which implementation prints; none for the translator's.</summary>
+        internal ServiceForm? Form(int conjunct) => _forms[conjunct];
+
+        /// <summary>S's weakening of a conjunct left residual, read from the bundle that answered it; none where S gave none.</summary>
+        internal ServiceForm? Weakening(int conjunct) => _weakenings[conjunct];
 
         /// <summary>The statement's scope, for the rendering check's importer.</summary>
         internal CosmosStatementScope ScopeForCheck => Scope;
