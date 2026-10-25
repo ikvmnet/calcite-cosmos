@@ -25,9 +25,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// </summary>
     /// <remarks>
     /// A cell's answer holds of every value in it, as <see cref="IrEval"/> reads the value through each reader the reading
-    /// stands for: <c>RETURNING</c> and a column for <c>typed</c>, three columns for <c>raw</c>. It is within the coarse
-    /// answer on the cell's state, but for the raises the coarse readings leave out (<c>TODO.md</c>), and a sub-cell's is
-    /// within its cell's.
+    /// stands for: <c>RETURNING</c> and a column for <c>typed</c>, three columns for <c>raw</c> and its cast to text. It is
+    /// within the coarse answer on the cell's state, but for what the coarse readings leave out (<c>TODO.md</c>), and a
+    /// sub-cell's is within its cell's.
     /// </remarks>
     public sealed class PredicateAtomCellTests
     {
@@ -38,6 +38,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>Literals where a number's double, its parse and a type's limits part cells.</summary>
         static readonly string[] Boundaries = [Of(9007199254740993m), Of(9007199254740994m), Of(0.1m), Of(2m), Of(2147483648m)];
+
+        /// <summary>What an <c>ANY</c> renders the pool's numbers as, a long's digits and a double's spelling, beside the cast of a raw value to text.</summary>
+        static readonly string[] Rendered = [Of("9007199254740993"), Of("9007199254740992"), Of("2147483648"), Of("0.1"), Of("9.007199254740992E15"), Of("9.007199254740994E15"), Of("2.147483648E9"), Of("1.0E30")];
 
         static readonly JsonDocumentPath A = JsonDocumentPath.Root.Property("a");
 
@@ -117,15 +120,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// A cell answers within what the coarse reading answers on its state, but for the raises a raw and a typed reading
         /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
-        /// over a structure; and where a reading compares a number's double, which the coarse reading compares by value
-        /// (<c>TODO.md</c>). A reading the precision table calls exact is read so by neither
-        /// (<see cref="EveryExactReadingAnswersAsItsCell"/>).
+        /// over a structure; where a reading compares a number's double, which the coarse reading compares by value; and the
+        /// cast of a raw value to text, which the coarse reading reads as an <c>ANY</c> renders it alone (<c>TODO.md</c>). A
+        /// reading the precision table calls exact is read so by neither (<see cref="EveryExactReadingAnswersAsItsCell"/>).
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
         {
             var wider = new List<string>();
-            foreach (var atom in Atoms(boundaries: true))
+            foreach (var atom in Atoms(boundaries: true).Where(a => a.Reader != "cast:VARCHAR:raw"))
             {
                 var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
@@ -185,10 +188,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Whether the coarse reading compares a number's value where Calcite compares its double: an integer type's column
         /// and <c>DECIMAL</c>'s clause, which read a number written with a point through it, a double, and the cast to a
         /// double, whose decimal the coarse reading converts by a cast that misses at rounding boundaries
-        /// (<c>Renderings.DoubleOf</c>).
+        /// (<c>Renderings.DoubleOf</c>); and the raw value, whose box holds a number not written as a long as its double.
         /// </summary>
         static bool Rounded(PredicateAtom atom, PathCell cell) => (cell.Coarse is PredicateAtom.State.AnyNumber || cell.Coarse is PredicateAtom.State.Scalar { Value: var v } && IsNumber(v))
-            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text";
+            && atom.Reader is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text" or PredicateAtom.RawReader;
+
+        /// <summary>
+        /// The raw reading's raises (<c>Calcite.RawNullIsSqlNull</c>): an ordering places a string by its units and a number
+        /// in its box beside a <c>VARIANT</c>'s raise, and raises alone across types; an equality with a number is FALSE of
+        /// another type, and TRUE or FALSE of a number a box may equal, the <c>VARIANT</c>'s being the literal's.
+        /// </summary>
+        [Fact]
+        public void ARawReadingPlacesItsTypeAndRaisesAcrossTypes()
+        {
+            const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
+            var (below, around, thirty) = (PredicateAtom.Compare(PredicateAtom.RawReader, "<", Of("b")), PredicateAtom.Compare(PredicateAtom.RawReader, "<", Of(9007199254740993m)),
+                PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of(30m)));
+
+            new[] { new PathCell.Point(Of("a")), new PathCell.Strings(Of("b"), null, ValueSet<string>.Empty, AllBands), new PathCell.Point(Of(7m)), (PathCell)new PathCell.Null() }
+                .Select(below.OnCell).Should().Equal(T | R, F | R, R, U | R);
+            new[] { new PathCell.Point(Of(9007199254740992m)), new PathCell.Point(Of(9007199254740993m)), new PathCell.Point(Of(true)) }.Select(around.OnCell).Should().Equal(T | R, T | F | R, R);
+            new[] { new PathCell.Point(Of("30")), new PathCell.Point(Of(30m)), new PathCell.Point(Of(31m)), (PathCell)new PathCell.Null() }.Select(thirty.OnCell).Should().Equal(F, T | F, F, U);
+        }
 
         /// <summary>A cell cut at the atom's literals answers within the cell it lies in, cut at none.</summary>
         [Fact]
@@ -222,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// readings, the boundaries, which the coarse readings compare exactly where a double does not.
         /// </summary>
         static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) => PredicateAtomTests.Grid(Readers)
-            .Concat(boundaries ? from reader in Readers from literal in Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
+            .Concat(boundaries ? from reader in Readers from literal in reader == "cast:VARCHAR:raw" ? Rendered : Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
             .Where(atom => Literals(atom).All(literal => atom.Reader switch
         {
             PredicateAtom.RawReader => true,
@@ -250,10 +271,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// The readers a reading stands for, as the evaluator names them: <c>RETURNING</c> and a column for <c>typed</c>,
         /// but <c>DECIMAL</c>'s column, which was not measured; a <c>VARIANT</c>, an <c>ANY</c>, and beside strings alone
-        /// a <c>VARCHAR</c>, for <c>raw</c>.
+        /// a <c>VARCHAR</c>, for <c>raw</c> and its cast to text.
         /// </summary>
         static IEnumerable<(IrEval.TypedAs Typed, IrEval.RawAs? Raw)> Modes(PredicateAtom atom)
         {
+            if (atom.Reader == "cast:VARCHAR:raw")
+                return IrEval.RawModes(Predicate(atom)).Select(raw => (IrEval.TypedAs.Returning, raw));
+
             if (atom.Reader == PredicateAtom.RawReader)
                 return new[] { IrEval.RawAs.Variant, IrEval.RawAs.Any, IrEval.RawAs.Varchar }
                     .Where(raw => raw != IrEval.RawAs.Varchar || Literals(atom).All(IsString))

@@ -139,13 +139,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// P5 as restated (§4.3): probe T4's disjunction, each kind spelled per arm, has no exact form, and its weakening
-        /// keeps the second arm's <c>c.kind = 'c'</c>. P6 is killed (line 19): its weakening beneath the <c>NOT</c> holds no
-        /// comparison of the price with a number, since the cast parses a string Calcite then compares where the service
-        /// compares no string, so no accessor of the conjunct writes C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> as
-        /// it means; a carrier the Rex builder would send it through is O7's third option. Under each set.
+        /// keeps the second arm's <c>c.kind = 'c'</c>. P6 is O7's listed loss until Stage 3: its weakening beneath the
+        /// <c>NOT</c> holds no comparison of the price with a number, since the cast parses a string Calcite then compares
+        /// where the service compares no string, so no accessor of the conjunct writes C4's
+        /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> as it means. Stage 3's guarded spelling, once the loader reads
+        /// <c>IS_NUMBER</c> and <c>CASE</c>, delivers it. Under each set.
         /// </summary>
         [Fact]
-        public void P5IsWeakenedAndP6WaitsOnACarrier()
+        public void P5IsWeakenedAndP6IsAListedLoss()
         {
             var kindC = ServiceForm.CompareOf(Op.Equal, Apache.Calcite.Cosmos.Facts.SqlValue.Spell(ProbeRows.KindPath), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of("c"));
             var price = Apache.Calcite.Cosmos.Facts.SqlValue.Spell(OracleFixture.P("price"));

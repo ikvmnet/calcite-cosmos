@@ -430,6 +430,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// A generation whose graph has used its share of ids or epochs is retired however little it has interned, and a
+        /// theory answers alike in the next; a graph only defined and asked twice is far from the default gauge.
+        /// </summary>
+        /// <remarks>
+        /// No test can spend half of 2^31 ids, so the gauge is forced to just past what a generation uses defining the
+        /// rules: the first declaration compiled into one passes it.
+        /// </remarks>
+        [Fact]
+        public void AGraphPastTheGaugeStartsTheNextGeneration()
+        {
+            var rules = new[] { JsonFactRule.Unconditional(Present(Type)), new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) };
+            var defined = new JsonFactGenerations().Current.Usage.FractionUsed;
+            var forced = new JsonFactGenerations(long.MaxValue, Math.BitIncrement(defined));
+            var theory = new JsonFactTheory(rules, forced);
+
+            var first = theory.Declaration()!;
+            first.Generation.Usage.FractionUsed.Should().BeGreaterThan(defined, "compiling a declaration takes ids and epochs");
+            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly);
+            forced.Started.Should().Be(2, "the first generation was past the gauge, and the interned limit is never reached");
+            first.Declared.Knows(Present(Type)).Should().BeTrue("a retired generation lives as long as an answer it gave");
+
+            var kept = new JsonFactGenerations(long.MaxValue);
+            var again = new JsonFactTheory(rules, kept);
+            again.Derive(new[] { Equals(Type, "ParkMap") });
+            again.Derive(new[] { Equals(Type, "Park") });
+            (kept.Started, kept.Current.Usage.FractionUsed < JsonFactGenerations.DefaultUsedLimit).Should().Be((1, true));
+        }
+
+        /// <summary>
+        /// Running out of ids or epochs is an engine failure, which loses a fact and throws nothing: a path the declaration's
+        /// context is told of where its graph has run out is read in the context itself, knowing nothing of it.
+        /// </summary>
+        /// <remarks>No test can spend 2^31 ids, so the context's mention throws as the graph would.</remarks>
+        [Fact]
+        public void AnOverflowLosesAFactAndThrowsNothing()
+        {
+            var name = JsonDocumentPath.Root.Property("name");
+            var absent = new JsonFact(name.Property("first"), new JsonClaim.OneOf(Array.Empty<JsonScalar>()));
+            var declaration = new JsonFactTheory(new[] { JsonFactRule.Unconditional(Present(name)), JsonFactRule.Unconditional(new JsonFact(name, new JsonClaim.OfType(JsonType.String))) },
+                new JsonFactGenerations(long.MaxValue)).Declaration()!;
+
+            var ranOut = new JsonFactSet(new JsonScopeTables(declaration.Generation.Contexts.Rules, declaration.Context, owned: false,
+                mention: _ => throw new OverflowException("planted")), declaration.Vocabulary);
+            ranOut.Knows(absent).Should().BeFalse("a path the context could not be told of is read knowing nothing");
+            ranOut.Knows(Present(name)).Should().BeTrue("what the context holds is read as before");
+            declaration.Declared.Knows(absent).Should().BeTrue("told of it, the rules say a string has no properties");
+        }
+
+        /// <summary>
         /// Many threads asking one theory get what one thread gets.
         /// </summary>
         [Fact]

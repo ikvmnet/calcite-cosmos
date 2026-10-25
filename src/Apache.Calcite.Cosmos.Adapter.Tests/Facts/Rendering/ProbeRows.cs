@@ -27,15 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         public static IReadOnlyList<MeasuredOutcome> Rows { get; } = CosmosAxiomRows.Read(CosmosAxioms.All);
 
-        /// <summary>
-        /// The registry's S, strict where Calcite answers null for a null as its one reader of that says
-        /// (<see cref="CosmosStrictness"/>): what production's will be defined from.
-        /// </summary>
-        public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows) with
-        {
-            StrictOperators = CosmosStrictness.Operators,
-            StrictReaders = CosmosStrictness.Readers,
-        };
+        /// <summary>The registry's S, production's own definition (<see cref="CosmosRendering.Definition"/>).</summary>
+        public static RenderingDefinition Measured => CosmosRendering.Definition;
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
@@ -57,6 +50,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>The one source a test's bundle imports from.</summary>
         public static readonly ImportSource Source = new("test", "test", 0);
+
+        /// <summary>Text <c>label &lt;&gt; 'bikes'</c>, the conjunct most tests ask.</summary>
+        public static readonly SqlPredicate NotBikes = Ne(Text(LabelPath), "bikes");
 
         /// <summary>The bare comparison for text <c>label &lt;&gt; 'bikes'</c>, refuted for Equal where a <c>WHERE</c> keeps a null, an object or an array (T5).</summary>
         public static readonly ServiceForm Bare = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Label, JsonValues.Of("bikes"));

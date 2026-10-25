@@ -22,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
     /// <summary>
     /// <c>D0</c>, a declaration's context with a <c>possible</c> row for every path it mentions: what its rows are, that it
-    /// is built once, and that the switch roots a statement there and remembers it apart.
+    /// is built once, and that a statement is rooted there.
     /// </summary>
     public sealed class DeclaredPossibleTests
     {
@@ -30,9 +30,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <summary>
         /// Every path a declaration mentions is already a term of its context, so <c>D0</c>, frozen, makes none, and is a
         /// <c>declared</c> row of it; and what <c>D0</c> says it may hold is what a stratum holding an atom over the path
-        /// computes from the same declaration, assuming nothing that speaks of it: the same documents, and met with the
-        /// stratum's row, the stratum's row, which is what an armed stratum holds. A declaration that mentions nothing has
-        /// no <c>D0</c>.
+        /// computes from the same declaration's own context, assuming nothing that speaks of it: the same documents, and met
+        /// with the stratum's row, the stratum's row, which is what a stratum beneath <c>D0</c> holds. A declaration that
+        /// mentions nothing has no <c>D0</c>.
         /// </summary>
         /// <remarks>Not always the same spelling: <c>DESIGN.md</c>, <i><c>D0</c> keeps a declared domain as stated</i>.</remarks>
         [Fact]
@@ -58,7 +58,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                     (declaration.Context.TryGet(at, out _), d0.Check(rules.Declared.Of(at))).Should().Be((true, true), $"{name} mentions {SqlValue.Spell(path)}");
                     var term = rules.Possible.Of(at);
                     var nothing = Opaque(0);
-                    var terms = new StatementTerms(declaration, new PredicateStatement(new[] { new SqlPredicate.IsDefined(Raw(path)), nothing }), null);
+                    // Rooted at the context, as a declaration with no D0 is: what a stratum knew before D0 was its root.
+                    var terms = new StatementTerms(declaration with { DeclaredPossible = () => null }, new PredicateStatement(new[] { new SqlPredicate.IsDefined(Raw(path)), nothing }), null);
                     var stratum = terms.Child(terms.Root, new[] { nothing });
                     stratum.Complete.Should().BeTrue(name);
 
@@ -105,30 +106,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// Armed, a statement is rooted at <c>D0</c>, whose view is still the declaration's own fact set; and the oracle
-        /// remembers the armed tree apart from the unarmed one, so neither is read for the other.
+        /// A statement is rooted at <c>D0</c>, whose view is still the declaration's own fact set; and at the declaration's
+        /// context where it has no <c>D0</c>, a declaration that mentions nothing.
         /// </summary>
         [Fact]
-        public void ArmedAStatementIsRootedAtD0AndRememberedApart()
+        public void AStatementIsRootedAtD0()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
             var theory = generations.Bind(Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String))));
-            var oracle = new CosmosOracle(theory, generations);
             var statement = new PredicateStatement(new[] { Eq(Text(P("a")), "x") });
+            var scope = new CosmosOracle(theory, generations).Admit(statement);
 
-            var unarmed = oracle.Admit(statement);
-            CosmosStatementScope armed;
-            using (StatementTerms.ArmDeclaredPossible())
-                armed = oracle.Admit(statement);
-
-            StatementTerms.DeclaredPossibleArmed.Should().BeFalse("disposing the switch puts it back");
             var declaration = theory.Declaration()!;
-            armed.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(declaration.DeclaredPossible());
-            unarmed.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(declaration.Context);
-            oracle.Admit(statement).ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(declaration.Context, "the unarmed tree is remembered unarmed");
-            armed.Facts(OracleLicence.Declaration).Should().BeSameAs(unarmed.Facts(OracleLicence.Declaration));
-            GC.KeepAlive(armed);
-            GC.KeepAlive(unarmed);
+            scope.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(declaration.DeclaredPossible()).And.NotBeNull();
+            scope.Facts(OracleLicence.Declaration).Should().BeSameAs(declaration.Declared);
+
+            var nothing = generations.Bind(Theory());
+            var unrooted = new CosmosOracle(nothing, generations).Admit(statement);
+            unrooted.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(nothing.Declaration()!.Context);
+            GC.KeepAlive(scope);
+            GC.KeepAlive(unrooted);
         }
 
         /// <summary>

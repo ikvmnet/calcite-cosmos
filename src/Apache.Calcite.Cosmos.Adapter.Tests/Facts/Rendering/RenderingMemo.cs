@@ -2,9 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -24,8 +21,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal sealed class RenderingMemo(Func<RenderingMemoKey, RenderingMemoKey>? keyOf = null)
     {
 
-        static readonly ConditionalWeakTable<RenderingTheory, string> Digests = new();
-
         readonly ConcurrentDictionary<RenderingMemoKey, Lazy<Entry>> _entries = new();
         int _next;
 
@@ -35,13 +30,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Gets the entry filed under a key, computing it the first time it is asked.</summary>
         public Entry GetOrAdd(RenderingMemoKey key, Func<int, Entry> compute) =>
             _entries.GetOrAdd(keyOf?.Invoke(key) ?? key, _ => new Lazy<Entry>(() => compute(Interlocked.Increment(ref _next)))).Value;
-
-        /// <summary>
-        /// The frozen theory's rows, hashed (Appendix E): generations defined alike share entries and a planted row shares
-        /// none. A primitive is no row, so a plant of one keeps a memo of its own.
-        /// </summary>
-        public static string DigestOf(RenderingTheory theory) => Digests.GetValue(theory, t => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            string.Join("\n", t.Graph.Tables.SelectMany(t.Theory.Rows).Select(row => row.ToString()).Order(StringComparer.Ordinal))))));
 
         /// <summary>
         /// One check: the claim's verdict under the asserted set and under the set beside it, each with the

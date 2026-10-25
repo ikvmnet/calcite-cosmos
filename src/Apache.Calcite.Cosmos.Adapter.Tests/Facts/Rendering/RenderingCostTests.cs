@@ -8,7 +8,6 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
-using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -163,50 +162,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             built.GroupBy(b => b.Name).Where(d => At(Sorted(d.Select(b => b.Ms)), 0.5) > 5).Select(d => d.Key).Should().BeEmpty();
             GC.KeepAlive(kept);
-        }
-
-        /// <summary>
-        /// The corpus planned new, armed for <c>D0</c> and unarmed (§4.3): each statement planned and implemented in two
-        /// harnesses of fresh generations a round, the arm planned first alternating, so that a statement's two arms are
-        /// timed a moment apart; the paired difference of the round's totals. The line: 0.06 s at the median of the rounds,
-        /// the first dropped. Arming adds one <c>D0</c> a declaration and generation, and the corpus plans over one.
-        /// </summary>
-        [Fact(Explicit = true)]
-        public void ArmingAddsWithinTheLineToTheCorpusPlannedNew()
-        {
-            var differences = new List<double>();
-            for (var round = 0; round < 11; round++)
-            {
-                var (armed, unarmed) = (new PlannerHarness(new JsonFactGenerations()), new PlannerHarness(new JsonFactGenerations()));
-                var totals = new double[2];
-                foreach (var (query, i) in PlannerQueries.All.Select((q, i) => (q, i)))
-                    foreach (var arm in (round + i) % 2 == 0 ? new[] { 0, 1 } : [1, 0])
-                        totals[arm] += Planned(arm == 0 ? armed : unarmed, query.Sql, arm == 0);
-
-                Print($"round {round}: armed {totals[0] / 1000:N3} s, unarmed {totals[1] / 1000:N3} s");
-                if (round > 0)
-                    differences.Add((totals[0] - totals[1]) / 1000);
-            }
-
-            var sorted = Sorted(differences);
-            Print($"armed - unarmed, paired: median {At(sorted, 0.5):N3} s, quartiles {At(sorted, 0.25):N3} to {At(sorted, 0.75):N3} s, range {sorted[0]:N3} to {sorted[^1]:N3} s");
-            At(sorted, 0.5).Should().BeLessThanOrEqualTo(0.06);
-        }
-
-        /// <summary>Plans a corpus statement and implements its Cosmos part, as <c>CosmosPlanningTimeTests</c> does; a statement that fails fails in both arms.</summary>
-        static double Planned(PlannerHarness harness, string sql, bool armed)
-        {
-            using var arming = armed ? StatementTerms.ArmDeclaredPossible() : null;
-            var started = Stopwatch.GetTimestamp();
-            try
-            {
-                CosmosPlanningTimeTests.Implement(harness.PlanToAsync(sql));
-            }
-            catch (Exception)
-            {
-            }
-
-            return Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         }
 
         static List<double> Sorted(IEnumerable<double> values) => [.. values.Order()];

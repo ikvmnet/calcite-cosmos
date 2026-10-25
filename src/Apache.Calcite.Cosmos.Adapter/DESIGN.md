@@ -805,9 +805,11 @@ beneath them, so the containers of a schema object share it: `CosmosSchemaFactor
 a default one.
 
 **A graph interns every value it is written, and never frees one**, so a graph serving queries forever grows
-forever. A generation is therefore retired once it has interned a million values. The next question starts
-a new one, and each declaration compiles itself into it when it is next asked. Nothing disposes a retired
-generation: a statement holding one of its answers keeps it alive, and once none does it is collected whole.
+forever; and its ids and epochs are finite. A generation is therefore retired once it has interned a million
+values, or used half of its ids or epochs (`Usage.FractionUsed`). The next question starts a new one, and each
+declaration compiles itself into it when it is next asked. Nothing disposes a retired generation: a statement
+holding one of its answers keeps it alive, and once none does it is collected whole. Running out of either is an
+engine failure, which loses facts and fails no plan (*F's generations before S reaches a plan*).
 
 **A query's context lives as long as its answer.** A planner asks about one statement a dozen times —
 matching a rule, converting, splitting, implementing — so a compiled declaration remembers the answers to its
@@ -6039,11 +6041,12 @@ opaque conjunct no round admits: another statement than the one that was sent.
 **A reading in the IR is several readers to Calcite, and each is measured where the reader fills it.** `typed` is a
 `RETURNING` and a column the reader types; `raw` is a promoted path's `VARIANT`, an `ANY` and a `VARCHAR` column. No
 expression over a JSON literal yields any of those columns, so `Tests/Measurements/MaterialisedTable.cs` scans rows
-through `CosmosJson.GetValue` itself. Five `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
-named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite on random predicates. What a cell
-answers is the union over the readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose
-`=` and null test never raise, which is what `PredicateAtom`'s raw reading answers for; the raises it leaves out are in
-`TODO.md`.
+through `CosmosJson.GetValue` itself. Six `Calcite.*` rows hold what it measured, `IrEval` answers from them through a
+named reader (`TypedAs`, `RawAs`), and `IrEvalCalciteTests` holds each to Calcite, on random predicates and, for the
+cast of a raw value to text and a raw number in its box, over a fixed set. What a cell answers is the union over the
+readers its reading stands for. Unnamed, `IrEval` reads raw through the two columns whose `=` and null test never raise,
+which is what the facts graph's raw reading answers for; the raises it leaves out are in `TODO.md`, and the soundness
+line names each column wherever they part (`IrEval.RawModes`).
 
 **The column reader is not `RETURNING`** (`Calcite.ColumnReadsWholeNumbersAsItsType`). The column reads a whole number
 as its type whatever its spelling, `42.0` under `INTEGER` and `42` under `BIGINT`, where `RETURNING` raises over both,
@@ -6052,9 +6055,18 @@ and fails the statement over a fraction, a number beyond the type, a string or a
 **The raw columns agree on strings and null, and part elsewhere** (`Calcite.RawStringEqualityIsOrdinal`,
 `Calcite.RawNullIsSqlNull`). A string is equal to the string of its UTF-16 units alone, and a null or an absent path is
 SQL null, so `NOT (raw = 'bikes')` keeps neither. A value of another type is unequal in `VARIANT` and `ANY`, and fails a
-`VARCHAR` column's read. `ANY` raises on an ordering across types. A `VARIANT` has no ordering at all, the statement
-failing to compile, and is equal to a number boxed with its own SQL type alone, `BIGINT` for a JSON integer and `DOUBLE`
-otherwise, which the IR does not keep: raw numeric `=` stays a coin in `IrEval`.
+`VARCHAR` column's read. `ANY` raises on an ordering across types, and within one orders as the type: a string by its
+UTF-16 units, as a `VARCHAR` column does, and a number in the box the reader built, a long by its value and any other
+number by its double's exact value, so `9007199254740993.0` is below 2^53 + 1 and a stored `0.1` above `0.1`. A
+`VARIANT` has no ordering at all, the statement failing to compile, and is equal to a number boxed with its own SQL type
+alone, `BIGINT` for a JSON integer and `DOUBLE` otherwise, which the IR does not keep: its numeric `=` stays a coin in
+`IrEval`.
+
+**A raw value cast to text is each column's own too** (`Calcite.CastOfARawValueToText`). A string is itself and a null
+null in each. A `VARIANT` casts a number and a boolean to null and raises over an object or an array; an `ANY` renders
+each value as Java renders the reader's box, a long in its digits, any other number as Java spells its double, an object
+as `{a=1}`; and a `VARCHAR` column reads a string alone. `IrEval` reads the cast through a named column; unnamed, it
+keeps the facts graph's rendering, which population D holds F to (`TODO.md`).
 
 **Text orders by UTF-16 code unit** (`Calcite.TextOrderIsByCodeUnit`) and the service by code point, so the two part
 where one string holds U+E000 or above and another a supplementary character.
@@ -6083,7 +6095,8 @@ string fixes add come through unchanged.
 
 **`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
 its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
-literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell;
+literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell,
+a raw ordering and a raw equality with a number read their columns (*The raw reading's raises*, below);
 a typed equality on a point reads its value as the column and as `RETURNING` read it; and `IN` is the `OR` of its
 points' equalities, each as its reading answers it on the cell. Making `On` exact on a scalar instead would change the
 facts graph's verdicts wherever a domain is known.
@@ -6161,9 +6174,9 @@ theory writes paths with, refuses one.
 **S is a frozen theory and a bundle per statement round.** `RenderingTheory` loads the measured rows one batch per
 axiom, so a second row for one key and target that answers otherwise is refused whole and named, and then the host rows:
 the sets each target serves, what an answer means, the agreement's boxes, the 225 classes they range over, and each
-reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text and raw have
-one, and a text cast of the raw value has none, since over a `VARIANT` Calcite casts all but a string to null where its
-cells, modelled on the rendering, say otherwise (`TODO.md`). Its rules settle the rows and derive the classes each box
+reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text, raw and, since
+g09, the text cast of a raw value have one; a numeric cast of a raw value has none, each column casting it its own way
+(`TODO.md`). Its rules settle the rows and derive the classes each box
 allows and refutes; then it freezes, and every bundle is a child of it. A `RenderingBundle` holds one round's conjuncts
 as the shared vocabulary's terms, each path's import written once before the run, and the forms claimed for the
 conjuncts; it is run once, read, and disposed.
@@ -6371,16 +6384,17 @@ other six narrow from the declaration's tables as they narrow an atom's path. It
 generation, however many planning threads ask (`Lazy`, `ExecutionAndPublication`), and is `null` where nothing is
 mentioned or its run does not complete.
 
-**Production carries it nowhere.** The rule is local, so it is active only in `D0` and beneath it. A statement is rooted
-at `D0` only in a flow that `StatementTerms.ArmDeclaredPossible` armed (an `AsyncLocal`), the oracle keys an armed tree
-`d0|` apart from an unarmed one, and production arms nothing. Unarmed, what runs is the `declared` table's definition in
-each graph, a `Lazy` per compiled declaration, and one read of the switch per statement tree and per memo lookup.
+**Every statement is rooted there.** `StatementTerms` roots a statement's tree at `D0`, or at the declaration's context
+where it has none, so every stratum lies beneath `D0`, where the local rule is idle. A generation's trees share one
+root, and the oracle remembers a tree by its digest alone. Until g08 a statement was
+rooted there only in a flow a test armed, keyed apart, and production armed nothing (*`D0`, every statement's root*,
+below).
 
 **It changes no verdict, fact set or plan.** The root's view is still the declaration's own fact set (`ViewOf` compares
 the root's scope by reference), so the translator's round-1 facts are unchanged. A stratum's row for an atom's path
 starts from `D0`'s instead of `Anything`, and `D0`'s, read from tables the stratum inherits, is no narrower than the
-stratum's, so the meet is the stratum's own. The plan digests with the switch off and on, each in generations of its
-own, are byte-equal.
+stratum's, so the meet is the stratum's own. The plan digests with statements rooted at the context and at `D0` are
+byte-equal.
 
 **`D0` keeps a declared domain as stated.** For a path an atom reads, a stratum keeps only the domain's values of a type
 the path may hold (the last rule of what a predicate establishes), and `D0` holds no atom. So where a declaration states
@@ -6388,7 +6402,7 @@ a domain beside narrower types, `D0`'s row lists values of a kind it excludes. I
 `PathValues.Admits` and `PathCell.Split` read a value only of a kind the row allows; it is the spelling that differs.
 
 **`D0` makes no term.** It writes a row only for a path the declaration's context holds a term of: it runs no rule of
-JSON, and a term made there would put into every stratum beneath it a path the unarmed stratum never holds. A body atom
+JSON, and a term made there would put into every stratum beneath it a path no stratum of the context holds. A body atom
 of a rule the theory cannot read is mentioned and never made, and has no row. A path the round-1 view mentions lazily,
 an element or a child of a declared path, has none either; the importer counts each as a default.
 
@@ -6414,9 +6428,9 @@ theory's rows, so generations defined alike share entries, a planted row shares 
 list; a primitive is no row, so a plant of one keeps a memo of its own.
 
 **Generations, as F's.** A graph's ids and epochs are finite and its pools never shrink. `RenderingGraph` defines a new
-theory from the same definition before it hands out a bundle once the graph has used half of either
-(`Usage.FractionUsed`), leaving headroom for the bundles open on it, or has interned F's limit of a million values;
-nothing disposes the old one, which is collected with its last bundle. An engine failure in any of a bundle's calls
+theory from the same definition, on a thread of its own, once the graph has used two fifths of either
+(`Usage.FractionUsed`) or interned 800,000 values, and hands it out once ready, the old one answering until then
+(*The production oracle*); nothing disposes the old one, which is collected with its last bundle. An engine failure in any of a bundle's calls
 declines it rather than throwing, and every claim of it reads Unproven, naming the failure. Running out of ids or
 epochs is the graph's, so it retires the generation at once; a fault, such as a primitive that answered one key two
 ways, is the bundle's, and the generation serves on.
@@ -6458,7 +6472,7 @@ own position is read from the same run, and reported beside, never claimed.
 **The import is the statements' root.** A bundle takes one source, and a check holds every conjunct its statements'
 rounds admitted. A stratum assumes the conjuncts admitted before it, and the node a residual conjunct renders from is
 the last stratum, which assumes them all: checked there, those conjuncts would be agreed with only where they already
-hold. The root (`D0`, armed) assumes none; it is the node round 1 renders from, and every statement over one container
+hold. The root (`D0`) assumes none; it is the node round 1 renders from, and every statement over one container
 shares it in a generation, so statements rooted apart fail the run. Its facts are weaker, never wrong.
 
 **A later round's conjunct is read beside the facts it was rendered from.** The translator renders a round-2 conjunct
@@ -6490,7 +6504,7 @@ stratum assumes hold, which is what the translator's licence promised. No fact i
 path from one node, and a stratum narrows only the cells of its own conjunct's atoms.
 
 **The run decides whether a verdict may be read, never what it is.** Each input is planned and implemented in a flow
-armed for the capture and for `D0`, and read only afterwards, so the importer opens nothing planning did not; the
+armed for the capture, and read only afterwards, so the importer opens nothing planning did not; the
 corpus's statements share a harness and are planned one at a time, the rest two at a time. A bundle runs within count
 limits that grow with the form, since descent and evaluation peel a junction a member at a time. A check is memoised by
 its IR, the import spelled whole, the form's text, the claim, the set and the theory's rows hashed: the claim, because a
@@ -6563,9 +6577,9 @@ join because the licensed connective is associative, commutative and idempotent,
 already took for granted. S has 42 rules, the descent's first arm and rest having become four; Stage 2's line is 56.
 
 **The coverage line reads each conjunct sent by its check's verdict, and by its own where the check holds a skipped
-conjunct**, which the line excludes with what it does to the check; decision D3's Unproven is left out. `verdicts.tsv`
-names `no exact join`, from S's rows, where a conjunct was never offered its own written member, and `beside a skipped
-conjunct`.
+conjunct**, which the line excludes with what it does to the check; decision D3's Unproven, left out until S read the
+raw reading's raises, is counted. `verdicts.tsv` names `no exact join`, from S's rows, where a conjunct was never
+offered its own written member, and `beside a skipped conjunct`.
 
 ### Planted faults: recall and mutations
 
@@ -6724,8 +6738,10 @@ shorter form. The bare form beats a guarded one only where it is exact too, whic
 `RETURNING DECIMAL`, and each parses a string Calcite then compares where the service compares no string, so no accessor
 of the conjunct writes a number comparison over it as the form means (below), and the window is never exact, admitting
 every non-number. It could only ever be refuted or implied and unwritable, a candidate an atom for nothing. K's windows
-over those readers, and P6's C4 `IS_NUMBER(c.price) AND c.price > 50`, wait on a carrier the builder would send them
-through: O7's third option, the owner's.
+over those readers and P6's C4 `IS_NUMBER(c.price) AND c.price > 50` are O7's loss 1, listed until Stage 3 (owner,
+2026-10-24): no carrier operator, re-typed accessor or other way of sending what the Rex does not mean is built. The fix
+is a guarded spelling S can prove, in the shape of `CASE WHEN IS_NUMBER(x) THEN CAST(x AS DOUBLE) > n ELSE FALSE END`,
+once the loader reads `IS_NUMBER` and `CASE`.
 
 **A price is a total order.** `Priced` is the form's nodes and its text. `Min` keeps one value whatever order rows
 arrive in, and `None`, greater than every real price, is a complete value from the start, so a rule reads "no exact
@@ -6939,9 +6955,8 @@ stratum fault — G12's coarse reading, G11's own facts — shows as a witness o
 reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
 draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
 conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
-nothing measured, but those in D3's raw scope (a raw ordering, or a raw comparison with a number or a boolean), which
-IrEval reads no raise of until g10 and which are counted apart, as the coverage line counts them. Source B's trials are
-shadowed and judged on their declared documents.
+nothing measured; a raw ordering, or a raw comparison with a number or a boolean, is judged through each column
+(*The raw reading's raises*). Source B's trials are shadowed and judged on their declared documents.
 - *The pairwise check* needs no `IrEval`: two exact agreements of one node at one position, and S's best beside the
   translator's text where the key proved both, keep alike where Calcite answers; where it raises the Equal box allows
   any answer but a failure, and those documents are reported apart.
@@ -6957,16 +6972,18 @@ shadowed and judged on their declared documents.
 **The gains, as forms.** P1's inequality is sent restricted under every set; P2 and P3 exactly over a twin of `typed`
 whose declaration keeps U+0000 out of the label, and under `Production` over `typed` itself; P4's inequality weakens
 tighter than J, and its orderings as J's under `Production` and to presence where J's string branch is unproven to S;
-P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 is killed
-on P6:** its C4 form compares the price through a cast, which no accessor writes as it means, so its weakening keeps
-presence beneath the `NOT` where J's carried K's window, and P6 waits on the owner's O7 (a carrier). A parameter atom
-left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
+P5's second arm keeps its kind; P8 is counted; and P7, a `LIKE` the translator pushes, is not S's. **Line 19 passes with
+P6 listed** (owner, 2026-10-24): its C4 form compares the price through a cast, which no accessor writes as it means, so
+its weakening keeps presence beneath the `NOT` where J's carried K's window, O7's loss 1 with every number comparison
+over a cast or `RETURNING DECIMAL` until Stage 3's guarded spelling. P4's kill reads "no unlisted looser", so its `>=
+'30'`, looser under `Emulator` and `Portable` where J's string branch is unproven to S, passes on O7's loss 5. A
+parameter atom left residual weakens to its presence alone. On a service each exact gain's text keeps Calcite's rows.
 
 **What holds it.** `RenderingShadowTests`, `RenderingSoundnessTests.NoGeneratedFormHasAWitness` and, at the gate,
 `NoOpaqueWeakeningHasAWitnessInProcess`, `RenderingPairwiseTests`, `RenderingRewriteTests`, `RenderingGainsTests`,
 `EveryExactReadingAnswersAsItsCell`; the reports `shadow-admission.tsv`, `shadow-weakening.tsv`, `shadow-summary.txt` and
 `pairwise.tsv`. The summary gives S's time and bundles by shape twice: of each statement, and of each query, every
-statement its plan asked S of, the shape the widest of theirs, as §6.3's lines read cost. The machine's load is
+statement its plan asked S of, the shape read off the union of their atoms, as §6.3's lines read cost. The machine's load is
 recorded beside it by whoever runs it; no figure carries a line before g15.
 
 ### Faults planted in S
@@ -7030,6 +7047,252 @@ generate mode composes no refutation through a junction (`TODO.md`).
 **What holds it.** `RenderingGenerateMutationTests`, the ten caught and M11 beside, the tip wrong on no trigger and every
 trusted plant changing what S sends or implies; `RenderingGateFaultTests`; `RenderingRecallTests`;
 `RenderingWitnessTests`.
+
+### F's generations before S reaches a plan
+
+**Why first.** g08 roots every statement at `D0`, and the switch puts S in every plan; both live in long-lived graphs, whose
+ids and epochs are finite (about 2.1 billion and 4.3 billion; Eggnog's architecture §2.12). Past either, every call that
+needs one throws `OverflowException`. S retired on `Usage.FractionUsed` and declined that exception from the start; F
+retired on interned values alone, and only `D0`'s build caught it, so anywhere else in F running out failed the plan.
+
+**What F does now.** A generation is also retired once its graph has used half of its ids or epochs
+(`JsonFactGenerations.DefaultUsedLimit`), the other half being headroom for the contexts still open on it; S builds its
+successor earlier, at four fifths of it (*The production oracle*). `OverflowException` is one of F's engine failures (`JsonFactTheory.IsEngineFailure`): the context it met is released
+and its node reads its parent's, a path the context is told of is read in the context, knowing nothing, and a declaration
+that cannot compile states nothing — facts lost, none invented. Running out leaves `FractionUsed` at 1, so the next
+question starts the next generation, with no flag of its own. S's bundle and `D0`'s build share the list.
+
+**What a plan runs now.** Each read of F's current generation reads the graph's `Usage`, two counters beside the interned
+count it read before. No plan moves: the digests at 200 and 1,000 predicates are byte-equal, both frameworks.
+
+**What holds it.** `JsonFactTheoryTests.AGraphPastTheGaugeStartsTheNextGeneration`, the gauge forced to just past what a
+generation uses defining the rules, since no test can spend half of 2^31 ids; and
+`AnOverflowLosesAFactAndThrowsNothing`, a context's mention throwing as the graph would.
+
+### `D0`, every statement's root
+
+**Why before the oracle.** Every bundle S opens imports from its statement's root, and round 1 renders from it. The
+declaration's context holds no `possible` row, so rooted there a round-1 conjunct imports the top for every path it
+reads, counted constrained, and S proves little of it. The check run and the shadow were rooted at `D0` by a test's
+switch; g11's oracle and g12's admission import from production's root, so production roots there first, in a commit of
+its own that changes no plan.
+
+**What F does now.** `StatementTerms` roots every statement at `D0`, or at the declaration's context where it has none
+(nothing mentioned, or a run that stopped short). The switch, its `AsyncLocal` and the oracle's `d0|` key prefix are
+gone. A planning path now builds `D0` once a declaration and generation, on the first statement asked of it, and opens
+every stratum and every question's context beneath it, where the local rule is idle, rather than beneath the context.
+
+**What it costs, and what holds it.** `D0`'s build is F's time: 1.8–5.6 ms a declaration at the median at 16 % load
+(Stage 1), 5.3–15.0 ms with the machine saturated. The corpus planned new rooted at `D0` against the context differed by
+a median of −0.40 s (quartiles −0.84 to +0.25 s) saturated, and −0.05 to +0.08 s at Stage 1: below the noise. The plan
+digests before and after are byte-equal at 200 and 1,000 predicates, both frameworks, the evidence
+`TheDeclarationsPossibleRowsChangeNoPlan` gave with the switch off and on; it retires with the switch, as does the cost
+test that timed the corpus both ways. Population D's 200 trials a run and 5,000 on request root at `D0`, so the 50 armed
+trials beside them retire; `DeclaredPossibleTests` still compares `D0`'s rows with a stratum rooted at the context.
+
+### The cast of a raw value to text
+
+**Why it was the translator's.** `Owns` holds a conjunct only where every reading has an edges row, and
+`CAST(c."$.category" AS VARCHAR)` had none: its cells read it as the rendering, where over a `VARIANT` Calcite casts a
+number or a boolean to null. So the translator wrote it beside S, outside the family, and O2's residue listed it:
+differential 206 and 236 a pull request, five more at the gate. What it lacked was one measurement in process.
+
+**What Calcite does is a row** (`Calcite.CastOfARawValueToText`, *Calcite's side, measured in process*). Over a value
+that is no string the three columns part: a `VARIANT` answers null, an `ANY` its rendering, a `VARCHAR` column fails
+the statement, and over a structure the `VARIANT` raises too.
+
+**What S reads.** The reader has an edges row with no edges, as text has: it answers at the literals alone. On a cell
+`PredicateAtom.OnCell` reads it as `RawText`, the union of the three columns: a string exactly as text, a null as null,
+and anything else as the `ANY`'s rendering beside the `VARIANT`'s null and the raises. A long renders in its digits,
+which hold no point, and any other number as Java spells its double, which always holds one; so a cell reads a text
+without a point as a rendering only of a long it holds, and one with a point only where its numbers reach the text's
+double. Under decision 2 the raises refute nothing. The union proves `c.category = "b"` for `CAST(…) = 'b'`, refutes
+`NOT (c.category = "b")` for its negation on a stored null, which every column reads as null, and over a boolean finds a
+`VARIANT`'s UNKNOWN beside an `ANY`'s TRUE, which no form keeps alike; so S declines the negation, and the translator's
+guarded form for it is implied and no more.
+
+**What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
+graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
+`Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.
+
+**What moved in the shadow,** at 200 predicates, under every set. S owns 12 conjuncts more. 206 and 236 are the same
+form as the translator's; partition 584's disjunction holding the cast is respelled; 588's `NOT (CAST(…) <> 'Sprint!')`
+is a gain; the other eight are declined alike. The regressions are unchanged. Three weakenings J held unproven at the
+key are now implied there, and stay looser as O7's loss 1, the number or boolean member being no string comparison the
+Rex builder writes; two S had read as J's are tighter than J's now, and 588's is pushed exactly. The check run reads 206 and 236 Exact.
+At 1,000 predicates 41 rows move: partitions 1371, 1650 and 1908 are the same as the translator's, and 1372 and 1651,
+`NOT (CAST(…) = 'x')`, are regressions on their merits, 36 under `Production` and 44 under `Emulator` against O2's 53.
+The translator's guarded form keeps there a number or a boolean that a `VARIANT` reads as null and Calcite drops: a
+decline that is a correctness fix, which no form proves and the `VARCHAR` column's raise keeps S from refuting.
+
+**What holds it.** `CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn` pins the row;
+`IrEvalCalciteTests.TheCastOfARawValueToTextAgreesWithCalcite` holds `IrEval`'s cast, through each column, to
+Calcite; `PredicateAtomCellTests` holds every cell to `IrEval` through the three columns, a long's digits and a
+double's spellings among the literals; and the soundness line judges every form over the cast through each column
+(`IrEval.RawModes`). `RenderingGateTests.ACastToTextOverARawValueReadsItsThreeColumns` pins the three verdicts above.
+
+### The raw reading's raises
+
+**Why it was unproven.** On a cell S read a raw ordering as the facts graph does, any truth beside a raise, and a raw
+equality with a number as UNKNOWN beside every string: no string ordering over `id` was exact, though every column
+orders a string by its units. `IrEval` tossed a coin on a raw ordering, so no document measured a form over one.
+Decision D3 left their Unproven out of Stage 1's coverage line, and PR A's line 2 counted their forms apart.
+
+**What Calcite does is the row's** (`Calcite.RawNullIsSqlNull`, *Calcite's side, measured in process*). A `VARIANT`
+has no ordering; an `ANY` orders within a type as the type and raises across types; a `VARCHAR` column, beside a
+string, orders a string by its units and fails to read anything else. An `ANY` compares a number in the box the reader
+built, a long by its value and any other number by its double's exact value, and a `VARIANT` is equal to a number boxed
+with its own type alone, which the IR does not keep. The row now says so, measured on 2^53 + 1 written with a point and
+a stored `0.1`.
+
+**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns, each as `RawColumnsTable` states it:
+whether it reads a value of each kind, whether it orders, what its cast to text makes of each kind. The table is the
+rows' facts as data, asserted beside their measurement, and the cells only look it up. An ordering places a value of
+the literal's type — a string by its units, a boolean false first, a number by `PathCell.SidesOf` — beside the
+`VARIANT`'s raise, and across types is the raise alone, which under decision 2 any answer but a failure refines.
+`SidesOf` places a number as a box holds it, a whole number within a long by its value, its double or both as its
+caller's row reads one, any other by its double, and a literal neither a long nor a double nowhere; the service leaf
+and the raw cells each name their own readings, both today since the theory spells 30 and 30.0 alike, so that a run of
+the probe account that separates the service's moves no Calcite cell. Two doubles compare by `Double.compareTo`, which
+puts a stored -0.0 below a double 0 (measured), and the IR spells that 0 as any other, so an ordering against 0 over
+a cell holding 0 reads TRUE or FALSE. An equality with a number
+is FALSE of any other type and of a number no box reading equals, and TRUE or FALSE of one a box may equal, since the
+`VARIANT`'s is the literal's. The raw reader's edges row cuts at a number literal's double, where a double's box
+changes its answer. So `c.id < "shoes"` is exact for `raw(id) < 'shoes'` under `Production`, and under `Emulator` where
+no string may hold U+0000.
+
+**What F reads is unchanged.** The coarse raw reading answers as it did, and the cell methods are S's alone, so no
+plan moves: the digests at 200 and 1,000 predicates are byte-equal, both frameworks. The facts graph still reads a raw
+number by its value where an `ANY` reads one not written as a long by its double (`TODO.md`).
+
+**What `IrEval` reads.** Through a named column, a number in its box. The soundness line names every column for a
+predicate that orders a raw value or compares one with a number or a boolean (`IrEval.RawModes`), so each document is
+measured through each column but at the `VARIANT`'s numeric coin; unnamed, `IrEval` keeps the facts graph's coin, which
+population D holds F to. Line 2 counts nothing apart, and the coverage line counts D3's Unproven.
+
+**What moved.** At 200 predicates no shadow class moves: D3's one conjunct there, differential 237's
+`raw(category) IN (30, '30')`, stays a regression on its merits, a `VARIANT` boxing the 30 as no document's number may.
+Source A's unmeasured documents fall from 972 to 134 under each set, and the shadow derives 42 forms more under
+`Production`. At 1,000 predicates the 18 raw orderings over `id` are S's under `Production`, 12 the same as the
+translator's and 6 respelled shorter without the null guards an ordering's UNKNOWN makes vacuous: 18 regressions where
+there were 36, against O2's 53. Under `Emulator` they stay, `id`'s strings holding U+0000 for all the import says, which
+the emulator orders as stored: a correctness fix there, as the text orderings are. The three raw `IN`s stay on their
+merits, and line 2's 69 forms are measured.
+
+**What holds it.** `CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal` pins the boxes;
+`IrEvalCalciteTests.ARawNumberInItsBoxAgreesWithCalcite` holds `IrEval`'s to Calcite; `PredicateAtomCellTests` holds
+every cell to `IrEval` through the three columns, and `ARawReadingPlacesItsTypeAndRaisesAcrossTypes` pins how tight the
+cells are; `RenderingGateTests.ARawOrderingAndANumberReadTheirColumns` pins the verdicts.
+
+### A number literal, as Calcite evaluates it
+
+**What was wrong.** The loader read an approximate literal through `JsonScalar.From(double)`, whose cast to a decimal
+keeps fifteen significant digits: `1.0000000000000002E0` became 1, and 2^53 9007199254740990. Every cell, S's and F's,
+compares the IR's literal by its value, so the raw cells g10 sharpened proved `c.category != 1` for `<>
+CAST(1.0000000000000002E0 AS VARIANT)`, which keeps a stored 1.0000000000000002 Calcite drops; and the facts graph read
+`raw = 1 AND text = '1.0000000000000002'` as a contradiction and planned a statement Calcite keeps a row for as empty
+`Values`. No soundness line could see it: the cells, `IrEval` and the judge all read the loaded IR.
+
+**What it reads now.** A number literal is the value Calcite evaluates, exactly, or its conjunct is opaque: an
+approximate one is its double's own value (`JsonValues.TryExactly`, a REAL's its float's), and one within a decimal's
+range that no decimal holds exactly — most fractions, a negative zero — is no literal. One past the range, `1E30`, keeps
+the approximate spelling it had, which no cell reads a value from. `JsonScalar.From(double)` and `JsonValues.Of(double)`
+hold a double so too, never by .NET's cast. So `1.5E0` and 2^53 are read as themselves, `0.1E0` is opaque, and both
+findings are gone. A fraction is not given the approximate spelling: the facts graph would meet it with the exact
+decimal a text's preimage holds, and prune a row Calcite keeps.
+
+**What moved.** No plan. One line of the plan digests, at 200 predicates and at 1,000, reads another IR: differential 453's pushed
+weakening, `OR(… = '9007199254740992', … = 9.007199254740992E15)`, whose number arm the loader read as 9007199254740990,
+now reads 2^53; its plan, its text and its parameters are the same. In the shadow that conjunct was S exact where the
+translator's text is unproven, for the literal misread; at 2^53, where a typed `DOUBLE`'s rounding and the service's
+reading held wide part, it is a regression on its merits: 12 under `Production` and 18 under `Emulator` against 25, 19
+and 45 at the gate against 53. Line 1 judges four proofs fewer at either size, 0 witnesses.
+
+**What holds it.** `CosmosPredicateLoaderTests.ANumberLiteralIsReadAsCalcitesValueOrNotAtAll` holds every number
+literal, against a typed reading and boxed for a `VARIANT`, to Calcite's value of it, and
+`AnApproximateLiteralPrunesNoPlanItsDoubleKeeps` plans the statement F pruned.
+
+### The production oracle
+
+**What it is.** `RenderingOracle` asks S as production will from g15: one generate bundle a question, of one statement
+round's roots, imported from the node the round renders from with each later round's atoms stated beneath its stratum,
+run, and each root's `ReadBest` read, its weakening beside. `CosmosRendering.Oracle` is the process's, over the
+registry's rows and `CosmosStrictness`'s lists. Nothing in planning asks it until g15, so no plan moves.
+
+**The key is what the bundle reads.** `RenderingQuestionKey` holds the roots' digests sorted, each opaque term beside
+the value it was read as (its number names it only within one loading, so two conjuncts the loader read apart may share
+a digest), the import spelled whole with every stratum stated beneath it, the set, and the frozen theory's rows hashed
+(`RenderingAnswerMemo.DigestOf`, moved from the check run's memo). No form and no question: in generate mode the form
+is the answer, and one bundle answers admission and the weakening. A parameter is spelled by its ordinal and type,
+never its value; a literal is spelled, so each new literal is a new first plan, as in F's memo; and the run's limit is
+the roots'. The importer's count of open and constrained defaults scans the declaration's mentions and is no part of
+the digest, so the oracle hands it no declaration and a key never scans them.
+
+**What is remembered.** `RenderingAnswerMemo` holds 4,096 bundles' answers, the least recently asked out first, each a
+`Lazy` the first asker computes and the others wait on. An answer is kept, `Incomplete` among them: limits are counts,
+so the same question stops alike. A decline is handed back, counted and forgotten — S unavailable, an engine failure,
+running out of ids or epochs, or a conflict, which production reads as a decline and CI fails on — since the theory's
+digest outlives a generation, and a remembered `OverflowException` would decline its key for the process. Answers
+survive a retirement: generations defined alike hash alike. So a remembered answer is served whether a generation answers
+or not: the graph keeps the current generation's digest, the key is built under it and looked up first, and only a miss
+waits for a generation. After a run out of ids, or while a successor builds, the questions a statement asked before are
+hits, not waits and declines. A node is read for its key inside the same guard as the bundle: one its owner let go is
+disposed, and the question declines rather than throwing, so the caller keeps the node's owner reachable.
+
+**Generations off the planning thread.** Every generation, the first and each successor, is defined on a dedicated
+thread (`TaskCreationOptions.LongRunning`), its rows hashed and one question asked before it is current, so a plan never
+pays a definition, a hash, or a generation's first run. The current one is a volatile field read without a lock. Past
+two fifths of its ids or epochs, or 800,000 values interned, four fifths of F's gauge, its successor is built and
+swapped in when ready; until then it answers, past F's half too, which stands well short of the engine's own limits. A
+bundle that runs out of ids or epochs declines and retires its generation at once, and the next question waits for the
+successor. A question that finds no generation answering, before the first is built or after the current ran out,
+waits for the build at most 5 s from when a question first waited on it, so a plan of many questions waits once, and
+past that declines as unavailable. The first definition that throws, a contradicting row or `Settle` stopping short,
+leaves S unavailable for the process, since the same rows would throw again: every question declines, and none throws
+to a plan. So does one whose warm-up question fails in the engine or conflicts, which would otherwise decline every
+question at a bundle's cost. A successor is the definition that already built once, so its failure is no row's — memory
+short while two generations live, at the moment that is likeliest — and the spec's rationale does not reach it: the
+current answers on, the failure is counted, and the next build starts after 10 s. A generation is published under the
+lock builds start under, so an asker still holding the one it replaced starts no second build, and every build runs
+under no caller's execution context.
+
+**The set per endpoint (O1).** `CosmosSchemaFactory` reads `serviceTarget`, `azure` by default or `emulator`, onto each
+container's metadata (`CosmosContainerMetadata.ServiceTarget`), where a host building its own tables sets it.
+`CosmosRendering.SetFor` proves Azure's statements under `Production` and the emulator's under `Emulator`, and the set
+is in the key: `label < 'a'`, over a label that may hold U+0000, is proven for Azure and declined for the emulator,
+which orders U+0000 as stored. `CosmosServiceTarget` is public, where the spec drew it internal, since a host could not
+set it otherwise. Nothing reads it in planning yet.
+
+**Cost, read as the lines are set.** Every answer carries a `RenderingCost`: a hit, a bundle or a decline, a waiter
+handed another asker's decline counting the decline alone; its run's iterations, which the bundle now keeps; and S's
+time from the lookup to the roots' answers. g15's accumulator sums them a query. The tests read a query's shape off the
+union of the atoms of every root its plan asked (§6.3, `RenderingGenerateRun.ShapeOf`), as PR A's measure read it, not
+off its widest statement; the shadow's summary reads its per-query shapes so, and prints the tightest run's iterations
+against its limit.
+
+**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59 µs
+at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
+Release with the machine at 65–100 % (`AHitCostsMicroseconds`, three runs), the import's spelling most of it. §6.1's
+lever is taken: `RenderingImporter` reads and spells what each frozen node holds of a path once, in a table the node
+takes with it when collected, and the same questions took 13–23 µs at the median and 16–31 µs at the 90th centile, the
+machine at 43–71 %. The first generation, built first
+in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms, hashes in 70–143 ms and asks its
+question in 14–50 ms: the rest is the process's first touch of the registry, of Calcite's operator tables that
+strictness reads, and of the JIT. In a process that has planned before, the build took 598 ms. Line 29 reads it at g15.
+
+**The tests.** `RenderingOracleTests`: `TheKeyHoldsEveryValueTheImportReads` reads every `imported`, `importedchars`
+and `assumed` row of a bundle imported as the oracle's was, and finds each spelled in the key, and keys a narrower
+node, a stratum stated otherwise, or none, apart; `AnOpaquesReadingIsInTheKey`, `AParameterNeverReachesTheKey`,
+`ADeclineIsNotRemembered`, eight askers at once among it, `AnIncompleteIsRemembered`, `AFailedDefinitionDeclinesAndCounts`,
+eight questions over a held build waiting one wait, `ARememberedAnswerIsServedWhileNoGenerationAnswers`, and
+`AHitCostsMicroseconds`, explicit, which times hits by the oracle's own clock.
+`RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a successor's definition at a gate while the
+spent generation answers, `ASuccessorIsBuiltOffThePlanningThread` finds every definition on a thread neither the
+asker's nor the pool's and under none of its async locals, and `ASuccessorsFailureLeavesTheCurrentAnswering` fails one.
+`CosmosRenderingTests.TheTargetChoosesTheSet` holds the operand, the metadata and the set. Until g15 routes the shadow
+through the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionOracleAnswersAsTheShadowsBundles`
+asks the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the
+key alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from `CosmosRendering.Definition`.
 
 ---
 

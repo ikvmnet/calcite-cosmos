@@ -129,8 +129,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Every reader the loader builds has the row its cuts read (<c>CosmosPredicateLoader.Value</c> and <c>Cast</c>), and
-        /// every row names one. A text cast of the raw value has none: over a <c>VARIANT</c> Calcite casts all but a string to
-        /// null, which its cells do not model, so an atom read through it is never evaluated.
+        /// every row names one. A numeric cast of the raw value has none: each column casts its own way, which no row
+        /// measures, so an atom read through it is never evaluated.
         /// </summary>
         [Fact]
         public void EveryReaderTheLoaderBuildsHasAnEdgesRow()
@@ -141,8 +141,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
                 .ToList();
 
-            // A cast of the raw value is held back until a Calcite row measures it.
-            var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)).ToList();
+            // A numeric cast of the raw value is held back until a Calcite row measures it.
+            var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)
+                || reader == PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)).ToList();
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }

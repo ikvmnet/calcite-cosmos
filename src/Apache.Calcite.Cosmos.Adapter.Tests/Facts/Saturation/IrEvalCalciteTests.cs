@@ -35,8 +35,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <para>
     /// <b>A predicate's typed and raw readings are read one way each</b>, drawn with it: <c>typed</c> through
     /// <c>RETURNING</c> or a column, <c>raw</c> through a <c>VARIANT</c>, an <c>ANY</c> or a <c>VARCHAR</c> column, against
-    /// the literals the loader reads beside each. A cast over a raw value and parameters are deferred: neither was measured.
-    /// <see cref="LongPredicates"/> runs on a Calcite or IKVM bump.
+    /// the literals the loader reads beside each. A numeric cast over a raw value and parameters are deferred: neither was
+    /// measured. The cast of one to text is asked apart. <see cref="LongPredicates"/> runs on a Calcite or IKVM bump.
     /// </para>
     /// </remarks>
     public sealed class IrEvalCalciteTests
@@ -135,6 +135,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(20)));
         }
 
+        /// <summary>
+        /// The cast of a raw value to text through each column (<c>Calcite.CastOfARawValueToText</c>): every value in one
+        /// statement a column but those the evaluator says raise, two of which are asked alone; an <c>ANY</c>'s structure,
+        /// a coin, is left out.
+        /// </summary>
+        [Fact]
+        public void TheCastOfARawValueToTextAgreesWithCalcite()
+        {
+            var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(Declaration.A));
+            SqlPredicate[] predicates = [new SqlPredicate.IsNull(cast),
+                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text))];
+            var documents = Values.Append(new J.Num(99999999999999999999m)).Append(new J.Num(long.MaxValue)).Select(v => new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = v }))
+                .Append(new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal))).ToArray();
+            var (world, mismatches, compared) = (new World(0), new List<string>(), 0);
+
+            using var connection = MaterialisedTable.Open();
+            foreach (var raw in Enum.GetValues<IrEval.RawAs>())
+            {
+                var drawn = new Drawn(IrEval.TypedAs.Returning, raw);
+                Truths? Truth(SqlPredicate p, J.Obj d)
+                {
+                    var tossed = world.Tossed;
+                    var truth = IrEval.Truth(p, d, world, drawn.Typed, raw);
+                    return world.Tossed == tossed ? truth : null;
+                }
+
+                var (raising, answered) = (documents.Where(d => Truth(predicates[0], d) == Truths.Raises).ToArray(), documents.Where(d => Truth(predicates[0], d) != Truths.Raises).ToArray());
+                var column = (Path: Declaration.A, Type: raw.ToString().ToUpperInvariant());
+                var table = new MaterialisedTable([(Name(column), SqlTypeName.valueOf(column.Type))], [.. answered.Select(d => (Documents.Json(d), new[] { IrEval.At(d, column.Path) is J v ? Documents.Json(v) : null }))]);
+                var rows = table.Ask(connection, [.. predicates.Select(p => Sql(p, drawn))]);
+                for (var i = 0; i < predicates.Length; i++)
+                    for (var k = 0; k < answered.Length; k++)
+                    {
+                        if (Truth(predicates[i], answered[k]) is not Truths truth)
+                            continue;
+
+                        compared++;
+                        if (rows[i][k].ToString() != Letter(truth))
+                            mismatches.Add($"{predicates[i]} ({drawn}) is {rows[i][k]} of {Documents.Json(answered[k])} in Calcite, and {truth} to the evaluator");
+                    }
+
+                foreach (var d in raising.Take(RaisesAsked))
+                    if (Ask(connection, predicates[0], drawn, [d]) is { } answer)
+                        mismatches.Add($"{predicates[0]} ({drawn}) is {answer[0]} of {Documents.Json(d)} in Calcite, and raises to the evaluator");
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{compared:N0} answers compared over three columns");
+            if (mismatches.Count > 0)
+                Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(20)));
+        }
+
+        /// <summary>
+        /// A raw number through an <c>ANY</c>, in the box the reader built (<c>Calcite.RawNullIsSqlNull</c>): a long by its
+        /// value and any other number by its double's exact value, 2^53 + 1 written with a point and a stored 0.1 among them.
+        /// </summary>
+        [Fact]
+        public void ARawNumberInItsBoxAgreesWithCalcite()
+        {
+            string[] values = ["9007199254740993", "9007199254740993.0", "0.1", "30", "30.0", "29.9999999999999999"];
+            var asked = (from n in new[] { 9007199254740993m, 0.1m, 30m } from op in new[] { "=", "<", ">" } select new SqlPredicate.Compare(op, new SqlValue.Raw(Declaration.A), SqlValue.Of(n))).ToArray();
+            var world = new World(0);
+            string Evaluated(SqlPredicate p) => string.Concat(values.Select(v => Letter(IrEval.Truth(p,
+                new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = new J.Num(decimal.Parse(v, CultureInfo.InvariantCulture)) }), world, IrEval.TypedAs.Returning, IrEval.RawAs.Any))));
+
+            using var connection = MaterialisedTable.Open();
+            Assert.Equal(asked.Select(Evaluated), MaterialisedTable.Of(SqlTypeName.ANY, values).Ask(connection, [.. asked.Select(p => $"\"v\" {p.Op} {NumberOf(((SqlValue.Literal)p.Right).Value).ToString(CultureInfo.InvariantCulture)}")]));
+        }
+
         static string Letter(Truths truth) => truth switch
         {
             Truths.True => "T",
@@ -182,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static (JsonDocumentPath Path, string Type)? Column(SqlValue reading, Drawn drawn) => reading switch
         {
             SqlValue.Typed t when drawn.Typed == IrEval.TypedAs.Column => (t.Path, t.Type),
-            SqlValue.Raw r => (r.Path, drawn.Raw.ToString().ToUpperInvariant()),
+            SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Raw } => (reading.PathRead!.Value, drawn.Raw.ToString().ToUpperInvariant()),
             _ => null,
         };
 
@@ -296,6 +364,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static string Sql(SqlValue value, Drawn drawn, SqlValue? beside = null) => value switch
         {
+            SqlValue.Cast { Value: SqlValue.Raw raw } c => $"CAST({Sql(raw, drawn)} AS {c.Target})",
             _ when Column(value, drawn) is { } column => "\"" + Name(column) + "\"",
             SqlValue.Text t => $"JSON_VALUE(\"d\", '{Path(t.Path)}')",
             SqlValue.Typed t => $"JSON_VALUE(\"d\", '{Path(t.Path)}' RETURNING {t.Type})",

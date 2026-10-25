@@ -263,6 +263,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Be(Or(Eq(Text(Label), "x"), Eq(Text(Kind), "y")));
         }
 
+        /// <summary>
+        /// A number literal is read as the value Calcite evaluates it as, exactly, or its conjunct is opaque: against a typed
+        /// reading and boxed for a <c>VARIANT</c> alike. An approximate one is its double's own value, never the fifteen digits
+        /// .NET's cast keeps, which read 1.0000000000000002 as 1 and so let S prove <c>c.category != 1</c> of a row Calcite drops;
+        /// one past a decimal keeps its approximate spelling, as before.
+        /// </summary>
+        [Theory]
+        [InlineData("DOUBLE", "1.0000000000000002", "opaque")]
+        [InlineData("DOUBLE", "9007199254740993", "exact")]
+        [InlineData("DOUBLE", "1234567890123456789", "exact")]
+        [InlineData("DOUBLE", "1.5", "exact")]
+        [InlineData("DOUBLE", "0.1", "opaque")]
+        [InlineData("DOUBLE", "1E30", "approximate")]
+        [InlineData("REAL", "0.1", "exact")]
+        [InlineData("REAL", "2.5", "exact")]
+        [InlineData("DECIMAL", "0.1", "exact")]
+        public void ANumberLiteralIsReadAsCalcitesValueOrNotAtAll(string type, string written, string read)
+        {
+            var value = new java.math.BigDecimal(written);
+            var (literal, evaluated) = type switch
+            {
+                "DECIMAL" => (_rex.makeExactLiteral(value), value),
+                "REAL" => (_rex.makeApproxLiteral(value, Sql(SqlTypeName.REAL)), new java.math.BigDecimal((double)value.floatValue())),
+                _ => (_rex.makeApproxLiteral(value), new java.math.BigDecimal(value.doubleValue())),
+            };
+
+            var boxed = _rex.makeCast(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), true), literal);
+            foreach (var conjunct in new[] { One(Call(SqlStdOperatorTable.LESS_THAN, JsonValue("n", SqlTypeName.DOUBLE), literal)), One(Call(SqlStdOperatorTable.EQUALS, Variant, boxed)) })
+                if (read == "opaque")
+                    conjunct.Should().BeOfType<SqlPredicate.Opaque>($"no decimal holds the {type} {written} Calcite evaluates");
+                else if (((SqlValue.Literal)((SqlPredicate.Compare)conjunct).Right).Value is var held && read == "exact")
+                    JsonValues.NumberOf(held).ToString(System.Globalization.CultureInfo.InvariantCulture).Should().Be(evaluated.stripTrailingZeros().toPlainString(), $"{conjunct} holds the {type} {written} Calcite evaluates");
+                else
+                    JsonValues.ApproximateOf(held).Should().Be(value.doubleValue(), $"{conjunct} holds the double no decimal holds, approximately");
+        }
+
+        /// <summary>
+        /// Read as 1, the literal below made the facts graph prune to nothing a statement Calcite keeps a stored
+        /// 1.0000000000000002 for: the raw value equal to 1 and its text to <c>'1.0000000000000002'</c>.
+        /// </summary>
+        [Fact]
+        public void AnApproximateLiteralPrunesNoPlanItsDoubleKeeps()
+        {
+            var sql = """SELECT c."id" FROM typed AS c WHERE c."$.category" = CAST(1.0000000000000002E0 AS VARIANT) AND JSON_VALUE(c."DOC", '$.category') = '1.0000000000000002'""";
+            org.apache.calcite.plan.RelOptUtil.toString(Facts.Rendering.RenderingInputs.Differential("loader", [sql], Facts.Rendering.RenderingInputs.Containers).Single().Plan())
+                .Should().NotContain("tuples=[[]]").And.Contain("CosmosFilter");
+        }
+
         [Fact]
         public void ALiteralOfAKindTheReadingIsNeverComparedWithIsOpaque()
         {

@@ -529,6 +529,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._partitionKeyDelete = _partitionKeyDelete;
             metadata._facts = _facts;
             metadata._declared = _declared;
+            metadata._serviceTarget = _serviceTarget;
             return metadata;
         }
 
@@ -705,6 +706,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var metadata = Copy();
             metadata._facts = generations.Bind(_facts);
+            return metadata;
+        }
+
+        CosmosServiceTarget _serviceTarget;
+
+        /// <summary>
+        /// Gets the service the container's statements run on (<see cref="CosmosServiceTarget"/>), Azure unless a model or a
+        /// host says otherwise; no plan reads it yet.
+        /// </summary>
+        public CosmosServiceTarget ServiceTarget => _serviceTarget;
+
+        /// <summary>
+        /// Returns the same metadata running its statements on the given service.
+        /// </summary>
+        /// <param name="target">The service.</param>
+        /// <returns>The metadata.</returns>
+        public CosmosContainerMetadata WithServiceTarget(CosmosServiceTarget target)
+        {
+            if (target == _serviceTarget)
+                return this;
+
+            var metadata = Copy();
+            metadata._serviceTarget = target;
             return metadata;
         }
 

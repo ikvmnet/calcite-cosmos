@@ -107,16 +107,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (set, tally) in a)
                 TestContext.Current.TestOutputHelper?.WriteLine($"source A, {set}: {tally}");
 
-            // D3's raw orderings and raw comparisons with a number or a boolean are counted apart, as the coverage line counts
-            // them: IrEval reads none of their raises until g10, so no document measures them (TODO.md).
-            var (raw, rest) = (unmeasured.Concat(unmeasuredB).Where(u => u.StartsWith(RawScope, StringComparison.Ordinal)).ToList(), unmeasured.Concat(unmeasuredB).Where(u => u.StartsWith(RawScope, StringComparison.Ordinal) == false).ToList());
-            TestContext.Current.TestOutputHelper?.WriteLine($"source B, generated: {b}; forms S would send judged on no measured document: {rest.Count}, and {raw.Count} in D3's raw scope, reported apart");
-            foreach (var line in rest.Concat(raw).Take(40))
+            unmeasured.AddRange(unmeasuredB);
+            TestContext.Current.TestOutputHelper?.WriteLine($"source B, generated: {b}; forms S would send judged on no measured document: {unmeasured.Count}");
+            foreach (var line in unmeasured.Take(40))
                 TestContext.Current.TestOutputHelper?.WriteLine("  unmeasured: " + line);
 
             a[RenderingSet.Production].Proofs.Should().BePositive();
             a.Values.SelectMany(t => t.Witnesses).Concat(b.Witnesses).Should().BeEmpty();
-            rest.Should().BeEmpty("no form S would send outside D3's raw scope rests on documents nothing measured");
+            unmeasured.Should().BeEmpty("no form S would send rests on documents nothing measured");
         }
 
         /// <summary>
@@ -172,7 +170,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Source A over generate bundles: each bundle's forms judged on documents drawn from its import, or a trial's declared
         /// ones. A form of a node whose atoms are stated beneath a stratum is exact where the conjuncts that stratum assumes
         /// hold in any mode, and held to no failure elsewhere. Returns each form S would send — a root's best, a residual
-        /// root's weakening — that no document measured, those in D3's raw scope marked so.
+        /// root's weakening — that no document measured.
         /// </summary>
         internal static List<string> Generated(Tally tally, IEnumerable<RenderingGenerateRun.Bundle> bundles, string source, IReadOnlyList<J.Obj>? declared = null)
         {
@@ -205,15 +203,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0)
-                    .Select(i => $"{(RenderingCheckRun.RawScope(forms[i].Form.Node) ? RawScope : "")}{source} {bundle.Set} bundle {bundle.Id}: {forms[i].Form.What} {forms[i].Form.Form.Text} for {forms[i].Form.Node}, "
+                    .Select(i => $"{source} {bundle.Set} bundle {bundle.Id}: {forms[i].Form.What} {forms[i].Form.Form.Text} for {forms[i].Form.Node}, "
                         + $"{drawn} documents drawn, {ruledOut} ruled out, stratum assuming {string.Join(", ", forms[i].Assumes.Select(a => claim.Conjuncts[a]))}"));
             }
 
             return unmeasured;
         }
-
-        /// <summary>How an unmeasured form in D3's raw scope is marked: a raw ordering, or a raw comparison with a number or a boolean.</summary>
-        const string RawScope = "D3 raw: ";
 
         /// <summary>How many documents a generate bundle whose later round is stated beneath a stratum draws, so that its stratum's conjuncts hold on some.</summary>
         internal const int Stated = 512;
@@ -354,19 +349,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Judge(Calcite(ir, document, world), ir, form, claim, RenderPosition.Pos, document, RenderingCheckRun.Targets, where);
 
             /// <summary>
-            /// Calcite's truths of a predicate on a document, every typed mode, its raises left out; <c>null</c> where a mode
+            /// Calcite's truths of a predicate on a document, every typed mode and, where a raw value is read through its
+            /// columns' own answers, every column (<see cref="IrEval.RawModes"/>), its raises left out; <c>null</c> where a mode
             /// tossed a coin or is not modelled, unless <paramref name="raises"/> asks for what the modelled modes say.
             /// </summary>
             public static List<Truths>? Calcite(SqlPredicate ir, J.Obj document, World world, bool raises = false)
             {
                 var calcite = new List<Truths>();
-                foreach (var mode in Modes)
+                foreach (var (mode, column) in from mode in Modes from column in IrEval.RawModes(ir) select (mode, column))
                 {
                     var tossed = world.Tossed;
                     Truths truth;
                     try
                     {
-                        truth = IrEval.Truth(ir, document, world, mode);
+                        truth = IrEval.Truth(ir, document, world, mode, column);
                     }
                     catch (NotSupportedException)
                     {

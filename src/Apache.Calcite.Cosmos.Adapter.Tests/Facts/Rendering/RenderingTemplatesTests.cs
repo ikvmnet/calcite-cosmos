@@ -322,7 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static IEnumerable<PredicateAtom> Synthetic(bool plain)
         {
-            var readers = ReaderEdgesTable.Rows.Keys.Concat(new[] { PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader), PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
+            var readers = ReaderEdgesTable.Rows.Keys.Concat(new[] { PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
             var literals = plain ? new[] { JsonValues.Of("bikes"), JsonValues.Of("true"), JsonValues.Of(30m), JsonValues.Of(true) }
                 : new[] { "bikes", "false", "", "\uD800", "x", "a😀" }.Select(JsonValues.Of)
                     .Concat(new[] { 0m, 2.5m, -1m, 9007199254740993m, decimal.MaxValue, decimal.MinValue, 0.1m, 1.9999999999999999m }.Select(JsonValues.Of))

@@ -8,6 +8,7 @@ Every key the adapter reads from a Cosmos schema's `operand` object. The constan
 | operand | type | default | meaning | chapter |
 | --- | --- | --- | --- | --- |
 | `endpoint` | string | — | The account endpoint, `https://<account>.documents.azure.com:443/`. Required unless `clientFactory` is given. | 5 |
+| `serviceTarget` | string | `azure` | `"emulator"` where the endpoint is the Cosmos DB emulator, whose strings order unlike Azure's; read and kept on each container, it changes no plan yet. | 4, E |
 | `key` | string | — | An account key. Omit to authenticate with Microsoft Entra ID. | 5 |
 | `tenantId` | string | — | Tenant for Entra ID authentication. | 5 |
 | `clientId` | string | — | Client id of a user-assigned managed identity. | 5 |
@@ -45,6 +46,7 @@ Numbers and booleans may be written as JSON values or as strings (`"300"`, `"tru
 | message | cause |
 | --- | --- |
 | `Operand 'endpoint' is required unless 'clientFactory' is given.` | neither given |
+| `Operand 'serviceTarget' must be 'azure' or 'emulator'; '…' is not.` | another name |
 | `Operand 'clientFactory' names the type '…', which could not be found.` | the type name does not resolve — use an assembly-qualified name |
 | `'…' does not implement ICosmosClientFactory.` | wrong type |
 | `'…' could not be constructed; it needs a public parameterless constructor.` | no usable constructor |

@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingGateTests
     {
 
-        static readonly SqlPredicate NotBikes = Ne(Text(LabelPath), "bikes");
+        static (RenderingVerdictKind, RenderingVerdictKind) Kinds((RenderingVerdict Equal, RenderingVerdict Implies) v) => (v.Equal.Kind, v.Implies.Kind);
 
         static readonly PathValues DeclaredString = PathValues.OfKinds(ValueSet.Of(StringType));
 
@@ -197,15 +197,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A text cast of the raw value has no edges row, so the written form is never evaluated: over a <c>VARIANT</c>
-        /// Calcite casts a boolean to null, where the service compares it.
+        /// A text cast of the raw value reads its three columns on a cell (<c>Calcite.CastOfARawValueToText</c>): its
+        /// equality with a string is the service's, a stored null is null in each, so <c>NOT</c> over the bare equality is
+        /// refuted there, and over a boolean a <c>VARIANT</c>'s null and an <c>ANY</c>'s rendering part, so the guarded form
+        /// the translator writes is implied and no more.
         /// </summary>
         [Fact]
-        public void ACastToTextOverARawValueIsNeverEvaluated()
+        public void ACastToTextOverARawValueReadsItsThreeColumns()
         {
-            var form = ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
-            var (equal, implies) = Check(Not(Eq(Cast("VARCHAR", Raw(LabelPath)), "b")), form);
-            (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
+            var (cast, bare) = (Cast("VARCHAR", Raw(LabelPath)), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
+            var guarded = Negated(Any(bare, ServiceForm.TestOf(CosmosServiceTest.IsNull, Label), Negated(ServiceForm.TestOf(CosmosServiceTest.IsDefined, Label))));
+            Kinds(Check(Eq(cast, "b"), bare)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Eq(cast, "b")), Negated(bare))).Should().Be((RenderingVerdictKind.Refuted, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Eq(cast, "b")), guarded)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
+        }
+
+        /// <summary>
+        /// A raw ordering reads its columns on a cell (<c>Calcite.RawNullIsSqlNull</c>): a string is placed by its units and
+        /// any other type raises, so the bare ordering and its negation are exact under <c>Production</c>, and under
+        /// <c>Portable</c> where no string may hold U+0000; an equality with a number is exact over strings and implied
+        /// where a number a <c>VARIANT</c> may hold in another box is there.
+        /// </summary>
+        [Fact]
+        public void ARawOrderingAndANumberReadTheirColumns()
+        {
+            var (less, thirty) = (ServiceForm.CompareOf(CosmosServiceTest.Less, Label, Of("b")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of(30m)));
+            var (strings, withoutNul) = (PathValues.OfKinds(ValueSet.Of(StringType)), ValueSet.From(AllBands.Where(c => c != NulClass)));
+
+            Kinds(Check(Cmp(Raw(LabelPath), "<", Lit("b")), less, set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Not(Cmp(Raw(LabelPath), "<", Lit("b"))), Negated(less), set: RenderingSet.Production)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Cmp(Raw(LabelPath), "<", Lit("b")), less, path: LabelPath, values: PathValues.Anything, classes: withoutNul)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Eq(Raw(LabelPath), 30m), thirty, path: LabelPath, values: strings)).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
+            Kinds(Check(Eq(Raw(LabelPath), 30m), thirty)).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven));
         }
 
         /// <summary>

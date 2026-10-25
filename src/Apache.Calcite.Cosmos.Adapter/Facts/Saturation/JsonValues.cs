@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 
 using Eggnog;
 
@@ -62,21 +63,39 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </remarks>
         public static string Of(double value)
         {
-            if (double.IsFinite(value))
-            {
-                try
-                {
-                    var exact = (decimal)value;
-                    if (exact != 0 || value == 0)
-                        return Of(exact);
-                }
-                catch (OverflowException)
-                {
-                }
-            }
+            if (TryExactly(value, out var exact))
+                return Of(exact);
 
             var integral = Math.Floor(value) == value && double.IsInfinity(value) == false;
             return (integral ? IntegerType : FractionType) + "|" + Approximate + value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// The decimal a double is, exactly, or <c>false</c> where none is: most fractions, whose value needs more than 28
+        /// places, and magnitudes past 96 bits. Never .NET's cast, which keeps fifteen significant digits: 1.0000000000000002
+        /// would be 1, and 2^63 9223372036854780000.
+        /// </summary>
+        public static bool TryExactly(double value, out decimal exact)
+        {
+            exact = 0;
+            var bits = BitConverter.DoubleToInt64Bits(value);
+            var (exponent, mantissa) = ((int)((bits >> 52) & 0x7FF), bits & 0xF_FFFF_FFFF_FFFF);
+            if (exponent == 0x7FF || mantissa == 0 && exponent == 0)
+                return exponent != 0x7FF;
+
+            // ±mantissa × 2^exponent with the mantissa odd: a whole number, or mantissa × 5^k over 10^k, k places.
+            (mantissa, exponent) = exponent == 0 ? (mantissa, -1074) : (mantissa | 1L << 52, exponent - 1075);
+            var zeros = BitOperations.TrailingZeroCount(mantissa);
+            (mantissa, exponent) = (mantissa >> zeros, exponent + zeros);
+            if (exponent < -28 || exponent > 96)
+                return false;
+
+            var unscaled = exponent >= 0 ? (BigInteger)mantissa << exponent : mantissa * BigInteger.Pow(5, -exponent);
+            if (unscaled.GetBitLength() > 96)
+                return false;
+
+            exact = new decimal((int)(uint)(unscaled & uint.MaxValue), (int)(uint)(unscaled >> 32 & uint.MaxValue), (int)(uint)(unscaled >> 64), bits < 0, (byte)Math.Max(0, -exponent));
+            return true;
         }
 
         /// <summary>What marks a number's spelling as approximate: a character no exact number is written with.</summary>

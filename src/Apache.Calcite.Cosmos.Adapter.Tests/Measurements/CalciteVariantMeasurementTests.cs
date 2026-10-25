@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
@@ -44,6 +46,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>The strings, a null and an absent path: what a <c>VARCHAR</c> column reads.</summary>
         static readonly string?[] Strings = Values.Take(7).Append("null").Append(null).ToArray();
 
+        /// <summary>The column of the table the raw cells read (<see cref="RawColumnsTable"/>), which these tests hold.</summary>
+        static RawColumnsTable.Column Column(string name) => RawColumnsTable.Rows.Single(c => c.Name == name);
+
+        /// <summary>A value of each kind but a string answered alike: what the table says a column makes of each.</summary>
+        static Dictionary<string, RawColumnsTable.Answer> Kinds(RawColumnsTable.Answer text, RawColumnsTable.Answer others, RawColumnsTable.Answer? structure = null) => new()
+        {
+            [RawColumnsTable.String] = text, [RawColumnsTable.Number] = others, [RawColumnsTable.Boolean] = others, [RawColumnsTable.Structure] = structure ?? others,
+        };
+
         /// <summary>
         /// A raw value is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not
         /// another case, not a trailing space, not a number or a boolean.
@@ -65,7 +76,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// A null and an absent path are SQL null in each column. A value of another type is unequal; an ordering across
         /// types raises; a <c>VARCHAR</c> column reads a string alone; and a <c>VARIANT</c> has no ordering, and is equal
-        /// to a number boxed with its own SQL type alone.
+        /// to a number boxed with its own SQL type alone. Within a type <c>ANY</c> orders as the type, and a number in its
+        /// box: a long by its value, any other number by its double's.
         /// </summary>
         /// <remarks>
         /// <c>GetVariant</c> boxes an integer as <c>BIGINT</c> and any other number as <c>DOUBLE</c>, and the validator
@@ -88,6 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var none = MaterialisedTable.Of(SqlTypeName.VARIANT, new string?[0]);
             foreach (var op in new[] { "<", "<=", ">", ">=" })
                 (none.Failure(connection, $"\"v\" {op} 'bikes'")?.Message).Should().Contain("VariantValue", $"{op} over a VARIANT has no method to call, whatever the rows hold");
+            (Column("VARIANT").Orders, Column("ANY").Orders, Column("VARCHAR").Orders).Should().Be((false, true, true));
 
             any.Ask(connection, "\"v\" IS NULL", "\"v\" = 42", "\"v\" = TRUE").Should().Equal("FFFFFFFFFFFFFTT", "FFFFFFFTTFFFFUU", "FFFFFFFFFTFFFUU");
 
@@ -95,6 +108,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             MaterialisedTable.Of(SqlTypeName.ANY, Strings).Ask(connection, "\"v\" < 'bikes'", "\"v\" < U&'\\E000'").Should().Equal("FTFTFFFUU", "TTTTFFTUU");
             MaterialisedTable.Of(SqlTypeName.ANY, new[] { "42", "42.0", "null", null }).Ask(connection, "\"v\" < 42.5", "\"v\" > 42.5").Should().Equal("TTUU", "FFUU");
             MaterialisedTable.Of(SqlTypeName.ANY, new[] { "true", "false", "null", null }).Ask(connection, "\"v\" < TRUE").Should().Equal("FTUU");
+
+            // A number in its box: a long by its value, and any other by its double's, 2^53 + 1 written with a point being 2^53.
+            MaterialisedTable.Of(SqlTypeName.ANY, ["9007199254740993", "9007199254740993.0", "0.1"]).Ask(connection, "\"v\" = 9007199254740993", "\"v\" < 9007199254740993",
+                "\"v\" = 0.1", "\"v\" > 0.1").Should().Equal("TFF", "FTT", "FFF", "TTT");
+
+            // Two doubles compare by Double.compareTo, which puts a stored -0.0 below a double 0; mixed boxes by their values.
+            MaterialisedTable.Of(SqlTypeName.ANY, ["-0.0", "0.0", "0"]).Ask(connection, "\"v\" < 0E0", "\"v\" = 0E0", "\"v\" < 0", "\"v\" = 0").Should().Equal("TFF", "FTT", "FFF", "TTT");
             var (text, numbers, booleans, structures) = (Values.Take(1), Values.Skip(7).Take(2), Values.Skip(9).Take(2), Values.Skip(11).Take(2));
             foreach (var (literal, others) in new[] { ("'bikes'", numbers.Concat(booleans)), ("42", text.Concat(booleans)), ("TRUE", text.Concat(numbers)) })
                 foreach (var value in others.Concat(structures))
@@ -104,6 +124,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             varchar.Ask(connection, "\"v\" IS NULL", "\"v\" <> 'bikes'", "\"v\" < 'bikes'").Should().Equal("FFFFFFFTT", "FTTTTTTUU", "FTFTFFFUU");
             foreach (var value in Values.Skip(7).Take(6))
                 FluentActions.Invoking(() => MaterialisedTable.Read(value, SqlTypeName.VARCHAR)).Should().Throw<CosmosMaterializationException>($"a VARCHAR column reads {value} as no string");
+            Column("VARCHAR").Read.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Raises));
+            foreach (var name in new[] { "VARIANT", "ANY" })
+                Column(name).Read.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Itself), $"{name} answers for a value of every kind above");
+        }
+
+        /// <summary>
+        /// A cast of a raw value to text is each column's own: a string is itself and a null null in each; a <c>VARIANT</c>
+        /// casts a number and a boolean to null and raises over a structure; an <c>ANY</c> renders each as Java renders the
+        /// reader's box, a long in its digits and any other number as its double; and a <c>VARCHAR</c> column reads a string
+        /// alone.
+        /// </summary>
+        [Fact]
+        public void ACastOfARawValueToTextIsEachColumnsOwn()
+        {
+            using var connection = MaterialisedTable.Open();
+            var scalars = Values.Take(11).Concat(Values.Skip(13)).Append("99999999999999999999").Append("9223372036854775807").ToArray();
+            string[] asked = [.. new[] { "IS NULL", "= 'bikes'", "= '42'", "= '42.0'", "= 'true'", "= '1.0E20'", "= '9223372036854775807'", "< 'a'" }.Select(t => "CAST(\"v\" AS VARCHAR) " + t)];
+
+            MaterialisedTable.Of(SqlTypeName.VARIANT, scalars).Ask(connection, asked).Should().Equal(
+                "FFFFFFFTTTTTTTT", "TFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FFFFFFFUUUUUUUU", "FTFTFFFUUUUUUUU");
+            MaterialisedTable.Of(SqlTypeName.ANY, scalars).Ask(connection, asked).Should().Equal(
+                "FFFFFFFFFFFTTFF", "TFFFFFFFFFFUUFF", "FFFFFFFTFFFUUFF", "FFFFFFFFTFFUUFF", "FFFFFFFFFTFUUFF", "FFFFFFFFFFFUUTF", "FFFFFFFFFFFUUFT", "FTFTFFFTTFFUUTT");
+            MaterialisedTable.Of(SqlTypeName.ANY, Values.Skip(11).Take(2)).Ask(connection, "CAST(\"v\" AS VARCHAR) = '{a=1}'", "CAST(\"v\" AS VARCHAR) = '[1]'").Should().Equal("TF", "FT");
+            foreach (var structure in Values.Skip(11).Take(2))
+                (MaterialisedTable.Of(SqlTypeName.VARIANT, [structure]).Failure(connection, "CAST(\"v\" AS VARCHAR) IS NULL")?.Message).Should().Contain("VariantValue", $"a VARIANT casts no {structure}");
+
+            MaterialisedTable.Of(SqlTypeName.VARCHAR, Strings).Ask(connection, asked[0], asked[1], asked[^1]).Should().Equal("FFFFFFFTT", "TFFFFFFUU", "FTFTFFFUU");
+            MaterialisedTable.Of(SqlTypeName.VARCHAR, ["42"]).Failure(connection, asked[0]).Should().BeOfType<CosmosMaterializationException>("a VARCHAR column reads no number");
+
+            // The table the cells read is what this measures.
+            Column("VARIANT").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Null, RawColumnsTable.Answer.Raises));
+            Column("ANY").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Itself));
+            Column("VARCHAR").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Raises));
         }
 
         /// <summary>

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -33,9 +32,6 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         const int Answers = 1024;
 
-        /// <summary>Whether the flow roots a statement at its declaration's <c>D0</c>.</summary>
-        static readonly AsyncLocal<bool> Armed = new();
-
         readonly PredicateStatement _statement;
         readonly JsonContexts? _contexts;
         readonly RunOptions _run = Default;
@@ -50,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly object _lock = new();
 
         /// <summary>
-        /// Begins a statement's tree at a declaration's context.
+        /// Begins a statement's tree at a declaration's <c>D0</c>, or at its context where it has none.
         /// </summary>
         internal StatementTerms(JsonFactDeclaration declaration, PredicateStatement statement, RunOptions? options)
         {
@@ -67,8 +63,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 foreach (var term in conjunct.Subterms)
                     _held.Add(term.Digest);
 
-            // Armed, the root is D0 where the declaration has one; ViewOf still reads it as the declaration's own facts.
-            Root = new Node(this, (Armed.Value ? declaration.DeclaredPossible() : null) ?? declaration.Context, null, "", complete: true, holdsTerms: false, contradictory: false, report: null);
+            // ViewOf still reads D0 as the declaration's own facts: DESIGN.md, The declaration's possible rows.
+            Root = new Node(this, declaration.DeclaredPossible() ?? declaration.Context, null, "", complete: true, holdsTerms: false, contradictory: false, report: null);
         }
 
         StatementTerms(PredicateStatement statement)
@@ -82,25 +78,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public static StatementTerms Unknowing(PredicateStatement statement) => new(statement);
 
-        /// <summary>Gets whether the flow is armed, so that the oracle remembers an armed tree apart.</summary>
-        internal static bool DeclaredPossibleArmed => Armed.Value;
-
         /// <summary>
-        /// Roots every statement the flow opens until disposed at its declaration's <c>D0</c>, where what each path the
-        /// declaration mentions may hold is a row: what the rendering check imports for a conjunct round 1 renders from.
-        /// Production arms nothing.
-        /// </summary>
-        /// <remarks>Why no verdict, fact set or plan changes: <c>DESIGN.md</c>, <i>The declaration's <c>possible</c> rows</i>.</remarks>
-        internal static IDisposable ArmDeclaredPossible()
-        {
-            var arming = new Arming(Armed.Value);
-            Armed.Value = true;
-            return arming;
-        }
-
-        /// <summary>
-        /// Gets the declaration's own context, frozen, or armed its <c>D0</c>: what holds of every document (L0). It holds
-        /// none of the statement's terms; a question asked of it is answered in a child made for the question.
+        /// Gets the declaration's <c>D0</c>, where what each path it mentions may hold is a row, or its own context where it
+        /// has none; frozen, and what holds of every document (L0). It holds none of the statement's terms; a question asked
+        /// of it is answered in a child made for the question.
         /// </summary>
         public Node Root { get; }
 
@@ -426,14 +407,6 @@ namespace Apache.Calcite.Cosmos.Facts
                 for (var i = _scopes.Count - 1; i >= 0; i--)
                     _scopes[i].Dispose();
             }
-
-        }
-
-        /// <summary>Puts the switch back as <see cref="ArmDeclaredPossible"/> found it.</summary>
-        sealed class Arming(bool was) : IDisposable
-        {
-
-            public void Dispose() => Armed.Value = was;
 
         }
 
