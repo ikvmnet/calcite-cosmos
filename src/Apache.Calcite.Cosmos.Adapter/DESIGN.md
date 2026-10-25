@@ -7205,7 +7205,8 @@ decimal a text's preimage holds, and prune a row Calcite keeps.
 weakening, `OR(… = '9007199254740992', … = 9.007199254740992E15)`, whose number arm the loader read as 9007199254740990,
 now reads 2^53; its plan, its text and its parameters are the same. In the shadow that conjunct was S exact where the
 translator's text is unproven, for the literal misread; at 2^53, where a typed `DOUBLE`'s rounding and the service's
-reading held wide part, it is a regression on its merits: 12 under `Production` and 18 under `Emulator`, against 25.
+reading held wide part, it is a regression on its merits: 12 under `Production` and 18 under `Emulator` against 25, 19
+and 45 at the gate against 53. Line 1 judges four proofs fewer at either size, 0 witnesses.
 
 **What holds it.** `CosmosPredicateLoaderTests.ANumberLiteralIsReadAsCalcitesValueOrNotAtAll` holds every number
 literal, against a typed reading and boxed for a `VARIANT`, to Calcite's value of it, and
