@@ -266,18 +266,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// A number literal is read as the value Calcite evaluates it as, exactly, or its conjunct is opaque: against a typed
         /// reading and boxed for a <c>VARIANT</c> alike. An approximate one is its double's own value, never the fifteen digits
-        /// .NET's cast keeps, which read 1.0000000000000002 as 1 and so let S prove <c>c.category != 1</c> of a row Calcite drops.
+        /// .NET's cast keeps, which read 1.0000000000000002 as 1 and so let S prove <c>c.category != 1</c> of a row Calcite drops;
+        /// one past a decimal keeps its approximate spelling, as before.
         /// </summary>
         [Theory]
-        [InlineData("DOUBLE", "1.0000000000000002", false)]
-        [InlineData("DOUBLE", "9007199254740993", true)]
-        [InlineData("DOUBLE", "1234567890123456789", true)]
-        [InlineData("DOUBLE", "1.5", true)]
-        [InlineData("DOUBLE", "0.1", false)]
-        [InlineData("REAL", "0.1", true)]
-        [InlineData("REAL", "2.5", true)]
-        [InlineData("DECIMAL", "0.1", true)]
-        public void ANumberLiteralIsReadAsCalcitesValueOrNotAtAll(string type, string written, bool read)
+        [InlineData("DOUBLE", "1.0000000000000002", "opaque")]
+        [InlineData("DOUBLE", "9007199254740993", "exact")]
+        [InlineData("DOUBLE", "1234567890123456789", "exact")]
+        [InlineData("DOUBLE", "1.5", "exact")]
+        [InlineData("DOUBLE", "0.1", "opaque")]
+        [InlineData("DOUBLE", "1E30", "approximate")]
+        [InlineData("REAL", "0.1", "exact")]
+        [InlineData("REAL", "2.5", "exact")]
+        [InlineData("DECIMAL", "0.1", "exact")]
+        public void ANumberLiteralIsReadAsCalcitesValueOrNotAtAll(string type, string written, string read)
         {
             var value = new java.math.BigDecimal(written);
             var (literal, evaluated) = type switch
@@ -289,11 +291,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var boxed = _rex.makeCast(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), true), literal);
             foreach (var conjunct in new[] { One(Call(SqlStdOperatorTable.LESS_THAN, JsonValue("n", SqlTypeName.DOUBLE), literal)), One(Call(SqlStdOperatorTable.EQUALS, Variant, boxed)) })
-                if (read)
-                    JsonValues.NumberOf(((SqlValue.Literal)((SqlPredicate.Compare)conjunct).Right).Value).ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        .Should().Be(evaluated.stripTrailingZeros().toPlainString(), $"{conjunct} holds the {type} {written} Calcite evaluates");
-                else
+                if (read == "opaque")
                     conjunct.Should().BeOfType<SqlPredicate.Opaque>($"no decimal holds the {type} {written} Calcite evaluates");
+                else if (((SqlValue.Literal)((SqlPredicate.Compare)conjunct).Right).Value is var held && read == "exact")
+                    JsonValues.NumberOf(held).ToString(System.Globalization.CultureInfo.InvariantCulture).Should().Be(evaluated.stripTrailingZeros().toPlainString(), $"{conjunct} holds the {type} {written} Calcite evaluates");
+                else
+                    JsonValues.ApproximateOf(held).Should().Be(value.doubleValue(), $"{conjunct} holds the double no decimal holds, approximately");
         }
 
         /// <summary>

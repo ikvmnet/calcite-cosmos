@@ -532,8 +532,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// A literal as the value Calcite evaluates, exactly, or <c>null</c>: an approximate number is its double's own
-            /// value, a <c>REAL</c>'s its float's, and one no decimal holds exactly — most fractions, a negative zero — is
-            /// none, since every cell and every reading compares the literal by that value.
+            /// value, a <c>REAL</c>'s its float's, and one within a decimal's range that no decimal holds exactly — most
+            /// fractions, a negative zero — is none, since every cell and every reading compares the literal by that value.
+            /// One beyond the range keeps its approximate spelling, which no cell reads a value from.
             /// </summary>
             static SqlValue? Literal(RexLiteral literal)
             {
@@ -543,7 +544,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     if (value is double d && (d == 0 && double.IsNegative(d) || literal.getType()?.getSqlTypeName() == SqlTypeName.REAL && (float)d != d))
                         return null;
 
-                    return value is not null && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false && scalar.ToClrValue() is not double ? SqlValue.Of(scalar) : null;
+                    return value is not null && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false
+                        && (scalar.ToClrValue() is not double approximate || Math.Abs(approximate) >= Math.ScaleB(1, 96)) ? SqlValue.Of(scalar) : null;
                 }
                 catch (CosmosTranslationException)
                 {

@@ -7194,12 +7194,14 @@ CAST(1.0000000000000002E0 AS VARIANT)`, which keeps a stored 1.0000000000000002 
 `Values`. No soundness line could see it: the cells, `IrEval` and the judge all read the loaded IR.
 
 **What it reads now.** A number literal is the value Calcite evaluates, exactly, or its conjunct is opaque: an
-approximate one is its double's own value (`JsonValues.TryExactly`, a REAL's its float's), and one no decimal holds
-exactly — most fractions, a negative zero — is no literal. `JsonScalar.From(double)` and `JsonValues.Of(double)` hold
-a double so too, never by .NET's cast. So `1.5E0` and 2^53 are read as themselves, `0.1E0` is opaque, and both
-findings are gone.
+approximate one is its double's own value (`JsonValues.TryExactly`, a REAL's its float's), and one within a decimal's
+range that no decimal holds exactly — most fractions, a negative zero — is no literal. One past the range, `1E30`, keeps
+the approximate spelling it had, which no cell reads a value from. `JsonScalar.From(double)` and `JsonValues.Of(double)`
+hold a double so too, never by .NET's cast. So `1.5E0` and 2^53 are read as themselves, `0.1E0` is opaque, and both
+findings are gone. A fraction is not given the approximate spelling: the facts graph would meet it with the exact
+decimal a text's preimage holds, and prune a row Calcite keeps.
 
-**What moved.** No plan. One line of the plan digests at 200 predicates reads another IR: differential 453's pushed
+**What moved.** No plan. One line of the plan digests, at 200 predicates and at 1,000, reads another IR: differential 453's pushed
 weakening, `OR(… = '9007199254740992', … = 9.007199254740992E15)`, whose number arm the loader read as 9007199254740990,
 now reads 2^53; its plan, its text and its parameters are the same. In the shadow that conjunct was S exact where the
 translator's text is unproven, for the literal misread; at 2^53, where a typed `DOUBLE`'s rounding and the service's
