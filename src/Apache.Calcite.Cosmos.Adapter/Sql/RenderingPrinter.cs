@@ -109,9 +109,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// The value a literal is bound as, as the translator binds an exact literal of Calcite's: text, a boolean, null; a
-        /// number as a decimal where it is a fraction or its double is it, else a whole one as a long; one held approximately
-        /// as its double. A decimal's double is read from its invariant text, never cast.
+        /// The value a literal is bound as: text, a boolean, null; one held approximately as its double; and an exact number
+        /// as the translator binds Calcite's exact literal of it, by its own rule (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>).
         /// </summary>
         static object? ValueOf(string literal)
         {
@@ -128,17 +127,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (JsonValues.ApproximateOf(literal) is { } approximate)
                 return approximate;
 
-            if (JsonValues.TryNumberOf(literal, out var number))
-            {
-                var near = double.Parse(number.ToString(CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
-                if (Math.Floor(near) != near || JsonValues.TryExactly(near, out var exact) && exact == number)
-                    return number;
-
-                if (number == decimal.Truncate(number) && number >= long.MinValue && number <= long.MaxValue)
-                    return (long)number;
-            }
-
-            throw new CosmosTranslationException($"No value the service can be sent compares there as the number {literal}.");
+            return JsonValues.TryNumberOf(literal, out var number) && CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number.ToString(CultureInfo.InvariantCulture))) is { } exact
+                ? exact : throw new CosmosTranslationException($"No value the service can be sent compares there as the number {literal}.");
         }
 
         /// <summary>A junction's members as written: its last left out under M13, and its comparisons' literals rotated under M15.</summary>

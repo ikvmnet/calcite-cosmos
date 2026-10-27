@@ -2884,9 +2884,11 @@ across documents* and *A join of a container to itself* is the record.
   double and by the printer as the decimal the form holds, and a decimal's scale (`30.0`) is not in the form: the same
   number to the service, but another parameter in the plan digest. Of the same-form conjuncts, 2 of 158 a pull request
   and 8 of 275 at the gate are such, all J's re-typed text-equality number branch, which the switch stops pushing (O7,
-  loss 1), and none differs in scale. If the Writes-armed rehearsal lists others, `Print` takes each comparison's
-  reading beside the form, from the conjunct's IR, and binds a number compared through an approximate one as a double:
-  about 15 lines, at g16.
+  loss 1), and none differs in scale, since no literal of the corpus or the inputs has a trailing zero: of 16,285
+  random literals the loader reads, 1,376 bind another scale (`30.0` as `30`, `100E-2` as `1`), the same value and type.
+  The rehearsal's listing counts statements whose literals carry one (R5). If it lists others, `Print` takes each
+  comparison's reading beside the form, from the conjunct's IR, binding a number compared through an approximate one as
+  a double and a decimal at its literal's scale: about 15 lines, at g16.
 - **The reader reads no `IN`, bare path or constant** — *small.* `CosmosSqlFormReader` reads each as opaque, so the
   printer's round trip cannot hold one; S chooses none (no template proposes an `IN` until N4, and `sendable` lifts no
   constant), and their spelling is held by a unit test alone. A template that proposes one brings the reader with it.
@@ -2904,7 +2906,17 @@ across documents* and *A join of a container to itself* is the record.
   only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
   residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
   as J writes `IS_DEFINED` over it, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
-  inputs meets it. The column's document accessor, where the binding holds one, would give it a raw value.
+  inputs meets it. Writing nothing there instead leaves 20 shapes S holds implied in the grammar unwritten, against
+  "S holds only what the builder writes"; the reader is the same `typed:T` as a `RETURNING`, so the grammar cannot tell
+  the two apart. The column's document accessor, where the binding holds one, would give it a raw value.
+- **A path read through typed accessors of two SQL types writes no number** — *small, a bridge until each member carries
+  its reader.* S proves a comparison over one atom's reader and the form keeps no reader, so where a conjunct reads one
+  path as `RETURNING INTEGER` and `BIGINT` (or `DOUBLE`, or `BOOLEAN`), `AccessorsOf` keeps no typed accessor and the
+  builder writes no member comparing it with a number or a boolean: that weakening is not pushed, RU, never rows. None of
+  the inputs' weakenings meets it (`APathReadThroughTwoTypesWritesNoNumberOverEither` holds the shape). The proper fix:
+  the lift writes each `implied` member with the reader `rex-writable` judged it over (a value change, no rule), and the
+  builder looks up the accessor by it; it lands with Stage 3's value positions, which need a reader each anyway, or
+  before, should the rehearsal list a weakening this refuses.
 - **The grammar's round trip costs a leg seconds** — *small, O5.* `EveryWritableShapeRoundTrips` took 9.3 s at 100 %
   load in a process of its own, S defined (1,138 shapes; a generate bundle an accessor and set, and a check bundle a
   claim, a comparison's once a set). Line 32 reads it in the leg's wall time. If PR C's legs pass O5's budget, an atom's

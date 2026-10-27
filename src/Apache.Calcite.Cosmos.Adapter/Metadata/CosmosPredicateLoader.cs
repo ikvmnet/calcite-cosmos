@@ -396,12 +396,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Each largest node read as a reading of a path, inside an opaque term too, and beneath a cast the reading it
             /// converts, a cast being no accessor. The raw value is a raw reading itself, and a rendering or a typed
             /// <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed otherwise
-            /// has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first of each is
-            /// kept, as the builder must write one form one way.
+            /// has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first raw value is
+            /// kept, each being the same value. A path read through typed accessors of two SQL types keeps none: S proves a
+            /// comparison over one atom's reader (<c>rex-writable</c>), and written over the other's it would mean another
+            /// value in Calcite, so the builder writes no such member, and that weakening is not pushed.
             /// </remarks>
             public IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(RexNode conjunct, RexBuilder rexBuilder)
             {
                 var accessors = new Dictionary<string, RenderingRexBuilder.Accessor>(StringComparer.Ordinal);
+                var ambiguous = new HashSet<string>(StringComparer.Ordinal);
 
                 void Walk(RexNode node)
                 {
@@ -412,8 +415,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         var raw = value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null;
                         var typed = value is SqlValue.Typed { Type: var type }
                             && Cosmos.Facts.Rendering.RenderingRexGrammar.TypeTests.ContainsKey(Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type)) ? node : null;
-                        var held = accessors.GetValueOrDefault(SqlValue.Spell(path));
-                        accessors[SqlValue.Spell(path)] = new(held?.Raw ?? raw, held?.Typed ?? typed);
+                        var (spelled, held) = (SqlValue.Spell(path), accessors.GetValueOrDefault(SqlValue.Spell(path)));
+                        if (held?.Typed is { } kept && typed is not null && Equals(kept.getType()?.getSqlTypeName(), typed.getType()?.getSqlTypeName()) == false)
+                            ambiguous.Add(spelled);
+
+                        accessors[spelled] = new(held?.Raw ?? raw, held?.Typed ?? typed);
                         return;
                     }
 
@@ -424,6 +430,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 lock (_lock)
                     Walk(Expand(conjunct));
+
+                foreach (var spelled in ambiguous)
+                    accessors[spelled] = accessors[spelled] with { Typed = null };
 
                 return accessors;
             }

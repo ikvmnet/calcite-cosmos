@@ -255,21 +255,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static IEnumerable<IReadOnlyList<(RexNode Conjunct, SqlPredicate Atom)>> Atoms(CosmosPredicateLoader.Loading loading) => Accessors().Select(accessor =>
             (IReadOnlyList<(RexNode Conjunct, SqlPredicate Atom)>)[.. Compared(accessor).Concat(
             [
-                Rex.makeIn(accessor, Java(Rex.makeLiteral("bikes"), Rex.makeLiteral("tools"))),
-                Rex.makeIn(accessor, Java(Rex.makeExactLiteral(java.math.BigDecimal.valueOf(30)), Rex.makeExactLiteral(java.math.BigDecimal.valueOf(31)))),
+                Rex.makeIn(accessor, java.util.Arrays.asList(Rex.makeLiteral("bikes"), Rex.makeLiteral("tools"))),
+                Rex.makeIn(accessor, java.util.Arrays.asList(Rex.makeExactLiteral(java.math.BigDecimal.valueOf(30)), Rex.makeExactLiteral(java.math.BigDecimal.valueOf(31)))),
                 Rex.makeCall(SqlStdOperatorTable.IS_NULL, accessor), Rex.makeCall(CosmosOperators.IsDefined, accessor),
             ])
                 .Select(conjunct => (Conjunct: conjunct, Atom: loading.Read(conjunct)))
                 .Where(c => c.Atom.Subterms.Any(t => t is SqlPredicate.Opaque or SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not) == false)
                 .DistinctBy(c => c.Atom.Digest)]);
-
-        static java.util.List Java(params RexNode[] nodes)
-        {
-            var list = new java.util.ArrayList();
-            foreach (var node in nodes)
-                list.add(node);
-            return list;
-        }
 
         /// <summary>An atom's reader, by the grammar's rows.</summary>
         static string ReaderOf(SqlPredicate atom) => RenderingFamily.ReaderOf(atom switch
@@ -423,6 +415,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A path read through typed accessors of two SQL types writes no comparison with a number or a boolean over either:
+        /// S proves such a member over one atom's reader, and over the other's Calcite reads another value (<c>RETURNING
+        /// INTEGER</c> raises where <c>BIGINT</c> reads 3000000000), so the weakening builds nothing rather than one the
+        /// builder chose a reader for. Its type tests and string comparisons are still written over its raw value, and a path
+        /// read through one type keeps that accessor.
+        /// </summary>
+        [Fact]
+        public void APathReadThroughTwoTypesWritesNoNumberOverEither()
+        {
+            var loading = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias);
+            var (integer, bigint, p) = (JsonValue("p", SqlTypeName.INTEGER), JsonValue("p", SqlTypeName.BIGINT), SqlValue.Spell(JsonDocumentPath.Root.Property("p")));
+            var one = Rex.makeCall(SqlStdOperatorTable.EQUALS, integer, Rex.makeExactLiteral(java.math.BigDecimal.ONE));
+            var two = Rex.makeCall(SqlStdOperatorTable.OR, one, Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, bigint, Rex.makeExactLiteral(new java.math.BigDecimal("3000000000"))));
+            var (once, twice) = (loading.AccessorsOf(one, Rex), loading.AccessorsOf(two, Rex));
+            var (compared, defined) = (ServiceForm.CompareOf(CosmosServiceTest.Greater, p, JsonValues.Of(3000000000m)), ServiceForm.TestOf(CosmosServiceTest.IsDefined, p));
+
+            (once[p].Typed is null, twice[p].Typed is null, twice[p].Raw is null).Should().Be((false, true, false));
+            RenderingRexBuilder.Build(compared, Rex, twice).Should().BeNull("no reader of the two is the one S proved the member over");
+            RenderingRexBuilder.Build(ServiceForm.JunctionOf(CosmosServiceTest.Or, [compared, defined]), Rex, twice).Should().BeNull("a junction with one member unwritten is none");
+            RenderingRexBuilder.Build(defined, Rex, twice).Should().NotBeNull();
+            RenderingRexBuilder.Build(compared, Rex, once).Should().NotBeNull();
+        }
+
+        /// <summary>
         /// One form builds one Rex, equal by Calcite's equality and read as one term, however often its accessors are read:
         /// the loop guard (<c>IsApplied</c>, <c>AlreadyApplied</c>) finds a weakening beneath by identity.
         /// </summary>
@@ -461,7 +477,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     continue;
 
                 pushed++;
-                var beneath = CosmosFilterStatement.ConjunctsOf(RexUtil.composeConjunction(statement.RexBuilderForCheck, Java(rex)));
+                var beneath = CosmosFilterStatement.ConjunctsOf(RexUtil.composeConjunction(statement.RexBuilderForCheck, java.util.Collections.singletonList(rex)));
                 var rebuilt = RenderingRexBuilder.Build(w.Mine!, statement.RexBuilderForCheck, statement.AccessorsOf(w.Conjunct))!;
                 if (statement.IsApplied(rebuilt, beneath) == false)
                     again.Add($"{w.Input} {w.Name}/{w.Statement}/{w.Conjunct} {w.Mine}: {rebuilt} beneath {string.Join(", ", beneath)}");

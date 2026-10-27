@@ -7449,7 +7449,7 @@ anything else as a double. The translator does otherwise: Calcite holds an exact
 and `GetLiteralValue` binds it through `TryGetExactNumberValue`, which gives the decimal, unless the number is whole and
 its double another number, then the `long` the service holds exactly past 2^53, and declines where neither carries it.
 Of the numbers the gate's plan digests bind, 238 are decimals, 41 doubles and 16 longs, every long past 2^53. So
-the printer binds the number a form holds the same way, its double read from its invariant text; one held
+the printer binds the number a form holds through `TryGetExactNumberValue` itself, one rule for both; one held
 approximately, which no decimal is, as its double; and refuses one neither carries, as the translator declines it.
 `CosmosParameterList.Add` refuses a lone surrogate, which `sendable` keeps out of every form S sends. There is no
 recheck spine: S owns no parameter.
@@ -7458,7 +7458,9 @@ recheck spine: S owns no parameter.
 approximate, `RETURNING DOUBLE`, is typed `DOUBLE` with it, and the translator binds a double; the form holds the
 number, and the printer binds the decimal. To the service they are one number: within 2^53 an integer and a double
 compare alike, and past it the decimal is the double's own value, held exactly. Nor does the form keep a decimal's
-scale, `30.0` against `30`, which the loader's spelling drops. Of the conjuncts S chose as the translator wrote them,
+scale, `30.0` against `30`, which the loader's spelling drops: the same number to the service, another parameter in a
+plan's digest, which no literal of the corpus or the inputs meets, since none is written with a trailing zero; the
+switch's listing counts any that does. Of the conjuncts S chose as the translator wrote them,
 158 a pull request and 275 at the gate, every one prints the translator's text byte for byte, each parameter of the
 translator's value, type and scale, but 2 and 8: J's text-equality number branch, its accessor re-typed to `DOUBLE`,
 which an inner filter admits and S's weakening replaces at the switch (O7, loss 1). Were the switch's rehearsal to list
@@ -7496,6 +7498,14 @@ and `OR` as Calcite's, in the form's order. A view's column that is no rendering
 translator writes a cast to `ANY` only over a rendering, and re-typing every accessor left 81 of the pull request's
 weakenings under the three sets unwritten (`IS_DEFINED(CAST($1):ANY)` over a raw string column). So the builder is
 handed a path's raw value and its typed accessor apart, not one node a path as the spec drew it.
+
+**The reader is S's, not the builder's.** S admits a comparison into `implied` over the reader of the atom it was proven
+from (`rex-writable` judges `Writes(form, reader)`), and the form keeps no reader. Where a conjunct reads one path
+through typed accessors of two SQL types — an `INTEGER` beside a `BIGINT` — a member proven over one atom, written over
+the other's accessor, means another value in Calcite: `RETURNING INTEGER` raises on 3000000000, which a `BIGINT` reads.
+So `AccessorsOf` keeps no typed accessor for such a path, the builder writes no comparison with a number or a boolean
+over it, and that weakening is not pushed: RU, never rows, on a shape none of the inputs' 809 weakenings holds. Each
+member carrying the reader it was proven over would let the builder write it (`TODO.md`).
 
 **Never a member left out.** Beneath an `OR` or an odd number of `NOT`s a member left out strengthens the weakening and
 drops rows Calcite keeps. A node outside the grammar — a path no accessor reads, a literal its accessor holds no class

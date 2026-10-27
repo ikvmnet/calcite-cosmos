@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// A path as a conjunct reads it: its raw value, which a string and a type test are written over; and an accessor
         /// typed as a number or a boolean, which a literal of its type is compared through. Either is <c>null</c> where the
-        /// conjunct reads none.
+        /// conjunct reads none, and the typed one where it reads the path through two SQL types.
         /// </summary>
         internal sealed record Accessor(RexNode? Raw, RexNode? Typed);
 
@@ -68,14 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (members.Count == 0 || members.Any(m => m is null))
                     return null;
 
-                if (members.Count == 1)
-                    return members[0];
-
-                var list = new java.util.ArrayList();
-                foreach (var member in members)
-                    list.add(member);
-
-                return rexBuilder.makeCall(connective, list);
+                return members.Count == 1 ? members[0] : rexBuilder.makeCall(connective, members.Select(m => m!).ToArray());
             }
 
             RexNode? Comparison(CosmosServiceTest op, string path, string literal)
