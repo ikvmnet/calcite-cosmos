@@ -1,14 +1,14 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 
 using FluentAssertions;
+
+using org.apache.calcite.rel;
 
 using Xunit;
 
@@ -24,27 +24,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// The corpus planned twice, each statement in a flow that asks S at production's sites beside the translator
-        /// through the oracle of the reasoning the harnesses share, whose build is awaited first, and measures what S
-        /// was asked: each statement's digest, and the bundles its plan opened. Where the whole-suite rehearsal arms
-        /// writing, S writes here too (line 22's rehearsal).
+        /// through the oracle of the reasoning the harnesses share, whose build is awaited first — admission, and the
+        /// split's weakenings, which read the closing bundle where one answers them — and measures what S was asked:
+        /// each statement's digest, the bundles its plan opened, and whether its plan holds a filter. Where the
+        /// whole-suite rehearsal arms writing, S writes here too (line 22's rehearsal).
         /// </summary>
-        static readonly Lazy<(string Sql, string Line, int Bundles)[][]> Twice = new(() =>
+        static readonly Lazy<(string Sql, string Line, int Bundles, bool Filtered)[][]> Twice = new(() =>
         {
             TestReasoning.Shared.Rendering.Ready.Wait();
             return [Pass(), Pass()];
         });
 
-        static (string, string, int)[] Pass() => [.. RenderingInputs.Corpus().Select(statement =>
+        static (string, string, int, bool)[] Pass() => [.. RenderingInputs.Corpus().Select(statement =>
         {
-            using var shadow = CosmosRenderingShadow.Arm(null);
+            RelNode? planned = null;
+            using var shadow = CosmosRenderingShadow.Arm(new RenderingShadowCounter(TestReasoning.Shared.Rendering, []));
             using var cost = CosmosRenderingCost.Measure(out var samples);
-            return (statement.Sql, PlanDigests.Lines([statement]).Single(), samples.Sum(s => s.Cost.Bundles));
+            var line = PlanDigests.Lines([statement with { Plan = () => planned = statement.Plan() }]).Single();
+            return (statement.Sql, line, samples.Sum(s => s.Cost.Bundles), planned is not null && PlanDigests.Filters(planned));
         })];
 
         /// <summary>
         /// Writes every digest to <c>TestResults/rendering/plan-digests.tsv</c>, or to the file
         /// <c>COSMOS_PLAN_DIGESTS</c> names: the partition run's first 200 predicates, or its 1,000 where
-        /// <c>COSMOS_PARTITION_GATE=1</c>.
+        /// <c>COSMOS_PARTITION_GATE=1</c>. Under the whole-suite rehearsal, no question S was asked declined.
         /// </summary>
         /// <remarks>
         /// Run at a commit's parent and at the commit, with <c>-explicit only</c>. The two files must be byte-equal,
@@ -56,6 +59,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             var path = Path.GetFullPath(Environment.GetEnvironmentVariable("COSMOS_PLAN_DIGESTS") ?? Path.Combine("TestResults", "rendering", "plan-digests.tsv"));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, string.Join("\n", PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates)) + "\n");
+
+            // A decline leaves its conjunct residual with no weakening, a digest no shadow row explains. Every statement is
+            // planned in the shared reasoning, which a harness's table that made its own would fail (TestReasoning.Checked).
+            TestContext.Current.TestOutputHelper?.WriteLine($"the shared reasoning's oracle: {TestReasoning.Shared.Rendering.Counts}");
+            if (RenderingRehearsal.Armed)
+                TestReasoning.Shared.Rendering.Counts.Declines.Should().Be(0, "the rehearsal's listing holds no plan a decline changed");
         }
 
         /// <summary>
@@ -68,16 +77,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// Lines 26 and 27, riding the same two passes: the second plan of each statement opens no bundle, every question a
-        /// remembered answer; and a statement with no filter opens none in either.
+        /// remembered answer; and a statement whose plan holds no filter opens none in either.
         /// </summary>
         [Fact]
         public void RepeatsOpenNoBundle()
         {
             var (first, again) = (Twice.Value[0], Twice.Value[1]);
-            var unfiltered = first.Where(s => Regex.IsMatch(s.Sql, @"\b(WHERE|HAVING|ON)\b", RegexOptions.IgnoreCase) == false).Select(s => s.Sql).ToHashSet();
+            var unfiltered = first.Where(s => s.Filtered == false).Select(s => s.Sql).ToHashSet();
             TestContext.Current.TestOutputHelper?.WriteLine($"{first.Length} statements: {first.Sum(s => s.Bundles)} bundles first, {again.Sum(s => s.Bundles)} again; {unfiltered.Count} with no filter");
             again.Where(s => s.Bundles > 0).Select(s => $"{s.Bundles}: {s.Sql}").Should().BeEmpty("a plan again asks S only what it remembers");
             first.Concat(again).Where(s => unfiltered.Contains(s.Sql) && s.Bundles > 0).Select(s => s.Sql).Should().BeEmpty("a statement with no filter asks S nothing");
+            unfiltered.Should().NotBeEmpty();
             first.Sum(s => s.Bundles).Should().BePositive("S was asked");
         }
 

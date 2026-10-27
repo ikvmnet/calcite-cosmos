@@ -198,7 +198,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         /// <remarks>
         /// Never .NET's decimal parse, which reads <c>1e-50</c> as 0 and rounds a text past 28 places, each an exact spelling
-        /// of another number. A comparison reads <see cref="DecimalSide"/>, exact at any length.
+        /// of another number. Only the test model's reading of a cell reads it; production compares through
+        /// <see cref="DecimalSide"/>, exact at any length.
         /// </remarks>
         public static string? ParseDecimal(string text) => ExactDecimal(text) is not { } x ? null
             : TryDecimal(x.Digits, x.Exponent, out var exact) ? Of(exact)

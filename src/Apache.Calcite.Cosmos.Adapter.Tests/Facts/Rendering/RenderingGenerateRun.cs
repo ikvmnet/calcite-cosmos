@@ -19,8 +19,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// The generate shadow (spec g05, g15, §5.6), told by production's four sites as the check run plans: each statement's
     /// rounds asked of S at admission (site A) through its oracle, one bundle a round, imported from the root with a later
     /// round's atoms stated beneath <c>StratumFor</c>, every pending conjunct, <c>Through(k)</c> and <c>Before(k)</c> its
-    /// roots, and a closing bundle where one is needed; S's weakening as the split rule would push it (W), its print at
-    /// implementation (P), and where the residual projection rule fires (R). Beside each bundle, after planning, a check
+    /// roots, and a closing bundle where one is needed; S's weakening as the split rule would push it (W), and where the
+    /// residual projection rule fires (R). Beside each bundle, after planning, a check
     /// bundle of the same roots, import and strata claims the translator's texts, so that no claimed text's parts enter
     /// <c>BestExact</c> and the two share one key. Under each set a leg plans under, asserted, and <c>Portable</c> beside.
     /// </summary>
@@ -59,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public const string BandFilter = "band filter", NotProposed = "a form S does not propose", Shallower = "a stratum shallower than the translator's",
             Composite = "the composite unproven", OnItsMerits = "Unproven on its merits";
 
-        /// <summary>Where the residual projection rule fires by S's split and not the translator's, or the other way (spec g15, site R).</summary>
+        /// <summary>A statement over which the residual projection rule fires by S's split and not the translator's, or the other way (spec g15, site R): a class row of its own.</summary>
         public const string Placement = "projection placement";
 
         readonly RenderingGraph _graph;
@@ -67,7 +67,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         readonly ConcurrentDictionary<string, Lazy<Bundle>> _checks = new(StringComparer.Ordinal);
         readonly ConcurrentDictionary<RenderingQuestionKey, Bundle> _opened = new();
         readonly ConcurrentDictionary<(CosmosFilterStatement, int, RenderingSet), (ServiceForm Form, string? Text, bool Applied)> _weakened = new();
-        readonly ConcurrentDictionary<(CosmosFilterStatement, int, RenderingSet), (ServiceForm Form, string? Text, string Written)> _printed = new();
         readonly ConcurrentDictionary<CosmosFilterStatement, (bool Translator, bool Mine)> _placed = new();
         ValueSet<string>? _bands;
         int _next;
@@ -126,9 +125,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Site W: each residual's weakening as the split rule would push it under a set, and the text its Rex translates to (line 19).</summary>
         public ConcurrentQueue<Pushed> Pushes { get; } = new();
 
-        /// <summary>Site P: each form S admitted, printed at implementation beside the translator's text.</summary>
-        public ConcurrentQueue<Printed> Prints { get; } = new();
-
         /// <summary>Site R: each filter the residual projection rule asked of, where it fires by the translator's split and by S's.</summary>
         public ConcurrentQueue<(string Input, string Name, int Statement, bool Translator, bool Mine)> Placements { get; } = new();
 
@@ -156,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.Statement.Conjuncts[i]).ToList());
             var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom) is var b
                 ? new RenderingMemo.Beneath(indices.IndexOf(b.Conjunct), x.Atom, b.Source, x.Assumed, [.. b.Stratum.Assumes.Select(a => indices.IndexOf(a))]) : null!).ToList();
-            var proposed = (Candidates: bundle.Failure is null ? bundle.Scope.Rows(bundle.Theory.Candidate).Count() : 0,
+            var proposed = (Candidates: bundle.Failure is null ? (int)bundle.Scope.CountRows(bundle.Theory.Candidate) : 0,
                 Atoms: nodes.Count(n => n is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)));
             var (forms, refuted) = (new List<Judged>(), new List<Refuted>());
             if (bundle.Failure is null && run is { StopReason: RunStopReason.Completed, OneNodePerClass: true, Contradicted: false })
@@ -203,9 +199,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         void ICosmosRenderingShadowObserver.Weakened(CosmosFilterStatement statement, int conjunct, RenderingSet set, ServiceForm form, string? text, bool applied) =>
             _weakened.AddOrUpdate((statement, conjunct, set), (form, text, applied), (_, was) => was.Text is null ? (form, text, applied) : was);
 
-        void ICosmosRenderingShadowObserver.Printed(CosmosFilterStatement statement, int conjunct, RenderingSet set, ServiceForm form, string? text, string written) =>
-            _printed[(statement, conjunct, set)] = (form, text, written);
-
         void ICosmosRenderingShadowObserver.Placed(CosmosFilterStatement statement, bool translator, bool mine) =>
             _placed[statement] = (translator, mine);
 
@@ -226,10 +219,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             foreach (var ((s, conjunct, set), (form, text, applied)) in _weakened.Where(w => w.Key.Item1 == statement))
                 Pushes.Enqueue(new(input.Input, input.Name, index, conjunct, set, form, text, applied));
-            foreach (var ((s, conjunct, set), (form, text, written)) in _printed.Where(w => w.Key.Item1 == statement))
-                Prints.Enqueue(new(input.Input, input.Name, index, conjunct, set, form, text, written));
             if (_placed.TryGetValue(statement, out var placed))
+            {
                 Placements.Enqueue((input.Input, input.Name, index, placed.Translator, placed.Mine));
+                if (placed.Translator != placed.Mine)
+                    Classes.Enqueue(new(input.Input, input.Name, index, -1, statement.RenderedSets[0], Placement, $"fires by the translator's split {placed.Translator}, by S's {placed.Mine}",
+                        "statement " + statement.Statement.Digest, null, null, null, null, 0));
+            }
 
             Rewritten(shape);
             GC.KeepAlive(statement);
@@ -296,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            Classify(s, set, rendering.Admissions, resolution.Voided, checks, askedUnder, [.. questions.Select(q => Generated(q.Answer))], [.. resolution.Residual], weakening, theirs);
+            Classify(s, set, resolution.Forms, resolution.Voided, checks, askedUnder, [.. questions.Select(q => Generated(q.Answer))], [.. resolution.Residual], weakening, theirs);
 
             // First, each bundle's own time, as though S's memo held none; again, each question asked once more, a hit.
             var keys = questions.Select(q => q.Answer.Key).OfType<RenderingQuestionKey>().Distinct().ToList();
@@ -348,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>Each conjunct's class under a set, its reason where it is a regression, and each residual's weakening against J's.</summary>
-        void Classify(Shape s, RenderingSet set, IReadOnlyDictionary<int, CosmosFilterRendering.Admitted> admitted, bool voided,
+        void Classify(Shape s, RenderingSet set, IReadOnlyDictionary<int, ServiceForm> forms, bool voided,
             Dictionary<int, RenderingVerdict?> checks, Dictionary<int, int?> askedUnder, List<Bundle> bundles, List<int> residual, Bundle? weakening,
             Dictionary<int, RenderingVerdict?> theirs)
         {
@@ -358,7 +354,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var verdict = checks.GetValueOrDefault(i);
                 var engine = verdict?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict || bundles.Any(b => b.Answers.TryGetValue(digest, out var x)
                     && (x.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict || x.Reason?.StartsWith("declined", StringComparison.Ordinal) == true));
-                var form = admitted.TryGetValue(i, out var a) && voided == false ? a.Form : null;
+                var form = forms.GetValueOrDefault(i);
                 var text = s.Texts.GetValueOrDefault(i);
                 var (@class, reason) = engine ? (Engine, null)
                     : s.Owned[i] == false ? (Written, null)
@@ -376,9 +372,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var mine = residual.Contains(i) && weakening is not null && weakening.Answers.TryGetValue(s.Conjuncts[i].Digest, out var answer) ? answer.Weakening : null;
                 var j = s.Weakened.GetValueOrDefault(i);
+                // Site W's own record: S's weakening the builder wrote no Rex for, or the translator wrote no text of, is not pushed.
+                var refused = mine is not null && _weakened.TryGetValue((s.Statement, i, set), out var pushed) && pushed.Text is null && pushed.Applied == false;
                 Weakenings.Enqueue(new(s.Input.Input, s.Input.Name, s.Index, i, set, s.Conjuncts[i].Digest, j?.Written, j?.Form, Show(theirs.GetValueOrDefault(i), Verdict.Implies), mine, residual.Contains(i), s.Round[i] > 0,
                     weakening?.Id, weakening?.Claim, s.Owned[i], mine is not null && s.Conjuncts[i].Subterms.Any(t => t is SqlPredicate.Opaque) ? (s.Statement.Conjuncts[i], s.Statement.BindingForCheck) : null,
-                    j?.Form is not { } theirsForm || Writable(theirsForm, s.Conjuncts[i]), mine is not null ? s.Statement : null));
+                    j?.Form is not { } theirsForm || Writable(theirsForm, s.Conjuncts[i]), mine is not null ? s.Statement : null, refused));
             }
         }
 
@@ -406,7 +404,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static bool Writable(ServiceForm form, SqlPredicate conjunct)
         {
-            var readers = RenderingCheckRun.Atoms(conjunct).Select(a => (Path: SqlValue.Spell(a.Paths.Single()), Reader: a switch
+            var readers = CosmosFilterRendering.AtomsOf(conjunct).Select(a => (Path: SqlValue.Spell(a.Paths.Single()), Reader: a switch
             {
                 SqlPredicate.Compare c => RenderingFamily.ReaderOf(c.Left),
                 SqlPredicate.In m => RenderingFamily.ReaderOf(m.Value),
@@ -446,15 +444,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A residual's weakening against J's: the same form; S's tighter, keeping no document J's does not and dropping one
         /// it keeps, or looser, or the two parting both ways, on the documents source A draws from the bundle's import, on
         /// every target the set serves; S's alone or J's alone; dropped, a conjunct the translator pushed whole that S leaves
-        /// with none; pushed exactly where S admits what J weakened; none.
+        /// with none; pushed exactly where S admits what J weakened; none. S's that site W refused to push is none of S's.
         /// </summary>
         public static string ClassOf(Weakened w)
         {
             if (w.Residual == false)
                 return w.Translator is null ? "none" : "pushed exactly";
 
-            if (w.Mine is null)
-                return w.Pushed ? "dropped" : w.Translator is null ? "none" : "translator-only";
+            // J's alone where J's is unproven to S, and S proves none, is O7's loss 5 as a looser one is; never where site W refused S's.
+            if (w.Mine is null || w.Refused)
+                return w.Pushed ? "dropped" : w.Translator is null ? "none" : w.Refused == false && w.TranslatorVerdict == "Unproven" ? "translator-only (O7: J's unproven to S)" : "translator-only";
 
             if (w.Translator is null)
                 return "S-only";
@@ -544,19 +543,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A residual's weakening under a set: J's text and form where J wrote one, and its verdict claimed implied at the
         /// weakening's key, S's, whether S leaves it residual and
         /// whether the translator pushed it, the bundle S's was read from and its import, whether S owns it, and for an opaque
-        /// conjunct S weakens, its node and the binding it reads its fields through, which Calcite evaluates in process; and
-        /// for every weakening S gives, its statement, whose accessors the Rex builder writes it over (g14).
+        /// conjunct S weakens, its node and the binding it reads its fields through, which Calcite evaluates in process; for
+        /// every weakening S gives, its statement, whose accessors the Rex builder writes it over (g14); and whether site W
+        /// refused to push S's, its Rex unwritten or untranslated.
         /// </summary>
         internal sealed record Weakened(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, string Ir, string? Text, ServiceForm? Translator, string? TranslatorVerdict,
             ServiceForm? Mine, bool Residual, bool Pushed, int? Bundle, RenderingMemo.Claimed? Claim, bool Owned,
             (org.apache.calcite.rex.RexNode Conjunct, (IReadOnlyList<Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) Binding)? Opaque = null,
-            bool TranslatorWritable = true, CosmosFilterStatement? Source = null);
+            bool TranslatorWritable = true, CosmosFilterStatement? Source = null, bool Refused = false);
 
         /// <summary>Site W's report: S's weakening of a residual as the split rule would push it, the text its Rex translates to (none where none), and whether it was applied beneath already.</summary>
         internal sealed record Pushed(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, ServiceForm Form, string? Text, bool Applied);
-
-        /// <summary>Site P's report: a form S admitted, as the printer wrote it (none where it refused), beside the translator's text written.</summary>
-        internal sealed record Printed(string Input, string Name, int Statement, int Conjunct, RenderingSet Set, ServiceForm Form, string? Text, string Written);
 
         /// <summary>
         /// A conjunct the rewrite changed under a set: the original and what it became, <c>null</c> where it was deleted; S's
@@ -589,8 +586,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             public static Shape Of(RenderingInputs.Statement input, int index, CosmosFilterStatement statement, IReadOnlyList<CaptureRecord> records)
             {
                 var (scope, conjuncts) = (statement.ScopeForCheck, statement.Statement.Conjuncts);
+
+                // J's weakening of an opaque conjunct is a form all the same: the conjunct is outside the IR, the weakening not,
+                // and line 13b reads it against S's.
                 Translated Read(CaptureRecord r) => CosmosSqlFormReader.Read(r.Text, r.Parameters) is var read
-                    && RenderingCheckRun.Skip(r, read, r.Comparisons.Count + r.Rechecks.Count > 0) is null ? new(r.Text, read.Form, r.Parameters) : new(r.Text, null, r.Parameters);
+                    && RenderingCheckRun.Skip(r, read, r.Comparisons.Count + r.Rechecks.Count > 0) is var skip
+                    && (skip is null || r.Site == 3 && skip == "outside the IR" && read.Written == r.Text && RenderingCheckRun.Opaque(read.Form) == false)
+                    ? new(r.Text, read.Form, r.Parameters) : new(r.Text, null, r.Parameters);
                 Dictionary<int, Translated> Site(int site) => records.Where(r => r.Statement == statement && r.Site == site).GroupBy(r => r.Conjunct).ToDictionary(g => g.Key, g => Read(g.First()));
                 return new(input, index, statement, [.. conjuncts.Select(RenderingFamily.Owns)], [.. Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf)],
                     RenderingCheckRun.RootOf([scope])!.Value, Site(1), Site(3));

@@ -15,14 +15,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <summary>
     /// S's side of one filter statement's admission under one set (spec §4.4, §5.2): asked once a round in one bundle,
     /// imported from the statement's root, every pending conjunct a root beside the round's junctions <c>Through(k)</c> and
-    /// <c>Before(k)</c>, each later round's atoms stated beneath <see cref="CosmosStatementScope.StratumFor(StatementTerms.Node, Func{int, bool})"/>;
-    /// what it admitted, the composite, and each residual's weakening, read from a bundle a round opened or one closing
-    /// bundle. Writing, the scope takes its admissions; beside the translator, they are what S would admit in the
-    /// translator's rounds.
+    /// <c>Before(k)</c>, each later round's atoms stated beneath <see cref="CosmosStatementScope.StratumFor"/>; what it
+    /// admitted, the composite, and each residual's weakening, read from a bundle a round opened or one closing bundle.
+    /// Writing, the scope takes its admissions; beside the translator, they are what S would admit in the translator's rounds.
     /// </summary>
     /// <remarks>
-    /// Legality only: which conjuncts S is asked, beneath which stratum, and which bundle answers; every answer is S's
-    /// (<c>DESIGN.md</c>, <i>The shadow in production code</i>). Made and asked under its statement's lock.
+    /// Legality only: which conjuncts S is asked, beneath which stratum, which bundle answers, and whether the printer
+    /// writes what it answered; every answer is S's (<c>DESIGN.md</c>, <i>The shadow in production code</i>). Made and asked
+    /// under its statement's lock.
     /// </remarks>
     internal sealed class CosmosFilterRendering
     {
@@ -37,8 +37,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         string? _opaques;
         readonly Dictionary<int, Admitted> _admitted = [];
         readonly List<Round> _rounds = [];
-        List<Round>? _voided;
-        (RenderingAnswer? Answer, Question? Closing, RenderingOracle.RenderingBundleAnswer? Answered)? _composite;
+        bool _again;
+        (RenderingOracle.RenderingBundleAnswer? Bundle, Question? Closing)? _composite;
         Resolution? _resolved;
 
         internal CosmosFilterRendering(CosmosFilterStatement statement, RenderingSet set, CosmosRenderingShadow.Arming arm, bool[] owned) =>
@@ -50,9 +50,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>The rounds S was asked, in order: the rounds run again where its composite was not proven, if they ran.</summary>
         public IReadOnlyList<Round> Rounds => _rounds;
 
-        /// <summary>The rounds of the first pass where its composite was voided and the rounds ran again; none otherwise.</summary>
-        public IReadOnlyList<Round>? Voided => _voided;
-
         /// <summary>What S admitted in the rounds, by conjunct, before the composite is read: void where it is not proven.</summary>
         public IReadOnlyDictionary<int, Admitted> Admissions => _admitted;
 
@@ -60,7 +57,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// One round: S asked of the round's owned pending conjuncts, from the root, and those it proved admitted by it; on
-        /// the closing call, all of them where their composite is proven, and none where not; on a round run again, none.
+        /// the closing call, all of them where their composite is proven and printed, and none where not; on a round run
+        /// again, none.
         /// </summary>
         public IReadOnlyList<int> Answer(AdmissionRound round, CosmosStatementScope scope)
         {
@@ -70,13 +68,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (round.Closing)
             {
                 _composite = Composite(scope, round.Node, [.. Enumerable.Range(0, Conjuncts.Count).Where(i => _owned[i] ? _admitted.ContainsKey(i) == false : round.Pending.Contains(i))]);
-                return _composite.Value.Answer is { Kind: RenderingVerdictKind.Proven } ? [.. _admitted.Keys.Order()] : [];
+                return _composite.Value.Bundle is { } bundle && Standing(bundle) is not null ? [.. _admitted.Keys.Order()] : [];
             }
 
             // The rounds run again from the root: what S admitted before is void, and it admits nothing now.
             if (round is { Again: true, Number: 1 })
             {
-                _voided = [.. _rounds];
+                _again = true;
                 _admitted.Clear();
                 _rounds.Clear();
             }
@@ -89,21 +87,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             foreach (var (i, a) in _admitted)
                 strata[i] = a.Stratum;
 
-            var (through, before) = (_admitted.Keys.Concat(asked).ToList(), round.Number > 1 ? _admitted.Keys.ToList() : null);
-            var question = QuestionOf(Admission, scope, strata, [through, before]);
+            var question = QuestionOf(Admission, scope, strata, [[.. _admitted.Keys.Concat(asked)], round.Number > 1 ? [.. _admitted.Keys] : null]);
             var answer = Ask(question);
             var admitted = asked.Where(i => answer.Of(Conjuncts[i]) is { Kind: RenderingVerdictKind.Proven, Best: not null }).ToList();
             foreach (var i in admitted)
                 _admitted[i] = new(round.Number, answer.Of(Conjuncts[i]).Best!, strata[i]);
 
-            _rounds.Add(new(round.Number, round.Node, round.Pending, asked, Junction(through), before is null ? null : Junction(before), question, answer, round.Again));
+            _rounds.Add(new(round.Number, round.Pending, asked, question, answer));
             return admitted;
         }
 
         /// <summary>
-        /// What S's admission came to, read once the rounds are done: the composite, whether it voided S's admissions, the
-        /// forms that stand, the conjuncts left residual, and each one's weakening, read from the round after S's last
-        /// admission that holds them all, or from one closing bundle (and from round 1's, where the composite was voided).
+        /// What S's admission came to, read once the rounds are done: whether it voided S's admissions, the forms that stand,
+        /// the conjuncts left residual, and each one's weakening, read from the round after S's last admission that holds
+        /// them all, or from one closing bundle (and from round 1's, where the composite was voided).
         /// </summary>
         public Resolution Resolve(CosmosStatementScope scope)
         {
@@ -112,42 +109,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // Writing, the scope asked the composite after the last round and, where it failed, ran the rounds again, whose own
             // rounds answer the weakenings; beside the translator, the composite is read here, and voids S's admissions alone.
-            var again = _voided is not null;
             List<int> Residual(Func<int, bool> s) => [.. Enumerable.Range(0, Conjuncts.Count).Where(i => _owned[i] ? s(i) == false : scope.StratumOf(i) == 0)];
-            var (composite, closing, closed) = _composite ?? (again ? default : Composite(scope, scope.Stopped, Residual(_admitted.ContainsKey)));
-            var voided = again == false && composite is { Kind: not RenderingVerdictKind.Proven };
-            var forms = voided ? [] : _admitted.ToDictionary(a => a.Key, a => a.Value.Form);
+            var (bundle, closing) = _composite ?? (_again ? default : Composite(scope, scope.Stopped, Residual(_admitted.ContainsKey)));
+            var standing = _admitted.Count > 0 && bundle is not null ? Standing(bundle) : null;
+            var voided = _again == false && _admitted.Count > 0 && standing is null;
+            var forms = standing ?? new Dictionary<int, ServiceForm>();
             var residual = Residual(forms.ContainsKey);
 
             // Round 1 asks every conjunct from the root, so where the composite voids S's admissions it answers the weakenings.
             var answering = voided ? _rounds[0] : _rounds.LastOrDefault(r => _admitted.Values.All(a => a.Round < r.Number) && residual.All(r.Pending.Contains));
-            var (question, answer) = voided || closed is null || again ? (answering?.Question, answering?.Answer) : (closing, closed);
+            var (question, answer) = voided || closing is null || _again ? (answering?.Question, answering?.Answer) : (closing, bundle);
             if (residual.Count > 0 && answer is null)
                 (question, answer) = Close(scope, scope.Stopped, residual, Weakening);
 
             var weakenings = residual.Where(i => answer is not null && answer.Roots.ContainsKey(Conjuncts[i].Digest) && answer.Of(Conjuncts[i]).Weakening is not null)
                 .ToDictionary(i => i, i => answer!.Of(Conjuncts[i]).Weakening!);
-            return _resolved = new(composite, voided || again, forms, residual, question, answer, weakenings);
+            return _resolved = new(voided || _again, forms, residual, question, answer, weakenings);
         }
 
         /// <summary>
-        /// The composite (§5.2): <c>Through(k)</c> of the last round S admitted in, where it admitted all it was asked; else
-        /// <c>Before</c> of the round after; else <c>Before</c> in one closing bundle, which answers the weakenings too.
+        /// The bundle that holds the composite (§5.2): the round's of <c>Through(k)</c>, the last round S admitted in, where it
+        /// admitted all it was asked; else the round's after, of <c>Before</c>; else one closing bundle, which answers the
+        /// weakenings too, and its question.
         /// </summary>
-        (RenderingAnswer?, Question?, RenderingOracle.RenderingBundleAnswer?) Composite(CosmosStatementScope scope, StatementTerms.Node stopped, IReadOnlyList<int> residual)
+        (RenderingOracle.RenderingBundleAnswer?, Question?) Composite(CosmosStatementScope scope, StatementTerms.Node stopped, IReadOnlyList<int> residual)
         {
             if (_admitted.Count == 0)
-                return (null, null, null);
+                return (null, null);
 
             var last = _rounds.Single(r => r.Number == _admitted.Values.Max(a => a.Round));
             if (last.Asked.All(_admitted.ContainsKey))
-                return (last.Answer.Of(last.Through!), null, null);
+                return (last.Answer, null);
 
             if (_rounds.FirstOrDefault(r => r.Number == last.Number + 1) is { } after)
-                return (after.Answer.Of(after.Before!), null, null);
+                return (after.Answer, null);
 
             var (question, answer) = Close(scope, stopped, residual, Admission);
-            return (answer.Of(Junction(_admitted.Keys)!), question, answer);
+            return (answer, question);
+        }
+
+        /// <summary>
+        /// The forms S's admissions are sent as, where they stand: their junction proven in the bundle that holds it, each
+        /// conjunct's best there — the arms the <c>best</c> rule joined into the composite's, so that what is sent is the one
+        /// form S proved for the whole <c>WHERE</c> (spec §2) — and each written by the printer; none otherwise.
+        /// </summary>
+        IReadOnlyDictionary<int, ServiceForm>? Standing(RenderingOracle.RenderingBundleAnswer bundle)
+        {
+            if (bundle.Of(Junction(_admitted.Keys)!) is not { Kind: RenderingVerdictKind.Proven })
+                return null;
+
+            var forms = _admitted.Keys.ToDictionary(i => i, i => bundle.Of(Conjuncts[i]).Best);
+            return forms.All(f => f.Value is { } form && _statement.Prints(f.Key, form)) ? forms.ToDictionary(f => f.Key, f => f.Value!) : null;
         }
 
         /// <summary>One closing bundle: the residuals stated beneath <c>StratumFor</c> of where the rounds stopped, S's admissions beneath their own, and <c>Before</c>.</summary>
@@ -175,16 +187,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         Question QuestionOf(string site, CosmosStatementScope scope, IReadOnlyDictionary<int, Stratum?> strata, IEnumerable<IReadOnlyCollection<int>?> junctions)
         {
             List<int> conjuncts = [.. strata.Keys.Order()];
-            var joined = junctions.ToList();
-            var roots = conjuncts.Select(i => Conjuncts[i]).Concat(joined.Select(j => j is null ? null : Junction(j)).OfType<SqlPredicate>()).DistinctBy(r => r.Digest).ToList();
-            var shared = conjuncts.SelectMany(i => AtomsOf(Conjuncts[i]).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+            var joined = junctions.Select(j => j is null ? null : Junction(j)).ToList();
+            var roots = conjuncts.Select(i => Conjuncts[i]).Concat(joined.OfType<SqlPredicate>()).DistinctBy(r => r.Digest).ToList();
+            var shared = SharedAtoms(conjuncts.Select(i => Conjuncts[i]));
             var digest = _statement.Statement.Digest;
             var (root, rules) = scope.ContextFor(OracleLicence.Declaration);
             var stated = conjuncts.Where(i => strata[i] is not null).SelectMany(i => AtomsOf(Conjuncts[i]).Distinct().Where(a => shared.Contains(a) == false)
                 .Select(a => new Stated(i, a, strata[i]!, new ImportSource(digest, "render round " + strata[i]!.Round, strata[i]!.Round)))).ToList();
             _opaques ??= string.Join(";", _statement.Statement.Opaques.OrderBy(o => o.Key).Select(o => o.Key + "=" + o.Value));
-            var signature = string.Join(",", conjuncts.Select(i => i + "@" + strata[i]?.Key)) + "|" + string.Join("|", joined.Select(j => j is null ? "-" : string.Join(".", j.Distinct().Order())))
-                + "|" + _opaques;
+            var signature = string.Join(",", conjuncts.Select(i => Conjuncts[i].Digest + "@" + strata[i]?.Key)) + "\n" + string.Join(",", joined.Select(j => j?.Digest ?? "-")) + "\n" + _opaques;
             return new(site, Set, conjuncts, roots, strata, stated, new ImportSource(digest, "declaration", 1), root, rules, signature);
         }
 
@@ -192,23 +203,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         internal static IEnumerable<SqlPredicate> AtomsOf(SqlPredicate conjunct) =>
             conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque) && t.Paths.Count() == 1);
 
+        /// <summary>The atoms two conjuncts share, which neither's stratum is stated beneath, since one may be what the other's assumes: production's rule and check mode's.</summary>
+        internal static HashSet<SqlPredicate> SharedAtoms(IEnumerable<SqlPredicate> conjuncts) =>
+            [.. conjuncts.SelectMany(c => AtomsOf(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key)];
+
         /// <summary>
         /// Asks S a question through the flow's oracle, a test's or the statement's schema's, or hands it the answer a
-        /// statement of the same terms was given there (<see cref="RenderingOracle.Answered"/>); a test's plant, which reads a
-        /// node no key names, is asked afresh, and a decline is never kept.
+        /// statement of the same terms was given there under the theory now current (<see cref="RenderingOracle.Answered"/>);
+        /// a test's plant, which reads a node no key names, is asked afresh, and a decline is never kept.
         /// </summary>
         RenderingOracle.RenderingBundleAnswer Ask(Question q)
         {
-            var (started, oracle) = (Stopwatch.GetTimestamp(), _arm.Observer?.Oracle ?? _statement.Rendering);
+            var (started, oracle, signature) = (Stopwatch.GetTimestamp(), _arm.Observer?.Oracle ?? _statement.Rendering, _arm.Observer?.Signature?.Invoke(q.Signature) ?? q.Signature);
             var answered = _arm.Observer is null or { RenderedFrom: null, ReadExactly: null } && _terms is not null ? oracle.Answered.GetValue(_terms, _ => new()) : null;
-            if (answered is not null && answered.TryGetValue((Set, oracle.Digest, oracle.Memo.Epoch, q.Signature), out var known))
-                return CosmosRendering.Reused(oracle, q.Site, Set, q.Roots, known, Stopwatch.GetElapsedTime(started));
+            if (answered is not null && oracle.Digest is { } current && answered.TryGetValue((Set, current, signature), out var known))
+                return CosmosRendering.Reused(oracle, q.Roots, known, Stopwatch.GetElapsedTime(started));
 
-            var answer = CosmosRendering.Ask(oracle, q.Site, Set, q.Roots, _statement.Statement.Opaques, q.Source, q.Root, q.Rules,
+            var answer = CosmosRendering.Ask(oracle, Set, q.Roots, _statement.Statement.Opaques, q.Source, q.Root, q.Rules,
                 [.. q.Beneath.Select(b => (b.Atom, b.Source, b.Stratum.Node, q.Rules))],
                 _arm.Observer is { } observer ? (bundle, terms, import, run, elapsed) => observer.Opened(_statement, q, bundle, terms, import, run, elapsed) : null);
-            if (answered is not null && answer.Declined is null && oracle.Digest is not null)
-                answered.TryAdd((Set, oracle.Digest, oracle.Memo.Epoch, q.Signature), answer);
+
+            // Filed under the theory the answer was computed under, which a generation swapped in meanwhile does not change.
+            if (answered is not null && answer.Declined is null && answer.Key is { } key)
+                answered.TryAdd((Set, key.Theory, signature), answer);
 
             return answer;
         }
@@ -230,16 +247,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         internal sealed record Question(string Site, RenderingSet Set, IReadOnlyList<int> Conjuncts, IReadOnlyList<SqlPredicate> Roots, IReadOnlyDictionary<int, Stratum?> Strata,
             IReadOnlyList<Stated> Beneath, ImportSource Source, Scope? Root, PredicateRules? Rules, string Signature);
 
-        /// <summary>A round asked: its number and node, its pending conjuncts and those S was asked, its junctions, the question and what S answered.</summary>
-        internal sealed record Round(int Number, StatementTerms.Node Node, IReadOnlyList<int> Pending, IReadOnlyList<int> Asked, SqlPredicate? Through, SqlPredicate? Before,
-            Question Question, RenderingOracle.RenderingBundleAnswer Answer, bool Again);
+        /// <summary>A round asked: its number, its pending conjuncts and those S was asked, the question and what S answered.</summary>
+        internal sealed record Round(int Number, IReadOnlyList<int> Pending, IReadOnlyList<int> Asked, Question Question, RenderingOracle.RenderingBundleAnswer Answer);
 
         /// <summary>
-        /// What S's admission came to: the composite, none where S admitted nothing; whether it voided S's admissions; the
-        /// forms that stand, by conjunct; the residual conjuncts; the question and answer the weakenings were read from; and
-        /// each residual's weakening, none where S gave none.
+        /// What S's admission came to: whether it voided S's admissions; the forms that stand, by conjunct, the composite's
+        /// arms; the residual conjuncts; the question and answer the weakenings were read from; and each residual's
+        /// weakening, none where S gave none.
         /// </summary>
-        internal sealed record Resolution(RenderingAnswer? Composite, bool Voided, IReadOnlyDictionary<int, ServiceForm> Forms, IReadOnlyList<int> Residual,
+        internal sealed record Resolution(bool Voided, IReadOnlyDictionary<int, ServiceForm> Forms, IReadOnlyList<int> Residual,
             Question? WeakeningQuestion, RenderingOracle.RenderingBundleAnswer? WeakeningAnswer, IReadOnlyDictionary<int, ServiceForm> Weakenings);
 
     }

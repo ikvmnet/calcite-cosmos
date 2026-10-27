@@ -11,11 +11,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// four sites — admission (A), the weakening (W), implementation (P) and the residual projection (R) — ask S through
     /// <see cref="CosmosRendering"/> beside the translator and tell the flow's observer; with <see cref="Arming.Writes"/>, they
     /// take S's answers for the conjuncts S owns, and every residual's weakening, as the switch will (g16): the rehearsal.
-    /// </summary>
-    /// <remarks>
     /// A site reads <see cref="Armed"/>, one <c>volatile bool</c>, and only past it the flow's arm (<c>DESIGN.md</c>, <i>The
-    /// shadow in production code</i>). The switch flips one default: every flow armed to write.
-    /// </remarks>
+    /// shadow in production code</i>).
+    /// </summary>
     internal static class CosmosRenderingShadow
     {
 

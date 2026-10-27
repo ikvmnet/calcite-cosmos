@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Data.Common;
-using System.Linq;
 using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -25,12 +24,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         const string Milliseconds = @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$";
 
-        /// <summary>The parts whose body is a bolt: the base joined to the bodies merged and discriminated, kept where the body is one.</summary>
-        public const string BoltParts = """
-            SELECT "p"."Id", "p"."Label"
-            FROM "V"."Part" AS "p"
+        /// <summary>The bodies merged into one row a part, discriminated by which body holds it, with columns given beside.</summary>
+        static string Merged(string columns) => $"""
             LEFT JOIN (
-                SELECT "b0"."Id", CASE
+                SELECT "b0"."Id", {columns}CASE
                     WHEN "s"."Id" IS NOT NULL THEN CAST('SpringPartBody' AS VARCHAR)
                     WHEN "g"."Id" IS NOT NULL THEN CAST('GearPartBody' AS VARCHAR)
                     WHEN "b"."Id" IS NOT NULL THEN CAST('BoltPartBody' AS VARCHAR)
@@ -40,24 +37,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 LEFT JOIN "V"."GearPartBody" AS "g" ON "b0"."Id" = "g"."Id"
                 LEFT JOIN "V"."SpringPartBody" AS "s" ON "b0"."Id" = "s"."Id"
             ) AS "d" ON "p"."Id" = "d"."Id"
+            """;
+
+        /// <summary>The parts whose body is a bolt: the base joined to the bodies merged and discriminated, kept where the body is one.</summary>
+        public static readonly string BoltParts = $"""
+            SELECT "p"."Id", "p"."Label"
+            FROM "V"."Part" AS "p"
+            {Merged("")}
             WHERE "d"."Discriminator" = CAST('BoltPartBody' AS VARCHAR)
             """;
 
         /// <summary>The bolts again, each beside its catalog's name, ordered by it and paged.</summary>
-        public const string BoltPartsByCatalogName = """
+        public static readonly string BoltPartsByCatalogName = $"""
             SELECT "p"."Id", "p"."ChangeUtcTime", "p"."IntId", "p"."Label", "p"."Offline"
             FROM "V"."Part" AS "p"
-            LEFT JOIN (
-                SELECT "b0"."Id", "b"."CatalogId", CASE
-                    WHEN "s"."Id" IS NOT NULL THEN CAST('SpringPartBody' AS VARCHAR)
-                    WHEN "g"."Id" IS NOT NULL THEN CAST('GearPartBody' AS VARCHAR)
-                    WHEN "b"."Id" IS NOT NULL THEN CAST('BoltPartBody' AS VARCHAR)
-                END AS "Discriminator"
-                FROM "V"."PartBody" AS "b0"
-                LEFT JOIN "V"."BoltPartBody" AS "b" ON "b0"."Id" = "b"."Id"
-                LEFT JOIN "V"."GearPartBody" AS "g" ON "b0"."Id" = "g"."Id"
-                LEFT JOIN "V"."SpringPartBody" AS "s" ON "b0"."Id" = "s"."Id"
-            ) AS "d" ON "p"."Id" = "d"."Id"
+            {Merged("\"b\".\"CatalogId\", ")}
             LEFT JOIN "V"."Catalog" AS "c0" ON "d"."CatalogId" = "c0"."Id"
             WHERE "d"."Discriminator" = CAST('BoltPartBody' AS VARCHAR)
             ORDER BY "c0"."Name" NULLS FIRST, "p"."Label" NULLS FIRST

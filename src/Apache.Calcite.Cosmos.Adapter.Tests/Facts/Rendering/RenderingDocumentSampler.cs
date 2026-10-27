@@ -44,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
             var values = paths.Select(p => Values(literals, typed).Concat((claim.Imports[p].Values.Values ?? ValueSet<string>.Empty).Select(PathCellTests.Decode))
                 .Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
-            if (values.Any(v => v.Count == 0))
+            if (values.Count == 0 || values.Any(v => v.Count == 0))
                 yield break;
 
             // Every combination where they are few; otherwise each path's values in turn, then drawn.

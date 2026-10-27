@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             whole.Strata.Should().BeEquivalentTo(each.Strata, o => o.WithStrictOrdering());
             rounds.Select(r => (r.Number, Pending: string.Join(",", r.Pending), r.Again, r.Closing)).Should().Equal((1, "0,1", false, false), (2, "0", false, false));
-            rounds.Should().OnlyContain(r => r.AdmittedByS.Count == 0 && r.Pending.All(i => ReferenceEquals(r.NodeFor(i), r.Node)));
+            rounds.Should().OnlyContain(r => r.Pending.All(i => ReferenceEquals(r.NodeFor(i), r.Node)));
         }
 
         /// <summary>
@@ -70,9 +70,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 {
                     rounds.Add(round);
                     if (round is { Number: 3, Closing: false })
-                        stated = scope!.StratumFor(round.Node, inBundle);
+                        stated = scope!.StratumFor(round.Node, inBundle, null).Node;
 
-                    return round.Closing ? new([], round.AdmittedByS) : new([], [round.Number - 1]);
+                    return round.Closing ? new([], [0, 1, 2]) : new([], [round.Number - 1]);
                 });
 
                 scope.Strata.Select(s => s.Single()).Should().Equal(0, 1, 2);
@@ -83,12 +83,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var elsewhere = rounds[2].Node;
             rounds.Select(r => r.Node).Distinct().Should().HaveCount(3, "each round renders from a stratum of its own");
             stated.Should().BeSameAs(rounds[2].Node);
-            scope.StratumFor(rounds[2].Node, _ => true).Should().BeSameAs(rounds[2].Node, "asked after the rounds, alike");
+            scope.StratumFor(rounds[2].Node, _ => true, null).Node.Should().BeSameAs(rounds[2].Node, "asked after the rounds, alike");
 
             // Round 3's node assumes the coarse conjunct, round 2's only the exact one.
             (scope, rounds, stated) = Three(exact, coarse, _ => true);
             stated.Should().BeSameAs(rounds[1].Node);
-            scope.StratumFor(rounds[1].Node, _ => true).Should().BeSameAs(rounds[1].Node);
+            scope.StratumFor(rounds[1].Node, _ => true, null).Node.Should().BeSameAs(rounds[1].Node);
 
             // Beneath a coarse first round, nothing.
             (scope, rounds, stated) = Three(coarse, exact, _ => true);
@@ -97,8 +97,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             // A conjunct the bundle does not hold, the translator's, rests on no proof S has.
             (scope, rounds, stated) = Three(exact, other, i => i != 0);
             stated.Should().BeSameAs(rounds[0].Node, "the root");
-            scope.StratumFor(rounds[0].Node, _ => false).Should().BeSameAs(rounds[0].Node, "the root qualifies always");
-            scope.StratumFor(elsewhere, _ => true).Should().BeSameAs(rounds[0].Node, "a node not of the chain reads as the root");
+            scope.StratumFor(rounds[0].Node, _ => false, null).Node.Should().BeSameAs(rounds[0].Node, "the root qualifies always");
+            scope.StratumFor(elsewhere, _ => true, null).Node.Should().BeSameAs(rounds[0].Node, "a node not of the chain reads as the root");
         }
 
         /// <summary>
@@ -120,9 +120,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                     rounds.Add(round);
                     return round switch
                     {
-                        { Closing: true } => new([], proven ? round.AdmittedByS : []),
+                        { Closing: true } => new([], proven ? [0] : []),
                         { Number: 1 } => new([1], [0]),
-                        _ => AdmissionRound.Answer.None,
+                        _ => new([], []),
                     };
                 });
 
@@ -134,15 +134,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             stands.Strata.Should().ContainSingle().Which.Should().Equal(0, 1);
             stands.Residual.Should().Equal(2);
             var closing = asked.Should().ContainSingle(r => r.Closing).Subject;
-            closing.AdmittedByS.Should().Equal(0);
             closing.Pending.Should().Equal(2);
             asked.Should().NotContain(r => r.Again);
 
             var (voided, again) = Admit(proven: false);
             voided.Strata.Should().ContainSingle().Which.Should().Equal(new[] { 1 }, "S admits nothing on the rounds run again, whatever it says");
             voided.Residual.Should().Equal(0, 2);
-            again.Select(r => (r.Number, r.Again, r.Closing, ByS: string.Join(",", r.AdmittedByS)))
-                .Should().Equal((1, false, false, ""), (2, false, false, "0"), (2, false, true, "0"), (1, true, false, ""), (2, true, false, ""));
+            again.Select(r => (r.Number, r.Again, r.Closing)).Should().Equal((1, false, false), (2, false, false), (2, false, true), (1, true, false), (2, true, false));
         }
 
     }

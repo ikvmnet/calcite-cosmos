@@ -122,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     var asserted = RenderingGenerateRun.AssertedSets.Contains(set) ? "asserted" : "beside";
                     var rows = shadow.Classes.Where(c => c.Set == set).ToList();
-                    lines.Add($"{set} ({asserted}): {rows.Count} conjuncts in {rows.Select(r => (r.Input, r.Name, r.Statement)).Distinct().Count()} statements");
+                    lines.Add($"{set} ({asserted}): {rows.Count(r => r.Conjunct >= 0)} conjuncts in {rows.Select(r => (r.Input, r.Name, r.Statement)).Distinct().Count()} statements");
                     foreach (var g in rows.GroupBy(r => r.Class).OrderBy(g => g.Key, StringComparer.Ordinal))
                         lines.Add($"  {g.Key}: {g.Count()} ({string.Join(", ", Inputs.Select(i => $"{i} {g.Count(r => r.Input == i)}"))})");
 

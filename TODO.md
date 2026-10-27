@@ -2870,7 +2870,14 @@ across documents* and *A join of a container to itself* is the record.
   a round, beside the capture's read a round (g12); site W one each time the split rule splits a filter; site P one each
   time implementation writes a filter; site R none of its own (the split's `projecting` flag). Nothing is allocated and
   nothing reaches S. The count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains three
-  until g17 retires the shadow; from g16 the reads are the switch's own, S asked every time.
+  until g17 retires the shadow; from g16 the reads are the switch's own, S asked every time. Past the `volatile bool`,
+  sites P and W read the statement's own record of whether its admission took S's answers, not the arm in force.
+- **g17 deletes about 200 production lines, not §10's 50 to 80** — *small, for g17 and the measure report.* What exists
+  only for the shadow: `ICosmosRenderingShadowObserver` (51 lines), `CosmosRenderingShadow` (68, its `Writes` arm
+  retiring with it), in `CosmosFilterStatement` the sets beside the statement's own and `RenderedSets` (about 15), the
+  split rule's `Shadowed`, its call and `projecting` (about 45), the residual projection rule's flag (1), the observer's
+  plants and hooks in `CosmosFilterRendering` (about 10): about −190. With them go the shadow's own timing of every
+  question in `RenderingGenerateRun` (about −24 test lines), which the cost instrument reads in production.
 - **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
   `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
   container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the
@@ -2899,9 +2906,10 @@ across documents* and *A join of a container to itself* is the record.
   and asks `TryTranslate`, as J's is asked. A weakening holding its conjunct's own comparison that the translator refuses
   from the stratum's facts, as a raw string ordering it cannot prove, is then pushed by nothing where J pushes presence:
   the grammar's round trip shows the shape (a raw column's orderings), and none is in the pull request's weakenings.
-  g15's `Writes` arm pushes nothing for it, as g16 will, and the shadow reports site W's text, none, beside J's; with S
-  writing, the inner filter's statement asks S of every member the loader reads, so the gate need only be the
-  translator's for a member S does not own, which g16 decides.
+  g15's `Writes` arm pushes nothing for it, as g16 will, and the shadow reports site W's text, none, beside J's, which
+  line 13b counts as no weakening of S's, so a refusal where J pushed one fails it; none of the pull request's does. With
+  S writing, the inner filter's statement asks S of every member the loader reads, so the gate need only be the
+  translator's for a member S does not own, which g16 decides; the rehearsal's listing counts each refusal.
 - **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
   only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
   residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
@@ -2917,31 +2925,51 @@ across documents* and *A join of a container to itself* is the record.
   the lift writes each `implied` member with the reader `rex-writable` judged it over (a value change, no rule), and the
   builder looks up the accessor by it; it lands with Stage 3's value positions, which need a reader each anyway, or
   before, should the rehearsal list a weakening this refuses.
+- **A typed reading compared with a fraction keeps no presence** — *small, O7's loss 5 until Stage 3.* Calcite compares
+  `RETURNING INTEGER >= 2.5` through a cast to `DECIMAL`, which the loader reads no reading of (it reads a numeric cast of
+  text or a raw value alone), so the conjunct is one opaque term with no path, and S proves no weakening where J keeps
+  `IS_DEFINED`: J's is unproven to S, the listed loss (`RenderingInputs.CastOfTyped` holds it in line 13b). RU, never
+  rows. The loader reading such a cast as a value would give the strictness rows presence; it changes F's terms, and so
+  plans, and lands with D12, the typed column's own reading.
+- **Tests that hold J's or the translator's reasons fail under `Writes`** — *small, for g16.* Read from a run with the
+  rehearsal armed: 67 of 412 planner tests, among them those asserting that a branch observing absence, a `NOT` over a
+  conjunction or an exact null test pushes no presence (`ABranchThatObservesAbsenceIsNotWeakened`,
+  `ANegatedConjunctionPushesNoDefinednessRestriction`, `AnExactNullTestIsNotDeletedForASiblingLeftAbove` and kin), which
+  S weakens soundly and more tightly; `RenderingCheckTests.AStratumAConjunctReadCoarselyRestsOnIsNotRead`, where S rightly
+  declines what the translator pushes from a coarse stratum; and `CosmosDifferentialTests.EveryOrderTheReaderCompletesAgrees`,
+  whose plan shape moves where S declines a text ordering that may meet U+0000 under `Emulator` (O2), its rows equal.
+  g16 restates each over S's behaviour — the weakening held to the conjunct's rows — never S changed to meet a J-specific
+  reason. One respelling to list beside them: where a weakening holds an `IS_NULL` the loader reads as opaque, the
+  translator writes the whole Rex and guards S's guarded member again.
 - **The grammar's round trip costs a leg seconds** — *small, O5.* `EveryWritableShapeRoundTrips` took 9.3 s at 100 %
   load in a process of its own, S defined (1,138 shapes; a generate bundle an accessor and set, and a check bundle a
   claim, a comparison's once a set). Line 32 reads it in the leg's wall time. If PR C's legs pass O5's budget, an atom's
   claims go into one check bundle.
+- **The determinism test asks S, and costs a leg about 23 s** — *small, O5.* `TheDigestsAreDeterministic` builds the
+  shared test reasoning's oracle and asks S over the corpus twice, sites A and W, for line 26's `RepeatsOpenNoBundle`:
+  31–33 s against 8.5–8.9 s at `main`, at 82–100 % load, hidden on 8 threads by a longer test beside it. O5 priced it at
+  +0 to +1 s. Line 32 is read from the whole-suite rehearsal and the pull request's own CI against `main`; past the
+  budget, it asks a graph another test has already built rather than building its own.
 - **Conjunct filing stays a lever, not taken** — *small.* §6.3 takes it if the 5–7-condition shape or the hierarchy's first
-  plan reads above its pass line on the build machine at low load, and the build machine was at 100 % load throughout
-  g15: S's wall time over 5–7 conditions read 95–237 ms at the 90th centile and the hierarchy's first plan 0.97–1.59 s,
-  against 160 ms and 1.0 s, where S's thread time read 36–84 ms and 0.48–0.62 s, and the first plan read 0.70 s at 89 %
-  load. A reading at lower load decides it. Filing each conjunct's answer under its own key cuts the first plans of the
-  statements Volcano splits.
-- **A later plan over a fresh connection asks the oracle again** — *small.* A connection's containers build their own
-  statement trees, so the answers a statement's terms keep reach no plan over another connection, whose 449 questions in
-  the hierarchy go to the oracle's memory, each new node's import spelled: 5–10 ms at the median at 100 % load (S's
-  thread time 3.3–8.5 ms, at most 13.7 ms; 4.0 ms at 89 % load), against 1.2–1.8 ms over a kept connection and line 30's
-  10 ms. Keeping the answers by the declaration's digest and the statement's, which name the same import as the terms
-  object does, would hand a fresh connection's plan what a kept one reads; G9 would then hold that key. It is the
-  proper fix should a quieter host read a later plan above 10 ms.
+  plan reads above its pass line on the build machine at low load; at 100 % load S's wall time crossed both while its
+  thread time held them (the measure report). A reading at lower load decides it. Filing each conjunct's answer under its
+  own key cuts the first plans of the statements Volcano splits.
+- **A later plan over a fresh connection asks the oracle again** — *small, the proper fix for line 30 at load.* A
+  connection's containers build their own statement trees, so the answers a statement's terms keep reach no plan over
+  another connection, whose questions go to the oracle's memory, each new node's import spelled: at 100 % load S's wall
+  time crossed line 30's 10 ms in every saturated run, its thread time at most 13.7 ms, and at 89 % load it held (the
+  measure report). Keeping the answers by the declaration's content and the statement's digest would hand a fresh
+  connection's plan what a kept one reads, and G9 would plant that key; F's declaration has no digest of its content
+  today, which that needs first.
 - **S's first build in a process is the registry's first read** — *small, for g16.* Started as the process's first act,
-  as g16 starts it at the first `CosmosTable`, the build ran beside the first plan: the plan's first question waited
-  94–251 ms, none declined, and the build was ready before the plan ended, 8.0–15.3 s in (line 29, at 100 % load). Its
-  parts first in a process: the registry read 2.4–5.6 s, defining and settling 1.1–2.5 s more, hashing 0.1–0.2 s; the
-  process's CPU 0.9–2.9 s more than with S off. Paired with S off, the first plan's wall time differs by −2.5 to +2.7 s,
-  the medians of three runs of five pairs −0.77, −0.34 and +1.21 s, all fifteen −0.47 s: the build's processor time,
-  which a saturated host takes from the plan, against line 29's 0.5 s and its 1.0 s kill. The registry's first read is
-  where to cut, should a quieter host show the build in the plan.
+  as g16 starts it at the first `CosmosTable`, the build ran beside the first plan, whose first question waited
+  94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the
+  first plan's wall time differs by −0.47 s over fifteen pairs, against line 29's 0.5 s and its 1.0 s kill; one run of
+  five read +1.21 s. The registry's first read is where to cut, should a quieter host show the build in the plan.
+- **The thread clock stays beside the wall** — *small, decided 2026-10-27.* `ThreadCpu` (80 test lines) and its plumbing
+  in the cost instrument (about 9 production lines) read S's own processor time beside each wall reading: the only
+  evidence that separates a busy host's stretch from S's own cost, on which lines 24, 25, 29 and 30's crossings at 100 %
+  load are judged. It survives g17 with the cost instrument.
 - **An answer's size is read off the heap** — *small.* `InterningPerBundleIsCounted` reports the heap grown over the
   corpus's answers remembered, divided by their count: an upper bound, since F's contexts and Calcite's caches grow beside
   them. Measuring an answer's own graph of objects would read §6.1's estimate of 1–4 KB an entry exactly.
@@ -3006,10 +3034,16 @@ across documents* and *A join of a container to itself* is the record.
 - **The shadow asks S's split each time the split rule splits** — *small, CI time.* Site W reports S's weakenings under
   every set each time a filter is split, `matches` and `onMatch` alike, each judged applied or not by the facts graph; the
   report keeps the text one gave. Filing the judgement by statement would halve it, if line 32 asks.
-- **C6 counts the forms over a path the service sets apart** — *small.* A form over `id`, the partition key or a system
+- **C6 lists the forms over a path the service sets apart** — *small.* A form over `id`, the partition key or a system
   property cannot be run over the document drawn, since the fixture writes `id` and the partition key and the service
-  `_ts`; they are counted apart, every one a spelling the translator writes alike. Writing each such document in a
-  partition of its own, under the `id` drawn where it is a string, would run those reading `id`.
+  `_ts`; each is a row of `conformance.tsv` with why it was not run (32 a pull request, 52 at the gate), every one a
+  spelling the translator writes alike. Writing each such document in a partition of its own, under the `id` drawn
+  where it is a string, would run those reading `id`.
+- **The answers a statement's terms keep live as long as the terms** — *small.* Kept by the oracle, set, theory and the
+  question's name by content, in a weak table keyed by the terms object, which F's memory of statement trees bounds
+  (its least recently used out first), not §6.1's 4,096 entries of the oracle's memory. G9 plants the name without the
+  opaque readings, which two statements of one digest can part in; the conjuncts', junctions' and strata's parts are
+  digests and node names, which no two questions of one statement's terms share.
 - **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
   `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
   rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Folded` decides nothing.

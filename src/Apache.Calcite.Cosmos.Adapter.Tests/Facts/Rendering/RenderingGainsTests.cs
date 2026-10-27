@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var kinds = CosmosDifferentialTests.Containers.Single(c => c.Name == "kinds");
             var (name, where) = CosmosPushdownProbeTests.KindProbes.Single(p => p.Name == "each kind spelled per arm");
             var sql = $"SELECT c.\"id\" FROM kinds AS c WHERE {where}";
-            return RenderingCheckRun.Over([new RenderingInputs.Statement("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds))], shadow: new RenderingGenerateRun());
+            return RenderingCheckRun.Over([new RenderingInputs.Statement("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds))], shadow: new RenderingGenerateRun(), writes: false);
         });
 
         readonly Fixture _service;
@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public RenderingGainsTests(Fixture service) => _service = service;
 
         static RenderingCheckRun Shadowed(string input, IReadOnlyList<string> sql, CosmosContainerMetadata[] containers) =>
-            RenderingCheckRun.Over(RenderingInputs.Differential(input, sql, containers), shadow: new RenderingGenerateRun());
+            RenderingCheckRun.Over(RenderingInputs.Differential(input, sql, containers), shadow: new RenderingGenerateRun(), writes: false);
 
         /// <summary>A statement's name in a run: its place among the statements planned.</summary>
         static string NameOf(List<string> sql, string statement) => sql.IndexOf(statement).ToString(System.Globalization.CultureInfo.InvariantCulture);

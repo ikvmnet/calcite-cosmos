@@ -125,6 +125,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
+        /// Whether a plan holds a condition a filter statement could be read off: a filter, or a join, correlate or unnest,
+        /// which may carry one. What "no filter" means to the cost lines (line 27), read off the plan, never off what S was asked.
+        /// </summary>
+        internal static bool Filters(RelNode planned) => Subtrees(planned, n => n is org.apache.calcite.rel.core.Filter or org.apache.calcite.rel.core.Join
+            or org.apache.calcite.rel.core.Correlate or CosmosUnnest).Any();
+
+        /// <summary>
         /// The nodes a predicate holds of, in a walk from the root, left to right; beneath one only where asked.
         /// </summary>
         internal static IEnumerable<RelNode> Subtrees(RelNode node, Func<RelNode, bool> match, bool descend = false)

@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
         {
             var reasoning = new CosmosReasoning();
-            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)),
+            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)).Append(RenderingInputs.CastOfTyped(reasoning)),
                 shadow: new RenderingGenerateRun());
         });
 
@@ -105,10 +105,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
+        /// <summary>Whether the shadow's flows take S's answers: as the process does where null, so that the rehearsal writes; told apart where a test reads sites W and R, which only report beside the translator.</summary>
+        public bool? Writes { get; init; }
+
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null)
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null, bool? writes = null)
         {
-            var run = new RenderingCheckRun(timed: timed, shadow: shadow);
+            var run = new RenderingCheckRun(timed: timed, shadow: shadow) { Writes = writes };
             var all = inputs.ToList();
             foreach (var input in all.Where(i => i.Input == "corpus"))
                 run.Plan(input);
@@ -208,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var recorder = new RenderingRecorder();
             var queries = new List<(string? Where, int From, int To)>();
             using (recorder.Arm())
-            using (Shadow is { } observer ? CosmosRenderingShadow.Arm(observer) : null)
+            using (Shadow is { } observer ? CosmosRenderingShadow.Arm(observer, Writes) : null)
             {
                 RelNode planned;
                 try
@@ -404,7 +407,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static List<(int Conjunct, SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules, int[] Assumes)> Beneath(List<CaptureRecord> held, List<string?> skips)
         {
             var judged = Enumerable.Range(0, held.Count).Where(i => skips[i] is null).ToList();
-            var shared = Shared(judged.Select(i => IrOf(held[i])));
+            var shared = CosmosFilterRendering.SharedAtoms(judged.Select(i => IrOf(held[i])));
             var beneath = new List<(int, SqlPredicate, ImportSource, Scope?, PredicateRules?, int[])>();
             foreach (var i in judged)
             {
@@ -416,23 +419,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(conjunct));
                 var source = new ImportSource(statement.Statement.Digest, "render conjunct " + conjunct, statement.StratumOf(conjunct));
-                beneath.AddRange(Atoms(IrOf(held[i])).Distinct().Where(a => shared.Contains(a) == false).Select(a => (i, a, source, node.Context, node.Rules, assumes)));
+                beneath.AddRange(CosmosFilterRendering.AtomsOf(IrOf(held[i])).Distinct().Where(a => shared.Contains(a) == false).Select(a => (i, a, source, node.Context, node.Rules, assumes)));
             }
 
             return beneath;
         }
 
-        /// <summary>The atoms two conjuncts share, which neither's stratum is stated beneath, since one may be what the other's assumes.</summary>
-        internal static HashSet<SqlPredicate> Shared(IEnumerable<SqlPredicate> conjuncts) =>
-            [.. conjuncts.SelectMany(c => Atoms(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key)];
-
         /// <summary>Each cell a bundle's outcomes cut, by its spelling, with its path: what a refutation's cells name.</summary>
         internal static Dictionary<string, (string Path, PathCell Cell)> Cells(RenderingBundle bundle) => bundle.Scope.Rows(bundle.Theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
             .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
-
-        /// <summary>The atoms of a conjunct that read one path: what a cell of it is cut for.</summary>
-        internal static IEnumerable<SqlPredicate> Atoms(SqlPredicate conjunct) =>
-            conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque) && t.Paths.Count() == 1);
 
         internal static string? Skip(CaptureRecord record, ReadForm read, bool rechecked) =>
             Parts(IrOf(record)).Any(p => p is SqlValue.Parameter) || record.Parameters.Any(p => p.Value is CosmosDynamicValue) || rechecked ? "parameter"

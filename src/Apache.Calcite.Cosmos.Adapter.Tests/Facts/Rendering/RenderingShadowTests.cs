@@ -4,7 +4,6 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
-
 using FluentAssertions;
 
 using Xunit;
@@ -57,8 +56,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Line 13b: no residual whose J weakening the shadow saw is sent looser than J's, or with none, under each set the legs
-        /// plan under, but O7's listed losses — J's holding a member the Rex builder cannot write, or J's unproven to S.
+        /// Line 13b: no residual whose J weakening the shadow saw is sent looser than J's, or with none — S's that site W
+        /// refused to push counted as none — under each set the legs plan under, but O7's listed losses: J's holding a member
+        /// the Rex builder cannot write, or J's unproven to S. The input whose typed reading is compared through a cast,
+        /// which S reads no presence of, meets the second.
         /// </summary>
         [Fact]
         public void NoWeakeningIsLooserThanJsButTheListedLosses()
@@ -70,6 +71,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set}: " + string.Join(", ", classes.GroupBy(c => c.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}")));
                 classes.Where(c => c.Class is "dropped" or "translator-only" or "looser" or "parting").Select(c => $"{c.Row.Input} {c.Row.Name}/{c.Row.Statement}/{c.Row.Conjunct}: {c.Class}, J {c.Row.Text}, S {c.Row.Mine?.Text}")
                     .Should().BeEmpty($"under {set}, only O7's listed losses are looser");
+
+                var cast = classes.Where(c => c.Row.Name == RenderingInputs.CastOfTypedResidual && c.Row.Residual && c.Row.Owned == false).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set}, {RenderingInputs.CastOfTypedResidual}: " + string.Join("; ", cast.Select(c => $"{c.Row.Ir}: {c.Class}, J {c.Row.Text}, S {c.Row.Mine?.Text}")));
+                cast.Should().NotBeEmpty($"the cast's input is shadowed under {set}");
             }
         }
 
@@ -110,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 "SELECT JSON_VALUE(c.\"DOC\", '$.a') AS \"a\" FROM strings AS c WHERE SOUNDEX(JSON_VALUE(c.\"DOC\", '$.s')) = 'A120'",
                 "SELECT JSON_VALUE(c.\"DOC\", '$.a') AS \"a\" FROM strings AS c WHERE SOUNDEX(JSON_VALUE(c.\"DOC\", '$.s')) = 'A120' AND JSON_VALUE(c.\"DOC\", '$.b') <> 'x'",
             ];
-            var run = RenderingCheckRun.Over(RenderingInputs.Differential("projection", sql, [.. CosmosDifferentialTests.Containers]), shadow: new RenderingGenerateRun(sets: [RenderingSet.Production]));
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("projection", sql, [.. CosmosDifferentialTests.Containers]), shadow: new RenderingGenerateRun(sets: [RenderingSet.Production]), writes: false);
             run.Failures.Should().BeEmpty();
             var shadow = run.Shadow!;
             TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Asked.Count} questions; placements: " + string.Join("; ", shadow.Placements.Select(p => $"{p.Name}/{p.Statement} translator {p.Translator}, S {p.Mine}")));
@@ -125,6 +130,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             shadow.Placements.Should().NotBeEmpty("the residual projection rule asked the split (site R)");
+            shadow.Classes.Count(c => c.Class == RenderingGenerateRun.Placement).Should().Be(shadow.Placements.Count(p => p.Translator != p.Mine),
+                "each filter the rule would fire over by one split and not the other is a projection placement row, which the switch's listing reads");
         }
 
         /// <summary>

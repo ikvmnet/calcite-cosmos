@@ -83,14 +83,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         internal NodeReadings Readings { get; } = new();
 
         /// <summary>
-        /// What each statement's terms were answered, by set, theory, the memo's epoch and question: Volcano reads one
+        /// What each statement's terms were answered, by set, the theory it answered under and the question: Volcano reads one
         /// condition as many nodes, each a statement of the same terms whose rounds ask the same questions of the same frozen
         /// nodes, so a question asked before is handed its answer without its key built. A node names its import within its
-        /// terms, so the question's conjuncts, their strata's nodes and the junctions are all the key's import reads; and the
-        /// epoch, so that what the memo forgets is forgotten here too. Keyed weakly by the terms, and kept no longer than the
-        /// oracle.
+        /// terms, so the question's conjuncts and junctions by digest, their strata's nodes and the opaque readings are all the
+        /// key's import reads. Keyed weakly by the terms, which F's memory bounds, and kept no longer than the oracle.
         /// </summary>
-        internal ConditionalWeakTable<StatementTerms, ConcurrentDictionary<(RenderingSet Set, string? Theory, int Epoch, string Question), RenderingBundleAnswer>> Answered { get; } = new();
+        internal ConditionalWeakTable<StatementTerms, ConcurrentDictionary<(RenderingSet Set, string Theory, string Question), RenderingBundleAnswer>> Answered { get; } = new();
 
         /// <summary>Questions the memo answered, bundles opened, and questions declined, since the oracle was made.</summary>
         public (long Hits, long Bundles, long Declines) Counts => (Interlocked.Read(ref _hits), Interlocked.Read(ref _bundles), Interlocked.Read(ref _declines));

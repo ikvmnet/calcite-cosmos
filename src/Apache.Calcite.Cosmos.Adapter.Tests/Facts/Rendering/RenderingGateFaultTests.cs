@@ -339,11 +339,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// G9 over the answers a statement's terms keep, which hand a question asked before its answer with no key built: two
+        /// statements of one digest, each one opaque term — a <c>LIKE</c>, outside the IR — differing in its reading alone,
+        /// planned over one connection's containers, so that they share terms. As built each opens a bundle of its own; with
+        /// the question's name planted without the opaque readings, the second is handed the first's answer and opens none.
+        /// The strata's nodes and the junctions are named by content as the conjuncts are, so no two questions within one
+        /// statement's terms share a name.
+        /// </summary>
+        [Fact]
+        public void G9_ATermsAnswersWithoutAnOpaquesReadingServeAnotherStatement()
+        {
+            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a%'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b%'"];
+            var graph = new RenderingGraph(() => Measured);
+            foreach (var planted in new[] { false, true })
+            {
+                var containers = CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning())).ToArray();
+                var counter = new RenderingShadowCounter(new RenderingOracle(graph, wait: Timeout.InfiniteTimeSpan), [RenderingSet.Production], planted ? s => s[..s.LastIndexOf('\n')] : null);
+                var asked = new List<IReadOnlyList<RenderingCostSample>>();
+                using (CosmosRenderingShadow.Arm(counter, writes: false, set: RenderingSet.Production))
+                    foreach (var statement in RenderingInputs.Differential("g9", sql, containers))
+                        using (CosmosRenderingCost.Measure(out var samples))
+                        {
+                            _ = statement.Plan();
+                            asked.Add(samples);
+                        }
+
+                var (first, second) = (asked[0], asked[1]);
+                TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")}: the first {first.Sum(s => s.Cost.Bundles)} bundles over {first.Count} questions, the second {second.Sum(s => s.Cost.Bundles)} over {second.Count}; "
+                    + string.Join(", ", first.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct()));
+                second.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct().Should().BeEquivalentTo(first.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct(), "one digest: the two share terms");
+                if (planted)
+                    second.Should().NotBeEmpty().And.OnlyContain(s => s.Cost.Bundles == 0 && s.Cost.Hits == 1, "planted, the second is handed the first's answer");
+                else
+                    (first.Sum(s => s.Cost.Bundles) > 0, second.Sum(s => s.Cost.Bundles) > 0).Should().Be((true, true), "as built, each is answered by a bundle of its own");
+                GC.KeepAlive(containers);
+            }
+        }
+
+        /// <summary>
         /// G10: an answer that may not be read reaches no plan, nor one read twice. Planned with S writing, a run that did not
         /// complete (an iteration limit of three) and a contradicted bundle (G5's union planted) admit nothing and weaken
         /// nothing — the statement sends no <c>WHERE</c> of S's, and the contradiction is declined — where the registry's S
         /// sends P1's restricted form; and a generation retired between admission and implementation changes nothing
-        /// implementation writes, which asks S nothing: it prints what admission kept.
+        /// implementation writes, which asks S nothing: it prints what admission kept, implemented outside the arm the plan
+        /// was admitted under, as admission took it.
         /// </summary>
         [Fact]
         public void G10_AnAnswerThatMayNotBeReadReachesNoPlan()
@@ -393,13 +432,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using (CosmosRenderingShadow.Arm(counter, writes: true, set: RenderingSet.Production))
                 planned = statement.Plan();
 
-            string Implement()
-            {
-                using var arm = CosmosRenderingShadow.Arm(counter, writes: true, set: RenderingSet.Production);
-                return string.Join(" | ", Planning.PlanDigests.Subtrees(planned, n => n is Adapter.Rel.CosmosRel)
-                    .Select(c => (Cosmos: c, Table: EndToEnd.Corpus.PlannerHarness.TableOf(c) as CosmosTable)).Where(c => c.Table is not null)
-                    .Select(c => EndToEnd.Corpus.PlannerHarness.Implement(c.Cosmos, c.Table!.Container).Sql));
-            }
+            // Outside any arm: implementation writes as admission took S's answers, whatever arm is in force then.
+            string Implement() => string.Join(" | ", Planning.PlanDigests.Subtrees(planned, n => n is Adapter.Rel.CosmosRel)
+                .Select(c => (Cosmos: c, Table: EndToEnd.Corpus.PlannerHarness.TableOf(c) as CosmosTable)).Where(c => c.Table is not null)
+                .Select(c => EndToEnd.Corpus.PlannerHarness.Implement(c.Cosmos, c.Table!.Container).Sql));
 
             return (Implement(), Implement);
         }

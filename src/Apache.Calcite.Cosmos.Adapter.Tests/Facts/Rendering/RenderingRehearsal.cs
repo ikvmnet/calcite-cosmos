@@ -18,29 +18,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The variable that arms the rehearsal.</summary>
         public const string Variable = "COSMOS_RENDERING_WRITES";
 
+        /// <summary>Whether the rehearsal armed the process: where the digests' run fails on a decline.</summary>
+        public static bool Armed { get; private set; }
+
         [ModuleInitializer]
         internal static void Arm()
         {
-            RenderingSet? set;
-            switch (Environment.GetEnvironmentVariable(Variable)?.Trim().ToLowerInvariant())
-            {
-                case "1" or "true":
-                    set = null;
-                    break;
-                case "production":
-                    set = RenderingSet.Production;
-                    break;
-                case "emulator":
-                    set = RenderingSet.Emulator;
-                    break;
-                default:
-                    return;
-            }
+            var value = Environment.GetEnvironmentVariable(Variable)?.Trim().ToLowerInvariant();
+            if (value is not ("1" or "true" or "production" or "emulator"))
+                return;
 
-            // The shared reasoning's S build started as the assembly loads, as the switch starts it at the first table, so
-            // that no plan's question waits on it past its bound and declines.
-            CosmosRenderingShadow.ArmEverywhere(set);
-            TestReasoning.Shared.Rendering.Warm();
+            // The shared reasoning's S build started as the assembly loads, as the switch starts it at the first table, and
+            // awaited: a plan whose question waited past its bound would decline, and change its digest for a reason no
+            // shadow row lists.
+            CosmosRenderingShadow.ArmEverywhere(value switch { "production" => RenderingSet.Production, "emulator" => RenderingSet.Emulator, _ => null });
+            TestReasoning.Shared.Rendering.Ready.Wait();
+            Armed = true;
         }
 
     }
