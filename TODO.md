@@ -2957,10 +2957,12 @@ across documents* and *A join of a container to itself* is the record.
 - **A later plan over a fresh connection asks the oracle again** — *small, the proper fix for line 30 at load.* A
   connection's containers build their own statement trees, so the answers a statement's terms keep reach no plan over
   another connection, whose questions go to the oracle's memory, each new node's import spelled: at 100 % load S's wall
-  time crossed line 30's 10 ms in every saturated run, its thread time at most 13.7 ms, and at 89 % load it held (the
-  measure report). Keeping the answers by the declaration's content and the statement's digest would hand a fresh
-  connection's plan what a kept one reads, and G9 would plant that key; F's declaration has no digest of its content
-  today, which that needs first.
+  time crossed line 30's 10 ms in every saturated run, its thread time at most 13.7 ms; at 67–85 % load (2026-10-27) the
+  median held at 2.4–5.0 ms but one plan of ten read 10.2 ms and another 34.9 ms, one question taking 32.9 ms of the
+  thread's own time amid two hundred collections a plan. Line 30 is open with the owner. Keeping the answers by the
+  declaration's content and the statement's digest would hand a fresh connection's plan what a kept one reads (0.8 ms
+  at the median, 2.9 ms at most), and G9 would plant that key; F's declaration has no digest of its content today, which
+  that needs first, and a key that named two declarations alike would hand one the other's proof.
 - **S's first build in a process is the registry's first read** — *small, for g16.* Started as the process's first act,
   as g16 starts it at the first `CosmosTable`, the build ran beside the first plan, whose first question waited
   94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the

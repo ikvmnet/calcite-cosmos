@@ -62,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             // A plan over a container of its own warms the process.
             var harness = new PlannerHarness();
             using (CosmosRenderingShadow.Arm(new RenderingShadowCounter(new RenderingOracle(graph), []), writes: true))
-                CosmosPlanningTimeTests.Implement(harness.PlanToAsync("""SELECT c."id" FROM customers AS c WHERE c."id" = 'warm'"""));
+                Implement(harness.PlanToAsync("""SELECT c."id" FROM customers AS c WHERE c."id" = 'warm'"""));
 
             var queries = new List<Query>();
             foreach (var query in PlannerQueries.All)
@@ -211,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 using (CosmosRenderingCost.Measure(out samples))
                 {
                     var harness = new PlannerHarness();
-                    CosmosPlanningTimeTests.Implement(harness.PlanToAsync(FirstPlanSql));
+                    Implement(harness.PlanToAsync(FirstPlanSql));
                 }
 
                 figures["wall ms"] = Ms(clock.Elapsed);
@@ -250,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     try
                     {
-                        CosmosPlanningTimeTests.Implement(harness.PlanToAsync(query.Sql));
+                        Implement(harness.PlanToAsync(query.Sql));
                     }
                     catch (Exception)
                     {
@@ -276,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var query in PlannerQueries.All)
                     try
                     {
-                        CosmosPlanningTimeTests.Implement(again.PlanToAsync(query.Sql));
+                        Implement(again.PlanToAsync(query.Sql));
                     }
                     catch (Exception)
                     {
@@ -325,7 +325,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 RelNode? planned = null;
                 try
                 {
-                    CosmosPlanningTimeTests.Implement(planned = plan());
+                    Implement(planned = plan());
                 }
                 catch (Exception e)
                 {
@@ -389,6 +389,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>A statement over the differential's containers, as the check run plans one.</summary>
         static RelNode Differential(string sql) => RenderingInputs.Differential("cost", [sql], [.. CosmosDifferentialTests.Containers]).Single().Plan();
+
+        /// <summary>
+        /// Implements every Cosmos subtree of a plan, as a connection would before it executes: walked to each node of the
+        /// convention, where <c>CosmosPlanningTimeTests.Implement</c> walks to the converter its own planner leaves above them.
+        /// </summary>
+        static void Implement(RelNode planned)
+        {
+            foreach (var cosmos in PlanDigests.Subtrees(planned, n => n is Adapter.Rel.CosmosRel))
+                if (PlannerHarness.TableOf(cosmos) is CosmosTable table)
+                    _ = PlannerHarness.Implement(cosmos, table.Container);
+        }
 
         /// <summary>Runs <see cref="FirstPlanInThisProcess"/> in a process of its own, and reads back its figures.</summary>
         static Dictionary<string, string> Child(string mode)
