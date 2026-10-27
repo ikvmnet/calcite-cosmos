@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,6 +21,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     /// <remarks>
     /// It decides whether an answer may be read and kept, never what it is: <c>DESIGN.md</c>, <i>The production oracle</i>.
+    /// Production's are each schema's (<c>CosmosReasoning.Rendering</c>), and what one learns — its graph's generations,
+    /// the answers and the readings — is that schema's alone.
     /// </remarks>
     internal sealed class RenderingOracle
     {
@@ -49,6 +53,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _limit = limit ?? RenderingBundle.GenerateLimit;
         }
 
+        /// <summary>The S it asks.</summary>
+        internal RenderingGraph Graph => _graph;
+
         /// <summary>Whether S may answer: no definition has thrown.</summary>
         public bool Available => _graph.Available;
 
@@ -57,6 +64,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The answers remembered.</summary>
         public RenderingAnswerMemo Memo { get; }
+
+        /// <summary>
+        /// What each frozen node was read to hold of a path, spelled for a key (spec §6.1's lever): keyed weakly by the
+        /// node, so a node collected takes its own along, and kept no longer than the oracle.
+        /// </summary>
+        internal ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>> Readings { get; } = new();
 
         /// <summary>Questions the memo answered, bundles opened, and questions declined, since the oracle was made.</summary>
         public (long Hits, long Bundles, long Declines) Counts => (Interlocked.Read(ref _hits), Interlocked.Read(ref _bundles), Interlocked.Read(ref _declines));
@@ -89,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             try
             {
                 // The import is spelled from the node alone: the declaration's mentions only count its defaults.
-                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath);
+                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath, Readings);
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
@@ -145,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 using var bundle = theory.Open(set);
                 var asked = roots.DistinctBy(r => r.Digest).ToList();
                 var terms = asked.Select(r => bundle.Write(r, opaques)).ToList();
-                RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath);
+                RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath, Readings);
                 foreach (var term in terms)
                     bundle.Generate(term);
 

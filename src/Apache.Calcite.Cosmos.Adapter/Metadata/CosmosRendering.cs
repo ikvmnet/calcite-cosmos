@@ -5,9 +5,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// The process's rendering graph S as production asks it: one oracle over the registry's rows, strict where Calcite
-    /// answers null for a null as its one reader of that says, and the set a container's statements are proven under.
-    /// Nothing in planning asks it yet.
+    /// What production's rendering graph S is defined from: the registry's rows, strict where Calcite answers null for a
+    /// null as its one reader of that says, read once a process, being facts fixed in the assembly; and the set a
+    /// container's statements are proven under. Each schema's oracle is its reasoning's
+    /// (<see cref="CosmosReasoning.Rendering"/>). Nothing in planning asks one yet.
     /// </summary>
     internal static class CosmosRendering
     {
@@ -18,17 +19,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             StrictReaders = CosmosStrictness.Readers,
         });
 
-        /// <summary>The registry's S, read on first use, the first build's thread in production: what every generation, and the tests, are defined from.</summary>
+        /// <summary>The registry's S, read on first use, the first build's thread in production: what every schema's generations, and the tests, are defined from.</summary>
         public static RenderingDefinition Definition => Defined.Value;
-
-        /// <summary>The process's oracle; its graph is defined on a thread of its own once it is first warmed or asked.</summary>
-        public static RenderingOracle Oracle { get; } = new(new RenderingGraph(() => Definition));
 
         /// <summary>The set a statement is proven under: what Azure was measured to do, or the emulator (O1).</summary>
         public static RenderingSet SetFor(CosmosServiceTarget target) => target == CosmosServiceTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
-
-        /// <summary>Starts S's build on its own thread, once, and returns at once.</summary>
-        public static void Warm() => Oracle.Warm();
 
     }
 

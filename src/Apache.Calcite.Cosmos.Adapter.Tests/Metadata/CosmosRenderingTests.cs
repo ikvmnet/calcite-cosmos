@@ -33,7 +33,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Azure unless the model says the emulator; a name that is neither is a model error. The metadata carries it
         /// through every copy, and it chooses the set: an ordering over a label that may hold U+0000, which the emulator
-        /// orders as stored, is proven for Azure and not for the emulator, each asked of the process's oracle under its key.
+        /// orders as stored, is proven for Azure and not for the emulator, each asked of its schema's oracle under its
+        /// key: a reasoning of the test's own, which both containers are bound to.
         /// </summary>
         [Fact]
         public async System.Threading.Tasks.Task TheTargetChoosesTheSet()
@@ -42,18 +43,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Equal(CosmosServiceTarget.Azure, CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator, CosmosServiceTarget.Emulator);
             FluentActions.Invoking(() => CosmosSchemaFactory.ReadServiceTarget(Operand("cloud"))).Should().Throw<ArgumentException>().WithMessage("*'azure' or 'emulator'*");
 
-            var azure = new CosmosContainerMetadata("c");
+            var reasoning = new CosmosReasoning();
+            var azure = new CosmosContainerMetadata("c").WithReasoning(reasoning);
             var emulated = azure.WithServiceTarget(CosmosServiceTarget.Emulator).WithFacts([Outright(P("label"), Present)]);
             (azure.ServiceTarget, emulated.ServiceTarget).Should().Be((CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator), "a copy carries it");
             (CosmosRendering.SetFor(azure.ServiceTarget), CosmosRendering.SetFor(emulated.ServiceTarget)).Should().Be((RenderingSet.Production, RenderingSet.Emulator));
+            emulated.Reasoning.Should().BeSameAs(reasoning, "and its reasoning");
 
-            CosmosRendering.Warm();
-            await CosmosRendering.Oracle.Ready;
-            CosmosRendering.Oracle.Available.Should().BeTrue();
+            var oracle = reasoning.Rendering;
+            await oracle.Ready;
+            oracle.Available.Should().BeTrue();
             var ordering = Cmp(Text(P("label")), "<", Lit("a"));
-            var answers = new[] { azure, emulated }.Select(c => CosmosRendering.Oracle.Ask(CosmosRendering.SetFor(c.ServiceTarget), [ordering], null, new ImportSource("test", "test", 0), null, null)).ToList();
+            var answers = new[] { azure, emulated }.Select(c => c.Reasoning!.Rendering.Ask(CosmosRendering.SetFor(c.ServiceTarget), [ordering], null, new ImportSource("test", "test", 0), null, null)).ToList();
             answers.Select(a => a.Key!.Set).Should().Equal(RenderingSet.Production, RenderingSet.Emulator);
             answers.Select(a => a.Of(ordering).Kind).Should().Equal(RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven);
+            (oracle.Memo.Count, oracle.Counts.Bundles).Should().Be((2, 2), "both were asked of the schema's own oracle");
         }
 
     }

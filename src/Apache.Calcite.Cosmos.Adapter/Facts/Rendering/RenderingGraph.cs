@@ -54,7 +54,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _retry = retry ?? DefaultRetry;
         }
 
-        /// <summary>What the first generation's definition threw, which leaves S unavailable for the process: the same rows would throw again.</summary>
+        /// <summary>
+        /// What the first generation's build threw, which leaves this graph's S unavailable for its life; a definition that
+        /// throws throws for every graph alike, its rows being the assembly's.
+        /// </summary>
         public Exception? Failure => _failure;
 
         /// <summary>Whether S may answer: the first definition did not throw.</summary>
@@ -68,6 +71,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The current generation's rows hashed, which every generation defined alike shares; none before the first.</summary>
         public string? Digest => _digest;
+
+        /// <summary>Whether the first generation's build was started: warmed, awaited or asked.</summary>
+        internal bool Started => Volatile.Read(ref _first) is not null;
 
         /// <summary>The first generation's build, started where it was not: done once a generation answers or the definition threw.</summary>
         public Task Ready

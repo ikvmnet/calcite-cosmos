@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
@@ -67,9 +70,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A schema let go takes its graphs with it: a container bound as the factory binds one, planned once with a filter
-        /// the oracle reads and once through a data source, then dropped, leaves nothing it learned reachable — not its
-        /// reasoning, its generations, their graph, the bound theory nor its oracle. Main kept every one of them: the
-        /// generations' binding table, keyed on the static service facts, held the bound copy and through it the table.
+        /// the oracle reads and once through a data source, its S built and asked from the filter's node, then dropped,
+        /// leaves nothing it learned reachable — not its reasoning, its generations, their graph, the bound theory nor its
+        /// oracle, nor S's oracle, generation and graph. Main kept F's: the generations' binding table, keyed on the static
+        /// service facts, held the bound copy and through it the table; and S was the process's. Planning asked S nothing,
+        /// and started no build of it.
         /// </summary>
         [Fact]
         public void ASchemaLetGoTakesItsGraphsWithIt()
@@ -104,6 +109,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var generation = reasoning.Facts.Current;
             var hosted = Table(schema, "c").Container.Reasoning!;
             (generation.Number, reasoning.Facts.Started, hosted.Facts.Started).Should().Be((1, 1, 1), "each plan compiled its containers into its schema's first generation");
+            (reasoning.Rendering.Graph.Started, hosted.Rendering.Graph.Started).Should().Be((false, false), "nothing in planning asks S yet, so nothing builds it");
+
+            // S built and asked once, from the filter's node, so that its generation, memo and readings hold something.
+            var rendering = reasoning.Rendering;
+            rendering.Ready.Wait();
+            var kind = Eq(Text(P("kind")), "k");
+            var scope = CosmosOracle.For(declared.Facts).Admit(new PredicateStatement([kind]));
+            var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
+            rendering.Ask(RenderingSet.Production, [kind], null, new ImportSource(scope.Statement.Digest, "declaration", 1), d0, rules).Declined.Should().BeNull();
+            (rendering.Memo.Count, rendering.Graph.Generations).Should().Be((1, 1));
+            var theory = rendering.Graph.Current();
+            GC.KeepAlive(scope);
 
             return
             [
@@ -117,7 +134,126 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ("the hosted schema's reasoning", new WeakReference(hosted)),
                 ("the hosted schema's graph", new WeakReference(hosted.Facts.Current.Contexts.Graph)),
                 ("the hosted schema", new WeakReference(schema)),
+                ("rendering oracle", new WeakReference(rendering)),
+                ("rendering generation", new WeakReference(theory)),
+                ("rendering graph", new WeakReference(theory.Graph)),
             ];
+        }
+
+        /// <summary>
+        /// What one schema's graphs hold, in a warm process: the heap a new reasoning adds once F has compiled every
+        /// declared fixture and admitted a statement over each, once S is built, once S's memo holds its 4,096 answers, and
+        /// once the service facts' oracle remembers its 256 statements; beside each, what each graph has interned. The
+        /// same questions are then asked of a schema whose oracle remembers one answer, so that S's graph's growth is told
+        /// from the memo's. The process is warmed first by a reasoning built, asked and let go, so the registry's
+        /// definition, which the process reads once, is in no step. Explicit: run it alone, in Release, with
+        /// <c>-showLiveOutput</c>, and record the machine's load beside.
+        /// </summary>
+        [Fact(Explicit = true)]
+        public void ASchemasGraphsCost()
+        {
+            var output = TestContext.Current.TestOutputHelper;
+            var warmed = Stopwatch.StartNew();
+            WarmTheProcess();
+            output?.WriteLine($"process warmed in {warmed.ElapsedMilliseconds} ms");
+
+            var (full, asked) = Measure(new CosmosReasoning(), questions: null, output);
+            var (one, _) = Measure(new CosmosReasoning(new JsonFactGenerations(), new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition), remembered: 1)), asked, output);
+            var memo = full - one;
+            output?.WriteLine($"S's memo of 4,096 answers: {memo / 1024.0 / 1024.0:F1} MB, {memo / 4096.0 / 1024.0:F2} KB an answer; S's graph's growth over {asked:N0} questions: {one / 1024.0 / 1024.0:F1} MB");
+        }
+
+        /// <summary>
+        /// One schema's steps, each the heap it adds; and what S's questions added, with how many were asked: as many as
+        /// fill a memo of 4,096 where <paramref name="questions"/> is <c>null</c>, else that many. Its reasoning is let go
+        /// on return.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (long Asked, int Questions) Measure(CosmosReasoning reasoning, int? questions, ITestOutputHelper? output)
+        {
+            var steps = new List<(string Step, long Heap)> { ("before", Heap()) };
+            var (ask, scopes) = DeclaredQuestions(reasoning);
+            var declarations = scopes.Count;
+            var service = CosmosOracle.For(reasoning.ServiceFacts);
+            scopes.Add(service.Admit(new PredicateStatement([Eq(Text(P("id")), "x")])));
+            steps.Add(($"F: {declarations} declarations compiled and the service's, a statement admitted over each", Heap()));
+            var f = reasoning.Facts.Current;
+
+            var rendering = reasoning.Rendering;
+            var built = Stopwatch.StartNew();
+            rendering.Ready.Wait();
+            built.Stop();
+            steps.Add(("S: built", Heap()));
+            var builtInterned = rendering.Graph.Current().Graph.Usage.InternedValues;
+
+            var asking = Stopwatch.StartNew();
+            var i = 0;
+            for (; questions is null ? rendering.Memo.Count < 4096 : i < questions; i++)
+            {
+                i.Should().BeLessThan(3 * 4096, "a question that declines is not remembered, and few should");
+                ask[i % ask.Count]("v" + i);
+            }
+
+            asking.Stop();
+            steps.Add(($"S: {i:N0} questions asked, {rendering.Memo.Count:N0} answers remembered", Heap()));
+
+            for (var n = 0; n < 256; n++)
+                scopes.Add(service.Admit(new PredicateStatement([Eq(Text(P("id")), "v" + n)])));
+
+            steps.Add(("F: the service facts' memo full, 256 statements", Heap()));
+
+            var s = rendering.Graph.Current().Graph.Usage;
+            for (var n = 1; n < steps.Count; n++)
+                output?.WriteLine($"{steps[n].Step}: +{(steps[n].Heap - steps[n - 1].Heap) / 1024.0 / 1024.0:F1} MB, {(steps[n].Heap - steps[0].Heap) / 1024.0 / 1024.0:F1} MB in all");
+
+            output?.WriteLine($"  F: generation {f.Number}, {f.Contexts.Graph.Usage.InternedValues:N0} values interned, {f.Contexts.Graph.Usage.FractionUsed:P1} of its ids or epochs used");
+            output?.WriteLine($"  S: built in {built.ElapsedMilliseconds} ms, {builtInterned:N0} values interned; asked, {rendering.Graph.Generations} generation(s), {s.InternedValues:N0} values interned, "
+                + $"{s.FractionUsed:P2} of its ids or epochs used; {rendering.Counts} over {asking.ElapsedMilliseconds} ms");
+            GC.KeepAlive(scopes);
+            return (steps[3].Heap - steps[2].Heap, i);
+        }
+
+        /// <summary>The heap, collected.</summary>
+        static long Heap()
+        {
+            Collect();
+            return GC.GetTotalMemory(forceFullCollection: true);
+        }
+
+        /// <summary>A reasoning built, its F and S asked, and let go: the process's first S, its definition and its JIT.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void WarmTheProcess()
+        {
+            var reasoning = new CosmosReasoning();
+            var (questions, scopes) = DeclaredQuestions(reasoning);
+            reasoning.Rendering.Ready.Wait();
+            for (var i = 0; i < questions.Count; i++)
+                questions[i]("warm" + i);
+
+            GC.KeepAlive(scopes);
+        }
+
+        /// <summary>
+        /// Every fixture that declares something, compiled into the reasoning's generations with a statement of a comparison
+        /// over each of up to 16 paths it mentions admitted; and for each path, a question of the reasoning's S, from the
+        /// node the statement's first round renders from, comparing the path with the literal it is handed. The scopes keep
+        /// the nodes reachable.
+        /// </summary>
+        static (List<Action<string>> Questions, List<CosmosStatementScope> Scopes) DeclaredQuestions(CosmosReasoning reasoning)
+        {
+            var (questions, scopes) = (new List<Action<string>>(), new List<CosmosStatementScope>());
+            foreach (var container in CosmosDifferentialTests.Containers.Concat(PlannerSchema.All).Where(c => c.Facts.MentionedPaths.Count > 0))
+            {
+                var theory = container.Facts.In(reasoning.Facts);
+                var paths = theory.MentionedPaths.Take(16).ToArray();
+                var scope = CosmosOracle.For(theory).Admit(new PredicateStatement(paths.Select(p => Ne(Text(p), "x")).ToArray()));
+                var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
+                var source = new ImportSource(scope.Statement.Digest, "declaration", 1);
+                scopes.Add(scope);
+                questions.AddRange(paths.Select(p => (Action<string>)(literal => reasoning.Rendering.Ask(RenderingSet.Production, [Ne(Text(p), literal)], null, source, d0, rules))));
+            }
+
+            return (questions, scopes);
         }
 
         /// <summary>
@@ -138,6 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Table(first, "b").Container.Reasoning.Should().BeSameAs(reasoning, "a schema's containers share one");
             Table(first, "b").Container.Facts.Generations.Should().BeSameAs(reasoning.Facts, "a declared container reasons in its schema's graphs");
             Table(second, "a").Container.Reasoning.Should().NotBeSameAs(reasoning, "two schemas, two reasonings");
+            Table(second, "a").Container.Reasoning!.Rendering.Should().NotBeSameAs(reasoning.Rendering, "and two rendering oracles, each with its own graph");
             Table(first, "a").Container.Facts.Should().BeSameAs(reasoning.ServiceFacts, "an undeclared container takes the bound service facts");
             var beside = Table(new CosmosSchema([Unbound("z")], reasoning), "z");
             CosmosOracle.For(beside.Container.Facts).Should().BeSameAs(CosmosOracle.For(Table(first, "a").Container.Facts), "undeclared containers of one reasoning share one oracle");
@@ -153,7 +290,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             bare.Container.Should().NotBeSameAs(given);
             bare.Container.Reasoning.Should().NotBeNull("and owns its reasoning");
             bare.Container.Reasoning.Should().NotBeSameAs(reasoning).And.NotBeSameAs(shared);
+            bare.Container.Reasoning!.Rendering.Should().NotBeSameAs(reasoning.Rendering).And.NotBeSameAs(shared.Rendering);
             bare.Convention.Container.Should().BeSameAs(bare.Container, "the convention owns the copy the table plans with");
+            new[] { reasoning, shared, bare.Container.Reasoning }.Should().OnlyContain(r => r.Rendering.Graph.Started == false, "making a schema or a table builds no S");
 
             var kept = Table(first, "a").Container;
             new CosmosTable(kept).Container.Should().BeSameAs(kept, "metadata a schema bound is kept as it is");

@@ -20,19 +20,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     {
 
         /// <summary>
-        /// What each frozen node holds of a path, or a stratum of an atom's path, read and spelled once (spec §6.1's lever):
-        /// a node never changes, so a remembered answer's key is read off here, and a node collected takes its own along.
+        /// What a frozen node holds of a path, or a stratum of an atom's path, read and spelled; once a node where the
+        /// asker keeps <paramref name="readings"/> (spec §6.1's lever), as a schema's oracle does
+        /// (<see cref="RenderingOracle.Readings"/>), and afresh where it keeps none. A node never changes, so either
+        /// spells alike.
         /// </summary>
-        static readonly ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>> Readings = new();
-
-        static (PathValues? Values, ValueSet<string>? Chars, string Spelled) ReadOf(Scope node, PredicateRules rules, JsonDocumentPath path, bool chars) =>
-            Readings.GetValue(node, _ => new()).GetOrAdd((rules, path, chars), key =>
+        static (PathValues? Values, ValueSet<string>? Chars, string Spelled) ReadOf(Scope node, PredicateRules rules, JsonDocumentPath path, bool chars,
+            ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>? readings)
+        {
+            (PathValues? Values, ValueSet<string>? Chars, string Spelled) Read((PredicateRules Rules, JsonDocumentPath Path, bool Chars) key)
             {
                 var term = JsonFactEncoding.Path(key.Path).ToTerm(key.Rules.Json);
                 var values = node.TryGet(key.Rules.Possible.Of(term), out var possible) ? possible : null;
                 var held = key.Chars && node.TryGet(key.Rules.Json.Chars.Of(term), out var c) ? c : null;
                 return (values, held, Spell(key.Path, values ?? PathValues.Anything, key.Chars ? held ?? JsonValues.AllBands : ValueSet<string>.Empty));
-            });
+            }
+
+            return readings is null ? Read((rules, path, chars)) : readings.GetValue(node, _ => new()).GetOrAdd((rules, path, chars), Read);
+        }
 
         /// <summary>
         /// Copies the node's <c>possible</c> and <c>chars</c> rows for each path into the bundle, before its run, each table
@@ -52,10 +57,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <param name="declaration">The container's declaration, which says where a default loses precision.</param>
         /// <param name="paths">The paths the bundle's atoms read.</param>
         /// <param name="beneath">Each atom read where its conjunct was rendered: that stratum's source, node and rules.</param>
+        /// <param name="readings">What each node was read to hold, kept by the asker; <c>null</c> to read afresh.</param>
         /// <exception cref="InvalidOperationException">The bundle has run, or holds another node's imports.</exception>
         /// <exception cref="FactConflictException">A path was imported with another value.</exception>
         public static ImportReport Import(RenderingBundle? bundle, ImportSource source, Scope? node, PredicateRules? rules,
-            JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths, IEnumerable<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null)
+            JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths, IEnumerable<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null,
+            ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>? readings = null)
         {
             // ContextFor hands back no context where the licence keeps nothing; with rules, something was known.
             if (rules is not null && node is null or { IsContradictory: true })
@@ -64,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var (open, constrained, spelled) = (0, new List<string>(), new List<string>());
             foreach (var path in paths.Distinct().OrderBy(SqlValue.Spell, StringComparer.Ordinal))
             {
-                var (values, chars, spelling) = node is not null && rules is not null ? ReadOf(node, rules, path, true) : (null, null, Spell(path, PathValues.Anything, JsonValues.AllBands));
+                var (values, chars, spelling) = node is not null && rules is not null ? ReadOf(node, rules, path, true, readings) : (null, null, Spell(path, PathValues.Anything, JsonValues.AllBands));
                 if (values is null && declaration?.MentionedPaths.Any(m => path.IsWithin(m) || m.IsWithin(path)) == true)
                     constrained.Add(SqlValue.Spell(path));
                 else if (values is null)
@@ -76,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             var (count, stated) = (spelled.Count, new List<(SqlPredicate, PathValues)>());
             foreach (var (atom, origin, stratum, read) in beneath ?? [])
-                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false) is { Values: { } narrower } beneathIt)
+                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false, readings) is { Values: { } narrower } beneathIt)
                 {
                     bundle?.Assume(origin with { Node = stratum }, atom, narrower);
                     stated.Add((atom, narrower));

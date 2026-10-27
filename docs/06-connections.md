@@ -168,7 +168,8 @@ the schema object is what carries it.
 
 The planner follows the same rule: what it learns of declarations and statements hangs off the schema
 object and is shared only through the data source. Only fixed facts the adapter ships with — what the
-service guarantees, the rules of JSON and JSON Schema — are read once for the whole process.
+service guarantees, what the service and Calcite were measured to do, the rules of JSON and JSON
+Schema — are read once for the whole process.
 
 ### Building a schema directly
 
