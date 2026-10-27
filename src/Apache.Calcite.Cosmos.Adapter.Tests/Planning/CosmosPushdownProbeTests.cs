@@ -156,7 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 }
             }
 
-            var kinds = new CosmosContainerMetadata("kinds", new[] { "/kind" })
+            var kinds = TestReasoning.Bind(new CosmosContainerMetadata("kinds", new[] { "/kind" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(KindsSchema)));
 
             foreach (var (name, where) in KindProbes)
@@ -172,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 }
             }
 
-            var ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
+            var ordering = TestReasoning.Bind(new CosmosContainerMetadata("ordering", new[] { "/category" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(OrderingSchema)));
 
             foreach (var (name, container, sql, _) in ClauseProbes)
@@ -188,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 }
             }
 
-            var typed = new CosmosContainerMetadata("typed", new[] { "/category" });
+            var typed = TestReasoning.Bind(new CosmosContainerMetadata("typed", new[] { "/category" }));
 
             foreach (var (name, container, sql, _) in RoutingProbes)
             {

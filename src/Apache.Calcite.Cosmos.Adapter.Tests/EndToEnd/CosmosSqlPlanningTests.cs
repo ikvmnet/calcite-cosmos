@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public class CosmosSqlPlanningTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         static string PlanText(string sql) => RelOptUtil.toString(Plan(sql)).Trim().Replace("\r\n", "\n");
 

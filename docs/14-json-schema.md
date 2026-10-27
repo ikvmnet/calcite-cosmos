@@ -35,9 +35,10 @@ A container entry in `containers` may be an object carrying the container's name
 ]
 ```
 
-The schema is compiled once, when the model is read, into **facts** about paths — "`$.trackingId`
+The schema is read once, when the model is read, into **facts** about paths — "`$.trackingId`
 holds a canonical lowercase UUID", "`$.carrier` holds a string" — that the planner can prove things
-against. Nothing is checked against documents.
+against; the planner compiles them the first time a statement reaches the container and keeps them with
+the schema (Chapter 6). Nothing is checked against documents.
 
 Remember that listing a container turns discovery off (Chapter 4): once one container has a schema,
 list every container you want exposed.

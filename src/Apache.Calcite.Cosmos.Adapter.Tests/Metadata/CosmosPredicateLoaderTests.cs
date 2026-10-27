@@ -336,8 +336,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         CosmosFilterStatement Admit(RexNode condition, string? schema)
         {
             var container = schema is null
-                ? new CosmosContainerMetadata("items", new[] { "/pk" })
-                : new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
+                ? TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
+                : TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" })).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
             return CosmosFilterStatement.Of(condition, _fields, _readings, container, _rex);
         }

@@ -53,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     public class CosmosToClrCursorConverterTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         /// <summary>
         /// An executor that answers with documents rather than with a service, and records what it was

@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheKeyHoldsEveryValueTheImportReads()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var theory = generations.Bind(Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object))));
+            var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object))).In(generations);
             var (first, second) = (Eq(Text(P("a")), "x"), Ne(Text(P("a")), "y"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { first, second, Eq(Text(P("o", "b")), "z") }), (i, _) => i == 0);
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
@@ -290,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var scopes = new List<CosmosStatementScope>();
             foreach (var container in CosmosDifferentialTests.Containers.Concat(PlannerSchema.All).Where(c => c.Facts.MentionedPaths.Count > 0))
             {
-                var theory = generations.Bind(container.Facts);
+                var theory = container.Facts.In(generations);
                 var conjuncts = theory.MentionedPaths.Take(16).Select(p => Ne(Text(p), "x")).ToArray();
                 var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(conjuncts));
                 var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));

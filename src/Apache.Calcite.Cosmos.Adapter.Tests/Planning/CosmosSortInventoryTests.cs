@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
         static CosmosContainerMetadata Declaring(string name, string partitionKey, string schema, IEnumerable<CosmosCompositeIndex>? indexes = null) =>
-            new CosmosContainerMetadata(name, new[] { partitionKey }, indexes).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
+            TestReasoning.Bind(new CosmosContainerMetadata(name, new[] { partitionKey }, indexes)).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
 
         static CosmosCompositeIndex Index(params (string Path, bool Descending)[] paths) => new(paths.Select(p => new CosmosCompositeIndexPath(p.Path, p.Descending)));
 

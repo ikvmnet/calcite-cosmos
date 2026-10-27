@@ -35,17 +35,44 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Returns a container's lookup cache across executions, or <c>null</c> for none. One instance
         /// per container: the cache shares the schema's lifetime and its declared freshness policy.
         /// </param>
+        /// <remarks>
+        /// The schema owns what it learns as it plans: the containers handed to it unbound are bound to one
+        /// reasoning it makes, and a container another schema bound keeps that one's. The factories are
+        /// handed the bound copy.
+        /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="containers"/> is <c>null</c>.</exception>
         public CosmosSchema(
             IEnumerable<CosmosContainerMetadata> containers,
+            Func<CosmosContainerMetadata, ICosmosQueryExecutor>? executorFactory = null,
+            Func<CosmosContainerMetadata, CosmosLookupCache?>? lookupCacheFactory = null) :
+            this(containers, null, executorFactory, lookupCacheFactory)
+        {
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance whose unbound containers reason in the given reasoning: the factory's,
+        /// or an account schema's, one for all its databases.
+        /// </summary>
+        /// <param name="containers">The containers to expose.</param>
+        /// <param name="reasoning">The reasoning to bind unbound containers to, or <c>null</c> to make one where one is needed.</param>
+        /// <param name="executorFactory">Returns what executes statements against a container.</param>
+        /// <param name="lookupCacheFactory">Returns a container's lookup cache across executions.</param>
+        internal CosmosSchema(
+            IEnumerable<CosmosContainerMetadata> containers,
+            CosmosReasoning? reasoning,
             Func<CosmosContainerMetadata, ICosmosQueryExecutor>? executorFactory = null,
             Func<CosmosContainerMetadata, CosmosLookupCache?>? lookupCacheFactory = null)
         {
             if (containers is null)
                 throw new ArgumentNullException(nameof(containers));
 
-            foreach (var container in containers)
+            foreach (var given in containers)
+            {
+                // Bound before a table or a factory sees it, so that each reads the one object the table plans with.
+                var container = given.Reasoning is null ? given.WithReasoning(reasoning ??= new CosmosReasoning()) : given;
                 _tables.put(container.Name, new CosmosTable(container, executorFactory?.Invoke(container), lookupCacheFactory?.Invoke(container)));
+            }
         }
 
         /// <summary>

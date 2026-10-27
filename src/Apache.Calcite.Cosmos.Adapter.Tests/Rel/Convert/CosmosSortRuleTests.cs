@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
         const string Here = """{"type":"Point","coordinates":[-122.33,47.61]}""";
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         /// <summary>
         /// Plans a statement, taking the root either as a connection does or as a host does.

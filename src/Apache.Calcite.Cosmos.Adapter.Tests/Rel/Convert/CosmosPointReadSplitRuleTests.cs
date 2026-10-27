@@ -46,16 +46,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     {
 
         /// <summary>A container the service has not been asked about — the size is unknown.</summary>
-        static CosmosContainerMetadata Unmeasured() => new("products", new[] { "/category" });
+        static CosmosContainerMetadata Unmeasured() => TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         /// <summary>A container of records, comfortably under the break-even.</summary>
         static CosmosContainerMetadata SmallDocuments() =>
-            new CosmosContainerMetadata("products", new[] { "/category" })
+            TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }))
                 .WithStatistics(new CosmosContainerStatistics(1000L, 1000L * 512L, 1));
 
         /// <summary>A container of bodies well over the break-even, where the read loses.</summary>
         static CosmosContainerMetadata LargeDocuments() =>
-            new CosmosContainerMetadata("products", new[] { "/category" })
+            TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }))
                 .WithStatistics(new CosmosContainerStatistics(1000L, 1000L * 200L * 1024L, 1));
 
         CosmosContainerMetadata _metadata = null!;

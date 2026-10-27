@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         CosmosImplementor Implementor(CosmosContainerMetadata? container = null) =>
-            new(_rex, container ?? new CosmosContainerMetadata("products"));
+            new(_rex, container ?? TestReasoning.Bind(new CosmosContainerMetadata("products")));
 
         RexNode Ref(int index, SqlTypeName type) => _rex.makeInputRef(_types.createSqlType(type), index);
 
@@ -154,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void RootAliasCanBeOverridden()
         {
-            var implementor = new CosmosImplementor(_rex, new CosmosContainerMetadata("products"), "p");
+            var implementor = new CosmosImplementor(_rex, TestReasoning.Bind(new CosmosContainerMetadata("products")), "p");
 
             implementor.Build().Sql.Should().Be("SELECT VALUE p FROM products p");
             implementor.Root.ToString().Should().Be("p");
@@ -208,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void ContainerMetadataIsReachableForRuleGuards()
         {
-            var container = new CosmosContainerMetadata("products", new[] { "/tenant" });
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/tenant" }));
             Implementor(container).Container.PartitionKeyPaths.Should().Equal("/tenant");
         }
 

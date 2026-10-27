@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void TheServicesColumnsAreTypedByItsFacts()
         {
-            var declared = new CosmosContainerMetadata("products", new[] { "/category" })
+            var declared = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "required": ["category"], "properties": { "category": { "type": "string" } } }""")!));
             var type = new CosmosTable(declared).getRowType(new org.apache.calcite.jdbc.JavaTypeFactoryImpl());
 
@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void PromotedColumnsResolveToOrdinals()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
 
             table.GetColumnOrdinal("/id").Should().Be(1);
             table.GetColumnOrdinal("/_ts").Should().Be(2);
@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void UnpromotedPathsHaveNoOrdinal()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
 
             table.GetColumnOrdinal("/name").Should().Be(-1);
             table.GetColumnOrdinal("/inventory/quantity").Should().Be(-1);
@@ -74,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void PartitionKeyPlusIdIsAKey()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
             var keys = table.getStatistic().getKeys();
 
             keys.size().Should().Be(1);
@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void HierarchicalPartitionKeyContributesEveryPath()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/tenant", "/user" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/tenant", "/user" })));
             var keys = table.getStatistic().getKeys();
 
             // 0 DOC, 1 id, 2 _ts, 3 _etag, 4 tenant, 5 user
@@ -106,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void NestedPartitionKeyYieldsAKey()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/inventory/sku" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/inventory/sku" })));
             var keys = table.getStatistic().getKeys();
 
             keys.size().Should().Be(1);
@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void UndeclaredPartitionKeyYieldsNoKey()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products"));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products")));
             table.getStatistic().getKeys().size().Should().Be(0);
         }
 
@@ -140,10 +140,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void ACompositeIndexIsNotACollation()
         {
-            var container = new CosmosContainerMetadata(
+            var container = TestReasoning.Bind(new CosmosContainerMetadata(
                 "products",
                 new[] { "/category" },
-                new[] { Index(("/id", false), ("/_ts", true)) });
+                new[] { Index(("/id", false), ("/_ts", true)) }));
 
             new CosmosTable(container).getStatistic().getCollations().size().Should().Be(0);
 
@@ -162,10 +162,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void CompositeIndexOverUnpromotedPathsIsStillUsableForTheSortGuard()
         {
-            var container = new CosmosContainerMetadata(
+            var container = TestReasoning.Bind(new CosmosContainerMetadata(
                 "products",
                 new[] { "/category" },
-                new[] { Index(("/name", false), ("/price", false)) });
+                new[] { Index(("/name", false), ("/price", false)) }));
 
             new CosmosTable(container).getStatistic().getCollations().size().Should().Be(0);
 
@@ -180,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void RowCountIsNotInvented()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
             table.getStatistic().getRowCount().Should().BeNull();
         }
 
@@ -194,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void WithoutStatisticsTheRowCountIsUnknown()
         {
-            new CosmosTable(new CosmosContainerMetadata("products")).getStatistic().getRowCount().Should().BeNull();
+            new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products"))).getStatistic().getRowCount().Should().BeNull();
         }
 
         /// <summary>
@@ -223,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var clock = new ManualClock();
             var fetches = 0;
 
-            var container = new CosmosContainerMetadata("products").WithStatisticsProvider(
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products")).WithStatisticsProvider(
                 () => { fetches++; return new CosmosContainerStatistics(fetches * 100, 1000, 1); },
                 System.TimeSpan.FromMinutes(5),
                 clock);
@@ -251,7 +251,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var clock = new ManualClock();
             var probes = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() => null, System.TimeSpan.FromMinutes(5), clock)
                 .WithPartitionKeyDeleteProbe(() => { probes++; return true; });
 
@@ -266,7 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void AMeasuredRowCountIsReported()
         {
-            var container = new CosmosContainerMetadata("products").WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products")).WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
 
             new CosmosTable(container).getStatistic().getRowCount().doubleValue().Should().Be(4200d);
         }
@@ -278,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void AZeroCountIsNotAReportedRowCount()
         {
-            var container = new CosmosContainerMetadata("products").WithStatistics(new CosmosContainerStatistics(0, 0, 1));
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products")).WithStatistics(new CosmosContainerStatistics(0, 0, 1));
 
             new CosmosTable(container).getStatistic().getRowCount().Should().BeNull();
         }
@@ -290,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void StatisticsKeepTheFactsAndKeysAttachedBeforeThem()
         {
-            var declared = new CosmosContainerMetadata("links", new[] { "/linkId" })
+            var declared = TestReasoning.Bind(new CosmosContainerMetadata("links", new[] { "/linkId" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(EndToEnd.CosmosSelfJoinTests.Schema()))
                 .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) });
 
@@ -310,7 +310,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var fetches = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() => { fetches++; return new CosmosContainerStatistics(100, 1000, 1); })
                 .WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
 
@@ -324,7 +324,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void StatisticsTravelThroughTheWithsAfterThem()
         {
-            var container = new CosmosContainerMetadata("links", new[] { "/linkId" })
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("links", new[] { "/linkId" }))
                 .WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(EndToEnd.CosmosSelfJoinTests.Schema()))
                 .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) })
@@ -363,7 +363,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var invocations = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() =>
                 {
                     invocations++;
@@ -382,7 +382,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var invocations = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() =>
                 {
                     invocations++;
@@ -408,7 +408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var invocations = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() =>
                 {
                     invocations++;
@@ -440,7 +440,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var invocations = 0;
 
-            var container = new CosmosContainerMetadata("products")
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"))
                 .WithStatisticsProvider(() =>
                 {
                     invocations++;
@@ -463,7 +463,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void ARefreshWithoutAProviderIsHarmless()
         {
-            var container = new CosmosContainerMetadata("products");
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products"));
 
             var refresh = () => container.RefreshStatistics();
 
@@ -482,12 +482,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             var schema = new CosmosSchema(new[]
             {
-                new CosmosContainerMetadata("products").WithStatisticsProvider(() =>
+                TestReasoning.Bind(new CosmosContainerMetadata("products")).WithStatisticsProvider(() =>
                 {
                     products++;
                     return new CosmosContainerStatistics(7, 700, 2);
                 }),
-                new CosmosContainerMetadata("orders").WithStatisticsProvider(() =>
+                TestReasoning.Bind(new CosmosContainerMetadata("orders")).WithStatisticsProvider(() =>
                 {
                     orders++;
                     return new CosmosContainerStatistics(9, 900, 2);
@@ -518,7 +518,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void AProviderReturningNothingLeavesTheRowCountUnknown()
         {
-            var container = new CosmosContainerMetadata("products").WithStatisticsProvider(() => null);
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("products")).WithStatisticsProvider(() => null);
 
             new CosmosTable(container).getStatistic().getRowCount().Should().BeNull();
         }
@@ -528,7 +528,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void RowTypeIsTheDocumentColumnPlusPromotedColumns()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
 
             var names = new System.Collections.Generic.List<string>();
             var fields = table.getRowType(new org.apache.calcite.jdbc.JavaTypeFactoryImpl()).getFieldList();
@@ -550,7 +550,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void APromotedDeclaredPathColumnIsTypedVariant()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })));
 
             var fields = table.getRowType(new org.apache.calcite.jdbc.JavaTypeFactoryImpl()).getFieldList();
             var byName = new System.Collections.Generic.Dictionary<string, org.apache.calcite.rel.type.RelDataType>();
@@ -574,7 +574,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void PartitionKeyOnIdDoesNotDuplicateTheColumn()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("c", new[] { "/id" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("c", new[] { "/id" })));
             table.GetPromotedColumnNames().Should().Equal("id", "_ts", "_etag");
         }
 
@@ -586,7 +586,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [Fact]
         public void NestedPartitionKeyIsPromoted()
         {
-            var table = new CosmosTable(new CosmosContainerMetadata("c", new[] { "/inventory/sku" }));
+            var table = new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("c", new[] { "/inventory/sku" })));
             table.GetPromotedColumnNames().Should().Equal("id", "_ts", "_etag", "$.inventory.sku");
         }
 

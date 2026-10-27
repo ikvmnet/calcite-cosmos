@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// </summary>
             static JsonFactSet Declared(string? schema = null)
             {
-                var container = new CosmosContainerMetadata("items", new[] { "/pk" });
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }));
                 if (schema is not null)
                     container = container.WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
 

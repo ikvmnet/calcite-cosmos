@@ -38,14 +38,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     public class CosmosLookupJoinRuleTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
-        static readonly CosmosContainerMetadata Orders = new("orders", new[] { "/customer" });
-        static readonly CosmosContainerMetadata Archive = new("archive", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
+        static readonly CosmosContainerMetadata Orders = TestReasoning.Bind(new CosmosContainerMetadata("orders", new[] { "/customer" }));
+        static readonly CosmosContainerMetadata Archive = TestReasoning.Bind(new CosmosContainerMetadata("archive", new[] { "/category" }));
 
         /// <summary>
         /// A container whose schema gives <c>data.id</c> a canonical lowercase UUID form.
         /// </summary>
-        static readonly CosmosContainerMetadata Parks = new CosmosContainerMetadata("parks", new[] { "/id" })
+        static readonly CosmosContainerMetadata Parks = TestReasoning.Bind(new CosmosContainerMetadata("parks", new[] { "/id" }))
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                 { "type": "object",
                   "properties": {
@@ -57,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// A container whose schema says <c>label</c> holds a string and nothing else.
         /// </summary>
-        static readonly CosmosContainerMetadata Labels = new CosmosContainerMetadata("labels", new[] { "/category" })
+        static readonly CosmosContainerMetadata Labels = TestReasoning.Bind(new CosmosContainerMetadata("labels", new[] { "/category" }))
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                 { "type": "object", "properties": { "label": { "type": "string" } } }
                 """)));
@@ -65,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// A container of two kinds: <c>label</c> a string in kind <c>a</c> and an integer in kind <c>b</c>.
         /// </summary>
-        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/category" })
+        static readonly CosmosContainerMetadata Kinds = TestReasoning.Bind(new CosmosContainerMetadata("kinds", new[] { "/category" }))
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                 { "type": "object",
                   "required": ["kind"],

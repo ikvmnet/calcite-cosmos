@@ -180,12 +180,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void APlanarContainerRefusesAGeodesicCall()
             {
-                var planar = new CosmosContainerMetadata("products", readsGeography: false);
+                var planar = TestReasoning.Bind(new CosmosContainerMetadata("products", readsGeography: false));
                 var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogIsValid, Geo());
 
                 Translator(planar).TryTranslate(call, out _).Should().BeFalse();
 
-                var geodesic = new CosmosContainerMetadata("products", readsGeography: true);
+                var geodesic = TestReasoning.Bind(new CosmosContainerMetadata("products", readsGeography: true));
                 Translator(geodesic).TryTranslate(call, out _).Should().BeTrue();
             }
 
@@ -317,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void APlanarContainerRefusesAProjectedGeography()
             {
-                var planar = new CosmosContainerMetadata("products", readsGeography: false);
+                var planar = TestReasoning.Bind(new CosmosContainerMetadata("products", readsGeography: false));
 
                 Translator(planar).TryTranslateProjection(Stored(), out _, out _).Should().BeFalse();
                 Translator().TryTranslateProjection(Stored(), out _, out _).Should().BeTrue();

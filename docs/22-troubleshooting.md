@@ -91,8 +91,9 @@ The emulator reports zero documents for every container, so plans are made witho
 plan choices against a real account. Appendix E.
 
 **Many short-lived connections are slow to open.**
-Each new data source reads every container's definition and creates a client. Keep connection strings
-identical so pooling shares one, or own the data source. Chapter 6.
+Each new data source reads every container's definition, creates a client, and plans its first
+statements from nothing (Chapter 19). Keep connection strings identical so pooling shares one, or own the
+data source. Chapter 6.
 
 ## Queries that fail
 

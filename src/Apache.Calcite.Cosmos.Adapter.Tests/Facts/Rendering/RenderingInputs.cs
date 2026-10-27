@@ -25,18 +25,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class RenderingInputs
     {
 
-        /// <summary>The differential's containers, in generations of their own: what the plants and the recall plan over.</summary>
-        public static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithFactGenerations(new JsonFactGenerations()))];
+        /// <summary>The differential's containers, each in a reasoning of its own: what the plants and the recall plan over.</summary>
+        public static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()))];
 
         /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
-        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<Statement> All(int partitionedPredicates, JsonFactGenerations? generations = null)
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static IEnumerable<Statement> All(int partitionedPredicates, CosmosReasoning? reasoning = null)
         {
-            foreach (var statement in Corpus(generations))
+            foreach (var statement in Corpus(reasoning))
                 yield return statement;
 
-            var containers = CosmosDifferentialTests.Containers.Select(c => generations is null ? c : c.WithFactGenerations(generations)).ToArray();
+            var containers = CosmosDifferentialTests.Containers.Select(c => reasoning is null ? c : c.WithReasoning(reasoning)).ToArray();
             foreach (var statement in Differential("differential", CosmosDifferentialTests.Statements, containers))
                 yield return statement;
 
@@ -57,10 +57,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <c>typed</c>'s undeclared label, which the translator does not push against a parameter; over the accessor, whose
         /// text types the parameter, where a raw accessor's <c>ANY</c> leaves it untyped and the statement fails to plan.
         /// </summary>
-        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static Statement Parameterised(JsonFactGenerations? generations = null)
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static Statement Parameterised(CosmosReasoning? reasoning = null)
         {
-            var containers = CosmosDifferentialTests.Containers.Select(c => generations is null ? c : c.WithFactGenerations(generations)).ToArray();
+            var containers = CosmosDifferentialTests.Containers.Select(c => reasoning is null ? c : c.WithReasoning(reasoning)).ToArray();
             return Differential("probe", [ParameterisedSql], containers).Single() with { Name = ParameterisedResidual };
         }
 
@@ -68,10 +68,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ParameterisedSql = "SELECT c.\"id\" FROM typed AS c WHERE c.\"$.category\" = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <> ?";
 
         /// <summary>The planner corpus, planned through one harness.</summary>
-        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<Statement> Corpus(JsonFactGenerations? generations = null)
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static IEnumerable<Statement> Corpus(CosmosReasoning? reasoning = null)
         {
-            var harness = new PlannerHarness(generations);
+            var harness = new PlannerHarness(reasoning);
             foreach (var query in PlannerQueries.All)
                 yield return new("corpus", query.Name, query.Sql, () => harness.PlanToAsync(query.Sql));
         }

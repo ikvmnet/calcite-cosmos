@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <summary>
         /// Saturates established facts beneath the declaration.
         /// </summary>
-        /// <param name="theory">The declaration.</param>
+        /// <param name="theory">The declaration, bound to <see cref="TestReasoning.Shared"/> where it is bound to none.</param>
         /// <param name="established">What a query established, which may be empty.</param>
         /// <returns>What is known.</returns>
         public static JsonFactSet Derive(this JsonFactTheory theory, IEnumerable<JsonFact>? established) =>
@@ -52,6 +52,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <returns>What is known.</returns>
         public static JsonFactSet Derive(this JsonFactTheory theory, IEnumerable<JsonFact> established, IEnumerable<JsonDocumentPath> mentioned)
         {
+            // A theory a test made from rules alone is unbound, and reasons in the suite's shared graphs as a fixture does.
+            theory = TestReasoning.Bind(theory);
+
             var facts = established.Distinct().ToArray();
             if (facts.Length == 0 || theory.Declaration() is not JsonFactDeclaration declaration)
                 return theory.Declared;

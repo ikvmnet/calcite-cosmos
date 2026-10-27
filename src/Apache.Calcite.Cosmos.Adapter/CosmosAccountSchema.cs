@@ -47,14 +47,37 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="lookupCacheFactory">
         /// Returns a container's lookup cache across executions, or <c>null</c> for none.
         /// </param>
+        /// <remarks>
+        /// One reasoning for the whole account, as the factory makes one: every database's containers handed
+        /// in unbound are bound to it.
+        /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="databases"/> is <c>null</c>.</exception>
         public CosmosAccountSchema(
             IEnumerable<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>> databases,
+            Func<string, CosmosContainerMetadata, ICosmosQueryExecutor>? executorFactory = null,
+            Func<string, CosmosContainerMetadata, CosmosLookupCache?>? lookupCacheFactory = null) :
+            this(databases, new CosmosReasoning(), executorFactory, lookupCacheFactory)
+        {
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance whose databases' unbound containers reason in the given reasoning.
+        /// </summary>
+        /// <param name="databases">The databases to expose, each with the containers it should carry.</param>
+        /// <param name="reasoning">The account's reasoning.</param>
+        /// <param name="executorFactory">Returns what executes statements against a container of a named database.</param>
+        /// <param name="lookupCacheFactory">Returns a container's lookup cache across executions.</param>
+        internal CosmosAccountSchema(
+            IEnumerable<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>> databases,
+            CosmosReasoning reasoning,
             Func<string, CosmosContainerMetadata, ICosmosQueryExecutor>? executorFactory = null,
             Func<string, CosmosContainerMetadata, CosmosLookupCache?>? lookupCacheFactory = null)
         {
             if (databases is null)
                 throw new ArgumentNullException(nameof(databases));
+            if (reasoning is null)
+                throw new ArgumentNullException(nameof(reasoning));
 
             foreach (var (name, containers) in databases)
             {
@@ -62,6 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 _subSchemas.put(database, new CosmosSchema(
                     containers,
+                    reasoning,
                     executorFactory is null ? null : container => executorFactory(database, container),
                     lookupCacheFactory is null ? null : container => lookupCacheFactory(database, container)));
             }

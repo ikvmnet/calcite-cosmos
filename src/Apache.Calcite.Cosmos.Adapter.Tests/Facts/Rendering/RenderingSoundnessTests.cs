@@ -269,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (printed.Count == 0)
                     continue;
 
-                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithFactGenerations(new JsonFactGenerations());
+                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(new CosmosReasoning());
                 var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]),
                     shadow: generated ? new RenderingGenerateRun() : null);
                 tally.Statements++;

@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// declared path, and <see cref="AFullTextPredicateOverAnUndeclaredPathIsPushedDownAndPricedAsAScan"/>
         /// is the other half.
         /// </remarks>
-        static readonly CosmosContainerMetadata Products = new(
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata(
             "products",
             new[] { "/category" },
             new[]
@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 }),
             },
             fullTextPaths: new[] { "/name", "/tags" },
-            vectorPaths: new[] { "/a" });
+            vectorPaths: new[] { "/a" }));
 
         /// <summary>
         /// The same container with <c>name</c> and <c>category</c> declared printable ASCII and nothing more: what a case
@@ -4408,7 +4408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         // ── Hierarchical partition keys ───────────────────────────────────────────
 
-        static readonly CosmosContainerMetadata Tenanted = new("products", new[] { "/tenant", "/user" });
+        static readonly CosmosContainerMetadata Tenanted = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/tenant", "/user" }));
 
         /// <summary>
         /// Plans against a container whose partition key is hierarchical.

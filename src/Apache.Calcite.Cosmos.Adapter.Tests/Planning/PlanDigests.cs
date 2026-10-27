@@ -38,15 +38,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Every digest, one line a statement: the input, the statement's name or index, its text, and its digest.
         /// </summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
-        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<string> All(int partitionedPredicates, JsonFactGenerations? generations = null) =>
-            Lines(RenderingInputs.All(partitionedPredicates, generations));
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static IEnumerable<string> All(int partitionedPredicates, CosmosReasoning? reasoning = null) =>
+            Lines(RenderingInputs.All(partitionedPredicates, reasoning));
 
         /// <summary>
         /// The planner corpus's digests, one line a statement.
         /// </summary>
-        /// <param name="generations">The generations every container reasons in, or <c>null</c> for their own.</param>
-        public static IEnumerable<string> Corpus(JsonFactGenerations? generations = null) => Lines(RenderingInputs.Corpus(generations));
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static IEnumerable<string> Corpus(CosmosReasoning? reasoning = null) => Lines(RenderingInputs.Corpus(reasoning));
 
         /// <summary>
         /// The digests of the statements given, one line a statement.
@@ -55,13 +55,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             statements.Select(s => Line(s.Input, s.Name, s.Sql, Of(s.Plan)));
 
         /// <summary>
-        /// Plans the statements twice, each time in generations of their own, the second under a switch; holds that the
+        /// Plans the statements twice, each time in a reasoning of their own, the second under a switch; holds that the
         /// switch reached the planner, and that every digest is the same.
         /// </summary>
-        public static void Unchanged(Func<IDisposable> arm, Func<JsonFactGenerations, IEnumerable<RenderingInputs.Statement>> statements, Action<JsonFactGenerations> reached)
+        public static void Unchanged(Func<IDisposable> arm, Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements, Action<CosmosReasoning> reached)
         {
-            var off = Lines(statements(new JsonFactGenerations())).ToList();
-            var armed = new JsonFactGenerations();
+            var off = Lines(statements(new CosmosReasoning())).ToList();
+            var armed = new CosmosReasoning();
             List<string> on;
             using (arm())
                 on = Lines(statements(armed)).ToList();

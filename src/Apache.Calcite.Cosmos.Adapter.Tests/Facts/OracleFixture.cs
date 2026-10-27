@@ -64,8 +64,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         public static SqlPredicate Opaque(long id) => new SqlPredicate.Opaque(id);
 
+        /// <summary>
+        /// The graphs the fixture's oracles reason in: the oracle tests' own, apart from those the planner's fixtures share
+        /// (<see cref="TestReasoning"/>).
+        /// </summary>
+        static readonly JsonFactGenerations Graphs = new();
+
         /// <summary>A fresh oracle over a declaration, so that no test reads another's memo.</summary>
-        public static CosmosOracle Oracle(JsonFactTheory theory) => new(theory, null);
+        public static CosmosOracle Oracle(JsonFactTheory theory) => new(theory, Graphs);
 
         /// <summary>The statement with every conjunct admitted in the first round: its last stratum holds them all.</summary>
         public static CosmosStatementScope Admitted(JsonFactTheory theory, params SqlPredicate[] conjuncts) =>

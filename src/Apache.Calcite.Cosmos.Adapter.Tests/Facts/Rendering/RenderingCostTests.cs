@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public void EachBundleIsWithinTheLine()
         {
-            var inputs = () => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, new JsonFactGenerations());
+            var inputs = () => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, new CosmosReasoning());
             GC.KeepAlive(RenderingCheckRun.Over(inputs()));
 
             var times = new ConcurrentQueue<(RenderingSet Set, double Ms)>();
@@ -65,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             double Mean(out int entries)
             {
                 var times = new ConcurrentQueue<double>();
-                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(new JsonFactGenerations()), (set, t) =>
+                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(new CosmosReasoning()), (set, t) =>
                 {
                     if (set == RenderingCheckRun.AssertedSet)
                         times.Enqueue(t.TotalMilliseconds);
@@ -138,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (generations, seen) = (new JsonFactGenerations(), new HashSet<object>(ReferenceEqualityComparer.Instance));
                 foreach (var container in containers)
                 {
-                    var theory = generations.Bind(container.Facts);
+                    var theory = container.Facts.In(generations);
                     var started = Stopwatch.GetTimestamp();
                     var declaration = theory.Declaration();
                     var compile = Stopwatch.GetElapsedTime(started).TotalMilliseconds;

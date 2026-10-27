@@ -155,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             _executor = new StubExecutor(documents);
 
-            var metadata = new CosmosContainerMetadata("products", new[] { "/category" }).WithPartitionKeyDeleteProbe(() => partitionDelete);
+            var metadata = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })).WithPartitionKeyDeleteProbe(() => partitionDelete);
             _rootSchema.add("products", new CosmosTable(metadata, _executor));
         }
 

@@ -147,6 +147,12 @@ schema on a released root, so `CosmosSchema` and `CosmosAccountSchema` can now r
 created. Only one they created: a client from `clientFactory` may be shared and is the factory's to
 dispose.
 
+A rebuilt root also starts the planner over: the schema's reasoning (`CosmosReasoning`) — its
+generations, every compiled declaration and every statement's tree — goes with the old root, and the
+new schema compiles again. A schema added with `AddSchema` is disposed each time a root holding it is
+released, `Clear()` included, though the same instance is added to the next root: disposal must leave
+such a schema usable, its reasoning above all, which is why `CosmosReasoning` holds nothing disposable.
+
 ### Statistics after pushdown — *large*
 
 Flink collects connector statistics *after* partition pruning and filter pushdown, so the number the
@@ -2010,6 +2016,11 @@ of record is in its repository, as
 - **Generations.** One graph per schema object and generation, retired at a million interned values or half its ids
   or epochs (g07). Each query
   context is remembered per declaration for the next 256 established sets, and released once nothing holds it.
+- **The graphs are the schema's, and nothing else's.** Each schema object's `CosmosReasoning` holds its generations
+  and the service's facts bound to them, and each bound theory its oracle; a theory bound to none compiles nothing
+  and says so. `JsonFactGenerations.Default`, its binding table and the oracle's own generations and table are gone,
+  and with them the pin the binding table's static key put on every factory schema's graphs. A host's schema, or a
+  table built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks.
 - **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
   four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
   nested `not`.
@@ -2126,6 +2137,14 @@ holds. Three bugs planted in what was added were each caught by it.
   warms each declaration on a background worker, and swaps a generation only once every declaration is ready.
 - **One context per declaration, not per container** — *small.* An account schema applies one declaration to a
   container in every database, and each still compiles its own.
+- **`PredicateRules` defines under one lock for the process** — *small.* `PredicateRules.Of` locks its static table,
+  keyed weakly on each graph's `JsonRules`, so every schema's first question in each generation waits on every
+  other's definition. The table holds nothing past its graph; the lock is the shared part. A lazy field on
+  `JsonRules` would take both away.
+- **A static keyed on a caller's type factory** — *small.* `CosmosConstraintCompiler.Cache` keys on the
+  `RelDataTypeFactory` a caller passes and holds each `CosmosTable` strongly beneath it; the planner passes a
+  connection's, but `Compile` is public, and a caller passing a long-lived factory would keep a table, and with it
+  its schema's reasoning, for as long. A weak table keyed on the table, nested under the factory's, would not.
 - **Run limits** — *small.* A query's run stops on contradiction and otherwise has the engine's defaults: 10,000
   iterations, 64 cases, a split depth of 4. The plan's §3.8 proposes limits per profile, measured on a corpus.
 - **The declared differential corpus** — *medium.* The rows the service returns for a pushed plan, against an
@@ -2486,6 +2505,10 @@ across documents* and *A join of a container to itself* is the record.
   is built, so an account with many databases pays a read per container to reach one. Statistics are
   already lazy; the definitions want a lazy `Map`.
 - **Client disposal** — *small.* See *A rebuilt root leaks its client* in section 1.
+- **Parse a function body's path per call** — *small, its own pull request.* `CosmosFunctionBodies.Paths` keeps
+  every JSON path an in-process `IS_DEFINED`, `IS_NULL` or `IS_STRING` was asked of, keyed by its text, unbounded
+  and for the process: what a query taught, against the rule that what is learned hangs off the schema. Parse on
+  each call; a path is short beside the document it is read from.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
 

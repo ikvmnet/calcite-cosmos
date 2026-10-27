@@ -43,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
         static CosmosContainerMetadata Links(CosmosContainerStatistics? statistics = null) =>
-            new CosmosContainerMetadata("links", new[] { "/linkId" })
+            TestReasoning.Bind(new CosmosContainerMetadata("links", new[] { "/linkId" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(CosmosSelfJoinTests.Schema()))
                 .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) })
                 .WithStatistics(statistics);
@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// A second container, of maps, which a link names by key.
         /// </summary>
         static CosmosContainerMetadata Maps() =>
-            new CosmosContainerMetadata("maps", new[] { "/guid" })
+            TestReasoning.Bind(new CosmosContainerMetadata("maps", new[] { "/guid" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(new JsonObject
                 {
                     ["type"] = "object",

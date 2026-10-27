@@ -70,12 +70,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         }
 
         /// <summary>
-        /// Initializes a new instance over <see cref="PlannerSchema"/>, its containers reasoning in the given generations,
-        /// or in <see cref="Cosmos.Facts.JsonFactGenerations.Default"/> where <c>null</c>.
+        /// Initializes a new instance over <see cref="PlannerSchema"/>, its containers bound to the given reasoning, or to
+        /// <see cref="TestReasoning.Shared"/> where <c>null</c>.
         /// </summary>
-        internal PlannerHarness(Cosmos.Facts.JsonFactGenerations? generations)
+        internal PlannerHarness(CosmosReasoning? reasoning)
         {
-            _tables = PlannerSchema.CreateTables(generations);
+            _tables = PlannerSchema.CreateTables(reasoning);
             _typeFactory = new JavaTypeFactoryImpl();
             _rootSchema = CalciteSchema.createRootSchema(false);
 
@@ -153,12 +153,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// <summary>
         /// Plans a statement over containers of its own to the CLR convention, every container's Cosmos rules beside the
         /// way out, as a host registering several does: with the collation trait and the calc pass where the calling test
-        /// plans with them.
+        /// plans with them. A container no schema has bound reasons in <see cref="TestReasoning.Shared"/>.
         /// </summary>
         internal static RelNode Plan(string sql, IEnumerable<CosmosContainerMetadata> containers, SqlOperatorTable operators, bool collations, bool calc)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var tables = containers.Select(container => new CosmosTable(container)).ToList();
+            var tables = containers.Select(container => new CosmosTable(TestReasoning.Bind(container))).ToList();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             foreach (var table in tables)

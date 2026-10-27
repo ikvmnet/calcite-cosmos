@@ -47,9 +47,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     public partial class CosmosTableModifyRuleTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
-        static readonly CosmosContainerMetadata Archive = new("archive", new[] { "/category" });
+        static readonly CosmosContainerMetadata Archive = TestReasoning.Bind(new CosmosContainerMetadata("archive", new[] { "/category" }));
 
         CosmosTable _products = null!;
         CosmosTable _archive = null!;

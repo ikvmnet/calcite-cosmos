@@ -51,9 +51,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static CosmosContainerMetadata Declared(bool declares) =>
             declares
-                ? new CosmosContainerMetadata("items", new[] { "/ref" })
+                ? TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                     .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Schema)))
-                : new CosmosContainerMetadata("items", new[] { "/ref" });
+                : TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }));
 
         const string Ref = """CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)""";
         const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
@@ -327,7 +327,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                                       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" } } }
             """;
 
-            var container = new CosmosContainerMetadata("items", new[] { "/ref" })
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Typed)));
 
             var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.at') >= '2024-01-01T00:00:00Z'""", container, out _);
@@ -367,7 +367,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             const string Numeric = """{ "properties": { "n": { "type": "integer" } } }""";
 
-            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+            var declared = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Numeric)));
 
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
@@ -391,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // definedness test that exists for its sake does not.
             const string Present = """{ "required": ["n"] }""";
 
-            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+            var declared = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Present)));
 
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
@@ -442,7 +442,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
               "properties": { "at": { "enum": ["a", "b"] } } }
             """;
 
-            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+            var declared = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Always)));
 
             const string Sql = """SELECT JSON_VALUE(c."DOC", '$.at') AS "at" FROM items AS c ORDER BY 1""";
@@ -474,7 +474,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 """{ "type": "object", "required": ["at"], "properties": { "at": { "type": ["string","null"] } } }""",
             })
             {
-                var container = new CosmosContainerMetadata("items", new[] { "/ref" })
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                     .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
                 Query(FindCosmos(PlanToCosmos(Sql, container, out _)), container).Sql
@@ -500,7 +500,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }
             """;
 
-            var container = new CosmosContainerMetadata("items", new[] { "/k" })
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/k" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Ids)));
 
             const string Other = "123e4567-e89b-12d3-a456-426614174001";
@@ -586,7 +586,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <param name="schema">The declared JSON Schema.</param>
         /// <returns>The container metadata.</returns>
         static CosmosContainerMetadata Container(string schema) =>
-            new CosmosContainerMetadata("items", new[] { "/ref" })
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         /// <summary>
@@ -841,7 +841,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var declared = pattern is null ? "" : $""", "pattern": "{pattern.Replace("\\", "\\\\")}" """;
 
-            return new CosmosContainerMetadata("items", new[] { "/ref" })
+            return TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                     $$"""
                     { "type": "object", "required": ["at"],
@@ -1028,7 +1028,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 + "\"properties\": { \"ref\": { \"type\": \"string\", \"pattern\": \""
                 + pattern.Replace("\\", "\\\\") + "\" } } }";
 
-            return new CosmosContainerMetadata("items", new[] { "/ref" })
+            return TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(json)));
         }
 
@@ -1365,7 +1365,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <param name="schema">The schema.</param>
         /// <returns>The container.</returns>
         static CosmosContainerMetadata Declaring(string schema) =>
-            new CosmosContainerMetadata("items", new[] { "/ref" })
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";

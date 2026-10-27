@@ -22,10 +22,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public partial class CosmosDeclaredFactPlanningTests
     {
 
-        static CosmosContainerMetadata Undeclared() => new("typed", new[] { "/category" });
+        static CosmosContainerMetadata Undeclared() => TestReasoning.Bind(new CosmosContainerMetadata("typed", new[] { "/category" }));
 
         static CosmosContainerMetadata ThreeKinds() =>
-            new CosmosContainerMetadata("kinds", new[] { "/kind" })
+            TestReasoning.Bind(new CosmosContainerMetadata("kinds", new[] { "/kind" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.KindsSchema)));
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("(NOT (c.\"id\" = 'BIKES')) IS NULL")]
         public void AFilterCalciteReadsAsNeverTrueKeepsNothing(string where)
         {
-            var products = new CosmosContainerMetadata("products", new[] { "/category" });
+            var products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
             var planned = Planning.CosmosPushdownProbeTests.Plan($"SELECT c.\"id\" FROM products AS c WHERE {where}", products);
 
             PlanText(planned).Should().Contain(KeepsNothing, PlanText(planned));

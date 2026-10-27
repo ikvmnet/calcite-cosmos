@@ -132,8 +132,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// rather than in a rule.
         /// </summary>
         [Fact]
-        public void AStratumAdmittingAConjunctWithItsOwnFactsIsCaught() =>
-            Caught(theory => new CosmosOracle(theory, null) { RenderedFrom = (terms, stratum, conjunct) => terms.Child(stratum, new[] { conjunct }) });
+        public void AStratumAdmittingAConjunctWithItsOwnFactsIsCaught()
+        {
+            var generations = new JsonFactGenerations();
+            Caught(theory => new CosmosOracle(theory, generations) { RenderedFrom = (terms, stratum, conjunct) => terms.Child(stratum, new[] { conjunct }) });
+        }
 
         /// <summary>
         /// A claim of a string's characters that one kind's branch makes, read as made of every kind: the shape of a
@@ -141,9 +144,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <c>pattern</c> states by.
         /// </summary>
         [Fact]
-        public void AGuardedCharactersClaimReadOfEveryKindIsCaught() =>
+        public void AGuardedCharactersClaimReadOfEveryKindIsCaught()
+        {
+            var generations = new JsonFactGenerations();
             Caught(theory => new CosmosOracle(new JsonFactTheory(theory.Rules.Select(rule =>
-                rule.Head.Claim is JsonClaim.Characters ? JsonFactRule.Unconditional(rule.Head) : rule)), null), "fact");
+                rule.Head.Claim is JsonClaim.Characters ? JsonFactRule.Unconditional(rule.Head) : rule)), generations), "fact");
+        }
 
         /// <summary>
         /// A value's characters read by the unit's high band alone, a supplementary character's surrogates left out: what a

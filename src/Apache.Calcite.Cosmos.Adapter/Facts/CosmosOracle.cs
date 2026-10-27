@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 using Eggnog;
 
@@ -47,9 +46,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// there holds of the fewer documents below. A contradiction is no failure: it is the answer that nothing is kept.
     /// </para>
     /// <para>
-    /// <b>In the planner's graphs.</b> <see cref="For"/> reasons in the generations the declaration compiles into, so a
-    /// declaration compiles once whoever asks: the oracle, and the clauses that still read the declaration directly. A
-    /// test makes an oracle in graphs of its own, so that no test reads another's memo.
+    /// <b>In the schema's graphs.</b> <see cref="For"/> reasons in the generations the declaration compiles into, so a
+    /// declaration compiles once whoever asks: the oracle, and the clauses that still read the declaration directly. The
+    /// oracle lives on the bound theory (<see cref="JsonFactTheory.Oracle"/>), so its memo is the schema's and goes with
+    /// it; an unbound theory has none. A test makes an oracle in graphs of its own, so that no test reads another's memo.
     /// </para>
     /// <para>
     /// <b>Every stratum is the engine's.</b> A declaration with no conditional rule, which every container that declares
@@ -67,13 +67,6 @@ namespace Apache.Calcite.Cosmos.Facts
     {
 
         /// <summary>
-        /// The generations every oracle reasons in unless it is given others: graphs apart from the planner's.
-        /// </summary>
-        static readonly JsonFactGenerations Own = new();
-
-        static readonly ConditionalWeakTable<JsonFactTheory, CosmosOracle> Oracles = new();
-
-        /// <summary>
         /// How many statements' trees an oracle remembers.
         /// </summary>
         const int Remembered = 256;
@@ -89,21 +82,39 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns the oracle of a declaration, the same one each time it is asked of the same theory, reasoning in the
         /// generations the theory compiles into.
         /// </summary>
-        /// <param name="theory">The declaration: a container's <c>Facts</c>.</param>
+        /// <param name="theory">The declaration: a container's <c>Facts</c>, bound to its schema's reasoning.</param>
         /// <returns>The oracle.</returns>
+        /// <exception cref="ArgumentException">The theory is bound to no schema's generations.</exception>
         public static CosmosOracle For(JsonFactTheory theory) =>
-            Oracles.GetValue(theory ?? throw new ArgumentNullException(nameof(theory)), t => new CosmosOracle(t, t.Generations));
+            (theory ?? throw new ArgumentNullException(nameof(theory))).Oracle;
 
         /// <summary>
-        /// Initializes a new instance.
+        /// Initializes a new instance over a bound theory, in the generations it compiles into.
+        /// </summary>
+        /// <param name="theory">The declaration, bound to a schema's generations.</param>
+        /// <param name="options">The limits a context's run is held to, or <c>null</c> for the engine's, stopping on a contradiction.</param>
+        /// <exception cref="ArgumentException">The theory is bound to no schema's generations.</exception>
+        internal CosmosOracle(JsonFactTheory theory, RunOptions? options = null)
+        {
+            if (theory is null)
+                throw new ArgumentNullException(nameof(theory));
+            if (theory.Generations is null)
+                throw JsonFactTheory.Unbound();
+
+            _theory = theory;
+            _options = options;
+        }
+
+        /// <summary>
+        /// Initializes a new instance in the given generations: a test's graphs, apart from any other's.
         /// </summary>
         /// <param name="theory">The declaration.</param>
-        /// <param name="generations">The generations to reason in, or <c>null</c> for the oracle's own.</param>
+        /// <param name="generations">The generations to reason in.</param>
         /// <param name="options">The limits a context's run is held to, or <c>null</c> for the engine's, stopping on a contradiction.</param>
-        internal CosmosOracle(JsonFactTheory theory, JsonFactGenerations? generations, RunOptions? options = null)
+        internal CosmosOracle(JsonFactTheory theory, JsonFactGenerations generations, RunOptions? options = null) :
+            this((theory ?? throw new ArgumentNullException(nameof(theory))).In(generations), options)
         {
-            _theory = (generations ?? Own).Bind(theory ?? throw new ArgumentNullException(nameof(theory)));
-            _options = options;
+
         }
 
         /// <summary>

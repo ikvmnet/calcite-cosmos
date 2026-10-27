@@ -528,6 +528,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._time = _time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
             metadata._facts = _facts;
+            metadata._reasoning = _reasoning;
             metadata._declared = _declared;
             metadata._serviceTarget = _serviceTarget;
             return metadata;
@@ -630,7 +631,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         // every container and is not delivered through any schema. A model's schema adds to these.
         JsonFactTheory _facts = ServiceFacts;
 
+        // Unbound, so a constant: rules and their encoding, which compile nothing. A schema's reasoning holds the copy
+        // bound to its graphs, and no static keyed on this one reaches it.
         static readonly JsonFactTheory ServiceFacts = new(CosmosServiceFacts.Rules);
+
+        // Its schema's reasoning, once a schema or a table binds it; null until then, when its facts compile nothing.
+        CosmosReasoning? _reasoning;
 
         /// <summary>
         /// Gets what is known about the documents this container holds, compiled to rules.
@@ -655,8 +661,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Empty where nothing is known, which is every container today, and an empty theory proves
         /// nothing and costs nothing to ask.
         /// </para>
+        /// <para>
+        /// <b>Bound to the schema's reasoning once the schema holds the container.</b> Until then the theory
+        /// is rules alone, and compiles nothing; the copy a schema or a table binds reasons in that schema's
+        /// graphs, and is another object than the one handed in.
+        /// </para>
         /// </remarks>
         public JsonFactTheory Facts => _facts;
+
+        /// <summary>
+        /// Gets what the container's schema learns as it plans, or <c>null</c> where no schema has bound
+        /// the container yet.
+        /// </summary>
+        internal CosmosReasoning? Reasoning => _reasoning;
 
         /// <summary>
         /// Returns the same metadata knowing these facts as well as the ones it already knew.
@@ -682,30 +699,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return this;
 
             var metadata = Copy();
-            metadata._facts = new JsonFactTheory(combined, _facts.Generations);
+            metadata._facts = new JsonFactTheory(combined, _reasoning?.Facts);
             return metadata;
         }
 
         /// <summary>
-        /// Returns the same metadata reasoning about its facts in the given generations of graphs.
+        /// Returns the same metadata reasoning in its schema's graphs: bound to the given reasoning where it
+        /// is bound to none, and as it is where it already is.
         /// </summary>
         /// <remarks>
-        /// What a schema learns hangs off the schema: the schema factory makes one set of generations per schema object
-        /// and binds every container it reads to it, so that the containers share one graph and nothing outlives the
-        /// schema. Metadata built any other way reasons in <see cref="JsonFactGenerations.Default"/>.
+        /// <para>
+        /// What a schema learns hangs off the schema: the factory makes one reasoning per schema object and
+        /// binds every container it reads to it, a host's <see cref="CosmosSchema"/> binds the containers
+        /// handed to it unbound to one of its own, and a table over unbound metadata binds its own. A
+        /// container that declares nothing more takes the reasoning's bound service facts, so those share
+        /// one compiled context and one oracle.
+        /// </para>
+        /// <para>
+        /// <b>The bound copy carries the reasoning wherever it goes.</b> Whoever holds it holds the schema's
+        /// graphs, and its fetched statistics are not the original's: a refresh of one reaches only that
+        /// one.
+        /// </para>
         /// </remarks>
-        /// <param name="generations">The generations.</param>
+        /// <param name="reasoning">The schema's reasoning.</param>
         /// <returns>The metadata.</returns>
-        internal CosmosContainerMetadata WithFactGenerations(JsonFactGenerations generations)
+        internal CosmosContainerMetadata WithReasoning(CosmosReasoning reasoning)
         {
-            if (generations is null)
-                throw new ArgumentNullException(nameof(generations));
+            if (reasoning is null)
+                throw new ArgumentNullException(nameof(reasoning));
 
-            if (ReferenceEquals(_facts.Generations, generations))
+            if (_reasoning is not null)
                 return this;
 
             var metadata = Copy();
-            metadata._facts = generations.Bind(_facts);
+            metadata._reasoning = reasoning;
+            metadata._facts = ReferenceEquals(_facts, ServiceFacts) ? reasoning.ServiceFacts : _facts.In(reasoning.Facts);
             return metadata;
         }
 

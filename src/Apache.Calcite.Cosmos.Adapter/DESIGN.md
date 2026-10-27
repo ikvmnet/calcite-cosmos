@@ -800,9 +800,32 @@ question cannot be asked wrongly: `{integer}` is within `{integer, fraction}`. T
 #### Generations, and what a question costs
 
 **One graph per schema object and generation.** A graph holds the rules once and every container's context
-beneath them, so the containers of a schema object share it: `CosmosSchemaFactory` makes one set of
-`JsonFactGenerations` per schema object and binds each container to it. Metadata built any other way shares
-a default one.
+beneath them, so the containers of a schema object share it. Each schema object has one `CosmosReasoning`,
+made where its containers are bound: `CosmosSchemaFactory.create` (an account one for all its databases), a
+host's `CosmosSchema` or `CosmosAccountSchema` for the containers handed to it unbound, or a `CosmosTable`
+built alone over unbound metadata. It holds the schema's `JsonFactGenerations` and the service's facts bound
+to them, which every container that declares nothing more takes, so they share one compiled context and one
+oracle. The oracle and its memo live on the bound theory (`JsonFactTheory.Oracle`), so they go with it.
+There is no default: a theory bound to none is rules and their encoding, a value a host may keep anywhere,
+and compiles nothing — asked to, it throws `ArgumentException`, which `IsEngineFailure` does not admit, so a
+missed binding fails its plan rather than reading as "unknown".
+
+**What is static, and what a schema learns.** The process keeps only facts fixed in the assembly: the rules
+of JSON and JSON Schema as code, the service's guarantees (`CosmosServiceFacts.Rules`), the unbound
+`ServiceFacts` and `Empty` theories, and bounded pure tables of such facts (`PathCell.Units`,
+`PredicateAtom.Parsed`). They are facts, not a cache. Everything a question can teach — graphs, interned
+values, compiled declarations, `D0`, statement trees, remembered answers — hangs off the schema's reasoning
+and goes with it; connections share it as they share the schema (docs chapter 6). A static keyed on a
+static object whose value reaches the table is a holder in its own right, whatever the table's own
+lifetime: `JsonFactGenerations._bound`, keyed on the static `ServiceFacts`, held each factory schema's bound
+copy and through it the generations, so every factory-built schema's graph lived for the process
+(`CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`, which failed on the code before this). A run's
+report reaches its graph through its rules, so `JsonContexts` hands one only to a flow that asks
+(`JsonContexts.Report`); a `[ThreadStatic]` last report kept each thread's last graph.
+
+**Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in:
+whoever holds it holds the schema's graphs, the executor factory is handed it, and a host's
+`RefreshStatistics` on its own object does not reach it — the schema's does.
 
 **A graph interns every value it is written, and never frees one**, so a graph serving queries forever grows
 forever; and its ids and epochs are finite. A generation is therefore retired once it has interned a million
@@ -5386,6 +5409,7 @@ src/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
       CosmosContainerMetadataReader.cs ✔ ContainerProperties → CosmosContainerMetadata
+      CosmosReasoning.cs              ✔ What one schema object learns as it plans: its graphs and bound facts
       CosmosPredicateLoader.cs        ✔ A filter → the IR, for the oracle
       CosmosFilterStatement.cs        ✔ A filter as the oracle reads it, and every question a rule asks of it
       CosmosRowFacts.cs               ✔ What the rows a clause reads satisfy: the filters beneath, last stratum (L1)
