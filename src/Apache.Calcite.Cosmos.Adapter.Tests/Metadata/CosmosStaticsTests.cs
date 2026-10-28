@@ -201,12 +201,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// Learned and process-wide, and leaving in a pull request of its own: listed so that the test holds the rest,
-        /// and failing once the field has gone, so that the line goes with it.
+        /// and failing once the field has gone, so that the line goes with it. None is left: the last,
+        /// <c>CosmosFunctionBodies.Paths</c>, went in #243.
         /// </summary>
-        static readonly (string Type, string Field, string Reason)[] Leaving =
-        [
-            ("Adapter.Sql.CosmosFunctionBodies", "Paths", "every path an in-process type test was asked, unbounded: parsed per call instead (TODO.md)"),
-        ];
+        static readonly (string Type, string Field, string Reason)[] Leaving = [];
 
         /// <summary>
         /// Facts whose type could hold what a schema learns and whose value holds none of it: a theory a static holds is

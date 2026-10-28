@@ -137,9 +137,8 @@ draws on a `CalciteDataSource` shared by every connection with an equivalent con
 and `CosmosSchemaFactory.create` runs once per data source rather than per connection; a host wanting the schema
 object itself registers it with `CalciteDataSourceBuilder.AddSchema`. `CalciteConnection.RootSchema` is now read-only.
 The manual (chapter 6) documents both; what a schema learns still hangs off the schema, and nothing here should grow a
-process-wide cache. Only one still does: `CosmosFunctionBodies.Paths`, parsed per call in a pull request of its own
-(*Parse a function body's path per call*, section 8). F's default graphs and the rendering oracle are each schema's
-now (*S's state was the process's*, section 10).
+process-wide cache, and none does: `CosmosFunctionBodies.Paths`, the last, is parsed per call since #243, and F's
+default graphs and the rendering oracle are each schema's now (*S's state was the process's*, section 10).
 
 What is left is disposal. A pooled data source is released after `ConnectionIdleLifetime` with no
 open connection, and the next connection builds a new root — and with it, through `endpoint`, a new
@@ -2023,8 +2022,8 @@ of record is in its repository, as
   says so. `JsonFactGenerations.Default`, its binding table and the oracle's own generations and table are gone, and
   with them the pin the binding table's static key put on every factory schema's graphs. A host's schema, or a table
   built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks. No static holds
-  what a question taught but `CosmosFunctionBodies.Paths`, which goes in a pull request of its own (*Parse a function
-  body's path per call*), and `CosmosStaticsTests` keeps it so: every static field of the adapter is classed with its
+  what a question taught (`CosmosFunctionBodies.Paths`, the last, is parsed per call since #243), and
+  `CosmosStaticsTests` keeps it so: every static field of the adapter is classed with its
   reason, and one not classed fails; a static's type is followed through the fields it can hold, its value walked
   after a schema has worked and gone, and each weak table names the test that finds it released.
   `CosmosConstraintCompiler`'s table, keyed on whatever type factory a caller passes, is weak on the table too, and
@@ -2510,11 +2509,6 @@ across documents* and *A join of a container to itself* is the record.
   is built, so an account with many databases pays a read per container to reach one. Statistics are
   already lazy; the definitions want a lazy `Map`.
 - **Client disposal** — *small.* See *A rebuilt root leaks its client* in section 1.
-- **Parse a function body's path per call** — *small, its own pull request.* `CosmosFunctionBodies.Paths` keeps
-  every JSON path an in-process `IS_DEFINED`, `IS_NULL` or `IS_STRING` was asked of, keyed by its text, unbounded
-  and for the process: what a query taught, against the rule that what is learned hangs off the schema. Parse on
-  each call; a path is short beside the document it is read from. It is the one static
-  `CosmosStaticsTests` lists as leaving, and that line goes with it.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
 

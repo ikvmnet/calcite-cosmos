@@ -844,8 +844,8 @@ does not (`ServiceFacts`, `JsonFactTheory.Empty`, `JsonFactSet.Empty`) are liste
 walks every static's value but the weak tables', field by field and through Calcite's objects, which catches what a
 declared `object` holds. A weak table's entries belong to whatever test is running beside while their keys live, so
 neither check reads them: each names the test that finds its entries gone once what they remember is let go, and
-what that test shows is for the reviewer of the line to judge. One learned static is left,
-`CosmosFunctionBodies.Paths`, listed as leaving: it is parsed per call in a pull request of its own (`TODO.md`).
+what that test shows is for the reviewer of the line to judge. No learned static is left: the last,
+`CosmosFunctionBodies.Paths`, is parsed per call since #243, and a static listed as leaving fails once it has gone.
 Eggnog's own thread statics are listed beside, since one holds a scope while an extraction runs.
 
 **Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in, for a schema
