@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <param name="beneath">Each atom read where its conjunct was rendered: that stratum's source, node and rules.</param>
         /// <param name="opened">
         /// Told of the bundle a miss opened, once its roots are read and before it goes, with each root's term, the import, the
-        /// run, and the time from opening it to its roots' answers: what the shadow judges and the cost instrument counts,
+        /// run, and the time from opening it to its roots' answers: what a test's probe judges and the cost instrument counts,
         /// read off the one bundle that answered.
         /// </param>
         public RenderingBundleAnswer Ask(RenderingSet set, IReadOnlyList<SqlPredicate> roots, IReadOnlyDictionary<long, SqlValue>? opaques, ImportSource source,

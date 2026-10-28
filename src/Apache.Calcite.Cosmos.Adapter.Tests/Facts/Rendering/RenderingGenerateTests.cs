@@ -31,8 +31,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <summary>
     /// Generate mode's theory (spec g03), on synthetic bundles: the forms it keeps for an atom, through <c>NOT</c> and a
     /// junction, and for the round's junction; what it never lifts; presence; the weakening at a leaf, a junction and a
-    /// negation; and the one discipline every read passes. Every run over the inputs completing within its limits is the
-    /// shadow's (<c>RenderingShadowTests</c>).
+    /// negation; and the one discipline every read passes. Every run over the inputs completing within its limits is
+    /// generate mode's run's (<c>RenderingSentTests</c>).
     /// </summary>
     public sealed class RenderingGenerateTests
     {

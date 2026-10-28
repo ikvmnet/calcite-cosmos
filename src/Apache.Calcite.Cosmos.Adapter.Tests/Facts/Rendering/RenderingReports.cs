@@ -92,76 +92,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The generate shadow's reports (spec g05): <c>shadow-admission.tsv</c>, each pending conjunct of each round under
-        /// each set, with its class; <c>shadow-weakening.tsv</c>, each residual's weakening beside J's; and
-        /// <c>shadow-summary.txt</c>, the classes per set and input, the regressions by reason against O2's caps, the
-        /// weakenings' classes, and S's time, first and again, and the bundles opened, by shape: of each statement, and of
-        /// each query, every statement its plan asked S of. Returns the summary's lines.
+        /// Generate mode's reports (spec g05, g17): <c>sent.tsv</c>, each conjunct of each statement under each set, what it
+        /// sent and S's weakening where it is residual; and <c>generate-summary.txt</c>, per set, the conjuncts sent exactly
+        /// by input, which line 6's floors hold, the candidates the templates proposed, and the tightest run against its limit
+        /// (R7). Returns the summary's lines.
         /// </summary>
-        public static List<string> WriteShadow(RenderingGenerateRun shadow, int cap)
+        public static List<string> WriteSent(RenderingGenerateRun generated)
         {
             lock (Writing)
             {
                 var folder = Folder();
-                var classes = shadow.Classes.ToDictionary(c => (c.Input, c.Name, c.Statement, c.Conjunct, c.Set));
-                static (int, int, string, int, int) Order(string input, string name, int statement, int conjunct) => (Key(input, name).Input, Key(input, name).Number, name, statement, conjunct);
-
-                Tsv(folder, "shadow-admission.tsv", ["input", "name", "statement", "conjunct", "round", "set", "owner", "translator", "verdict", "s", "form", "reason", "beneath", "bundle", "ms", "class", "why"],
-                    shadow.Admissions.OrderBy(a => Order(a.Input, a.Name, a.Statement, a.Conjunct)).ThenBy(a => a.Round).ThenBy(a => a.Set).Select(a =>
-                        classes.GetValueOrDefault((a.Input, a.Name, a.Statement, a.Conjunct, a.Set)) is var c ? new object?[] { a.Input, a.Name, a.Statement, a.Conjunct, a.Round, a.Set,
-                        a.Owned ? "S" : "translator", a.Text, a.TextVerdict, a.Answer.Kind, a.Answer.Best?.Text, a.Answer.Reason, a.Stratum is { } j ? "round " + j : "root", a.Bundle,
-                        a.Milliseconds.ToString("F2", CultureInfo.InvariantCulture), c?.Class, c?.Reason } : null!));
-
-                var weakenings = shadow.Weakenings.OrderBy(w => Order(w.Input, w.Name, w.Statement, w.Conjunct)).ThenBy(w => w.Set).Select(w => (Row: w, Class: RenderingGenerateRun.ClassOf(w))).ToList();
-                Tsv(folder, "shadow-weakening.tsv", ["input", "name", "statement", "conjunct", "set", "owner", "ir", "j", "j verdict", "s", "class", "bundle"],
-                    weakenings.Select(w => new object?[] { w.Row.Input, w.Row.Name, w.Row.Statement, w.Row.Conjunct, w.Row.Set, w.Row.Owned ? "S" : "translator", w.Row.Ir, w.Row.Text,
-                        w.Row.TranslatorVerdict, w.Row.Mine?.Text, w.Class, w.Row.Bundle }));
+                var weakenings = generated.Weakenings.ToDictionary(w => (w.Input, w.Name, w.Statement, w.Conjunct, w.Set));
+                Tsv(folder, "sent.tsv", ["input", "name", "statement", "conjunct", "set", "owner", "round", "ir", "sent", "weakening"],
+                    generated.Sends.OrderBy(c => (Key(c.Input, c.Name).Input, Key(c.Input, c.Name).Number, c.Name, c.Statement, c.Conjunct)).ThenBy(c => c.Set)
+                        .Select(c => new object?[] { c.Input, c.Name, c.Statement, c.Conjunct, c.Set, c.Owned ? "S" : "translator", c.Round, c.Ir, c.Form?.Text,
+                            weakenings.GetValueOrDefault((c.Input, c.Name, c.Statement, c.Conjunct, c.Set))?.Mine?.Text }));
 
                 var lines = new List<string>();
                 foreach (var set in RenderingGenerateRun.Sets)
                 {
-                    var asserted = RenderingGenerateRun.AssertedSets.Contains(set) ? "asserted" : "beside";
-                    var rows = shadow.Classes.Where(c => c.Set == set).ToList();
-                    lines.Add($"{set} ({asserted}): {rows.Count(r => r.Conjunct >= 0)} conjuncts in {rows.Select(r => (r.Input, r.Name, r.Statement)).Distinct().Count()} statements");
-                    foreach (var g in rows.GroupBy(r => r.Class).OrderBy(g => g.Key, StringComparer.Ordinal))
-                        lines.Add($"  {g.Key}: {g.Count()} ({string.Join(", ", Inputs.Select(i => $"{i} {g.Count(r => r.Input == i)}"))})");
+                    var rows = generated.Sends.Where(c => c.Set == set).ToList();
+                    lines.Add($"{set} ({(RenderingGenerateRun.AssertedSets.Contains(set) ? "asserted" : "beside")}): {rows.Count} conjuncts in {rows.Select(r => (r.Input, r.Name, r.Statement)).Distinct().Count()} statements; "
+                        + "sent exactly " + string.Join(", ", Inputs.Select(i => $"{i} {rows.Count(r => r.Input == i && r.Form is not null)} of {rows.Count(r => r.Input == i && r.Owned)} S owns")));
 
-                    var regressions = rows.Where(r => r.Class == RenderingGenerateRun.Regression).ToList();
-                    lines.Add($"  regressions {regressions.Count} against the cap {cap}: " + string.Join("; ", regressions.GroupBy(r => r.Reason).Select(g => $"{g.Key} {g.Count()}")));
-                    lines.AddRange(regressions.Select(r => $"    {r.Input} {r.Name}/{r.Statement}/{r.Conjunct} ({r.Reason}): {r.Ir} sent {r.Text} [{r.TextVerdict}]"));
-                    lines.Add("  weakenings: " + string.Join(", ", weakenings.Where(w => w.Row.Set == set).GroupBy(w => w.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}")));
-
-                    var proposed = shadow.Bundles.Where(b => b.Set == set).Select(b => b.Proposed).ToList();
+                    var proposed = generated.Bundles.Where(b => b.Set == set).Select(b => b.Proposed).ToList();
                     lines.Add($"  {proposed.Count} generate bundles; {proposed.Sum(p => p.Candidates)} candidates over {proposed.Sum(p => p.Atoms)} atoms, "
                         + $"{(double)proposed.Sum(p => p.Candidates) / Math.Max(1, proposed.Sum(p => p.Atoms)):F2} an atom");
                     // Each run's iterations against its limit (R7): the base of 80 is the margin one-atom bundles hold.
-                    var runs = shadow.Bundles.Where(b => b.Set == set && b.Failure is null).Select(b => (b.Iterations, Limit: RenderingBundle.GenerateLimit(RenderingBundle.WidthOf(b.Roots)))).ToList();
+                    var runs = generated.Bundles.Where(b => b.Set == set && b.Failure is null).Select(b => (b.Iterations, Limit: RenderingBundle.GenerateLimit(RenderingBundle.WidthOf(b.Roots)))).ToList();
                     if (runs.Count > 0 && runs.MaxBy(r => (double)r.Iterations / r.Limit) is var (iterations, limit))
                         lines.Add($"  iterations: the tightest run {iterations} of {limit} ({100.0 * iterations / limit:F0} %); the widest limit {runs.Max(r => r.Limit)}");
-                    // A query is an input's statement as planned: every filter statement its plan asked S of, its shape read
-                    // off the union of their atoms (§6.3), its time and bundles their sums.
-                    var costs = shadow.Costs.Where(c => c.Set == set).ToList();
-                    var queries = costs.GroupBy(c => (c.Input, c.Name)).Select(g => new RenderingGenerateRun.Cost(g.Key.Input, g.Key.Name, g.Count(), set,
-                        RenderingGenerateRun.ShapeOf(g.SelectMany(c => c.Conjuncts)), g.Sum(c => c.Bundles), g.Sum(c => c.First), g.Sum(c => c.Again), [.. g.SelectMany(c => c.Conjuncts)])).ToList();
-                    foreach (var (unit, timed) in new[] { ("statements", costs), ("queries", queries) })
-                        foreach (var shape in timed.GroupBy(c => c.Shape).OrderBy(g => Shapes.IndexOf(g.Key)))
-                        {
-                            var (first, again, bundles) = (Sorted(shape.Select(c => c.First)), Sorted(shape.Select(c => c.Again)), Sorted(shape.Select(c => (double)c.Bundles)));
-                            lines.Add($"  {shape.Key}: {first.Count} {unit}{(unit == "queries" ? $" of {shape.Sum(q => q.Statement)} statements" : "")}; bundles median {RenderingCostTests.At(bundles, 0.5)}, "
-                                + $"max {bundles[^1]}; S first p50 {RenderingCostTests.At(first, 0.5):F2} p90 {RenderingCostTests.At(first, 0.9):F2} max {first[^1]:F1} ms, total {first.Sum() / 1000:F2} s; "
-                                + $"again p50 {RenderingCostTests.At(again, 0.5):F3} p90 {RenderingCostTests.At(again, 0.9):F3} ms");
-                        }
                 }
 
-                File.WriteAllLines(Path.Combine(folder, "shadow-summary.txt"), lines);
+                File.WriteAllLines(Path.Combine(folder, "generate-summary.txt"), lines);
                 return lines;
             }
-
-            static List<double> Sorted(IEnumerable<double> values) => [.. values.Order()];
         }
-
-        /// <summary>The shapes a query is read as (spec §6.3), from the narrowest.</summary>
-        static readonly List<string> Shapes = ["1-3 conditions", "4 conditions", "5-7 conditions", "a list of 5-19", "rare"];
 
         /// <summary>The order the reports keep: by input, then by a statement's place where its name is one, then by name.</summary>
         static (int Input, int Number) Key(string input, string name) => (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1);

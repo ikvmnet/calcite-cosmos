@@ -83,14 +83,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly object _lock = new();
         bool[]? _owned;
 
-        /// <summary>S's side of the admission under each set the shadow asked, the one it is proven under first; none unarmed.</summary>
+        /// <summary>S's side of the admission under the set it is proven under, then each a test's probe asks beside it; none where a test turned S off.</summary>
         List<CosmosFilterRendering>? _renderings;
-
-        /// <summary>
-        /// Whether the admission took S's answers: the arm it ran under, which implementation and the split rule follow
-        /// whatever arm is in force when they run, so that a plan is written as it was admitted.
-        /// </summary>
-        bool _writes;
         CosmosStatementScope? _scope;
         IReadOnlyList<int>? _redundant;
         bool? _contradictory;
@@ -214,26 +208,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// One round of admission: the translator asked of each pending conjunct, in order, from the node the round hands it.
-        /// Site A: S is asked once a round (<see cref="CosmosFilterRendering"/>); writing, as every flow does unless a test
-        /// arms it beside the translator, S answers alone for the conjuncts it owns, its "no" included (O2, O8), and after
-        /// the last round says whether its admissions stand.
+        /// One round of admission: S asked once a round of the conjuncts it owns (<see cref="CosmosFilterRendering"/>), which
+        /// it answers alone, its "no" included (O2, O8), and after the last round says whether its admissions stand; the
+        /// translator asked of each other pending conjunct, in order, from the node the round hands it.
         /// </summary>
         AdmissionRound.Answer Render(AdmissionRound round)
         {
-            // The shadow's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
+            // The rendering check's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
             if (CosmosRenderingCapture.Armed)
                 CosmosRenderingCapture.Observer?.Read(this, round);
 
-            var arm = CosmosRenderingShadow.Asking;
-            var ours = arm is null ? [] : Rendered(round, arm);
+            var ours = Rendered(round);
             if (round.Closing)
                 return new([], ours);
 
             var translated = new List<int>();
             foreach (var i in round.Pending)
             {
-                if (arm is { Writes: true } && Owned(i))
+                if (_renderings is not null && Owned(i))
                     continue;
 
                 var parameters = new CosmosParameterList();
@@ -246,33 +238,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 translated.Add(i);
             }
 
-            return new(translated, arm is { Writes: true } ? ours : []);
+            return new(translated, ours);
         }
 
         /// <summary>
-        /// S asked of a round under each set the flow shadows, the statement's own first, whose admissions it hands back; the
-        /// capture told of each as S's print, as it is told of the translator's text.
+        /// S asked of a round under the statement's own set, whose admissions it hands back, and under each set a test's probe
+        /// asks beside it; the capture told of each admission as S's print, as it is told of the translator's text.
         /// </summary>
-        IReadOnlyList<int> Rendered(AdmissionRound round, CosmosRenderingShadow.Arming arm)
+        IReadOnlyList<int> Rendered(AdmissionRound round)
         {
             if (_renderings is null)
             {
                 // A statement's admission is asked of S from its first round, in the flow that ran it.
-                if (round is not { Number: 1, Again: false, Closing: false })
+                if (round is not { Number: 1, Again: false, Closing: false } || CosmosRendering.Off)
                     return [];
 
                 _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];
-                _writes = arm.Writes;
-                // Only the statement's own set's declines are counted, and only where S writes it: what a host's plan pays.
-                _renderings = [.. new[] { arm.Set ?? CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(arm.Observer?.Sets ?? []).Distinct()
-                    .Select((set, n) => new CosmosFilterRendering(this, set, arm, _owned, n == 0 && arm.Writes ? _container.Name : null))];
+                // Only the statement's own set's declines are counted: what a host's plan pays.
+                var probe = _container.Reasoning?.Probe;
+                _renderings = [.. new[] { CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(probe?.Sets ?? []).Distinct()
+                    .Select((set, n) => new CosmosFilterRendering(this, set, probe, _owned, n == 0 ? _container.Name : null))];
             }
 
             var ours = _renderings[0].Answer(round, _scope!);
             foreach (var other in _renderings.Skip(1))
                 other.Answer(round, _scope!);
 
-            if (arm.Writes && round.Closing == false && CosmosRenderingCapture.Armed)
+            if (round.Closing == false && CosmosRenderingCapture.Armed)
                 foreach (var i in ours)
                 {
                     var parameters = new CosmosParameterList();
@@ -306,21 +298,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
         }
 
-        /// <summary>The form S chose for a conjunct it admitted, which implementation prints; none where S's answers were not taken for the statement.</summary>
-        internal ServiceForm? Form(int conjunct) => RenderingFor(null) is { } r && _writes && Scope.StratumOf(conjunct) > 0 ? r.Resolution.Forms.GetValueOrDefault(conjunct) : null;
-
-        /// <summary>Whether the statement's admission took S's answers, which the split rule's weakening follows (site W).</summary>
-        internal bool Writes
-        {
-            get
-            {
-                lock (_lock)
-                {
-                    _ = Scope.Residual;
-                    return _writes;
-                }
-            }
-        }
+        /// <summary>The form S chose for a conjunct it admitted, which implementation prints; none where S was asked nothing.</summary>
+        internal ServiceForm? Form(int conjunct) => RenderingFor(null) is { } r && Scope.StratumOf(conjunct) > 0 ? r.Resolution.Forms.GetValueOrDefault(conjunct) : null;
 
         /// <summary>
         /// S's side of the admission under a set, the statement's own where none is named, resolved: read once the rounds are
@@ -333,16 +312,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 _ = Scope.Residual;
                 return _renderings?.FirstOrDefault(r => set is null || r.Set == set) is { } rendering ? (rendering, rendering.Resolve(Scope)) : null;
-            }
-        }
-
-        /// <summary>The sets S's admission was asked under, the statement's own first; none unarmed.</summary>
-        internal IReadOnlyList<RenderingSet> RenderedSets
-        {
-            get
-            {
-                lock (_lock)
-                    return [.. _renderings?.Select(r => r.Set) ?? []];
             }
         }
 
@@ -423,10 +392,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var builder = new StringBuilder();
             var next = 0;
 
-            // Site P: where the admission took S's answers, a conjunct S admitted prints the form it chose, no bundle and no
-            // question, whatever arm is in force now; read past one volatile bool.
-            var armed = CosmosRenderingShadow.Armed;
-
             void Write(RexNode node)
             {
                 if (node is RexCall call && call.getKind() == SqlKind.AND)
@@ -448,7 +413,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // each index says.
                 var conjunct = next++;
                 System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
-                var text = armed && Form(conjunct) is { } form ? Print(conjunct, form, parameters) : TranslatorFor(conjunct, parameters).TranslateConjunct(node);
+                // A conjunct S admitted prints the form it chose, no bundle and no question; the translator writes the rest.
+                var text = Form(conjunct) is { } form ? Print(conjunct, form, parameters) : TranslatorFor(conjunct, parameters).TranslateConjunct(node);
                 builder.Append(text);
                 if (CosmosRenderingCapture.Armed)
                     CosmosRenderingCapture.Observer?.Written(this, conjunct, text, parameters);

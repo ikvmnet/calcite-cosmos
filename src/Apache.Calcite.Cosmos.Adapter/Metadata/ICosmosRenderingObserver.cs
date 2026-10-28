@@ -24,8 +24,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         void Weakened(CosmosFilterStatement statement, int conjunct, string text, CosmosParameterList parameters);
 
         /// <summary>
-        /// A statement whose rounds are being admitted, told once a round, whether any conjunct renders or not: what generate
-        /// mode's shadow reads, and how often a statement admits.
+        /// A statement whose rounds are being admitted, told once a round, whether any conjunct renders or not: which statements
+        /// generate mode's run reads, and how often a statement admits.
         /// </summary>
         void Read(CosmosFilterStatement statement, AdmissionRound round);
 

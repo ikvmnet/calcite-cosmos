@@ -85,9 +85,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var (run, pieces) = Offered.Value;
             run.Failures.Should().BeEmpty();
-            var (shadow, name) = (run.Shadow!, Cases.Keys.ToList().IndexOf(p).ToString(CultureInfo.InvariantCulture));
-            var ids = shadow.Admissions.Where(a => a.Name == name).Select(a => a.Bundle).Concat(shadow.Weakenings.Where(w => w.Name == name).Select(w => w.Bundle ?? 0)).ToHashSet();
-            var bundles = shadow.Bundles.Where(b => ids.Contains(b.Id)).ToList();
+            var (generated, name) = (run.Generated!, Cases.Keys.ToList().IndexOf(p).ToString(CultureInfo.InvariantCulture));
+            var ids = generated.Asked.Where(a => a.Name == name).Select(a => a.Bundle).Concat(generated.Weakenings.Where(w => w.Name == name).Select(w => w.Bundle ?? 0)).ToHashSet();
+            var bundles = generated.Bundles.Where(b => ids.Contains(b.Id)).ToList();
             var refuted = pieces[p].SelectMany(piece => bundles.SelectMany(b => b.Refutations ?? [])
                 .Where(r => r.Node.Digest == piece.Atom.Digest && r.Position == piece.Position && r.Form.Equals(piece.Form)).Select(r => (Piece: piece, Spelled: RenderingGenerateMutationTests.Show(r.Refutation))))
                 .Distinct().ToList();
@@ -103,16 +103,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             if (p == "P3")
                 implied.Should().BeEmpty("P3's cell drops a row Calcite keeps");
 
-            var tip = RenderingGenerateMutationTests.Tip.Value.Triggers.First(t => t.Sql == c.Sql).Classes;
-            var sent = shadow.Classes.Where(k => k.Name == name).ToList();
+            var tip = RenderingGenerateMutationTests.Tip.Value.Triggers.First(t => t.Sql == c.Sql).Sends;
+            var sent = generated.Sends.Where(k => k.Name == name).ToList();
             sent.Select(k => (k.Set, k.Ir, k.Form?.Text)).Should().BeEquivalentTo(tip.Select(k => (k.Set, k.Ir, k.Form?.Text)), "S sends its own form");
             sent.Should().NotContain(k => k.Form != null && k.Form.Subforms.Any(f => f.Equals(refuted[0].Piece.Form) || f.Equals(ServiceForm.Strip(refuted[0].Piece.Form))),
                 "nothing S sends holds the wrong part");
         }
 
         /// <summary>
-        /// Every case's statement shadowed in a graph of its own, each conjunct's text taken apart at its atoms and offered
-        /// there as a planted template: a rule proposing each part at every atom of its path at its position.
+        /// Every case's statement planned in a schema asking a graph of its own, each conjunct's text taken apart at its atoms
+        /// and offered there as a planted template: a rule proposing each part at every atom of its path at its position.
         /// </summary>
         static readonly Lazy<(RenderingCheckRun Run, IReadOnlyDictionary<string, IReadOnlyList<Piece>> Pieces)> Offered = new(() =>
         {
@@ -129,8 +129,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     r.Then(theory.Candidate.Of(e, pos, form));
                 });
 
-            var run = RenderingCheckRun.Over(RenderingInputs.Differential("recall", [.. Cases.Values.Select(c => c.Sql)], RenderingInputs.Containers),
-                shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+            var generated = new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets);
+            var run = RenderingCheckRun.Over(RenderingInputs.Differential("recall", [.. Cases.Values.Select(c => c.Sql)], generated.Bind(CosmosDifferentialTests.Containers)), generated: generated);
             GC.KeepAlive(graph);
             return (run, pieces);
         });

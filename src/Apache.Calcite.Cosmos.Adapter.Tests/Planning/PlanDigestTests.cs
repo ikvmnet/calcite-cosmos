@@ -40,14 +40,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             using (harness.Planning())
             {
                 var corpus = RenderingInputs.Corpus(reasoning).ToList();
-                return ([Pass(reasoning, corpus), Pass(reasoning, corpus)], harness.Counts);
+                return ([Pass(corpus), Pass(corpus)], harness.Counts);
             }
         });
 
-        static (string, string, int, bool)[] Pass(CosmosReasoning reasoning, IReadOnlyList<RenderingInputs.Statement> corpus) => [.. corpus.Select(statement =>
+        static (string, string, int, bool)[] Pass(IReadOnlyList<RenderingInputs.Statement> corpus) => [.. corpus.Select(statement =>
         {
             RelNode? planned = null;
-            using var shadow = CosmosRenderingShadow.Arm(new RenderingShadowCounter(reasoning.Rendering, []));
             using var cost = CosmosRenderingCost.Measure(out var samples);
             var line = PlanDigests.Lines([statement with { Plan = () => planned = statement.Plan() }]).Single();
             return (statement.Sql, line, samples.Sum(s => s.Cost.Bundles), planned is not null && PlanDigests.Filters(planned));
@@ -73,8 +72,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             using (harness.Planning())
                 File.WriteAllText(path, string.Join("\n", PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates, reasoning)) + "\n");
 
-            // A decline leaves its conjunct residual with no weakening, a digest no shadow row explains. Every statement is
-            // planned in the harness's reasoning, which a table that made its own, or was bound to another, would fail.
+            // A decline leaves its conjunct residual with no weakening, a digest the listing does not explain. Every
+            // statement is planned in the harness's reasoning, which a table that made its own, or was bound to another,
+            // would fail.
             TestContext.Current.TestOutputHelper?.WriteLine($"the harness's reasonings: {harness.Counts}");
             harness.Counts.Declines.Should().Be(0, "the switch's listing holds no plan a decline changed");
         }

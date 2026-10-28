@@ -372,7 +372,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>S's weakenings of the pull request's run under the asserted sets, once a statement, conjunct, form and set.</summary>
         internal static IReadOnlyList<RenderingGenerateRun.Weakened> Weakenings() =>
-            [.. RenderingCheckRun.PerPullRequest.Value.Shadow!.Weakenings.Where(w => w.Mine is not null && w.Source is not null && RenderingGenerateRun.AssertedSets.Contains(w.Set))
+            [.. RenderingCheckRun.PerPullRequest.Value.Generated!.Weakenings.Where(w => w.Mine is not null && w.Source is not null && RenderingGenerateRun.AssertedSets.Contains(w.Set))
                 .DistinctBy(w => (w.Source, w.Conjunct, w.Mine!.Text, w.Set))];
 
         /// <summary>

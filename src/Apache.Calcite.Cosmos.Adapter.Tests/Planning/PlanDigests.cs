@@ -54,13 +54,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             statements.Select(s => Line(s.Input, s.Name, s.Sql, Of(s.Plan)));
 
         /// <summary>
-        /// Plans the statements twice, each time in a reasoning of their own, the second under a switch; holds that the
-        /// switch reached the planner, and that every digest is the same.
+        /// Plans the statements twice, each time in a reasoning of their own, the second under a switch and in the reasoning
+        /// given, if one is; holds that the switch reached the planner, and that every digest is the same.
         /// </summary>
-        public static void Unchanged(Func<IDisposable> arm, Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements, Action<CosmosReasoning> reached)
+        public static void Unchanged(Func<IDisposable> arm, Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements, Action<CosmosReasoning> reached, CosmosReasoning? armed = null)
         {
             var off = Lines(statements(new CosmosReasoning())).ToList();
-            var armed = new CosmosReasoning();
+            armed ??= new CosmosReasoning();
             List<string> on;
             using (arm())
                 on = Lines(statements(armed)).ToList();

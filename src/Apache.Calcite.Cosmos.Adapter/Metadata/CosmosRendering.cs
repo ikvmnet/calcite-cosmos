@@ -14,7 +14,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// What production's rendering graph S is defined from: the registry's rows, strict where Calcite answers null for a
     /// null as its one reader of that says, read once a process, being facts fixed in the assembly; the set a container's
     /// statements are proven under; and the one path every site asks S through. Each schema's oracle is its reasoning's
-    /// (<see cref="CosmosReasoning.Rendering"/>), which every filter a plan pushes asks (<see cref="CosmosRenderingShadow"/>).
+    /// (<see cref="CosmosReasoning.Rendering"/>), which every filter a plan pushes asks: admission, the split's weakening,
+    /// and implementation's print (<c>DESIGN.md</c>, <i>The switch</i>).
     /// </summary>
     internal static class CosmosRendering
     {
@@ -24,6 +25,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
         });
+
+        static readonly System.Threading.AsyncLocal<bool> Unasked = new();
+
+        /// <summary>Whether any flow has turned S off; once one has, a site also reads the flow's.</summary>
+        static volatile bool _offAnywhere;
+
+        /// <summary>
+        /// Whether a test turned S off for this flow: the translator writes every conjunct, nothing is weakened, and no plan
+        /// starts a build — the pairing lines 29 and 29b read, and a sample of the translator's own text. Production never
+        /// does.
+        /// </summary>
+        internal static bool Off => _offAnywhere && Unasked.Value;
+
+        /// <summary>Turns S off for the flow until disposed (<see cref="Off"/>).</summary>
+        internal static IDisposable TurnOff()
+        {
+            var restore = new Restore(Unasked.Value);
+            (Unasked.Value, _offAnywhere) = (true, true);
+            return restore;
+        }
 
         /// <summary>The registry's S, read on first use, the first build's thread in production: what every schema's generations, and the tests, are defined from.</summary>
         public static RenderingDefinition Definition => Defined.Value;
@@ -72,6 +93,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 CosmosRenderingCost.Add(new(roots, answer.Cost, 0, 0, oracle.Usage, oracle.Usage));
 
             return answer;
+        }
+
+        /// <summary>Puts the flow's S back as <see cref="TurnOff"/> found it.</summary>
+        sealed class Restore(bool was) : IDisposable
+        {
+
+            public void Dispose() => Unasked.Value = was;
+
         }
 
     }

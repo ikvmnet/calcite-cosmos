@@ -23,38 +23,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>
-        /// Every two <c>Equal</c> agreements of a node at a position in each generate bundle of the pull request's run, and
-        /// S's best beside the translator's text where the shadow's check bundle proved it at the same key, keep alike on
-        /// every target the bundle's set serves, over source A's documents where the conjuncts its stratum assumes hold. A
-        /// document Calcite raises on, where the Equal box tolerates any answer but a failure, is reported apart.
+        /// Every two <c>Equal</c> agreements of a node at a position in each generate bundle of the pull request's run keep
+        /// alike on every target the bundle's set serves, over source A's documents where the conjuncts its stratum assumes
+        /// hold. A document Calcite raises on, where the Equal box tolerates any answer but a failure, is reported apart.
         /// </summary>
         [Fact]
         public void EveryTwoExactCandidatesAgree()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
-            var compared = Compare(shadow);
+            var compared = Compare(RenderingCheckRun.PerPullRequest.Value.Generated!);
             RenderingReports.WritePairwise(compared);
-            TestContext.Current.TestOutputHelper?.WriteLine($"{compared.Pairs} pairs ({shadow.Pairs.Count} with the translator's text proven at one key), {compared.Seen} documents and targets compared, "
+            TestContext.Current.TestOutputHelper?.WriteLine($"{compared.Pairs} pairs, {compared.Seen} documents and targets compared, "
                 + $"{compared.Raised} where Calcite raises reported apart; {compared.Disagreements.Count} disagreements");
             compared.Pairs.Should().BePositive();
             compared.Disagreements.Should().BeEmpty();
         }
 
         /// <summary>
-        /// The pairs of a shadow's generate bundles compared on source A's documents: each pair, documents and targets
-        /// compared and those where Calcite raises, and each disagreement.
+        /// The pairs of a run's generate bundles compared on source A's documents: each pair, documents and targets compared
+        /// and those where Calcite raises, and each disagreement.
         /// </summary>
-        internal static Compared Compare(RenderingGenerateRun shadow)
+        internal static Compared Compare(RenderingGenerateRun generated)
         {
             var (rows, disagreements) = (new List<object?[]>(), new List<string>());
             var (pairs, compared, raised) = (0, 0, 0);
-            var translated = shadow.Pairs.ToLookup(p => p.Bundle.Id);
-            foreach (var bundle in shadow.Bundles.Where(b => b.Claim is not null))
+            foreach (var bundle in generated.Bundles.Where(b => b.Claim is not null))
             {
                 var groups = bundle.Forms.Where(f => f.What == RenderingGenerateRun.Judged.Agreement && f.Claim == Verdict.Equal)
                     .GroupBy(f => (f.Node.Digest, f.Position)).Where(g => g.Count() > 1)
                     .SelectMany(g => g.SelectMany((a, i) => g.Skip(i + 1).Select(b => (a.Node, a.Position, A: a.Form, B: b.Form, Of: "candidates"))))
-                    .Concat(translated[bundle.Id].Where(p => p.Best.Equals(p.Translator) == false).Select(p => (Node: p.Conjunct, Position: RenderPosition.Pos, A: p.Best, B: p.Translator, Of: "the translator's")))
                     .ToList();
                 if (groups.Count == 0)
                     continue;

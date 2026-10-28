@@ -14,9 +14,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The capture and the shadow change no plan: every plan digest is the same with a recorder and the generate shadow's
-    /// observer armed as without, each arm in a reasoning of its own, S writing in both as production does since the switch
-    /// (spec g15, g16, line 21).
+    /// The capture and a schema's probe change no plan: every plan digest is the same with a recorder armed, in a reasoning
+    /// whose probe asks S under every set beside the statement's own, as in one of its own with neither (spec g15, g17,
+    /// line 21).
     /// </summary>
     public sealed class RenderingCaptureTests
     {
@@ -31,24 +31,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static void Unchanged(Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements)
         {
-            var (recorder, shadow) = (new RenderingRecorder(), new RenderingShadowCounter());
-            PlanDigests.Unchanged(() => new Both(recorder.Arm(), CosmosRenderingShadow.Arm(shadow)), statements, _ =>
+            var (recorder, probe) = (new RenderingRecorder(), new RenderingProbeCounter());
+            PlanDigests.Unchanged(recorder.Arm, statements, _ =>
             {
                 recorder.Records.Should().NotBeEmpty("the capture was armed");
-                TestContext.Current.TestOutputHelper?.WriteLine($"the shadow: {shadow.Counts}");
-                shadow.Counts.Opened.Should().BePositive("S was asked at admission");
-            });
-        }
-
-        sealed class Both(IDisposable first, IDisposable second) : IDisposable
-        {
-
-            public void Dispose()
-            {
-                second.Dispose();
-                first.Dispose();
-            }
-
+                TestContext.Current.TestOutputHelper?.WriteLine($"the probe: {probe.Opened} bundles opened");
+                probe.Opened.Should().BePositive("S was asked at admission");
+            }, new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(), probe: probe));
         }
 
     }

@@ -84,9 +84,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A1–A4 over single atoms are what the translator writes, beneath its <c>NOT</c> where an atom stands at <c>Neg</c>:
-        /// a sample statement's conjunct, written at admission beside the translator and read back, is its template's form
-        /// for the atom the loader reads. And every one-atom conjunct the check run's statements send — S's print since the
-        /// switch — is the form some template spells for that atom.
+        /// a sample statement's conjunct, written at admission by the translator with S turned off and read back, is its
+        /// template's form for the atom the loader reads. And every one-atom conjunct the check run's statements send — S's
+        /// print since the switch — is the form some template spells for that atom.
         /// </summary>
         [Fact]
         public void EveryTemplateSpellsWhatTheTranslatorWrites()
@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var recorder = new RenderingRecorder();
                 using (recorder.Arm())
-                using (Adapter.Metadata.CosmosRenderingShadow.Arm(null, writes: false))
+                using (Adapter.Metadata.CosmosRendering.TurnOff())
                     RenderingInputs.Differential("templates", [sql], RenderingInputs.Containers).Single().Plan();
 
                 var admitted = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).ToList();

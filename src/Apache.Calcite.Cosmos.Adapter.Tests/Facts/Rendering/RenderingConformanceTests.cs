@@ -40,8 +40,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Assert.Skip("C6 runs the Emulator set's forms on an emulator.");
 
             // The forms a conjunct's best was, each with the bundle that proved it: printed, they are what implementation sends.
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
-            var forms = shadow.Bundles.Where(b => b.Set == RenderingSet.Emulator && b.Cells is not null)
+            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
+            var forms = generated.Bundles.Where(b => b.Set == RenderingSet.Emulator && b.Cells is not null)
                 .SelectMany(b => b.Roots.Where(r => r is not SqlPredicate.And && b.Answers[r.Digest] is { Kind: RenderingVerdictKind.Proven, Best: not null })
                     .Select(r => (Form: b.Answers[r.Digest].Best!, Bundle: b)))
                 .DistinctBy(f => f.Form.Text).OrderBy(f => f.Form.Text, StringComparer.Ordinal).ToList();

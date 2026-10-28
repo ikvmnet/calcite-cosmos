@@ -46,20 +46,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The targets the asserted set serves, each of which a proof must hold on.</summary>
         public static IEnumerable<RenderingTarget> Targets => ProbeRows.Measured.Serves[AssertedSet];
 
-        /// <summary>One S a process, its generations defined from the registry's rows, which the shadow asks too.</summary>
+        /// <summary>One S a process, its generations defined from the registry's rows, which generate mode's runs ask too.</summary>
         internal static readonly RenderingGraph Measured = new(() => ProbeRows.Measured);
 
         readonly RenderingGraph Graph;
 
         /// <summary>
-        /// The pull request's run, once a process, in a reasoning of its own: the partition run's 200 predicates, or 1,000 at
-        /// the gate; and generate mode's shadow over every statement it plans, told by production's sites as it plans.
+        /// The pull request's run, once a process, in generate mode's schema of its own: the partition run's 200 predicates, or
+        /// 1,000 at the gate; and every bundle production's sites open as it plans, told through that schema's probe.
         /// </summary>
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
         {
-            var reasoning = new CosmosReasoning();
+            var generated = new RenderingGenerateRun();
+            var reasoning = generated.Reasoning;
             return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)).Append(RenderingInputs.CastOfTyped(reasoning)),
-                shadow: new RenderingGenerateRun());
+                generated: generated);
         });
 
         readonly Action<RenderingSet, TimeSpan>? Timed;
@@ -67,14 +68,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <param name="memo">The memo, or one of its own.</param>
         /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
         /// <param name="timed">Told each bundle's time from open to dispose, with its set (the cost line).</param>
-        /// <param name="shadow">Generate mode's shadow, armed at production's sites while each statement plans and read once its checks are made; none where <c>null</c>.</param>
-        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null) =>
-            (Memo, Graph, Timed, Shadow) = (memo ?? new RenderingMemo(), graph ?? Measured, timed, shadow);
+        /// <param name="generated">Generate mode's run, whose schema the inputs plan in, read once each statement's checks are made; none where <c>null</c>.</param>
+        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? generated = null) =>
+            (Memo, Graph, Timed, Generated) = (memo ?? new RenderingMemo(), graph ?? Measured, timed, generated);
 
         public RenderingMemo Memo { get; }
 
-        /// <summary>Generate mode's shadow of every statement planned, where the run carries one.</summary>
-        public RenderingGenerateRun? Shadow { get; }
+        /// <summary>Generate mode's run over every statement planned, where the run carries one.</summary>
+        public RenderingGenerateRun? Generated { get; }
 
         /// <summary>Every conjunct a check holds, one row each, with what the check says.</summary>
         public ConcurrentQueue<Checked> Conjuncts { get; } = new();
@@ -105,13 +106,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
-        /// <summary>Whether the shadow's flows take S's answers: as the process does where null, writing since the switch; told apart where a test reads sites W and R, or judges a plant against the translator's text, which happen beside the translator alone.</summary>
-        public bool? Writes { get; init; }
-
-        /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null, bool? writes = null)
+        /// <summary>
+        /// Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time. Where a
+        /// generate run is given, the inputs plan in its schema (<see cref="RenderingGenerateRun.Reasoning"/>).
+        /// </summary>
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? generated = null)
         {
-            var run = new RenderingCheckRun(timed: timed, shadow: shadow) { Writes = writes };
+            var run = new RenderingCheckRun(timed: timed, generated: generated);
             var all = inputs.ToList();
             foreach (var input in all.Where(i => i.Input == "corpus"))
                 run.Plan(input);
@@ -211,7 +212,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var recorder = new RenderingRecorder();
             var queries = new List<(string? Where, int From, int To)>();
             using (recorder.Arm())
-            using (Shadow is { } observer ? CosmosRenderingShadow.Arm(observer, Writes) : null)
             {
                 RelNode planned;
                 try
@@ -292,19 +292,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var weakening in records.Where(r => r.Site == 3).DistinctBy(r => (r.Statement, r.Conjunct, CosmosSqlFormReader.Inline(r.Text, r.Parameters))))
                 CheckWeakening(input, unit++, statements, weakening);
 
-            // The shadow reads what production's sites asked of S, after planning, each statement's records its own; and the
-            // statements none of whose conjuncts rendered, which wrote none.
+            // Generate mode's run reads what production's sites asked of S, after planning; and the statements none of whose
+            // conjuncts rendered, which wrote none.
             var read = statements.Concat(recorder.Read.Except(statements)).ToList();
-            if (Shadow is { } shadow)
+            if (Generated is { } generated)
                 foreach (var statement in read)
                 {
                     try
                     {
-                        shadow.Shadow(input, read.IndexOf(statement), statement, records);
+                        generated.Read(input, read.IndexOf(statement), statement);
                     }
                     catch (Exception e)
                     {
-                        Failures.Enqueue((input.Input, input.Name, "shadows: " + PlanDigests.Failure(e)));
+                        Failures.Enqueue((input.Input, input.Name, "generates: " + PlanDigests.Failure(e)));
                     }
                 }
 

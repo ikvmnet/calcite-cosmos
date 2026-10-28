@@ -2878,17 +2878,12 @@ across documents* and *A join of a container to itself* is the record.
   values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
   both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
   `LIKE` in the IR.
-- **The shadow's sites read the flow's arm** — *small, until g17.* Since the switch every site asks S, the process
-  writing by default: site A reads the flow's arm a round (an `AsyncLocal` read past a `volatile bool` that is now always
-  set), site W and site P read the statement's own record of whether its admission took S's answers, and site R reads
-  nothing of its own. A test arms a flow beside the translator (an observer) or with S off (neither writing nor an
-  observer: line 29's pairing). g17 retires the arm, and the sites ask S unconditionally.
-- **g17 deletes about 200 production lines, not §10's 50 to 80** — *small, for g17 and the measure report.* What exists
-  only for the shadow: `ICosmosRenderingShadowObserver` (51 lines), `CosmosRenderingShadow` (68, its `Writes` arm
-  retiring with it), in `CosmosFilterStatement` the sets beside the statement's own and `RenderedSets` (about 15), the
-  split rule's `Shadowed`, its call and `projecting` (about 45), the residual projection rule's flag (1), the observer's
-  plants and hooks in `CosmosFilterRendering` (about 10): about −190. With them go the shadow's own timing of every
-  question in `RenderingGenerateRun` (about −24 test lines), which the cost instrument reads in production.
+- **The shadow's sites read the flow's arm** — *done at g17.* The arm is gone, and the sites ask S unconditionally but
+  where a test turns S off for its flow (`CosmosRendering.TurnOff`): one `volatile bool` a statement and a `toRel`.
+- **What g17 deleted** — *done.* The shadow's arm and observer, the split rule's `Shadowed` and `projecting`, the
+  statement's record of whether its admission took S's answers and its sets beside its own; the bundle hook, the sets
+  asked beside and the plants G9, G11 and G12 read moved to a test schema's probe (`ICosmosRenderingProbe`). The
+  production and test lines are in the pull request's measure report.
 - **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
   `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
   container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the
@@ -3040,21 +3035,16 @@ across documents* and *A join of a container to itself* is the record.
   osx-x64 net8.0, ran 2.4 times linux-x64 net10.0 on `main`, so its increment is the one to read; past the budget, O5's
   levers (`Portable` reported at the gate alone, among them).
 - **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
-  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
-  reads a junction's reason off its arms.
-- **The generate shadow follows the translator's rounds** — *small, until g17.* Armed beside the translator, production's
-  sites ask S in the translator's rounds, whose later nodes the facts graph built from what the translator admitted; so
-  where S admits a conjunct the translator does not, or declines one it pushes, the next round's node is not the one S's
-  own loop reads. Only the `Writes` arm, the rehearsal, runs S's own rounds; the switch's listing reads them there.
-- **The shadow hands production's sites its oracle and its plants** — *small, until g17.* The observer
-  (`ICosmosRenderingShadowObserver`) gives the sites the shadow's own oracle, over its graph, so that a plant's graph is
-  the one production asks and every key's first question opens the bundle the shadow reads; and G11's and G12's plants,
-  a node a conjunct is stated beneath and a reading precision. Inert unless a test arms the shadow, they go with it at
-  g17, and G11 and G12 plant through `CosmosOracle.RenderedFrom` and the reading precision's rows then. G9's key plant is
-  a constructor parameter of `RenderingOracle`, which production passes none.
-- **The shadow asks S's split each time the split rule splits** — *small, CI time.* Site W reports S's weakenings under
-  every set each time a filter is split, `matches` and `onMatch` alike, each judged applied or not by the facts graph; the
-  report keeps the text one gave. Filing the judgement by statement would halve it, if line 32 asks.
+  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell.
+- **A test's schema probes admission** — *small, kept.* What the shadow's observer handed production's sites and was told
+  of them, but for the comparisons with the translator, is a test schema's probe (`CosmosReasoning.Probe`): the sets a
+  statement is asked under beside its own, each bundle S opens, and G9's, G11's and G12's plants. G11 and G12 plant
+  where they act, the node a round's conjunct is stated beneath and the reading precision `StratumFor` reads: planted in
+  `CosmosOracle.RenderedFrom` G11 never reaches S, which G11 itself shows, so the TODO's plan to plant there falls.
+  Production's reasonings hold none, and a statement reads it once.
+- **Line 6's floors count conjuncts, not which** — *small.* Each input holds at least the conjuncts it sent exactly at
+  the switch under each asserted set, so a conjunct lost beside one gained in the same input passes; `sent.tsv` lists
+  each conjunct with what it sent, so a floor by statement digest would hold which, at a few test lines.
 - **C6 lists the forms over a path the service sets apart** — *small.* A form over `id`, the partition key or a system
   property cannot be run over the document drawn, since the fixture writes `id` and the partition key and the service
   `_ts`; each is a row of `conformance.tsv` with why it was not run (32 a pull request, 52 at the gate), every one a
@@ -3072,12 +3062,12 @@ across documents* and *A join of a container to itself* is the record.
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
   `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a template of its own.
-- **Looser weakenings the shadow lists against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
+- **Looser weakenings the shadow listed against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
   grammar's rows: J's implied but holding a member the Rex builder cannot write (the text-equality alternatives' number
   branch, C3, and K's windows over a cast), and J's unproven to S (a typed `DECIMAL` window past 2^53, which a double
-  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
-  `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
-  unlisted.
+  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`). Line 13b
+  read them from g15 to the switch, whose listing holds each; it retired with the shadow at g17, J being asked by
+  nothing, and P4 is held to J's weakenings as the shadow read them at the switch.
 - **A guarded string branch would deliver P4's `>= '30'` tighter under `Emulator`** — *small.* It passes line 19 on O7's
   loss 5; the branch would be a template of its own.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
@@ -3134,10 +3124,10 @@ across documents* and *A join of a container to itself* is the record.
   statement hands members the loader reads as opaque (`IS_STRING`, `IS_NUMBER`) to the translator, which writes them
   back; that they mean in process what the service computes rests on `CosmosFunctionBodiesTests`, not on S. Type tests
   in the IR would put it in S.
-- **Lines 6 and 13b read the listing until g17** — *small, for g17.* Since the switch the pull request's check run plans
-  with S writing, so its shadow compares S with S, and the regression and weakening lines against the translator are
-  carried by the switch's listing, each change classed against the shadow's rows the rehearsal read; g17 retires the
-  shadow and makes line 6 floors per input. The mutation and gate-fault plants still run beside the translator.
+- **Lines 6 and 13b read the listing until g17** — *done at g17.* Line 6 is floors per input, each the conjuncts the
+  input sent exactly at the switch under each asserted set (`RenderingSentTests.EachInputSendsAtLeastItsFloor`); line
+  13b retired with the shadow. The mutation and gate-fault plants plan with S writing, their losses read against the
+  unplanted run's.
 - **Line 12 reads a sent `WHERE` under `Portable`** — *small.* The check run claims each `WHERE` as sent under the asserted
   set, `Portable`, and the emulator's beside it, while production plans under each container's own, `Production` on
   Azure; so a `WHERE` S proved under `Production` alone — an ordering over a string that may hold U+0000, as

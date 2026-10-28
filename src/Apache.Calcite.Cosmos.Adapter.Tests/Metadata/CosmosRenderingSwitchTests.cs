@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var harness = new PlannerHarness(validated);
             harness.Validate(harness.Parse(Filtered));
-            using (CosmosRenderingShadow.Arm(null, writes: false))
+            using (CosmosRendering.TurnOff())
                 new PlannerHarness(off).PlanToAsync(Filtered);
             new PlannerHarness(planned).PlanToAsync(Filtered);
 

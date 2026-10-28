@@ -17,12 +17,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// imported from the statement's root, every pending conjunct a root beside the round's junctions <c>Through(k)</c> and
     /// <c>Before(k)</c>, each later round's atoms stated beneath <see cref="CosmosStatementScope.StratumFor"/>; what it
     /// admitted, the composite, and each residual's weakening, read from a bundle a round opened or one closing bundle.
-    /// Writing, the scope takes its admissions; beside the translator, they are what S would admit in the translator's rounds.
+    /// The scope takes the admissions of the statement's own set; a set a test's probe asks beside it follows its rounds.
     /// </summary>
     /// <remarks>
     /// Legality only: which conjuncts S is asked, beneath which stratum, which bundle answers, and whether the printer
-    /// writes what it answered; every answer is S's (<c>DESIGN.md</c>, <i>The shadow in production code</i>). Made and asked
-    /// under its statement's lock.
+    /// writes what it answered; every answer is S's (<c>DESIGN.md</c>, <i>The production path</i>). Made and asked under
+    /// its statement's lock.
     /// </remarks>
     internal sealed class CosmosFilterRendering
     {
@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public const string Admission = "A", Weakening = "W";
 
         readonly CosmosFilterStatement _statement;
-        readonly CosmosRenderingShadow.Arming _arm;
+        readonly ICosmosRenderingProbe? _probe;
         readonly bool[] _owned;
         readonly string? _countAs;
         StatementTerms? _terms;
@@ -42,9 +42,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         (RenderingOracle.RenderingBundleAnswer? Bundle, Question? Closing)? _composite;
         Resolution? _resolved;
 
-        /// <param name="countAs">The container a decline is counted under (<see cref="Client.CosmosInstrumentation.RenderingDeclines"/>): where S writes the statement under this set; none beside the translator.</param>
-        internal CosmosFilterRendering(CosmosFilterStatement statement, RenderingSet set, CosmosRenderingShadow.Arming arm, bool[] owned, string? countAs) =>
-            (_statement, Set, _arm, _owned, _countAs) = (statement, set, arm, owned, countAs);
+        /// <param name="statement">The statement admitted.</param>
+        /// <param name="set">The set it is proven under here.</param>
+        /// <param name="probe">A test's probe of the admission (<see cref="CosmosReasoning.Probe"/>); none in production.</param>
+        /// <param name="owned">Whether S owns each conjunct (<see cref="RenderingFamily.Owns"/>).</param>
+        /// <param name="countAs">The container a decline is counted under (<see cref="Client.CosmosInstrumentation.RenderingDeclines"/>): where S writes the statement under this set; none for a set a probe asks beside it.</param>
+        internal CosmosFilterRendering(CosmosFilterStatement statement, RenderingSet set, ICosmosRenderingProbe? probe, bool[] owned, string? countAs) =>
+            (_statement, Set, _probe, _owned, _countAs) = (statement, set, probe, owned, countAs);
 
         /// <summary>The set the statement is proven under here.</summary>
         public RenderingSet Set { get; }
@@ -83,8 +87,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             var asked = round.Again ? [] : round.Pending.Where(i => _owned[i] && _admitted.ContainsKey(i) == false).ToArray();
-            var planted = _arm.Observer?.RenderedFrom;
-            var stratum = StratumOf(scope.StratumFor(round.Node, _admitted.ContainsKey, _arm.Observer?.ReadExactly));
+            var planted = _probe?.RenderedFrom;
+            var stratum = StratumOf(scope.StratumFor(round.Node, _admitted.ContainsKey, _probe?.ReadExactly));
             var strata = round.Pending.Where(i => _admitted.ContainsKey(i) == false).ToDictionary(i => i, i => planted?.Invoke(scope, i) is { } node
                 ? new Stratum(round.Number + 1, node.Context, [.. Enumerable.Range(0, Conjuncts.Count).Except(round.Pending)]) : stratum);
             foreach (var (i, a) in _admitted)
@@ -110,8 +114,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (_resolved is { } resolved)
                 return resolved;
 
-            // Writing, the scope asked the composite after the last round and, where it failed, ran the rounds again, whose own
-            // rounds answer the weakenings; beside the translator, the composite is read here, and voids S's admissions alone.
+            // The scope asked the composite after the last round and, where it failed, ran the rounds again, whose own rounds
+            // answer the weakenings; under a set asked beside, the composite is read here, and voids its admissions alone.
             List<int> Residual(Func<int, bool> s) => [.. Enumerable.Range(0, Conjuncts.Count).Where(i => _owned[i] ? s(i) == false : scope.StratumOf(i) == 0)];
             var (bundle, closing) = _composite ?? (_again ? default : Composite(scope, scope.Stopped, Residual(_admitted.ContainsKey)));
             var standing = _admitted.Count > 0 && bundle is not null ? Standing(bundle) : null;
@@ -168,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>One closing bundle: the residuals stated beneath <c>StratumFor</c> of where the rounds stopped, S's admissions beneath their own, and <c>Before</c>.</summary>
         (Question, RenderingOracle.RenderingBundleAnswer) Close(CosmosStatementScope scope, StatementTerms.Node stopped, IReadOnlyList<int> residual, string site)
         {
-            var final = StratumOf(scope.StratumFor(stopped, _admitted.ContainsKey, _arm.Observer?.ReadExactly));
+            var final = StratumOf(scope.StratumFor(stopped, _admitted.ContainsKey, _probe?.ReadExactly));
             var strata = residual.ToDictionary(i => i, _ => final);
             foreach (var (i, a) in _admitted)
                 strata[i] = a.Stratum;
@@ -211,20 +215,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             [.. conjuncts.SelectMany(c => AtomsOf(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key)];
 
         /// <summary>
-        /// Asks S a question through the flow's oracle, a test's or the statement's schema's, or hands it the answer a
-        /// statement of the same terms was given there under the theory now current (<see cref="RenderingOracle.Answered"/>);
-        /// a test's plant, which reads a node no key names, is asked afresh, and a decline is never kept.
+        /// Asks S a question through the statement's schema's oracle, or hands it the answer a statement of the same terms was
+        /// given there under the theory now current (<see cref="RenderingOracle.Answered"/>); a test's plant, which reads a
+        /// node no key names, is asked afresh, and a decline is never kept.
         /// </summary>
         RenderingOracle.RenderingBundleAnswer Ask(Question q)
         {
-            var (started, oracle, signature) = (Stopwatch.GetTimestamp(), _arm.Observer?.Oracle ?? _statement.Rendering, _arm.Observer?.Signature?.Invoke(q.Signature) ?? q.Signature);
-            var answered = _arm.Observer is null or { RenderedFrom: null, ReadExactly: null } && _terms is not null ? oracle.Answered.GetValue(_terms, _ => new()) : null;
+            var (started, oracle, signature) = (Stopwatch.GetTimestamp(), _statement.Rendering, _probe?.Signature?.Invoke(q.Signature) ?? q.Signature);
+            var answered = _probe is null or { RenderedFrom: null, ReadExactly: null } && _terms is not null ? oracle.Answered.GetValue(_terms, _ => new()) : null;
             if (answered is not null && oracle.Digest is { } current && answered.TryGetValue((Set, current, signature), out var known))
                 return Counted(q, CosmosRendering.Reused(oracle, q.Roots, known, Stopwatch.GetElapsedTime(started)));
 
             var answer = CosmosRendering.Ask(oracle, Set, q.Roots, _statement.Statement.Opaques, q.Source, q.Root, q.Rules,
                 [.. q.Beneath.Select(b => (b.Atom, b.Source, b.Stratum.Node, q.Rules))],
-                _arm.Observer is { } observer ? (bundle, terms, import, run, elapsed) => observer.Opened(_statement, q, bundle, terms, import, run, elapsed) : null);
+                _probe is { } probe ? (bundle, terms, import, run, elapsed) => probe.Opened(_statement, q, bundle, terms, import, run, elapsed) : null);
 
             // Filed under the theory the answer was computed under, which a generation swapped in meanwhile does not change.
             if (answered is not null && answer.Declined is null && answer.Key is { } key)
@@ -263,8 +267,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// One question to S: the site, the set, the conjuncts (by index) and roots, each conjunct's stratum, the atoms
-        /// stated beneath, and the root it is imported from: what the shadow claims the translator's texts at, at one key;
-        /// and what names it within its statement's terms.
+        /// stated beneath, and the root it is imported from; and what names it within its statement's terms.
         /// </summary>
         internal sealed record Question(string Site, RenderingSet Set, IReadOnlyList<int> Conjuncts, IReadOnlyList<SqlPredicate> Roots, IReadOnlyDictionary<int, Stratum?> Strata,
             IReadOnlyList<Stated> Beneath, ImportSource Source, Scope? Root, PredicateRules? Rules, string Signature);

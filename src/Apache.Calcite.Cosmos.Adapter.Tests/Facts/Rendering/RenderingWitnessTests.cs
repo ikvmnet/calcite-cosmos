@@ -116,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (t, i) in planted.Triggers.Select((t, i) => (t, i)).Where(x => x.t.Caught is not null && Regex.IsMatch(x.t.Sql, "^SELECT [cp]\\.\"id\" FROM")))
             {
                 // The statement planning read first is the WHERE's; the filters a split builds beside it come after.
-                var roots = t.Bundles.SelectMany(b => b.Roots).Where(r => t.Classes.Any(c => c.Statement == 0 && c.Ir == r.Digest)).DistinctBy(r => r.Digest).ToList();
+                var roots = t.Bundles.SelectMany(b => b.Roots).Where(r => t.Sends.Any(c => c.Statement == 0 && c.Ir == r.Digest)).DistinctBy(r => r.Digest).ToList();
                 if (roots.Count != 1)
                     continue;
 

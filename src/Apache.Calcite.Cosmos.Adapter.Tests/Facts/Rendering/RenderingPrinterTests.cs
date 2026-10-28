@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>Every form S chose over the run's inputs, under each set, once a text: each root's best, with the paths its bundle's roots read.</summary>
         internal static IReadOnlyList<(ServiceForm Form, IReadOnlyDictionary<string, JsonDocumentPath> Paths)> Chosen() =>
-            [.. RenderingCheckRun.PerPullRequest.Value.Shadow!.Bundles.SelectMany(b => b.Answers.Values.Select(a => a.Best).OfType<ServiceForm>().Select(f => (f, PathsOf(b.Roots))))
+            [.. RenderingCheckRun.PerPullRequest.Value.Generated!.Bundles.SelectMany(b => b.Answers.Values.Select(a => a.Best).OfType<ServiceForm>().Select(f => (f, PathsOf(b.Roots))))
                 .DistinctBy(c => c.Item1.Text)];
 
         /// <summary>Each path the predicates read, by its spelling.</summary>
@@ -65,8 +65,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             string.Join(", ", parameters.Select(p => p.Name + " " + (p.Value?.GetType().Name ?? "null") + " " + System.Convert.ToString(p.Value, System.Globalization.CultureInfo.InvariantCulture)));
 
         /// <summary>
-        /// Every best of every bundle the shadow opened, under each set, prints and reads back as itself and as the text it
-        /// printed; printed again from what was read, the same text and values.
+        /// Every best of every bundle production opened in the run, under each set, prints and reads back as itself and as
+        /// the text it printed; printed again from what was read, the same text and values.
         /// </summary>
         [Fact]
         public void EveryChosenFormReadsBackAsItself()
@@ -80,38 +80,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Where S chose the form the translator wrote (the shadow's class <i>same</i>), the printer writes the translator's
-        /// text, byte for byte, its names in the translator's order, each bound to the translator's value, of its type and
-        /// scale: the switch then changes no such conjunct's statement. But for what the form cannot say: a number compared
-        /// through a reading Calcite types approximate, whose literal it types so too, which the translator binds as a double
-        /// and the printer as the decimal the form holds, the same number to the service. The inputs hold it in J's
-        /// text-equality number branch alone, its accessor re-typed, which an inner filter admits and S's weakening replaces
-        /// at the switch (O7, loss 1); reported.
+        /// Where S sends the form the translator writes of a conjunct from the same stratum, read back, the printer writes the
+        /// translator's text, its names in the translator's order, each bound to the translator's value, of its type and
+        /// scale; byte for byte, but where the translator brackets a <c>NOT</c> over a test inside a junction, which the
+        /// printer writes bare and the reader reads as one form (a weakening's members, which S's inner filters send since
+        /// the switch); reported. And but for what the form cannot say: a number compared through a reading Calcite types
+        /// approximate, whose literal it types so too, which the translator binds as a double and the printer as the decimal
+        /// the form holds, the same number to the service; reported.
         /// </summary>
         [Fact]
         public void EverySameFormPrintsTheTranslatorsTextAndTypes()
         {
-            var run = RenderingCheckRun.PerPullRequest.Value;
-            var same = run.Shadow!.Classes.Where(c => c.Class == RenderingGenerateRun.Same).DistinctBy(c => (c.Ir, c.Text)).ToList();
-            var (parted, retyped) = (new List<string>(), new List<string>());
-            foreach (var c in same)
+            var same = new List<(RenderingGenerateRun.Sent Sent, SqlPredicate Ir, string Text, IReadOnlyList<CosmosParameter> Bound)>();
+            foreach (var c in RenderingCheckRun.PerPullRequest.Value.Generated!.Sends.Where(c => c.Form is not null))
             {
-                var parameters = new CosmosParameterList();
-                var text = RenderingPrinter.Print(c.Form!, PathsOf([run.Irs[c.Ir]]), Alias, parameters);
-                var (printed, theirs) = (Bound(parameters.Parameters), Bound(c.Bound!));
-                var shown = $"{c.Input} {c.Name}/{c.Statement}/{c.Conjunct} {run.Irs[c.Ir]}: the translator's {c.Text} [{theirs}], printed {text} [{printed}]";
-                if (text != c.Text || CosmosSqlFormReader.Inline(text, parameters.Parameters) != CosmosSqlFormReader.Inline(c.Text!, c.Bound!))
-                    parted.Add(shown);
-                else if (printed != theirs)
-                    (parameters.Parameters.Zip(c.Bound!).All(p => Bound([p.First]) == Bound([p.Second]) || p.First.Value is decimal && p.Second.Value is double)
-                        && ComparesApproximately(run.Irs[c.Ir]) ? retyped : parted).Add(shown);
+                var theirs = new CosmosParameterList();
+                if (c.Source.TranslatorFor(c.Conjunct, theirs).TryTranslateConjunct(c.Source.Conjuncts[c.Conjunct], out var written)
+                    && CosmosSqlFormReader.Read(written!, theirs.Parameters) is var read && read.Written == written && read.Form.Equals(c.Form))
+                    same.Add((c, c.Source.Statement.Conjuncts[c.Conjunct], written!, theirs.Parameters));
             }
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"{same.Count} conjuncts of class same, {same.Sum(c => c.Bound!.Count)} parameters; {parted.Count} parted; "
+            same = [.. same.DistinctBy(c => (c.Ir.Digest, c.Text))];
+            var (parted, retyped, bracketed) = (new List<string>(), new List<string>(), new List<string>());
+            foreach (var (c, ir, written, bound) in same)
+            {
+                var parameters = new CosmosParameterList();
+                var text = RenderingPrinter.Print(c.Form!, PathsOf([ir]), Alias, parameters);
+                var (printed, theirs) = (Bound(parameters.Parameters), Bound(bound));
+                var shown = $"{c.Input} {c.Name}/{c.Statement}/{c.Conjunct} {ir}: the translator's {written} [{theirs}], printed {text} [{printed}]";
+                if (text != written || CosmosSqlFormReader.Inline(text, parameters.Parameters) != CosmosSqlFormReader.Inline(written, bound))
+                    (Unbracketed(text) == Unbracketed(written) && printed == theirs ? bracketed : parted).Add(shown);
+                else if (printed != theirs)
+                    (parameters.Parameters.Zip(bound).All(p => Bound([p.First]) == Bound([p.Second]) || p.First.Value is decimal && p.Second.Value is double)
+                        && ComparesApproximately(ir) ? retyped : parted).Add(shown);
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{same.Count} conjuncts S sends as the translator writes them, {same.Sum(c => c.Bound.Count)} parameters; {parted.Count} parted; "
+                + $"{bracketed.Count} bracketed otherwise alone: {string.Join("; ", bracketed)}; "
                 + $"{retyped.Count} compared through an approximate reading, bound a double by the translator: {string.Join("; ", retyped)}");
             same.Should().HaveCountGreaterThan(100);
             parted.Should().BeEmpty();
         }
+
+        /// <summary>A text with its brackets taken out: two texts alike so differ in their brackets alone.</summary>
+        static string Unbracketed(string text) => text.Replace("(", "", StringComparison.Ordinal).Replace(")", "", StringComparison.Ordinal);
 
         /// <summary>Whether a conjunct compares a number through a reading Calcite types approximate, as it types the literal.</summary>
         static bool ComparesApproximately(SqlPredicate conjunct) =>

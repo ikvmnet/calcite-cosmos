@@ -23,9 +23,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The per-query cost lines (spec §6.3, §6.4; lines 23–30), with S writing as the switch will, through the
-    /// registry's S — a schema's oracle, or for a first plan one over a warm graph that remembers nothing, which is what a
-    /// new schema's oracle is once its build is done: S's own time in a query's plan — every question its plan asked,
+    /// The per-query cost lines (spec §6.3, §6.4; lines 23–30), with S writing, through the registry's S — a schema's
+    /// oracle, or for a first plan a new schema's whose oracle asks a warm graph and remembers nothing, which is what a new
+    /// schema's oracle is once its build is done: S's own time in a query's plan — every question its plan asked,
     /// from the lookup to the roots' answers, the wait for a generation among it — and the bundles it opened, by the
     /// query's shape, first and asked again; the merged-view hierarchy over one data source; the first plan in a process
     /// and on a new schema in a warm one, each paired with S off; and what a bundle interns. Explicit: run each fact in a
@@ -46,29 +46,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         const string FirstPlanSql = """SELECT * FROM products AS c WHERE c."$.category" = 'bikes' AND c."id" = 'x'""";
 
         /// <summary>
-        /// Lines 23–28: each corpus statement, then the synthetic families, planned and implemented first through an oracle
-        /// whose memory holds nothing, over the warm graph, then five times more, the median kept; by shape, read off what S
-        /// was asked, and "no filter" off the plan, the count, median, 90th centile and greatest of S's time first and again,
-        /// the plan's own time beside, the bundles, candidates and bytes; held to the pass lines, four conditions to five to
-        /// seven's, since a first plan opens as many bundles for either.
+        /// Lines 23–28: each corpus statement, then the synthetic families, planned and implemented first in a new schema
+        /// whose oracle remembers nothing, over the warm graph, then five times more there, the median kept; by shape, read
+        /// off what S was asked, and "no filter" off the plan, the count, median, 90th centile and greatest of S's time first
+        /// and again, the plan's own time beside, the bundles, candidates and bytes; held to the pass lines, four conditions to
+        /// five to seven's, since a first plan opens as many bundles for either.
         /// </summary>
         [Fact(Explicit = true)]
         public async Task EachShapeIsWithinItsLine()
         {
             using var load = new CpuLoad();
             Print(ThreadCpu.Describe());
-            var graph = await Warmed();
+            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations());
 
             // A plan over a container of its own warms the process.
-            var harness = new PlannerHarness();
-            using (CosmosRenderingShadow.Arm(new RenderingShadowCounter(new RenderingOracle(graph), []), writes: true))
-                Implement(harness.PlanToAsync("""SELECT c."id" FROM customers AS c WHERE c."id" = 'warm'"""));
+            Implement(new PlannerHarness(Fresh(graph, facts)).PlanToAsync("""SELECT c."id" FROM customers AS c WHERE c."id" = 'warm'"""));
 
             var queries = new List<Query>();
             foreach (var query in PlannerQueries.All)
-                queries.Add(Measure(graph, query.Name, () => harness.PlanToAsync(query.Sql)));
+                queries.Add(Measure(Fresh(graph, facts), query.Name, reasoning => Corpus(query.Sql, reasoning)));
             foreach (var (name, sql) in Synthetic())
-                queries.Add(Measure(graph, name, () => Differential(sql)));
+                queries.Add(Measure(Fresh(graph, facts), name, reasoning => Differential(sql, reasoning)));
 
             Print($"{queries.Count} queries ({PlannerQueries.All.Count} of the corpus); {load}");
             foreach (var shape in queries.GroupBy(q => q.Shape).OrderBy(g => Array.IndexOf(Shapes, g.Key)))
@@ -106,7 +104,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public async Task TheHierarchyIsWithinItsLine()
         {
             using var load = new CpuLoad();
-            using var writing = CosmosRenderingShadow.Arm(null, writes: true);
             Print(ThreadCpu.Describe());
 
             using var scope = new AssertionScope();
@@ -247,7 +244,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var clock = Stopwatch.StartNew();
             var reasoning = new CosmosReasoning();
             var harness = new PlannerHarness(reasoning);
-            using var writing = CosmosRenderingShadow.Arm(null, writes: mode != "off");
+            using var off = mode == "off" ? CosmosRendering.TurnOff() : null;
             if (mode == "built")
             {
                 reasoning.Rendering.Ready.Wait();
@@ -294,8 +291,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static string Ms(TimeSpan t) => t.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture);
 
         /// <summary>
-        /// What a bundle interns and spends of its generation, over the corpus planned with S writing through an oracle that
-        /// remembers nothing before each statement: the values interned and the share of ids or epochs used, before and after
+        /// What a bundle interns and spends of its generation, over the corpus planned with S writing, each statement in a
+        /// new schema whose oracle remembers nothing: the values interned and the share of ids or epochs used, before and after
         /// each bundle, and so how many bundles a generation answers before its successor is built (0.4, or 800,000 values)
         /// and before it retires (0.5, or 1,000,000).
         /// </summary>
@@ -303,13 +300,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public async Task InterningPerBundleIsCounted()
         {
             using var load = new CpuLoad();
-            var graph = await Warmed();
+            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations());
 
-            var harness = new PlannerHarness();
             var bundles = new List<RenderingCostSample>();
             foreach (var query in PlannerQueries.All)
             {
-                using (CosmosRenderingShadow.Arm(new RenderingShadowCounter(new RenderingOracle(graph), []), writes: true))
+                var harness = new PlannerHarness(Fresh(graph, facts));
                 using (CosmosRenderingCost.Measure(out var samples))
                 {
                     try
@@ -333,19 +329,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Math.Min(Cosmos.Facts.JsonFactGenerations.DefaultInternedLimit / Math.Max(1, At(interned, 0.5)), Cosmos.Facts.JsonFactGenerations.DefaultUsedLimit / Math.Max(1e-12, At(used, 0.5))));
             Print($"bundles a generation at the median: {successor:N0} before its successor is built, {retired:N0} before it retires");
 
-            // What an answer remembered holds (§6.1): the corpus planned once more over containers of its own, its answers kept,
+            // What an answer remembered holds (§6.1): the corpus planned once more in a schema of its own, its answers kept,
             // the heap compared; an upper bound, since the new containers' contexts grow beside them.
-            var (oracle, again, before) = (new RenderingOracle(graph), new PlannerHarness(), GC.GetTotalMemory(forceFullCollection: true));
-            using (CosmosRenderingShadow.Arm(new RenderingShadowCounter(oracle, []), writes: true))
-                foreach (var query in PlannerQueries.All)
-                    try
-                    {
-                        Implement(again.PlanToAsync(query.Sql));
-                    }
-                    catch (Exception)
-                    {
-                        // As above.
-                    }
+            var (oracle, before) = (new RenderingOracle(graph), GC.GetTotalMemory(forceFullCollection: true));
+            var again = new PlannerHarness(new CosmosReasoning(facts, oracle));
+            foreach (var query in PlannerQueries.All)
+                try
+                {
+                    Implement(again.PlanToAsync(query.Sql));
+                }
+                catch (Exception)
+                {
+                    // As above.
+                }
 
             var (entries, grown) = (oracle.Memo.Count, GC.GetTotalMemory(forceFullCollection: true) - before);
             Print($"{entries} answers remembered, the heap {grown / 1024.0:N0} KB larger: about {grown / 1024.0 / Math.Max(1, entries):N1} KB an answer, "
@@ -376,12 +372,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A statement planned and implemented first through an oracle over the warm graph that remembers nothing, then five
-        /// times more through it, each in a flow measured, with S writing.
+        /// A new schema's reasoning whose oracle asks the warm graph and remembers nothing: what a first plan is asked of. Its
+        /// declarations compile into the generations given, which a fact's schemas share, F's time being no part of S's.
         /// </summary>
-        static Query Measure(RenderingGraph graph, string name, Func<RelNode> plan)
+        static CosmosReasoning Fresh(RenderingGraph graph, Cosmos.Facts.JsonFactGenerations facts) => new(facts, new RenderingOracle(graph));
+
+        /// <summary>
+        /// A statement planned and implemented first in a new schema, then five times more there, each in a flow measured,
+        /// with S writing.
+        /// </summary>
+        static Query Measure(CosmosReasoning reasoning, string name, Func<CosmosReasoning, Func<RelNode>> planner)
         {
-            using var writing = CosmosRenderingShadow.Arm(new RenderingShadowCounter(new RenderingOracle(graph), []), writes: true);
+            var plan = planner(reasoning);
             (double S, double Wall, IReadOnlyList<RenderingCostSample> Samples, string? Failure, RelNode? Planned) Once()
             {
                 using var cost = CosmosRenderingCost.Measure(out var samples, ThreadCpu.Clock);
@@ -451,8 +453,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 yield return ($"rare: a list of {k}", From + Over(k, i => $"c.\"id\" = 'a{i}'", " OR "));
         }
 
-        /// <summary>A statement over the differential's containers, as the check run plans one.</summary>
-        static RelNode Differential(string sql) => RenderingInputs.Differential("cost", [sql], [.. CosmosDifferentialTests.Containers]).Single().Plan();
+        /// <summary>A corpus statement over the planner's containers bound to a schema, through one harness.</summary>
+        static Func<RelNode> Corpus(string sql, CosmosReasoning reasoning)
+        {
+            var harness = new PlannerHarness(reasoning);
+            return () => harness.PlanToAsync(sql);
+        }
+
+        /// <summary>A statement over the differential's containers bound to a schema, as the check run plans one.</summary>
+        static Func<RelNode> Differential(string sql, CosmosReasoning reasoning) =>
+            RenderingInputs.Differential("cost", [sql], [.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(reasoning))]).Single().Plan;
 
         /// <summary>
         /// Implements every Cosmos subtree of a plan, as a connection would before it executes: walked to each node of the
@@ -477,7 +487,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             };
             start.Environment[FirstPlanMode] = mode;
             start.Environment[FirstPlanOut] = output;
-            start.Environment.Remove(RenderingRehearsal.Variable);
             using var process = Process.Start(start)!;
             var log = process.StandardOutput.ReadToEndAsync();
             _ = process.StandardError.ReadToEndAsync();

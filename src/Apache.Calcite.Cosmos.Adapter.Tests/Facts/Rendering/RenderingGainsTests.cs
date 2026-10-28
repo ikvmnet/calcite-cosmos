@@ -19,12 +19,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The gains line (spec g05, g15; line 19; gates map §5), read off the generate shadow of each statement under each
-    /// set, as production's sites asked S: P1 sent exactly, as the printer writes it; P2 and P3 exactly over a mixed-kind
-    /// twin of <c>typed</c> whose declaration keeps U+0000 out of the label, and under <c>Production</c>; P4's comparisons
-    /// weakened tighter than J, or as O7 lists; P5's second arm keeping its kind, in the text its pushed Rex translates
-    /// to; P6, O7's listed loss, its comparison over a cast no member the Rex builder writes; P8 counted; P7, already
-    /// pushed, not S's to regress. On a service each exact gain keeps Calcite's rows.
+    /// The gains line (spec g05, g15, g17; line 19; gates map §5), read off what each statement sent under each set, as
+    /// production's sites asked S in a schema of the run's own: P1 sent exactly, as the printer writes it; P2 and P3 exactly
+    /// over a mixed-kind twin of <c>typed</c> whose declaration keeps U+0000 out of the label, and under <c>Production</c>;
+    /// P4's comparisons weakened tighter than J weakened them at the switch, or as O7 lists; P5's second arm keeping its
+    /// kind, in the text its pushed Rex translates to; P6, O7's listed loss, its comparison over a cast no member the Rex
+    /// builder writes; P8 counted against the translator's text; P7, already pushed, not S's to regress. On a service each
+    /// exact gain keeps Calcite's rows.
     /// </summary>
     public sealed class RenderingGainsTests : IClassFixture<RenderingGainsTests.Fixture>
     {
@@ -36,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             P7 = "SELECT c.\"id\" FROM strings AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') LIKE 'a%'";
 
         /// <summary><c>typed</c> declaring only that a label's strings are printable ASCII, whatever its kind: its documents keep it.</summary>
-        static readonly CosmosContainerMetadata Twin = TestReasoning.Bind(new CosmosContainerMetadata("typed", ["/category"]))
+        static readonly CosmosContainerMetadata Twin = new CosmosContainerMetadata("typed", ["/category"])
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "properties": { "label": { "pattern": "^[ -~]*$" } } }""")!));
 
         static readonly string Label = ProbeRows.Label;
@@ -66,6 +67,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly string[] Weakened = [Typed + "<> '30'", Typed + ">= '30'", View + ">= '30'"];
 
         /// <summary>
+        /// J's weakening of each of P4's statements as the shadow read it at the switch (g16), J's text read back: what S's are
+        /// held to once J is no longer asked, and is deleted (g18).
+        /// </summary>
+        static readonly ServiceForm[] Js =
+        [
+            J("(IS_DEFINED(c.label) AND ((NOT IS_STRING(c.label)) OR (IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND (c.label != @p0))))"),
+            J("(IS_DEFINED(c.label) AND ((NOT IS_STRING(c.label)) OR (c.label >= @p0)))"),
+            J("(IS_DEFINED(c.label) AND ((NOT IS_STRING(c.label)) OR (c.label >= @p0)))"),
+        ];
+
+        static ServiceForm J(string text) => CosmosSqlFormReader.Read(text, [new CosmosParameter("@p0", "30")]).Form;
+
+        /// <summary>O7's loss 5 among P4's: J's ordering of a string unproven to S at the weakening's key, which S cannot send, under the sets whose rows read it so at the switch.</summary>
+        static bool ListedLoss(string sql, RenderingSet set) => sql.EndsWith(">= '30'", StringComparison.Ordinal) && set != RenderingSet.Production;
+
+        /// <summary>
         /// P8's statements, which the translator writes longer than S: a double negation, and an inequality whose guards a
         /// sibling's exact form makes vacuous.
         /// </summary>
@@ -79,35 +96,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly List<string> PlainSql = [.. Exact.Where(e => e.Twin == false).Select(e => e.Sql).Distinct(), .. Weakened, P6, P7, .. Shorter],
             TwinSql = [.. Exact.Where(e => e.Twin).Select(e => e.Sql).Distinct()];
 
-        static readonly Lazy<RenderingCheckRun> Plain = new(() => Shadowed("gains", PlainSql, [.. CosmosDifferentialTests.Containers]));
+        static readonly Lazy<RenderingCheckRun> Plain = new(() => Generated("gains", PlainSql, CosmosDifferentialTests.Containers));
 
-        static readonly Lazy<RenderingCheckRun> Twinned = new(() => Shadowed("twin", TwinSql, [Twin]));
+        static readonly Lazy<RenderingCheckRun> Twinned = new(() => Generated("twin", TwinSql, [Twin]));
 
         static readonly Lazy<RenderingCheckRun> Probe = new(() =>
         {
-            var kinds = CosmosDifferentialTests.Containers.Single(c => c.Name == "kinds");
+            var generated = new RenderingGenerateRun();
+            var kinds = generated.Bind([CosmosDifferentialTests.Containers.Single(c => c.Name == "kinds")]).Single();
             var (name, where) = CosmosPushdownProbeTests.KindProbes.Single(p => p.Name == "each kind spelled per arm");
             var sql = $"SELECT c.\"id\" FROM kinds AS c WHERE {where}";
-            return RenderingCheckRun.Over([new RenderingInputs.Statement("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds))], shadow: new RenderingGenerateRun(), writes: false);
+            return RenderingCheckRun.Over([new RenderingInputs.Statement("probe", name, sql, () => CosmosPushdownProbeTests.Plan(sql, kinds))], generated: generated);
         });
 
         readonly Fixture _service;
 
         public RenderingGainsTests(Fixture service) => _service = service;
 
-        static RenderingCheckRun Shadowed(string input, IReadOnlyList<string> sql, CosmosContainerMetadata[] containers) =>
-            RenderingCheckRun.Over(RenderingInputs.Differential(input, sql, containers), shadow: new RenderingGenerateRun(), writes: false);
+        static RenderingCheckRun Generated(string input, IReadOnlyList<string> sql, IEnumerable<CosmosContainerMetadata> containers)
+        {
+            var generated = new RenderingGenerateRun();
+            return RenderingCheckRun.Over(RenderingInputs.Differential(input, sql, generated.Bind(containers)), generated: generated);
+        }
 
         /// <summary>A statement's name in a run: its place among the statements planned.</summary>
         static string NameOf(List<string> sql, string statement) => sql.IndexOf(statement).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        /// <summary>The shadow's classes of a statement's conjuncts under a set, by its SQL.</summary>
-        static List<RenderingGenerateRun.Classed> Classes(RenderingCheckRun run, string sql, RenderingSet set, List<string> inputs) =>
-            [.. run.Shadow!.Classes.Where(c => c.Set == set && c.Name == NameOf(inputs, sql))];
+        /// <summary>What a statement sent of its conjuncts under a set, by its SQL.</summary>
+        static List<RenderingGenerateRun.Sent> Sends(RenderingCheckRun run, string sql, RenderingSet set, List<string> inputs) =>
+            [.. run.Generated!.Sends.Where(c => c.Set == set && c.Name == NameOf(inputs, sql))];
+
+        /// <summary>The weakenings the split rule pushed for a statement, as its Rex translates: the rendering check's third site, under the statement's own set.</summary>
+        static List<string> Pushed(RenderingCheckRun run, string name) => [.. run.Conjuncts.Where(c => c.Site == 3 && c.Name == name).Select(c => c.Text).Distinct()];
 
         /// <summary>
-        /// P1, P2 and P3: each statement's conjunct is a gain under each set it is listed for, sent as the form listed, which
-        /// the translator's conventions spell as the text listed. Nothing in the runs failed to plan or to shadow.
+        /// P1, P2 and P3: each statement's conjunct is sent exactly under each set it is listed for, as the form listed, which
+        /// the translator's conventions spell as the text listed. Nothing in the runs failed to plan.
         /// </summary>
         [Fact]
         public void P1P2P3AreSentExactly()
@@ -120,34 +144,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     .Should().Be(text, "the printer writes S's form as listed");
                 foreach (var set in RenderingGenerateRun.Sets)
                 {
-                    var classes = twin ? Classes(Twinned.Value, sql, set, TwinSql) : Classes(Plain.Value, sql, set, PlainSql);
-                    TestContext.Current.TestOutputHelper?.WriteLine($"{set} {(twin ? "twin" : "typed")} {sql}: {string.Join("; ", classes.Select(c => c.Class + " " + c.Form?.Text))}");
+                    var sends = twin ? Sends(Twinned.Value, sql, set, TwinSql) : Sends(Plain.Value, sql, set, PlainSql);
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{set} {(twin ? "twin" : "typed")} {sql}: {string.Join("; ", sends.Select(c => (c.Owned ? "S " : "translator ") + c.Form?.Text))}");
                     if (sets.Contains(set))
-                        classes.Should().Contain(c => c.Class == RenderingGenerateRun.Gain && form.Equals(c.Form), $"{sql} under {set}{(twin ? " over the twin" : "")}");
+                        sends.Should().Contain(c => form.Equals(c.Form), $"{sql} under {set}{(twin ? " over the twin" : "")}");
                 }
             }
         }
 
         /// <summary>
-        /// P4: each comparison that is no <c>LIKE</c> is weakened tighter than J weakens it, or no looser but where O7 lists the
-        /// loss: J's weakening unproven to S at the weakening's key, which S cannot send. Each class is reported.
+        /// P4: each comparison that is no <c>LIKE</c> is weakened, in every statement its plan holds, tighter than J weakened it
+        /// at the switch, or alike, or looser only where O7 lists the loss: J's weakening unproven to S at the weakening's key,
+        /// which S cannot send. Each is compared on the documents source A draws from its weakening bundle's import, on every
+        /// target its set serves, and reported.
         /// </summary>
         [Fact]
         public void P4IsTighterOrAsO7Lists()
         {
             var tighter = 0;
-            foreach (var sql in Weakened)
+            foreach (var (sql, j) in Weakened.Zip(Js))
                 foreach (var set in RenderingGenerateRun.Sets)
                 {
-                    var rows = Plain.Value.Shadow!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, sql) && w.Text is not null).ToList();
-                    var classes = rows.Select(RenderingGenerateRun.ClassOf).ToList();
-                    TestContext.Current.TestOutputHelper?.WriteLine($"{set} {sql}: " + string.Join("; ", rows.Select((w, i) => $"J {w.Text} [{w.TranslatorVerdict}], S {w.Mine?.Text}: {classes[i]}")));
+                    var rows = Plain.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, sql) && w.Residual && w.Mine is not null).ToList();
+                    var classes = rows.Select(w => Against(w, j)).ToList();
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{set} {sql}: J {j.Text}; " + string.Join("; ", rows.Select((w, i) => $"S {w.Mine!.Text}: {classes[i]}")));
                     rows.Should().NotBeEmpty(sql);
-                    classes.Should().NotContain(c => c == "looser" || c == "parting", $"{sql} under {set}");
+                    classes.Should().NotContain(c => c == "parting" || c == "looser" && ListedLoss(sql, set) == false, $"{sql} under {set}");
                     tighter += classes.Count(c => c == "tighter");
                 }
 
             tighter.Should().BePositive("P4's inequality is tighter under every set");
+        }
+
+        /// <summary>
+        /// S's weakening against J's: the same form; tighter, keeping no document J's does not and dropping one it keeps;
+        /// looser; parting both ways; or alike, on the documents drawn from its bundle's import, on every target its set serves.
+        /// </summary>
+        static string Against(RenderingGenerateRun.Weakened w, ServiceForm j)
+        {
+            if (w.Mine!.Equals(j))
+                return "same";
+
+            var (fewer, more) = (false, false);
+            foreach (var document in w.Claim is null ? [] : RenderingDocumentSampler.Sample(w.Claim))
+                foreach (var target in ProbeRows.Measured.Serves[w.Set])
+                {
+                    var (mine, theirs) = (CosmosEval.On(w.Mine, document, target), CosmosEval.On(j, document, target));
+                    if (mine is null || theirs is null)
+                        continue;
+
+                    fewer |= theirs == ServiceOutcomes.True && mine != ServiceOutcomes.True;
+                    more |= mine == ServiceOutcomes.True && theirs != ServiceOutcomes.True;
+                }
+
+            return (fewer, more) switch { (true, false) => "tighter", (false, true) => "looser", (true, true) => "parting", _ => "alike on the documents" };
         }
 
         /// <summary>
@@ -166,41 +216,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Probe.Value.Failures.Should().BeEmpty();
             foreach (var set in RenderingGenerateRun.Sets)
             {
-                var t4 = Probe.Value.Shadow!.Weakenings.Where(w => w.Set == set && w.Mine is { Kind: ServiceFormKind.Or }).ToList();
+                var t4 = Probe.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Mine is { Kind: ServiceFormKind.Or }).ToList();
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set} P5: " + string.Join("; ", t4.Select(w => w.Mine!.Text)));
                 t4.Should().NotBeEmpty().And.OnlyContain(w => w.Mine!.Members.Any(arm => arm.Subforms.Contains(kindC)), $"P5 under {set}");
 
-                // What the split rule pushes for it (site W): the Rex S's weakening builds, as the translator writes it.
-                var pushed = Probe.Value.Shadow!.Pushes.Where(w => w.Set == set && w.Form.Kind == ServiceFormKind.Or).ToList();
-                TestContext.Current.TestOutputHelper?.WriteLine($"{set} P5 pushed: " + string.Join("; ", pushed.Select(w => w.Text)));
-                pushed.Should().NotBeEmpty().And.OnlyContain(w => w.Text != null && w.Text.Contains("(c.kind = @p", StringComparison.Ordinal), $"P5's pushed text under {set}");
-
-                var p6 = Plain.Value.Shadow!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).ToList();
+                var p6 = Plain.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).ToList();
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set} P6: " + string.Join("; ", p6.Select(w => w.Mine?.Text)));
                 p6.Should().NotBeEmpty().And.OnlyContain(w => w.Mine == null || w.Mine.Subforms.All(f => f.Kind != ServiceFormKind.Compare || f.Path != price), $"P6 under {set}");
-                Plain.Value.Shadow!.Pushes.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).Should().OnlyContain(w => w.Text == null || w.Text.Contains("c.price >", StringComparison.Ordinal) == false,
-                    $"P6's pushed text under {set} compares no price");
             }
+
+            // What the split rule pushed for each, under the statement's own set: the Rex S's weakening builds, as the
+            // translator writes it.
+            var (p5, p6Pushed) = (Pushed(Probe.Value, Probe.Value.Conjuncts.First().Name), Pushed(Plain.Value, NameOf(PlainSql, P6)));
+            TestContext.Current.TestOutputHelper?.WriteLine($"P5 pushed: {string.Join("; ", p5)}; P6 pushed: {string.Join("; ", p6Pushed)}");
+            p5.Where(t => t.Contains(" OR ", StringComparison.Ordinal)).Should().NotBeEmpty().And.OnlyContain(t => t.Contains("(c.kind = @p", StringComparison.Ordinal), "P5's pushed text");
+            p6Pushed.Should().OnlyContain(t => t.Contains("c.price >", StringComparison.Ordinal) == false, "P6's pushed text compares no price");
         }
 
         /// <summary>
-        /// P8: a conjunct the translator pushes that S sends exactly as a form of fewer nodes, under each set, read beside the
-        /// translator, since the pull request's run plans with S writing; and P7, <c>LIKE 'a%'</c> over a declared string,
-        /// the translator's, pushed and not S's.
+        /// P8: a conjunct S sends exactly as a form of fewer nodes than the text the translator writes of it from the same
+        /// stratum, read back, under each set; and P7, <c>LIKE 'a%'</c> over a declared string, the translator's, pushed and
+        /// not S's.
         /// </summary>
         [Fact]
         public void P8IsCountedAndP7IsTheTranslators()
         {
-            var shadow = Plain.Value.Shadow!;
+            var generated = Plain.Value.Generated!;
             foreach (var set in RenderingGenerateRun.Sets)
             {
-                var shorter = shadow.Classes.Where(c => c.Set == set && c.Class == RenderingGenerateRun.Respelled && c.Form!.Nodes < c.TextForm!.Nodes).ToList();
-                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: P8, {shorter.Count} sent shorter: " + string.Join("; ", shorter.Take(5).Select(c => $"{c.Text} as {c.Form!.Text}")));
+                var shorter = generated.Sends.Where(c => c.Set == set && c.Form is not null).Select(c => (Sent: c, Theirs: Translated(c)))
+                    .Where(c => c.Theirs is { } theirs && c.Sent.Form!.Nodes < theirs.Nodes).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: P8, {shorter.Count} sent shorter: " + string.Join("; ", shorter.Take(5).Select(c => $"{c.Theirs!.Text} as {c.Sent.Form!.Text}")));
                 shorter.Should().NotBeEmpty($"at least one P8 under {set}");
             }
 
-            var p7 = Plain.Value.Shadow!.Classes.Where(c => c.Name == NameOf(PlainSql, P7)).ToList();
-            p7.Should().NotBeEmpty().And.OnlyContain(c => c.Class == RenderingGenerateRun.Written && c.TranslatorRound > 0, "P7 is pushed, and stays the translator's");
+            var p7 = generated.Sends.Where(c => c.Name == NameOf(PlainSql, P7)).ToList();
+            p7.Should().NotBeEmpty().And.OnlyContain(c => c.Owned == false && c.Round > 0, "P7 is pushed, and stays the translator's");
+        }
+
+        /// <summary>The form the translator writes a conjunct as from the stratum its statement renders it from, read back; none where it writes none, or one the reader does not read as written.</summary>
+        static ServiceForm? Translated(RenderingGenerateRun.Sent c)
+        {
+            var parameters = new CosmosParameterList();
+            return c.Source.TranslatorFor(c.Conjunct, parameters).TryTranslateConjunct(c.Source.Conjuncts[c.Conjunct], out var text)
+                && CosmosSqlFormReader.Read(text!, parameters.Parameters) is var read && read.Written == text && RenderingCheckRun.Opaque(read.Form) == false ? read.Form : null;
         }
 
         /// <summary>On a service each exact gain's text keeps the ids Calcite keeps for its statement.</summary>

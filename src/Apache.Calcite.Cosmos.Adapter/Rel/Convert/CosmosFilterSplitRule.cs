@@ -177,8 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         /// <param name="filter">The filter.</param>
         /// <param name="container">The container it reads.</param>
-        /// <param name="projecting">Whether the residual projection rule asks (site R), which fires only where nothing pushes.</param>
-        internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool projecting = false)
+        internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
         {
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
@@ -210,10 +209,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
 
-            // Site W: where the statement's admission took S's answers, S's weakening in J's place, whatever arm is in force
-            // now; beside the translator, where a test armed the shadow so, S's told it beside J's.
-            var (arm, writes) = Metadata.CosmosRenderingShadow.Armed ? (Metadata.CosmosRenderingShadow.Current, statement.Writes) : (null, false);
-
             // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
             // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
             // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
@@ -237,12 +232,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (weakens == false)
                     continue;
 
-                // Rendered, and its guards deleted, from what every pushed conjunct establishes: the
-                // stratum a conjunct no round admitted is read in, which is never its own facts.
+                // Written from what every pushed conjunct establishes: the stratum a conjunct no round
+                // admitted is read in, which is never its own facts.
                 var parameters = new CosmosParameterList();
                 var translator = statement.TranslatorFor(i, parameters);
 
-                if ((writes ? statement.WeakeningOf(i).Rex : TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias)) is not RexNode weakened)
+                // S's weakening of it, as the Rex it builds: none where S gave none or the builder writes none.
+                if (statement.WeakeningOf(i).Rex is not RexNode weakened)
                     continue;
 
                 beneath ??= AlreadyApplied(filter.getInput()).ToList();
@@ -258,47 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 }
             }
 
-            // Site R fires where nothing pushes and a residual remains: by the translator's split, and by S's.
-            if (writes == false && arm is { Writes: false, Observer: { } observer } && Shadowed(statement, filter, weakens, observer) is { } mine && projecting)
-                observer.Placed(statement, pushable.Count == 0 && residual.Count > 0, mine.Pushed == 0 && mine.Residual > 0);
-
             return (pushable, residual);
-        }
-
-        /// <summary>
-        /// The split S would make of a statement, under each set the shadow asked (sites W and R), as this rule makes its own:
-        /// each conjunct admitted pushed — S's forms, and the translator's conjuncts S does not own — and every other kept
-        /// residual, its weakening built, judged against what lies beneath and written as the translator writes it, told the
-        /// shadow. What it pushes and leaves residual under the statement's own set; none where S was not asked.
-        /// </summary>
-        static (int Pushed, int Residual)? Shadowed(Metadata.CosmosFilterStatement statement, Filter filter, bool weakens, Metadata.ICosmosRenderingShadowObserver observer)
-        {
-            var pushes = new List<(int, int)>();
-            foreach (var set in statement.RenderedSets)
-            {
-                if (statement.RenderingFor(set) is not { Resolution: var resolution })
-                    continue;
-
-                var (pushed, beneath) = (resolution.Forms.Count + Enumerable.Range(0, statement.Conjuncts.Count).Count(i => statement.IsAdmitted(i) && resolution.Forms.ContainsKey(i) == false
-                    && resolution.Residual.Contains(i) == false), AlreadyApplied(filter.getInput()).ToList());
-                foreach (var i in weakens ? resolution.Residual : [])
-                    if (statement.WeakeningOf(i, set) is ({ } form, var rex))
-                    {
-                        string? text = null;
-                        var applied = rex is not null && statement.IsApplied(rex, beneath);
-                        if (rex is not null && applied == false && statement.TranslatorFor(i, new CosmosParameterList()).TryTranslate(rex, out text))
-                        {
-                            beneath.Add(rex);
-                            pushed++;
-                        }
-
-                        observer.Weakened(statement, i, set, form, text, applied);
-                    }
-
-                pushes.Add((pushed, resolution.Residual.Count));
-            }
-
-            return pushes.Count > 0 ? pushes[0] : null;
         }
 
         /// <summary>

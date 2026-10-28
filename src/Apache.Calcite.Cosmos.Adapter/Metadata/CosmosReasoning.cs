@@ -42,16 +42,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Initializes a new instance over the given generations, and the given oracle where there is one: a test's, with
-        /// limits or a plant of its own.
+        /// Initializes a new instance over the given generations, and the given oracle and probe where there are: a test's,
+        /// with limits or a plant of its own.
         /// </summary>
         /// <param name="facts">The generations the schema's declarations compile into.</param>
         /// <param name="rendering">The rendering oracle; <c>null</c> for one over the registry's definition.</param>
+        /// <param name="probe">A test's probe of its filters' admission; <c>null</c> for none, as in production.</param>
         /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
-        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null)
+        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null, ICosmosRenderingProbe? probe = null)
         {
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
+            Probe = probe;
 
             // Made, never started: its graph is defined on a thread of its own once something first asks it, and each
             // generation's warm-up answer printed there, into a box the build holds rather than the reasoning, so that a
@@ -80,6 +82,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// their keys are spelled from.
         /// </summary>
         public RenderingOracle Rendering { get; }
+
+        /// <summary>A test's probe of the schema's filters' admission (<see cref="ICosmosRenderingProbe"/>); none in production.</summary>
+        internal ICosmosRenderingProbe? Probe { get; }
 
         /// <summary>What the rendering graph's last generation printed its warm-up answer as; none before the first is built.</summary>
         internal string? Warmed => _warmed.Value;

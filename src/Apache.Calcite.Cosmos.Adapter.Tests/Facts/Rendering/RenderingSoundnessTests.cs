@@ -88,20 +88,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Lines 1 and 2 (spec g05): every form the generate shadow's bundles derived over IR-read atoms — each agreement at
+        /// Lines 1 and 2 (spec g05): every form generate mode's bundles derived over IR-read atoms — each agreement at
         /// both positions, every composite among them, each implied form and each weakening — held to source A's documents
         /// drawn from its bundle's import, on every target its set serves, under each set a leg plans under and the one
-        /// beside; and source B's trials, each statement shadowed and judged on its declared documents. No witness, and no
+        /// beside; and source B's trials, each statement planned and judged on its declared documents. No witness, and no
         /// form S would send judged on no measured document, but one beneath a stratum the bundle's cells prove no document
         /// meets (<see cref="OnCells"/>).
         /// </summary>
         [Fact]
         public void NoGeneratedFormHasAWitness()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
             var (a, unmeasured) = (new Dictionary<RenderingSet, Tally>(), new List<string>());
             foreach (var set in RenderingGenerateRun.Sets)
-                unmeasured.AddRange(Generated(a[set] = new Tally(), shadow.Bundles.Where(b => b.Set == set), "source A"));
+                unmeasured.AddRange(Generated(a[set] = new Tally(), generated.Bundles.Where(b => b.Set == set), "source A"));
 
             var b = new Tally();
             var unmeasuredB = SourceB(Trials, b, generated: true);
@@ -147,10 +147,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public void NoOpaqueWeakeningHasAWitnessInProcess()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
             var (judged, kept, unread, witnesses) = (0, 0, 0, new List<string>());
             var compiled = new Dictionary<object, Func<J.Obj, Truths?>?>(ReferenceEqualityComparer.Instance);
-            foreach (var w in shadow.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
+            foreach (var w in generated.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
             {
                 var (conjunct, (fields, readings)) = w.Opaque!.Value;
                 if ((compiled.TryGetValue(conjunct, out var truth) ? truth : compiled[conjunct] = CalciteInProcess.Compile(conjunct, fields, readings)) is not { } calcite)
@@ -181,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
             judged.Should().BePositive();
             witnesses.Should().BeEmpty();
         }
@@ -331,7 +331,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Source B into a tally: each trial's check-mode proofs, or with <paramref name="generated"/> each trial's statements
-        /// shadowed and the generate bundles' forms judged; returns the forms S would send that no declared document measured.
+        /// planned in a generate run's schema and its bundles' forms judged; returns the forms S would send that no declared
+        /// document measured.
         /// </summary>
         internal static List<string> SourceB(int trials, Tally tally, bool generated)
         {
@@ -343,13 +344,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (printed.Count == 0)
                     continue;
 
-                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(new CosmosReasoning());
+                var generate = generated ? new RenderingGenerateRun() : null;
+                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(generate?.Reasoning ?? new CosmosReasoning());
                 var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]),
-                    shadow: generated ? new RenderingGenerateRun() : null);
+                    generated: generate);
                 tally.Statements++;
                 tally.Unplanned += run.Failures.Count;
-                if (generated)
-                    unmeasured.AddRange(Generated(tally, run.Shadow!.Bundles, $"source B trial {trial}", documents));
+                if (generate is not null)
+                    unmeasured.AddRange(Generated(tally, generate.Bundles, $"source B trial {trial}", documents));
                 else
                     SourceA(run, tally, documents);
             }
