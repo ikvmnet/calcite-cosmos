@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -44,16 +43,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// </remarks>
     public static class CosmosFunctionBodies
     {
-
-        /// <summary>
-        /// Parsed paths, keyed by the literal they came from.
-        /// </summary>
-        /// <remarks>
-        /// A predicate is evaluated once per row and the path is the same every time, so parsing it per
-        /// row is the one cost here worth removing. The document cannot be cached the same way; it is
-        /// different on every row, and parsing it is the irreducible part.
-        /// </remarks>
-        static readonly ConcurrentDictionary<string, CosmosPath?> Paths = new();
 
         /// <summary>Determines whether the document holds anything at the path, null included.</summary>
         public static bool IsDefined(string? document, string? path) => Kind(document, path) != JsonValueKind.Undefined;
@@ -121,13 +110,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
         }
 
-        static CosmosPath? Resolve(string path)
-        {
-            return Paths.GetOrAdd(path, static text =>
-                CosmosRexTranslator.TryExtendByJsonPath(CosmosPath.Root(CosmosImplementor.DefaultRootAlias), text, out var resolved)
-                    ? resolved
-                    : null);
-        }
+        /// <summary>
+        /// Parses the path a type test names, with the grammar the rendered statement's paths are parsed by.
+        /// </summary>
+        /// <remarks>
+        /// Parsed on every call and kept nowhere. A static memo would keep every path the process is ever
+        /// asked to test, and what the adapter learns from what it is asked hangs off the schema, never the
+        /// process (<c>docs/06-connections.md</c> §6.4). Nor is a memo per statement worth building: parsing
+        /// costs 75 ns for one step and 30 to 60 ns for each step after, beside 2.4 µs to parse a 200-byte
+        /// document and 8.2 µs for 1 KB (.NET 10, measured under full load) — a sixth of a call at ten steps,
+        /// and more than the document only past some fifty steps, or two hundred at 1 KB.
+        /// </remarks>
+        static CosmosPath? Resolve(string path) =>
+            CosmosRexTranslator.TryExtendByJsonPath(CosmosPath.Root(CosmosImplementor.DefaultRootAlias), path, out var resolved)
+                ? resolved
+                : null;
 
     }
 

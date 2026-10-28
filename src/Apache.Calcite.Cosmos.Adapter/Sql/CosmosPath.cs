@@ -129,12 +129,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
         public CosmosPath Index(int index) => Append(CosmosPathSegment.Index(index));
 
-        CosmosPath Append(CosmosPathSegment segment)
+        /// <summary>
+        /// Returns a new path with <paramref name="segment"/> appended.
+        /// </summary>
+        /// <param name="segment">The segment to append.</param>
+        /// <returns>The extended path.</returns>
+        internal CosmosPath Append(CosmosPathSegment segment)
         {
             var segments = new CosmosPathSegment[_segments.Length + 1];
             Array.Copy(_segments, segments, _segments.Length);
             segments[_segments.Length] = segment;
             return new CosmosPath(_alias, segments);
+        }
+
+        /// <summary>
+        /// Returns a new path with <paramref name="segments"/> appended in order, copying this one once,
+        /// or this path where there are none.
+        /// </summary>
+        /// <param name="segments">The segments to append.</param>
+        /// <returns>The extended path.</returns>
+        internal CosmosPath Append(IReadOnlyList<CosmosPathSegment> segments)
+        {
+            if (segments.Count == 0)
+                return this;
+
+            var appended = new CosmosPathSegment[_segments.Length + segments.Count];
+            Array.Copy(_segments, appended, _segments.Length);
+            for (var i = 0; i < segments.Count; i++)
+                appended[_segments.Length + i] = segments[i];
+
+            return new CosmosPath(_alias, appended);
         }
 
         /// <summary>
