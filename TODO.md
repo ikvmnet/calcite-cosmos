@@ -2995,7 +2995,8 @@ across documents* and *A join of a container to itself* is the record.
   the median over three runs (pairs 337–708 ms) at 100 % load, against 29b's 0.5 s and its 1.0 s kill; with the build
   awaited first, S's own time in the plan was 15.2–22.6 ms at the median. So `CosmosSchemaFactory.create` does not warm
   before it reads the containers' definitions. At g17 line 29b read over its pass in three runs of three, 519–663 ms
-  against 500 and under the 1.0 s kill, at 100 % load, S's own time 14.9–18.7 ms once built. The spec takes the warm in
+  against 500 and under the 1.0 s kill, at 100 % load, S's own time 14.9–18.7 ms once built; and again at the switch's
+  review, S off then a schema's, 502–647 ms (pairs 449–1003 ms), S's own time 16.2–28.2 ms, with line 29 at −188 ms. The spec takes the warm in
   `create` where 29b reads over; 29b's harness makes its schemas without `create`, so that warm cannot move its
   reading, which is the warm build (1.2–1.3 s) sharing a saturated processor with the plan. *For the owner:* (a) add
   the warm, about 3 lines, overlapping the build (defined and settled in 329–405 ms, hashed in 78–164 ms) with a

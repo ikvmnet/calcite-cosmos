@@ -7659,7 +7659,7 @@ on its own thread, once, a volatile read after. A table only read for its row ty
 with S off. `CosmosSchemaFactory.create` does not warm before it reads the containers' definitions. The spec takes that
 warm only if line 29b reads over its 0.5 s pass; it read within at g15r (459–497 ms), where the choice was made, and
 over at g17, three runs of three at 519–663 ms, under the 1.0 s kill, at 100 % load, with S's own time in the plan
-14.9–18.7 ms once built. Line 29b's schemas are made by a harness, not by `create`, so a warm there could not move its
+14.9–18.7 ms once built, and 502–647 ms when read again with S off a schema's. Line 29b's schemas are made by a harness, not by `create`, so a warm there could not move its
 reading, which is the warm build, 1.2–1.3 s, sharing a saturated processor with the plan. It would overlap the build
 with a factory host's definition reads; whether to add it is the owner's (`TODO.md`).
 
