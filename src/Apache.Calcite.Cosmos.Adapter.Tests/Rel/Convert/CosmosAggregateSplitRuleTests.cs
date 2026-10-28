@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     public class CosmosAggregateSplitRuleTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         CosmosTable _products = null!;
 

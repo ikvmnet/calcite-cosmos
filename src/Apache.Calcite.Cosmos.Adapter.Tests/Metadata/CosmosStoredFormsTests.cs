@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var path = JsonDocumentPath.Root.Property("p");
 
             JsonFactSet Declared(string pattern) =>
-                CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(JsonSchemaFacts.ReadFrom(
+                CosmosOracle.For(TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" })).WithFacts(JsonSchemaFacts.ReadFrom(
                     JsonNode.Parse($$"""{ "type": "object", "properties": { "p": { "type": "string", "pattern": "{{pattern}}" } } }""")!, formsOnly)).Facts).Declared;
 
             foreach (var form in new[] { "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "^[0-9]{5}$" })

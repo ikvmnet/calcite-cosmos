@@ -40,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public class CosmosParameterPlanningTests
     {
 
-        static readonly CosmosContainerMetadata Items = new("items", new[] { "/k" });
+        static readonly CosmosContainerMetadata Items = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/k" }));
 
         static RelNode PlanToCosmos(string sql)
         {

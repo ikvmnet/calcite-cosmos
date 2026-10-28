@@ -401,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     if (Theories.TryGetValue(key, out var facts) == false)
                     {
                         var rules = declared.SelectMany(d => Claims(d.Facts).Select(claim => JsonFactRule.Unconditional(new JsonFact(d.Path, claim))));
-                        Theories[key] = facts = CosmosOracle.For(new CosmosContainerMetadata("model", ["/pk"]).WithFacts(rules).Facts).Declared;
+                        Theories[key] = facts = CosmosOracle.For(TestReasoning.Bind(new CosmosContainerMetadata("model", ["/pk"])).WithFacts(rules).Facts).Declared;
                     }
 
                     return facts;

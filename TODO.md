@@ -132,13 +132,13 @@ distribution is not, so a hot-partition estimate would have to come from outside
 
 ### A rebuilt root leaks its client — *small*
 
-The provider answered the question this entry used to ask. Since `Apache.Calcite.Data`
-2.0.1-pre.267 a connection draws on a `CalciteDataSource` shared by every connection with an
-equivalent connection string, so the model is read and `CosmosSchemaFactory.create` runs once per
-data source rather than per connection; a host wanting the schema object itself registers it with
-`CalciteDataSourceBuilder.AddSchema`. `CalciteConnection.RootSchema` is now read-only. The manual
-(chapter 6) documents both; what a schema learns still hangs off the schema, and nothing here should
-grow a process-wide cache.
+The provider answered the question this entry used to ask. Since `Apache.Calcite.Data` 2.0.1-pre.267 a connection
+draws on a `CalciteDataSource` shared by every connection with an equivalent connection string, so the model is read
+and `CosmosSchemaFactory.create` runs once per data source rather than per connection; a host wanting the schema
+object itself registers it with `CalciteDataSourceBuilder.AddSchema`. `CalciteConnection.RootSchema` is now read-only.
+The manual (chapter 6) documents both; what a schema learns still hangs off the schema, and nothing here should grow a
+process-wide cache, and none does: `CosmosFunctionBodies.Paths`, the last, is parsed per call since #243, and F's
+default graphs and the rendering oracle are each schema's now (*S's state was the process's*, section 10).
 
 What is left is disposal. A pooled data source is released after `ConnectionIdleLifetime` with no
 open connection, and the next connection builds a new root — and with it, through `endpoint`, a new
@@ -146,6 +146,13 @@ open connection, and the next connection builds a new root — and with it, thro
 schema on a released root, so `CosmosSchema` and `CosmosAccountSchema` can now release the client they
 created. Only one they created: a client from `clientFactory` may be shared and is the factory's to
 dispose.
+
+A rebuilt root also starts the planner over: the schema's reasoning (`CosmosReasoning`) — its generations, every
+compiled declaration and every statement's tree, its rendering graph and the answers it remembers — goes with the old
+root, and the new schema compiles again. A schema added with `AddSchema` that implements `IDisposable` is disposed
+each time a root holding it is released, `Clear()` included, though the same instance is added to the next root.
+`CosmosSchema` is not disposable yet, but is to become so for the client above: disposal must then leave such a schema
+usable, its reasoning above all, which is why `CosmosReasoning` holds nothing disposable.
 
 ### Statistics after pushdown — *large*
 
@@ -2010,6 +2017,18 @@ of record is in its repository, as
 - **Generations.** One graph per schema object and generation, retired at a million interned values or half its ids
   or epochs (g07). Each query
   context is remembered per declaration for the next 256 established sets, and released once nothing holds it.
+- **The graphs are the schema's, and nothing else's.** Each schema object's `CosmosReasoning` holds its generations
+  and the service's facts bound to them, and each bound theory its oracle; a theory bound to none compiles nothing and
+  says so. `JsonFactGenerations.Default`, its binding table and the oracle's own generations and table are gone, and
+  with them the pin the binding table's static key put on every factory schema's graphs. A host's schema, or a table
+  built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks. No static holds
+  what a question taught (`CosmosFunctionBodies.Paths`, the last, is parsed per call since #243), and
+  `CosmosStaticsTests` keeps it so: every static field of the adapter is classed with its
+  reason, and one not classed fails; a static's type is followed through the fields it can hold, its value walked
+  after a schema has worked and gone, and each weak table names the test that finds it released.
+  `CosmosConstraintCompiler`'s table, keyed on whatever type factory a caller passes, is weak on the table too, and
+  `CosmosFilterStatement`'s, keyed on whatever condition a caller passes, weak on the container, so a long-lived
+  factory or condition keeps none.
 - **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
   four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
   nested `not`.
@@ -2126,6 +2145,10 @@ holds. Three bugs planted in what was added were each caught by it.
   warms each declaration on a background worker, and swaps a generation only once every declaration is ready.
 - **One context per declaration, not per container** — *small.* An account schema applies one declaration to a
   container in every database, and each still compiles its own.
+- **`PredicateRules` defines under one lock for the process** — *small.* `PredicateRules.Of` locks its static table,
+  keyed weakly on each graph's `JsonRules`, so every schema's first question in each generation waits on every
+  other's definition. The table holds nothing past its graph; the lock is the shared part. A lazy field on
+  `JsonRules` would take both away.
 - **Run limits** — *small.* A query's run stops on contradiction and otherwise has the engine's defaults: 10,000
   iterations, 64 cases, a split depth of 4. The plan's §3.8 proposes limits per profile, measured on a corpus.
 - **The declared differential corpus** — *medium.* The rows the service returns for a pushed plan, against an
@@ -2864,17 +2887,52 @@ across documents* and *A join of a container to itself* is the record.
   `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine` measures it paired, with the build's parts (define, hash, warm
   up), which are where to cut if the line fails.
 - **The warm-up's answer is not printed** — *small, for g13.* Each generation answers one question before it is current;
-  `CosmosRendering.Warm` is to print that answer, so the printer is warm too, once there is a printer.
+  its build is to print that answer, so the printer is warm too, once there is a printer.
 - **The cost accumulator is g15's** — *small.* `RenderingCost` is the record the spec drew as g15's
   `RenderingCostSample`: hits, bundles, declines, iterations and time. g15's `CosmosRenderingCost` sums it and holds the
   roots a flow, and the per-query test reads a query's shape off their atoms' union (`RenderingGenerateRun.ShapeOf`) and
   asserts the lines; candidates, bytes and the graph's use join the record there, with the reader that needs them.
   `RenderingAnswerMemo` has no `Clear` and counts no bytes an entry, which that test adds.
 - **A successor's failed build is retried, not fatal** — *small, for the owner.* Spec §6.2 makes a definition that
-  throws S's end for the process, since the same rows would throw again; that holds of the first definition alone. A
-  successor's build, the same definition built once already, fails only for want of memory or the like, so the current
-  generation answers on and the next build starts 10 s later (`RenderingGraph.DefaultRetry`). If it fails for ever, S
-  answers from the current until it runs out, then declines as unavailable but for remembered answers (O8).
+  throws S's end for the process: the rows are fixed in the assembly, so every schema's definition would throw alike;
+  that holds of the first definition alone. A successor's build is one schema's graph's, the same definition built once
+  already, and fails only for want of memory or the like, so the current generation answers on and the next build starts
+  10 s later (`RenderingGraph.DefaultRetry`). If it fails for ever, S answers from the current until it runs out, then
+  declines as unavailable but for remembered answers (O8).
+- **A first build that fails for want of memory ends that schema's S** — *small, for the owner.* A definition that
+  throws throws for every schema alike (`CosmosRendering.Definition` is read once and keeps what it threw), but a
+  first build that fails after the definition returned — memory short, say — leaves that schema's S unavailable for
+  its life, which for a schema added with `AddSchema`, or a host's own data source, is the process's. Retrying it
+  after `DefaultRetry`, as a successor's failure is, would keep a passing failure passing.
+- **S's state was the process's, not the schema's** — *done.* `CosmosRendering.Oracle` was a static whose generations
+  interned every question's values, whose memo kept 4,096 answers, and whose importer kept every node's readings in a
+  static table: all learned, all living for the process, against *A rebuilt root leaks its client* and chapter 6. The
+  definition stays the process's, being fixed facts (`CosmosRendering.Definition`); the oracle, its graph and
+  generations, the memo and the readings are each schema object's, on its `CosmosReasoning` beside its
+  `JsonFactGenerations`, made with it and built when first warmed or asked, which nothing in planning does until the
+  switch. Unbound metadata reasons in nothing. Left for the switch, which warms it: line 29b, the first plan on a schema
+  made in a warm process; CI's builds, one for each test schema that asks S; and what a schema's S holds once filled,
+  below.
+- **S's frozen theory is built once a schema** — *medium, Eggnog's.* Every schema object builds its own S from the
+  one definition: Eggnog 1.1.1 interns a child scope's values into its graph, whose pools are permanent and shared by
+  every scope (`ValueStore`), and counts every scope's ids and epochs on the graph's (`GraphUsage`), so a frozen
+  theory shared between schemas would share what each schema's questions taught it. So from the switch, a schema made
+  in a warm process will pay the warm build (352–1,832 ms at 85–100 % load, 598 ms quieter) once S is asked, and hold
+  its own generation; nothing in planning builds S before then. Built, a generation is 4.4 MB and 4,625 interned
+  values; after 4,096 distinct questions, 32.6 MB more and 122,153 values, about 280 bytes a value, where the memo of
+  their answers is 3.6 MB, 0.9 KB an answer (`CosmosReasoningTests.ASchemasGraphsCost`, Release, net10.0, the machine
+  at 100 %). Its successor is built at 800,000 values, so at that rate a schema's S nears 200 MB first (extrapolated,
+  not measured), and two live while the successor builds: once a process before, now once a live schema. Scoped
+  interning with child-local ids and epochs, or a seal or tenant API that lets graphs share a frozen root nothing can
+  enter, would let every schema share one: a root nothing enters is a fixed fact (owner, 2026-10-27). Until then,
+  hashing the theory once a definition (70–143 ms of each build) and loading the settled rows are levers that are
+  fixed facts too; retiring a generation sooner, or interning a question's literals by the vocabulary, would bound the
+  rest.
+- **Concurrent builds are unmeasured** — *small, when the switch warms S.* Schemas made at once build at once, each
+  on a dedicated thread, and a first plan waits at most 5 s for its own schema's build, blocking the thread it plans
+  on. Measure 4 and 8 builds at once, and `Pooling=false` connections opened and closed in a loop, with the thread
+  pool's queue and unrelated async work's latency beside. A process-wide gate on builds would hold no learned state,
+  and would be a stopgap; the proper fix is the shared frozen theory above.
 - **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
   wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
   with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,

@@ -49,8 +49,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     public class CosmosLookupJoinTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
-        static readonly CosmosContainerMetadata Orders = new("orders", new[] { "/customer" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
+        static readonly CosmosContainerMetadata Orders = TestReasoning.Bind(new CosmosContainerMetadata("orders", new[] { "/customer" }));
 
         /// <summary>
         /// Answers with documents and records every statement it was given.

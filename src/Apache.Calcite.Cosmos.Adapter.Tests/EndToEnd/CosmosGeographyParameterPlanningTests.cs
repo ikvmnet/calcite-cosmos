@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public class CosmosGeographyParameterPlanningTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         const string Location = """CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))""";
 

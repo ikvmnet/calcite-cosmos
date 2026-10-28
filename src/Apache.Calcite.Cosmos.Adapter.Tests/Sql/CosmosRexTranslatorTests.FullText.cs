@@ -314,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void APredicateOverADeclaredPathRenders()
             {
-                var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" }));
 
                 Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("steel")))
                     .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
@@ -323,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void APredicateOverAnUndeclaredPathRendersToo()
             {
-                var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" }));
 
                 Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")))
                     .Should().Be("FULLTEXTCONTAINS(c.note, @p0)");
@@ -336,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void EveryFullTextFormRendersWithoutADeclaration()
             {
-                var container = new CosmosContainerMetadata("products");
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products"));
                 var translator = Translator(container);
 
                 translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("a")), out _).Should().BeTrue();
@@ -366,7 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void AVectorDistanceNeedsOneDeclaredVector()
             {
-                var container = new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" });
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" }));
 
                 Translator(container).Translate(_rex.makeCall(CosmosOperators.VectorDistance, Text(), Other()))
                     .Should().Be("VECTORDISTANCE(c.text, c.note)");
@@ -387,7 +387,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void AFullTextDeclarationDoesNotDeclareAVectorPath()
             {
-                var fullText = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+                var fullText = TestReasoning.Bind(new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" }));
 
                 Translator(fullText).TryTranslate(_rex.makeCall(CosmosOperators.VectorDistance, Text(), Text()), out _).Should().BeFalse();
             }

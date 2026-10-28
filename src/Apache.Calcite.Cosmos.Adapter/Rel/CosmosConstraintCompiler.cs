@@ -37,7 +37,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// </para>
     /// <para>
     /// <b>Compiled per type factory, and remembered.</b> An expression carries its types, and types belong
-    /// to a factory, so a constraint compiled for one planner is compiled again for another — once.
+    /// to a factory, so a constraint compiled for one planner is compiled again for another — once. Remembered
+    /// weakly under both the factory and the table: a table reaches its schema's reasoning, and a caller may pass
+    /// a factory that lives for the process, so a factory that outlives a table keeps none of it.
     /// </para>
     /// </remarks>
     public static class CosmosConstraintCompiler
@@ -50,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="Filter">The predicate, or <c>null</c> for every document.</param>
         public sealed record Compiled(IReadOnlyList<RexNode> Keys, RexNode? Filter);
 
-        static readonly ConditionalWeakTable<RelDataTypeFactory, ConcurrentDictionary<(CosmosTable, CosmosConstraint.Unique), Compiled>> Cache = new();
+        static readonly ConditionalWeakTable<RelDataTypeFactory, ConditionalWeakTable<CosmosTable, ConcurrentDictionary<CosmosConstraint.Unique, Compiled>>> Cache = new();
 
         /// <summary>
         /// Compiles a <c>UNIQUE</c> constraint against a container's table, for expressions built by the
@@ -70,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (rexBuilder is null)
                 throw new ArgumentNullException(nameof(rexBuilder));
 
-            return Cache.GetOrCreateValue(rexBuilder.getTypeFactory()).GetOrAdd((table, unique), key => CompileCore(key.Item2, key.Item1, rexBuilder));
+            return Cache.GetOrCreateValue(rexBuilder.getTypeFactory()).GetOrCreateValue(table).GetOrAdd(unique, u => CompileCore(u, table, rexBuilder));
         }
 
         /// <summary>

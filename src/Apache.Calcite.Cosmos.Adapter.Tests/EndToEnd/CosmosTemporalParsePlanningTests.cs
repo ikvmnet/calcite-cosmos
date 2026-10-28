@@ -82,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var declared = pattern is null ? "" : $""", "pattern": "{pattern.Replace("\\", "\\\\")}" """;
 
-            return new CosmosContainerMetadata("items", new[] { "/ref" })
+            return TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                     $$"""
                     { "type": "object", "required": ["at"],

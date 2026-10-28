@@ -60,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         static readonly string Paging = Schema.Replace("\"ref\": { \"type\": \"string\" }", "\"ref\": { \"enum\": [\"a\", \"b\", \"c\"] }");
 
         static CosmosContainerMetadata Container(string name = "items", string partitionKey = "/linkId", string? schema = null, IReadOnlyList<IReadOnlyList<string>>? uniqueKeys = null) =>
-            new CosmosContainerMetadata(name, new[] { partitionKey }, uniqueKeys: uniqueKeys)
+            TestReasoning.Bind(new CosmosContainerMetadata(name, new[] { partitionKey }, uniqueKeys: uniqueKeys))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema ?? Schema)));
 
         /// <summary>

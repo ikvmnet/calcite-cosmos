@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ACheckIsImportedFromWhatAssumesNoConjunctItHolds()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var theory = generations.Bind(Theory(Outright(P("a"), Present)));
+            var theory = Theory(Outright(P("a"), Present)).In(generations);
             var (category, kind) = (Eq(Raw(CategoryPath), "bikes"), Eq(Raw(KindPath), "a"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { category, kind }), (i, _) => i == 0);
             scope.StratumOf(1).Should().Be(0, "the second conjunct is residual");
@@ -153,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ALaterRoundIsReadBesideTheFactsItWasRenderedFrom()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var theory = generations.Bind(Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))));
+            var theory = Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))).In(generations);
             var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { kind, label }),
                 (i, facts) => i == 0 || facts.Knows(new Cosmos.Facts.JsonFact(LabelPath, Type(JsonType.String))));
@@ -181,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
         {
             var container = new Adapter.Metadata.CosmosContainerMetadata("t", ["/kind"])
-                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithFactGenerations(new JsonFactGenerations());
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithReasoning(new Adapter.Metadata.CosmosReasoning());
             var run = RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [
                 "SELECT c.\"id\" FROM t AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c.\"DOC\", '$.label') = '7'"], [container]));
             var checks = run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null).ToList();

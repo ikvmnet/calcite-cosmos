@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
         static CosmosContainerMetadata Declaring(string name, string partitionKey, string schema, IEnumerable<CosmosCompositeIndex>? indexes = null) =>
-            new CosmosContainerMetadata(name, new[] { partitionKey }, indexes).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
+            TestReasoning.Bind(new CosmosContainerMetadata(name, new[] { partitionKey }, indexes)).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
 
         static CosmosCompositeIndex Index(params (string Path, bool Descending)[] paths) => new(paths.Select(p => new CosmosCompositeIndexPath(p.Path, p.Descending)));
 
@@ -89,8 +89,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// </summary>
         static readonly CosmosContainerMetadata[] Containers =
         [
-            new("products", new[] { "/category" }),
-            new("typed", new[] { "/category" }),
+            TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })),
+            TestReasoning.Bind(new CosmosContainerMetadata("typed", new[] { "/category" })),
             Declaring("ordering", "/category", CosmosPushdownProbeTests.OrderingSchema),
             Declaring("declared", "/category", """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }"""),
             Declaring("kinds", "/kind", CosmosPushdownProbeTests.KindsSchema),
@@ -319,7 +319,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         static RelNode PlanOver(string sql)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var tables = Containers.Select(container => new CosmosTable(container)).ToArray();
+            var tables = Containers.Select(container => TestReasoning.Checked(new CosmosTable(container), container)).ToArray();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             foreach (var table in tables)

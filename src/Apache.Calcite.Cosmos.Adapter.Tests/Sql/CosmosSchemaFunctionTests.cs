@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// name is <em>resolved</em>, so the declaration is here to keep the gate from being what
         /// they measure — <c>CosmosPlannerTests</c> measures the gate.
         /// </remarks>
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" }, fullTextPaths: new[] { "/name", "/tags" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }, fullTextPaths: new[] { "/name", "/tags" }));
 
         /// <summary>
         /// Plans a statement against a <see cref="CosmosSchema"/> the connection is rooted in.

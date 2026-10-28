@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             P7 = "SELECT c.\"id\" FROM strings AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') LIKE 'a%'";
 
         /// <summary><c>typed</c> declaring only that a label's strings are printable ASCII, whatever its kind: its documents keep it.</summary>
-        static readonly CosmosContainerMetadata Twin = new CosmosContainerMetadata("typed", ["/category"])
+        static readonly CosmosContainerMetadata Twin = TestReasoning.Bind(new CosmosContainerMetadata("typed", ["/category"]))
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "properties": { "label": { "pattern": "^[ -~]*$" } } }""")!));
 
         static readonly string Label = ProbeRows.Label;

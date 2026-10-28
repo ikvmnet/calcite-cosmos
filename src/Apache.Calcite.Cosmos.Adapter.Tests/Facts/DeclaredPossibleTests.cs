@@ -42,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 x.Values is null ? x : x with { Values = ValueSet.From(x.Values.Where(v => x.Kinds.Contains(JsonValues.TypeOf(v)))) };
 
             var generations = new JsonFactGenerations(long.MaxValue);
-            generations.Bind(Theory()).Declaration()!.DeclaredPossible().Should().BeNull();
+            Theory().In(generations).Declaration()!.DeclaredPossible().Should().BeNull();
             var (compared, respelled) = (0, 0);
 
             foreach (var (name, theory) in Declarations(generations))
@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         public void SixteenThreadsBuildOneD0()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var declaration = generations.Bind(Theory(Outright(P("a"), Present), When(P("kind"), "k", P("b"), Type(JsonType.String)))).Declaration()!;
+            var declaration = Theory(Outright(P("a"), Present), When(P("kind"), "k", P("b"), Type(JsonType.String))).In(generations).Declaration()!;
             var seen = new Scope?[16];
 
             using (var start = new Barrier(seen.Length))
@@ -113,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         public void AStatementIsRootedAtD0()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var theory = generations.Bind(Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String))));
+            var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String))).In(generations);
             var statement = new PredicateStatement(new[] { Eq(Text(P("a")), "x") });
             var scope = new CosmosOracle(theory, generations).Admit(statement);
 
@@ -121,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(declaration.DeclaredPossible()).And.NotBeNull();
             scope.Facts(OracleLicence.Declaration).Should().BeSameAs(declaration.Declared);
 
-            var nothing = generations.Bind(Theory());
+            var nothing = Theory().In(generations);
             var unrooted = new CosmosOracle(nothing, generations).Admit(statement);
             unrooted.ContextFor(OracleLicence.Declaration).Context.Should().BeSameAs(nothing.Declaration()!.Context);
             GC.KeepAlive(scope);
@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 return ($"trial {trial}", new JsonFactTheory(declaration.Rules));
             });
 
-            return containers.Concat(trials).Where(d => d.Item2.MentionedPaths.Count > 0).Select(d => (d.Item1, generations.Bind(d.Item2)));
+            return containers.Concat(trials).Where(d => d.Item2.MentionedPaths.Count > 0).Select(d => (d.Item1, d.Item2.In(generations)));
         }
 
     }

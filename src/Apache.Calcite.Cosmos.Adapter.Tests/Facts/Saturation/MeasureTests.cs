@@ -118,9 +118,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var five = Time(() => Ask(schema, new JsonAtom.HasType("$.p1", "boolean"), Is("$.kind", "k0", "k1", "k2", "k3", "k4")), out var a4);
             var none = Time(() => Ask(schema, new JsonAtom.Defined("$.p0"), Is("$.kind", "nope")), out var a5);
 
+            using (var reports = JsonContexts.Report())
             using (Contexts.Open(schema, new JsonFact[] { Is("$.kind", "k0", "k1") }, new JsonPathSpec[] { "$.p0" }))
             {
-                var report = JsonContexts.LastReport!;
+                var report = reports.Last!;
                 Report($"   a 2-case query: {report.Elapsed.TotalMilliseconds:F2} ms in the run (search {report.SearchTime.TotalMilliseconds:F2}, merge {report.MergeTime.TotalMilliseconds:F2}, rebuild {report.RebuildTime.TotalMilliseconds:F2}), {report.Iterations} iterations, {report.CasesOpened} cases, {report.Lifts} lifts, {report.Rules.Count} rules");
                 report.CasesOpened.Should().Be(2, "kind IN two kinds is a split of two cases");
                 foreach (var (rule, stats) in report.Rules.OrderByDescending(kv => kv.Value.SearchTime).Take(6))

@@ -67,10 +67,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         readonly Func<JsonFactTheory, CosmosOracle> _oracle;
 
-        /// <param name="oracle">How an oracle is made over a declaration: by default, as the planner would, in its own graphs.</param>
+        /// <param name="oracle">How an oracle is made over a declaration: by default, as the planner would, in graphs of the population's own.</param>
         public PopulationD(Func<JsonFactTheory, CosmosOracle>? oracle = null)
         {
-            _oracle = oracle ?? (theory => new CosmosOracle(theory, null));
+            var generations = new JsonFactGenerations();
+            _oracle = oracle ?? (theory => new CosmosOracle(theory, generations));
         }
 
         /// <summary>

@@ -402,7 +402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         // ── Read off a schema ─────────────────────────────────────────────────────────────────
 
         static JsonFactSet Facts(string schema) =>
-            CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!)).Facts).Declared;
+            CosmosOracle.For(TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" })).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!)).Facts).Declared;
 
         static bool Lacks(JsonFactSet facts, string path, JsonCharacterBand band) =>
             (facts.CharactersOf(JsonDocumentPath.Root.Property(path)) & band) == JsonCharacterBand.None;

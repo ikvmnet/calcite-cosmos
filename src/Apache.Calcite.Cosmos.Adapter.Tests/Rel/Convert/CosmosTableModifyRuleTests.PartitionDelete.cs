@@ -49,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
 
             static CosmosContainerMetadata Container(bool supported) =>
-                new CosmosContainerMetadata("products", new[] { "/category" }).WithPartitionKeyDeleteProbe(() => supported);
+                TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })).WithPartitionKeyDeleteProbe(() => supported);
 
             static RelNode Plan(CosmosTable table, string sql)
             {
@@ -161,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             public void TheCapabilityIsNotProbedForAStatementThatCannotUseIt()
             {
                 var probes = 0;
-                var container = new CosmosContainerMetadata("products", new[] { "/category" })
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }))
                     .WithPartitionKeyDeleteProbe(() => { probes++; return true; });
 
                 var table = new CosmosTable(container);

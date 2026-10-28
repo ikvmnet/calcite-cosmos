@@ -502,7 +502,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         internal static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> containers, IReadOnlyList<object?>? parameters)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var tables = containers.Select(c => new CosmosTable(c.Metadata, Recorded(new CosmosQueryExecutor(c.Container), sent))).ToList();
+            var tables = containers.Select(c =>
+            {
+                var bound = TestReasoning.Bind(c.Metadata);
+                return TestReasoning.Checked(new CosmosTable(bound, Recorded(new CosmosQueryExecutor(c.Container), sent)), bound);
+            }).ToList();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             foreach (var table in tables)

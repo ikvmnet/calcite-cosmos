@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// address fields by ordinal, so only promoted columns can be sorted on. An unpromoted
         /// document path would require an accessor call, which a collation cannot express.
         /// </remarks>
-        protected static readonly CosmosContainerMetadata Products = new(
+        protected static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata(
             "products",
             new[] { "/category" },
             new[]
@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     new CosmosCompositeIndexPath("/id", false),
                     new CosmosCompositeIndexPath("/_ts", false),
                 }),
-            });
+            }));
 
         protected RelOptCluster _cluster = null!;
         protected RelOptTable _table = null!;

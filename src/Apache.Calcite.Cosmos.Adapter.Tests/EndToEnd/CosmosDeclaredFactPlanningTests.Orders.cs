@@ -21,7 +21,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// few below U+D800, <c>n</c> an integer, every one required; with the indexing policy given.
         /// </summary>
         static CosmosContainerMetadata Orderable(string[]? included = null, string[]? excluded = null, string[]? computed = null) =>
-            new CosmosContainerMetadata("items", new[] { "/pk" }, null, included, excluded, computedProperties: computed)
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }, null, included, excluded, computedProperties: computed))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                     { "type": "object", "required": ["s", "a", "n", "x", "cp_lower", "cp_neg"],
                       "properties": { "s": { "type": "string" }, "a": { "enum": ["a", "b", "c"] }, "n": { "type": "integer" },
@@ -153,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void AKeysetInsideOnePartitionPushesWhole()
         {
-            var container = new CosmosContainerMetadata("items", new[] { "/category" })
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/category" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "properties": { "category": { "type": "string" } } }""")!));
 
             var seek = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.category') = ? AND c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY""", container, out _);
@@ -224,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>x</c> a string of any character.
         /// </summary>
         static CosmosContainerMetadata Patterned() =>
-            new CosmosContainerMetadata("items", new[] { "/pk" })
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                     { "type": "object", "required": ["s", "u", "w", "x"],
                       "properties": { "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
@@ -279,7 +279,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// alone.
         /// </summary>
         static CosmosContainerMetadata UuidIds(bool mixedCase) =>
-            new CosmosContainerMetadata("items", new[] { "/pk" })
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                     "{ \"type\": \"object\", \"properties\": { \"id\": { \"type\": \"string\", \"pattern\": \""
                     + (mixedCase ? "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" : "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -353,7 +353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>k1</c>, the basic plane without the surrogates in <c>k2</c>, and nothing in <c>k3</c>.
         /// </summary>
         static CosmosContainerMetadata Labelled() =>
-            new CosmosContainerMetadata("items", new[] { "/pk" })
+            TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                     { "type": "object", "required": ["kind", "label"],
                       "properties": { "kind": { "enum": ["k1", "k2", "k3"] }, "label": { "type": "string" } },

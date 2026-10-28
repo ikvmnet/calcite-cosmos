@@ -69,6 +69,7 @@ could use it — and keeps what it learns:
 | the whole-partition delete capability | the first time a `DELETE` could use it | the life of the schema |
 | row counts | the first time a plan asks | 5 minutes, or `statisticsExpireSeconds` (6.5) |
 | the lookup join's cross-execution cache | as joins run | per the declared policy (Chapter 12) |
+| how its declarations and filters are reasoned about: each container's schema compiled, each statement's facts | the first plan to reach a container; each new filter | the life of the schema; compiled again as the reasoning graph fills |
 
 So the useful question is how often a schema is built. With `Apache.Calcite.Data` that depends on
 pooling.
@@ -77,13 +78,15 @@ pooling.
 same keys and values, in any order and casing — draws on one data source the provider keeps for the
 process. The model is read and the schemas built once, when the first of those connections opens, and
 every later connection plans against the same root schema and so the same Cosmos schema instance.
-Once no connection has been open on it for `ConnectionIdleLifetime` seconds (300 by default) the data
-source is released, and the next connection builds everything again — a new client, the definitions
-read again, the statistics forgotten.
+Once no connection has held it for `ConnectionIdleLifetime` seconds (300 by default) — a connection
+holds it from its first open until it is disposed, not closed — the data source is released, and the
+next connection builds everything again: a new client, the definitions read again, the statistics
+forgotten, and every statement planned as if for the first time, its declarations compiled again.
 
 **With `Pooling = false`**, each connection builds its own root when it opens and releases it when it
-is disposed. Every connection pays for a new client and a definition read per container. Avoid it for
-anything that opens connections often.
+is disposed. Every connection pays for a new client, a definition read per container, and a first plan
+of every statement, its declarations compiled again. Avoid it for anything that opens connections
+often.
 
 **To pick up a changed model** in a running process, evict the pooled data source:
 `CalciteConnection.ClearPool(connection)` for one connection string, or
@@ -163,6 +166,11 @@ string builder, or qualify table and function names.
 every decision anyone made about it and leaks between accounts. The lifetime is yours to choose, and
 the schema object is what carries it.
 
+The planner follows the same rule: what it learns of declarations and statements hangs off the schema
+object and is shared only through the data source. Only fixed facts the adapter ships with — what the
+service guarantees, what the service and Calcite were measured to do, the rules of JSON and JSON
+Schema — are read once for the whole process.
+
 ### Building a schema directly
 
 `CosmosSchema` also has a public constructor, for a host that wants to manage the client itself:
@@ -190,6 +198,23 @@ Built this way, the client is yours to dispose when the application stops. The c
 optional third argument, a factory for each container's lookup cache (Chapter 12). Declarations from a
 model — a JSON Schema, constraints — are applied by `CosmosSchemaFactory`; to use them, build through
 the factory as above.
+
+It owns its reasoning graphs, as a factory-built schema does: what the planner learns of its containers'
+declarations and filters is the schema's, and goes when it does. A `CosmosAccountSchema` shares one
+among its databases, and a `CosmosTable` built on its own over metadata of yours owns one. So build a
+schema or a table once and keep it — one built per lookup or per query plans every statement from
+nothing — and put tables meant to share what they learn in one `CosmosSchema`.
+
+The schema binds each container's metadata to its reasoning, and the bound copy is another object than
+the one you handed it: it is what `table.Container` returns and what the executor factory is given.
+Holding it holds the schema's reasoning. `RefreshStatistics()` on your own metadata object does not
+reach the copy, so refresh through the schema (6.5). A `CosmosTable` built on its own binds a copy too,
+and has no schema to refresh through: call `table.Container.RefreshStatistics()`.
+
+Metadata that is already bound keeps the reasoning it was bound to. Taken from a table —
+`table.Container`, or what the executor factory was handed — and given to another schema or table, it
+goes on reasoning in the first schema's, which then lives as long as either holds it. To give a new
+schema reasoning of its own, hand it metadata you built or read, not a table's.
 
 A `CosmosSchema` built with no executor factory can be planned against but not read: planning needs
 only the container definitions, and executing such a plan fails, saying so. That is how a host can

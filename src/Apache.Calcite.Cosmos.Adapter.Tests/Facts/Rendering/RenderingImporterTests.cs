@@ -27,8 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>A declared string at <c>a</c>, an object at <c>o</c>, and something present at <c>x.y</c>.</summary>
-        static JsonFactTheory Declaration(JsonFactGenerations generations) => generations.Bind(Theory(
-            Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object)), Outright(P("x", "y"), Present)));
+        static JsonFactTheory Declaration(JsonFactGenerations generations) => Theory(
+            Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object)), Outright(P("x", "y"), Present)).In(generations);
 
         /// <summary>
         /// Every path a statement reads is imported as the node the licence chose holds it: round 1's node is
@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             foreach (var container in CosmosDifferentialTests.Containers.Concat(PlannerSchema.All).Where(c => c.Facts.MentionedPaths.Count > 0))
             {
-                var theory = generations.Bind(container.Facts);
+                var theory = container.Facts.In(generations);
                 mentioned += theory.MentionedPaths.Count;
                 var paths = theory.MentionedPaths.SelectMany(p => new[] { p, p.Property("zz") }).Append(P("unmentioned"));
                 Compare(new CosmosOracle(theory, generations).Admit(new PredicateStatement(paths.Select(p => new SqlPredicate.IsDefined(Raw(p))).ToArray())), 0);

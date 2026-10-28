@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     public class CosmosFunctionResolutionTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        static readonly CosmosContainerMetadata Products = TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" }));
 
         CosmosTable _table = null!;
 

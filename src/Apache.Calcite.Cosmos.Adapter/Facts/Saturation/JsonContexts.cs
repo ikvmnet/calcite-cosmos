@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 using Eggnog;
 
@@ -58,9 +59,35 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         long _next;
 
-        /// <summary>The report of the last context opened on this thread, for measurement.</summary>
-        [ThreadStatic]
-        public static RunReport? LastReport;
+        static readonly AsyncLocal<Reports?> Reporting = new();
+
+        /// <summary>Whether any flow has asked for reports; until one has, opening a context reads nothing more.</summary>
+        static volatile bool Armed;
+
+        /// <summary>
+        /// Hands this flow the report of each context it opens, until disposed, for measurement. Production asks for none:
+        /// a report reaches its graph through its rules, so a report kept per thread kept that thread's last graph.
+        /// </summary>
+        /// <returns>The reports, which put back what the flow had before when disposed.</returns>
+        internal static Reports Report()
+        {
+            var reports = new Reports(Reporting.Value);
+            Reporting.Value = reports;
+            Armed = true;
+            return reports;
+        }
+
+        /// <summary>The reports of the contexts a flow opens while it holds this.</summary>
+        internal sealed class Reports(Reports? was) : IDisposable
+        {
+
+            /// <summary>Gets the report of the last context the flow opened.</summary>
+            public RunReport? Last { get; internal set; }
+
+            /// <inheritdoc />
+            public void Dispose() => Reporting.Value = was;
+
+        }
 
         /// <summary>
         /// Makes a query's context beneath <paramref name="parent"/> (the JSON Schema context where it is <c>null</c>): mentions the
@@ -106,7 +133,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 if (assumed.Count > 0)
                     scope.Assume(assumed.ToArray());
 
-                LastReport = scope.Run(schedule, options);
+                var report = scope.Run(schedule, options);
+                if (Armed && Reporting.Value is Reports reports)
+                    reports.Last = report;
             }
             catch
             {

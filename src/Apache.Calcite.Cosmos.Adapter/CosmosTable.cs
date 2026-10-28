@@ -52,11 +52,22 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="container">The container this table exposes.</param>
         /// <param name="executor">Executes statements against the container, or <c>null</c> to expose a table that can be planned against but not read.</param>
         /// <param name="lookupCache">The lookup join's cache across executions, or <c>null</c> where none is configured.</param>
+        /// <remarks>
+        /// A table built alone over metadata no schema has bound owns its reasoning, as a schema does; tables
+        /// meant to share one belong in one <see cref="CosmosSchema"/>. It plans with a bound copy, which
+        /// <see cref="Container"/> returns: refresh its statistics there, since a refresh of the metadata handed
+        /// in does not reach the copy. Metadata another table or schema bound keeps that one's reasoning.
+        /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="container"/> is <c>null</c>.</exception>
         public CosmosTable(CosmosContainerMetadata container, ICosmosQueryExecutor? executor = null, Client.CosmosLookupCache? lookupCache = null)
         {
-            _container = container ?? throw new ArgumentNullException(nameof(container));
-            _convention = CosmosConvention.Create(container);
+            if (container is null)
+                throw new ArgumentNullException(nameof(container));
+
+            // Bound before the convention is made: it owns its container by identity, and the bound copy is
+            // the one every rule and plan reads.
+            _container = container.Reasoning is null ? container.WithReasoning(new CosmosReasoning()) : container;
+            _convention = CosmosConvention.Create(_container);
             _executor = executor;
             _strategies = new CosmosColumnStrategies(this);
             _lookupCache = lookupCache;
@@ -90,7 +101,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         }
 
         /// <summary>
-        /// Gets the container this table exposes.
+        /// Gets the container this table exposes, bound to its schema's reasoning: another object than the one
+        /// handed to the constructor where that one was unbound.
         /// </summary>
         public CosmosContainerMetadata Container => _container;
 

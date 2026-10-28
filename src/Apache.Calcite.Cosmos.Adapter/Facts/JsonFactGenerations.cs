@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -28,9 +27,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// is collected whole, with every context beneath it.
     /// </para>
     /// <para>
-    /// <b>Owned by a schema object, not by the process.</b> What a schema learns hangs off the schema, so the schema
-    /// factory makes one of these per schema object and binds its containers to it. A theory made without one — by a host
-    /// building metadata itself, or by a test — shares <see cref="Default"/>.
+    /// <b>Owned by a schema object, not by the process.</b> What a schema learns hangs off the schema, so each schema
+    /// object's reasoning holds one of these and binds its containers to it. There is no default: a theory bound to none
+    /// compiles nothing, and no static reaches one, so a schema let go takes its graphs with it.
     /// </para>
     /// </remarks>
     internal sealed class JsonFactGenerations
@@ -47,15 +46,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public const double DefaultUsedLimit = 0.5;
 
-        /// <summary>
-        /// The generations of every theory not bound to a schema object's.
-        /// </summary>
-        public static JsonFactGenerations Default { get; } = new();
-
         readonly long _internedLimit;
         readonly double _usedLimit;
         readonly object _starting = new();
-        readonly ConditionalWeakTable<JsonFactTheory, JsonFactTheory> _bound = new();
         Generation? _current;
         int _started;
 
@@ -106,20 +99,6 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         bool Spent(GraphUsage usage) => usage.InternedValues > _internedLimit || usage.FractionUsed >= _usedLimit;
-
-        /// <summary>
-        /// Returns a theory stating what <paramref name="theory"/> states, reasoning in these generations; the same one
-        /// each time it is asked of the same theory.
-        /// </summary>
-        /// <param name="theory">The theory.</param>
-        /// <returns>The theory, bound here.</returns>
-        public JsonFactTheory Bind(JsonFactTheory theory)
-        {
-            if (ReferenceEquals(theory.Generations, this))
-                return theory;
-
-            return _bound.GetValue(theory, t => new JsonFactTheory(t.Rules, this));
-        }
 
         /// <summary>
         /// One graph: the rules of JSON and of JSON Schema, frozen, beneath which theories compile their contexts.

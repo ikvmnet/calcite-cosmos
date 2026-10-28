@@ -265,7 +265,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void G11_AConjunctReadBeneathItsOwnStratumIsFoundByLineOne()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var declaration = generations.Bind(Theory(Outright(LabelPath, Present)));
+            var declaration = Theory(Outright(LabelPath, Present)).In(generations);
             var conjunct = Ne(Text(LabelPath), "bikes");
             var handed = new List<(StatementTerms.Node Node, PredicateRules Rules)>();
             var oracle = new CosmosOracle(declaration, generations)
@@ -282,7 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             handed.Should().ContainSingle().Which.Node.Assumes(conjunct).Should().BeTrue("the plant hands the conjunct its own facts");
             scope.AssumedIn(OracleLicence.RenderConjunct(0)).Should().BeEmpty("the licence table renders no conjunct from its own facts");
 
-            var container = new CosmosContainerMetadata("t", ["/kind"]).WithFacts([Outright(LabelPath, Present)]).WithFactGenerations(new JsonFactGenerations());
+            var container = new CosmosContainerMetadata("t", ["/kind"]).WithFacts([Outright(LabelPath, Present)]).WithReasoning(new CosmosReasoning());
             foreach (var planted in new[] { false, true })
             {
                 var shadow = RenderingCheckRun.Over(RenderingInputs.Differential("own stratum", [NotBikes.Replace("FROM typed", "FROM t", StringComparison.Ordinal)], [container]),
@@ -306,7 +306,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
         {
             var container = new CosmosContainerMetadata("t", ["/kind"])
-                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithFactGenerations(new JsonFactGenerations());
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithReasoning(new CosmosReasoning());
             const string Sql = "SELECT c.\"id\" FROM t AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c.\"DOC\", '$.label') = '7'";
             var document = new J.Obj(new(StringComparer.Ordinal) { ["kind"] = new J.Num(5.0000000000000001m), ["label"] = new J.Num(7m) });
 
@@ -338,7 +338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void G14_ACompositeWhoseLaterArmFailsOnItsSetAsideCellsIsNotAdmitted()
         {
             var generations = new JsonFactGenerations(long.MaxValue);
-            var declaration = generations.Bind(Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))));
+            var declaration = Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))).In(generations);
             var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
             var scope = new CosmosOracle(declaration, generations).Admit(new PredicateStatement([kind, label]),
                 (i, facts) => i == 0 || facts.Knows(new Cosmos.Facts.JsonFact(LabelPath, Type(JsonType.String))));

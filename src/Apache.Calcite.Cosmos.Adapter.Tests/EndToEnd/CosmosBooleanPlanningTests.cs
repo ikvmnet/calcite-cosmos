@@ -65,8 +65,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static CosmosContainerMetadata Container(string? schema) =>
             schema is null
-                ? new CosmosContainerMetadata("items", new[] { "/pk" })
-                : new CosmosContainerMetadata("items", new[] { "/pk" })
+                ? TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
+                : TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }))
                     .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container)

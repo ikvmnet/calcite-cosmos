@@ -62,10 +62,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     {
 
         /// <summary>
-        /// The statements read off each condition, by binding: a condition stands in more than one filter only where a
-        /// rule copies one over another input.
+        /// The statements read off each condition, by container and then binding: a condition stands in more than one
+        /// filter only where a rule copies one over another input.
         /// </summary>
-        static readonly ConditionalWeakTable<RexNode, List<CosmosFilterStatement>> Read = new();
+        /// <remarks>
+        /// Weak on the container as well as the condition. A statement reaches its container's reasoning, and a public
+        /// caller, or <see cref="Declares"/> over a builder that outlives its plan, may pass a condition that lives for the
+        /// process, such as a builder's cached <c>TRUE</c>; so a condition that outlives a table keeps none of it.
+        /// </remarks>
+        static readonly ConditionalWeakTable<RexNode, ConditionalWeakTable<CosmosContainerMetadata, List<CosmosFilterStatement>>> Read = new();
 
         readonly IReadOnlyList<CosmosPath?> _fields;
         readonly IReadOnlyList<CosmosReading> _readings;
@@ -145,13 +150,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             readings ??= Array.Empty<CosmosReading>();
 
-            var read = Read.GetValue(condition, _ => new List<CosmosFilterStatement>());
+            var read = Read.GetOrCreateValue(condition).GetOrCreateValue(container);
             lock (read)
             {
                 // The builder too: the strata render through it, and a statement a reader made over a builder of its own
                 // is no statement for a rule's translator to render.
                 foreach (var statement in read)
-                    if (ReferenceEquals(statement._container, container) && ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
+                    if (ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
                         && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings))
                         return statement;
 

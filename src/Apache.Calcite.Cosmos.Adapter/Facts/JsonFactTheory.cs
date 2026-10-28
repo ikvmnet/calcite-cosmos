@@ -35,12 +35,19 @@ namespace Apache.Calcite.Cosmos.Facts
     /// once it has interned enough (see <see cref="JsonFactGenerations"/>), and the next question compiles it into the
     /// one that replaced it.
     /// </para>
+    /// <para>
+    /// <b>Bound to a schema's generations, or to none.</b> A theory made from rules alone is unbound: its rules and their
+    /// encoding, a value a host may keep anywhere, which compiles nothing. Its container's schema binds it
+    /// (<see cref="In"/>), and only the bound copy holds a compiled context and an oracle, so what a question teaches lives
+    /// as long as the schema and no longer. Asked to reason unbound, it throws <see cref="ArgumentException"/>, which no
+    /// caller reads as an engine's failure: a missed binding fails loudly, never as "unknown".
+    /// </para>
     /// </remarks>
     public sealed class JsonFactTheory
     {
 
         /// <summary>
-        /// The theory of a container that declares nothing, which proves nothing and costs nothing.
+        /// The theory of a container that declares nothing, which proves nothing and costs nothing: unbound, a constant.
         /// </summary>
         public static readonly JsonFactTheory Empty = new(Array.Empty<JsonFactRule>());
 
@@ -58,9 +65,10 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly HashSet<JsonDocumentPath> _mentionedPaths = new();
         readonly object _compiling = new();
         Compiled? _compiled;
+        CosmosOracle? _oracle;
 
         /// <summary>
-        /// Initializes a new instance.
+        /// Initializes a new instance, bound to no schema's generations until its container is.
         /// </summary>
         /// <param name="rules">The compiled rules.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <c>null</c>.</exception>
@@ -74,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Initializes a new instance that reasons in the given generations.
         /// </summary>
         /// <param name="rules">The compiled rules.</param>
-        /// <param name="generations">The generations to compile into, or <c>null</c> for <see cref="JsonFactGenerations.Default"/>.</param>
+        /// <param name="generations">The generations to compile into, or <c>null</c> for none, which compiles nothing.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <c>null</c>.</exception>
         internal JsonFactTheory(IEnumerable<JsonFactRule> rules, JsonFactGenerations? generations)
         {
@@ -82,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 throw new ArgumentNullException(nameof(rules));
 
             _rules = new List<JsonFactRule>(rules).ToArray();
-            Generations = generations ?? JsonFactGenerations.Default;
+            Generations = generations;
 
             var paths = new HashSet<JsonPathSpec>();
             var discriminators = new HashSet<JsonPathSpec>();
@@ -147,9 +155,43 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Gets the generations this theory compiles into.
+        /// Gets the generations this theory compiles into, or <c>null</c> where it is bound to none and compiles nothing.
         /// </summary>
-        internal JsonFactGenerations Generations { get; }
+        internal JsonFactGenerations? Generations { get; }
+
+        /// <summary>
+        /// Returns a theory stating what this one states, reasoning in the given generations: this one where it already
+        /// does, a copy otherwise. A copy remembers nothing of this one, and nothing here remembers it, so no unbound
+        /// theory — a static's included — reaches a schema's graphs.
+        /// </summary>
+        /// <param name="generations">The generations.</param>
+        /// <returns>The theory, bound there.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="generations"/> is <c>null</c>.</exception>
+        internal JsonFactTheory In(JsonFactGenerations generations)
+        {
+            if (generations is null)
+                throw new ArgumentNullException(nameof(generations));
+
+            return ReferenceEquals(Generations, generations) ? this : new JsonFactTheory(_rules, generations);
+        }
+
+        /// <summary>
+        /// Gets the declaration's oracle, made when first asked and the same one after: on the theory, so that it lives as
+        /// long as the schema that bound it.
+        /// </summary>
+        /// <exception cref="ArgumentException">The theory is bound to no schema's generations.</exception>
+        internal CosmosOracle Oracle
+        {
+            get
+            {
+                if (Volatile.Read(ref _oracle) is CosmosOracle oracle)
+                    return oracle;
+
+                // A losing thread's oracle has asked nothing, so dropping it loses nothing.
+                var made = new CosmosOracle(this);
+                return Interlocked.CompareExchange(ref _oracle, made, null) ?? made;
+            }
+        }
 
         /// <summary>
         /// Gets the compiled rules.
@@ -175,6 +217,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Gets what the declaration states of every document: its own context, which every statement's lies beneath.
         /// </summary>
+        /// <exception cref="ArgumentException">The theory states something and is bound to no schema's generations.</exception>
         internal JsonFactSet Declared => _rules.Length == 0 ? JsonFactSet.Empty : Compile().Outright;
 
         /// <summary>
@@ -182,6 +225,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// its own beneath it: what a filter establishes is a stratum of its statement, never a context made here.
         /// </summary>
         /// <returns>The compiled declaration, or <c>null</c> where the engine could not compile it, which states nothing.</returns>
+        /// <exception cref="ArgumentException">The theory is bound to no schema's generations.</exception>
         internal JsonFactDeclaration? Declaration()
         {
             var compiled = Compile();
@@ -201,11 +245,20 @@ namespace Apache.Calcite.Cosmos.Facts
                 or InvalidOperationException or ObjectDisposedException or OverflowException;
 
         /// <summary>
+        /// The failure of a theory asked to reason in no schema's generations: an <see cref="ArgumentException"/>, which
+        /// <see cref="IsEngineFailure"/> does not admit, so that a container the schema never bound fails its plan rather
+        /// than planning as if its declaration knew nothing.
+        /// </summary>
+        internal static ArgumentException Unbound() =>
+            new("The theory is bound to no schema's reasoning, and so compiles nothing: bind its container to its schema's before planning against it.");
+
+        /// <summary>
         /// Returns this declaration compiled into the current generation, compiling it where it is not.
         /// </summary>
+        /// <exception cref="ArgumentException">The theory is bound to no schema's generations.</exception>
         Compiled Compile()
         {
-            var generation = Generations.Current;
+            var generation = (Generations ?? throw Unbound()).Current;
             var compiled = Volatile.Read(ref _compiled);
             if (compiled is not null && ReferenceEquals(compiled.Generation, generation))
                 return compiled;

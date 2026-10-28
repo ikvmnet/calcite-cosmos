@@ -181,13 +181,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         public static IReadOnlyDictionary<string, CosmosTable> CreateTables() => CreateTables(null);
 
         /// <inheritdoc cref="CreateTables()"/>
-        /// <param name="generations">The generations the containers reason in, or <c>null</c> for their own.</param>
-        internal static IReadOnlyDictionary<string, CosmosTable> CreateTables(Cosmos.Facts.JsonFactGenerations? generations)
+        /// <param name="reasoning">The reasoning the containers are bound to, or <c>null</c> for the suite's shared one.</param>
+        internal static IReadOnlyDictionary<string, CosmosTable> CreateTables(CosmosReasoning? reasoning)
         {
             var tables = new Dictionary<string, CosmosTable>();
 
             foreach (var container in All)
-                tables[container.Name] = new CosmosTable(generations is null ? container : container.WithFactGenerations(generations));
+            {
+                var bound = reasoning is null ? TestReasoning.Bind(container) : container.WithReasoning(reasoning);
+                tables[container.Name] = TestReasoning.Checked(new CosmosTable(bound), bound);
+            }
 
             return tables;
         }

@@ -206,10 +206,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     Apache.Calcite.Geography.Schema.GeographySchema.AddTo(root);
 
                     var cosmos = root.add("COSMOS", new AbstractSchema());
-                    cosmos.add("links", new CosmosTable(new CosmosContainerMetadata("links", new[] { "/linkId" })
+                    cosmos.add("links", new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("links", new[] { "/linkId" }))
                         .WithFacts(CosmosSchemaRecognition.ReadFrom(CosmosSelfJoinTests.Schema()))
                         .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) })));
-                    cosmos.add("maps", new CosmosTable(new CosmosContainerMetadata("maps", new[] { "/guid" })
+                    cosmos.add("maps", new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("maps", new[] { "/guid" }))
                         .WithFacts(CosmosSchemaRecognition.ReadFrom(new JsonObject
                         {
                             ["type"] = "object",

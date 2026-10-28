@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         RexNode Or(params RexNode[] operands) => _rex.makeCall(SqlStdOperatorTable.OR, operands);
 
         static CosmosContainerMetadata Container(params string[] partitionKeyPaths) =>
-            new("products", partitionKeyPaths);
+            TestReasoning.Bind(new CosmosContainerMetadata("products", partitionKeyPaths));
 
         static bool Extract(RexNode condition, CosmosContainerMetadata container, out IReadOnlyList<object?> values) =>
             CosmosPartitionKeyExtractor.TryExtract(condition, Fields, null, container, "c", out values);
@@ -278,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         static CosmosContainerMetadata Declaring(string schema, params string[] partitionKeyPaths) =>
-            new CosmosContainerMetadata("products", partitionKeyPaths).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!));
+            TestReasoning.Bind(new CosmosContainerMetadata("products", partitionKeyPaths)).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!));
 
         /// <summary>
         /// A point read applies no predicate, so every conjunct beside its pins has to be one the pins and the declaration

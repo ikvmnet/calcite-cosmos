@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath B = P("b");
 
         /// <summary>The service's facts alone: the theory of every container that declares no schema.</summary>
-        static readonly JsonFactTheory Undeclared = new(CosmosServiceFacts.Rules);
+        static readonly JsonFactTheory Undeclared = TestReasoning.Bind(new JsonFactTheory(CosmosServiceFacts.Rules));
 
         static bool Knows(JsonFactSet facts, JsonDocumentPath path, JsonClaim claim) => facts.Knows(new JsonFact(path, claim));
 
@@ -314,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ARunThatDoesNotCompleteKnowsNothingMore()
         {
-            var oracle = new CosmosOracle(Theory(), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var scope = oracle.Admit(new PredicateStatement(new[] { Eq(Text(A), "x"), IsNotNull(Text(Kind)) }), (i, facts) => true);
 
             scope.Complete.Should().BeFalse();
@@ -332,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void WhatAScopeAssumesIsAlwaysTrueThereHoweverItsRunEnds()
         {
-            var oracle = new CosmosOracle(Theory(), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var weakening = And(Opaque(0), Opaque(1));
             var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
 
@@ -350,13 +350,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// The planner's oracle reasons in the graphs its declaration compiles into, so a declaration compiles once whoever
-        /// asks it; a test's reasons in graphs of its own.
+        /// The planner's oracle reasons in the graphs its declaration compiles into, its schema's, so a declaration compiles
+        /// once whoever asks it, and lives on the bound theory; a test's reasons in graphs of its own.
         /// </summary>
         [Fact]
         public void ThePlannersOracleReasonsInThePlannersGraphs()
         {
-            var theory = Theory(Outright(Kind, Present));
+            var theory = Theory(Outright(Kind, Present)).In(new JsonFactGenerations());
             CosmosOracle.For(theory).Theory.Should().BeSameAs(theory);
             CosmosOracle.For(theory).Should().BeSameAs(CosmosOracle.For(theory));
             Oracle(theory).Theory.Generations.Should().NotBeSameAs(theory.Generations);

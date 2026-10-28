@@ -51,13 +51,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         readonly RenderingGraph Graph;
 
         /// <summary>
-        /// The pull request's run, once a process, in generations of its own: the partition run's 200 predicates, or 1,000 at
+        /// The pull request's run, once a process, in a reasoning of its own: the partition run's 200 predicates, or 1,000 at
         /// the gate; and generate mode's shadow over every statement it plans, riding its pass.
         /// </summary>
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
         {
-            var generations = new JsonFactGenerations();
-            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, generations).Append(RenderingInputs.Parameterised(generations)),
+            var reasoning = new CosmosReasoning();
+            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)),
                 shadow: new RenderingGenerateRun(askOracleEvery: 16));
         });
 
