@@ -72,9 +72,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A schema let go takes its graphs with it: a container bound as the factory binds one, planned once with a filter
         /// the oracle reads and once through a data source, its S built and asked from the filter's node, then dropped,
         /// leaves nothing it learned reachable — not its reasoning, its generations, their graph, the bound theory nor its
-        /// oracle, nor S's oracle, generation and graph. Main kept F's: the generations' binding table, keyed on the static
-        /// service facts, held the bound copy and through it the table; and S was the process's. Planning asked S nothing,
-        /// and started no build of it.
+        /// oracle, nor S's oracle, generation and graph. Before this, F's binding table, keyed on the static service facts,
+        /// held the bound copy and through it the generations and their graph, and the metadata planned in them stayed
+        /// reachable too; and S was the process's. Planning asked S nothing, and started no build of it.
         /// </summary>
         [Fact]
         public void ASchemaLetGoTakesItsGraphsWithIt()
@@ -320,6 +320,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             hosted.RefreshStatistics();
             _ = table.getStatistic().getRowCount();
             fetches.Should().Be(2, "the schema's refresh reaches the copy");
+
+            // A table built alone binds a copy too, with no schema to refresh through: its own copy is refreshed.
+            var alone = 0;
+            var mine = Unbound("f").WithStatisticsProvider(() => new CosmosContainerStatistics(++alone * 10, 100, 1));
+            var single = new CosmosTable(mine);
+            _ = single.getStatistic().getRowCount();
+            mine.RefreshStatistics();
+            single.getStatistic().getRowCount().doubleValue().Should().Be(10d, "the host's own object is not the copy a table built alone reads");
+            single.Container.RefreshStatistics();
+            single.getStatistic().getRowCount().doubleValue().Should().Be(20d, "the table's copy is refreshed through Container");
         }
 
         /// <summary>

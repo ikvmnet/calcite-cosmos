@@ -199,16 +199,22 @@ optional third argument, a factory for each container's lookup cache (Chapter 12
 model — a JSON Schema, constraints — are applied by `CosmosSchemaFactory`; to use them, build through
 the factory as above.
 
-It owns its reasoning graphs, as a factory-built schema does: what the planner learns of its
-containers' declarations and filters is the schema's, and goes when it does. A `CosmosAccountSchema`
-shares one among its databases, and a `CosmosTable` built on its own owns one. So build a schema or a
-table once and keep it — one built per lookup or per query plans every statement from nothing — and put
-tables meant to share what they learn in one `CosmosSchema`.
+It owns its reasoning graphs, as a factory-built schema does: what the planner learns of its containers'
+declarations and filters is the schema's, and goes when it does. A `CosmosAccountSchema` shares one
+among its databases, and a `CosmosTable` built on its own over metadata of yours owns one. So build a
+schema or a table once and keep it — one built per lookup or per query plans every statement from
+nothing — and put tables meant to share what they learn in one `CosmosSchema`.
 
 The schema binds each container's metadata to its reasoning, and the bound copy is another object than
 the one you handed it: it is what `table.Container` returns and what the executor factory is given.
-Holding it holds the schema's reasoning. `RefreshStatistics()` on your own metadata object does not reach
-the copy, so refresh through the schema (6.5).
+Holding it holds the schema's reasoning. `RefreshStatistics()` on your own metadata object does not
+reach the copy, so refresh through the schema (6.5). A `CosmosTable` built on its own binds a copy too,
+and has no schema to refresh through: call `table.Container.RefreshStatistics()`.
+
+Metadata that is already bound keeps the reasoning it was bound to. Taken from a table —
+`table.Container`, or what the executor factory was handed — and given to another schema or table, it
+goes on reasoning in the first schema's, which then lives as long as either holds it. To give a new
+schema reasoning of its own, hand it metadata you built or read, not a table's.
 
 A `CosmosSchema` built with no executor factory can be planned against but not read: planning needs
 only the container definitions, and executing such a plan fails, saying so. That is how a host can

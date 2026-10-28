@@ -37,7 +37,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </param>
         /// <remarks>
         /// The schema owns what it learns as it plans: the containers handed to it unbound are bound to one
-        /// reasoning it makes, and a container another schema bound keeps that one's. The factories are
+        /// reasoning it makes, and a container another schema or table bound, such as a table's
+        /// <see cref="CosmosTable.Container"/>, keeps that one's and keeps it alive. The factories are
         /// handed the bound copy.
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="containers"/> is <c>null</c>.</exception>
@@ -54,10 +55,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Initializes a new instance whose unbound containers reason in the given reasoning: the factory's,
         /// or an account schema's, one for all its databases.
         /// </summary>
-        /// <param name="containers">The containers to expose.</param>
+        /// <inheritdoc cref="CosmosSchema(IEnumerable{CosmosContainerMetadata}, Func{CosmosContainerMetadata, ICosmosQueryExecutor}, Func{CosmosContainerMetadata, CosmosLookupCache})" path="/param"/>
         /// <param name="reasoning">The reasoning to bind unbound containers to, or <c>null</c> to make one where one is needed.</param>
-        /// <param name="executorFactory">Returns what executes statements against a container.</param>
-        /// <param name="lookupCacheFactory">Returns a container's lookup cache across executions.</param>
         internal CosmosSchema(
             IEnumerable<CosmosContainerMetadata> containers,
             CosmosReasoning? reasoning,

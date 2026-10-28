@@ -15,13 +15,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>Hung off the schema, never off the process.</b> The schema factory makes one per schema object (an account one
     /// for all its databases), a host's <see cref="CosmosSchema"/> or <see cref="CosmosAccountSchema"/> one for the
     /// containers it is handed unbound, and a <see cref="CosmosTable"/> over unbound metadata its own; each binds its
-    /// containers to it (<see cref="CosmosContainerMetadata.WithReasoning"/>). Connections share it as they share the
-    /// schema, and it goes when the schema does. Only facts fixed in the assembly are the process's: S's
-    /// <see cref="CosmosRendering.Definition"/> among them, which every schema's rendering graph is defined from.
+    /// containers to it (<see cref="CosmosContainerMetadata.WithReasoning"/>). Metadata already bound keeps the reasoning
+    /// it carries, so a schema handed a table's metadata reasons for it in that table's schema, and keeps it alive.
+    /// Connections share it as they share the schema, and it goes when the schema does. Only facts fixed in the assembly
+    /// are the process's: S's <see cref="CosmosRendering.Definition"/> among them, which every schema's rendering graph is
+    /// defined from.
     /// </para>
     /// <para>
-    /// <b>Holds nothing disposable, and must not.</b> The provider disposes a schema added with <c>AddSchema</c> each time a
-    /// root holding it is released, and adds the same instance to the next root.
+    /// <b>Holds nothing disposable, and must not.</b> The provider disposes an <see cref="IDisposable"/> schema added with
+    /// <c>AddSchema</c> each time a root holding it is released, and adds the same instance to the next root; the schemas
+    /// are to become disposable, to release their clients (TODO.md, <i>A rebuilt root leaks its client</i>).
     /// </para>
     /// </remarks>
     internal sealed class CosmosReasoning
@@ -49,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
 
-            // Made, never started: its graph is defined on a thread of its own once it is warmed or first asked.
+            // Made, never started: its graph is defined on a thread of its own once something first asks it.
             Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition));
         }
 

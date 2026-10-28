@@ -799,17 +799,19 @@ question cannot be asked wrongly: `{integer}` is within `{integer, fraction}`. T
 
 #### Generations, and what a question costs
 
-**One graph per schema object and generation.** A graph holds the rules once and every container's context
-beneath them, so the containers of a schema object share it. Each schema object has one `CosmosReasoning`,
-made where its containers are bound: `CosmosSchemaFactory.create` (an account one for all its databases), a
-host's `CosmosSchema` or `CosmosAccountSchema` for the containers handed to it unbound, or a `CosmosTable`
-built alone over unbound metadata. It holds the schema's `JsonFactGenerations` and the service's facts bound
-to them, which every container that declares nothing more takes, so they share one compiled context and one
-oracle. The oracle and its memo live on the bound theory (`JsonFactTheory.Oracle`), so they go with it.
-S's rendering oracle hangs beside them, F's and S's graphs alike the schema's (*The production oracle*).
-There is no default: a theory bound to none is rules and their encoding, a value a host may keep anywhere,
-and compiles nothing — asked to, it throws `ArgumentException`, which `IsEngineFailure` does not admit, so a
-missed binding fails its plan rather than reading as "unknown".
+**One graph per schema object and generation.** A graph holds the rules once and every container's context beneath
+them, so the containers of a schema object share it. Each schema object has one `CosmosReasoning`, made where its
+containers are bound: `CosmosSchemaFactory.create` (an account one for all its databases), a host's `CosmosSchema` or
+`CosmosAccountSchema` for the containers handed to it unbound, or a `CosmosTable` built alone over unbound metadata.
+Metadata already bound keeps the reasoning it carries: a schema or table handed another's bound copy
+(`CosmosTable.Container`, or what an executor factory was handed) reasons for that container in the first schema's,
+and keeps it alive as long as it holds it, so such a schema holds two. The reasoning holds the schema's
+`JsonFactGenerations` and the service's facts bound to them, which every container that declares nothing more takes,
+so they share one compiled context and one oracle. The oracle and its memo live on the bound theory
+(`JsonFactTheory.Oracle`), so they go with it. S's rendering oracle hangs beside them, F's and S's graphs alike the
+schema's (*The production oracle*). There is no default: a theory bound to none is rules and their encoding, a value a
+host may keep anywhere, and compiles nothing — asked to, it throws `ArgumentException`, which `IsEngineFailure` does
+not admit, so a missed binding fails its plan rather than reading as "unknown".
 
 **What is static, and what a schema learns.** The process keeps only facts fixed in the assembly: the rules
 of JSON and JSON Schema as code, the service's guarantees (`CosmosServiceFacts.Rules`), the unbound
@@ -846,9 +848,10 @@ what that test shows is for the reviewer of the line to judge. One learned stati
 `CosmosFunctionBodies.Paths`, listed as leaving: it is parsed per call in a pull request of its own (`TODO.md`).
 Eggnog's own thread statics are listed beside, since one holds a scope while an extraction runs.
 
-**Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in:
-whoever holds it holds the schema's graphs, the executor factory is handed it, and a host's
-`RefreshStatistics` on its own object does not reach it — the schema's does.
+**Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in, for a schema
+and for a `CosmosTable` built alone alike: whoever holds it holds the schema's graphs, the executor factory is handed
+it, and a host's `RefreshStatistics` on its own object does not reach it — the schema's does, and a table's
+`Container.RefreshStatistics()` for a table built alone.
 
 **A graph interns every value it is written, and never frees one**, so a graph serving queries forever grows
 forever; and its ids and epochs are finite. A generation is therefore retired once it has interned a million
@@ -7271,15 +7274,18 @@ no plan moves.
 **One a schema object, and nothing the process's but the definition.** The factory makes one reasoning a schema object
 (an account one for all its databases), a host's `CosmosSchema` or `CosmosAccountSchema` one for the containers it is
 handed unbound, and a `CosmosTable` over unbound metadata its own; the oracle is made with it, and its graph, memo and
-readings are that schema's. Connections share it as they share the schema (docs chapter 6), and a released root takes
-it along: no static holds a graph, an answer or a reading, and `CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`
-finds S's oracle, generation and graph collected with the schema. Every schema's generations are defined from the one
-definition, but each builds its own: Eggnog 1.1.1 interns a child scope's values into its graph, whose pools "are
-permanent and shared by every scope" (`ValueStore`), and counts every scope's ids and epochs on the graph's counters,
-so a frozen theory shared between schemas would share what each schema's questions taught it. A sealed root nothing
-can enter would be a fixed fact, and could be shared; Eggnog offers none yet (`TODO.md`). Made is not built: the graph
-is defined on its own thread the first time it is warmed or asked, and until the switch nothing in planning does
-either, so a schema made and planned builds no S (`EachSchemaObjectReasonsInItsOwn`).
+readings are that schema's. Metadata already bound keeps its own schema's, so a schema handed another's bound copy
+asks that schema's S for it too. Connections share it as they share the schema (docs chapter 6), and a root that built
+its schema takes it along when released; a schema added with `AddSchema` keeps it across roots, for as long as the
+host holds the schema. No static holds a graph, an answer or a reading, and
+`CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt` finds S's oracle, generation and graph collected with the
+schema. Every schema's generations are defined from the one definition, but each builds its own: Eggnog 1.1.1 interns
+a child scope's values into its graph, whose pools "are permanent and shared by every scope" (`ValueStore`), and
+counts every scope's ids and epochs on the graph's counters, so a frozen theory shared between schemas would share
+what each schema's questions taught it. A sealed root nothing can enter would be a fixed fact, and could be shared;
+Eggnog offers none yet (`TODO.md`). Made is not built: the graph is defined on its own thread the first time it is
+warmed or asked, and until the switch nothing in planning does either, so a schema made and planned builds no S
+(`EachSchemaObjectReasonsInItsOwn`).
 
 **The key is what the bundle reads.** `RenderingQuestionKey` holds the roots' digests sorted, each opaque term beside
 the value it was read as (its number names it only within one loading, so two conjuncts the loader read apart may share
@@ -7291,17 +7297,16 @@ the roots'. The importer's count of open and constrained defaults scans the decl
 the digest, so the oracle hands it no declaration and a key never scans them.
 
 **What is remembered.** Each schema's `RenderingAnswerMemo` holds 4,096 bundles' answers, the least recently asked out
-first, each a
-`Lazy` the first asker computes and the others wait on. An answer is kept, `Incomplete` among them: limits are counts,
-so the same question stops alike. A decline is handed back, counted and forgotten — S unavailable, an engine failure,
-running out of ids or epochs, or a conflict, which production reads as a decline and CI fails on — since the theory's
-digest outlives a generation, and a remembered `OverflowException` would decline its key for the schema's life.
-Answers survive a retirement within the schema: generations defined alike hash alike. So a remembered answer is
-served whether a generation answers
-or not: the graph keeps the current generation's digest, the key is built under it and looked up first, and only a miss
-waits for a generation. After a run out of ids, or while a successor builds, the questions a statement asked before are
-hits, not waits and declines. A node is read for its key inside the same guard as the bundle: one its owner let go is
-disposed, and the question declines rather than throwing, so the caller keeps the node's owner reachable.
+first, each a `Lazy` the first asker computes and the others wait on. An answer is kept, `Incomplete` among them:
+limits are counts, so the same question stops alike. A decline is handed back, counted and forgotten — S unavailable,
+an engine failure, running out of ids or epochs, or a conflict, which production reads as a decline and CI fails on —
+since the theory's digest outlives a generation, and a remembered `OverflowException` would decline its key for the
+schema's life. Answers survive a retirement within the schema: generations defined alike hash alike. So a remembered
+answer is served whether a generation answers or not: the graph keeps the current generation's digest, the key is
+built under it and looked up first, and only a miss waits for a generation. After a run out of ids, or while a
+successor builds, the questions a statement asked before are hits, not waits and declines. A node is read for its key
+inside the same guard as the bundle: one its owner let go is disposed, and the question declines rather than throwing,
+so the caller keeps the node's owner reachable.
 
 **Generations off the planning thread.** Every generation, the first and each successor, is defined on a dedicated
 thread (`TaskCreationOptions.LongRunning`), its rows hashed and one question asked before it is current, so a plan never
@@ -7336,44 +7341,45 @@ union of the atoms of every root its plan asked (§6.3, `RenderingGenerateRun.Sh
 off its widest statement; the shadow's summary reads its per-query shapes so, and prints the tightest run's iterations
 against its limit.
 
-**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59 µs
-at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
+**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59
+µs at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
 Release with the machine at 65–100 % (`AHitCostsMicroseconds`, three runs), the import's spelling most of it. §6.1's
 lever is taken: `RenderingImporter` reads and spells what each frozen node holds of a path once, in a table on the
 schema's oracle keyed weakly by the node (`RenderingOracle.Readings`), which the node takes with it when collected and
 the schema when it goes; a caller that hands the importer no table, as the check runs do, reads afresh and spells
 alike. The same questions took 13–23 µs at the median and 16–31 µs at the 90th centile, the machine at 43–71 %. The
-first generation, built first
-in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms, hashes in 70–143 ms and asks its
-question in 14–50 ms: the rest is the process's first touch of the registry, of Calcite's operator tables that
-strictness reads, and of the JIT. In a process that has planned before, the build took 598 ms. Line 29 reads it at g15.
+first generation, built first in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms,
+hashes in 70–143 ms and asks its question in 14–50 ms: the rest is the process's first touch of the registry, of
+Calcite's operator tables that strictness reads, and of the JIT. In a process that has planned before, the build took
+598 ms. Line 29 reads it at g15.
 
-**What one schema's graphs hold.** `CosmosReasoningTests.ASchemasGraphsCost` makes a schema in a warm process and reads
-the heap it adds (Release, net10.0, the machine at 100 %). F, with the twelve declared fixtures and the service's facts
-compiled and a statement admitted over each, holds 2.7 MB; S built, 4.4 MB more, 4,625 values interned. 4,096 distinct
-questions, each opening a bundle, add 36.2 MB and leave 122,153 values interned; the same questions asked of an oracle
-that remembers one answer add 32.6 MB, so the memo's 4,096 answers are 3.6 MB, 0.9 KB an answer, and the rest is the
-generation's interning, about 280 bytes a value, which no bundle's disposal gives back. The service facts' memo of 256
-statements adds 0.4 MB. So the bound that matters is the generation's, not the memo's: its successor is built at 800,000
-values, and two live while it builds. Each schema object pays that now, where the process paid it once (`TODO.md`, *S's
-frozen theory is built once a schema*).
+**What one schema's graphs hold.** `CosmosReasoningTests.ASchemasGraphsCost` makes a schema in a warm process and
+reads the heap it adds (Release, net10.0, the machine at 100 %). F, with the twelve declared fixtures and the
+service's facts compiled and a statement admitted over each, holds 2.7 MB; S built, 4.4 MB more, 4,625 values
+interned. 4,096 distinct questions, each opening a bundle, add 36.2 MB and leave 122,153 values interned; the same
+questions asked of an oracle that remembers one answer add 32.6 MB, so the memo's 4,096 answers are 3.6 MB, 0.9 KB an
+answer, and the rest is the generation's interning, about 280 bytes a value, which no bundle's disposal gives back.
+The service facts' memo of 256 statements adds 0.4 MB. So the bound that matters is the generation's, not the memo's:
+its successor is built at 800,000 values, and two live while it builds. Each schema object will pay that once S is
+asked, where the process paid it once (`TODO.md`, *S's frozen theory is built once a schema*).
 
 **The tests.** `RenderingOracleTests`: `TheKeyHoldsEveryValueTheImportReads` reads every `imported`, `importedchars`
 and `assumed` row of a bundle imported as the oracle's was, and finds each spelled in the key, and keys a narrower
 node, a stratum stated otherwise, or none, apart; `AnOpaquesReadingIsInTheKey`, `AParameterNeverReachesTheKey`,
-`ADeclineIsNotRemembered`, eight askers at once among it, `AnIncompleteIsRemembered`, `AFailedDefinitionDeclinesAndCounts`,
-eight questions over a held build waiting one wait, `ARememberedAnswerIsServedWhileNoGenerationAnswers`, and
-`AHitCostsMicroseconds`, explicit, which times hits by the oracle's own clock.
-`RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a successor's definition at a gate while the
-spent generation answers, `ASuccessorIsBuiltOffThePlanningThread` finds every definition on a thread neither the
-asker's nor the pool's and under none of its async locals, and `ASuccessorsFailureLeavesTheCurrentAnswering` fails one.
-`CosmosRenderingTests.TheTargetChoosesTheSet` holds the operand, the metadata and the set, asked of a reasoning of its
-own that both containers are bound to. `CosmosReasoningTests` holds two schemas to two oracles and a made schema to no
-build, and `ASchemasGraphsCost`, explicit, reads what one schema's graphs hold (*What one schema's graphs hold*). Until
-g15 routes the shadow
-through the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionOracleAnswersAsTheShadowsBundles`
-asks the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the
-key alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from `CosmosRendering.Definition`.
+`ADeclineIsNotRemembered`, eight askers at once among it, `AnIncompleteIsRemembered`,
+`AFailedDefinitionDeclinesAndCounts`, eight questions over a held build waiting one wait,
+`ARememberedAnswerIsServedWhileNoGenerationAnswers`, and `AHitCostsMicroseconds`, explicit, which times hits by the
+oracle's own clock. `RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a successor's
+definition at a gate while the spent generation answers, `ASuccessorIsBuiltOffThePlanningThread` finds every
+definition on a thread neither the asker's nor the pool's and under none of its async locals, and
+`ASuccessorsFailureLeavesTheCurrentAnswering` fails one. `CosmosRenderingTests.TheTargetChoosesTheSet` holds the
+operand, the metadata and the set, asked of a reasoning of its own that both containers are bound to.
+`CosmosReasoningTests` holds two schemas to two oracles and a made schema to no build, and `ASchemasGraphsCost`,
+explicit, reads what one schema's graphs hold (*What one schema's graphs hold*). Until g15 routes the shadow through
+the oracle, the bundle is written twice, so `RenderingShadowTests.TheProductionOracleAnswersAsTheShadowsBundles` asks
+the oracle beside one generate bundle in sixteen of the pull request's run and holds each root's answer and the key
+alike; the shadow keys its memo with `RenderingQuestionKey` too, and the tests define S from
+`CosmosRendering.Definition`.
 
 ---
 

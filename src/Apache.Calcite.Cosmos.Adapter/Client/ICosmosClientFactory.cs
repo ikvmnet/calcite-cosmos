@@ -33,10 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Creates the client for a schema.
         /// </summary>
         /// <remarks>
-        /// The returned client is held for the life of the schema, which is the life of the process —
-        /// Calcite offers no disposal hook to release it on. A factory handing back a shared client is
-        /// therefore doing the right thing, and one constructing a fresh client per call should expect
-        /// it never to be disposed.
+        /// The returned client is held for the life of the schema. A data source builds the schema once a
+        /// root and releases the root after its idle lifetime, on <c>ClearPool</c>, or with each connection
+        /// under <c>Pooling=false</c>, and nothing disposes the client when the root goes. A factory handing
+        /// back a shared client is therefore doing the right thing, and one constructing a fresh client per
+        /// call leaks one a root.
         /// </remarks>
         /// <param name="operand">The model's operand map, verbatim.</param>
         /// <returns>The client.</returns>
