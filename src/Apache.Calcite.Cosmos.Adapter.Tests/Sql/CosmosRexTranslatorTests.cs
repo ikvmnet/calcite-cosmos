@@ -719,7 +719,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
-        /// The split rule names the raw value at the path by casting the field to <c>ANY</c> — a cast
+        /// S's Rex builder names the raw value at the path by casting the field to <c>ANY</c> — a cast
         /// rather than a re-typed reference, because a host's transpose through the projection
         /// replaces the reference and keeps a cast — and the comparison over that is the raw one.
         /// </remarks>

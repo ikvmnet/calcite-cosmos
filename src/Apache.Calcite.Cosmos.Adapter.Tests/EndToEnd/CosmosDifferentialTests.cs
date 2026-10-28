@@ -1588,7 +1588,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // An exact literal was sent with a point, and the service reads it as a double; declared's v holds 2^53,
             // 2^53 + 1, 2^60 and 2^60 + 1 as the integers they are. Found by the review of the RETURNING DECIMAL fix.
             //
-            // The window around a cast's comparison, loosened by one, where one is nothing to a double: 2^60 - 1 came
+            // The window K put around a cast's comparison until g19, loosened by one, where one is nothing to a double: 2^60 - 1 came
             // back as 2^60 and excluded it. A cast to DOUBLE beside them, which rounds a stored integer from 2^52. And
             // the window around a literal a hair below a whole number: RETURNING DECIMAL truncates 2.9999999999999999
             // to 2, and the bound below it, 1.9999999999999999, came back as 2 and excluded the stored 2.

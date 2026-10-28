@@ -55,6 +55,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// licenses is the only kind of help a conjunct gets, to any depth, and none is its own. A
     /// weakening of a conjunct left above is rendered from everything pushed, and is pushed beside it.
     /// </para>
+    /// <para>
+    /// <b>Why a weakening is sound.</b> It is S's (<see cref="Metadata.CosmosFilterStatement.WeakeningOf"/>):
+    /// a form S proved the conjunct implies, under the statement's set and the stratum it is read in, so
+    /// on the service it discards only documents the conjunct discards, and the conjunct itself is kept
+    /// in the residual and rechecked above.
+    /// </para>
     /// </remarks>
     public class CosmosFilterSplitRule : RelOptRule
     {
@@ -167,9 +173,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Partitions a filter's top-level conjuncts by whether each renders as Cosmos SQL.
         /// </summary>
         /// <remarks>
-        /// Each conjunct is tested on its own, against the same binding <see cref="CosmosFilterRule"/>
-        /// uses, so a conjunct this puts in the pushable half is one that rule would accept whole. An
-        /// input whose binding cannot be derived splits into nothing, and the rule does not fire.
+        /// Each conjunct is admitted by the statement's rounds, against the same binding
+        /// <see cref="CosmosFilterRule"/> uses, so a conjunct this puts in the pushable half is one that
+        /// rule would accept whole. An input whose binding cannot be derived splits into nothing, and the
+        /// rule does not fire.
         /// </remarks>
         /// <param name="filter">The filter.</param>
         /// <param name="container">The container it reads.</param>

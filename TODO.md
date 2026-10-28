@@ -2044,11 +2044,11 @@ of record is in its repository, as
   - gap 4, a range beyond a declared `maximum`, and gap 5, a range outside an integer `enum`. `JsonSchemaFacts`
     reads `minimum`, `maximum` and both spellings of their exclusive forms as `LowerBound` and `UpperBound` claims,
     which bind numbers only. The extractor reads a comparison through a numeric cast as the window
-    `CosmosNumericWindow` gives, the one the split rule pushes.
+    `PredicateAtom`'s numeric cast states (`CosmosNumericWindow`'s until g19), which S states and does not send.
 - **F10's window, asked of every comparison.** The window states a side only where the cast's saturation limit
   fails the comparison, where it used to ask that of an equality alone. No literal reaches the window with a
-  bound beyond the opposite limit today: Calcite widens the cast to compare one, and the window does not read
-  through the widening. `AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead.
+  bound beyond the opposite limit today: Calcite widens the cast to compare one, a cast of a cast the loader reads
+  as opaque, so nothing is sent for it (`ACastTheLoaderReadsAsOpaqueSendsNothing`).
 
 **The gate is the adapter suite and the theory's soundness oracle**, not agreement with Horn. Horn's known wrong
 answers (F2–F4) are not the specification. The oracle covers stored forms, extension claims and numbers no decimal
@@ -2932,7 +2932,7 @@ across documents* and *A join of a container to itself* is the record.
 - **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
   only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
   residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
-  as J writes `IS_DEFINED` over it, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
+  as J wrote `IS_DEFINED` over it until g18, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
   inputs meets it. Writing nothing there instead leaves 20 shapes S holds implied in the grammar unwritten, against
   "S holds only what the builder writes"; the reader is the same `typed:T` as a `RETURNING`, so the grammar cannot tell
   the two apart. The column's document accessor, where the binding holds one, would give it a raw value.
@@ -2947,7 +2947,8 @@ across documents* and *A join of a container to itself* is the record.
 - **A typed reading compared with a fraction keeps no presence** — *small, O7's loss 5 until Stage 3.* Calcite compares
   `RETURNING INTEGER >= 2.5` through a cast to `DECIMAL`, which the loader reads no reading of (it reads a numeric cast of
   text or a raw value alone), so the conjunct is one opaque term with no path, and S proves no weakening where J keeps
-  `IS_DEFINED`: J's is unproven to S, the listed loss (`RenderingInputs.CastOfTyped` holds it in line 13b). RU, never
+  `IS_DEFINED`: J's was unproven to S, the listed loss (`RenderingInputs.CastOfTyped`, a check-run input, held it in
+  line 13b until that line retired at g17). RU, never
   rows. The loader reading such a cast as a value would give the strictness rows presence; it changes F's terms, and so
   plans, and lands with D12, the typed column's own reading.
 - **Tests that held J's or the translator's reasons** — *done at the switch.* Each was restated over S's behaviour —

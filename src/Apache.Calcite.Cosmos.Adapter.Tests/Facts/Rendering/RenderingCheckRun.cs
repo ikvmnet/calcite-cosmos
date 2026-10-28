@@ -288,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     [.. admitted.SelectMany(r => r.Parameters.Select(p => p with { Name = p.Name + "_" + r.Conjunct }))]);
             }
 
-            // The split rule weakens each time it is asked, and a residual conjunct renders one way from its statement's facts.
+            // The split rule pushes S's weakening each time it is asked, and a residual conjunct renders one way from its statement's facts.
             foreach (var weakening in records.Where(r => r.Site == 3).DistinctBy(r => (r.Statement, r.Conjunct, CosmosSqlFormReader.Inline(r.Text, r.Parameters))))
                 CheckWeakening(input, unit++, statements, weakening);
 
