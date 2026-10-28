@@ -6640,22 +6640,24 @@ offered its own written member, and `beside a skipped conjunct`.
 
 ### Planted faults: recall and mutations
 
-**A fault is planted where the translator writes, never where anything else reads.** The ten historical translator
-faults (M1–M10) and two controls are switches in the translator's own writers (`CosmosTranslatorFaults`): a reading's
-test dropped, a guard skipped, a refusal ignored, a position left unflipped. None sits in a recogniser the loader, the
-facts or the split rule call too, or the plant would change the IR the check reads and judge a wrong translator against
-a wrong reference: M9 ignores the verdict at `WriteComparand`'s call of `CompareOrder`, which the split rule calls
-itself, and M10 lets `WriteCallCore`'s path branch take a parsing `RETURNING` rather than change `IsJsonAccessor`, the
-gate every clause shares. Production plants nothing; unarmed, each site reads one `volatile bool` (M6, M8 and M9 only on
-the refusal path they skip), and a plant is the flow's `AsyncLocal`, so a planning thread beside a test is untouched.
+**A fault was planted where the translator writes, never where anything else reads**, from Stage 1 to the switch; the
+plants went at g20 (*The translator's fault plants deleted*). The ten historical translator faults (M1–M10) and two
+controls were switches in the translator's own writers: a reading's test dropped, a guard skipped, a refusal ignored, a
+position left unflipped. None sat in a recogniser the loader, the facts or the split rule call too, or the plant would
+have changed the IR the check reads and judged a wrong translator against a wrong reference: M9 ignored the verdict at
+`WriteComparand`'s call of `CompareOrder`, which the split rule then called itself, and M10 let `WriteCallCore`'s path
+branch take a parsing `RETURNING` rather than change `IsJsonAccessor`, the gate every clause shares. Production planted
+nothing; unarmed, each site read one `volatile bool`, and a plant was the flow's `AsyncLocal`.
 
-**Each fault is caught as the check run catches a wrong push.** Its triggers are planned and checked between two
-unplanted runs: what is written changes under the fault and is the tip's again after it, and each trigger it was found by
-is refuted with the least refuting cell by text, as definite as the cells first named. A comparison with `'30'` stays unproven under M6, M7 and M8,
-since a number equal to 30 may render so or not; and M10's path over the string `"2"`, TRUE to the clause beside a
-`DECIMAL` column's raise, is unproven too, so nine of the ten are caught. The controls are reported: X1's `CASE` condition, in a predicate's place, is
-opaque to the loader, so its text is skipped as the tip's was; X2's dropped type test lets a structure through, which
-`RETURNING` reads as null and the column refuses, so under the typed union the check is unproven, never refuted.
+**Each fault was caught as the check run catches a wrong push.** Its triggers were planned and checked between two
+unplanted runs: what was written changed under the fault and was the tip's again after it, and each trigger it was found
+by was refuted with the least refuting cell by text, as definite as the cells first named. A comparison with `'30'`
+stayed unproven under M6, M7 and M8, since a number equal to 30 may render so or not; and M10's path over the string
+`"2"`, TRUE to the clause beside a `DECIMAL` column's raise, was unproven too, so nine of the ten were caught. The
+controls were reported: X1's `CASE` condition, in a predicate's place, is opaque to the loader, so its text was skipped
+as the tip's was; X2's dropped type test let a structure through, which `RETURNING` reads as null and the column
+refuses, so under the typed union the check was unproven, never refuted. The line retired at the switch, when the
+translator no longer wrote the family; each fault is planted in S (*Faults planted in S*).
 
 **Recall replays what 4b65754 sent.** Its eight first-family texts (P1–P6, P19, P25), carried verbatim, are claimed
 against the IR the loader reads for the same statements at the tip and refuted with a structure cell; offered to S as
@@ -7028,8 +7030,7 @@ bundles by shape are the cost instrument's (*The production path*).
 
 **Each of Stage 1's historical faults is planted where S would carry it, in a graph of its own**, and Stage 1's
 triggers are planned through it under both sets a leg plans under, in a schema of its own. The translator's own
-mutation line retired at the switch, when it no longer writes the family; its plants stay until g20 for the tests that
-replay them.
+mutation line retired at the switch, when it no longer wrote the family, and its plants went at g20.
 - *A template is untrusted.* M1–M3 replace a template's row: the right row goes, and a rule over the same `fits` rows
   and positions proposes the template's form with the guard or type test taken out, since a template's spelling is
   C#'s and a row alone cannot write it wrongly. The gate refutes the planted form at the cell Stage 1 pinned, read at
@@ -7464,7 +7465,7 @@ spelling; and each literal against `TryGetExactNumberValue` itself, refusals inc
 path or constant, and S chose none; those three are held by their spelling alone.
 
 **Its faults** (line 17, O4). `RenderingPrinterFault` M12–M16, planted through `RenderingPrinterFaults`, an `AsyncLocal`
-arm as the translator's: an `OR` in an `AND` unparenthesised, a junction's last member dropped, a `NOT` over a bare
+arm of the flow's own: an `OR` in an `AND` unparenthesised, a junction's last member dropped, a `NOT` over a bare
 comparison, each comparison of a junction and each point of an `IN` bound with its neighbour's value, a property's first
 letter's case flipped. Each is caught by the round trip over the forms S chose, on every form it can change: 22, 206,
 10, 91 and 307 of the pull request's 310, and 50, 485, 55, 211 and 662 of the gate's 665 (M16 cannot change a name with
@@ -7758,9 +7759,9 @@ test turns S off.
   either as its form means, so each weakens to presence (O7's loss 1 and the cast's, until Stage 3's guarded spelling).
   The re-typed accessor went with them, and the `VARIANT` box, which cost a reducing host 1.5–3 s of planning.
 
-**What is left of it.** `CosmosNumericWindow.TryRead` (K) and the translator's `TryRenderedTextValue` and
-`TryParseRenderedNumber` are read by nothing now, and g19 deletes them; the translator's other plants, M1–M10, X1 and
-X2, are planted by no test and go at g20.
+**What was left of it.** `CosmosNumericWindow.TryRead` (K) and the translator's `TryRenderedTextValue` and
+`TryParseRenderedNumber` were read by nothing then, and went at g19 (*K deleted*); the translator's other plants, M1–M10,
+X1 and X2, planted by no test, went at g20 (*The translator's fault plants deleted*).
 
 ### K deleted
 
@@ -7780,6 +7781,19 @@ the loader asks. No plan moves: nothing in planning had read any of it since g18
   loader read it through one method, so J's bound and S's atom could not part on it; now the loader alone reads it.
 - **Number text** is the oracle's grammar, `Renderings.MayBeNumberText`, which the translator's unambiguity test asks.
   `TheTranslatorReadsNumberTextByTheOraclesGrammar` keeps that half; the parse it held beside the grammar went with J.
+
+### The translator's fault plants deleted
+
+**What went (g20).** `CosmosTranslatorFault`, the enum of the ten historical faults M1–M10 and the controls X1 and X2
+(59 lines, M11's value gone with J), `CosmosTranslatorFaults`, the flow's `AsyncLocal` arm and its `volatile bool` (41),
+and the thirteen reads of it in the translator's writers, each site now the line it was before Stage 1 planted it: 109
+production lines. No test had planted one since the switch retired the translator's mutation line, and none names the
+enum; `StaticsHoldNoLearnedState` lists one test arm fewer. No plan moves: production never planted, and unarmed each
+site took the branch it keeps.
+
+**Where the faults are caught now.** Each is planted in S where S would carry it, and caught by the gate or by source
+A (*Faults planted in S*, line 16). With J (g18), K (g19) and the plants gone, the deletions of spec §3.5 are done and
+S's theory holds 56 rules (line 31).
 
 ---
 

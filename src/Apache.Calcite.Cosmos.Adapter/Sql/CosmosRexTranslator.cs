@@ -1807,8 +1807,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // plan its type. Handled ahead of the kind switch so that every clause reaching here —
             // a projection, a predicate, a sort key, an aggregate argument — gets it without a case
             // of its own.
-            if ((IsJsonAccessor(call) || CosmosTranslatorFaults.Has(CosmosTranslatorFault.M10) && IsParsingJsonValue(call))
-                && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
+            if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
                 RequireTheEngineCouldRead(call, jsonPath);
 
@@ -3548,10 +3547,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // back where it is no comparison of its own (CosmosRecheck).
             var spine = _positive?.Contains(call) == true;
 
-            // WriteCallCore, the one caller, puts the position back.
-            if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M5))
-                _negated = false;
-
             for (var i = 0; i < operands.size(); i++)
             {
                 if (i > 0)
@@ -3624,7 +3619,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireOperandCount(call, 1);
 
             var saved = _negated;
-            _negated = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M4) ? saved : saved == false;
+            _negated = saved == false;
 
             builder.Append("(NOT ");
             Write(builder, Operand(call, 0));
@@ -3823,16 +3818,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     {
                         builder.Append(" OR IS_NULL(").Append(path).Append(") OR NOT IS_DEFINED(").Append(path).Append(')');
 
-                        if (tests is not null && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M2) == false)
+                        if (tests is not null)
                             builder.Append(" OR NOT ").Append(AnyOfOperand(tests, path));
                     }
                 }
                 else
                 {
                     // False wherever SQL's comparison is unknown, which discards the row here.
-                    if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M3) == false)
-                        foreach (var (path, _) in paths)
-                            builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
+                    foreach (var (path, _) in paths)
+                        builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
 
                     // And where the reading answers null for more than that. The one comparison that
                     // reaches here is the inequality, and through a typed accessor this is the test of
@@ -3845,7 +3839,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // Restricting is therefore what the standard asks for, and closer to it than
                     // either the engine or the unrestricted pushdown.
                     foreach (var (path, tests) in paths)
-                        if (tests is not null && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X2) == false)
+                        if (tests is not null)
                             builder.Append(AnyOfOperand(tests, path)).Append(" AND ");
 
                     WriteComparand(builder, call, op);
@@ -4018,9 +4012,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
-                if ((CosmosTranslatorFaults.Has(CosmosTranslatorFault.M7) ? TryTextCastValue(left) : TryTextCastOperand(left, right)) is RexNode unwrappedLeft)
+                if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
                     left = unwrappedLeft;
-                else if ((CosmosTranslatorFaults.Has(CosmosTranslatorFault.M7) ? TryTextCastValue(right) : TryTextCastOperand(right, left)) is RexNode unwrappedRight)
+                else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
                 else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
                     || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
@@ -4028,8 +4022,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // which case each is the stored value and the comparand need not be inspected at all
                     // -- which is what lets a parameter through. Known from the facts this conjunct is
                     // rendered from, which never hold what it establishes itself.
-                    && RendersOnlyStrings(leftValue, rightValue) == false
-                    && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M6) == false)
+                    && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
 
                 // Two values that may both hold a JSON type a side reads as null the service equates as values — a JSON
@@ -4043,8 +4036,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
             else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
-                && RendersOnlyStrings(leftValue, rightValue) == false
-                && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M8) == false)
+                && RendersOnlyStrings(leftValue, rightValue) == false)
             {
                 // The same gap the equality has, negated. Measured over the typed container, one
                 // document per JSON type: `label <> 'bikes'` gained the array and the object, which
@@ -4053,8 +4045,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // pushes what it implies.
                 throw new CosmosTranslationException("An inequality over JSON_VALUE read as text compares a rendering, and the service's inequality is true across JSON types where the rendering is null.");
             }
-            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused
-                && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M9) == false)
+            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused)
             {
                 // An ordering comparison is an order the service computes, and is asked as one
                 // (CosmosServiceOrder.Compare): each side must read exactly what the service compares,
@@ -4902,7 +4893,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     RequireTheEngineCouldRead(accessor, path);
 
                 var rendered = path.ToString();
-                var tests = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M1) ? null : ReadingTests(value);
+                var tests = ReadingTests(value);
 
                 if (negated)
                 {
@@ -5210,7 +5201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 {
                     builder.Append('(');
 
-                    _negated = position && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X1);
+                    _negated = false;
                     _value = false;
                     Write(builder, (RexNode)operands.get(i));
                     _negated = position;

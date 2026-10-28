@@ -2787,10 +2787,10 @@ across documents* and *A join of a container to itself* is the record.
   over the undeclared label the emulator orders a U+0000 as stored, so under `Emulator` they are declined. A declaration
   is what a user writes for them there.
 - **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
-  the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
-  `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
-  Exact, counting strings and booleans alone. The column's own reading would separate the two, and `RETURNING`'s would
-  refute the plant.
+  the translator's control that dropped it (deleted at g20), let an object or an array through: `RETURNING` reads one
+  as null, where the service's `!=` is true, and the column fails the statement, so the union read the cell `(UR,t)`,
+  unproven. The spec expected Exact, counting strings and booleans alone. The column's own reading would separate the
+  two, and `RETURNING`'s would refute such a drop.
 - **Source B prints what the differential's operator table plans** — *small.* A raw value is a column only at a key
   path, so the container keys on three of the declaration's six paths and a raw reading of `b`, `o` or `o.v` is not
   printed, nor is a parameter, `IS_DEFINED` (`CosmosOperators` is not in that table) or a literal with a control
@@ -2808,9 +2808,9 @@ across documents* and *A join of a container to itself* is the record.
   writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
   and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
   `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
-  definite cell: the translator's mutation line holds nine of ten. S's plant of M10 is caught, source A judging a
-  document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of `IS NULL`. The
-  column's own reading in the IR would give both back.
+  definite cell: the translator's mutation line held nine of ten until it retired. S's plant of M10 is caught, source A
+  judging a document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of
+  `IS NULL`. The column's own reading in the IR would give both back.
 - **The weakening checked is the text the split rule wrote** — *small.* Since the switch the weakening is S's, built as
   a Rex (`RenderingRexBuilder`) and written by the residual conjunct's translator; shim 3 reads that text, and the filter
   beneath admits the weakening again, S writing every member the loader reads and the translator the opaque ones
@@ -2890,8 +2890,11 @@ across documents* and *A join of a container to itself* is the record.
   with M11's site and its value in the translator's faults (`DESIGN.md`, *J deleted*).
 - **What g19 deleted** — *done.* K, `CosmosNumericWindow`, 191 lines, its `TryConstantNumber` moved into the loader (44),
   and J's two helpers in the translator, `TryRenderedTextValue` and `TryParseRenderedNumber` (63), with
-  `TryNumericCastOperand`'s saturation and rounding outputs, which only K read (`DESIGN.md`, *K deleted*). Left for g20:
-  the translator's fault plants, M1–M10, X1 and X2, which no test plants.
+  `TryNumericCastOperand`'s saturation and rounding outputs, which only K read (`DESIGN.md`, *K deleted*).
+- **What g20 deleted** — *done.* The translator's fault plants, M1–M10, X1 and X2, which no test had planted since the
+  switch: the enum, the flow's arm and the thirteen sites that read it, 109 lines (`DESIGN.md`, *The translator's fault
+  plants deleted*). Spec §3.5's deletions are done; what the translator still decides beside S is Stage 3's (site W's
+  gate and the translator over the IR, above and below).
 - **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
   `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
   container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the

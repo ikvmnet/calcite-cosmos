@@ -7,7 +7,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <summary>
     /// The switch the printer's planted faults read (O4): inert unless a test plants one, which production never does. A
     /// site reads <see cref="Armed"/> alone until some flow has planted; then the flow's own faults, so a plant reaches no
-    /// other flow, as <see cref="CosmosTranslatorFaults"/>.
+    /// other flow.
     /// </summary>
     internal static class RenderingPrinterFaults
     {
