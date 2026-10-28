@@ -824,7 +824,19 @@ lifetime: `JsonFactGenerations._bound`, keyed on the static `ServiceFacts`, held
 copy and through it the generations, so every factory-built schema's graph lived for the process
 (`CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`, which failed on the code before this). A run's
 report reaches its graph through its rules, so `JsonContexts` hands one only to a flow that asks
-(`JsonContexts.Report`); a `[ThreadStatic]` last report kept each thread's last graph.
+(`JsonContexts.Report`); a `[ThreadStatic]` last report kept each thread's last graph. A weak table keyed on
+whatever a caller passes can be such a holder too: `CosmosConstraintCompiler` keys compiled constraints on the caller's
+type factory, which may live for the process, so it is weak on the table beneath as well
+(`CosmosStaticsTests.AConstraintRememberedUnderALongLivedFactoryKeepsNoTable`).
+
+**The line is held by a test.** `CosmosStaticsTests.StaticsHoldNoLearnedState` reads every static field of the
+assembly and fails on one not classed: a fixed fact, infrastructure (telemetry, reflection handles, settings), a
+test's arm, or a weak table keyed on what dies with a plan, a graph or a connection, each with its reason. A fact
+and a weak table must be read-only, only an arm may be thread-static or async-local, a theory a static holds must be
+unbound, and no static's type may hold a reasoning, generations, an oracle, a graph or a memo but as a weak table's
+key. One learned static is left, `CosmosFunctionBodies.Paths`, listed as leaving: it is parsed per call in a pull
+request of its own (`TODO.md`). Eggnog's own thread statics are listed beside, since one holds a scope while an
+extraction runs.
 
 **Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in:
 whoever holds it holds the schema's graphs, the executor factory is handed it, and a host's

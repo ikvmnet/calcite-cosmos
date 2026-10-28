@@ -2022,7 +2022,11 @@ of record is in its repository, as
   and the service's facts bound to them, and each bound theory its oracle; a theory bound to none compiles nothing
   and says so. `JsonFactGenerations.Default`, its binding table and the oracle's own generations and table are gone,
   and with them the pin the binding table's static key put on every factory schema's graphs. A host's schema, or a
-  table built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks.
+  table built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks. No
+  static holds what a question taught but `CosmosFunctionBodies.Paths`, which goes in a pull request of its own
+  (*Parse a function body's path per call*), and `CosmosStaticsTests.StaticsHoldNoLearnedState` keeps it so: every
+  static field of the adapter is classed with its reason, and one not classed fails. `CosmosConstraintCompiler`'s table,
+  keyed on whatever type factory a caller passes, is weak on the table too, so a long-lived factory keeps none.
 - **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
   four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
   nested `not`.
@@ -2143,10 +2147,6 @@ holds. Three bugs planted in what was added were each caught by it.
   keyed weakly on each graph's `JsonRules`, so every schema's first question in each generation waits on every
   other's definition. The table holds nothing past its graph; the lock is the shared part. A lazy field on
   `JsonRules` would take both away.
-- **A static keyed on a caller's type factory** — *small.* `CosmosConstraintCompiler.Cache` keys on the
-  `RelDataTypeFactory` a caller passes and holds each `CosmosTable` strongly beneath it; the planner passes a
-  connection's, but `Compile` is public, and a caller passing a long-lived factory would keep a table, and with it
-  its schema's reasoning, for as long. A weak table keyed on the table, nested under the factory's, would not.
 - **Run limits** — *small.* A query's run stops on contradiction and otherwise has the engine's defaults: 10,000
   iterations, 64 cases, a split depth of 4. The plan's §3.8 proposes limits per profile, measured on a corpus.
 - **The declared differential corpus** — *medium.* The rows the service returns for a pushed plan, against an
@@ -2510,7 +2510,8 @@ across documents* and *A join of a container to itself* is the record.
 - **Parse a function body's path per call** — *small, its own pull request.* `CosmosFunctionBodies.Paths` keeps
   every JSON path an in-process `IS_DEFINED`, `IS_NULL` or `IS_STRING` was asked of, keyed by its text, unbounded
   and for the process: what a query taught, against the rule that what is learned hangs off the schema. Parse on
-  each call; a path is short beside the document it is read from.
+  each call; a path is short beside the document it is read from. It is the one static
+  `CosmosStaticsTests` lists as leaving, and that line goes with it.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
 
