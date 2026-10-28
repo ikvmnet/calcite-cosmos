@@ -401,9 +401,9 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             // A schema's first plan starts its rendering graph's build, on a thread of its own, so that the plan's first
             // filter waits for it less or not at all; a volatile read once started. A table only read for its row type
-            // builds nothing, nor does a flow a test turned S off in (spec §6.2).
-            if (Metadata.CosmosRendering.Off == false)
-                _container.Reasoning!.Rendering.Warm();
+            // builds nothing, nor does a schema a test turned S off in (spec §6.2).
+            if (_container.Reasoning!.RenderingOff == false)
+                _container.Reasoning.Rendering.Warm();
 
             return new CosmosTableScan(cluster, cluster.traitSetOf(_convention), relOptTable);
         }

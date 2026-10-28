@@ -249,8 +249,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             if (_renderings is null)
             {
-                // A statement's admission is asked of S from its first round, in the flow that ran it.
-                if (round is not { Number: 1, Again: false, Closing: false } || CosmosRendering.Off)
+                // A statement's admission is asked of S from its first round, unless a test turned its schema's S off.
+                if (round is not { Number: 1, Again: false, Closing: false } || _container.Reasoning is { RenderingOff: true })
                     return [];
 
                 _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];

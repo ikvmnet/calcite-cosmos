@@ -7618,9 +7618,11 @@ with four conditions opens the three bundles five to seven do, so it is held to 
 the plan — no filter, join, correlate or unnest node — never off what S was asked, so line 27 can fail.
 
 **What a test can reach.** Admission reads its statement's reasoning's probe once a statement, none in production, and
-whether a test turned S off for the flow (`CosmosRendering.Off`), one `volatile bool`, as a table's `toRel` does before
-it warms; the capture's sites read theirs as before. Nothing else a test sets reaches a plan, which
-`CaptureChangesNoPlan` holds at the gate with the capture armed and a probe asking every set.
+whether a test made that schema with S off (`CosmosReasoning.RenderingOff`), as a table's `toRel` does before it warms;
+the capture's sites read theirs as before. The printer reads the faults a test plants for its flow (M12–M16, O4's
+switch), so a planted fault reaches a plan through `Prints` and `Translate`, and line 17 is what catches it. Nothing
+else a test sets reaches a plan, which `CaptureChangesNoPlan` holds at the gate with the capture armed and a probe asking
+every set.
 
 **What holds it.** `RenderingSentTests`: line 6's floors, line 20 in the bundles production opens,
 `TheRunJudgesTheBundlesProductionOpened`, and `NoProjectionReachesS` (§8), S asked only of a `WHERE`'s conjuncts and
@@ -7640,11 +7642,12 @@ holds lines 23–30, explicit, every reading printed before any is judged.
 
 **One default flipped.** The shadow's process arm wrote (g16): every flow took S's answers for the conjuncts S owns and
 for every residual's weakening, under each container's own set, and implementation printed what S chose. Nothing else in
-planning changed; the revert was that one line. g17 retired the arm, and the sites ask S unconditionally but where a test
-turns S off for its flow, which is how lines 29 and 29b pair a first plan with S and without.
+planning changed; the revert was that one line. g17 retired the arm, and the sites ask S unconditionally but in a
+schema a test made with S off (`CosmosReasoning.RenderingOff`), which is how lines 29 and 29b pair a first plan with S and
+without.
 
 **A schema's first plan starts its build.** Every `CosmosTable.toRel` warms its container's reasoning: the build starts
-on its own thread, once, a volatile read after. A table only read for its row type builds nothing, nor does a flow
+on its own thread, once, a volatile read after. A table only read for its row type builds nothing, nor does a schema
 with S off. `CosmosSchemaFactory.create` does not warm before it reads the containers' definitions, since line 29b read
 within its pass at g15r (459–497 ms against 500); should it read over, that warm overlaps the build with the reads.
 
@@ -7711,9 +7714,13 @@ its inputs to it. No flow arm carries them, so nothing leaks between tests plann
 one its statements ask, and production's reasonings hold none. The oracle the observer handed a flow went too: a test
 that wants an oracle of its own makes a schema over it, as the cost lines' first plans now do, each in a new schema
 (§6.4). G11 still plants where it acts, the node a round's conjunct is stated beneath: planted in
-`CosmosOracle.RenderedFrom` it never reaches S, which G11 itself shows. S off is the one flow arm left
-(`CosmosRendering.TurnOff`), a test switch holding no state: the translator writes every conjunct and nothing is
-weakened, since nothing calls J.
+`CosmosOracle.RenderedFrom` it never reaches S, which G11 itself shows. S off went the same way after the switch's
+review: a schema a test makes with `RenderingOff` is admitted by the translator alone, weakens nothing, since nothing
+calls J, and starts no build. At g17 it was a flow arm, read at a statement's first round, so a statement admitted in a
+flow with S off kept that admission for any later flow reaching it through `CosmosFilterStatement.Read`; on the schema
+it cannot part from the statements it reaches. No arm of the shadow's is left, and the flow arms the shipped assembly
+keeps are tests' that change no plan — the capture, the cost instrument and its clock, F's run report — but the
+printer's faults above.
 
 **Line 6 becomes floors.** With no translator beside S, a regression is S sending fewer conjuncts exactly than it did:
 each input — the corpus, the differential's lists, the partitions, the probes — sends at least as many as at the switch
@@ -7740,7 +7747,7 @@ rule's 1,269 lines. M11's site went with the alternatives, and its value with it
 `RawValue` had moved to `RenderingRexBuilder` (g14). `TryComparedWithBoolean` had not moved to the loader, which reads
 a predicate compared with `TRUE` as that comparison's call, its strictness the rows' (g04), so J's copy went with J. No
 plan moves: nothing has called J since g17, the split rule pushing S's weakening of every residual and none where a
-test turns S off.
+test makes a schema with S off.
 
 **Where its decisions are now.** Each is S's, a rule or a row, or a loss listed by name:
 - **The presence walk** is the `strict` and `weaken` rules over the `strictop` and `strictreader` rows: J's list of

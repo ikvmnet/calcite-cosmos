@@ -119,7 +119,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPatternReader.Parser", ["Digit", "Word"], StaticFact, "character classes"),
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Metadata.CosmosRendering", ["Defined"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness; every schema's S is defined from it"),
-            ("Adapter.Metadata.CosmosRendering", ["Unasked", "_offAnywhere"], TestArm, "S turned off for a test's flow: the first plan's pairing and a sample of the translator's text"),
             ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Current"], TestArm, "the observer a test arms for its flow"),
             ("Adapter.Metadata.CosmosRenderingCost", ["Armed", "Clock", "Flow"], TestArm, "what a test measures of its flow: the samples S's questions cost, and the thread's clock it hands"),
             ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node, which reaches the table whose container it remembers; internal, asked by the planner alone"),

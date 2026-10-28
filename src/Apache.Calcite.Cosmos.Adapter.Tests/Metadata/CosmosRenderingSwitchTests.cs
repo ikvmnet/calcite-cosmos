@@ -27,17 +27,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A table's first <c>toRel</c> warms its schema's reasoning, once; a statement only validated, which reads the row
-        /// type alone, builds nothing, nor does a plan in a flow a test turned S off in.
+        /// type alone, builds nothing, nor does a plan in a schema a test turned S off in.
         /// </summary>
         [Fact]
         public void AFirstPlanStartsItsSchemasBuild()
         {
-            var (validated, off, planned) = (new CosmosReasoning(), new CosmosReasoning(), new CosmosReasoning());
+            var (validated, off, planned) = (new CosmosReasoning(), new CosmosReasoning(new JsonFactGenerations(), renderingOff: true), new CosmosReasoning());
 
             var harness = new PlannerHarness(validated);
             harness.Validate(harness.Parse(Filtered));
-            using (CosmosRendering.TurnOff())
-                new PlannerHarness(off).PlanToAsync(Filtered);
+            new PlannerHarness(off).PlanToAsync(Filtered);
             new PlannerHarness(planned).PlanToAsync(Filtered);
 
             (validated.Rendering.Graph.Started, off.Rendering.Graph.Started, planned.Rendering.Graph.Started).Should().Be((false, false, true));

@@ -2881,7 +2881,8 @@ across documents* and *A join of a container to itself* is the record.
   the walk kept both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with
   type tests and `LIKE` in the IR.
 - **The shadow's sites read the flow's arm** — *done at g17.* The arm is gone, and the sites ask S unconditionally but
-  where a test turns S off for its flow (`CosmosRendering.TurnOff`): one `volatile bool` a statement and a `toRel`.
+  in a schema a test made with S off (`CosmosReasoning.RenderingOff`), read once a statement and at a `toRel`. At g17 S
+  off was a flow arm; the switch's review moved it onto the schema, so no arm of the shadow's reaches `main`.
 - **What g17 deleted** — *done.* The shadow's arm and observer, the split rule's `Shadowed` and `projecting`, the
   statement's record of whether its admission took S's answers and its sets beside its own; the bundle hook, the sets
   asked beside and the plants G9, G11 and G12 read moved to a test schema's probe (`ICosmosRenderingProbe`). The

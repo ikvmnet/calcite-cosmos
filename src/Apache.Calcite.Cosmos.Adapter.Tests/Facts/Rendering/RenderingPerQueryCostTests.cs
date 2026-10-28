@@ -10,6 +10,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
@@ -242,9 +243,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var figures = new Dictionary<string, string> { ["mode"] = mode };
             var clock = Stopwatch.StartNew();
-            var reasoning = new CosmosReasoning();
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(), renderingOff: mode == "off");
             var harness = new PlannerHarness(reasoning);
-            using var off = mode == "off" ? CosmosRendering.TurnOff() : null;
             if (mode == "built")
             {
                 reasoning.Rendering.Ready.Wait();

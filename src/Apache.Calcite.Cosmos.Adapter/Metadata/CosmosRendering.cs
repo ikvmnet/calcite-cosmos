@@ -26,26 +26,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             StrictReaders = CosmosStrictness.Readers,
         });
 
-        static readonly System.Threading.AsyncLocal<bool> Unasked = new();
-
-        /// <summary>Whether any flow has turned S off; once one has, a site also reads the flow's.</summary>
-        static volatile bool _offAnywhere;
-
-        /// <summary>
-        /// Whether a test turned S off for this flow: the translator writes every conjunct, nothing is weakened, and no plan
-        /// starts a build — the pairing lines 29 and 29b read, and a sample of the translator's own text. Production never
-        /// does.
-        /// </summary>
-        internal static bool Off => _offAnywhere && Unasked.Value;
-
-        /// <summary>Turns S off for the flow until disposed (<see cref="Off"/>).</summary>
-        internal static IDisposable TurnOff()
-        {
-            var restore = new Restore(Unasked.Value);
-            (Unasked.Value, _offAnywhere) = (true, true);
-            return restore;
-        }
-
         /// <summary>The registry's S, read on first use, the first build's thread in production: what every schema's generations, and the tests, are defined from.</summary>
         public static RenderingDefinition Definition => Defined.Value;
 
@@ -93,14 +73,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 CosmosRenderingCost.Add(new(roots, answer.Cost, 0, 0, oracle.Usage, oracle.Usage));
 
             return answer;
-        }
-
-        /// <summary>Puts the flow's S back as <see cref="TurnOff"/> found it.</summary>
-        sealed class Restore(bool was) : IDisposable
-        {
-
-            public void Dispose() => Unasked.Value = was;
-
         }
 
     }
