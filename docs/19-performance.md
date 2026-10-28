@@ -101,14 +101,22 @@ statement used and which it could have used.
   schema, on any connection that shares it (Chapter 6). A container that declares no schema pays this too,
   since what Cosmos guarantees of `id`, `_ts` and `_etag` is reasoned about beside every filter.
 - **What a filter sends is proved once per distinct filter, too** (Chapter 8). A filter's first plan pays a
-  few to some tens of milliseconds for it — one to three conditions about 5 to 30 ms, five to seven or a long
-  `IN` list up to about 160 ms, a rare filter of many conditions more — and the same filter planned again over
-  the same schema looks the answer up, in a millisecond or less. A schema keeps the last 4,096 such answers.
+  few to some tens of milliseconds for it — measured on a fully loaded machine, one to three conditions 5 ms
+  at the median and 30 ms at the 90th percentile, five to seven 20 and 94 ms, a long `IN` list 24 and 47 ms,
+  a rare filter of many conditions up to about 300 ms — and the same filter planned again over the same
+  schema looks the answer up, in a millisecond or less. A filter that differs only in a literal is a new
+  filter, so an application that writes its values inline pays this for each new value; a parameter costs
+  nothing here, but over a path not declared a string sends only the property's presence (Chapter 8). A
+  schema remembers its last 4,096 answers, up to about 20 MB, and beside them those the statements its
+  planner still remembers were given, up to 256 statements a container.
 - **Each schema builds its rendering reasoning once, in the background.** The first plan over a schema object
   starts it on a thread of its own: the process's first a few seconds, since it reads the adapter's rules
   then, and a schema made later a fraction of a second to about two. A first plan that arrives before it is
   ready waits for it, at most five seconds, then declines and reads the container for that filter (Chapter
-  8). Keep schemas — one data source, or one `CosmosSchema` — rather than building one per request.
+  8). Schemas made at the same moment build at once and share the processor: on a machine whose eight
+  processors other work already kept busy, four built together were ready within two seconds, but eight
+  took 2 to 10 s and sixteen 3.5 to 16 s, and some of their first plans passed the wait. Keep schemas — one
+  data source, or one `CosmosSchema` — rather than building one per request or per tenant at once.
 - **A declared schema adds to planning** (Chapter 14). A filter over a container whose schema has conditional
   rules — a `oneOf` by kind, an `if` — costs more for each predicate, since the kinds a document may be are
   reasoned about case by case, and the first statement to reach the container in each schema object compiles

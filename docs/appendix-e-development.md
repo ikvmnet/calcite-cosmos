@@ -209,13 +209,16 @@ printer wrote, and the translator's for the rest. It plans the planner corpus, t
 statements without parameters, the partition run's first 200 predicates and one definedness probe,
 reads back the text each filter sent, and proves it, refutes it with a cell, or leaves it unproven.
 `RenderingCheckTests` fails the run on a refutation its triage does not excuse, on a proof that rests on
-nothing, on a bundle that did not complete, and on more than 5 % of the exact pushes left unproven; the
-soundness, recall and mutation tests beside it hold the graph to documents, to the printer's and the gate's
-planted faults, and to the translator's historical faults replayed. The translator's own mutation line went
-with the switch: its faults are planted in the graph now.
+nothing, and on a bundle that did not complete, and reports the share of what was sent left unproven
+(`CoverageIsReported`); the soundness, recall and mutation tests beside it hold the graph to documents, to
+the printer's and the gate's planted faults, and to the translator's historical faults replayed. The
+translator's own mutation line went with the switch: its faults are planted in the graph now.
 
-- **The asserted set is `Portable`:** a proof must hold on every service the adapter serves, Azure and
-  the emulator. Each check is read under the emulator's set beside it, and reported.
+- **The sets.** The graph writes each container's filters under the set its `serviceTarget` names, Azure's
+  by default, and its own tests assert under Azure's and the emulator's on every leg, with `Portable`
+  reported. The check run re-proves what was sent under `Portable`, where a proof must hold on Azure and
+  the emulator alike, with the emulator's set beside it, reported: so a form proved under Azure's set
+  alone reads unproven there, which is why its coverage is reported rather than held to a line.
 - **`COSMOS_PARTITION_GATE=1`** takes it to the partition run's 1,000 predicates, as it does the
   differential's. Run it so, with the explicit check of the planner, before a pull request that
   changes the translator, the split rule or the rows:
@@ -223,22 +226,27 @@ with the switch: its faults are planted in the graph now.
   ```sh
   COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
   COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingCaptureTests.CaptureChangesNoPlan
-  Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Planning.PlanDigestTests.TheSwitchChangesOnlyWhatTheShadowListed
   ```
 
-  The last plans the gate's 3,492 statements and holds them to `main`'s, but where the switch to the
-  rendering graph changed them (`Planning/Switch/switch-listing.tsv`, each change with its class).
+  To see what such a change does to plans, write the gate's digests at its parent and at its tip
+  (`PlanDigestTests.WriteDigests`, explicit, to the file `COSMOS_PLAN_DIGESTS` names) and compare the
+  two: every line that differs is a plan the change moved.
 
 - **The reports** land in `TestResults/rendering/` beside the test assembly, which CI archives with each
   leg's results: `verdicts.tsv`, every conjunct checked and its verdict; `refutations.tsv`, each
   refuting cell and its triage; `witnesses.tsv`, what the emulator made of each witness document;
-  `vacuous-proofs.tsv`, `proof-lines.tsv` and `skipped.tsv`.
+  `vacuous-proofs.tsv`, `proof-lines.tsv` and `skipped.tsv`; and from the graph's own run, `sent.tsv`,
+  each conjunct each input sent and how, `generate-summary.txt` and `pairwise.tsv`, its candidates
+  judged pair by pair.
 - **Against a service**, `RenderingWitnessTests` writes each refuting and agreed cell as a document,
   runs the text sent over it and the statement in Calcite, and `CosmosEvalServiceTests` holds the
   check's evaluator of the service to it. Both skip without one.
-- **Explicit:** `RenderingSoundnessTests.NoReportedProofHasAWitnessOverALongRun` (5,000 random
-  declarations) and `RenderingCostTests`, the check's cost and `D0`'s, timed: run it in Release, a fact
-  a process, with `-showLiveOutput`, and read the figures beside the machine's load.
+- **Explicit:** `RenderingSoundnessTests.NoReportedProofHasAWitnessOverALongRun` and
+  `NoGeneratedFormHasAWitnessOverALongRun` (5,000 random declarations each, the check's proofs and the
+  graph's own forms); `RenderingCostTests`, the check's cost and `D0`'s; and `RenderingPerQueryCostTests`,
+  what the graph costs a plan, first and again, a schema's first plan, and the merged-view hierarchy. The
+  timed ones run in Release, a fact a process, with `-showLiveOutput`: read the figures beside the
+  machine's load.
 
 ### Generated soundness checks
 

@@ -174,8 +174,8 @@ a missing property give `NULL` under every one. So:
   predicate around it still pushes).
 - **`RETURNING DECIMAL` converts too, and is treated as that cast.** It reads a stored `"2"`, `" 2 "`
   or `"2.0"` as the number 2, which the service cannot reproduce, so a column, sort, grouping or
-  partition key over it is computed in process; a comparison through it sends the service a bound
-  around the number and rechecks the comparison (Chapter 8). It is not the stored value even over
+  partition key over it is computed in process; a comparison through it sends the service the
+  property's presence and rechecks the comparison (Chapter 8). It is not the stored value even over
   numbers: a stored `0.1` is the double's exact binary value, so `RETURNING DECIMAL(10, 1) = 0.1` is
   false of it. And under plain `DECIMAL` the literal it is compared with is truncated to a whole
   number: `= 2.5` is true of a stored 2. Where the documents hold whole numbers, `RETURNING INTEGER` is

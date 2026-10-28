@@ -37,12 +37,17 @@ lists, null tests, and `AND`, `OR` and `NOT` over them — is sent only in a for
 keeps exactly the rows SQL keeps, on the service the schema names (`serviceTarget`, Chapter 4): the
 cheapest such form, with its guards. Where it proves none, the conjunct is kept in process and only
 what it proves the conjunct implies is sent as its weakening. A conjunct holding a parameter, a
-function, a `LIKE`, a `CASE` or an array's element is written as the adapter always wrote it.
+function, a `LIKE`, a `CASE` or an array's element is still written as the adapter writes it where
+that is exact — a parameter compared over a path the service types, a `LIKE` over a declared string;
+where it is not, what is sent is the weakening the adapter proves the conjunct implies: the property's
+presence for a parameter, a `LIKE` or a function, and nothing for an ordering over an array's element.
 
 **A conjunct the proof declines reads the container.** On a schema's first plan the proof waits for
 its reasoning to be built, at most five seconds; a statement whose question is too large to finish is
-declined too. A declined conjunct stays in process with nothing sent for it: the answer is still right,
-but the container is read for it, and the decline is counted on `cosmos.rendering.declines` (Chapter 20).
+declined too. A conjunct declined so stays in process with nothing sent for it: the answer is still
+right, but the container is read for it, and the decline is counted on `cosmos.rendering.declines`
+(Chapter 20). Where conjuncts proved one at a time are not proved together, none is sent exactly, but
+each is sent as the weakening proved for it and rechecked.
 
 ## 8.2 What renders
 
@@ -130,11 +135,18 @@ WHERE JSON_VALUE(c."DOC", '$.code') = '30'
 → WHERE IS_DEFINED(c.code)   -- then rechecked in process
 ```
 
-An inequality is sent exactly, with the accessor's null guard. An ordering against a string is sent with
-the kinds the service orders on the same side of every string — booleans below, numbers above — which
-is exact; on the emulator, which orders a U+0000 inside a string as stored, only where nothing at the
-path can hold one (a `pattern`, Chapter 14.4), and otherwise in process. `LIKE` sends that the property
-is there, and is matched in process:
+An inequality against text only a string renders as is sent exactly, with the accessor's null guard;
+against text a number or a boolean renders as — `<> '30'`, `<> 'true'` — a weakening is sent and the
+inequality rechecked, since the service's `30 != "30"` is true of a stored 30. An ordering against a
+string is sent exactly where every number's text and every boolean's falls on one side of the literal,
+SQL ordering text by code unit: a number's text — digits and `-` — sorts below the letters, and `true`
+and `false` above the digits and the capitals, so `> 'Trail'` is sent with the booleans it keeps,
+`< 'Trail'` with the numbers, and `> 'zzz'` keeps neither. Where a kind's renderings fall on both sides
+— `> 'g'`, between `false` and `true` — or both kinds are kept, as by `< 'zzz'`, a weakening is sent and
+the ordering rechecked. On the emulator, which orders a U+0000 inside a string as stored, an ordering is
+sent only where nothing at the path can hold one (a `pattern`, Chapter 14.4); otherwise only the
+property's presence is, and the ordering is rechecked. `LIKE` sends that the property is there, and is
+matched in process:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.name') <> 'Trail'
@@ -143,15 +155,18 @@ WHERE JSON_VALUE(c."DOC", '$.name') <> 'Trail'
 WHERE JSON_VALUE(c."DOC", '$.name') > 'Trail'
 → WHERE ((c.name > @p0) OR IS_BOOL(c.name))
 
+WHERE JSON_VALUE(c."DOC", '$.name') < 'Trail'
+→ WHERE ((c.name < @p0) OR IS_NUMBER(c.name))
+
 WHERE JSON_VALUE(c."DOC", '$.name') LIKE 'Trail%'
 → WHERE IS_DEFINED(c.name)   -- then rechecked
 ```
 
 **If the container declares that the path holds a string** (Chapter 14), there is no second type to
 disagree about: the comparison and the `LIKE` are sent as written, nothing is rechecked, and a row limit
-travels with them. An ordering over an array's element, `$.tags[0]`, runs in process whatever the
-container declares: a declaration states what a property holds, and none reaches an element (Chapter
-11.3).
+travels with them. A comparison over an array's element, `$.tags[0]`, runs in process whatever the
+container declares, except an equality with text only a string renders as, which is sent: a declaration
+states what a property holds, and none reaches an element (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
 that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,
@@ -500,7 +515,7 @@ documents it has to read.
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
-| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the bound a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |

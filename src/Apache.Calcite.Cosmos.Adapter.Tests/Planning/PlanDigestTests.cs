@@ -90,7 +90,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// rounds' nodes. So the listing is the rehearsal's digests against <c>main</c>'s, each change classed by the shadow's
         /// rows for its statement and, where the shadow could not read the translator's weakening, by reading the two
         /// weakenings side by side: an element path, <c>LIKE</c> and arithmetic, each O7's (<c>TODO.md</c>). Run at the
-        /// gate, with <c>-explicit only</c>.
+        /// gate, with <c>-explicit only</c>. The switch's evidence alone: it holds every other plan to pre-switch
+        /// <c>main</c>, so it goes once the switch's gates are recorded (<c>TODO.md</c>), and no later change runs it.
         /// </remarks>
         [Fact(Explicit = true)]
         public void TheSwitchChangesOnlyWhatTheShadowListed()

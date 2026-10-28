@@ -37,8 +37,8 @@ as a point read; without it, it could not be told from the query it replaced.
 
 `cosmos.rendering.declines` counts each question about a filter that the adapter's rendering
 reasoning could not answer while the statement was planned (Chapter 8). The conjuncts it asked about stay
-in process with nothing sent for them: the rows are right, and the container is read for them. It
-carries `cosmos.container` and `cosmos.rendering.reason`:
+in process with nothing sent for them — but after a `composite` decline, below: the rows are right, and
+the container is read for them. It carries `cosmos.container` and `cosmos.rendering.reason`:
 
 | reason | what happened |
 | --- | --- |
@@ -46,12 +46,12 @@ carries `cosmos.container` and `cosmos.rendering.reason`:
 | `incomplete` | the question was too large to finish within its limits; the same filter declines again |
 | `engine` | the reasoning failed on the question |
 | `conflict` | two answers contradicted each other |
-| `composite` | the conjuncts proved one at a time were not proved together, so none was sent |
+| `composite` | the conjuncts proved one at a time were not proved together, so none was sent exactly; each was sent as the weakening proved for it, and rechecked. Counted once a statement |
 
 A steady count of zero is normal. Alert on any `engine` or `conflict`, which are defects worth
 reporting; on `unavailable` beyond a schema's first plans, which means schemas are being built faster
-than they are reused (Chapter 6); and on `incomplete` for a statement that matters, which a simpler
-filter avoids.
+than they are reused (Chapter 6), or many at once (Chapter 19); and on `incomplete` for a statement that
+matters, which a simpler filter avoids.
 
 ## 20.3 Traces
 

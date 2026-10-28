@@ -54,10 +54,11 @@ as written; if it is always a number, read it with `RETURNING` rather than a cas
 **A filter that pushed before reads the whole container.**
 Watch `cosmos.rendering.declines` (Chapter 20). Its `unavailable` reason on a schema's first plans means
 the plan arrived before the schema's reasoning was built and waited five seconds for it — reuse schemas
-rather than building one per request (Chapter 6); `incomplete` means the filter's question is too large,
-which fewer conditions or a shorter `IN` list avoids. A decline keeps the rows right and costs request
-units. On the emulator, a text ordering over a string that may hold U+0000 stays in process by design
-(Appendix E.2).
+rather than building one per request, and do not build many at once: schemas made together share the
+processor, and on a busy machine eight took up to ten seconds (Chapters 6 and 19); `incomplete` means the
+filter's question is too large, which fewer conditions or a shorter `IN` list avoids. A decline keeps the
+rows right and costs request units. On the emulator, a text ordering over a string that may hold U+0000
+sends only the property's presence and is rechecked, by design (Appendix E.2).
 
 **`UPPER`, `LOWER`, `CHAR_LENGTH`, `SUBSTRING`, `TRIM`, `REPLACE` or `LIKE '%a%'` over a declared string runs in process.**
 Calcite's string functions are Java's and the service's are its own, and they part over some characters:
