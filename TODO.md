@@ -2024,9 +2024,12 @@ of record is in its repository, as
   and with them the pin the binding table's static key put on every factory schema's graphs. A host's schema, or a
   table built alone, now compiles its own declarations: its first plan pays that compile, as the rule asks. No
   static holds what a question taught but `CosmosFunctionBodies.Paths`, which goes in a pull request of its own
-  (*Parse a function body's path per call*), and `CosmosStaticsTests.StaticsHoldNoLearnedState` keeps it so: every
-  static field of the adapter is classed with its reason, and one not classed fails. `CosmosConstraintCompiler`'s table,
-  keyed on whatever type factory a caller passes, is weak on the table too, so a long-lived factory keeps none.
+  (*Parse a function body's path per call*), and `CosmosStaticsTests` keeps it so: every static field of the adapter
+  is classed with its reason, and one not classed fails; a static's type is followed through the fields it can hold,
+  its value walked after a schema has worked and gone, and each weak table names the test that finds it released.
+  `CosmosConstraintCompiler`'s table, keyed on whatever type factory a caller passes, is weak on the table too, and
+  `CosmosFilterStatement`'s, keyed on whatever condition a caller passes, weak on the container, so a long-lived
+  factory or condition keeps none.
 - **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
   four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
   nested `not`.

@@ -816,27 +816,35 @@ of JSON and JSON Schema as code, the service's guarantees (`CosmosServiceFacts.R
 `ServiceFacts` and `Empty` theories, S's definition read from the measured registry
 (`CosmosRendering.Definition`), and bounded pure tables of such facts (`PathCell.Units`,
 `PredicateAtom.Parsed`). They are facts, not a cache. Everything a question can teach — graphs, interned
-values, compiled declarations, `D0`, statement trees, remembered answers, S's readings of a node — hangs
-off the schema's reasoning
-and goes with it; connections share it as they share the schema (docs chapter 6). A static keyed on a
-static object whose value reaches the table is a holder in its own right, whatever the table's own
-lifetime: `JsonFactGenerations._bound`, keyed on the static `ServiceFacts`, held each factory schema's bound
-copy and through it the generations, so every factory-built schema's graph lived for the process
-(`CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`, which failed on the code before this). A run's
-report reaches its graph through its rules, so `JsonContexts` hands one only to a flow that asks
-(`JsonContexts.Report`); a `[ThreadStatic]` last report kept each thread's last graph. A weak table keyed on
-whatever a caller passes can be such a holder too: `CosmosConstraintCompiler` keys compiled constraints on the caller's
-type factory, which may live for the process, so it is weak on the table beneath as well
-(`CosmosStaticsTests.AConstraintRememberedUnderALongLivedFactoryKeepsNoTable`).
+values, compiled declarations, `D0`, statement trees, remembered answers, S's readings of a node — hangs off the
+schema's reasoning and goes with it; connections share it as they share the schema (docs chapter 6). A weak table
+keyed on a static object, whose value reaches the table, is a holder in its own right, whatever the table's own
+lifetime: `JsonFactGenerations._bound`, an instance table keyed on the static `ServiceFacts`, held each factory
+schema's bound copy and through it the generations, so every factory-built schema's graph lived for the process
+(`CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`, which failed on the code before this). A run's report
+reaches its graph through its rules, so `JsonContexts` hands one only to a flow that asks (`JsonContexts.Report`);
+a `[ThreadStatic]` last report kept each thread's last graph. A weak table keyed on whatever a caller passes can be
+such a holder too, and two were: `CosmosConstraintCompiler` keys compiled constraints on the caller's type factory,
+and `CosmosFilterStatement` keys a filter's statements on its condition, which a public caller of
+`CosmosFactRewriter` or `CosmosPartitionKeyExtractor` passes, and which may be a long-lived builder's cached `TRUE`.
+Each is weak on the table, or the container, beneath as well
+(`CosmosStaticsTests.AConstraintRememberedUnderALongLivedFactoryKeepsNoTable`,
+`AStatementRememberedUnderALongLivedConditionKeepsNoTable`).
 
-**The line is held by a test.** `CosmosStaticsTests.StaticsHoldNoLearnedState` reads every static field of the
+**The line is held by tests.** `CosmosStaticsTests.StaticsHoldNoLearnedState` reads every static field of the
 assembly and fails on one not classed: a fixed fact, infrastructure (telemetry, reflection handles, settings), a
 test's arm, or a weak table keyed on what dies with a plan, a graph or a connection, each with its reason. A fact
-and a weak table must be read-only, only an arm may be thread-static or async-local, a theory a static holds must be
-unbound, and no static's type may hold a reasoning, generations, an oracle, a graph or a memo but as a weak table's
-key. One learned static is left, `CosmosFunctionBodies.Paths`, listed as leaving: it is parsed per call in a pull
-request of its own (`TODO.md`). Eggnog's own thread statics are listed beside, since one holds a scope while an
-extraction runs.
+and a weak table must be read-only, and only an arm may be thread-static or async-local. No other static's declared
+type may reach a reasoning, generations, an oracle, a graph or a memo but as a weak table's key, followed through
+every field of every adapter type it can hold, derived types included; three facts whose type could and whose value
+does not (`ServiceFacts`, `JsonFactTheory.Empty`, `JsonFactSet.Empty`) are listed as such.
+`NoStaticReachesWhatASchemaLearned` lets a schema plan, implement and execute through a data source, drops it, and
+walks every static's value but the weak tables', field by field and through Calcite's objects, which catches what a
+declared `object` holds. A weak table's entries belong to whatever test is running beside while their keys live, so
+neither check reads them: each names the test that finds its entries gone once what they remember is let go, and
+what that test shows is for the reviewer of the line to judge. One learned static is left,
+`CosmosFunctionBodies.Paths`, listed as leaving: it is parsed per call in a pull request of its own (`TODO.md`).
+Eggnog's own thread statics are listed beside, since one holds a scope while an extraction runs.
 
 **Bound metadata carries its reasoning.** The bound copy is another object than the metadata handed in:
 whoever holds it holds the schema's graphs, the executor factory is handed it, and a host's

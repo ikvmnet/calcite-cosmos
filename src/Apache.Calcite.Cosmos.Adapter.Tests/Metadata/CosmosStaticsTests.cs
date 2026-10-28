@@ -3,19 +3,31 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
+using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
+using Apache.Calcite.Data;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 using FluentAssertions.Execution;
 
+using Microsoft.Azure.Cosmos;
+
 using org.apache.calcite.rex;
+using org.apache.calcite.sql.fun;
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -38,6 +50,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// asked on the test's own thread among them, so no thread static of the engine's keeps them either.
     /// </para>
     /// <para>
+    /// <b>Three checks, each for what the others cannot see.</b> A static's declared type is followed through every field
+    /// of the adapter's types it can hold, which catches a table or bound metadata however deep; its value is walked after
+    /// a schema has worked and gone, which catches what a declared <c>object</c> or a Calcite object holds; and a weak
+    /// table, whose entries are a running test's while their keys live, names the test that finds them released. What a
+    /// weak table's named test shows is read by whoever reviews the line, not by this test.
+    /// </para>
+    /// <para>
     /// <b>Compiler-generated types are read, not listed.</b> Their statics are lambda caches, each class's
     /// singleton of itself and array data, which the test checks; an auto-property's backing field is listed by its
     /// property's name.
@@ -52,20 +71,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     public sealed class CosmosStaticsTests
     {
 
-        /// <summary>The classes of the reassessment's table.</summary>
+        /// <summary>The classes a static may fall in.</summary>
         enum Kind
         {
 
-            /// <summary>STATIC_FACT: fixed in the assembly, or a pure function of it over a bounded domain.</summary>
+            /// <summary>Fixed in the assembly, or a pure function of it over a bounded domain.</summary>
             StaticFact,
 
-            /// <summary>INFRA: telemetry, reflection handles, settings, stateless helpers.</summary>
+            /// <summary>Telemetry, reflection handles, settings, stateless helpers.</summary>
             Infra,
 
-            /// <summary>TEST_ARM: what a test arms for its own flow, which production never does.</summary>
+            /// <summary>What a test arms for its own flow, which production never does.</summary>
             TestArm,
 
-            /// <summary>PLAN_SCOPED: a weak table keyed on what dies with a plan, a graph or a connection.</summary>
+            /// <summary>A weak table keyed on what dies with a plan, a graph or a connection, and released with it.</summary>
             PlanScoped,
 
         }
@@ -92,8 +111,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosConstraintSet", ["Empty"], StaticFact, "the empty set"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["DefaultIncludedPatterns", "DefaultStatisticsTimeToLive", "ServiceExcludedPatterns"], StaticFact, "the service's indexing defaults, and a default lifetime"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["ServiceFacts"], StaticFact, "the service's guarantees, unbound: rules and their encoding, which compile nothing until a schema binds a copy"),
-            ("Adapter.Metadata.CosmosFactRewriter", ["Rewrites"], PlanScoped, "keyed weakly on a plan's statement"),
-            ("Adapter.Metadata.CosmosFilterStatement", ["Read"], PlanScoped, "keyed weakly on a plan's condition"),
+            ("Adapter.Metadata.CosmosFactRewriter", ["Rewrites"], PlanScoped, "keyed weakly on a statement, which Read keeps only while its container lives"),
+            ("Adapter.Metadata.CosmosFilterStatement", ["Read"], PlanScoped, "keyed weakly on the condition, then on the container, so it keeps neither whatever condition a caller passes"),
             ("Adapter.Metadata.CosmosNumericForms", ["Digits", "IntegerUnpadded", "Unpadded"], StaticFact, "numeric spellings"),
             ("Adapter.Metadata.CosmosPartitionKeyExtractor", ["IdPolicy"], StaticFact, "the id's path"),
             ("Adapter.Metadata.CosmosPartitionKeyExtractor.RexBuilderHolder", ["Value"], Infra, Builder),
@@ -101,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Metadata.CosmosRendering", ["Defined"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness; every schema's S is defined from it"),
             ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Current"], TestArm, "the observer a test arms for its flow"),
-            ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node"),
+            ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node, which reaches the table whose container it remembers; internal, asked by the planner alone"),
             ("Adapter.Metadata.CosmosSchemaRecognition", ["Cosmos"], StaticFact, "the recognisers of Cosmos DB's schema keywords"),
             ("Adapter.Metadata.CosmosServiceFacts", ["Properties", "Stated"], StaticFact, "what the service guarantees of its own properties, as rules"),
             ("Adapter.Metadata.CosmosServiceOrder", ["Int64Least", "Int64Most", "TwoTo53"], StaticFact, "numeric bounds"),
@@ -110,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosUuidForms", ["CanonicalLower", "CanonicalLowerSortable", "CanonicalUpper", "CanonicalUpperSortable", "Hyphens", "Uuids"], StaticFact, "UUID spellings"),
             ("Adapter.Metadata.CosmosUuidForms", ["UnsignedUuidComparison"], Infra, "Calcite's system property, read once: the process's configuration"),
 
-            ("Adapter.Rel.Convert.CosmosConverters", ["Announced"], PlanScoped, "keyed weakly on one implementation's implementor"),
+            ("Adapter.Rel.Convert.CosmosConverters", ["Announced"], PlanScoped, "keyed weakly on one implementation's implementor, which dies with the implementation"),
             ("Adapter.Rel.Convert.CosmosConverters", ["GetExecutorMethod", "GetJsonPropertyMethod", "GetJsonTextPropertyMethod", "GetLookupCacheMethod", "GetPartitionCounterMethod", "GetPathMethod", "GetPropertyMethod", "GetTextPropertyMethod", "GetWriterMethod"], Infra, Reflection),
             ("Adapter.Rel.Convert.CosmosSelfJoinRule", ["Instances"], Infra, "the rule's instances, whose fields are their configuration"),
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
@@ -190,6 +209,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         ];
 
         /// <summary>
+        /// Facts whose type could hold what a schema learns and whose value holds none of it: a theory a static holds is
+        /// rules alone, bound to no generations and with no oracle, and the empty set reads no scope. Their values are
+        /// <see cref="NoStaticReachesWhatASchemaLearned"/>'s to check, and one whose type no longer could leaves the list.
+        /// </summary>
+        static readonly (string Key, string Reason)[] Unbound =
+        [
+            ("Adapter.Metadata.CosmosContainerMetadata.ServiceFacts", "the service's guarantees, bound to no generations until a schema binds a copy"),
+            ("Facts.JsonFactSet.Empty", "the empty set, over no scope"),
+            ("Facts.JsonFactTheory.Empty", "the theory of no rules, bound to no generations"),
+        ];
+
+        /// <summary>
+        /// Each weak table, and the test that finds its entries gone once what they remember is let go: being weak on a key
+        /// says nothing of how long the key lives, so each names the test that shows its key cannot outlive the table, the
+        /// graph or the reasoning its entries reach.
+        /// </summary>
+        static readonly (string Key, string Test)[] Released =
+        [
+            ("Adapter.Metadata.CosmosFactRewriter.Rewrites", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
+            ("Adapter.Metadata.CosmosFilterStatement.Read", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
+            ("Adapter.Metadata.CosmosRowFacts.Decided", nameof(NoStaticReachesWhatASchemaLearned)),
+            ("Adapter.Rel.Convert.CosmosConverters.Announced", nameof(NoStaticReachesWhatASchemaLearned)),
+            ("Adapter.Rel.CosmosConstraintCompiler.Cache", nameof(AConstraintRememberedUnderALongLivedFactoryKeepsNoTable)),
+            ("Facts.Rendering.RenderingAnswerMemo.Digests", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
+            ("Facts.Rendering.ServiceTable.Views", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
+            ("Facts.Saturation.PredicateRules.Defined", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
+        ];
+
+        /// <summary>
         /// The engine's thread statics at Eggnog 1.1.1, none of which keeps a graph past the call that set it.
         /// </summary>
         static readonly (string Type, string[] Fields, string Reason)[] EngineThreadStatics =
@@ -216,10 +264,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         ];
 
         /// <summary>
-        /// Every static field of the adapter is classed, and none holds what a schema learns: a fact is read-only, a weak
-        /// table is a weak table, only a test's arm flows with a thread or an async flow, no static's type is a graph, an
-        /// oracle, a memo or a reasoning but as a weak table's key, and a theory held by one is bound to nothing. A static
-        /// not classed fails, so a new one has to be classed here, with its reason.
+        /// Every static field of the adapter is classed, and none can hold what a schema learns: a fact is read-only, a weak
+        /// table is a weak table and names the test that finds its entries released, only a test's arm flows with a thread
+        /// or an async flow, and no other static's type can reach a graph, an oracle, a memo or a reasoning, through any
+        /// field of any type of the adapter's it can hold, but as a weak table's key. A static not classed fails, so a new
+        /// one has to be classed here, with its reason; what the values reach is <see cref="NoStaticReachesWhatASchemaLearned"/>'s.
         /// </summary>
         [Fact]
         public void StaticsHoldNoLearnedState()
@@ -250,13 +299,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             assembly.GetTypes().SelectMany(t => t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)).Where(Flows)
                 .Select(f => $"{f.DeclaringType}.{f.Name}").Should().BeEmpty("nothing flows with a thread or an async flow but a test's arm, which is static");
 
-            found.Where(f => Holds(f.Field.FieldType)).Select(f => $"{f.Key} ({f.Field.FieldType})")
+            var released = Released.ToDictionary(r => r.Key, r => r.Test, StringComparer.Ordinal);
+            found.Where(f => KindOf(f.Key) == PlanScoped && !released.ContainsKey(f.Key)).Select(f => f.Key)
+                .Should().BeEmpty("a weak table names the test that finds its entries gone with what they remember");
+            released.Keys.Where(k => KindOf(k) != PlanScoped).Should().BeEmpty("only a weak table names a test that releases it");
+            var tests = typeof(CosmosStaticsTests).Assembly.GetTypes()
+                .SelectMany(t => t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+                .Where(m => m.IsDefined(typeof(FactAttribute), true)).Select(m => m.Name).ToHashSet(StringComparer.Ordinal);
+            released.Values.Where(t => !tests.Contains(t)).Should().BeEmpty("a weak table's test is a test");
+
+            var unbound = Unbound.Select(u => u.Key).ToHashSet(StringComparer.Ordinal);
+            found.Where(f => KindOf(f.Key) != PlanScoped && !unbound.Contains(f.Key) && Holds(f.Field.FieldType, out _)).Select(f => Holds(f.Field.FieldType, out var path) ? $"{f.Key}: {path}" : f.Key)
                 .Should().BeEmpty("a schema's reasoning and what it is made of hang off the schema");
-            var values = found.Select(f => (f.Key, Value: Value(f.Field))).ToList();
-            values.Where(v => v.Value is not null && Learned.Any(t => t.IsInstanceOfType(v.Value))).Select(v => v.Key)
-                .Should().BeEmpty("no static holds a graph, an oracle, a memo or a reasoning");
-            values.Where(v => v.Value is JsonFactTheory { Generations: not null }).Select(v => v.Key)
-                .Should().BeEmpty("a theory a static holds is rules alone, bound to no schema's generations");
+            found.Where(f => unbound.Contains(f.Key) && (KindOf(f.Key) != StaticFact || !Holds(f.Field.FieldType, out _))).Select(f => f.Key)
+                .Should().BeEmpty("only a fact whose type could hold what a schema learns is listed as holding none of it");
 
             // The compiler's own statics: a lambda's delegate, a closure class's singleton of itself, and array data.
             assembly.GetTypes().Where(Generated).SelectMany(t => t.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
@@ -309,6 +365,200 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             return [("table", new WeakReference(table)), ("its reasoning", new WeakReference(table.Container.Reasoning))];
         }
 
+        /// <summary>
+        /// A statement remembered under a condition that lives for the process keeps no table: the statements read off a
+        /// condition are weak on the container as well, so a long-lived builder's cached <c>TRUE</c>, handed to the
+        /// rewriter, the partition key extractor or a side's declaration, keeps neither the table nor its schema's
+        /// reasoning, nor the rewrite remembered under the statement. Keyed on the condition alone, as it was, it kept both.
+        /// </summary>
+        [Fact]
+        public void AStatementRememberedUnderALongLivedConditionKeepsNoTable()
+        {
+            var held = ReadAndLetGo();
+            Collect();
+
+            held.Where(h => h.Reference.IsAlive).Select(h => h.Name).Should().BeEmpty("the condition outlives the table, and keeps none of it");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (string Name, WeakReference Reference)[] ReadAndLetGo()
+        {
+            const string Uuid = """{ "properties": { "ref": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }""";
+            var table = new CosmosTable(new CosmosContainerMetadata("items", ["/ref"]).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(Uuid)!)));
+            var container = table.Container;
+            var reasoning = container.Reasoning!;
+            var condition = LongLived.makeLiteral(true);
+            List<CosmosPath?> fields = [CosmosPath.Root("c").Property("ref"), CosmosPath.Root("c")];
+            var reference = LongLived.makeInputRef(LongLived.getTypeFactory().createSqlType(SqlTypeName.VARCHAR), 0);
+
+            CosmosFactRewriter.Rewrite(condition, fields, container, "c", LongLived);
+            CosmosPartitionKeyExtractor.TryExtract(condition, fields, null, container, "c", out _);
+            CosmosFilterStatement.Declares(LongLived.makeCall(SqlStdOperatorTable.IS_NOT_NULL, reference), fields, null, container, LongLived);
+            reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");
+
+            return
+            [
+                ("table", new WeakReference(table)), ("its metadata", new WeakReference(container)),
+                ("its reasoning", new WeakReference(reasoning)), ("its F graph", new WeakReference(reasoning.Facts.Current.Contexts.Graph)),
+            ];
+        }
+
+        /// <summary>
+        /// After a schema of its own has planned, implemented and executed statements through a data source, and been let
+        /// go, the schema and everything it learned are collected, and no static but a weak table reaches a graph, an
+        /// oracle, a memo or a reasoning, whatever its declared type: each static's value is walked, field by field,
+        /// through collections and Calcite's objects alike. A weak table is its own test's (<see cref="Released"/>), since
+        /// what its entries reach while their keys live is a test's running beside this one.
+        /// </summary>
+        [Fact]
+        public void NoStaticReachesWhatASchemaLearned()
+        {
+            var held = ExecuteAndLetGo();
+            Collect();
+
+            held.Where(h => h.Reference.IsAlive).Select(h => h.Name).Should().BeEmpty("nothing the schema learned outlives it");
+
+            var kinds = Classed.SelectMany(c => c.Fields.Select(f => (Key: c.Type + "." + f, c.Kind))).ToDictionary(c => c.Key, c => c.Kind, StringComparer.Ordinal);
+            var roots = Statics(typeof(CosmosReasoning).Assembly)
+                .Where(f => f.Field.DeclaringType!.ContainsGenericParameters == false && (kinds.TryGetValue(f.Key, out var kind) == false || kind != PlanScoped))
+                .Select(f => (f.Key, Value: f.Field.GetValue(null)));
+
+            var reaching = Reaching(roots, out var walked);
+            TestContext.Current.TestOutputHelper?.WriteLine($"walked {walked:N0} objects from the adapter's statics");
+            reaching.Should().BeEmpty("no static but a weak table reaches what a schema learned");
+        }
+
+        /// <summary>A container's executor that finds no documents.</summary>
+        sealed class Nothing : ICosmosQueryExecutor
+        {
+
+            public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                await Task.Yield();
+                return new ListCursor<JsonElement>(Array.Empty<JsonElement>());
+            }
+
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (string Name, WeakReference Reference)[] ExecuteAndLetGo()
+        {
+            const string Uuid = """{ "properties": { "ref": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }""";
+            var schema = new CosmosSchema([new CosmosContainerMetadata("c", ["/pk"]).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(Uuid)!))], _ => new Nothing());
+            var table = (CosmosTable)schema.tables().get("c")!;
+            var reasoning = table.Container.Reasoning!;
+
+            using (var dataSource = new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder { CaseSensitive = true }.ConnectionString).AddSchema("COSMOS", schema).Build())
+            using (var connection = dataSource.OpenConnection())
+                foreach (var sql in new[]
+                {
+                    """SELECT c."id" FROM "COSMOS"."c" AS c WHERE c."id" = 'x' AND JSON_VALUE(c."DOC", '$.pk') = 'p'""",
+                    """SELECT c."id" FROM "COSMOS"."c" AS c WHERE JSON_VALUE(c."DOC", '$.ref') = 'a' AND JSON_VALUE(c."DOC", '$.pk') = 'p'""",
+                    """SELECT COUNT(*) FROM "COSMOS"."c" AS c WHERE JSON_VALUE(c."DOC", '$.ref') > 'a'""",
+                    """SELECT c."id" FROM "COSMOS"."c" AS c ORDER BY JSON_VALUE(c."DOC", '$.ref') FETCH NEXT 5 ROWS ONLY""",
+                    """SELECT a."id" FROM "COSMOS"."c" AS a JOIN "COSMOS"."c" AS b ON a."id" = b."id" WHERE JSON_VALUE(a."DOC", '$.pk') = 'p'""",
+                })
+                {
+                    using var command = connection.CreateCommand();
+                    command.CommandText = sql;
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read())
+                        continue;
+                }
+
+            reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");
+
+            return
+            [
+                ("schema", new WeakReference(schema)), ("table", new WeakReference(table)), ("its reasoning", new WeakReference(reasoning)),
+                ("its F graph", new WeakReference(reasoning.Facts.Current.Contexts.Graph)),
+            ];
+        }
+
+        /// <summary>
+        /// Walks each root's value, every instance field of every object it reaches, and the elements of arrays and the
+        /// values of weak tables, and returns the path to each learned object found. Reflection, threads, class loaders and
+        /// telemetry are not opened: none holds a value of the adapter's.
+        /// </summary>
+        static List<string> Reaching(IEnumerable<(string Key, object? Value)> roots, out long walked)
+        {
+            var from = new Dictionary<object, (object? From, string Edge)>(ReferenceEqualityComparer.Instance);
+            var pending = new Queue<object>();
+            var found = new List<string>();
+
+            foreach (var (key, value) in roots)
+                if (value is not null && Opened(value) && from.TryAdd(value, (null, key)))
+                    pending.Enqueue(value);
+
+            walked = 0;
+            while (pending.TryDequeue(out var o))
+            {
+                walked++;
+                if (Learned.Any(l => l.IsInstanceOfType(o)))
+                {
+                    var steps = new List<string> { $"({o.GetType().Name})" };
+                    for (var at = o; ;)
+                    {
+                        var (before, edge) = from[at];
+                        steps.Add(before is null ? edge : $"{edge} [{before.GetType().Name}]");
+                        if (before is null)
+                            break;
+
+                        at = before;
+                    }
+
+                    steps.Reverse();
+                    found.Add(string.Join(" -> ", steps));
+                    continue;
+                }
+
+                foreach (var (child, edge) in Children(o))
+                    if (child is not null && Opened(child) && from.TryAdd(child, (o, edge)))
+                        pending.Enqueue(child);
+            }
+
+            return found;
+        }
+
+        static readonly string[] Unopened = ["java.lang.Class", "java.lang.ClassLoader", "java.lang.Thread", "IKVM.", "System.Reflection.", "System.RuntimeType", "System.Threading.Thread", "System.Diagnostics.", "System.Runtime.Loader."];
+
+        static bool Opened(object o)
+        {
+            var type = o.GetType();
+            if (type.IsPrimitive || type.IsEnum || o is string or Type or MemberInfo or Assembly or Module or Pointer)
+                return false;
+
+            var name = type.FullName ?? "";
+            return Unopened.Any(u => name.StartsWith(u, StringComparison.Ordinal)) == false;
+        }
+
+        static IEnumerable<(object? Child, string Edge)> Children(object o)
+        {
+            var type = o.GetType();
+            if (o is Array array)
+            {
+                if (type.GetElementType()!.IsPrimitive == false)
+                    for (var i = 0; i < array.Length; i++)
+                        yield return (array.GetValue(i), $"[{i}]");
+
+                yield break;
+            }
+
+            if (IsGeneric(type, typeof(ConditionalWeakTable<,>)))
+            {
+                var i = 0;
+                foreach (var entry in (System.Collections.IEnumerable)o)
+                    yield return (entry.GetType().GetProperty("Value")!.GetValue(entry), $"<value {i++}>");
+
+                yield break;
+            }
+
+            for (var t = type; t is not null && t != typeof(object); t = t.BaseType)
+                foreach (var field in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                    if (field.FieldType.IsPointer == false && field.FieldType.IsByRefLike == false && field.FieldType.IsPrimitive == false && field.FieldType.IsEnum == false)
+                        yield return (field.GetValue(o), field.Name);
+        }
+
         static void Collect()
         {
             for (var i = 0; i < 4; i++)
@@ -355,22 +605,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static bool IsGeneric(Type type, Type definition) => type.IsGenericType && type.GetGenericTypeDefinition() == definition;
 
-        /// <summary>Whether a static's declared type holds a learned type anywhere but as a weak table's key.</summary>
-        static bool Holds(Type type)
+        /// <summary>
+        /// Whether a static's declared type can reach a learned type anywhere but as a weak table's key: through arrays and
+        /// generic arguments, and through every instance field of the adapter's own types, and of every type of the
+        /// adapter's that derives from or implements them, as far as they reach. The engine's and Calcite's types are not
+        /// opened; what their values reach is the walk's.
+        /// </summary>
+        /// <param name="declared">The static's declared type.</param>
+        /// <param name="path">The fields through which it reaches one, for the message.</param>
+        static bool Holds(Type declared, out string path)
         {
-            if (type.IsArray)
-                return Holds(type.GetElementType()!);
-            if (Learned.Any(l => l.IsAssignableFrom(type)))
-                return true;
-            if (type.IsGenericType == false)
-                return false;
+            var adapter = typeof(CosmosReasoning).Assembly;
+            var from = new Dictionary<Type, (Type? Type, string Edge)> { [declared] = (null, "") };
+            var pending = new Queue<Type>([declared]);
 
-            var arguments = type.GetGenericArguments();
-            return (IsGeneric(type, typeof(ConditionalWeakTable<,>)) ? arguments.Skip(1) : arguments).Any(Holds);
+            while (pending.TryDequeue(out var type))
+            {
+                if (Learned.Any(l => l.IsAssignableFrom(type)))
+                {
+                    var steps = new List<string> { type.Name };
+                    for (var at = type; from[at].Type is { } before; at = before)
+                        steps.Add($"{from[at].Edge} [{before.Name}]");
+
+                    steps.Reverse();
+                    path = string.Join(" -> ", steps);
+                    return true;
+                }
+
+                void Reach(Type next, string edge)
+                {
+                    if (next.IsGenericParameter == false && from.TryAdd(next, (type, edge)))
+                        pending.Enqueue(next);
+                }
+
+                if (type.IsArray)
+                    Reach(type.GetElementType()!, "[]");
+                if (type.IsGenericType)
+                {
+                    var arguments = type.GetGenericArguments();
+                    foreach (var argument in IsGeneric(type, typeof(ConditionalWeakTable<,>)) ? arguments.Skip(1) : arguments)
+                        Reach(argument, "<>");
+                }
+
+                if (type.Assembly != adapter)
+                    continue;
+
+                foreach (var derived in AdapterTypes.Where(t => t != type && t.ContainsGenericParameters == false && type.IsAssignableFrom(t)))
+                    Reach(derived, ":");
+                for (var t = type; t is not null && t.Assembly == adapter; t = t.BaseType)
+                    foreach (var field in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                        Reach(field.FieldType, field.Name);
+            }
+
+            path = "";
+            return false;
         }
 
-        /// <summary>A static's value on this thread, or <c>null</c> for an open generic's.</summary>
-        static object? Value(FieldInfo field) => field.DeclaringType!.ContainsGenericParameters ? null : field.GetValue(null);
+        static readonly Type[] AdapterTypes = typeof(CosmosReasoning).Assembly.GetTypes();
 
     }
 
