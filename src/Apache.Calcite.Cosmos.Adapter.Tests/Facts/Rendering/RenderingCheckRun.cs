@@ -105,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
-        /// <summary>Whether the shadow's flows take S's answers: as the process does where null, so that the rehearsal writes; told apart where a test reads sites W and R, which only report beside the translator.</summary>
+        /// <summary>Whether the shadow's flows take S's answers: as the process does where null, writing since the switch; told apart where a test reads sites W and R, or judges a plant against the translator's text, which happen beside the translator alone.</summary>
         public bool? Writes { get; init; }
 
         /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>

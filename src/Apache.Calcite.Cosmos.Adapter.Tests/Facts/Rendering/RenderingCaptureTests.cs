@@ -14,9 +14,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The capture and the shadow change no plan: every plan digest is the same with a recorder and the generate shadow armed
-    /// as without, each arm in a reasoning of its own — S asked at production's sites, under every set, beside the
-    /// translator (spec g15, line 21).
+    /// The capture and the shadow change no plan: every plan digest is the same with a recorder and the generate shadow's
+    /// observer armed as without, each arm in a reasoning of its own, S writing in both as production does since the switch
+    /// (spec g15, g16, line 21).
     /// </summary>
     public sealed class RenderingCaptureTests
     {
@@ -32,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static void Unchanged(Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements)
         {
             var (recorder, shadow) = (new RenderingRecorder(), new RenderingShadowCounter());
-            PlanDigests.Unchanged(() => new Both(recorder.Arm(), CosmosRenderingShadow.Arm(shadow, writes: false)), statements, _ =>
+            PlanDigests.Unchanged(() => new Both(recorder.Arm(), CosmosRenderingShadow.Arm(shadow)), statements, _ =>
             {
                 recorder.Records.Should().NotBeEmpty("the capture was armed");
                 TestContext.Current.TestOutputHelper?.WriteLine($"the shadow: {shadow.Counts}");

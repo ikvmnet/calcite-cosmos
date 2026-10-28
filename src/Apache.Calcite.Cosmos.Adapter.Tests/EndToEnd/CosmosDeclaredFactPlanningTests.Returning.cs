@@ -28,7 +28,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Over a path declared a string, a comparison through <c>RETURNING DECIMAL</c> is no contradiction: it is
-        /// rechecked in process over every string, and only a number outside the window is left at the service.
+        /// rechecked in process over every string, above the path's presence, which is all S sends of a comparison
+        /// through a parse (O7's listed loss until Stage 3's guarded spelling).
         /// </summary>
         [Theory]
         [InlineData("= 2")]
@@ -42,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().NotContain(KeepsNothing, "a stored \"2\" is 2 to the clause: " + PlanText(best));
             PlanText(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + PlanText(best));
 
-            Query(FindCosmos(best), container).Sql.Should().Contain("(NOT IS_NUMBER(c.body)) OR",
+            Query(FindCosmos(best), container).Sql.Should().EndWith("WHERE IS_DEFINED(c.body)",
                 "a string passes to the recheck, the declaration saying nothing of a number");
         }
 
@@ -65,19 +66,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Over a path declared an integer, the type test the window carries is dropped, and the service does all the
-        /// narrowing; the comparison is still rechecked, the parse being Calcite's.
+        /// Over a path declared an integer, the parse is the integer, and the comparison is sent exactly: the service
+        /// does all the narrowing, where the translator pushed its window beneath a recheck.
         /// </summary>
         [Fact]
-        public void ADecimalReturningOverADeclaredIntegerPushesTheWindowAlone()
+        public void ADecimalReturningOverADeclaredIntegerIsSentExactly()
         {
             var container = Declaring(WholeBodies);
             var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {Body} = 2""", container, out _);
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Be("SELECT VALUE c FROM items c WHERE ((c.body > @p0) AND (c.body < @p1))");
-            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal("1", "3");
-            PlanText(best).Should().Contain("ClrCursorFilter", PlanText(best));
+            query.Sql.Should().Be("SELECT VALUE { \"id\": c.id } FROM items c WHERE (c.body = @p0)");
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal("2");
+            PlanText(best).Should().NotContain("ClrCursorFilter", PlanText(best));
         }
 
         /// <summary>

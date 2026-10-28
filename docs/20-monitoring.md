@@ -21,8 +21,9 @@ builder.Services.AddOpenTelemetry()
 | --- | --- | --- | --- |
 | `cosmos.request_charge` | histogram | `{request_unit}` | request units charged, one measurement per response |
 | `cosmos.responses` | counter | `{response}` | responses received |
+| `cosmos.rendering.declines` | counter | `{decline}` | filter questions the rendering reasoning declined while planning |
 
-Both carry two tags:
+The first two carry two tags:
 
 | tag | values |
 | --- | --- |
@@ -33,6 +34,24 @@ The charge is recorded **per response** rather than per statement, because a que
 pages is charged per page, and the spread is itself worth seeing — a query answered in one page and
 one answered in forty cost very differently. The `request_kind` tag is what makes a point read visible
 as a point read; without it, it could not be told from the query it replaced.
+
+`cosmos.rendering.declines` counts each question about a filter that the adapter's rendering
+reasoning could not answer while the statement was planned (Chapter 8). The conjuncts it asked about stay
+in process with nothing sent for them: the rows are right, and the container is read for them. It
+carries `cosmos.container` and `cosmos.rendering.reason`:
+
+| reason | what happened |
+| --- | --- |
+| `unavailable` | the schema's reasoning was not ready within five seconds of the first question, or failed to build |
+| `incomplete` | the question was too large to finish within its limits; the same filter declines again |
+| `engine` | the reasoning failed on the question |
+| `conflict` | two answers contradicted each other |
+| `composite` | the conjuncts proved one at a time were not proved together, so none was sent |
+
+A steady count of zero is normal. Alert on any `engine` or `conflict`, which are defects worth
+reporting; on `unavailable` beyond a schema's first plans, which means schemas are being built faster
+than they are reused (Chapter 6); and on `incomplete` for a statement that matters, which a simpler
+filter avoids.
 
 ## 20.3 Traces
 

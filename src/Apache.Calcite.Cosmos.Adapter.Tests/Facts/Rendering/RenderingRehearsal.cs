@@ -8,9 +8,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The whole-suite rehearsal of the switch (spec g15): where <c>COSMOS_RENDERING_WRITES</c> is set before the test
-    /// assembly loads, every flow takes S's answers as g16 will — <c>1</c> under each container's own set, <c>production</c>
-    /// or <c>emulator</c> under that set for every statement. Unset, nothing is armed.
+    /// A whole-suite run under one set (spec g15's rehearsal): where <c>COSMOS_RENDERING_WRITES</c> is set before the test
+    /// assembly loads, every flow writes — as production does since the switch — <c>1</c> under each container's own set,
+    /// <c>production</c> or <c>emulator</c> under that set for every statement. Unset, each container's own set; g17
+    /// retires it with the arm.
     /// </summary>
     static class RenderingRehearsal
     {
@@ -18,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The variable that arms the rehearsal.</summary>
         public const string Variable = "COSMOS_RENDERING_WRITES";
 
-        /// <summary>Whether the rehearsal armed the process: where the digests' run fails on a decline.</summary>
+        /// <summary>Whether a whole-suite run armed the process under one set.</summary>
         public static bool Armed { get; private set; }
 
         [ModuleInitializer]

@@ -198,9 +198,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return graph;
         }
 
-        /// <summary>Statements planned as the differential plans them, shadowed through a graph under the sets the legs plan under.</summary>
+        /// <summary>
+        /// Statements planned as the differential plans them, shadowed through a graph under the sets the legs plan under,
+        /// beside the translator: a plant is judged against the translator's text, which a flow S writes holds none of.
+        /// </summary>
         internal static RenderingCheckRun Shadowed(RenderingGraph graph, string input, IReadOnlyList<string> statements) =>
-            RenderingCheckRun.Over(RenderingInputs.Differential(input, statements, RenderingInputs.Containers), shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+            RenderingCheckRun.Over(RenderingInputs.Differential(input, statements, RenderingInputs.Containers), shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets), writes: false);
 
         /// <summary>A planted best: a negation's operand's best at the position <paramref name="at"/> gives, negated, as the negation's.</summary>
         internal static void NegationBestFrom(RenderingTheory t, string name, Func<Var<RenderPosition>, Term<RenderPosition>> at) =>

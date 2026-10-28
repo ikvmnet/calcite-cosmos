@@ -211,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var residual = new List<RexNode>();
 
             // Site W: where the statement's admission took S's answers, S's weakening in J's place, whatever arm is in force
-            // now; beside the translator, where a flow armed the shadow, S's told it beside J's.
+            // now; beside the translator, where a test armed the shadow so, S's told it beside J's.
             var (arm, writes) = Metadata.CosmosRenderingShadow.Armed ? (Metadata.CosmosRenderingShadow.Current, statement.Writes) : (null, false);
 
             // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the

@@ -14,8 +14,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// What production's rendering graph S is defined from: the registry's rows, strict where Calcite answers null for a
     /// null as its one reader of that says, read once a process, being facts fixed in the assembly; the set a container's
     /// statements are proven under; and the one path every site asks S through. Each schema's oracle is its reasoning's
-    /// (<see cref="CosmosReasoning.Rendering"/>). Planning asks one only where a test arms the shadow
-    /// (<see cref="CosmosRenderingShadow"/>).
+    /// (<see cref="CosmosReasoning.Rendering"/>), which every filter a plan pushes asks (<see cref="CosmosRenderingShadow"/>).
     /// </summary>
     internal static class CosmosRendering
     {

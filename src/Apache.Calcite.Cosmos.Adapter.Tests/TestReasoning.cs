@@ -35,9 +35,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         static readonly AsyncLocal<HarnessReasonings?> Harness = new();
 
         /// <summary>
-        /// Gets the reasoning the fixtures share.
+        /// Gets the reasoning the fixtures share, made where first asked for and its S build awaited before anything plans
+        /// in it: every filter a plan pushes asks S, and a first question that waited past its bound would decline and
+        /// change the plan. A process that never asks, as the first-plan line's child does not, builds none.
         /// </summary>
-        public static CosmosReasoning Shared { get; } = new();
+        public static CosmosReasoning Shared => Made.Value;
+
+        static readonly Lazy<CosmosReasoning> Made = new(() =>
+        {
+            var reasoning = new CosmosReasoning();
+            reasoning.Rendering.Ready.Wait();
+            return reasoning;
+        });
 
         /// <summary>
         /// Returns the metadata bound to <see cref="Shared"/>, or as it is where a schema has bound it already.
@@ -69,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ? harness.Made(table.Container.Reasoning)
                 ? table
                 : throw new InvalidOperationException($"The fixture '{given.Name}' reasons outside its harness's reasonings: bind it to the harness's reasoning where the harness builds it.")
-            : ReferenceEquals(table.Container.Reasoning, Shared) || (given.Reasoning is not null && ReferenceEquals(table.Container.Reasoning, given.Reasoning))
+            : (given.Reasoning is not null && ReferenceEquals(table.Container.Reasoning, given.Reasoning)) || ReferenceEquals(table.Container.Reasoning, Shared)
                 ? table
                 : throw new InvalidOperationException($"The fixture '{given.Name}' made a reasoning of its own: bind it with TestReasoning.Bind where it is declared.");
 

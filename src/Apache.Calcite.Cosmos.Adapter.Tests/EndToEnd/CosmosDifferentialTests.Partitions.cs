@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The full run, which is Stage 0's gate: ternary logic partitioning holds over 1,000 generated
         /// predicates.
         /// </summary>
-        const int GatePartitionedPredicates = 1_000;
+        internal const int GatePartitionedPredicates = 1_000;
 
         /// <summary>
         /// The run every pass of the class makes, sized for a pull request rather than for the gate.
@@ -423,6 +423,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             public int Statements => _statements.Count;
 
+            /// <summary>The partitions run that sent the service a <c>WHERE</c>: how much of the predicates reached it.</summary>
+            public int Pushed => _statements.Count(s => s.Key.StartsWith("pushed ", StringComparison.Ordinal)
+                && s.Value.Value.IsCompletedSuccessfully && s.Value.Value.Result.Sent.Any(t => t.Contains(" WHERE ", StringComparison.Ordinal)));
+
             /// <summary>Each statement's time, slowest first.</summary>
             public IReadOnlyList<(double Milliseconds, string Sql)> Timings => _timings.OrderByDescending(t => t.Milliseconds).ToList();
 
@@ -534,6 +538,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>COSMOS_MEASUREMENT_LOG</c> names a file to append every failure to in full, with the
         /// statements each partition sent, and the run's counts and time.
         /// </para>
+        /// <para>
+        /// <b>A floor on what reaches the service.</b> A partitioning that sends nothing agrees with Calcite trivially, so
+        /// the run also counts the partitions that sent the service a <c>WHERE</c>, and fails below
+        /// <see cref="PushedPartitions"/>: what the rendering graph pushed at the switch, measured on the emulator.
+        /// </para>
         /// </remarks>
         [Fact]
         public async Task EveryPredicatePartitionsTheRows()
@@ -567,10 +576,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             });
 
             var size = predicates.Count == GatePartitionedPredicates ? "the gate's" : "the first of the gate's " + GatePartitionedPredicates + "; COSMOS_PARTITION_GATE=1 asks for all of them";
+            var floor = predicates.Count == GatePartitionedPredicates ? PushedPartitions.Gate : PushedPartitions.Default;
             var summary = $"{predicates.Count} predicates ({size}), {predicates.Select(p => p.Vocabulary.Table + " " + p.Predicate.Sql).Distinct().Count()} distinct, " +
                 $"{judged.Count(p => p.Judged == false)} not judged because Calcite raised, {failing.Count} failing; " +
-                $"{judge.Statements} statements run; judged in {judging.TotalSeconds:F1} s, narrowed in {(clock.Elapsed - judging).TotalSeconds:F1} s " +
-                $"at {PartitionParallelism} at a time";
+                $"{judge.Statements} statements run, {judge.Pushed} partitions sending a WHERE (the floor is {floor}); " +
+                $"judged in {judging.TotalSeconds:F1} s, narrowed in {(clock.Elapsed - judging).TotalSeconds:F1} s at {PartitionParallelism} at a time";
 
             // One entry per smallest witness, most predicates first: many failing predicates narrow to
             // the same comparison, and the witness is what a fix is written against.
@@ -597,7 +607,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
 
             witnesses.Should().BeEmpty($"every predicate's pushed partitions must be the rows, each once, as Calcite partitions them ({summary}; {witnesses.Count} distinct smallest failing parts)");
+            judge.Pushed.Should().BeGreaterThanOrEqualTo(floor, $"as many partitions must reach the service as did ({summary})");
         }
+
+        /// <summary>
+        /// The least number of partitions run that send the service a <c>WHERE</c>, over the default run and over the gate:
+        /// as many as did at the switch to the rendering graph, measured on the emulator under its set: 206 in the default
+        /// run's 795 statements, 993 in the gate's 3,880.
+        /// </summary>
+        static readonly (int Default, int Gate) PushedPartitions = (206, 993);
 
         /// <summary>
         /// Appends a line to the file <c>COSMOS_MEASUREMENT_LOG</c> names, where it names one. The

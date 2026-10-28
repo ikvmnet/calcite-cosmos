@@ -20,8 +20,6 @@ using Microsoft.Azure.Cosmos;
 
 using Xunit;
 
-using static Apache.Calcite.Cosmos.Adapter.Sql.CosmosTranslatorFault;
-
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
@@ -49,16 +47,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         internal static readonly IReadOnlyDictionary<string, Case> Cases = new Dictionary<string, Case>
         {
-            ["P1"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", [Defined], [], M1, "$[\"metadata\"]=array (F,t)", ["2"], []),
-            ["P19"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", [Defined, "(c.category = @p0)"], [Bikes], M1, "$[\"category\"]=string|bikes; $[\"metadata\"]=array (F,t)", ["2"], []),
-            ["P2"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
-            ["P3"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NULL", ["(NOT IS_DEFINED(c.label) OR IS_NULL(c.label))"], [], M1, Array + "(T,f)", ["6", "7"], ["4", "5", "6", "7"]),
+            ["P1"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", [Defined], [], "$[\"metadata\"]=array (F,t)", ["2"], []),
+            ["P19"] = new(Products + "JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", [Defined, "(c.category = @p0)"], [Bikes], "$[\"category\"]=string|bikes; $[\"metadata\"]=array (F,t)", ["2"], []),
+            ["P2"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
+            ["P3"] = new(Typed + "JSON_VALUE(c.\"DOC\", '$.label') IS NULL", ["(NOT IS_DEFINED(c.label) OR IS_NULL(c.label))"], [], Array + "(T,f)", ["6", "7"], ["4", "5", "6", "7"]),
             ["P25"] = new("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" IS NOT NULL",
-                ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], M1, Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
-            ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], M2, Array + "(U,t)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
-            ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], M2, "$[\"category\"]=string|a; " + Array + "(U,t)",
+                ["(IS_DEFINED(c.label) AND NOT IS_NULL(c.label))"], [], Array + "(F,t)", ["1", "2", "3", "4", "5", "8", "9"], ["1", "2", "3", "8", "9"]),
+            ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], Array + "(U,t)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
+            ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], "$[\"category\"]=string|a; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "6", "7", "8", "9"], ["2", "3", "6", "7", "8", "9"]),
-            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], M2, "$[\"category\"]=strings < \"b\" in [high,nonascii,nul,surrogate,trimmed]; " + Array + "(U,t)",
+            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], "$[\"category\"]=strings < \"b\" in [high,nonascii,nul,surrogate,trimmed]; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
         };
 
@@ -73,8 +71,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// planted template for its statement, each conjunct's text at its atoms, it is never S's best. The part a structure
         /// shows wrong is refuted as exact at the pinned cell, read at its atom. It is implied only where that cell keeps a
         /// superset of Calcite's rows: (F,t) or (U,t), (T,f) or (U,f) beneath a <c>NOT</c>, inside the Implies box; never
-        /// P3's (T,f). S sends its own form, under each set a leg plans under. Until the switch the translator writes the
-        /// family (g16), so under its fault it writes the text again, and unplanted it does not.
+        /// P3's (T,f). S sends its own form, under each set a leg plans under; since the switch S writes the family, so no
+        /// translator fault reaches the statement, and the text is replayed rather than written again.
         /// </summary>
         [Theory]
         [MemberData(nameof(Names))]
@@ -82,9 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var c = Cases[p];
             RenderingGenerateMutationTests.Show(Replay(c.Sql, c.Texts, c.Parameters).Asserted).Should().Be(c.Refuted);
-            Written(RenderingMutationTests.Checked(c.Fault, c.Sql)).Should().Equal(c.Texts);
-            Written(RenderingMutationTests.Checked(None, c.Sql)).Should().NotEqual(c.Texts);
-            static IEnumerable<string> Written(RenderingCheckRun run) => run.Conjuncts.Where(r => r.Site == 2).OrderBy(r => r.Unit).ThenBy(r => r.Conjunct).Select(r => r.Text);
+            RenderingCheckRun.Over(RenderingInputs.Differential("recall", [c.Sql], RenderingInputs.Containers)).Conjuncts.Where(r => r.Site == 2).Select(r => r.Text)
+                .Should().NotContain(c.Texts[0], "S never sends the text 4b65754 got wrong");
 
             var (run, pieces) = Offered.Value;
             run.Failures.Should().BeEmpty();
@@ -226,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal static string Where(IReadOnlyList<string> texts) => texts.Count == 1 ? texts[0] : "(" + string.Join(" AND ", texts) + ")";
 
         /// <summary>A recall case (<see cref="Cases"/>).</summary>
-        internal sealed record Case(string Sql, string[] Texts, CosmosParameter[] Parameters, CosmosTranslatorFault Fault, string Refuted, string[] Pushed, string[] Calcite);
+        internal sealed record Case(string Sql, string[] Texts, CosmosParameter[] Parameters, string Refuted, string[] Pushed, string[] Calcite);
 
         /// <summary>A part of a case's text, offered at an atom of its path at a position.</summary>
         internal sealed record Piece(SqlPredicate Atom, string Path, RenderPosition Position, ServiceForm Form);

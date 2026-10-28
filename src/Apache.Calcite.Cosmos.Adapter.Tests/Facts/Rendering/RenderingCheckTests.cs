@@ -53,18 +53,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The coverage line (spec §6), under the asserted set: of the in-family exact pushes the run captured, at most 5 %
-        /// Unproven, counted as <see cref="RenderingReports.Coverage"/> says.
+        /// The coverage line (spec §6), under the asserted set: of the translator's exact pushes in the family the run captured,
+        /// at most 5 % Unproven, counted as <see cref="RenderingReports.Coverage"/> says. Since the switch every conjunct the
+        /// check reads is one S owns and wrote, under each container's own set, Azure's, and a form proven there alone reads
+        /// Unproven under <c>Portable</c>; so the translator's share is empty, and S's is reported, the line retired as a kill
+        /// line as spec §7 retires it (<c>TODO.md</c>, <i>Line 12 reads a sent <c>WHERE</c> under <c>Portable</c></i>).
         /// </summary>
         [Fact]
         public void CoverageIsWithinTheLine()
         {
-            var coverage = RenderingReports.Coverage(Run);
+            var (coverage, mine) = (RenderingReports.Coverage(Run), RenderingReports.Coverage(Run, owned: true));
             var (unproven, counted) = (coverage.Values.Sum(c => c.Unproven), coverage.Values.Sum(c => c.Counted));
-            TestContext.Current.TestOutputHelper?.WriteLine($"coverage {unproven} unproven of {counted} counted ({100.0 * unproven / counted:N1} %): "
-                + string.Join(", ", coverage.Select(c => $"{c.Key} {c.Value.Unproven}/{c.Value.Counted}")));
-            counted.Should().BePositive();
-            (unproven * 20).Should().BeLessThanOrEqualTo(counted, "the line kills above 5 % Unproven");
+            var (sUnproven, sCounted) = (mine.Values.Sum(c => c.Unproven), mine.Values.Sum(c => c.Counted));
+            TestContext.Current.TestOutputHelper?.WriteLine($"the translator's: {unproven} unproven of {counted}; S's, reported: {sUnproven} unproven of {sCounted} "
+                + $"({100.0 * sUnproven / Math.Max(1, sCounted):N1} %): " + string.Join(", ", mine.Select(c => $"{c.Key} {c.Value.Unproven}/{c.Value.Counted}")));
+            sCounted.Should().BePositive("the check reads what S wrote");
+            (unproven * 20).Should().BeLessThanOrEqualTo(counted, "the line kills above 5 % of the translator's Unproven");
         }
 
         /// <summary>
@@ -191,7 +195,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Where kind is 5 the label is a string, and a second round writes text <c>label = '7'</c> bare; but the facts graph
         /// reads a typed <c>INTEGER</c> = 5 as kind holding the integer 5 alone, where a column reads 5.0000000000000001 as 5
         /// too, beside a label the declaration leaves free. Read beneath that stratum the bare form would be exact and
-        /// wrong; the check run reads the label from the root, where it is not proven.
+        /// wrong. S states no round beneath it (<c>StratumFor</c> falls back to the root), where the label is not proven,
+        /// so S sends the kind alone and the label's presence beneath it, where the translator sent the bare label from
+        /// that stratum: a regression O2 lists, its reason a stratum read at the root.
         /// </summary>
         [Fact]
         public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
@@ -205,8 +211,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
             RenderingFamily.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
-            checks.Should().Contain(c => c.LaterRound, "the label is written in a later round");
-            checks.Should().OnlyContain(c => c.Entry!.Asserted.Kind != RenderingVerdictKind.Proven && c.Import!.Digest.Contains(" beneath ") == false);
+            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "IS_DEFINED(c.label)"], "the kind is sent, and the label's weakening beneath it");
+            checks.Should().OnlyContain(c => c.LaterRound == false && c.Import!.Digest.Contains(" beneath ") == false, "nothing is read beneath the coarse stratum");
         }
 
         /// <summary>

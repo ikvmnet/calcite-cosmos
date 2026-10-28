@@ -42,6 +42,8 @@
     <ItemGroup>
         <!-- What a service answered on a run, as CosmosAxiomsTests reads it wherever the tests are unpacked. -->
         <EmbeddedResource Include="Measurements\Runs\*.tsv" LogicalName="Runs/%(Filename)%(Extension)" />
+        <!-- What the switch to the rendering graph changed of the gate's plans, as TheSwitchChangesOnlyWhatTheShadowListed reads it. -->
+        <EmbeddedResource Include="Planning\Switch\*.tsv" LogicalName="Switch/%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>

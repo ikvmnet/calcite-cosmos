@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -53,10 +54,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
 
             // Made, never started: its graph is defined on a thread of its own once something first asks it, and each
-            // generation's warm-up answer printed there.
-            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition,
-                exercised: (question, answer) => Warmed = CosmosRendering.Print(question, answer)));
+            // generation's warm-up answer printed there, into a box the build holds rather than the reasoning, so that a
+            // schema let go while its build runs goes with it.
+            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition, exercised: Printing(_warmed)));
         }
+
+        readonly StrongBox<string?> _warmed = new();
+
+        static Action<SqlPredicate, RenderingAnswer> Printing(StrongBox<string?> warmed) =>
+            (question, answer) => warmed.Value = CosmosRendering.Print(question, answer);
 
         /// <summary>
         /// Gets the generations of graphs every container of the schema reasons in.
@@ -76,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public RenderingOracle Rendering { get; }
 
         /// <summary>What the rendering graph's last generation printed its warm-up answer as; none before the first is built.</summary>
-        internal string? Warmed { get; private set; }
+        internal string? Warmed => _warmed.Value;
 
     }
 

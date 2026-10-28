@@ -167,14 +167,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static (int Input, int Number) Key(string input, string name) => (Array.IndexOf(Inputs, input), int.TryParse(name, CultureInfo.InvariantCulture, out var n) ? n : -1);
 
         /// <summary>
-        /// The coverage line's count by input (spec §6): each conjunct sent and not skipped, read by its check's verdict, the
-        /// claim made, but by its own at its position where its check is Unproven for holding a skipped conjunct, which the
-        /// line excludes with what it does to the check.
+        /// The coverage line's count by input (spec §6): each conjunct sent and not skipped — the translator's, or with
+        /// <paramref name="owned"/> those S owns and so wrote — read by its check's verdict, the claim made, but by its own at
+        /// its position where its check is Unproven for holding a skipped conjunct, which the line excludes with what it does
+        /// to the check.
         /// </summary>
-        public static IReadOnlyDictionary<string, (int Unproven, int Counted)> Coverage(RenderingCheckRun run)
+        public static IReadOnlyDictionary<string, (int Unproven, int Counted)> Coverage(RenderingCheckRun run, bool owned = false)
         {
             var skipping = Skipping(run);
-            return run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null)
+            return run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null && RenderingFamily.Owns(run.Irs[c.Ir]) == owned)
                 .Select(c => (c.Input, Kind: c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven && skipping.Contains((c.Input, c.Name, c.Unit))
                     ? c.Entry.Alone[c.Position]?.Kind ?? RenderingVerdictKind.Unproven : c.Entry.Asserted.Kind))
                 .GroupBy(c => c.Input).ToDictionary(g => g.Key, g => (g.Count(c => c.Kind == RenderingVerdictKind.Unproven), g.Count()));

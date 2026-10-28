@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <summary>
     /// S as production asks it: one generate bundle a question, of one statement round's roots, imported from the node the
     /// round renders from with later rounds' atoms stated beneath their strata; remembered by its content across statements,
-    /// plans and generations, and declined, never thrown, where S cannot answer. Nothing in planning asks it yet.
+    /// plans and generations, and declined, never thrown, where S cannot answer. Every filter a plan pushes asks it.
     /// </summary>
     /// <remarks>
     /// It decides whether an answer may be read and kept, never what it is: <c>DESIGN.md</c>, <i>The production oracle</i>.
@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public (long Hits, long Bundles, long Declines) Counts => (Interlocked.Read(ref _hits), Interlocked.Read(ref _bundles), Interlocked.Read(ref _declines));
 
         /// <summary>Starts the first generation's build on its dedicated thread, once, and returns at once.</summary>
-        /// <remarks>Nothing calls it yet: it is kept for the planner's warm sites, which come with the switch to S.</remarks>
+        /// <remarks>Every table's <c>toRel</c> calls it: a schema's first plan starts its build.</remarks>
         public void Warm() => _graph.Warm();
 
         /// <summary>

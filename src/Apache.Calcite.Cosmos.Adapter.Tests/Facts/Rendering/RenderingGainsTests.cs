@@ -65,8 +65,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>P4's statements that are no <c>LIKE</c>.</summary>
         static readonly string[] Weakened = [Typed + "<> '30'", Typed + ">= '30'", View + ">= '30'"];
 
+        /// <summary>
+        /// P8's statements, which the translator writes longer than S: a double negation, and an inequality whose guards a
+        /// sibling's exact form makes vacuous.
+        /// </summary>
+        static readonly string[] Shorter =
+        [
+            "SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"$.category\" = 'bikes'))",
+            "SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') <> 'b' AND JSON_VALUE(c.\"DOC\", '$.kind') <> 'c'",
+        ];
+
         /// <summary>The statements planned over the differential's containers, and over the twin, each named by its place.</summary>
-        static readonly List<string> PlainSql = [.. Exact.Where(e => e.Twin == false).Select(e => e.Sql).Distinct(), .. Weakened, P6, P7],
+        static readonly List<string> PlainSql = [.. Exact.Where(e => e.Twin == false).Select(e => e.Sql).Distinct(), .. Weakened, P6, P7, .. Shorter],
             TwinSql = [.. Exact.Where(e => e.Twin).Select(e => e.Sql).Distinct()];
 
         static readonly Lazy<RenderingCheckRun> Plain = new(() => Shadowed("gains", PlainSql, [.. CosmosDifferentialTests.Containers]));
@@ -174,13 +184,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// P8, counted over the pull request's run: a conjunct the translator pushes that S sends exactly as a form of fewer
-        /// nodes, under each set; and P7, <c>LIKE 'a%'</c> over a declared string, the translator's, pushed and not S's.
+        /// P8: a conjunct the translator pushes that S sends exactly as a form of fewer nodes, under each set, read beside the
+        /// translator, since the pull request's run plans with S writing; and P7, <c>LIKE 'a%'</c> over a declared string,
+        /// the translator's, pushed and not S's.
         /// </summary>
         [Fact]
         public void P8IsCountedAndP7IsTheTranslators()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var shadow = Plain.Value.Shadow!;
             foreach (var set in RenderingGenerateRun.Sets)
             {
                 var shorter = shadow.Classes.Where(c => c.Set == set && c.Class == RenderingGenerateRun.Respelled && c.Form!.Nodes < c.TextForm!.Nodes).ToList();

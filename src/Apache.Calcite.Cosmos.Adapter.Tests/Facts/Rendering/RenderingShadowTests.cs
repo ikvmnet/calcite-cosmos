@@ -14,7 +14,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <summary>
     /// The generate shadow over the pull request's run, told by production's sites (spec g15; lines 6 and 13b): every
     /// statement shadowed under each set, no conjunct in the engine's class, the translator's exact pushes S declines no
-    /// more than O2's cap and each for a listed reason, and no weakening looser than J's but O7's listed losses.
+    /// more than O2's cap and each for a listed reason, and no weakening looser than J's but O7's listed losses. Since the
+    /// switch the run plans with S writing, so the text the shadow compares S with is S's own print under the statement's
+    /// set, and lines 6 and 13b against the translator are the switch's listing's (<c>TheSwitchChangesOnlyWhatTheShadowListed</c>)
+    /// until g17 makes line 6 floors; a run beside the translator asserts them here.
     /// </summary>
     public sealed class RenderingShadowTests
     {
@@ -50,6 +53,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var set in RenderingGenerateRun.AssertedSets)
             {
                 var regressions = shadow.Classes.Where(c => c.Set == set && c.Class == RenderingGenerateRun.Regression).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set}: {regressions.Count} regressions against {(run.Writes == false ? "the translator" : "S's own prints")}");
+                if (run.Writes != false)
+                    continue;
+
                 regressions.Count.Should().BeLessThanOrEqualTo(Cap, $"O2's cap under {set}");
                 regressions.Where(r => Listed.Contains(r.Reason) == false).Select(r => $"{r.Input} {r.Name}/{r.Statement}/{r.Conjunct}: {r.Reason}").Should().BeEmpty($"every regression under {set} has a reason O2 lists");
             }
@@ -64,11 +71,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void NoWeakeningIsLooserThanJsButTheListedLosses()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var run = RenderingCheckRun.PerPullRequest.Value;
+            var shadow = run.Shadow!;
             foreach (var set in RenderingGenerateRun.AssertedSets)
             {
                 var classes = shadow.Weakenings.Where(w => w.Set == set).Select(w => (Row: w, Class: RenderingGenerateRun.ClassOf(w))).ToList();
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set}: " + string.Join(", ", classes.GroupBy(c => c.Class).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}")));
+                if (run.Writes != false)
+                    continue;
+
                 classes.Where(c => c.Class is "dropped" or "translator-only" or "looser" or "parting").Select(c => $"{c.Row.Input} {c.Row.Name}/{c.Row.Statement}/{c.Row.Conjunct}: {c.Class}, J {c.Row.Text}, S {c.Row.Mine?.Text}")
                     .Should().BeEmpty($"under {set}, only O7's listed losses are looser");
 

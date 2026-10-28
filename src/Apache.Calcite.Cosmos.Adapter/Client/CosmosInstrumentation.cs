@@ -63,6 +63,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Meter.CreateCounter<long>("cosmos.responses", unit: "{response}", description: "Responses received from Cosmos.");
 
         /// <summary>
+        /// Questions the rendering graph declined while a filter was planned, by container and reason.
+        /// </summary>
+        /// <remarks>
+        /// A filter's conjuncts in the family the rendering graph owns are sent only as it proves them, so a question it
+        /// declines leaves them in process with no weakening: the plan is valid and nothing wrong is sent, but the
+        /// container is read for them. Tagged with the container and <c>cosmos.rendering.reason</c>, one of
+        /// <see cref="RenderingReasons"/>.
+        /// </remarks>
+        public static readonly Counter<long> RenderingDeclines =
+            Meter.CreateCounter<long>("cosmos.rendering.declines", unit: "{decline}", description: "Questions the rendering graph declined while a filter was planned.");
+
+        /// <summary>
+        /// Why the rendering graph declined a question (<see cref="RenderingDeclines"/>).
+        /// </summary>
+        public static class RenderingReasons
+        {
+
+            /// <summary>The run stopped at its limit before every answer was read; remembered, so the same filter declines again.</summary>
+            public const string Incomplete = "incomplete";
+
+            /// <summary>Two answers contradicted each other.</summary>
+            public const string Conflict = "conflict";
+
+            /// <summary>The graph's engine failed.</summary>
+            public const string Engine = "engine";
+
+            /// <summary>No graph answered within the wait: the schema's first build still running past its bound, or failed.</summary>
+            public const string Unavailable = "unavailable";
+
+            /// <summary>The conjuncts it proved one at a time were not proven together, so none of them was sent.</summary>
+            public const string Composite = "composite";
+
+        }
+
+        /// <summary>
         /// The kind of request a measurement came from.
         /// </summary>
         public static class Kinds

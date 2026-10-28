@@ -46,9 +46,18 @@ process; and that a multi-key sort has a matching composite index. Chapter 9's c
 That column is `VARIANT` and cannot be sorted. Sort on `JSON_VALUE(c."DOC", '$.<path>')`, and declare
 the path a string in the container's schema for that sort to reach the service. Chapters 7 and 9.
 
-**A filter on a `JSON_VALUE` column shows `NOT IS_STRING(…) OR …` and a recheck.**
-That is the safe form of a text comparison (Chapter 8). If the property is always a string, declare
-`"type": "string"` for it (Chapter 14) and the comparison becomes exact.
+**A filter on a `JSON_VALUE` column sends only `IS_DEFINED(…)`, or a longer form, and a recheck.**
+That is what the adapter can prove of a text comparison, a `LIKE` or a cast to a number (Chapter 8). If
+the property is always a string, declare `"type": "string"` for it (Chapter 14) and the comparison is sent
+as written; if it is always a number, read it with `RETURNING` rather than a cast.
+
+**A filter that pushed before reads the whole container.**
+Watch `cosmos.rendering.declines` (Chapter 20). Its `unavailable` reason on a schema's first plans means
+the plan arrived before the schema's reasoning was built and waited five seconds for it — reuse schemas
+rather than building one per request (Chapter 6); `incomplete` means the filter's question is too large,
+which fewer conditions or a shorter `IN` list avoids. A decline keeps the rows right and costs request
+units. On the emulator, a text ordering over a string that may hold U+0000 stays in process by design
+(Appendix E.2).
 
 **`UPPER`, `LOWER`, `CHAR_LENGTH`, `SUBSTRING`, `TRIM`, `REPLACE` or `LIKE '%a%'` over a declared string runs in process.**
 Calcite's string functions are Java's and the service's are its own, and they part over some characters:

@@ -201,14 +201,18 @@ reader meets a merge the service made rather than a model of one.
 
 ### The rendering check
 
-`Facts/Rendering` holds a second e-graph, the rendering graph, and with every run of the suite it checks,
-with no service, that each `WHERE` conjunct the translator pushes keeps the rows Calcite keeps
-(`DESIGN.md`, *The rendering graph in check mode*). It plans the planner corpus, the differential's
+`Facts/Rendering` holds a second e-graph, the rendering graph, which writes the family of `WHERE`
+conjuncts it owns (`DESIGN.md`, *The rendering graph in generate mode*), and with every run of the suite it
+checks, with no service, that each conjunct a filter sends keeps the rows Calcite keeps (*The rendering
+graph in check mode*): the graph's own forms re-proved along a second path, read back from the text the
+printer wrote, and the translator's for the rest. It plans the planner corpus, the differential's
 statements without parameters, the partition run's first 200 predicates and one definedness probe,
 reads back the text each filter sent, and proves it, refutes it with a cell, or leaves it unproven.
 `RenderingCheckTests` fails the run on a refutation its triage does not excuse, on a proof that rests on
-nothing, on a bundle that did not complete, and on more than 5 % of the exact pushes left unproven; the soundness, recall and
-mutation tests beside it hold the check itself to documents and to the translator's historical faults.
+nothing, on a bundle that did not complete, and on more than 5 % of the exact pushes left unproven; the
+soundness, recall and mutation tests beside it hold the graph to documents, to the printer's and the gate's
+planted faults, and to the translator's historical faults replayed. The translator's own mutation line went
+with the switch: its faults are planted in the graph now.
 
 - **The asserted set is `Portable`:** a proof must hold on every service the adapter serves, Azure and
   the emulator. Each check is read under the emulator's set beside it, and reported.
@@ -219,7 +223,11 @@ mutation tests beside it hold the check itself to documents and to the translato
   ```sh
   COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
   COSMOS_PARTITION_GATE=1 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingCaptureTests.CaptureChangesNoPlan
+  Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only     -method Apache.Calcite.Cosmos.Adapter.Tests.Planning.PlanDigestTests.TheSwitchChangesOnlyWhatTheShadowListed
   ```
+
+  The last plans the gate's 3,492 statements and holds them to `main`'s, but where the switch to the
+  rendering graph changed them (`Planning/Switch/switch-listing.tsv`, each change with its class).
 
 - **The reports** land in `TestResults/rendering/` beside the test assembly, which CI archives with each
   leg's results: `verdicts.tsv`, every conjunct checked and its verdict; `refutations.tsv`, each

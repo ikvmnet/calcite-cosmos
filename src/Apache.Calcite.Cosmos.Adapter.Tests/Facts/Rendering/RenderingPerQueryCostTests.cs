@@ -238,9 +238,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A new schema's first plan of <see cref="FirstPlanSql"/>, implemented, its wall time from when the schema was made:
         /// a reasoning made for it, its containers bound to it by a harness of its own, as a schema binds those it is handed.
-        /// <c>on</c>: writing armed, and S's build started as the plan reaches its first table, where the switch starts it,
-        /// stood in for by a warm just before the plan; <c>built</c>: writing armed, the build awaited before the clock
-        /// starts; <c>off</c>: nothing armed, and S never built.
+        /// <c>on</c>: S writing, as production plans, its build started as the plan reaches its first table; <c>built</c>: the
+        /// build awaited before the clock starts; <c>off</c>: S turned off, the translator alone, and S never built.
         /// </summary>
         static (Dictionary<string, string> Figures, CosmosReasoning Reasoning) FirstPlan(string mode)
         {
@@ -248,14 +247,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var clock = Stopwatch.StartNew();
             var reasoning = new CosmosReasoning();
             var harness = new PlannerHarness(reasoning);
-            using var writing = mode == "off" ? null : CosmosRenderingShadow.Arm(null, writes: true);
+            using var writing = CosmosRenderingShadow.Arm(null, writes: mode != "off");
             if (mode == "built")
             {
                 reasoning.Rendering.Ready.Wait();
                 clock.Restart();
             }
-            else if (mode == "on")
-                reasoning.Rendering.Warm();
 
             IReadOnlyList<RenderingCostSample> samples;
             using (CosmosRenderingCost.Measure(out samples))

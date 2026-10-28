@@ -6767,8 +6767,8 @@ and the compound evaluated a member at a time on its cells, which an `OR` of 16 
 
 S's second stage writes what it proves. For each `WHERE` conjunct it owns it proposes forms from templates, its gate
 admits or refutes each exactly as in check mode, `BestExact` keeps the cheapest exact one, and `Implied` gathers what a
-residual conjunct's weakening is built from. Until the switch it is judged in tests alone: nothing in planning reaches
-it, and every commit's plan digests are byte-equal to its parent's, which the subsections below take as read.
+residual conjunct's weakening is built from. It was judged in tests alone until the switch (g16, below): every commit
+before it kept the plan digests byte-equal to its parent's, which the subsections up to it take as read.
 
 ### Templates, prices, and the weakening's assembly
 
@@ -7046,8 +7046,9 @@ recorded beside it by whoever runs it; no figure carries a line before g15.
 ### Faults planted in S
 
 **Each of Stage 1's historical faults is planted where S would carry it, in a graph of its own**, and Stage 1's
-triggers are shadowed through it under both sets a leg plans under. The translator's own plants stay until the switch,
-when it no longer writes the family.
+triggers are shadowed through it under both sets a leg plans under, beside the translator, whose text they are judged
+against. The translator's own mutation line retired at the switch, when it no longer writes the family; its plants stay
+until g20 for the tests that replay them.
 - *A template is untrusted.* M1–M3 replace a template's row: the right row goes, and a rule over the same `fits` rows
   and positions proposes the template's form with the guard or type test taken out, since a template's spelling is
   C#'s and a row alone cannot write it wrongly. The gate refutes the planted form at the cell Stage 1 pinned, read at
@@ -7068,8 +7069,8 @@ when it no longer writes the family.
 through a junction by the paths each arm reads, and each part is offered as a planted template at the atoms of its
 path and position. The part a structure shows wrong is refuted at the pinned cell, never S's best, and implied only
 where that cell keeps a superset of Calcite's rows, (F,t) or (U,t) or their duals beneath a `NOT`: never P3's (T,f).
-S sends what it sent unplanted. Until the switch the translator writes the family, so under its fault it still writes
-each text again (g16 retires that half).
+S sends what it sent unplanted, and since the switch, which S writes the family through, never the text 4b65754 got
+wrong.
 
 **The gate faults, in generate mode.** G9, G10 and G13 plant what is not built yet, the production memo, the oracle's
 generations and the Rex builder, and come with them.
@@ -7291,8 +7292,8 @@ a child scope's values into its graph, whose pools "are permanent and shared by 
 counts every scope's ids and epochs on the graph's counters, so a frozen theory shared between schemas would share
 what each schema's questions taught it. A sealed root nothing can enter would be a fixed fact, and could be shared;
 Eggnog offers none yet (`TODO.md`). Made is not built: the graph is defined on its own thread the first time it is
-warmed or asked, and until the switch nothing in planning does either but under a test's arm, so a schema made and
-planned builds no S (`EachSchemaObjectReasonsInItsOwn`).
+warmed or asked; since the switch a table's first `toRel` warms it, so a schema made and never planned builds no S
+(`EachSchemaObjectReasonsInItsOwn`).
 
 **The key is what the bundle reads.** `RenderingQuestionKey` holds the roots' digests sorted, each opaque term beside
 the value it was read as (its number names it only within one loading, so two conjuncts the loader read apart may share
@@ -7676,6 +7677,64 @@ forms over a path the service sets and those the SDK would not write, each of wh
 `PlanDigestTests.RepeatsOpenNoBundle` rides the determinism test's two passes, sites A and W asked, so that every bundle a
 plan opens, the weakening's closing bundle among them, is asked again; under the rehearsal `WriteDigests` fails on any
 decline. `RenderingPerQueryCostTests` holds lines 23–30, explicit, every reading printed before any is judged.
+
+### The switch
+
+**One default flips.** `CosmosRenderingShadow`'s process arm writes (g16): every flow without an arm of its own takes
+S's answers for the conjuncts S owns and for every residual's weakening, under each container's own set, and
+implementation prints what S chose. Nothing else in planning changed; the revert is that one line. A test arms a flow
+beside the translator (an observer, the shadow) or with S off — neither writing nor an observer — which asks S nothing
+and is how line 29 pairs a first plan with S and without. g17 retires the arm, and the sites ask S unconditionally.
+
+**A schema's first plan starts its build.** Every `CosmosTable.toRel` warms its container's reasoning: the build starts
+on its own thread, once, a volatile read after. A table only read for its row type builds nothing, nor does a flow
+with S off. `CosmosSchemaFactory.create` does not warm before it reads the containers' definitions, since line 29b read
+within its pass at g15r (459–497 ms against 500); should it read over, that warm overlaps the build with the reads.
+
+**A decline is counted.** `cosmos.rendering.declines` (`CosmosInstrumentation.RenderingDeclines`) counts each question
+S declines while a statement it writes is planned, tagged with the container and the reason: a bundle that declined —
+`unavailable`, `engine`, `conflict` — or a run that stopped before a conjunct asked was read, `incomplete`; and once a
+statement, `composite`, where its admissions were voided and the rounds run again without them. Only the statement's
+own set's are counted, and only where S writes it, since only those change what a host's plan sends. The count lives in
+`CosmosFilterRendering`, under `Metadata/`, so that nothing under `Facts/` reaches the client.
+
+**What changed is listed.** With S writing, 699 of the gate's 3,492 statements plan otherwise than at `main`: the
+Writes-armed rehearsal's digests, which the switch reproduces byte for byte, each change classed against the shadow's
+rows for its statement (`Planning/Switch/switch-listing.tsv`). The unarmed shadow could not list them: it follows the
+translator's rounds, and S's own admissions change later rounds' nodes. Where the shadow could not read the translator's
+weakening — an element path, `LIKE`, arithmetic, all opaque in the IR — the two weakenings were read side by side, and
+each is a loss on O7's list; none drops a row, since S's weakening is implied by its conjunct (line 1) and the
+residual stays above. Two classes are the rehearsal's own and benign: a weakening's Rex typing its literal otherwise
+with the SQL unchanged, and a conjunct admitted a round earlier with plan and SQL unchanged.
+`TheSwitchChangesOnlyWhatTheShadowListed` holds every listed line to its recorded hash, every other line to `main`'s by
+the hash of them all, and each listed class to those the switch admits.
+
+**Correct declines are not regressions.** The yardstick's floors on the emulator lost seven pushes, each a text ordering
+over a string nothing keeps U+0000 out of, which the emulator orders as stored: the translator pushed them unproven on
+that service, so S declining them is a correctness fix (owner, 2026-10-22), and the floors were restated with each
+statement listed in `TODO.md`. The reader's order test sends `u > 'a'` on Azure alone for the same reason.
+
+**Tests that held J's reasons were restated over S's**, never S changed to meet them: the weakening each pins is S's,
+named by its class — tighter, a respelling, a gain, or a loss on O7's or O2's list. The translator's mutation line
+retired, its faults planted in S (g06); recall replays 4b65754's texts with no translator fault reaching the statement.
+Where the pull request's check run plans with S writing, its shadow compares S with S, so lines 6 and 13b against the
+translator are carried by the listing until g17 makes line 6 floors; the mutation and gate-fault plants still run beside
+the translator, where their verdicts are against its text. The check run still asserts under `Portable`, where a form
+S proved under Azure's set alone reads Unproven, and every conjunct it reads is S's now, so the coverage line, which
+spec §7 retires as a kill line, reports S's figures: at the gate S's Azure-only orderings took it past 5 %.
+
+**A stratum S's own admissions state may be met by no document.** Source B's trials 5 and 28 weaken a residual beneath a
+stratum their declarations leave unsatisfiable — an integer above 7 and not at least 7; a text ordering above `'true'`
+over a path declared a number — which no drawn document meets, so the weakening measured nothing (line 2). The soundness
+test now judges such a form on its bundle's cells, one witness a cell of each path the stratum reads, and counts it
+vacuous only where no combination meets the stratum: the cells partition what the declaration admits, cut for every
+atom the stratum holds, so that is a proof no document the container holds meets it, not a sample. A form whose stratum
+some cell meets is judged there.
+
+**The fixtures name their service.** A fixture that runs statements on the account the tests reach names the emulator
+wherever the endpoint is this machine's, as a model's `serviceTarget` does, so the emulator legs plan under the
+emulator's set and the probe account's run under Azure's; the planner's tests run nothing and plan under each container's
+own set on every leg.
 
 ---
 

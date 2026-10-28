@@ -42,6 +42,9 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Many library functions** | In process where Cosmos has no counterpart; some have one and are not mapped yet (Appendix B). |
 | **`IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM`** | In process. *Not measured.* |
 | **Partition routing from parameters** | Only literal partition key values route a statement; a parameter does not. *Not done.* |
+| **A conjunct the rendering reasoning declines** | In process, nothing sent for it, the container read: the reasoning was not ready within five seconds of a schema's first plan, or the question was too large (Chapter 8). Counted on `cosmos.rendering.declines` (Chapter 20). *By design: only what is proved is sent.* |
+| **A number compared through a cast or `RETURNING DECIMAL`, `LIKE` over an undeclared text, a text equality a number renders as** | The property's presence is sent and the rest rechecked in process. *Not done: a form the service runs that is proved to mean the conversion or the pattern.* |
+| **A comparison over an array's element, `$.tags[0]`, other than an equality** | In process. *The proofs read no element yet.* |
 | **A projection over an unnested element** | The element can be filtered at the service, but selecting it can bring the document along. *Not done.* |
 
 ## Declarations

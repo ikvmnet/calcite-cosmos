@@ -7,26 +7,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// S beside the translator in planning (spec g15): inert unless a test arms it, which production never does. Armed, the
-    /// four sites — admission (A), the weakening (W), implementation (P) and the residual projection (R) — ask S through
-    /// <see cref="CosmosRendering"/> beside the translator and tell the flow's observer; with <see cref="Arming.Writes"/>, they
-    /// take S's answers for the conjuncts S owns, and every residual's weakening, as the switch will (g16): the rehearsal.
-    /// A site reads <see cref="Armed"/>, one <c>volatile bool</c>, and only past it the flow's arm (<c>DESIGN.md</c>, <i>The
-    /// shadow in production code</i>).
+    /// S at production's four sites — admission (A), the weakening (W), implementation (P) and the residual projection (R):
+    /// writing by default since the switch (g16), so that S's answers are taken for the conjuncts S owns and for every
+    /// residual's weakening. A test may arm a flow beside the translator instead (<see cref="Arming.Writes"/> off), where
+    /// the sites ask S through <see cref="CosmosRendering"/> beside it and tell the flow's observer: the shadow, which
+    /// g17 retires with this arm (<c>DESIGN.md</c>, <i>The shadow in production code</i>, <i>The switch</i>).
     /// </summary>
     internal static class CosmosRenderingShadow
     {
 
         static readonly AsyncLocal<Arming?> Flow = new();
 
-        /// <summary>The arm every flow without its own takes: the whole-suite rehearsal's, set before anything plans.</summary>
-        static volatile Arming? _everywhere;
+        /// <summary>
+        /// The arm every flow without its own takes: writing, under each container's own set — the switch's one default —
+        /// or under the set a whole-suite run names before anything plans.
+        /// </summary>
+        static volatile Arming? _everywhere = new(null, true, null);
 
-        /// <summary>Whether any flow, or the process, has armed the shadow; once one has, a site also reads the flow's arm.</summary>
-        internal static volatile bool Armed;
+        /// <summary>Whether a site reads the flow's arm: always, since the process writes; kept until g17 retires the arm.</summary>
+        internal static volatile bool Armed = true;
 
         /// <summary>The flow's arm, its own or the process's; read past <see cref="Armed"/> alone.</summary>
         internal static Arming? Current => Flow.Value ?? _everywhere;
+
+        /// <summary>
+        /// The flow's arm where it asks S at all: writing, or beside the translator for an observer; none where a test arms
+        /// neither, which turns S off and leaves the translator alone (line 29's pairing).
+        /// </summary>
+        internal static Arming? Asking => Armed && Current is { } arm && (arm.Writes || arm.Observer is not null) ? arm : null;
 
         /// <summary>
         /// Asks S at every site the flow plans through until disposed, telling an observer if one is given; writing as the
@@ -40,7 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return arming;
         }
 
-        /// <summary>Arms every flow of the process to write, under a set or each container's own: the whole-suite rehearsal, set once, before anything plans.</summary>
+        /// <summary>Arms every flow of the process to write under a set, or each container's own: a whole-suite run's, set once, before anything plans.</summary>
         internal static void ArmEverywhere(RenderingSet? set)
         {
             _everywhere = new Arming(null, true, set);

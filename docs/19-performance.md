@@ -100,6 +100,15 @@ statement used and which it could have used.
   its conditions the planner asks about — and reused when the same statement is planned again over the same
   schema, on any connection that shares it (Chapter 6). A container that declares no schema pays this too,
   since what Cosmos guarantees of `id`, `_ts` and `_etag` is reasoned about beside every filter.
+- **What a filter sends is proved once per distinct filter, too** (Chapter 8). A filter's first plan pays a
+  few to some tens of milliseconds for it — one to three conditions about 5 to 30 ms, five to seven or a long
+  `IN` list up to about 160 ms, a rare filter of many conditions more — and the same filter planned again over
+  the same schema looks the answer up, in a millisecond or less. A schema keeps the last 4,096 such answers.
+- **Each schema builds its rendering reasoning once, in the background.** The first plan over a schema object
+  starts it on a thread of its own: the process's first a few seconds, since it reads the adapter's rules
+  then, and a schema made later a fraction of a second to about two. A first plan that arrives before it is
+  ready waits for it, at most five seconds, then declines and reads the container for that filter (Chapter
+  8). Keep schemas — one data source, or one `CosmosSchema` — rather than building one per request.
 - **A declared schema adds to planning** (Chapter 14). A filter over a container whose schema has conditional
   rules — a `oneOf` by kind, an `if` — costs more for each predicate, since the kinds a document may be are
   reasoned about case by case, and the first statement to reach the container in each schema object compiles

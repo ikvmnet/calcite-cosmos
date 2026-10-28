@@ -15,8 +15,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// A filter as the predicate oracle reads it: its conjuncts loaded, admitted stratum by stratum by the translator, and
-    /// every question a rule asks of it answered from the facts the question's licence admits.
+    /// A filter as the predicate oracle reads it: its conjuncts loaded, admitted stratum by stratum — those the rendering
+    /// graph owns by it, the rest by the translator — and every question a rule asks of it answered from the facts the
+    /// question's licence admits.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -214,9 +215,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// One round of admission: the translator asked of each pending conjunct, in order, from the node the round hands it.
-        /// Site A: where a flow armed the shadow, S is asked once a round beside it (<see cref="CosmosFilterRendering"/>);
-        /// writing, S answers alone for the conjuncts it owns, its "no" included (O2, O8), and after the last round says
-        /// whether its admissions stand.
+        /// Site A: S is asked once a round (<see cref="CosmosFilterRendering"/>); writing, as every flow does unless a test
+        /// arms it beside the translator, S answers alone for the conjuncts it owns, its "no" included (O2, O8), and after
+        /// the last round says whether its admissions stand.
         /// </summary>
         AdmissionRound.Answer Render(AdmissionRound round)
         {
@@ -224,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosRenderingCapture.Armed)
                 CosmosRenderingCapture.Observer?.Read(this, round);
 
-            var arm = CosmosRenderingShadow.Armed ? CosmosRenderingShadow.Current : null;
+            var arm = CosmosRenderingShadow.Asking;
             var ours = arm is null ? [] : Rendered(round, arm);
             if (round.Closing)
                 return new([], ours);
@@ -262,8 +263,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];
                 _writes = arm.Writes;
+                // Only the statement's own set's declines are counted, and only where S writes it: what a host's plan pays.
                 _renderings = [.. new[] { arm.Set ?? CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(arm.Observer?.Sets ?? []).Distinct()
-                    .Select(set => new CosmosFilterRendering(this, set, arm, _owned))];
+                    .Select((set, n) => new CosmosFilterRendering(this, set, arm, _owned, n == 0 && arm.Writes ? _container.Name : null))];
             }
 
             var ours = _renderings[0].Answer(round, _scope!);
@@ -322,8 +324,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// S's side of the admission under a set, the statement's own where none is named, resolved: read once the rounds are
-        /// done, as at implementation, the closing bundle opened then where one answers the weakenings; none where no flow
-        /// armed the shadow when the rounds ran.
+        /// done, as at implementation, the closing bundle opened then where one answers the weakenings; none where the
+        /// statement asked S nothing.
         /// </summary>
         internal (CosmosFilterRendering Rendering, CosmosFilterRendering.Resolution Resolution)? RenderingFor(RenderingSet? set)
         {
