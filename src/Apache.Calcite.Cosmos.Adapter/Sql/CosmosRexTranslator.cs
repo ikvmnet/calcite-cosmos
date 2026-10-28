@@ -520,7 +520,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (basePath is null || string.IsNullOrEmpty(text) || text[0] != '$')
                 return false;
 
-            var current = basePath;
+            // The steps are gathered and appended once: appending each as it is read copies the path at every
+            // step, which is quadratic in its length. The list is made only at a second step, so a path of one
+            // step allocates no more than it did when each step was appended.
+            var first = default(CosmosPathSegment);
+            var steps = default(List<CosmosPathSegment>);
+            var count = 0;
             var i = 1;
 
             while (i < text.Length)
@@ -535,7 +540,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     if (i == start)
                         return false;
 
-                    current = current.Property(text[start..i]);
+                    Add(CosmosPathSegment.Property(text[start..i]));
                     continue;
                 }
 
@@ -546,27 +551,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (close < 0)
                     return false;
 
-                var step = text[i..close];
+                var step = text.AsSpan(i, close - i);
                 i = close + 1;
 
                 if (step.Length >= 2 && (step[0] == '\'' && step[^1] == '\'' || step[0] == '"' && step[^1] == '"'))
                 {
                     var name = step[1..^1];
-                    if (name.Length == 0 || name.Contains('\'') || name.Contains('"'))
+                    if (name.Length == 0 || name.IndexOfAny('\'', '"') >= 0)
                         return false;
 
-                    current = current.Property(name);
+                    Add(CosmosPathSegment.Property(name.ToString()));
                     continue;
                 }
 
                 if (int.TryParse(step, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index) == false)
                     return false;
 
-                current = current.Index(index);
+                Add(CosmosPathSegment.Index(index));
             }
 
-            path = current;
+            path = count switch
+            {
+                0 => basePath,
+                1 => basePath.Append(first),
+                _ => basePath.Append(steps!),
+            };
             return true;
+
+            void Add(CosmosPathSegment segment)
+            {
+                if (count++ == 0)
+                    first = segment;
+                else
+                    (steps ??= new List<CosmosPathSegment> { first }).Add(segment);
+            }
         }
 
         /// <summary>
