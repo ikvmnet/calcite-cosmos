@@ -701,7 +701,8 @@ deleted.
 
 **A range supplies a bound, and binds only numbers.** A comparison through a numeric cast puts the raw
 value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the atom states that window as
-two bounds beside the presence, the window `CosmosNumericWindow` gives the split rule to push: one window,
+two bounds beside the presence, the window J pushed until the switch (`CosmosNumericWindow`'s until g19,
+`PredicateAtom`'s numeric cast's now, which S states and does not send: O7): one window,
 read through the casts of the literal the window reads through, refusing a bound past 2^52 for a cast to
 `DOUBLE` as the window does. A bound binds numbers only, because the cast converts a stored string too:
 `> 500` keeps `"600"`. So a range
@@ -2494,11 +2495,12 @@ Saturation is the row that had to be found rather than reasoned about. `CAST(x A
 2147483647` is true of a document storing `1e30`, so a window around the limit excludes exactly the
 document that matches — and the corpus caught it as a lost row before the bound stopped stating that
 side. The same is true of any comparison the limit itself satisfies: `> -3000000000` keeps a stored
-`-1e30`, which converts to the lower limit. So `CosmosNumericWindow` states a side only where the limit
-fails the comparison. No literal reaches it that way today — a constant beyond the target's range is
-wider than it, and Calcite widens the cast to compare them, which the window does not read through — and
-`AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead. The fact extractor reads
-the same window as a bound, so the two cannot come to disagree about it.
+`-1e30`, which converts to the lower limit. So the window — `CosmosNumericWindow`'s until g19, the numeric
+cast `PredicateAtom` reads now — states a side only where the limit fails the comparison. No literal
+reaches it that way today — a constant beyond the target's range is wider than it, and Calcite widens the
+cast to compare them, which the window does not read through — and since the switch nothing is sent for
+that cast of a cast (`ACastTheLoaderReadsAsOpaqueSendsNothing`). The fact extractor reads the same window
+as a bound.
 
 `CAST` and `SAFE_CAST` are treated alike, and the difference between them is why the sieve has to admit
 rather than exclude: a value that will not convert raises under one and yields null under the other,
@@ -3185,8 +3187,9 @@ traversal's alias or an accessor over a constant, and such a path holds anything
 alone knew, so `JSON_VALUE(c."DOC", '$.tags[0]') < 'm'` was a string against a string, proved, and sent exact as
 `c.tags[0] < @p0` with no type test and nothing rechecked: a stored 5 or `true`, which Calcite compares as `'5'` and
 `'true'` and the service across types, was lost, on the emulator and on Azure (bisected to the stage that first asked
-the question once). Read as a path that may hold anything, its rendering is refused and the split rule sends main's
-weakening, `IS_DEFINED(c.tags[0]) AND (NOT IS_STRING(c.tags[0]) OR c.tags[0] < @p0)`, beneath the recheck; and two
+the question once). Read as a path that may hold anything, its rendering is refused, and until the switch the split
+rule sent J's weakening, `IS_DEFINED(c.tags[0]) AND (NOT IS_STRING(c.tags[0]) OR c.tags[0] < @p0)`, beneath the
+recheck; S reads an element path as opaque and sends nothing for it (O7); and two
 typed elements that may both hold a JSON null are not compared. Anything else is a value the service computes — an
 operator, a function, a `CASE`, a cast — which is Calcite's value where Calcite has one, and where Calcite reads null
 may be an undefined, a JSON null a `CASE` writes or a stored value one hands through, so its null class is every other
@@ -5238,28 +5241,30 @@ nothing where Calcite returns three documents, and `> 2` nothing where it return
 So `CosmosRexTranslator.IsParsingJsonValue` names it, and `IsJsonAccessor` refuses it as the array
 `RETURNING` is refused: it addresses no path in any clause, so a column, a sort key, a grouping key, a
 partition key and a fact all stay where Calcite computes them. What it still implies is what a cast to
-a number implies — it *is* that cast, written as a clause — so `TryNumericCastOperand` reads it, and a
-comparison through it pushes the window `CosmosNumericWindow` states and is rechecked above:
-`IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))` for `= 2`. The fact
-extractor reads the same window, which binds numbers and says nothing a declared string contradicts.
-Over a path declared an integer the type test goes, and the service does all the narrowing. The clause
-adds no operand, so the value the window bounds is written out: the same call typed as the bare
-accessor, which is the rendering a cast reads.
+a number implies — it *is* that cast, written as a clause — so `TryNumericCastOperand` reads it, and
+until the switch a comparison through it pushed the window `CosmosNumericWindow` stated, rechecked above:
+`IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))` for `= 2`. Since the
+switch S sends the path's presence, `IS_DEFINED(c.body)`, and over a path declared an integer the
+comparison exactly, `c.body = @p0`: O7's loss until Stage 3's guarded spelling. The fact extractor reads
+the same window, which binds numbers and says nothing a declared string contradicts. The clause adds no
+operand, so the value the window bounds is written out: the same call typed as the bare accessor, which
+is the rendering a cast reads.
 
 **The clause applies no precision, and the comparison may.** The window was first said to hold because
 the clause never checks its precision; it does not, but the comparison casts one side to the other's
 type, measured (`AComparisonThroughReturningDecimalCastsTheWiderSide`). Where the literal's type has
 more digits or scale than the clause's — an `INTEGER` has ten — the value is cast up:
 `RETURNING DECIMAL(5, 1) = 12345` compares `CAST(…):DECIMAL(11, 1)`, which raises on a stored 2^60.
-The window does not read through a cast to `DECIMAL`, so nothing is pushed: `RETURNING DECIMAL(10, 2) = 2.255` reads the container whole, which
-is correct and recorded in `TODO.md`. Where the two together would pass nineteen digits, the literal is
+The window does not read through a cast to `DECIMAL`, so J pushed nothing: `RETURNING DECIMAL(10, 2) = 2.255` read the
+container whole until the switch, and S sends the path's presence. Where the two together would pass nineteen digits, the literal is
 cast down instead: against the default `DECIMAL(19, 0)` that truncates it, which moves it by less than
 one, and where its whole digits do not fit it raises — `RETURNING DECIMAL(19, 18) = 50` raises on every
 row. Read as 50, the window answered there: over a declared number the service kept nothing between 49
 and 51, and over a path declared at most 10, `> 50` was rewritten to `FALSE`. So
-`CosmosNumericWindow` reads no bound through a cast its literal does not fit. And a bound past 2^53 a
-double does not hold is sent as a `long` — *Verified against the emulator*. Before, the window around
-`= 2^60` lost the document holding 2^60, which the exact comparison it replaced had kept.
+`CosmosNumericWindow` read no bound through a cast its literal does not fit, and the loader reads none
+now. And a bound past 2^53 a double does not hold was sent as a `long` until the switch — *Verified
+against the emulator*. Before, the window around `= 2^60` lost the document holding 2^60, which the exact
+comparison it replaced had kept. Since the switch such a comparison sends the path's presence.
 
 #### Promoted columns
 
@@ -6961,7 +6966,8 @@ digest that does not move; `RenderingGenerateTests` over the three conjuncts thr
 **Who owns a conjunct is read off the IR, never off S's answer.** `RenderingFamily.Owns` holds a conjunct with no opaque
 term and no parameter, every comparison a reading against a literal, and every reading a key of the edges rows. It
 names no shape: within the family S's Unproven is the answer (O2), declined and listed, and a parameter stays the
-translator's, whose recheck spine the printer will not write. Nothing in planning calls it yet.
+translator's, whose recheck spine the printer will not write. Every statement a plan admits reads it since the switch
+(g16).
 
 **Which stratum a later round may rest on is data.** `RenderingFamily.ReadExactly` reads `ReadingPrecisionTable`: the
 text accessor, `RETURNING BOOLEAN` and a cast of the accessor to an integer type exact, the raw value exact beside no
@@ -7260,8 +7266,8 @@ literal, against a typed reading and boxed for a `VARIANT`, to Calcite's value o
 round's roots, imported from the node the round renders from with each later round's atoms stated beneath its stratum,
 run, and each root's `ReadBest` read, its weakening beside. Each schema object has one, `CosmosReasoning.Rendering`,
 beside its `JsonFactGenerations`, over the registry's rows and `CosmosStrictness`'s lists. Those are read once a process
-(`CosmosRendering.Definition`): fixed facts, not something a schema learns. Planning asks it only where a test arms
-the shadow, so no plan moves.
+(`CosmosRendering.Definition`): fixed facts, not something a schema learns. Until the switch planning asked it only
+where a test armed the shadow; since, every filter a plan pushes asks it (*The switch*).
 
 **One a schema object, and nothing the process's but the definition.** The factory makes one reasoning a schema object
 (an account one for all its databases), a host's `CosmosSchema` or `CosmosAccountSchema` one for the containers it is
@@ -7346,7 +7352,7 @@ operator tables that strictness reads, and of the JIT. In a process that has pla
 is what each schema made later in a process pays, off its planning thread, from the definition the process already read.
 Line 29 reads the first at g15, and line 29b the later at g15r: a new schema's first plan in a warm process, paired with
 S off, 459–497 ms more wall time at the median at 100 % load, against its 0.5 s; so the build starts at a schema's first
-plan and nowhere earlier.
+plan and nowhere earlier. At g17 it read over, 519–663 ms (*The switch*).
 
 **What one schema's graphs hold.** `CosmosReasoningTests.ASchemasGraphsCost` makes a schema in a warm process and
 reads the heap it adds (Release, net10.0, the machine at 100 %). F, with the twelve declared fixtures and the
@@ -7471,11 +7477,10 @@ letter's case flipped. Each is caught by the round trip over the forms S chose, 
 10, 91 and 307 of the pull request's 310, and 50, 485, 55, 211 and 662 of the gate's 665 (M16 cannot change a name with
 no letter first, `_ts`). A plant reaches no flow that did not plant it.
 
-**What runs unarmed.** Nothing in planning prints at this commit. The printer runs where S's oracle is warmed, which no
-plan does yet: each schema's rendering graph prints each generation's warm-up answer on the build's thread, kept as its
-reasoning's `Warmed`, so that the first plan pays neither S's first question nor the printer's JIT; it is the
-translator's text for P1. When implementation
-prints (g16), each node reads the fault switch's `volatile bool`, and a junction its members as they are.
+**What runs unarmed.** Each schema's rendering graph prints each generation's warm-up answer on the build's thread,
+kept as its reasoning's `Warmed`, so that the first plan pays neither S's first question nor the printer's JIT; it is
+the translator's text for P1. Since the switch (g16) admission's legality check and implementation print every form S
+chose, each node reading the fault switch's `volatile bool`, and a junction its members as they are.
 
 ### The weakening as a Rex
 
@@ -7547,9 +7552,9 @@ the reader, and S holds that of every shape.
   (2,106 at the gate) is applied beneath once pushed, so the split rule matching the residual again pushes it no more.
 - G13 (line 18): a builder planted to drop a disjunct is caught by both round trips.
 
-**What runs unarmed.** The split rule's J calls `RenderingRexBuilder.RawValue`, the same lines it held. Nothing in
-planning read a conjunct's accessors or built a weakening before the switch, from which site W builds S's (*The
-production path*).
+**What runs unarmed.** `RenderingRexBuilder.RawValue` holds the lines J held, which J called until g18 deleted it.
+Nothing in planning read a conjunct's accessors or built a weakening before the switch, from which site W builds S's
+(*The production path*).
 
 ### The production path
 
@@ -7597,7 +7602,10 @@ opaque terms' readings — and a question asked before is handed its answer with
 share terms whatever order their conjuncts stand in, so no index names a conjunct. A test's plant reads a node no key
 names and is asked afresh, and a decline is never kept. G9 holds this name as it holds the oracle's key: a name planted
 without the opaque readings hands a second statement of the same terms the first's answer. The answers live as long as
-the terms, which F's memory of statement trees bounds, and no longer than the oracle.
+the terms, which F's memory of statement trees bounds — 256 statements a theory, one theory a declared container and one
+for those that declare nothing — and no longer than the oracle: beside the memo's 4,096, not within them, so a
+schema's answers can outnumber its memo, 4.5–5.2 KB each, where the memo has let one go and the terms have not. Held so
+that a statement Volcano reads again is handed what its terms were given, never a later answer to the same question.
 
 **W and P.** The split rule pushes S's weakening of every residual, built as a Rex over the conjunct's accessors and
 held by `IsApplied` and `TryTranslate` as J's was, and calls no J, which g18 deletes; implementation prints the form
@@ -7648,8 +7656,22 @@ without.
 
 **A schema's first plan starts its build.** Every `CosmosTable.toRel` warms its container's reasoning: the build starts
 on its own thread, once, a volatile read after. A table only read for its row type builds nothing, nor does a schema
-with S off. `CosmosSchemaFactory.create` does not warm before it reads the containers' definitions, since line 29b read
-within its pass at g15r (459–497 ms against 500); should it read over, that warm overlaps the build with the reads.
+with S off. `CosmosSchemaFactory.create` does not warm before it reads the containers' definitions. The spec takes that
+warm only if line 29b reads over its 0.5 s pass; it read within at g15r (459–497 ms), where the choice was made, and
+over at g17, three runs of three at 519–663 ms, under the 1.0 s kill, at 100 % load, with S's own time in the plan
+14.9–18.7 ms once built. Line 29b's schemas are made by a harness, not by `create`, so a warm there could not move its
+reading, which is the warm build, 1.2–1.3 s, sharing a saturated processor with the plan. It would overlap the build
+with a factory host's definition reads; whether to add it is the owner's (`TODO.md`).
+
+**Schemas built at once share the processor** (R2, measured at the switch's review). New schemas each planning a first
+filtered statement at once, each warming its own build, in a process that had built one, on eight logical processors
+other work kept at 100 %: four declined none in three runs, their builds ready 1.1–2.0 s after they started; eight
+declined 3 of 8 in one run of five, ready in 2.0–10.0 s; sixteen declined 10, 1 and 9 of 16, ready in 3.5–15.9 s. Each
+declined plan waited 5.0–6.3 s, sent no `WHERE` and counted once, reason `unavailable`. In a fresh process one build was
+ready at 5.6 s and eight at 6.0–6.6 s, past the wait, yet none declined: Calcite's own first plan took 7.2–10.7 s. That
+is §6.2's wait doing what it says and O8's cost, paid where a host builds many schemas in one moment. A process-wide
+gate on builds would hold no learned state, but the builds would share the same processor, finishing one after another
+rather than together; R1's frozen theory shared between schemas is the proper fix, unscheduled (`TODO.md`).
 
 **A decline is counted.** `cosmos.rendering.declines` (`CosmosInstrumentation.RenderingDeclines`) counts each question
 S declines while a statement it writes is planned, tagged with the container and the reason: a bundle that declined —

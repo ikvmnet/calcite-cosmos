@@ -2994,8 +2994,14 @@ across documents* and *A join of a container to itself* is the record.
   at g15r, ten new schemas in a warm process, alternately with S writing and without, read 459–497 ms more wall time at
   the median over three runs (pairs 337–708 ms) at 100 % load, against 29b's 0.5 s and its 1.0 s kill; with the build
   awaited first, S's own time in the plan was 15.2–22.6 ms at the median. So `CosmosSchemaFactory.create` does not warm
-  before it reads the containers' definitions; should a reading go over, that warm overlaps the build (the theory defined
-  and settled in 329–402 ms there, hashed in 101–116 ms) with the reads.
+  before it reads the containers' definitions. At g17 line 29b read over its pass in three runs of three, 519–663 ms
+  against 500 and under the 1.0 s kill, at 100 % load, S's own time 14.9–18.7 ms once built. The spec takes the warm in
+  `create` where 29b reads over; 29b's harness makes its schemas without `create`, so that warm cannot move its
+  reading, which is the warm build (1.2–1.3 s) sharing a saturated processor with the plan. *For the owner:* (a) add
+  the warm, about 3 lines, overlapping the build (defined and settled in 329–405 ms, hashed in 78–164 ms) with a
+  factory host's definition reads — the spec's condition, and an improvement for those hosts, not a fix for 29b; or
+  (b) leave it, as decided at g15r. Neither is the proper fix for a new schema's build, which is R1's frozen theory
+  shared between schemas.
 - **The thread clock stays beside the wall** — *small, decided 2026-10-27.* `ThreadCpu` (80 test lines) and its plumbing
   in the cost instrument (about 9 production lines) read S's own processor time beside each wall reading: the only
   evidence that separates a busy host's stretch from S's own cost, on which lines 24, 25, 29 and 30's crossings at 100 %
@@ -3038,11 +3044,20 @@ across documents* and *A join of a container to itself* is the record.
   hashing the theory once a definition (70–143 ms of each build) and loading the settled rows are levers that are
   fixed facts too; retiring a generation sooner, or interning a question's literals by the vocabulary, would bound the
   rest.
-- **Concurrent builds are unmeasured** — *small, now that the switch warms S.* Schemas made at once build at once, each
-  on a dedicated thread, and a first plan waits at most 5 s for its own schema's build, blocking the thread it plans
-  on. Measure 4 and 8 builds at once, and `Pooling=false` connections opened and closed in a loop, with the thread
-  pool's queue and unrelated async work's latency beside. A process-wide gate on builds would hold no learned state,
-  and would be a stopgap; the proper fix is the shared frozen theory above.
+- **Schemas built at once pass the wait on a busy host** — *small, for the owner.* Schemas made at once build at once,
+  each on a dedicated thread, and a first plan waits at most 5 s for its own schema's build, blocking the thread it
+  plans on. Measured at the switch's review (R2; Release, net10.0, eight logical processors other work kept at 100 %),
+  N new schemas planning a filtered first statement at once in a process that had built one: N = 4 declined none in
+  three runs (builds ready 1.1–2.0 s); N = 8 declined 3 of 8 in one run of five (ready 2.0–10.0 s); N = 16 declined 10,
+  1 and 9 of 16 (ready 3.5–15.9 s); each declined plan waited 5.0–6.3 s, read the container and counted `unavailable`
+  once. In a fresh process the builds were ready past 5 s but no plan declined, Calcite's own first plan taking longer.
+  Ten or twenty schemas planning no filter in a loop left 5–7 builds running, and the next filtered first plan still
+  waited no more than 1.0 s. Options: (a) a process-wide gate on builds — a stopgap holding no learned state, which
+  orders the builds rather than giving them more processor, so it changes which first plans decline more than how many;
+  (b) the warm in `CosmosSchemaFactory.create` above — a stopgap that overlaps one build with its reads and does nothing
+  for many at once; (c) R1's frozen theory shared between schemas — the proper fix, unscheduled, on Eggnog's interning.
+  Until one lands, each such decline is O8's accepted cost, and the counter shows it (docs chapters 19, 20 and 22).
+  `Pooling=false` connections opened and closed in a loop, with the thread pool's queue beside, are not measured.
 - **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
   wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
   with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,
@@ -3066,7 +3081,12 @@ across documents* and *A join of a container to itself* is the record.
   where it is a string, would run those reading `id`.
 - **The answers a statement's terms keep live as long as the terms** — *small.* Kept by the oracle, set, theory and the
   question's name by content, in a weak table keyed by the terms object, which F's memory of statement trees bounds
-  (its least recently used out first), not §6.1's 4,096 entries of the oracle's memory. G9 plants the name without the
+  (its least recently used out first: 256 statements a theory, one theory a declared container and one for those that
+  declare none), not §6.1's 4,096 entries of the oracle's memory. So a schema can hold more answers than its memo, at
+  4.5–5.2 KB each, where the memo has let one go: a probe whose memo kept 16 held 120 after 120 statements over two
+  declared containers. Keying the table by the memo's key and re-reading the memo would cap it at 4,096, but hand a
+  statement of the same terms a later answer to its question where the memo let the first go, so it is not done; docs
+  chapter 19 says what a schema holds. G9 plants the name without the
   opaque readings, which two statements of one digest can part in; the conjuncts', junctions' and strata's parts are
   digests and node names, which no two questions of one statement's terms share.
 - **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
