@@ -17,10 +17,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// C6 (spec g15; line 4): every form S chose for a conjunct under the <c>Emulator</c> set over the pull request's run,
-    /// printed as production prints it, run on the emulator as <c>WHERE</c>, <c>WHERE NOT</c> and projected, over one
-    /// document per cell its bundle cut each of its paths into, and kept as <see cref="CosmosEval"/> says. Service-gated, on
-    /// the emulator legs, in a database of its own; <c>conformance.tsv</c> holds each form and what it was run over. A form
+    /// C6 (spec g15; line 4): every form S chose for a conjunct under the set the endpoint plans under (O1) over the pull
+    /// request's run — <c>Emulator</c> on an emulator, <c>Production</c> on an account, which only the probe account's run
+    /// asks (O6) — printed as production prints it, run as <c>WHERE</c>, <c>WHERE NOT</c> and projected, over one document
+    /// per cell its bundle cut each of its paths into, and kept as <see cref="CosmosEval"/> says of that target.
+    /// Service-gated, in a database of its own; <c>conformance.tsv</c> holds each form and what it was run over. A form
     /// over a path the service or the fixture sets itself — <c>id</c>, the partition key, <c>_ts</c> and the other system
     /// properties — cannot be run over the document drawn, and is listed apart; one whose documents the SDK refuses must
     /// hold a lone surrogate, which no service holds, and is listed too.
@@ -36,12 +37,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             if (service.Container is null)
                 Assert.Skip("This needs a service. " + service.Unavailable);
-            if (CosmosEvalServiceTests.Target != RenderingTarget.Emulator)
-                Assert.Skip("C6 runs the Emulator set's forms on an emulator.");
+            var target = CosmosEvalServiceTests.Target;
+            var set = target == RenderingTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
 
             // The forms a conjunct's best was, each with the bundle that proved it: printed, they are what implementation sends.
             var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
-            var forms = generated.Bundles.Where(b => b.Set == RenderingSet.Emulator && b.Cells is not null)
+            var forms = generated.Bundles.Where(b => b.Set == set && b.Cells is not null)
                 .SelectMany(b => b.Roots.Where(r => r is not SqlPredicate.And && b.Answers[r.Digest] is { Kind: RenderingVerdictKind.Proven, Best: not null })
                     .Select(r => (Form: b.Answers[r.Digest].Best!, Bundle: b)))
                 .DistinctBy(f => f.Form.Text).OrderBy(f => f.Form.Text, StringComparer.Ordinal).ToList();
@@ -81,16 +82,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 documents += written.Count;
                 foreach (var (id, observed) in await service.Observe($"c6-{n}", text, parameters.Parameters))
                 {
-                    var said = CosmosEval.On(form, written[id], RenderingTarget.Emulator);
+                    var said = CosmosEval.On(form, written[id], target);
                     rows.Add([form.Text, text, Documents.Json(written[id]), observed, said]);
                     if (said != observed)
-                        wrong.Add($"{text} over {Documents.Json(written[id])}: the emulator {observed}, CosmosEval {said?.ToString() ?? "nothing"}");
+                        wrong.Add($"{text} over {Documents.Json(written[id])}: the service {observed}, CosmosEval {said?.ToString() ?? "nothing"}");
                 }
             }
 
-            RenderingReports.Tsv(RenderingReports.Folder(), "conformance.tsv", ["form", "printed", "document", "emulator", "cosmos eval"], rows);
-            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms printed under Emulator, over {documents} documents ({unwritten.Count} forms not written, {apart} over a path the service sets listed apart); "
-                + $"{wrong.Count} divergences");
+            RenderingReports.Tsv(RenderingReports.Folder(), "conformance.tsv", ["form", "printed", "document", "service", "cosmos eval"], rows);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms printed under {set}, over {documents} documents ({unwritten.Count} forms not written, {apart} over a path the service sets listed apart), "
+                + $"{service.Charged:F2} RU charged; {wrong.Count} divergences");
             forms.Should().NotBeEmpty();
             wrong.Should().BeEmpty();
         }

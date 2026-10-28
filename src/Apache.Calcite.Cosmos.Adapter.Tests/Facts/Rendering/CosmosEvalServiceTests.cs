@@ -106,6 +106,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             public string? Unavailable { get; private set; }
 
+            /// <summary>What the service charged for the documents written and the queries asked, in request units: what a run on an account costs.</summary>
+            public double Charged { get; private set; }
+
             public async ValueTask InitializeAsync()
             {
                 if (CosmosEmulator.Endpoint is not string endpoint || CosmosEmulator.Key is not string key)
@@ -152,7 +155,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     node["id"] = id;
                     node["pk"] = partition;
                     using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
-                    (await Container!.UpsertItemStreamAsync(stream, new PartitionKey(partition))).EnsureSuccessStatusCode();
+                    using var response = (await Container!.UpsertItemStreamAsync(stream, new PartitionKey(partition))).EnsureSuccessStatusCode();
+                    Charged += response.Headers.RequestCharge;
                     written[id] = (J.Obj)Read(JsonDocument.Parse(json).RootElement)!;
                 }
 
@@ -173,6 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     while (feed.HasMoreResults)
                     {
                         using var response = (await feed.ReadNextAsync()).EnsureSuccessStatusCode();
+                        Charged += response.Headers.RequestCharge;
                         using var json = await JsonDocument.ParseAsync(response.Content);
                         rows.AddRange(json.RootElement.GetProperty("Documents").EnumerateArray().Select(e => e.Clone()));
                     }
