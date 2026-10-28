@@ -3121,10 +3121,13 @@ across documents* and *A join of a container to itself* is the record.
   each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1); a compound
   compared with `TRUE` or `FALSE`, read as opaque, as nothing (loss 3); `LIKE`'s string branch, as presence (loss 4, with
   O3); presence the translator read through a term the IR holds opaque — a cast to `DATE`, `UUID` or a wrapping type, a
-  nested accessor, a typed reading compared with a fraction — as nothing (loss 5); an element path, as nothing or with
-  its member gone (until the IR reads one); arithmetic, as presence; and a number compared through a cast or
-  `RETURNING DECIMAL`, as presence (the owner's 2026-10-24 decision, until the guarded spelling). Each is held in the
-  listing by its statement.
+  cast Calcite widens around another to compare a literal past the target's range, a nested accessor, a typed reading
+  compared with a fraction — as nothing (loss 5); an element path, as nothing or with its member gone (until the IR
+  reads one); arithmetic, as presence; a number compared through a cast or `RETURNING DECIMAL`, as presence (the owner's
+  2026-10-24 decision, until the guarded spelling); and a parameter compared over a path not declared a string, as
+  presence, where the translator sent an inequality's string branch (a parameter atom is presence and no candidate to S).
+  Each the gate plans is held in the listing by its statement. The listing digests no statement with a parameter, so the
+  last is held by `CosmosParameterPlanningTests` alone, and the cast of a cast by `CosmosPlannerTests`.
 - **The stacked-filter composite is not proved** — *small, Stage 3.* Filters stacked over one scan are conjoined at
   `Rel/CosmosFilter.cs` outside any one statement, so S proves each filter's `WHERE` and not their `AND`; S's forms hold
   no parted bound, so they cannot form a parted range there, and the translator's own orderings carry its exposure as

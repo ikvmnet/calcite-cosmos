@@ -264,13 +264,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A cast the loader reads as opaque sends nothing: a target that wraps, rounds or raises, and a date.
+        /// A cast the loader reads as opaque sends nothing: a target that wraps, rounds or raises, a date, and a cast
+        /// Calcite widens around another.
         /// </summary>
         /// <remarks>
         /// <c>SMALLINT</c> and <c>TINYINT</c> wrap rather than saturate, <c>FLOAT</c> and <c>REAL</c> round to float
         /// precision, <c>DECIMAL</c> raises where the value does not fit, and nothing is known of where a date lands, so
         /// the IR holds each cast as one opaque term and S proves no presence beneath it, where the translator pushed the
-        /// path's: an O7 listed loss (J's presence unproven to S) until the loader reads them. RU, never rows.
+        /// path's: an O7 listed loss (J's presence unproven to S) until the loader reads them. RU, never rows. A literal
+        /// beyond the target's range is wider than the target, so Calcite compares
+        /// <c>CAST(CAST(… AS INTEGER) AS BIGINT)</c>, a cast of a cast the loader reads as opaque too.
         /// </remarks>
         [Theory]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS SMALLINT) = 30")]
@@ -279,6 +282,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS FLOAT) = 30")]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DECIMAL(10, 2)) = 30")]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.when') AS DATE) = DATE '2020-01-01'")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > -3000000000")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) >= -3000000000")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) < 3000000000")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) <= 3000000000")]
         public void ACastTheLoaderReadsAsOpaqueSendsNothing(string comparison)
         {
             var best = PlanToAsync($"SELECT * FROM products AS c WHERE {comparison}");
@@ -350,35 +357,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c")))
                 .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c", "an asserted type is the value at the path, where it is of that type");
-        }
-
-        /// <summary>
-        /// An inequality the limit itself satisfies does not bound that side either. F10.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <c>&gt; -3000000000</c> is true of the lower limit, so of every stored value converting to it, a
-        /// stored <c>-1e30</c> among them — and a window above <c>-3000000001</c> would refuse that document.
-        /// The equality was the one comparison asked about the limit; the question is the same for each.
-        /// </para>
-        /// <para>
-        /// <b>Pinned rather than reached.</b> A constant beyond the target's range is wider than the target, so
-        /// Calcite widens the cast to compare it — <c>CAST(CAST(… AS INTEGER) AS BIGINT) &gt; -3000000000</c>
-        /// — and the window does not read through a cast of a cast. Only <c>IS_DEFINED</c> is pushed, which
-        /// is sound, and S sends no more.
-        /// </para>
-        /// </remarks>
-        [Theory]
-        [InlineData("> -3000000000", "c.price > @")]
-        [InlineData(">= -3000000000", "c.price > @")]
-        [InlineData("< 3000000000", "c.price < @")]
-        [InlineData("<= 3000000000", "c.price < @")]
-        public void AnInequalityTheLimitSatisfiesDoesNotBoundThatSide(string comparison, string bound)
-        {
-            var sql = Query(FindCosmos(PlanToAsync(
-                $"SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) {comparison}"))).Sql;
-
-            sql.Should().NotContain(bound, "a stored value beyond the limit converts to it and is kept: " + sql);
         }
 
         // ── Partition key recovery ────────────────────────────────────────────────

@@ -82,9 +82,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Where S sends the form the translator writes of a conjunct from the same stratum, read back, the printer writes the
         /// translator's text, its names in the translator's order, each bound to the translator's value, of its type and
-        /// scale; byte for byte, but where the translator brackets a <c>NOT</c> over a test inside a junction, which the
-        /// printer writes bare and the reader reads as one form (a weakening's members, which S's inner filters send since
-        /// the switch); reported. And but for what the form cannot say: a number compared through a reading Calcite types
+        /// scale, and reads back as the form; byte for byte, but where the translator brackets a <c>NOT</c> over a test inside
+        /// a junction, which the printer writes bare and the reader reads as one form (a weakening's members, which S's inner
+        /// filters send since the switch), that respelling alone; reported. And but for what the form cannot say: a number compared through a reading Calcite types
         /// approximate, whose literal it types so too, which the translator binds as a double and the printer as the decimal
         /// the form holds, the same number to the service; reported.
         /// </summary>
@@ -108,8 +108,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var text = RenderingPrinter.Print(c.Form!, PathsOf([ir]), Alias, parameters);
                 var (printed, theirs) = (Bound(parameters.Parameters), Bound(bound));
                 var shown = $"{c.Input} {c.Name}/{c.Statement}/{c.Conjunct} {ir}: the translator's {written} [{theirs}], printed {text} [{printed}]";
-                if (text != written || CosmosSqlFormReader.Inline(text, parameters.Parameters) != CosmosSqlFormReader.Inline(written, bound))
-                    (Unbracketed(text) == Unbracketed(written) && printed == theirs ? bracketed : parted).Add(shown);
+                if (CosmosSqlFormReader.Read(text, parameters.Parameters) is var back && (back.Written != text || back.Form.Equals(c.Form) == false))
+                    parted.Add(shown + ", which reads back as " + back.Form);
+                else if (text != written || CosmosSqlFormReader.Inline(text, parameters.Parameters) != CosmosSqlFormReader.Inline(written, bound))
+                    (text == BareNots(written) && printed == theirs ? bracketed : parted).Add(shown);
                 else if (printed != theirs)
                     (parameters.Parameters.Zip(bound).All(p => Bound([p.First]) == Bound([p.Second]) || p.First.Value is decimal && p.Second.Value is double)
                         && ComparesApproximately(ir) ? retyped : parted).Add(shown);
@@ -122,8 +124,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             parted.Should().BeEmpty();
         }
 
-        /// <summary>A text with its brackets taken out: two texts alike so differ in their brackets alone.</summary>
-        static string Unbracketed(string text) => text.Replace("(", "", StringComparison.Ordinal).Replace(")", "", StringComparison.Ordinal);
+        /// <summary>
+        /// The translator's text with each <c>(NOT test)</c> written bare, as the printer writes a <c>NOT</c> over a test: the one
+        /// respelling the two part on, and no other bracket, so a precedence change still parts.
+        /// </summary>
+        static string BareNots(string text) => System.Text.RegularExpressions.Regex.Replace(text, @"\(NOT ([A-Z_]+\([^()]*\))\)", "NOT $1");
 
         /// <summary>Whether a conjunct compares a number through a reading Calcite types approximate, as it types the literal.</summary>
         static bool ComparesApproximately(SqlPredicate conjunct) =>

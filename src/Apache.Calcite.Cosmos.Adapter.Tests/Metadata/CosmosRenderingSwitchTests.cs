@@ -55,9 +55,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var counted = new List<(long Count, string? Container, string? Reason)>();
             using var listener = new MeterListener
             {
+                // By name, never by reference: the meter publishes each instrument as the type's initializer creates it,
+                // before the field is assigned, so a run where this plan initializes it would read null.
                 InstrumentPublished = (instrument, l) =>
                 {
-                    if (ReferenceEquals(instrument, CosmosInstrumentation.RenderingDeclines))
+                    if (instrument.Meter.Name == CosmosInstrumentation.Name && instrument.Name == "cosmos.rendering.declines")
                         l.EnableMeasurementEvents(instrument);
                 },
             };

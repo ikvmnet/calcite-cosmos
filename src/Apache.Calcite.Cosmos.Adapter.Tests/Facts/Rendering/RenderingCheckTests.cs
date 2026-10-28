@@ -53,22 +53,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The coverage line (spec §6), under the asserted set: of the translator's exact pushes in the family the run captured,
-        /// at most 5 % Unproven, counted as <see cref="RenderingReports.Coverage"/> says. Since the switch every conjunct the
-        /// check reads is one S owns and wrote, under each container's own set, Azure's, and a form proven there alone reads
-        /// Unproven under <c>Portable</c>; so the translator's share is empty, and S's is reported, the line retired as a kill
-        /// line as spec §7 retires it (<c>TODO.md</c>, <i>Line 12 reads a sent <c>WHERE</c> under <c>Portable</c></i>).
+        /// The coverage report (spec §6), under the asserted set, counted as <see cref="RenderingReports.Coverage"/> says: S's
+        /// share and the translator's. Reported, not a line: since the switch the check reads S's forms, written under each
+        /// container's own set, Azure's, and a form proven there alone reads Unproven under <c>Portable</c>, so the 5 % line,
+        /// which spec §7 retires as a kill line, cannot tell those from an Unproven <c>WHERE</c> S's composite proved
+        /// (<c>TODO.md</c>, <i>Line 12 reads a sent <c>WHERE</c> under <c>Portable</c></i>). The translator's share is empty
+        /// on these inputs. Asserted only that the check reads what S wrote.
         /// </summary>
         [Fact]
-        public void CoverageIsWithinTheLine()
+        public void CoverageIsReported()
         {
             var (coverage, mine) = (RenderingReports.Coverage(Run), RenderingReports.Coverage(Run, owned: true));
             var (unproven, counted) = (coverage.Values.Sum(c => c.Unproven), coverage.Values.Sum(c => c.Counted));
             var (sUnproven, sCounted) = (mine.Values.Sum(c => c.Unproven), mine.Values.Sum(c => c.Counted));
-            TestContext.Current.TestOutputHelper?.WriteLine($"the translator's: {unproven} unproven of {counted}; S's, reported: {sUnproven} unproven of {sCounted} "
+            TestContext.Current.TestOutputHelper?.WriteLine($"the translator's: {unproven} unproven of {counted}; S's: {sUnproven} unproven of {sCounted} "
                 + $"({100.0 * sUnproven / Math.Max(1, sCounted):N1} %): " + string.Join(", ", mine.Select(c => $"{c.Key} {c.Value.Unproven}/{c.Value.Counted}")));
             sCounted.Should().BePositive("the check reads what S wrote");
-            (unproven * 20).Should().BeLessThanOrEqualTo(counted, "the line kills above 5 % of the translator's Unproven");
         }
 
         /// <summary>
