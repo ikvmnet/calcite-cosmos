@@ -7,7 +7,6 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
-using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rel;
 using org.apache.calcite.sql.fun;

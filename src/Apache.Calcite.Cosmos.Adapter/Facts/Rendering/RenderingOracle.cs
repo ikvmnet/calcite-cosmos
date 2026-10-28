@@ -14,6 +14,8 @@ using Eggnog;
 namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
+    using NodeReadings = ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>;
+
     /// <summary>
     /// S as production asks it: one generate bundle a question, of one statement round's roots, imported from the node the
     /// round renders from with later rounds' atoms stated beneath their strata; remembered by its content across statements,
@@ -69,12 +71,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// What each frozen node was read to hold of a path, spelled for a key (spec §6.1's lever): keyed weakly by the
         /// node, so a node collected takes its own along, and kept no longer than the oracle.
         /// </summary>
-        internal ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>> Readings { get; } = new();
+        internal NodeReadings Readings { get; } = new();
 
         /// <summary>Questions the memo answered, bundles opened, and questions declined, since the oracle was made.</summary>
         public (long Hits, long Bundles, long Declines) Counts => (Interlocked.Read(ref _hits), Interlocked.Read(ref _bundles), Interlocked.Read(ref _declines));
 
         /// <summary>Starts the first generation's build on its dedicated thread, once, and returns at once.</summary>
+        /// <remarks>Nothing calls it yet: it is kept for the planner's warm sites, which come with the switch to S.</remarks>
         public void Warm() => _graph.Warm();
 
         /// <summary>

@@ -10,7 +10,6 @@ using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
-using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 

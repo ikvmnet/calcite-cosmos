@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <b>Compiled per type factory, and remembered.</b> An expression carries its types, and types belong
     /// to a factory, so a constraint compiled for one planner is compiled again for another — once. Remembered
     /// weakly under both the factory and the table: a table reaches its schema's reasoning, and a caller may pass
-    /// a factory that lives for the process, so neither key may keep the other's entries.
+    /// a factory that lives for the process, so a factory that outlives a table keeps none of it.
     /// </para>
     /// </remarks>
     public static class CosmosConstraintCompiler

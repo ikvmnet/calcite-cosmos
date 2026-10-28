@@ -709,11 +709,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// What a schema learns hangs off the schema: the factory makes one reasoning per schema object and
-        /// binds every container it reads to it, a host's <see cref="CosmosSchema"/> binds the containers
-        /// handed to it unbound to one of its own, and a table over unbound metadata binds its own. A
-        /// container that declares nothing more takes the reasoning's bound service facts, so those share
-        /// one compiled context and one oracle.
+        /// Who makes a reasoning and binds to it is <see cref="CosmosReasoning"/>'s. A container that declares
+        /// nothing more takes the reasoning's bound service facts, so those share one compiled context and one
+        /// oracle.
         /// </para>
         /// <para>
         /// <b>The bound copy carries the reasoning wherever it goes.</b> Whoever holds it holds the schema's

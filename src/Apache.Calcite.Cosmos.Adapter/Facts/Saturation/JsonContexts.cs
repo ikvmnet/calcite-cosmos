@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// Hands this flow the report of each context it opens, until disposed, for measurement. Production asks for none:
-        /// a report reaches its graph through its rules, so a report kept per thread kept every schema's last graph.
+        /// a report reaches its graph through its rules, so a report kept per thread kept that thread's last graph.
         /// </summary>
         /// <returns>The reports, which put back what the flow had before when disposed.</returns>
         internal static Reports Report()

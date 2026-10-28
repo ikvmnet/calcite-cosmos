@@ -12,6 +12,8 @@ using Eggnog;
 namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
+    using NodeReadings = ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>;
+
     /// <summary>
     /// Reads what the facts graph's licensed node says each path may hold into a bundle: one value per path per table,
     /// copied, never met with another (<c>DESIGN.md</c>, <i>The rendering graph in check mode</i>).
@@ -26,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// spells alike.
         /// </summary>
         static (PathValues? Values, ValueSet<string>? Chars, string Spelled) ReadOf(Scope node, PredicateRules rules, JsonDocumentPath path, bool chars,
-            ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>? readings)
+            NodeReadings? readings)
         {
             (PathValues? Values, ValueSet<string>? Chars, string Spelled) Read((PredicateRules Rules, JsonDocumentPath Path, bool Chars) key)
             {
@@ -62,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <exception cref="FactConflictException">A path was imported with another value.</exception>
         public static ImportReport Import(RenderingBundle? bundle, ImportSource source, Scope? node, PredicateRules? rules,
             JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths, IEnumerable<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null,
-            ConditionalWeakTable<Scope, ConcurrentDictionary<(PredicateRules Rules, JsonDocumentPath Path, bool Chars), (PathValues? Values, ValueSet<string>? Chars, string Spelled)>>? readings = null)
+            NodeReadings? readings = null)
         {
             // ContextFor hands back no context where the licence keeps nothing; with rules, something was known.
             if (rules is not null && node is null or { IsContradictory: true })

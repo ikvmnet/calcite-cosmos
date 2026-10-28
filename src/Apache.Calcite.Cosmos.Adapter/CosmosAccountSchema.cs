@@ -64,10 +64,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <summary>
         /// Initializes a new instance whose databases' unbound containers reason in the given reasoning.
         /// </summary>
-        /// <param name="databases">The databases to expose, each with the containers it should carry.</param>
+        /// <inheritdoc cref="CosmosAccountSchema(IEnumerable{KeyValuePair{string, IReadOnlyList{CosmosContainerMetadata}}}, Func{string, CosmosContainerMetadata, ICosmosQueryExecutor}, Func{string, CosmosContainerMetadata, CosmosLookupCache})" path="/param"/>
         /// <param name="reasoning">The account's reasoning.</param>
-        /// <param name="executorFactory">Returns what executes statements against a container of a named database.</param>
-        /// <param name="lookupCacheFactory">Returns a container's lookup cache across executions.</param>
         internal CosmosAccountSchema(
             IEnumerable<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>> databases,
             CosmosReasoning reasoning,
