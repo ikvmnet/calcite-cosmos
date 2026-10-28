@@ -3077,9 +3077,10 @@ across documents* and *A join of a container to itself* is the record.
   each conjunct with what it sent, so a floor by statement digest would hold which, at a few test lines.
 - **C6 lists the forms over a path the service sets apart** — *small.* A form over `id`, the partition key or a system
   property cannot be run over the document drawn, since the fixture writes `id` and the partition key and the service
-  `_ts`; each is a row of `conformance.tsv` with why it was not run (32 a pull request, 52 at the gate), every one a
-  spelling the translator writes alike. Writing each such document in a partition of its own, under the `id` drawn
-  where it is a string, would run those reading `id`.
+  `_ts`; each is a row of `conformance.tsv` with why it was not run (32 a pull request, 52 at the gate at g15; at the
+  gate since the switch 56 under `Emulator`, and 72 under `Production` on the probe account's run of 2026-10-28, which
+  ran none of them on Azure either), every one a spelling the translator writes alike. Writing each such document in a
+  partition of its own, under the `id` drawn where it is a string, would run those reading `id`.
 - **The answers a statement's terms keep live as long as the terms** — *small.* Kept by the oracle, set, theory and the
   question's name by content, in a weak table keyed by the terms object, which F's memory of statement trees bounds
   (its least recently used out first: 256 statements a theory, one theory a declared container and one for those that

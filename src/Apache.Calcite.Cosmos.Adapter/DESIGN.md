@@ -6377,6 +6377,13 @@ targets and nothing is owed; the two that differ are an outcome per target, and 
 cell, which Azure keeps neither by `WHERE` nor by `WHERE NOT`, and the string order over U+0000. Its `WHERE NOT` beside
 each `NotKept` of 2026-10-16 supersedes it, so no outcome answers `NotKept` now.
 
+**The probe account has run every form S prints under `Production` (O6, 2026-10-28).** C6 at the gate, on Azure: 426
+forms over 5,766 documents, 452 of them holding U+0000, and each of the 37 string orderings `Production` proves and
+`Emulator` does not over at least one of those; Azure answered every document as `CosmosEval` says Azure does. Its
+record (`2026-10-28-probe-account-conformance.tsv`) is of printed forms, not of rows, so it backs no outcome and the
+project does not embed it: what licenses a form is still the rows' records, and this one shows the forms those rows
+license kept on the service as the model says.
+
 **The rendering tests read the registry and nothing else.** `ProbeRows` is `CosmosAxiomRows.Read` of the registry, its
 table the one S settles for the emulator's set; a test that needs a row the registry lacks plants it under an id no row
 holds. Calcite's connectives are a row like the service's, `Calcite.ConnectivesAreKleene`, its measurement reading its
@@ -7640,8 +7647,9 @@ characters, the strata stated, the set, the theory's digest or an opaque's readi
 handed one answer, and the name a statement's terms keep an answer under without the opaque readings; G10, a run that
 stopped short and a contradicted bundle admitting and weakening nothing, and a generation retired between admission and
 implementation changing nothing implementation prints. `RenderingConformanceTests` (C6, line 4) runs every form S chose
-under `Emulator`, printed, on the emulator over one document per cell its bundle cut, and lists the forms over a path
-the service sets and those the SDK would not write, each of which must hold a lone surrogate.
+under the set its endpoint plans under, printed, over one document per cell its bundle cut — `Emulator` on the emulator,
+`Production` on an account, which the probe account ran once (O6, 2026-10-28) — and lists the forms over a path the service
+sets and those the SDK would not write, each of which must hold a lone surrogate.
 `PlanDigestTests.RepeatsOpenNoBundle` rides the determinism test's two passes, so that every bundle a plan opens, the
 weakening's closing bundle among them, is asked again; `WriteDigests` fails on any decline. `RenderingPerQueryCostTests`
 holds lines 23–30, explicit, every reading printed before any is judged.

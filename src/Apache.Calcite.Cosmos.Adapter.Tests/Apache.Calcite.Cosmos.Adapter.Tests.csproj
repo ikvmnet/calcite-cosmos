@@ -40,8 +40,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- What a service answered on a run, as CosmosAxiomsTests reads it wherever the tests are unpacked. -->
-        <EmbeddedResource Include="Measurements\Runs\*.tsv" LogicalName="Runs/%(Filename)%(Extension)" />
+        <!-- What a service answered on a run, as CosmosAxiomsTests reads it wherever the tests are unpacked; a C6 run's
+             record is of printed forms, not the registry's rows, and is kept beside them unread. -->
+        <EmbeddedResource Include="Measurements\Runs\*.tsv" Exclude="Measurements\Runs\*-conformance.tsv" LogicalName="Runs/%(Filename)%(Extension)" />
         <!-- What the switch to the rendering graph changed of the gate's plans, as TheSwitchChangesOnlyWhatTheShadowListed reads it. -->
         <EmbeddedResource Include="Planning\Switch\*.tsv" LogicalName="Switch/%(Filename)%(Extension)" />
     </ItemGroup>
