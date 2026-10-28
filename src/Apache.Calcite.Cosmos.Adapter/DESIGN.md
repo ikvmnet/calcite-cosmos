@@ -7660,7 +7660,10 @@ own set's are counted, and only where S writes it, since only those change what 
 
 **What changed is listed.** With S writing, 699 of the gate's 3,492 statements plan otherwise than at `main`: the
 Writes-armed rehearsal's digests, which the switch reproduces byte for byte, each change classed against the shadow's
-rows for its statement (`Planning/Switch/switch-listing.tsv`). The unarmed shadow could not list them: it follows the
+weakening and admission rows for its statement (`Planning/Switch/switch-listing.tsv`): 116 gains, 102 respellings, 208
+weakenings tighter, 61 alike, 18 regressions on O2's list, 187 weakenings looser or dropped on O7's list, and 7 benign.
+A statement is classed by its worst row, so one whose weakening loosened beside a gain or another conjunct's tighter is
+listed as the loss. The unarmed shadow could not list them: it follows the
 translator's rounds, and S's own admissions change later rounds' nodes. Where the shadow could not read the translator's
 weakening — an element path, `LIKE`, arithmetic, all opaque in the IR — the two weakenings were read side by side, and
 each is a loss on O7's list; none drops a row, since S's weakening is implied by its conjunct (line 1) and the

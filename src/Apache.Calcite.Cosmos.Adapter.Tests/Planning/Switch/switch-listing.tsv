@@ -14,12 +14,12 @@ line	input	name	class	why	main	switch
 121	differential	42	rex respelled	benign: the weakening's Rex types its literal otherwise, the SQL byte-equal	b78e87cb8439dab3	4d0a1fd0aae59b95
 122	differential	43	weakening	looser, O7 loss 4: LIKE's string branch as presence	2edd5e543e92ab25	549835f98c86e2d0
 123	differential	44	weakening	looser, O7 loss 4: LIKE's string branch as presence	5f779b87597be134	b59ab869f4fc942f
-124	differential	45	weakening	tighter: S pushes a weakening it proved where the translator pushed another	c503890e26cfe33e	961cd0f0ff808b12
+124	differential	45	weakening	looser, O7 loss 1: the text-equality alternatives as presence; another conjunct's tighter	c503890e26cfe33e	961cd0f0ff808b12
 150	differential	71	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	8c3821b9e2f81a61	48c46889e320aa6a
 160	differential	81	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	5de47e439f909a0b	e68c852641d0862f
 161	differential	82	weakening	tighter: S's weakening proved and implies the translator's	30e5a0a7d8d4c566	5833de3155d7edbd
 162	differential	83	respelled	respelled: the same rows in S's spelling (R5, P8)	c493d1d2d3f1661a	7853d2a630decd07
-164	differential	85	weakening	tighter: S pushes a weakening it proved where the translator pushed another	719265b0a3c0209d	3943721e6fbd3e7c
+164	differential	85	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24); another conjunct's tighter	719265b0a3c0209d	3943721e6fbd3e7c
 176	differential	97	respelled	respelled: the same rows in S's spelling (R5, P8)	ab1961a527acb54e	d7ee96ecfb279c28
 178	differential	99	weakening	looser, O7 loss 4: LIKE's string branch as presence	9bd5a004acce2fb5	eb43f0b268651de9
 200	differential	121	respelled	respelled: the same rows in S's spelling (R5, P8)	a78c1daafcf5ffff	04d88c0172d5befb
@@ -27,7 +27,7 @@ line	input	name	class	why	main	switch
 217	differential	138	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	71974e1bd856da12	630b580d31a3e5b1
 224	differential	145	weakening	looser, O7 loss 4: LIKE's string branch as presence	f8f6e440f81f7cc9	67c10febe6268e5a
 229	differential	150	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	d19d4e886ec54868	fbd49f48ea402e6c
-230	differential	151	weakening	tighter: S pushes a weakening it proved where the translator pushed another	b5356f0e18a42fc3	afd42968b5a9e4be
+230	differential	151	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24); another conjunct's tighter	b5356f0e18a42fc3	afd42968b5a9e4be
 231	differential	152	respelled	respelled: the same rows in S's spelling (R5, P8)	e3be8e86a24cc893	84f6e82a76236202
 232	differential	153	respelled	respelled: the same rows in S's spelling (R5, P8)	665fd4619ec18f46	041cf3e1fb76054b
 251	differential	172	weakening dropped	dropped, O7: an element path, which the IR reads as opaque	003465cb5ddad3f8	154650d88218f1bc
@@ -44,13 +44,13 @@ line	input	name	class	why	main	switch
 281	differential	202	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	1b8f5b0111ea5b22	bfadc8657822697d
 286	differential	207	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	9aaf3373d0712666	b015512338fa7e21
 290	differential	211	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	e07e50efbe923410	6eae63dbe8c1b077
-293	differential	214	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	86becfcc0a6a9c82	8fad13881361b4a5
-297	differential	218	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	2547498d03370ad8	53ca70bf088547af
+293	differential	214	weakening	looser, O7 loss 1: the text-equality alternatives as presence	86becfcc0a6a9c82	8fad13881361b4a5
+297	differential	218	weakening	looser, O7 loss 1: the text-equality alternatives as presence	2547498d03370ad8	53ca70bf088547af
 298	differential	219	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	cb77781547a7a62e	11a43d0e4064c603
-313	differential	234	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	4114c9a2db9fdee8	8a3d2f0421d33662
+313	differential	234	weakening	looser, O7 loss 1: the text-equality alternatives as presence	4114c9a2db9fdee8	8a3d2f0421d33662
 314	differential	235	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	44a9f8f90ddda32c	04f52462d997476b
 316	differential	237	weakening	regression (O2): the inner filter's exact conjunct now weakened	77a20e35fb1ba102	d1ec6fbc29ddd0e0
-318	differential	239	weakening	respelled: the weakening's members in S's spelling	2968801d7041a771	13610f0f43fd6274
+318	differential	239	weakening	looser, O7 loss 1: the text-equality alternatives as presence	2968801d7041a771	13610f0f43fd6274
 323	differential	244	respelled	respelled: the same rows in S's spelling (R5, P8)	ba454ed5032a52ff	117057456d955ba5
 331	differential	252	respelled	respelled: the same rows in S's spelling (R5, P8)	ddb13e7cd47510ce	85249f5ec8759ea6
 332	differential	253	respelled	respelled: the same rows in S's spelling (R5, P8)	c06d12f701d136e3	51ccdf65979eaec1
@@ -92,7 +92,7 @@ line	input	name	class	why	main	switch
 436	differential	357	weakening	tighter: S's weakening proved and implies the translator's	4051209f70eb4d28	36acbfe08336bdd6
 437	differential	358	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	eea2cd48b3114b87	13f867b2175e086f
 441	differential	362	respelled	respelled: the same rows in S's spelling (R5, P8)	4ff7e2b3e84ec847	6f30d565c608a217
-459	differential	380	weakening	respelled: the weakening's members in S's spelling	590ffc5ff4988257	9703779b25290b89
+459	differential	380	weakening	alike: S's weakening and the translator's keep the same documents	590ffc5ff4988257	9703779b25290b89
 460	differential	381	weakening	alike: S's weakening and the translator's keep the same documents	ca6bf7e24ae21c0e	fbf7f80da45482c4
 461	differential	382	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	ca8ba3899b740f47	69525c8bbf91e9bf
 462	differential	383	weakening	alike: S's weakening and the translator's keep the same documents	5aa8a9226a465684	1b3f08bc5b90fa64
@@ -102,15 +102,15 @@ line	input	name	class	why	main	switch
 466	differential	387	weakening	tighter: S pushes a weakening it proved where the translator pushed another	33a55ba96cd98e3c	3a7ce23d15f7af79
 468	differential	389	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	26169b7094ec1b1b	03b52e0a0e8abba4
 474	differential	395	respelled	respelled: the same rows in S's spelling (R5, P8)	37147aaa6eabc6cb	4284a46a63b91342
-480	differential	401	weakening	respelled: the weakening's members in S's spelling	afbdc2e6a4d662b7	5943c81e915782ad
-482	differential	403	weakening	tighter: S pushes a weakening it proved where the translator pushed another	fda99afe3721b385	1536ce5234f1f50a
+480	differential	401	weakening	tighter: S's weakening proved and implies the translator's	afbdc2e6a4d662b7	5943c81e915782ad
+482	differential	403	weakening	looser, O7 loss 1: the text-equality alternatives as presence; another conjunct's tighter	fda99afe3721b385	1536ce5234f1f50a
 483	differential	404	rounds	benign: a conjunct admitted a round earlier, plan and SQL unchanged	1418c69889bd34d6	64a2777186a21be8
 485	differential	406	weakening	looser, O7 loss 5: the translator's weakening unproven to S	6cdc747ecfff49d6	bce64ca02aca7ea6
-509	differential	430	weakening	tighter: S pushes a weakening it proved where the translator pushed another	efbacdd591da52d5	6f73ecca1a0ca915
+509	differential	430	weakening	looser, O7 loss 1: the text-equality alternatives as presence; another conjunct's tighter	efbacdd591da52d5	6f73ecca1a0ca915
 510	differential	431	respelled	respelled: the same rows in S's spelling (R5, P8)	b2470f766a5736f3	21f79a41d5deeaed
-512	differential	433	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	1a8cd9c337f94f96	50431c1548644ddf
-513	differential	434	weakening	tighter: S pushes a weakening it proved where the translator pushed another	7d94613b311fcb3d	443143ed0fdd696c
-517	differential	438	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	a4e3cd3b8f74dea2	4009bb221f429ee3
+512	differential	433	weakening	looser, O7 loss 1: the text-equality alternatives as presence	1a8cd9c337f94f96	50431c1548644ddf
+513	differential	434	weakening	looser, O7 loss 1: the text-equality alternatives as presence; another conjunct's tighter	7d94613b311fcb3d	443143ed0fdd696c
+517	differential	438	weakening	looser, O7 loss 1: the text-equality alternatives as presence	a4e3cd3b8f74dea2	4009bb221f429ee3
 519	differential	440	weakening	tighter: S pushes a weakening it proved where the translator pushed another	07c740523fb01ca8	065d4f60dbd2f572
 528	differential	449	weakening	regression (O2): the inner filter's exact conjunct now weakened	abfe9e05a71df5c0	3d7b02e775ae6493
 529	differential	450	weakening	regression (O2): the inner filter's exact conjunct now weakened	9bfcf687ef1cc981	989f914dfa289d8a
@@ -127,7 +127,7 @@ line	input	name	class	why	main	switch
 613	partitions	28	weakening	tighter: S's weakening proved and implies the translator's	bf0caee9c215047e	c3906d4a276d4e87
 627	partitions	42	weakening	tighter: S pushes a weakening it proved where the translator pushed another	d8ab7d1861ead3eb	ef56661dfc90fe27
 633	partitions	48	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	f987eab6e049690f	24f4c2a336ad33e7
-634	partitions	49	gain	gain: sent exactly where the translator kept it in process	59177f7eecb53739	029b9a4ecf9a4895
+634	partitions	49	gain	looser, O7 loss 5: the translator's weakening unproven to S; and a gain, sent exactly where the translator kept it in process	59177f7eecb53739	029b9a4ecf9a4895
 649	partitions	64	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	e2575b99d5f48378	a26df765fb4718c8
 663	partitions	78	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	5d674d2bd8c9fd7a	0c098cc9a4a0acd1
 664	partitions	79	weakening	looser, O7 loss 5: the translator's weakening unproven to S	7915e8c4f0c88d5b	494647f59525120c
@@ -155,7 +155,7 @@ line	input	name	class	why	main	switch
 756	partitions	171	weakening	looser, O7 loss 4: LIKE's string branch as presence	5cf2935bdb6454f1	1ce37d01395b3b2c
 771	partitions	186	weakening	looser, O7 loss 5: the translator's weakening unproven to S	5a7f8d764821fb42	78de59857a53b820
 772	partitions	187	gain	gain: sent exactly where the translator kept it in process	332d7326fe58b76f	90954ffc214f12b1
-783	partitions	198	weakening	respelled: the weakening's members in S's spelling	30efe4c5eb60086e	df95c1fabe4bb698
+783	partitions	198	weakening	looser, O7 loss 1: the text-equality alternatives as presence	30efe4c5eb60086e	df95c1fabe4bb698
 784	partitions	199	gain	gain: sent exactly where the translator kept it in process	e3c55c6034772635	815a92070362981b
 801	partitions	216	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	eb488a19b7a34455	78589e38b01e96bd
 802	partitions	217	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	f65cc80bc03e6c35	a36d3751efb68e96
@@ -164,17 +164,17 @@ line	input	name	class	why	main	switch
 822	partitions	237	weakening	alike: S's weakening and the translator's keep the same documents	ccaa0ee6403d4ee7	19d31690931db534
 823	partitions	238	weakening	tighter: S's weakening proved and implies the translator's	d9d7c1f803098a29	96cd1f6b989c1d1b
 825	partitions	240	respelled	respelled: the same rows in S's spelling (R5, P8)	ea9a8d7cf2f861ac	658f316bda62d460
-828	partitions	243	weakening	respelled: the weakening's members in S's spelling	e90ce01793d2e6fe	2855d653b2365bac
+828	partitions	243	weakening	alike: S's weakening and the translator's keep the same documents	e90ce01793d2e6fe	2855d653b2365bac
 829	partitions	244	gain	gain: sent exactly where the translator kept it in process	d884503ed97fa3ce	500a4bcde67e22bf
 835	partitions	250	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	7a6d4c3120303128	a9d68f4dd7ca1b93
-852	partitions	267	weakening	respelled: the weakening's members in S's spelling	6f6c0cab2ba42eb4	065722a0f7c0de30
+852	partitions	267	weakening	alike: S's weakening and the translator's keep the same documents	6f6c0cab2ba42eb4	065722a0f7c0de30
 853	partitions	268	weakening	alike: S's weakening and the translator's keep the same documents	b3062fc9677bda16	409a8f3857852969
 856	partitions	271	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	02e0425ba39b8a6f	dfe35142756861aa
 858	partitions	273	weakening dropped	dropped, O7: an element path, which the IR reads as opaque	289ac988b165e680	8df139feaeb37a7e
 859	partitions	274	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	81e74e1ec6eaa311	7f42dc7a67025451
 861	partitions	276	weakening	tighter: S's weakening proved and implies the translator's	071c69891027d97e	3687a3eed939a044
 862	partitions	277	weakening	tighter: S's weakening proved and implies the translator's	fdb28d0bec2828db	3fef2ce5d310dddf
-876	partitions	291	weakening	respelled: the weakening's members in S's spelling	3d3a0ae942bcd322	78e1beaf88a4884c
+876	partitions	291	weakening	looser, O7 loss 1: the text-equality alternatives as presence	3d3a0ae942bcd322	78e1beaf88a4884c
 877	partitions	292	gain	gain: sent exactly where the translator kept it in process	9348cf9305d43342	3772edf37f146243
 882	partitions	297	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	a3c08a7daca620e8	3a929b94c56b4e06
 883	partitions	298	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	77b8ad7d7463bcf9	e0f799c6c2bdba20
@@ -185,7 +185,7 @@ line	input	name	class	why	main	switch
 927	partitions	342	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	1c2d009be4868711	cee69f9f4902afab
 933	partitions	348	rex respelled	benign: the weakening's Rex types its literal otherwise, the SQL byte-equal	8fff5887248ec015	2c31b2f452b50601
 934	partitions	349	weakening	tighter: S's weakening proved and implies the translator's	4c62489bf7a591cd	e0d00cfeb36f1443
-939	partitions	354	weakening	respelled: the weakening's members in S's spelling	6382773789b1ec58	58bd460903cef9f9
+939	partitions	354	weakening	tighter: S's weakening proved and implies the translator's	6382773789b1ec58	58bd460903cef9f9
 940	partitions	355	weakening	alike: S's weakening and the translator's keep the same documents	c4dd1e430222e4c3	4c1267af91d965fd
 942	partitions	357	weakening	alike: S's weakening and the translator's keep the same documents	00736a9aaa05d871	9b54ef5b00dd07a8
 943	partitions	358	weakening	alike: S's weakening and the translator's keep the same documents	e8b466a1def47b5b	f83c65372919bd2c
@@ -194,7 +194,7 @@ line	input	name	class	why	main	switch
 1010	partitions	425	weakening	looser, O7 loss 5: the translator's weakening unproven to S	db68d77fa05811d1	58f3204c5de4d265
 1016	partitions	431	gain	gain: sent exactly where the translator kept it in process	f7e899c51defccf5	e026411173df091b
 1017	partitions	432	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	8a18dd9c9f344469	558a9ad18cae9100
-1025	partitions	440	weakening	respelled: the weakening's members in S's spelling	35e35f107599c2b8	9bedb46aa6823725
+1025	partitions	440	weakening	alike: S's weakening and the translator's keep the same documents	35e35f107599c2b8	9bedb46aa6823725
 1026	partitions	441	weakening	tighter: S pushes a weakening it proved where the translator pushed another	ccb6f60ab71b7b41	17d530a2e5e04de9
 1034	partitions	449	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	71902617d34cb748	76e0e2834f6fd639
 1035	partitions	450	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	f9c163056c9ae972	3ee81b940daf25a9
@@ -205,29 +205,29 @@ line	input	name	class	why	main	switch
 1061	partitions	476	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	246f6b821f22ef37	0ce8a45669847467
 1062	partitions	477	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	3a2cc360a5cbb6ee	600d59f4f1da6640
 1067	partitions	482	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	9ea51694267604a5	344b300182ba771d
-1070	partitions	485	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	2c65e20685608cc3	d9c26fc0757700e2
+1070	partitions	485	weakening	looser, O7 loss 1: the text-equality alternatives as presence	2c65e20685608cc3	d9c26fc0757700e2
 1071	partitions	486	weakening	tighter: S's weakening proved and implies the translator's	9a294c4b2a676d65	46d78944a0694091
 1074	partitions	489	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	c012d55d176be2a7	557dfd63cdbea337
 1085	partitions	500	respelled	respelled: the same rows in S's spelling (R5, P8)	647408ca90904bd5	92aaeb0d4b2bd439
 1086	partitions	501	respelled	respelled: the same rows in S's spelling (R5, P8)	c360a30e717a9b92	b8ef8bf119a28380
 1089	partitions	504	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	285cf1909f53273c	4e72acca80f3930b
 1092	partitions	507	weakening	alike: S's weakening and the translator's keep the same documents	d30bcdb775044647	5a9374fdc43a204d
-1094	partitions	509	weakening	respelled: the weakening's members in S's spelling	cd5eb836f6f32674	110f2c87a8f6777e
+1094	partitions	509	weakening	alike: S's weakening and the translator's keep the same documents	cd5eb836f6f32674	110f2c87a8f6777e
 1097	partitions	512	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	773a466e363ce7f6	cd7bc499ce75c104
 1098	partitions	513	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	2b0a2e1b985637f1	ce5d2e791661270b
 1103	partitions	518	gain	gain: sent exactly where the translator kept it in process	9fa79fb657eb9550	91da65d48cd678e4
 1106	partitions	521	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	3f1804b26dda831a	cb76c7c9b981f271
 1107	partitions	522	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	cb2ab4e3dc52ca03	c8a34bdc06847a98
-1112	partitions	527	weakening	tighter: S pushes a weakening it proved where the translator pushed another	de8a6a36d4bb11fb	de8719b11a6760b3
+1112	partitions	527	weakening	looser, O7 loss 5: the translator's weakening unproven to S; another conjunct's tighter	de8a6a36d4bb11fb	de8719b11a6760b3
 1113	partitions	528	weakening	alike: S's weakening and the translator's keep the same documents	52b6bd55905ad616	8dbba99ed889119b
-1115	partitions	530	weakening	respelled: the weakening's members in S's spelling	f21b06955422e2dc	832c2bee2b223525
+1115	partitions	530	weakening	tighter: S's weakening proved and implies the translator's	f21b06955422e2dc	832c2bee2b223525
 1127	partitions	542	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	06e25a4392e6d02c	2a94f7db04619c9f
 1128	partitions	543	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	fcf7b296a0cc277e	2b920993b3f433dc
 1136	partitions	551	respelled	respelled: the same rows in S's spelling (R5, P8)	d9b4ae8780296d9b	f4684992daf274d2
 1137	partitions	552	respelled	respelled: the same rows in S's spelling (R5, P8)	0dae43adb10e4b87	e516a2541b98dcab
 1142	partitions	557	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	3467b4de99b79fea	8040c46e99686bfe
-1154	partitions	569	weakening	tighter: S pushes a weakening it proved where the translator pushed another	c2b0e4d701937eb7	15ad8db109d7088e
-1169	partitions	584	weakening	respelled: the weakening's members in S's spelling	3f08c7b1e247f60b	96a65e4ff01c518e
+1154	partitions	569	weakening	looser, O7 loss 5: the translator's weakening unproven to S; another conjunct's tighter	c2b0e4d701937eb7	15ad8db109d7088e
+1169	partitions	584	weakening	looser, O7 loss 1: the text-equality alternatives as presence	3f08c7b1e247f60b	96a65e4ff01c518e
 1170	partitions	585	weakening	tighter: S pushes a weakening it proved where the translator pushed another	8e9adebcc4eb91fd	841d7640c291a213
 1172	partitions	587	weakening	tighter: S's weakening proved and implies the translator's	7fc861820dfb600c	77c8634c2e2f1d8b
 1173	partitions	588	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	cdd4484bfc87b21c	3fe6b9b3eb5f2c47
@@ -247,11 +247,11 @@ line	input	name	class	why	main	switch
 1239	partitions	654	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	4b7a8da917d7ee75	12be2e210b279e6d
 1247	partitions	662	weakening	tighter: S's weakening proved and implies the translator's	196d8f51308e10ac	dc0005f103a46bc2
 1248	partitions	663	weakening	tighter: S's weakening proved and implies the translator's	2a95c3c10d6367f6	1c4539e32212afb7
-1259	partitions	674	weakening	respelled: the weakening's members in S's spelling	a5d2b9eb3604f051	80dfe6fcb76d3416
+1259	partitions	674	weakening	looser, O7 loss 1: the text-equality alternatives as presence	a5d2b9eb3604f051	80dfe6fcb76d3416
 1260	partitions	675	gain	gain: sent exactly where the translator kept it in process	92c02844210056c9	ff793c90752c742e
 1262	partitions	677	gain	gain: sent exactly where the translator kept it in process	b2d50639c0c332de	dd84ff7dd3b33e2a
 1286	partitions	701	weakening	alike: S's weakening and the translator's keep the same documents	b9e679863b65189a	ec78e62674490514
-1295	partitions	710	weakening dropped	respelled: the weakening's members in S's spelling	bed47e73231ce1d0	3ec7ccf6c38545a2
+1295	partitions	710	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S	bed47e73231ce1d0	3ec7ccf6c38545a2
 1296	partitions	711	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	8b20ffa991ee6e0b	9de89a966993eba4
 1307	partitions	722	respelled	respelled: the same rows in S's spelling (R5, P8)	573f939f618d267f	3afe819b9704059c
 1310	partitions	725	respelled	respelled: the same rows in S's spelling (R5, P8)	c0b6e2a1d40c9545	0df3373a5250b432
@@ -266,17 +266,17 @@ line	input	name	class	why	main	switch
 1353	partitions	768	weakening	alike: S's weakening and the translator's keep the same documents	3a4f1d58be3d9396	c964cddd1cbaaca4
 1358	partitions	773	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	ece644b20e66325c	989da05f2ebba664
 1359	partitions	774	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	3cd573cdcb7146a0	7068437cd45a3604
-1361	partitions	776	weakening	respelled: the weakening's members in S's spelling	b8238631b80eff50	82769a983f28fdac
+1361	partitions	776	weakening	looser, O7 loss 1: the text-equality alternatives as presence	b8238631b80eff50	82769a983f28fdac
 1362	partitions	777	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	9cd12ed888a48d9b	5528e4d8f9415faf
 1364	partitions	779	weakening	regression (O2): the inner filter's exact conjunct now weakened	b3851c8e005ef9b2	a7224e4ba0cabde9
 1365	partitions	780	weakening	tighter: S's weakening proved and implies the translator's	77d056d6e5f35819	e0724d1ee39f8092
 1371	partitions	786	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	19c027edd1f84b54	6ccde5c4f787f955
 1374	partitions	789	weakening	tighter: S pushes a weakening it proved where the translator pushed another	2bc97cfb6d766fc4	863fed757bd6e15a
 1377	partitions	792	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	d8b12cd87f49deac	21079536e2ebcee3
-1379	partitions	794	weakening	respelled: the weakening's members in S's spelling	54b2c9e61379a698	3d9dd9fb7557b8e5
+1379	partitions	794	weakening	looser, O7 loss 5: the translator's weakening unproven to S	54b2c9e61379a698	3d9dd9fb7557b8e5
 1388	partitions	803	respelled	respelled: the same rows in S's spelling (R5, P8)	84c9bdda69789f1b	5f58adb42382ffa6
 1389	partitions	804	weakening	alike: S's weakening and the translator's keep the same documents	01cd6d588c60326a	7764783687c4dc4c
-1394	partitions	809	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	68a9058c7860aa42	18ba2dcd257e3a6c
+1394	partitions	809	weakening	looser, O7 loss 1: the text-equality alternatives as presence	68a9058c7860aa42	18ba2dcd257e3a6c
 1395	partitions	810	weakening	tighter: S's weakening proved and implies the translator's	1711fc6834de7df0	f174d8b56ad8583d
 1409	partitions	824	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	6857ed99c2241cab	4f329652f4c11ffc
 1415	partitions	830	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	1e5dbf92939d59d3	481f632d79b7f84b
@@ -297,7 +297,7 @@ line	input	name	class	why	main	switch
 1478	partitions	893	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	ebd4810f3bd6311a	57036251d3597498
 1479	partitions	894	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	661351bab2855e3e	491d7a46df832d35
 1482	partitions	897	respelled	respelled: the same rows in S's spelling (R5, P8)	fc6be5f39f1b2b37	66e9971ba66fdd0e
-1487	partitions	902	weakening	respelled: the weakening's members in S's spelling	74f1865267e60404	2252d2c3bd9a3e3f
+1487	partitions	902	weakening	tighter: S's weakening proved and implies the translator's	74f1865267e60404	2252d2c3bd9a3e3f
 1488	partitions	903	gain	gain: sent exactly where the translator kept it in process	a0d576a2815158c2	abf5996edb63a1d5
 1490	partitions	905	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	01acb1952705c2b2	276fff834b35ddea
 1491	partitions	906	weakening	tighter: S pushes a weakening it proved where the translator pushed another	43bc3b8a99dcc646	f270e0064a4656c5
@@ -317,19 +317,19 @@ line	input	name	class	why	main	switch
 1560	partitions	975	respelled	respelled: the same rows in S's spelling (R5, P8)	c44c112f2047e249	ba70207bb8d40205
 1562	partitions	977	weakening	looser, O7 loss 5: the translator's weakening unproven to S	3f8c761b2a60e896	0d759c0a07f833df
 1575	partitions	990	gain	gain: sent exactly where the translator kept it in process	ff693bfc7c349713	92b3142b5be32b49
-1580	partitions	995	gain	gain: sent exactly where the translator kept it in process	a6e62b5a917ed5fb	06e3089cdd6c6621
-1581	partitions	996	weakening dropped	respelled: the weakening's members in S's spelling	862d38981654e677	7385ece31facf82a
-1586	partitions	1001	weakening	respelled: the weakening's members in S's spelling	61ee170082668c71	e25d5256f49cf31e
+1580	partitions	995	gain	looser, O7 loss 5: the translator's weakening unproven to S; and a gain, sent exactly where the translator kept it in process	a6e62b5a917ed5fb	06e3089cdd6c6621
+1581	partitions	996	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S	862d38981654e677	7385ece31facf82a
+1586	partitions	1001	weakening	alike: S's weakening and the translator's keep the same documents	61ee170082668c71	e25d5256f49cf31e
 1592	partitions	1007	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	2f33632a3b42bc82	98862ae37bde9329
 1593	partitions	1008	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	3081628bfecb6a5b	236af30dcbc5520b
 1628	partitions	1043	weakening	alike: S's weakening and the translator's keep the same documents	2a1a51ceb6aa52c8	e7cffeb0ca94a268
 1629	partitions	1044	weakening	alike: S's weakening and the translator's keep the same documents	99c34ab5315132ae	516b2c272fab2677
 1646	partitions	1061	weakening	tighter: S's weakening proved and implies the translator's	b81740bf5fdf8fb4	d29b9bcfd1e2cefa
 1647	partitions	1062	weakening	alike: S's weakening and the translator's keep the same documents	9d9123924868f653	1156a7447f35b60c
-1652	partitions	1067	weakening	respelled: the weakening's members in S's spelling	b117744fba41bb23	856cd1f9f088cbd4
+1652	partitions	1067	weakening	alike: S's weakening and the translator's keep the same documents	b117744fba41bb23	856cd1f9f088cbd4
 1653	partitions	1068	weakening	tighter: S pushes a weakening it proved where the translator pushed another	045e2b4212e6f9bc	196f29da62ed92bd
 1655	partitions	1070	weakening	tighter: S's weakening proved and implies the translator's	a25e9834a8e2dd68	22eea692e6bfd51e
-1656	partitions	1071	weakening	respelled: the weakening's members in S's spelling	5c4b4dd4613f0bd2	1477d3ff471bd2da
+1656	partitions	1071	weakening	looser, O7 loss 1: the text-equality alternatives as presence	5c4b4dd4613f0bd2	1477d3ff471bd2da
 1658	partitions	1073	respelled	respelled: the same rows in S's spelling (R5, P8)	2fdff98e522529e6	5c303e37a12868f5
 1670	partitions	1085	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	8a96d62980d5833a	32e894891ffdce22
 1671	partitions	1086	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	029a29eb2b25869e	0727a9c11e604256
@@ -345,12 +345,12 @@ line	input	name	class	why	main	switch
 1746	partitions	1161	respelled	respelled: the same rows in S's spelling (R5, P8)	fde1ce7540b90e32	f7cc567d109dfb2e
 1747	partitions	1162	respelled	respelled: the same rows in S's spelling (R5, P8)	df623fe87a2c0094	fbcaab265018fc03
 1753	partitions	1168	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	11e546c75e45ac5f	f6d2bade5f494293
-1755	partitions	1170	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	2edc3a1f5963ac43	20f76178ab693092
+1755	partitions	1170	weakening	looser, O7 loss 1: the text-equality alternatives as presence	2edc3a1f5963ac43	20f76178ab693092
 1756	partitions	1171	weakening	tighter: S's weakening proved and implies the translator's	cd8878dbc5189622	d58caf83bfa86646
 1764	partitions	1179	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	953ef10ac9d7a170	b419f803b86d4d64
 1770	partitions	1185	respelled	respelled: the same rows in S's spelling (R5, P8)	64d0f21b356cf495	a2ad144655640493
-1781	partitions	1196	weakening dropped	respelled: the weakening's members in S's spelling	8b3508c8dfdb1832	a72a047ea5b542c8
-1782	partitions	1197	gain	gain: sent exactly where the translator kept it in process	3b428db5ad8f0b15	401a59d7ec2a2fd3
+1781	partitions	1196	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S	8b3508c8dfdb1832	a72a047ea5b542c8
+1782	partitions	1197	gain	looser, O7 loss 5: the translator's weakening unproven to S; and a gain, sent exactly where the translator kept it in process	3b428db5ad8f0b15	401a59d7ec2a2fd3
 1813	partitions	1228	respelled	respelled: the same rows in S's spelling (R5, P8)	31cd19c1e0c6de05	883cc5db5a0bb6bf
 1816	partitions	1231	weakening	tighter: S's weakening proved and implies the translator's	224a8b8e15aa35c0	e267eb3eb7d730dd
 1817	partitions	1232	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	9f88d7e1d25b8015	2a0e002b72fb4b73
@@ -378,8 +378,8 @@ line	input	name	class	why	main	switch
 1924	partitions	1339	weakening	tighter: S's weakening proved and implies the translator's	688d6f8e2acf3f4a	80084bee899e80db
 1926	partitions	1341	gain	gain: sent exactly where the translator kept it in process	593258e471ba216f	1a80a8e52c2fffe7
 1933	partitions	1348	respelled	respelled: the same rows in S's spelling (R5, P8)	b23c3350217b79c8	c9e0221bed075b75
-1939	partitions	1354	weakening	respelled: the weakening's members in S's spelling	d9a2c7312533cbe9	2702afb4420b9864
-1941	partitions	1356	weakening	respelled: the weakening's members in S's spelling	278b2783f6e016f8	1b5df93f9e9959d5
+1939	partitions	1354	weakening	tighter: S pushes a weakening it proved where the translator pushed none	d9a2c7312533cbe9	2702afb4420b9864
+1941	partitions	1356	weakening	tighter: S's weakening proved and implies the translator's	278b2783f6e016f8	1b5df93f9e9959d5
 1942	partitions	1357	gain	gain: sent exactly where the translator kept it in process	ec94c33fb1830eee	c91c944fe82ba807
 1947	partitions	1362	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	0bfe86d8a372bee8	cbb3babf12c84e0d
 1948	partitions	1363	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	84451273db32a83b	6d7bf26a3c79e639
@@ -407,15 +407,15 @@ line	input	name	class	why	main	switch
 2075	partitions	1490	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	9d2b5856f763162d	9b58f8ad5f3ff169
 2086	partitions	1501	weakening	alike: S's weakening and the translator's keep the same documents	5472c4e4abea43c2	0017e2911778ffe1
 2087	partitions	1502	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	4a996983c185d43b	39ae2d96f002605f
-2089	partitions	1504	weakening	respelled: the weakening's members in S's spelling	f7edbcc3285a4ca8	8e6be56a9c98a94c
+2089	partitions	1504	weakening	looser, O7 loss 1: the text-equality alternatives as presence	f7edbcc3285a4ca8	8e6be56a9c98a94c
 2090	partitions	1505	gain	gain: sent exactly where the translator kept it in process	fa7410fc253ceac3	7b51a508498f1f96
 2101	partitions	1516	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	79a90eb2eecea95b	ce87094ba551a3b4
 2102	partitions	1517	weakening	tighter: S's weakening proved and implies the translator's	fe38e3a288a750f7	d3a46f7bef4097fc
 2105	partitions	1520	respelled	respelled: the same rows in S's spelling (R5, P8)	f5165031cbba063d	e7f0787eb1ab5c4a
 2110	partitions	1525	weakening	tighter: S pushes a weakening it proved where the translator pushed another	917ffdc4d9d595ad	bbf574fc13ad3b45
-2111	partitions	1526	weakening	respelled: the weakening's members in S's spelling	d00305ee1e9780c1	2746469cf79e2905
+2111	partitions	1526	weakening	tighter: S's weakening proved and implies the translator's	d00305ee1e9780c1	2746469cf79e2905
 2114	partitions	1529	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	d1d29b8dfe043a61	0ebcdfbe951b40cc
-2119	partitions	1534	weakening	respelled: the weakening's members in S's spelling	b1ea5a9df96e4efb	8c70f20de249ce7c
+2119	partitions	1534	weakening	looser, O7 loss 5: the translator's weakening unproven to S	b1ea5a9df96e4efb	8c70f20de249ce7c
 2120	partitions	1535	gain	gain: sent exactly where the translator kept it in process	c9a26d359e12ebea	9acc98b6ed3fbe7a
 2128	partitions	1543	weakening	tighter: S's weakening proved and implies the translator's	68ff915cf1d6ed3e	7e42fd1f08955342
 2129	partitions	1544	weakening	alike: S's weakening and the translator's keep the same documents	11da550d92544e20	f773dd2d81454a93
@@ -428,7 +428,7 @@ line	input	name	class	why	main	switch
 2158	partitions	1573	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	c97a7872de69cb0c	f835f586cff5264d
 2181	partitions	1596	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	21039478052dd28c	fd3fe20475296e9a
 2182	partitions	1597	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	ea4c281d4d1e55b7	b78abd1ae8b3b791
-2196	partitions	1611	weakening dropped	respelled: the weakening's members in S's spelling	5ce96dd09f3870f0	de7b5c56e9a9df6e
+2196	partitions	1611	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S	5ce96dd09f3870f0	de7b5c56e9a9df6e
 2197	partitions	1612	weakening	alike: S's weakening and the translator's keep the same documents	421294ff970ca079	1e17a2c7fc061b19
 2200	partitions	1615	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	cd16aac7d9710280	350363ff8cc2e731
 2208	partitions	1623	weakening	looser, O7 loss 4: LIKE's string branch as presence	7da8bf85501b6801	b300c449e1611f50
@@ -446,7 +446,7 @@ line	input	name	class	why	main	switch
 2254	partitions	1669	respelled	respelled: the same rows in S's spelling (R5, P8)	1191c7b349b6735c	3b33ccd1b671d0ff
 2256	partitions	1671	weakening	alike: S's weakening and the translator's keep the same documents	615962f67295fe2f	33477b0143d6e511
 2277	partitions	1692	respelled	respelled: the same rows in S's spelling (R5, P8)	99d4aa868a285f4f	072a160f6fd078b6
-2289	partitions	1704	weakening	respelled: the weakening's members in S's spelling	0cce967a0cc317b5	34c7a1a8d7604c50
+2289	partitions	1704	weakening	tighter: S pushes a weakening it proved where the translator pushed none	0cce967a0cc317b5	34c7a1a8d7604c50
 2293	partitions	1708	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	519ca843bda039bc	f6cd487a779ab129
 2296	partitions	1711	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	dcffe5bcbb39d847	c487bf87a92ec5e1
 2305	partitions	1720	respelled	respelled: the same rows in S's spelling (R5, P8)	b08045a6e1145ee7	a7a6e294e9404be2
@@ -455,12 +455,12 @@ line	input	name	class	why	main	switch
 2325	partitions	1740	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	3d5e32c9b458bb0f	28995f46886dea86
 2326	partitions	1741	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	73c46ee415259abe	a608bfa1c16915c0
 2329	partitions	1744	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	6a606f446bad67b2	0953b7a9bac9af2d
-2331	partitions	1746	weakening	tighter: S pushes a weakening it proved where the translator pushed another	2a2c07364d2dfa3c	c5abdb9fd3762832
-2340	partitions	1755	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	3adb44bde3334089	4e1e136acb69eb6f
+2331	partitions	1746	weakening	looser, O7 loss 5: the translator's weakening unproven to S; another conjunct's tighter	2a2c07364d2dfa3c	c5abdb9fd3762832
+2340	partitions	1755	weakening	looser, O7 loss 1: the text-equality alternatives as presence	3adb44bde3334089	4e1e136acb69eb6f
 2341	partitions	1756	weakening	tighter: S's weakening proved and implies the translator's	91dd5016a52ab32c	c926d23a372756e6
 2346	partitions	1761	weakening	tighter: S pushes a weakening it proved where the translator pushed another	0c480d0a63e27795	11998f4c864c4e78
 2347	partitions	1762	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	d7807c11c4159e5e	822a3f039d37d3d9
-2355	partitions	1770	gain	gain: sent exactly where the translator kept it in process	7d453ed083dacd57	e6e283ffb87203c3
+2355	partitions	1770	gain	looser, O7 loss 5: the translator's weakening unproven to S; and a gain, sent exactly where the translator kept it in process	7d453ed083dacd57	e6e283ffb87203c3
 2358	partitions	1773	gain	gain: sent exactly where the translator kept it in process	44559b6d550fd693	2ee5e2fe64661776
 2359	partitions	1774	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	5a9c46cb6c8a09f1	b26fbff0fa7ca6ae
 2368	partitions	1783	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	271f85a2b826746b	89b9cbc9f61de6db
@@ -480,7 +480,7 @@ line	input	name	class	why	main	switch
 2431	partitions	1846	weakening	tighter: S's weakening proved and implies the translator's	2f566d0be316d10e	a8aaf1b0a59d7c17
 2437	partitions	1852	weakening	alike: S's weakening and the translator's keep the same documents	4c9b6463e8e20b90	4cf431d22464be55
 2445	partitions	1860	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	815f547386011638	fc103b8062db7fa5
-2446	partitions	1861	weakening	respelled: the weakening's members in S's spelling	04625eb9a515b4c0	157292c814cf135f
+2446	partitions	1861	weakening	looser, O7 loss 5: the translator's weakening unproven to S	04625eb9a515b4c0	157292c814cf135f
 2451	partitions	1866	respelled	respelled: the same rows in S's spelling (R5, P8)	9412ef36d82b5a0c	59754f1036bed57c
 2452	partitions	1867	respelled	respelled: the same rows in S's spelling (R5, P8)	258752dd838acb19	27206217858d7cc5
 2458	partitions	1873	weakening	tighter: S's weakening proved and implies the translator's	dc9b27e5b33d04e7	5ea3e66051f523d5
@@ -495,7 +495,7 @@ line	input	name	class	why	main	switch
 2521	partitions	1936	weakening	tighter: S pushes a weakening it proved where the translator pushed another	21354541896a97d0	b1f87943c0ec554d
 2526	partitions	1941	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	0bac348d1f77c897	b5a4e23cc62048ac
 2527	partitions	1942	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	8dec98602b542d03	bb36f10148789ef4
-2530	partitions	1945	weakening	respelled: the weakening's members in S's spelling	108b70d6ea8dc916	913bb120a9320f73
+2530	partitions	1945	weakening	alike: S's weakening and the translator's keep the same documents	108b70d6ea8dc916	913bb120a9320f73
 2532	partitions	1947	weakening dropped	dropped, O7: an element path, which the IR reads as opaque	5019655c731458a9	e5405c47c16a6307
 2533	partitions	1948	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	6f3db9f812479f2a	3fbabd4cb9dd132f
 2539	partitions	1954	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	42200fa0e73fe569	30b65c479b70da59
@@ -503,10 +503,10 @@ line	input	name	class	why	main	switch
 2544	partitions	1959	weakening	tighter: S's weakening proved and implies the translator's	b0037671fd3d3c68	66588e3276d94119
 2546	partitions	1961	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	ba28b2f4749812a5	41cf5872c1fe0fb4
 2547	partitions	1962	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	cc45dabb9941d5ce	61ab6cba8956a2a9
-2553	partitions	1968	weakening	respelled: the weakening's members in S's spelling	7c6cf6f095422197	696e6495ec588ced
+2553	partitions	1968	weakening	alike: S's weakening and the translator's keep the same documents	7c6cf6f095422197	696e6495ec588ced
 2556	partitions	1971	respelled	respelled: the same rows in S's spelling (R5, P8)	6c3db8901ef27969	e12dcc63ea8f4c3b
 2562	partitions	1977	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	3ea5acca6c39cd75	390c10669b7680e9
-2565	partitions	1980	weakening	respelled: the weakening's members in S's spelling	d4aaffc7187f9edf	9f7e4be76bb1073b
+2565	partitions	1980	weakening	tighter: S's weakening proved and implies the translator's	d4aaffc7187f9edf	9f7e4be76bb1073b
 2582	partitions	1997	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	6978037ec4a3ab58	cf0bb00f56db2e05
 2583	partitions	1998	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	5a83fac2929e29cd	3cf4df90bb5302c4
 2585	partitions	2000	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	9016d74aa775392c	1e0c4296b441bc0a
@@ -522,7 +522,7 @@ line	input	name	class	why	main	switch
 2607	partitions	2022	respelled	respelled: the same rows in S's spelling (R5, P8)	46148826a1ddad91	2144de33a18aedf4
 2615	partitions	2030	weakening	looser, O7 loss 4: LIKE's string branch as presence	17ebef45a9e96c0e	f779452c703c0a55
 2621	partitions	2036	weakening	tighter: S pushes a weakening it proved where the translator pushed another	71f3588d2f521080	ae6a3c8ebe6fa704
-2625	partitions	2040	weakening	respelled: the weakening's members in S's spelling	cc010f40942e5592	52db7af449a89733
+2625	partitions	2040	weakening	alike: S's weakening and the translator's keep the same documents	cc010f40942e5592	52db7af449a89733
 2633	partitions	2048	weakening dropped	dropped, O7: an element path, which the IR reads as opaque	0880c05c3e090ec6	755f6897825bca88
 2634	partitions	2049	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	bb9139f1ff55d222	b9d582b97a1e9b58
 2637	partitions	2052	weakening	alike: S's weakening and the translator's keep the same documents	06564556dd36d8db	dd16c544095a70cc
@@ -533,7 +533,7 @@ line	input	name	class	why	main	switch
 2672	partitions	2087	weakening	looser, O7 loss 5: the translator's weakening unproven to S	ab155765216869c7	10dd4c4505bb9b40
 2675	partitions	2090	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	0262fae8e3190205	3c36bd42930666bd
 2679	partitions	2094	respelled	respelled: the same rows in S's spelling (R5, P8)	7349e3dc6b5d820f	4a65ae421f1184fd
-2687	partitions	2102	weakening	respelled: the weakening's members in S's spelling	202040dd091454ca	005770ca8bae8ea3
+2687	partitions	2102	weakening	tighter: S pushes a weakening it proved where the translator pushed none	202040dd091454ca	005770ca8bae8ea3
 2688	partitions	2103	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	f9a0013c14719d9c	f3495c3cda65504e
 2694	partitions	2109	respelled	respelled: the same rows in S's spelling (R5, P8)	1f30a68635aef96d	c52e9deafc7074d3
 2700	partitions	2115	respelled	respelled: the same rows in S's spelling (R5, P8)	43e4416f32bf9f5e	9adeefd8016a033b
@@ -543,7 +543,7 @@ line	input	name	class	why	main	switch
 2715	partitions	2130	gain	gain: sent exactly where the translator kept it in process	6e98f7eae4c33d79	eb006753edb513af
 2732	partitions	2147	weakening	looser, O7 loss 4: LIKE's string branch as presence	9e8ec88d0d50aa8f	741ccb315cac753c
 2751	partitions	2166	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	776329034c6d014e	eca6a66aae7b842c
-2753	partitions	2168	weakening	respelled: the weakening's members in S's spelling	2bc973e04c234547	65fa9b6191fa4b41
+2753	partitions	2168	weakening	alike: S's weakening and the translator's keep the same documents	2bc973e04c234547	65fa9b6191fa4b41
 2754	partitions	2169	respelled	respelled: the same rows in S's spelling (R5, P8)	7e732f16501b959e	a5cdfae4863e9a95
 2766	partitions	2181	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	e69e4cea38e6c9bd	c10547a9a42afe8e
 2775	partitions	2190	respelled	respelled: the same rows in S's spelling (R5, P8)	d37d2cf8dafec3f3	d2224415e7d0a329
@@ -552,7 +552,7 @@ line	input	name	class	why	main	switch
 2794	partitions	2209	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	364a388eda240b80	da1f9734c0f76b13
 2795	partitions	2210	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	f6bf2ed27a93462f	064622750c325d25
 2801	partitions	2216	respelled	respelled: the same rows in S's spelling (R5, P8)	bebfda60b7eca6e5	ae317b5fcc66d0c1
-2803	partitions	2218	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	4dd37ff38423eb35	76ce48f4153aed11
+2803	partitions	2218	weakening	looser, O7 loss 1: the text-equality alternatives as presence	4dd37ff38423eb35	76ce48f4153aed11
 2804	partitions	2219	weakening	tighter: S's weakening proved and implies the translator's	8614a93c8f18c9c6	e11ec43399e54585
 2812	partitions	2227	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	f29b808cc59bb765	a7826a5048b09009
 2813	partitions	2228	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	420a6e173a7ada06	aa3d96e7f042a7a0
@@ -567,12 +567,12 @@ line	input	name	class	why	main	switch
 2878	partitions	2293	gain	gain: sent exactly where the translator kept it in process	24c905c5781c7757	ce7571163b0bc279
 2885	partitions	2300	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	d543034a7c88ad0f	cf8da97d3cf60ded
 2887	partitions	2302	respelled	respelled: the same rows in S's spelling (R5, P8)	6b4e738a013902b6	dbff50430a163a64
-2888	partitions	2303	weakening	respelled: the weakening's members in S's spelling	1ce93e3e671bcbe5	2547115f4f335896
+2888	partitions	2303	weakening	alike: S's weakening and the translator's keep the same documents	1ce93e3e671bcbe5	2547115f4f335896
 2890	partitions	2305	gain	gain: sent exactly where the translator kept it in process	d07ca3d80e14621d	33ea7e2b4cdc4ae0
-2891	partitions	2306	weakening	respelled: the weakening's members in S's spelling	0e33566518ae3dfa	1f306b2be9db92d9
+2891	partitions	2306	weakening	tighter: S's weakening proved and implies the translator's	0e33566518ae3dfa	1f306b2be9db92d9
 2908	partitions	2323	weakening	alike: S's weakening and the translator's keep the same documents	b151505d26bd682e	304260f87ac05f7a
 2909	partitions	2324	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	d7d477767d53ac9f	8a367edce2acea5f
-2911	partitions	2326	weakening	respelled: the weakening's members in S's spelling	5447eea15cfe99de	6351605ef5a3e112
+2911	partitions	2326	weakening	tighter: S pushes a weakening it proved where the translator pushed none	5447eea15cfe99de	6351605ef5a3e112
 2912	partitions	2327	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	1ae31aff4b7d6b78	4326fed3accfa333
 2914	partitions	2329	weakening	looser, O7 loss 4: LIKE's string branch as presence	599c3d38f33fe320	6c579c89d7a93dc8
 2915	partitions	2330	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	522c573bf1b74aab	3b7aac881e12d671
@@ -584,14 +584,14 @@ line	input	name	class	why	main	switch
 2939	partitions	2354	weakening	alike: S's weakening and the translator's keep the same documents	b0d5b932cb9f53ea	613ccbf906b5b490
 2950	partitions	2365	weakening dropped	dropped, O7: an element path, which the IR reads as opaque	55e541481c543fde	0a8b279ddaaef879
 2951	partitions	2366	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	68da7bd286d63ee1	26769a9e1a027a9a
-2971	partitions	2386	weakening	respelled: the weakening's members in S's spelling	d9208e11899afe99	eb16ea533cf944bc
+2971	partitions	2386	weakening	alike: S's weakening and the translator's keep the same documents	d9208e11899afe99	eb16ea533cf944bc
 2974	partitions	2389	weakening	tighter: S's weakening proved and implies the translator's	1e8da0a1bc718893	91067c1804cb0c80
 2975	partitions	2390	weakening	tighter: S's weakening proved and implies the translator's	aae9b0922f36d2fd	1873b868f130d0c1
 2977	partitions	2392	weakening	tighter: S pushes a weakening it proved where the translator pushed another	40450ab5e0892289	723a0e57861b15c7
 2978	partitions	2393	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	4cc9b4b9a1bbf334	459135d61bf3dbea
-2986	partitions	2401	weakening dropped	respelled: the weakening's members in S's spelling	f7a6a64de18fe1f4	cfeb66dd516ff60d
+2986	partitions	2401	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S	f7a6a64de18fe1f4	cfeb66dd516ff60d
 2987	partitions	2402	weakening	tighter: S's weakening proved and implies the translator's	a4fd83f27b837134	6a06ea2127bcad6f
-2992	partitions	2407	weakening dropped	tighter: S pushes a weakening it proved where the translator pushed another	b197eeb7c52d3a6e	4801442b255f3c31
+2992	partitions	2407	weakening dropped	dropped, O7 loss 5: the translator's weakening unproven to S; another conjunct's tighter	b197eeb7c52d3a6e	4801442b255f3c31
 2996	partitions	2411	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	e3e349db9b2d283b	14f4a94b91eca4b0
 3007	partitions	2422	weakening	alike: S's weakening and the translator's keep the same documents	baf8b61a90a9a442	9f3f5f4267287494
 3008	partitions	2423	weakening	alike: S's weakening and the translator's keep the same documents	2ac7c3f02717d71b	3dad8627b9dd3f8d
@@ -618,7 +618,7 @@ line	input	name	class	why	main	switch
 3091	partitions	2506	weakening	looser, O7 loss 5: the translator's weakening unproven to S	fabf793ee388f0e0	4644c0b2121503f4
 3092	partitions	2507	gain	gain: sent exactly where the translator kept it in process	337dfec5fab6669a	907949fbfb302381
 3097	partitions	2512	weakening	looser, O7: an element path's member dropped, the IR reading it as opaque	35d9d18745ef7066	bfe86cc0d50cc2df
-3100	partitions	2515	weakening	respelled: the weakening's members in S's spelling	4743f7bb07e66d8a	804bbb2e882abaae
+3100	partitions	2515	weakening	tighter: S pushes a weakening it proved where the translator pushed none	4743f7bb07e66d8a	804bbb2e882abaae
 3107	partitions	2522	respelled	respelled: the same rows in S's spelling (R5, P8)	40e1cfe33683597d	65b597816d52b05a
 3109	partitions	2524	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	41c8f68b70265e1e	4724db1c605f9be4
 3110	partitions	2525	respelled	respelled: the same rows in S's spelling (R5, P8)	738e3e7163ab603d	6e535aea6a618c7b
@@ -633,7 +633,7 @@ line	input	name	class	why	main	switch
 3140	partitions	2555	respelled	respelled: the same rows in S's spelling (R5, P8)	51a91b1e50e0685b	a77a5932d0cb212c
 3148	partitions	2563	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	e147537fb3bf67c3	9a981f42a5c6a386
 3149	partitions	2564	gain+placement	gain: sent exactly where the translator kept it in process; the projection pushed with it	8c5d0684acfc8256	7be71c1d04c9ae50
-3181	partitions	2596	weakening	respelled: the weakening's members in S's spelling	1fbb0b357acb7caf	168b68b0e5d1c193
+3181	partitions	2596	weakening	alike: S's weakening and the translator's keep the same documents	1fbb0b357acb7caf	168b68b0e5d1c193
 3182	partitions	2597	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	a88eb4741c6a3afc	52c18f9f1fc7934a
 3184	partitions	2599	rex respelled	benign: the weakening's Rex types its literal otherwise, the SQL byte-equal	82535c951f09793c	a338c5606612f356
 3185	partitions	2600	weakening	tighter: S's weakening proved and implies the translator's	9667a93a073ef3ae	d1c7af0cb3f76848
@@ -642,7 +642,7 @@ line	input	name	class	why	main	switch
 3199	partitions	2614	weakening	looser, O7 loss 5: the translator's weakening unproven to S	95210246c5d42f1f	1f34c002771f8d03
 3202	partitions	2617	weakening	looser, O7 loss 4: LIKE's string branch as presence	4c052f12b71543b9	b528e6c936e4eee6
 3203	partitions	2618	weakening	alike: S's weakening and the translator's keep the same documents	36fc29c1c633012a	749eca240ac59cb1
-3211	partitions	2626	weakening	tighter: S pushes a weakening it proved where the translator pushed another	98a5f2aa5dfbcf54	c993da197f036beb
+3211	partitions	2626	weakening	looser, O7 loss 5: the translator's weakening unproven to S; another conjunct's tighter	98a5f2aa5dfbcf54	c993da197f036beb
 3215	partitions	2630	respelled	respelled: the same rows in S's spelling (R5, P8)	c99ae0491648e83d	67f5b6997b52fdff
 3217	partitions	2632	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	f1b94ac62d3a15f4	20e59d0688572575
 3218	partitions	2633	weakening dropped	looser, O7 loss 5: the translator's weakening unproven to S	d4d0c9d5930ae326	6a8c0648e718f47a
@@ -658,7 +658,7 @@ line	input	name	class	why	main	switch
 3267	partitions	2682	weakening	tighter: S's weakening proved and implies the translator's	8b9b1041b36e17cb	1b52dd4b3c47af56
 3279	partitions	2694	respelled	respelled: the same rows in S's spelling (R5, P8)	e4a3da9492206ff4	0423da0cef00ac9c
 3280	partitions	2695	weakening	alike: S's weakening and the translator's keep the same documents	43be6ac543f2df79	27499825562e7adf
-3285	partitions	2700	weakening	looser, O7: a member the Rex builder cannot write (a number compared through a cast, owner 2026-10-24)	20542aeef2d8bb0a	15e30263401c18bb
+3285	partitions	2700	weakening	looser, O7 loss 1: the text-equality alternatives as presence	20542aeef2d8bb0a	15e30263401c18bb
 3286	partitions	2701	weakening	tighter: S's weakening proved and implies the translator's	4ac328dd9bc96756	13c6c81fe4c5ccd4
 3295	partitions	2710	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	7092a7c767503f36	8537b1aded771403
 3319	partitions	2734	weakening added	tighter: S pushes a weakening it proved where the translator pushed none	974d57f9a08cca71	6a2c145c92a92252

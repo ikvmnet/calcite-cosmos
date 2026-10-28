@@ -3101,10 +3101,13 @@ across documents* and *A join of a container to itself* is the record.
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
 - **The switch's listing** — *done at g16.* With S writing, 699 of the gate's 3,492 statements plan otherwise than at
   `main`, each in `Planning/Switch/switch-listing.tsv` with its class, held by
-  `PlanDigestTests.TheSwitchChangesOnlyWhatTheShadowListed` (explicit, at the gate): 120 gains, 145 respellings, 206
-  weakenings tighter, 47 alike, 18 regressions O2 lists, 156 weakenings looser or dropped on O7's list, and 7 benign — 6
-  whose weakening's Rex types a literal otherwise with the SQL byte-equal, and 1 (`differential 404`) admitted a round
-  earlier, plan and SQL unchanged. Where the shadow could not read the translator's weakening (58 statements), the two
+  `PlanDigestTests.TheSwitchChangesOnlyWhatTheShadowListed` (explicit, at the gate): 116 gains, 102 respellings, 208
+  weakenings tighter, 61 alike, 18 regressions O2 lists, 187 weakenings looser or dropped on O7's list (4 beside a gain,
+  11 beside another conjunct's tighter), and 7 benign — 6 whose weakening's Rex types a literal otherwise with the SQL
+  byte-equal, and 1 (`differential 404`) admitted a round earlier, plan and SQL unchanged. Each class is read off the
+  shadow's weakening rows for its statement; g16's labeller read a row's first token, an admission's, so 43 changed
+  weakenings were labelled respellings and 11 looser ones tighter, until the switch's review relabelled them, the
+  hashes untouched. Where the shadow could not read the translator's weakening (58 statements), the two
   were read side by side: an element path (21 dropped, 14 a member dropped), `LIKE` (19), arithmetic (4), each O7's.
 - **O2's residue at the switch** — *small each, the stage named.* What S declines inside its family, each RU, never rows,
   the conjunct kept in process with its weakening: a typed `BIGINT` compared past 2^53 (differential 348–351, 354, 452;
