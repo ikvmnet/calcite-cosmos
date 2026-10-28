@@ -6083,8 +6083,12 @@ implementor holds once it has implemented the filter's input. A binding walked o
 an array's element unbound where the implementor binds it to its alias, and read the filter over an `UNNEST` as an
 opaque conjunct no round admits: another statement than the one that was sent.
 
-**Two files compare only if planning is deterministic**, and the oracle remembers statements across a process.
-`TheDigestsAreDeterministic` plans the corpus twice in one process, per pull request, and requires the same lines.
+**Two files compare only if planning is deterministic**, and a schema's oracles remember statements across its
+connections. `TheDigestsAreDeterministic` plans the corpus twice over one harness schema, per pull request, and requires
+the same lines. Each harness that digests plans over a reasoning of its own (`HarnessReasonings`), its S build awaited
+before its first plan, so that no question waits past its bound and declines; counts declines across every reasoning it
+made; and fails a table that reasons outside them — a fixture that made its own, or one bound to the suite's — whose
+questions no count of the harness's would read.
 
 ### Calcite's side, measured in process
 
@@ -7344,17 +7348,20 @@ union of the atoms of every root its plan asked (§6.3, `RenderingGenerateRun.Sh
 off its widest statement; the shadow's summary reads its per-query shapes so, and prints the tightest run's iterations
 against its limit.
 
-**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59
-µs at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
+**What it costs.** Nothing yet on a plan. A remembered answer, its key built from a frozen `D0` included, took 37–59 µs
+at the median and 82–85 µs at the 90th centile over 56 questions (18 keys) from the declared containers' `D0`s, in
 Release with the machine at 65–100 % (`AHitCostsMicroseconds`, three runs), the import's spelling most of it. §6.1's
 lever is taken: `RenderingImporter` reads and spells what each frozen node holds of a path once, in a table on the
 schema's oracle keyed weakly by the node (`RenderingOracle.Readings`), which the node takes with it when collected and
-the schema when it goes; a caller that hands the importer no table, as the check runs do, reads afresh and spells
-alike. The same questions took 13–23 µs at the median and 16–31 µs at the 90th centile, the machine at 43–71 %. The
-first generation, built first in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms,
-hashes in 70–143 ms and asks its question in 14–50 ms: the rest is the process's first touch of the registry, of
-Calcite's operator tables that strictness reads, and of the JIT. In a process that has planned before, the build took
-598 ms. Line 29 reads it at g15.
+the schema when it goes; a caller that hands the importer no table, as the check runs do, reads afresh and spells alike.
+The same questions took 13–23 µs at the median and 16–31 µs at the 90th centile, the machine at 43–71 %. The first
+generation, built first in a process, took 6.0–8.4 s at that load, where a warm one defines in 267–477 ms, hashes in
+70–143 ms and asks its question in 14–50 ms: the rest is the process's first touch of the registry, of Calcite's
+operator tables that strictness reads, and of the JIT. In a process that has planned before, the build took 598 ms. That
+is what each schema made later in a process pays, off its planning thread, from the definition the process already read.
+Line 29 reads the first at g15, and line 29b the later at g15r: a new schema's first plan in a warm process, paired with
+S off, 459–497 ms more wall time at the median at 100 % load, against its 0.5 s; so the build starts at a schema's first
+plan and nowhere earlier.
 
 **What one schema's graphs hold.** `CosmosReasoningTests.ASchemasGraphsCost` makes a schema in a warm process and
 reads the heap it adds (Release, net10.0, the machine at 100 %). F, with the twelve declared fixtures and the
@@ -7565,11 +7572,12 @@ moves.
 once a round (site A), the split rule builds S's weakening of each residual (W), implementation prints S's form (P), and
 the residual projection rule says where it fires by S's split (R). `CosmosRenderingShadow` holds a `volatile bool`, a
 flow's arm in an `AsyncLocal` — who is told (`ICosmosRenderingShadowObserver`), whether the sites take S's answers
-(`Writes`), and the set to prove under, each container's own where none — and the process's arm, which the whole-suite
-rehearsal sets from `COSMOS_RENDERING_WRITES` as the test assembly loads, the shared test reasoning's S build started
-and awaited there, so that no first plan's question waits past its bound and declines. Every site asks through
-`CosmosRendering.Ask`, which is `RenderingOracle.Ask`, of an observer's oracle or else the statement's schema's, its
-container's reasoning's: one bundle code path, the oracle's, whatever asks.
+(`Writes`), and the set to prove under, each container's own where none — and the process's arm, a test switch holding
+no state, which the whole-suite rehearsal sets from `COSMOS_RENDERING_WRITES` as the test assembly loads, the suite's
+shared reasoning's S build awaited there and each harness schema's before its first plan, so that no first plan's
+question waits past its bound and declines. Every site asks through `CosmosRendering.Ask`, which is
+`RenderingOracle.Ask`, of an observer's oracle or else the statement's schema's, its container's reasoning's: one bundle
+code path, the oracle's, whatever asks.
 
 **A plan is written as it was admitted.** Whether S's answers were taken is the statement's, set by the arm its admission
 ran under: implementation prints S's form and the split rule pushes S's weakening wherever the admission took them,
@@ -7602,18 +7610,18 @@ where its stratum holds, so either would keep Calcite's rows; but the `AND` of f
 conclusion, which §5.2 forbids. And each must print: a form the printer refuses (a number neither a decimal nor a long
 carries) makes the composite not stand, as one unproven does, so implementation never meets a form it cannot write.
 
-**A statement Volcano reads again asks nothing new.** Volcano reads one condition as many nodes, each a statement of
-the same terms (`CosmosOracle` keeps one tree a digest), whose rounds ask the same questions of the same frozen nodes. The
+**A statement Volcano reads again asks nothing new.** Volcano reads one condition as many nodes, each a statement of the
+same terms (`CosmosOracle` keeps one tree a digest), whose rounds ask the same questions of the same frozen nodes. The
 merged-view hierarchy's first plan asks S 449 questions over 25 keys, where the spec drew about 23 statements a plan: at
-the oracle's 20 µs a hit, 9–27 ms each later plan, against line 30's 10. So the oracle keeps what each statement's terms
-were answered (`RenderingOracle.Answered`, weak on the terms), by the set, the theory the answer was computed under and
-a question named within them by content — its conjuncts' and junctions' digests, the node each conjunct is stated
-beneath, since a node names its import within its terms, and the opaque terms' readings — and a question asked before is
-handed its answer with no key built. Statements of one digest share terms whatever order their conjuncts stand in, so no
-index names a conjunct. A test's plant reads a node no key names and is asked afresh, and a decline is never kept. G9
-holds this name as it holds the oracle's key: a name planted without the opaque readings hands a second statement of the
-same terms the first's answer. The answers live as long as the terms, which F's memory of statement trees bounds, and no
-longer than the oracle.
+the oracle's 20 µs a hit, 9–27 ms each later plan over the same schema, on any connection that shares it, against line
+30's 10. So the oracle keeps what each statement's terms were answered (`RenderingOracle.Answered`, weak on the terms),
+by the set, the theory the answer was computed under and a question named within them by content — its conjuncts' and
+junctions' digests, the node each conjunct is stated beneath, since a node names its import within its terms, and the
+opaque terms' readings — and a question asked before is handed its answer with no key built. Statements of one digest
+share terms whatever order their conjuncts stand in, so no index names a conjunct. A test's plant reads a node no key
+names and is asked afresh, and a decline is never kept. G9 holds this name as it holds the oracle's key: a name planted
+without the opaque readings hands a second statement of the same terms the first's answer. The answers live as long as
+the terms, which F's memory of statement trees bounds, and no longer than the oracle.
 
 **W, P and R.** Writing, the split rule pushes S's weakening of every residual, built as a Rex over the conjunct's
 accessors and held by `IsApplied` and `TryTranslate` as J's was, and calls no J; implementation prints the form admission
@@ -7638,7 +7646,7 @@ answers adds a `RenderingCostSample`: the roots, the oracle's count and time, th
 `Scope.CountRows`, no row read), the bytes the thread allocated, the graph's use before and after, and, where the test
 hands it the thread's processor clock, the thread's own time, which a busy host stretches far less than the wall's.
 Unmeasured, `Ask` is the oracle's call alone. A first plan is measured through an oracle over a warm graph that remembers
-nothing, which is the spec's memory cleared without a clearing call in production.
+nothing, which is what a new schema's oracle is once its build is done.
 
 **What it costs.** S is 3–4 % of the hierarchy's first plan; the lines are judged on S's wall time, the machine's load
 and S's thread time printed beside every reading, and the readings are in the pull request's measure report. A query

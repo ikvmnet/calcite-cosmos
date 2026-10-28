@@ -28,9 +28,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             if (value is not ("1" or "true" or "production" or "emulator"))
                 return;
 
-            // The shared reasoning's S build started as the assembly loads, as the switch starts it at the first table, and
-            // awaited: a plan whose question waited past its bound would decline, and change its digest for a reason no
-            // shadow row lists.
+            // The arm is a switch and holds no answer. The schema the suite's fixtures plan in has its S build awaited here,
+            // before anything plans, and each harness schema awaits its own before its first plan (HarnessReasonings): a
+            // question that waited past its bound would decline, and change a plan for a reason no shadow row lists.
             CosmosRenderingShadow.ArmEverywhere(value switch { "production" => RenderingSet.Production, "emulator" => RenderingSet.Emulator, _ => null });
             TestReasoning.Shared.Rendering.Ready.Wait();
             Armed = true;

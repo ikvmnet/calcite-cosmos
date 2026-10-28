@@ -2945,29 +2945,40 @@ across documents* and *A join of a container to itself* is the record.
   load in a process of its own, S defined (1,138 shapes; a generate bundle an accessor and set, and a check bundle a
   claim, a comparison's once a set). Line 32 reads it in the leg's wall time. If PR C's legs pass O5's budget, an atom's
   claims go into one check bundle.
-- **The determinism test asks S, and costs a leg about 23 s** — *small, O5.* `TheDigestsAreDeterministic` builds the
-  shared test reasoning's oracle and asks S over the corpus twice, sites A and W, for line 26's `RepeatsOpenNoBundle`:
-  31–33 s against 8.5–8.9 s at `main`, at 82–100 % load, hidden on 8 threads by a longer test beside it. O5 priced it at
-  +0 to +1 s. Line 32 is read from the whole-suite rehearsal and the pull request's own CI against `main`; past the
-  budget, it asks a graph another test has already built rather than building its own.
+- **The determinism test asks S, and costs a leg about 23 s** — *small, O5.* `TheDigestsAreDeterministic` builds its
+  harness schema's oracle and asks S over the corpus twice, both passes over that one schema, sites A and W, for line
+  26's `RepeatsOpenNoBundle`: 31–33 s against 8.5–8.9 s at `main`, at 82–100 % load, hidden on 8 threads by a longer test
+  beside it. O5 priced it at +0 to +1 s. Line 32 is read from the whole-suite rehearsal and the pull request's own CI
+  against `main`; past the budget, what is left to cut is the harness schema's own build, defined from the definition
+  the process has already read, never a graph another schema built.
 - **Conjunct filing stays a lever, not taken** — *small.* §6.3 takes it if the 5–7-condition shape or the hierarchy's first
   plan reads above its pass line on the build machine at low load; at 100 % load S's wall time crossed both while its
   thread time held them (the measure report). A reading at lower load decides it. Filing each conjunct's answer under its
   own key cuts the first plans of the statements Volcano splits.
-- **A later plan over a fresh connection asks the oracle again** — *small, the proper fix for line 30 at load.* A
-  connection's containers build their own statement trees, so the answers a statement's terms keep reach no plan over
-  another connection, whose questions go to the oracle's memory, each new node's import spelled: at 100 % load S's wall
-  time crossed line 30's 10 ms in every saturated run, its thread time at most 13.7 ms; at 67–85 % load (2026-10-27) the
-  median held at 2.4–5.0 ms but one plan of ten read 10.2 ms and another 34.9 ms, one question taking 32.9 ms of the
-  thread's own time amid two hundred collections a plan. Line 30 is open with the owner. Keeping the answers by the
-  declaration's content and the statement's digest would hand a fresh connection's plan what a kept one reads (0.8 ms
-  at the median, 2.9 ms at most), and G9 would plant that key; F's declaration has no digest of its content today, which
-  that needs first, and a key that named two declarations alike would hand one the other's proof.
+- **A later plan over a new data source is a first plan** — *done at g15r: line 30 restated (owner, 2026-10-27), the
+  content-keyed memo withdrawn.* Connections that share a data source, pooled or owned, plan against one schema and its
+  containers, so any later plan reads what a kept connection reads; a new data source, a root rebuilt after an idle
+  prune or `ClearPool`, and each connection under `Pooling=false` are new schemas, whose first plans are lines 29b's and
+  30's first. The line's earlier "fresh connection" built a data source and containers per connection, a new schema each,
+  which only a memory shared across schemas could hand hits (2.4–5.0 ms at the median, 10.2 and 34.9 ms outliers, at
+  67–85 % load); a memo keyed by the declaration's content would be that, a process-wide learned cache, which the schema
+  rule excludes. `TheHierarchyIsWithinItsLine` now plans over one data source, a `CosmosSchema` added with `AddSchema`:
+  at g15r (Release, net10.0, 100 % load, three runs) the first plans over a new data source, its schema's build
+  awaited, read 182–757 ms of S, and the later plans, over five new connections and five on one kept connection,
+  0.85–3.14 ms at the median and 6.07 ms at most, opening no bundle.
 - **S's first build in a process is the registry's first read** — *small, for g16.* Started as the process's first act,
-  as g16 starts it at the first `CosmosTable`, the build ran beside the first plan, whose first question waited
+  as g16 starts it at a table's first `toRel`, the build ran beside the first plan, whose first question waited
   94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the
   first plan's wall time differs by −0.47 s over fifteen pairs, against line 29's 0.5 s and its 1.0 s kill; one run of
-  five read +1.21 s. The registry's first read is where to cut, should a quieter host show the build in the plan.
+  five read +1.21 s. The registry's first read is where to cut, should a quieter host show the build in the plan. The
+  registry's rows and the definition read from them are fixed facts and stay once a process (`CosmosRendering.Definition`);
+  each schema object builds its own graph from them at its first plan, so a schema made in a warm process pays the warm
+  build off its planning thread, its first plan waiting at most 5 s. Line 29 reads the cold case, line 29b the warm one:
+  at g15r, ten new schemas in a warm process, alternately with S writing and without, read 459–497 ms more wall time at
+  the median over three runs (pairs 337–708 ms) at 100 % load, against 29b's 0.5 s and its 1.0 s kill; with the build
+  awaited first, S's own time in the plan was 15.2–22.6 ms at the median. So `CosmosSchemaFactory.create` does not warm
+  before it reads the containers' definitions; should a reading go over, that warm overlaps the build (the theory defined
+  and settled in 329–402 ms there, hashed in 101–116 ms) with the reads.
 - **The thread clock stays beside the wall** — *small, decided 2026-10-27.* `ThreadCpu` (80 test lines) and its plumbing
   in the cost instrument (about 9 production lines) read S's own processor time beside each wall reading: the only
   evidence that separates a busy host's stretch from S's own cost, on which lines 24, 25, 29 and 30's crossings at 100 %

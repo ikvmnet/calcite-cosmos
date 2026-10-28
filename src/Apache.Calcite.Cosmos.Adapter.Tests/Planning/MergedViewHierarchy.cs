@@ -164,37 +164,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
-        /// A connection over containers built for it, as a host that keeps none would plan, each reasoning in the harnesses'
-        /// shared reasoning (<see cref="TestReasoning.Shared"/>), as they reasoned in the process's graphs.
+        /// One data source over the hierarchy's containers, whose connections share one schema as a pooled or owned data
+        /// source shares it: a <see cref="CosmosSchema"/> added with <c>AddSchema</c>, which binds the containers to one
+        /// reasoning it makes, and the views added in a step, per root. A new data source is a new schema.
         /// </summary>
-        public static DbConnection Open()
+        /// <param name="reasoning">The reasoning the schema made, whose build a first plan awaits.</param>
+        public static CalciteDataSource DataSource(out CosmosReasoning reasoning)
         {
+            var schema = new CosmosSchema(
+            [
+                new CosmosContainerMetadata("parts", ["/partId"])
+                    .WithFacts(CosmosSchemaRecognition.ReadFrom(Schema()))
+                    .WithConstraints([CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared)]),
+                new CosmosContainerMetadata("catalogs", ["/guid"])
+                    .WithFacts(CosmosSchemaRecognition.ReadFrom(new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["guid"] = new JsonObject { ["type"] = "string", ["pattern"] = Uuid },
+                            ["name"] = new JsonObject { ["type"] = "string" },
+                        },
+                    })),
+            ]);
+            reasoning = ((CosmosTable)schema.tables().get("parts")!).Container.Reasoning!;
+
             var connectionString = new CalciteConnectionStringBuilder { CaseSensitive = true }.ConnectionString + ";conformance=LENIENT";
-            var connection = new CalciteDataSourceBuilder(connectionString)
+            return new CalciteDataSourceBuilder(connectionString)
+                .AddSchema("COSMOS", schema)
                 .ConfigureRootSchema(root =>
                 {
-                    var cosmos = root.add("COSMOS", new AbstractSchema());
-                    cosmos.add("parts", new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("parts", ["/partId"])
-                        .WithFacts(CosmosSchemaRecognition.ReadFrom(Schema()))
-                        .WithConstraints([CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared)]))));
-                    cosmos.add("catalogs", new CosmosTable(TestReasoning.Bind(new CosmosContainerMetadata("catalogs", ["/guid"])
-                        .WithFacts(CosmosSchemaRecognition.ReadFrom(new JsonObject
-                        {
-                            ["type"] = "object",
-                            ["properties"] = new JsonObject
-                            {
-                                ["guid"] = new JsonObject { ["type"] = "string", ["pattern"] = Uuid },
-                                ["name"] = new JsonObject { ["type"] = "string" },
-                            },
-                        })))));
-
                     var views = root.add("V", new AbstractSchema());
                     foreach (var (name, sql) in Views())
                         views.add(name, ViewTable.viewMacro(views, sql, java.util.Collections.emptyList(), java.util.Arrays.asList("V", name), java.lang.Boolean.FALSE));
                 })
-                .Build()
-                .CreateConnection();
+                .Build();
+        }
 
+        /// <summary>Opens a connection of the data source.</summary>
+        public static DbConnection Open(CalciteDataSource dataSource)
+        {
+            var connection = dataSource.CreateConnection();
             connection.Open();
             return connection;
         }

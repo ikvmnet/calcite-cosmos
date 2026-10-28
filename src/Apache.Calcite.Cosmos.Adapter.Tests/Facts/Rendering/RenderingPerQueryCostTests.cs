@@ -24,14 +24,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The per-query cost lines (spec §6.3, §6.4; lines 23–30), with S writing as the switch will, through the
-    /// registry's S — the oracle of the reasoning the harnesses share (<see cref="TestReasoning.Shared"/>), or for a
-    /// first plan one over a warm graph that remembers nothing: S's own time in a query's plan — every question its
-    /// plan asked, from the lookup to the roots' answers, the wait for a generation among it — and the bundles it
-    /// opened, by the query's shape, first and asked again; the merged-view hierarchy; the first plan in a process,
-    /// paired with S off; and what a bundle interns. Explicit: run each fact in a process of its own, Release
-    /// <c>net10.0</c>, with <c>-showLiveOutput</c>. The machine's load is sampled beside every reading, and no fact
-    /// waits for quiet; S's thread time (<see cref="ThreadCpu"/>) is read beside its wall time, which the lines hold,
-    /// so that a reading a host's contention stretched says so.
+    /// registry's S — a schema's oracle, or for a first plan one over a warm graph that remembers nothing, which is what a
+    /// new schema's oracle is once its build is done: S's own time in a query's plan — every question its plan asked,
+    /// from the lookup to the roots' answers, the wait for a generation among it — and the bundles it opened, by the
+    /// query's shape, first and asked again; the merged-view hierarchy over one data source; the first plan in a process
+    /// and on a new schema in a warm one, each paired with S off; and what a bundle interns. Explicit: run each fact in a
+    /// process of its own, Release <c>net10.0</c>, with <c>-showLiveOutput</c>. The machine's load is sampled beside
+    /// every reading, and no fact waits for quiet; S's thread time (<see cref="ThreadCpu"/>) is read beside its wall
+    /// time, which the lines hold, so that a reading a host's contention stretched says so.
     /// </summary>
     public sealed class RenderingPerQueryCostTests
     {
@@ -97,10 +97,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Line 30: the neutral merged-view hierarchy (<see cref="MergedViewHierarchy"/>), each statement planned first over
-        /// containers built for it, S's own time ≤ 1.0 s; then five times over fresh containers and five over kept ones,
-        /// each ≤ 10 ms, opening no bundle. Every reading is printed, S's share of the plan's time beside, before any is
-        /// judged.
+        /// Line 30, restated (owner, 2026-10-27): the neutral merged-view hierarchy (<see cref="MergedViewHierarchy"/>), each
+        /// statement planned first over a new data source, its schema's build awaited, S's own time ≤ 1.0 s; then five times
+        /// over new connections of that data source and five over one kept connection, each ≤ 10 ms, opening no bundle; a new
+        /// data source is a first plan. Every reading is printed, S's share of the plan's time beside, before any is judged.
         /// </summary>
         [Fact(Explicit = true)]
         public async Task TheHierarchyIsWithinItsLine()
@@ -108,8 +108,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using var load = new CpuLoad();
             using var writing = CosmosRenderingShadow.Arm(null, writes: true);
             Print(ThreadCpu.Describe());
-            TestReasoning.Shared.Rendering.Warm();
-            await TestReasoning.Shared.Rendering.Ready;
 
             using var scope = new AssertionScope();
             foreach (var (name, sql, parameters) in MergedViewHierarchy.Statements)
@@ -123,36 +121,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         samples.Select(s => s.Cost.Elapsed.TotalMilliseconds).DefaultIfEmpty(0).Max(), GC.CollectionCount(0) - collections, ThreadTime(samples));
                 }
 
+                using var dataSource = MergedViewHierarchy.DataSource(out var reasoning);
+                await reasoning.Rendering.Ready;
                 Planned first;
-                using (var connection = MergedViewHierarchy.Open())
+                using (var connection = MergedViewHierarchy.Open(dataSource))
                     first = Plan(connection);
-                Print($"{name}, first: S {first.S:F1} ms, its thread time {first.Thread:F1} ms, over {first.Questions} questions, {first.Bundles} bundles; the plan {first.Wall:F0} ms, S {Share(first.S, first.Wall)} of it; {load}");
+                Print($"{name}, first over a new data source: S {first.S:F1} ms, its thread time {first.Thread:F1} ms, over {first.Questions} questions, {first.Bundles} bundles; the plan {first.Wall:F0} ms, S {Share(first.S, first.Wall)} of it; {load}");
 
                 var fresh = Enumerable.Range(0, Again).Select(_ =>
                 {
-                    using var connection = MergedViewHierarchy.Open();
+                    using var connection = MergedViewHierarchy.Open(dataSource);
                     return Plan(connection);
                 }).ToList();
                 List<Planned> kept;
-                using (var connection = MergedViewHierarchy.Open())
-                    kept = [.. Enumerable.Range(0, Again + 1).Select(_ => Plan(connection)).Skip(1)];
+                using (var connection = MergedViewHierarchy.Open(dataSource))
+                    kept = [.. Enumerable.Range(0, Again).Select(_ => Plan(connection))];
 
-                foreach (var (what, later) in new[] { ("fresh containers", fresh), ("kept containers", kept) })
+                foreach (var (what, later) in new[] { ("new connections", fresh), ("one kept connection", kept) })
                     Print($"{name}, later over {what}: S p50 {At(Sorted(later.Select(l => l.S)), 0.5):F2} max {later.Max(l => l.S):F2} ms, its thread time p50 {At(Sorted(later.Select(l => l.Thread)), 0.5):F2} max {later.Max(l => l.Thread):F2} ms, over {later.Max(l => l.Questions)} questions, "
                         + $"the slowest question {later.Max(l => l.Slowest):F2} ms, {later.Sum(l => l.Collections)} collections in {later.Count} plans; bundles {later.Sum(l => l.Bundles)}; "
                         + $"the plan p50 {At(Sorted(later.Select(l => l.Wall)), 0.5):F0} ms, S {Share(later.Sum(l => l.S), later.Sum(l => l.Wall))} of it; {load}");
 
                 first.S.Should().BeLessThanOrEqualTo(1000, $"{name}'s first plan, line 30");
-                foreach (var (what, later) in new[] { ("fresh containers", fresh), ("kept containers", kept) })
-                    later.Should().OnlyContain(l => l.S <= 10 && l.Bundles == 0, $"{name} planned again over {what}, line 30");
+                foreach (var (what, later) in new[] { ("new connections", fresh), ("one kept connection", kept) })
+                    later.Should().OnlyContain(l => l.S <= 10 && l.Bundles == 0, $"{name} planned again over {what} of its data source, line 30");
             }
         }
 
         /// <summary>
         /// Line 29: ten fresh processes, alternately with S writing and without, each planning one corpus statement as its
-        /// first plan — S's build started first, as the switch starts it at the first table — and the difference in wall
-        /// time, paired, ≤ 0.5 s at the median, killed above 1.0 s. Each child's process CPU, and where S's first plan
-        /// spends its time — the build, Warm to Ready, its parts, and the plan's own wait — are printed beside.
+        /// first plan over the process's first schema (<see cref="FirstPlan"/>), and the difference in wall time, paired,
+        /// ≤ 0.5 s at the median, killed above 1.0 s. Each child's process CPU, and where S's first plan spends its time —
+        /// the build, Warm to Ready, its parts, and the plan's own wait — are printed beside.
         /// </summary>
         [Fact(Explicit = true)]
         public void TheFirstPlanInAProcessIsWithinItsLine()
@@ -171,9 +171,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The child <see cref="TheFirstPlanInAProcessIsWithinItsLine"/> runs, a fact a fresh process: with S on, writing
-        /// armed and its build started; off, nothing armed; and in <c>parts</c>, the build's parts timed as the process's
-        /// first act. Explicit, and skipped where its parent did not start it.
+        /// The child <see cref="TheFirstPlanInAProcessIsWithinItsLine"/> runs, a fact a fresh process: the process's first
+        /// schema's first plan, <c>on</c> or <c>off</c> (<see cref="FirstPlan"/>); and in <c>parts</c>, the build's parts
+        /// timed as the process's first act. Explicit, and skipped where its parent did not start it.
         /// </summary>
         [Fact(Explicit = true)]
         public async Task FirstPlanInThisProcess()
@@ -182,52 +182,119 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             if (path is null)
                 Assert.Skip("Run by TheFirstPlanInAProcessIsWithinItsLine.");
 
-            var mode = Environment.GetEnvironmentVariable(FirstPlanMode);
-            var figures = new Dictionary<string, string> { ["mode"] = mode ?? "" };
-            static string Ms(TimeSpan t) => t.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture);
+            var mode = Environment.GetEnvironmentVariable(FirstPlanMode) ?? "";
             var clock = Stopwatch.StartNew();
+            Dictionary<string, string> figures;
             if (mode == "parts")
-            {
-                var definition = CosmosRendering.Definition;
-                figures["registry read ms"] = Ms(clock.Elapsed);
-                var theory = RenderingTheory.Define(definition);
-                figures["define and settle ms"] = Ms(clock.Elapsed);
-                _ = RenderingAnswerMemo.DigestOf(theory);
-                figures["digest ms"] = Ms(clock.Elapsed);
-                var answer = new RenderingOracle(new RenderingGraph(() => definition), wait: System.Threading.Timeout.InfiniteTimeSpan).Ask(RenderingSet.Production,
-                    [ProbeRows.NotBikes], null, ProbeRows.Source, null, null);
-                figures["a second graph's build and one question ms"] = Ms(clock.Elapsed);
-                figures["answer"] = answer.Of(ProbeRows.NotBikes).Kind.ToString();
-            }
+                figures = new Dictionary<string, string>(Parts()) { ["mode"] = mode };
             else
             {
-                if (mode == "on")
-                {
-                    CosmosRenderingShadow.ArmEverywhere(null);
-                    TestReasoning.Shared.Rendering.Warm();
-                }
-
-                IReadOnlyList<RenderingCostSample> samples;
-                using (CosmosRenderingCost.Measure(out samples))
-                {
-                    var harness = new PlannerHarness();
-                    Implement(harness.PlanToAsync(FirstPlanSql));
-                }
-
-                figures["wall ms"] = Ms(clock.Elapsed);
+                (figures, var reasoning) = FirstPlan(mode);
                 figures["process cpu ms"] = Ms(Process.GetCurrentProcess().TotalProcessorTime);
                 if (mode == "on")
                 {
-                    figures["S ms in the plan"] = samples.Sum(s => s.Cost.Elapsed.TotalMilliseconds).ToString("F0", CultureInfo.InvariantCulture);
-                    figures["S's first question ms (the wait)"] = samples.Count > 0 ? Ms(samples[0].Cost.Elapsed) : "none";
-                    figures["declines"] = samples.Sum(s => s.Cost.Declines).ToString(CultureInfo.InvariantCulture);
-                    await TestReasoning.Shared.Rendering.Ready;
+                    await reasoning.Rendering.Ready;
                     figures["Warm to Ready ms"] = Ms(clock.Elapsed);
                 }
             }
 
             File.WriteAllLines(path, figures.Select(f => $"{f.Key}\t{f.Value}"));
         }
+
+        /// <summary>
+        /// Line 29b: ten new schemas in one warm process, alternately with S writing and without, each planning one corpus
+        /// statement as its first plan (<see cref="FirstPlan"/>), and the difference in wall time, paired, ≤ 0.5 s at the
+        /// median, killed above 1.0 s; then five more with S writing, each one's build awaited before its plan, S's own time
+        /// against the shape's line and 20 ms (1–3 conditions: ≤ 50 ms at the median). The process is warmed first, as a
+        /// host's is once it has planned: the definition read, and a schema's first plan made with S and one without. Where
+        /// each first plan with S spends its time, and the build's parts in this warm process, are printed beside.
+        /// </summary>
+        [Fact(Explicit = true)]
+        public void TheFirstPlanOnANewSchemaIsWithinItsLine()
+        {
+            using var load = new CpuLoad();
+            Print(ThreadCpu.Describe());
+            _ = (FirstPlan("on"), FirstPlan("off"));
+
+            var runs = Enumerable.Range(0, 10).Select(i => FirstPlan(i % 2 == 0 ? "on" : "off").Figures).ToList();
+            var built = Enumerable.Range(0, 5).Select(_ => FirstPlan("built").Figures).ToList();
+            var parts = Parts();
+            foreach (var run in runs.Concat(built))
+                Print(string.Join(", ", run.Select(f => $"{f.Key} {f.Value}")));
+            Print("the build's parts, in this warm process: " + string.Join(", ", parts.Select(f => $"{f.Key} {f.Value}")));
+
+            static double Of(Dictionary<string, string> run, string key) => double.Parse(run[key], CultureInfo.InvariantCulture);
+            var (on, off) = (runs.Where(r => r["mode"] == "on").ToList(), runs.Where(r => r["mode"] == "off").ToList());
+            var paired = on.Zip(off, (a, b) => Of(a, "wall ms") - Of(b, "wall ms")).Order().ToList();
+            var after = Sorted(built.Select(r => Of(r, "S ms in the plan")));
+            Print($"paired, S on less S off: {string.Join(", ", paired.Select(d => d.ToString("F0", CultureInfo.InvariantCulture)))} ms; median {At(paired, 0.5):F0} ms; {load}");
+            Print($"S in the first plan, its build awaited: p50 {At(after, 0.5):F1} p90 {At(after, 0.9):F1} ms; {load}");
+
+            using var scope = new AssertionScope();
+            At(paired, 0.5).Should().BeLessThanOrEqualTo(500, "line 29b: the first plan on a new schema in a warm process, paired");
+            At(after, 0.5).Should().BeLessThanOrEqualTo(50, "line 29b: the shape's line and 20 ms once the build is done");
+        }
+
+        /// <summary>
+        /// A new schema's first plan of <see cref="FirstPlanSql"/>, implemented, its wall time from when the schema was made:
+        /// a reasoning made for it, its containers bound to it by a harness of its own, as a schema binds those it is handed.
+        /// <c>on</c>: writing armed, and S's build started as the plan reaches its first table, where the switch starts it,
+        /// stood in for by a warm just before the plan; <c>built</c>: writing armed, the build awaited before the clock
+        /// starts; <c>off</c>: nothing armed, and S never built.
+        /// </summary>
+        static (Dictionary<string, string> Figures, CosmosReasoning Reasoning) FirstPlan(string mode)
+        {
+            var figures = new Dictionary<string, string> { ["mode"] = mode };
+            var clock = Stopwatch.StartNew();
+            var reasoning = new CosmosReasoning();
+            var harness = new PlannerHarness(reasoning);
+            using var writing = mode == "off" ? null : CosmosRenderingShadow.Arm(null, writes: true);
+            if (mode == "built")
+            {
+                reasoning.Rendering.Ready.Wait();
+                clock.Restart();
+            }
+            else if (mode == "on")
+                reasoning.Rendering.Warm();
+
+            IReadOnlyList<RenderingCostSample> samples;
+            using (CosmosRenderingCost.Measure(out samples))
+                Implement(harness.PlanToAsync(FirstPlanSql));
+
+            figures["wall ms"] = Ms(clock.Elapsed);
+            if (mode != "off")
+            {
+                figures["S ms in the plan"] = samples.Sum(s => s.Cost.Elapsed.TotalMilliseconds).ToString("F1", CultureInfo.InvariantCulture);
+                figures["S's first question ms (the wait)"] = samples.Count > 0 ? Ms(samples[0].Cost.Elapsed) : "none";
+                figures["bundles"] = samples.Sum(s => s.Cost.Bundles).ToString(CultureInfo.InvariantCulture);
+                figures["declines"] = samples.Sum(s => s.Cost.Declines).ToString(CultureInfo.InvariantCulture);
+            }
+
+            return (figures, reasoning);
+        }
+
+        /// <summary>
+        /// S's build in parts, each figure the time since the first: the registry read (the process's first, or none once it
+        /// has been read), the theory defined and settled, its rows hashed, and a graph of its own built and asked one question.
+        /// </summary>
+        static Dictionary<string, string> Parts()
+        {
+            var figures = new Dictionary<string, string>();
+            var clock = Stopwatch.StartNew();
+            var definition = CosmosRendering.Definition;
+            figures["registry read ms"] = Ms(clock.Elapsed);
+            var theory = RenderingTheory.Define(definition);
+            figures["define and settle ms"] = Ms(clock.Elapsed);
+            _ = RenderingAnswerMemo.DigestOf(theory);
+            figures["digest ms"] = Ms(clock.Elapsed);
+            var answer = new RenderingOracle(new RenderingGraph(() => definition), wait: System.Threading.Timeout.InfiniteTimeSpan).Ask(RenderingSet.Production,
+                [ProbeRows.NotBikes], null, ProbeRows.Source, null, null);
+            figures["a second graph's build and one question ms"] = Ms(clock.Elapsed);
+            figures["answer"] = answer.Of(ProbeRows.NotBikes).Kind.ToString();
+            return figures;
+        }
+
+        static string Ms(TimeSpan t) => t.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture);
 
         /// <summary>
         /// What a bundle interns and spends of its generation, over the corpus planned with S writing through an oracle that
