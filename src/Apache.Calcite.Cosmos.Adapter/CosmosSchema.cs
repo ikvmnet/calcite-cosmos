@@ -55,7 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Initializes a new instance whose unbound containers reason in the given reasoning: the factory's,
         /// or an account schema's, one for all its databases.
         /// </summary>
-        /// <inheritdoc cref="CosmosSchema(IEnumerable{CosmosContainerMetadata}, Func{CosmosContainerMetadata, ICosmosQueryExecutor}, Func{CosmosContainerMetadata, CosmosLookupCache})" path="/param"/>
+        /// <param name="containers">The containers to expose.</param>
+        /// <param name="executorFactory">Returns what executes statements against a container, or <c>null</c> for tables that can only be planned against.</param>
+        /// <param name="lookupCacheFactory">Returns a container's lookup cache across executions, or <c>null</c> for none.</param>
         /// <param name="reasoning">The reasoning to bind unbound containers to, or <c>null</c> to make one where one is needed.</param>
         internal CosmosSchema(
             IEnumerable<CosmosContainerMetadata> containers,
