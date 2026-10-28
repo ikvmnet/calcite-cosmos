@@ -1244,9 +1244,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// a whole number beyond a long, are sent as nothing, and the caller declines.
         /// </para>
         /// <para>
-        /// The window a cast's comparison pushes asks this of each side, for the same reason:
-        /// <see cref="Metadata.CosmosNumericWindow"/>. Loosened by one beyond 2^53, a bound sent as a
-        /// double came back as the number it was loosened from, and excluded the document holding it.
+        /// The loader asks this of a number a conversion is compared with, and the window a cast's
+        /// comparison pushed asked it of each side until S wrote the weakenings: loosened by one beyond
+        /// 2^53, a bound sent as a double came back as the number it was loosened from, and excluded the
+        /// document holding it.
         /// </para>
         /// </remarks>
         /// <param name="value">The number.</param>
@@ -2180,34 +2181,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Recognises a comparand that is the rendering of a document value — the value under a cast
-        /// to text, or a bare <c>JSON_VALUE</c> read as text — and returns the value.
-        /// </summary>
-        /// <param name="node">The expression to inspect.</param>
-        /// <param name="scalarOnly">
-        /// On success, whether only a scalar can render: <c>JSON_VALUE</c> answers null for an object
-        /// or an array, where the cast over <c>ANY</c> renders them with a bracket.
-        /// </param>
-        /// <returns>The value rendered, or <c>null</c> where this is not that shape.</returns>
-        internal static RexNode? TryRenderedTextValue(RexNode node, out bool scalarOnly)
-        {
-            if (TryTextCastValue(node) is RexNode operand)
-            {
-                scalarOnly = IsTextJsonValue(operand);
-                return operand;
-            }
-
-            if (IsTextJsonValue(node) && IsPlainJsonValue(node))
-            {
-                scalarOnly = true;
-                return node;
-            }
-
-            scalarOnly = false;
-            return null;
-        }
-
-        /// <summary>
         /// Determines whether text is one no JSON value other than that string renders as, for the
         /// value it is compared against.
         /// </summary>
@@ -2233,43 +2206,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsUnambiguousScalarText(string text)
         {
             return Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false && text is not ("true" or "false");
-        }
-
-        /// <summary>
-        /// Parses text as the number Calcite renders one as, where it is one.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Whether text is a number's is the oracle's grammar</b> (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>),
-        /// the one the rendering preimage is written in, so the translator and the oracle cannot part on which text a
-        /// stored number can render as: digits, a point, an exponent, a sign. Java's <c>BigDecimal</c> reads the value,
-        /// and read alone it was a second grammar, accepting digits of every script, which no number renders in.
-        /// </para>
-        /// <para>
-        /// Read as a double because that is what the service holds; a literal the type cannot represent exactly rounds as
-        /// the stored text rounds, to the same double. A value beyond the double range parses and comes back infinite,
-        /// which the caller decides; an exponent beyond the parse's range is no number at all. Text out of the grammar is
-        /// refused before it is parsed, so the parse never refuses by throwing, which under IKVM captures a stack trace
-        /// each time and was a measured share of planning (#201).
-        /// </para>
-        /// </remarks>
-        internal static bool TryParseRenderedNumber(string text, out double number)
-        {
-            number = 0;
-
-            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false)
-                return false;
-
-            try
-            {
-                number = new java.math.BigDecimal(text).doubleValue();
-                return true;
-            }
-            catch (java.lang.NumberFormatException)
-            {
-                number = 0;
-                return false;
-            }
         }
 
         /// <summary>
@@ -3492,10 +3428,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>Not for translation.</b> Nothing renders a numeric cast: Calcite converts the stored
         /// value and the service compares it as it stands, so the two select different documents and
-        /// the operator is declined. What this is for is <see cref="Rel.Convert.CosmosFilterSplitRule"/>,
-        /// which pushes a restriction the predicate <em>implies</em> and rechecks the predicate itself
-        /// above — a bound on the raw value is such a restriction, and the cast is what says the value
-        /// is being read as a number at all.
+        /// the operator is declined. What this is for is the predicate loader, which reads the cast as
+        /// a conversion of the value beneath it, so that S states the window the comparison
+        /// <em>implies</em> (<c>PredicateAtom</c>'s numeric cast, with its saturation and rounding) —
+        /// the cast is what says the value is being read as a number at all.
         /// </para>
         /// <para>
         /// <b>A parsing <c>RETURNING</c> is the same question</b>, and was read as the stored value
@@ -3506,25 +3442,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// builder.
         /// </para>
         /// </remarks>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _, out _);
-
-        /// <inheritdoc cref="TryNumericCastOperand(RexNode, RexBuilder)" />
         /// <param name="node">The expression to inspect.</param>
         /// <param name="rexBuilder">Builds the rendering a parsing <c>RETURNING</c> converts.</param>
-        /// <param name="saturates">
-        /// On success, the range the conversion saturates to, or <c>null</c> where it does not
-        /// saturate. A comparison against one of these two values matches every stored value beyond it,
-        /// which a bound must not exclude.
-        /// </param>
-        /// <param name="roundsFrom">
-        /// On success, the magnitude from which the conversion may move a value by a whole unit, or
-        /// <c>null</c> where it never does. A window around a bound that far out holds nothing.
-        /// </param>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates, out java.math.BigDecimal? roundsFrom)
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder)
         {
-            saturates = null;
-            roundsFrom = null;
-
             if (node is not RexCall call)
                 return null;
 
@@ -3537,7 +3458,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // 12345 -- but the comparison may: a literal with more digits casts the value up instead,
             // CAST(...):DECIMAL(11, 1) against 12345, which checks the precision and which this does not
             // read through; and a literal whose whole digits the clause's type cannot hold raises when
-            // cast down to it, which CosmosNumericWindow refuses to read. A behaviour clause substitutes a
+            // cast down to it, which the loader reads as no constant. A behaviour clause substitutes a
             // value the path does not hold, and is not this.
             if (IsParsingJsonValue(call))
             {
@@ -3557,11 +3478,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             // The targets whose conversion is known to land within one of the stored value, which is
-            // what a caller can state a bound from. Measured against Calcite's own runtime, and four
+            // what a bound can be stated from. Measured against Calcite's own runtime, and four
             // plausible members are absent because measuring them is what ruled them out:
             //
             //   INTEGER, BIGINT  over a raw value, truncate toward zero and saturate at the limits --
-            //                    within one, except at the limits, which the caller handles. Over
+            //                    within one, except at the limits, which the atom handles. Over
             //                    JSON_VALUE's rendering, Java's integer parse of the text: a whole number
             //                    lands exactly, and a point, an exponent or a whole number beyond the
             //                    type raises (ACastOfTheAccessorToANumberParsesTheRendering). A bound only
@@ -3570,7 +3491,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             //                    below 2^52. From there half a unit in the last place reaches a half, and
             //                    the stored value and the literal each round to a double: a whole unit
             //                    apart, they can land on one, and = 2^60 keeps a stored 2^60 + 1 (the
-            //                    differential corpus, over declared). The caller states nothing there.
+            //                    differential corpus, over declared). The atom states nothing there.
             //   SMALLINT, TINYINT  do not saturate, they wrap: toShort(1e30) is -1 and toByte(1e30) is
             //                    255, which bear no relation to the stored value at all.
             //   FLOAT, REAL      round to float precision: float(1e30) differs from 1e30 by 1.5e22.
@@ -3582,17 +3503,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (IsRenderedDocumentValue(operand) == false)
-                return null;
-
-            if (target == SqlTypeName.INTEGER)
-                saturates = (new java.math.BigDecimal(int.MinValue), new java.math.BigDecimal(int.MaxValue));
-            else if (target == SqlTypeName.BIGINT)
-                saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
-            else
-                roundsFrom = new java.math.BigDecimal(Apache.Calcite.Cosmos.Facts.Saturation.Renderings.DoubleUnitFrom);
-
-            return operand;
+            return IsRenderedDocumentValue(operand) ? operand : null;
         }
 
         /// <summary>

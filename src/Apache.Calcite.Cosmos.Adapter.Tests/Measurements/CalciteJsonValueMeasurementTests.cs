@@ -411,8 +411,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// The literal is cast to the comparison's type, and against the default <c>DECIMAL(19, 0)</c> that truncates
         /// it toward zero: <c>= 2.5</c> keeps a stored 2, <c>= -2.5</c> a stored -2 and not -3, and <c>= 0.9</c> a stored
-        /// 0. It moves by less than one, which is what lets a comparison through the clause push the window
-        /// <c>CosmosNumericWindow</c> states for a cast to a number.
+        /// 0. It moves by less than one, which is what lets a comparison through the clause be read as the window
+        /// <c>PredicateAtom</c> states for a cast to a number.
         /// </para>
         /// </remarks>
         [Fact]
@@ -451,8 +451,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>2.9999999999999999</c> is 2.
         /// </para>
         /// <para>
-        /// Found by the review of the <c>RETURNING DECIMAL</c> fix. <c>CosmosNumericWindow</c> reads no window through
-        /// the value's cast, and none from a literal whose cast raises.
+        /// Found by the review of the <c>RETURNING DECIMAL</c> fix. The predicate loader reads no reading through the
+        /// value's cast, and no constant from a literal whose cast raises.
         /// </para>
         /// </remarks>
         [Fact]

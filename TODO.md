@@ -2182,8 +2182,8 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
   the text accessor, the raw value, `RETURNING`, the numeric cast and the cast to text as readings of their own;
   comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `IS_DEFINED`, `AND`, `OR`, `NOT`; everything else
-  opaque. `RETURNING DECIMAL` and the constants a conversion is compared with are read as the translator and
-  `CosmosNumericWindow` read them.
+  opaque. `RETURNING DECIMAL` is read as the translator reads it, and the constants a conversion is compared with by
+  the loader's own `TryConstantNumber`, `CosmosNumericWindow`'s until g19 deleted it.
 - **`PredicateRules`**, 45 rules and a split beside `JsonRules`. Every constructor is unextractable.
 - **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata, the licence table with the
   arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
@@ -2249,9 +2249,9 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   lowered forms. It wants a declaration in which each path's form hangs on the other's value, which nothing in the
   corpus or the tests has; the strata would settle it as they settle rendering, an ordering lowered only on the
   conjuncts lowered before it.
-- **The translator over the IR** — *large, Stage 3a's other half.* The weakening's window is
-  `CosmosNumericWindow`'s and the atom's both, agreeing through one constant and one reading of a literal, until a
-  translator over the IR takes it from the one.
+- **The translator over the IR** — *large, Stage 3a's other half.* The numeric window was `CosmosNumericWindow`'s and
+  the atom's both, agreeing through one reading of the constant. Since g19 it is the atom's alone, which S states and
+  does not write (O7, below), and the constant is the loader's; a translator over the IR would write it from there.
 - **What the checker does not reach yet** — *small each.*
   - **The raw readings against Calcite.** A `VARIANT` is the adapter reader's, so C2 needs the reader's
     materialisation of a document, or the emulator; until then the evaluator draws them from the table, which tests
@@ -2887,9 +2887,11 @@ across documents* and *A join of a container to itself* is the record.
   asked beside and the plants G9, G11 and G12 read moved to a test schema's probe (`ICosmosRenderingProbe`). The
   production and test lines are in the pull request's measure report.
 - **What g18 deleted** — *done.* J, the split rule's own weakening, which nothing had called since g17: 933 lines,
-  with M11's site and its value in the translator's faults (`DESIGN.md`, *J deleted*). Left for g19, each read by
-  nothing now: K's `CosmosNumericWindow.TryRead` and the translator's `TryRenderedTextValue` and
-  `TryParseRenderedNumber`.
+  with M11's site and its value in the translator's faults (`DESIGN.md`, *J deleted*).
+- **What g19 deleted** — *done.* K, `CosmosNumericWindow`, 191 lines, its `TryConstantNumber` moved into the loader (44),
+  and J's two helpers in the translator, `TryRenderedTextValue` and `TryParseRenderedNumber` (63), with
+  `TryNumericCastOperand`'s saturation and rounding outputs, which only K read (`DESIGN.md`, *K deleted*). Left for g20:
+  the translator's fault plants, M1–M10, X1 and X2, which no test plants.
 - **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
   `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
   container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the

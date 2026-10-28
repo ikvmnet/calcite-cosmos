@@ -114,9 +114,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The translator reads text as a number's exactly where the oracle's grammar does, over generated text of digits,
-        /// points, exponents and signs, spaces, words and digits of another script, which <c>BigDecimal</c> alone reads as a
-        /// number and no stored number renders in.
+        /// The translator holds every text the oracle's grammar reads as a number's to be ambiguous, over generated text of
+        /// digits, points, exponents and signs, spaces, words and digits of another script, which <c>BigDecimal</c> alone
+        /// reads as a number and no stored number renders in.
         /// </summary>
         [Fact]
         public void TheTranslatorReadsNumberTextByTheOraclesGrammar()
@@ -128,7 +128,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var text = string.Concat(Enumerable.Range(0, random.Next(0, 6)).Select(_ => alphabet[random.Next(alphabet.Length)]));
 
-                Adapter.Sql.CosmosRexTranslator.TryParseRenderedNumber(text, out _).Should().Be(Renderings.MayBeNumberText(text), $"\"{text}\"");
                 if (Renderings.MayBeNumberText(text))
                     Adapter.Sql.CosmosRexTranslator.IsUnambiguousText(text).Should().BeFalse($"\"{text}\" may be a number's rendering");
             }
@@ -225,8 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// unit wide: no window holds around such a bound, and two numbers a unit apart are one double past 2^53.
         /// </summary>
         /// <remarks>
-        /// <c>CosmosNumericWindow</c> reads no window there either (<c>CosmosRexTranslator.TryNumericCastOperand</c>
-        /// reports where the conversion rounds from), measured as <c>= 2^60</c> keeping a stored 2^60 + 1.
+        /// Measured as <c>= 2^60</c> keeping a stored 2^60 + 1.
         /// </remarks>
         [Fact]
         public void ADoubleCastStatesNoWindowWhereADoublesUnitIsWhole()

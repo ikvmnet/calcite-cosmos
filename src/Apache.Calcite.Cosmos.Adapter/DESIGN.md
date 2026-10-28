@@ -7762,6 +7762,25 @@ test turns S off.
 `TryParseRenderedNumber` are read by nothing now, and g19 deletes them; the translator's other plants, M1–M10, X1 and
 X2, are planted by no test and go at g20.
 
+### K deleted
+
+**What went (g19).** K, `CosmosNumericWindow`, the window a comparison through a numeric cast implies of the raw value
+— its record, `TryRead`, `Holds`, `Mirror` and remarks, 191 of its 235 lines — which only J's numeric bound read. The
+other 44, `TryConstantNumber`, moved into `CosmosPredicateLoader`, its one other caller. With it went J's two helpers in
+the translator, read by its text-equality alternatives alone: `TryRenderedTextValue` and `TryParseRenderedNumber`, 63
+lines. `TryNumericCastOperand` loses its saturation and rounding outputs, which only K read, and keeps the one overload
+the loader asks. No plan moves: nothing in planning had read any of it since g18.
+
+**Where its decisions are now.**
+- **The window** is `PredicateAtom`'s numeric cast: loosened by the same whole unit, a side stated only where the cast's
+  saturation limit fails the comparison, and none around a bound where a double's unit is whole
+  (`Renderings.DoubleUnitFrom`). S states it and never writes it, a listed loss (O7) until Stage 3's guarded spelling.
+- **The constant a conversion is compared with** is the loader's alone, read through the casts around it, a `DECIMAL`
+  its whole digits do not fit refused, so a literal Calcite raises on is no constant to S either. K's window and the
+  loader read it through one method, so J's bound and S's atom could not part on it; now the loader alone reads it.
+- **Number text** is the oracle's grammar, `Renderings.MayBeNumberText`, which the translator's unambiguity test asks.
+  `TheTranslatorReadsNumberTextByTheOraclesGrammar` keeps that half; the parse it held beside the grammar went with J.
+
 ---
 
 ## Differential testing
