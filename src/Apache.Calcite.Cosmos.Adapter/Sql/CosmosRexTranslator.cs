@@ -4283,9 +4283,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             right = StripVariantCoercion(right);
 
             // A rendering compared with text is compared as text, in Calcite. Compared with a number it is not
-            // Calcite's comparison at all — the validator compares text with text — but the split rule's bound on
-            // the raw value, which carries its own type test (CosmosFilterSplitRule.TryBoundNumericCast), and is read
-            // as that value.
+            // Calcite's comparison at all — the validator compares text with text — but a bound on the raw value
+            // beneath its own type test, as the split rule's numeric window wrote one before S wrote its weakenings,
+            // and is read as that value.
             var text = IsTextComparand(left) && IsTextComparand(right);
 
             return (OrderOperand(left, text), OrderOperand(right, text));
@@ -4582,8 +4582,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// What decides that a comparison is against a rendering. <c>JSON_VALUE</c> read as text is
         /// <c>VARCHAR</c>, so a comparison against another character value is Calcite comparing two
         /// renderings — and the service comparing a raw value against one. A comparison against a
-        /// <em>number</em> is not that: nothing types such a call from SQL, and the one that exists
-        /// is built by <c>CosmosFilterSplitRule</c> against the raw value on purpose, which is
+        /// <em>number</em> is not that: nothing types such a call from SQL, and the split rule's own
+        /// weakening built one against the raw value on purpose, before S wrote the weakenings —
         /// exactly the comparison the service should make.
         /// </remarks>
         static bool IsCharacter(RexNode node)
@@ -4678,12 +4678,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Two consumers, one question.</b> The split rule asks it to decide whether a branch
-        /// implies the paths it reads are defined, and pushes <c>IS_DEFINED</c> of each where it
-        /// does — see <see cref="Rel.Convert.CosmosFilterSplitRule"/>. The guard a comparison takes
-        /// asks it to decide whether SQL's comparison is unknown exactly where those paths are null —
-        /// see <see cref="WriteComparison"/>. Both are the claim that the expression follows its
-        /// paths into unknown, and an expression that observes absence is the one it is false of.
+        /// <b>The guard's question.</b> The guard a comparison takes asks it to decide whether SQL's
+        /// comparison is unknown exactly where the paths it reads are null — see
+        /// <see cref="WriteComparison"/>: the claim that the expression follows its paths into unknown,
+        /// and an expression that observes absence is the one it is false of. The split rule's own
+        /// weakening asked it too, of whether a branch implied its paths defined, until S wrote the
+        /// weakenings from the strictness rows and the split rule's was deleted.
         /// </para>
         /// <para>
         /// Measured against a real account, a comparison on an absent property is <em>undefined</em>
@@ -4755,9 +4755,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// than unknown.
         /// </summary>
         /// <remarks>
-        /// Asked of the node as it stands, because one consumer does not expand it. The split rule
-        /// weakens the predicate the planner hands it, and over a projection Calcite's own
-        /// simplification hands it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
+        /// Asked of the node as it stands, because a consumer need not expand it. The split rule's own
+        /// weakening, before S wrote them, read the predicate the planner handed it, and over a projection
+        /// Calcite's own simplification handed it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
         /// arrived as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS TRUE])</c>, read as strict, and was
         /// weakened to <c>IS_DEFINED(c.metadata.sku)</c> — keeping one product where SQL keeps all
         /// seven.

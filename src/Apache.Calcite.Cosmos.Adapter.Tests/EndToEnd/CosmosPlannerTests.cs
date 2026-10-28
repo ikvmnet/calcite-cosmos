@@ -1654,8 +1654,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// compared with to be of one class, and planning threw a <c>ClassCastException</c>. Measured
         /// through a connection — the host's own prepare, against the emulator and offline —
         /// <c>= '30'</c>, <c>= 'true'</c>, the cast form, the view's column and the partition key's cast
-        /// form each failed to plan. The number and the boolean now read the value in their own type —
-        /// the accessor re-typed, or the literal boxed as <c>VARIANT</c> where the value is a column.
+        /// form each failed to plan. The split rule's own weakening then read the number and the boolean in
+        /// their own type — the accessor re-typed, or the literal boxed as <c>VARIANT</c> where the value is a
+        /// column — and went with the rest of it once S wrote the weakenings.
         /// </para>
         /// <para>
         /// Since the switch S writes the family: where the text is what a boolean renders as, the string or the boolean
@@ -3717,11 +3718,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <remarks>
         /// The other side of the one above. Calcite classifies none of these — each reports
-        /// <see cref="Strong.Policy.AS_IS"/> — so each is one the split rule names, measured in process
-        /// to answer null over a path no document has. The last is an accessor over a scalar rendering,
-        /// which addresses no path of its own and is null where the rendering it parses is; the IR reads the nested
-        /// accessor as opaque, so S proves no presence beneath it, where the translator pushed the name's: an O7 listed
-        /// loss (J's presence unproven to S). RU, never rows.
+        /// <see cref="Strong.Policy.AS_IS"/> — so each is one <c>Calcite.ListedFunctionsAreNullOverANullOperand</c>
+        /// names, measured in process to answer null over a path no document has. The last is an accessor over a
+        /// scalar rendering, which addresses no path of its own and is null where the rendering it parses is; the IR
+        /// reads the nested accessor as opaque, so S proves no presence beneath it, where the translator pushed the
+        /// name's: an O7 listed loss (J's presence unproven to S). RU, never rows.
         /// </remarks>
         [Theory]
         [InlineData("REPLACE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'B', 'C') = 'C-2'", "c.metadata.sku")]

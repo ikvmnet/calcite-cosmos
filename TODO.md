@@ -449,11 +449,12 @@ statements, fourteen of which answered differently before. What that leaves:
   `n` first. The same reading would make the clause a second spelling of the numeric-string lowering
   (`CosmosFactRewriter.NumericAccessorOf`), which reads only the cast.
 - **`<>`, a negated equality, `IS NOT NULL`, and a literal with more digits than the clause** —
-  *small*. They push nothing, not even the `IS_DEFINED` every comparison implies, because
-  `CosmosFilterSplitRule.CollectPaths` finds no path in an accessor that addresses none. The last is
-  `RETURNING DECIMAL(10, 2) = 2.255`, where Calcite casts the value up to `DECIMAL(11, 3)` and the window
-  does not read through a cast to `DECIMAL`, so the container is read whole. Seeing through the parse to
-  the rendering there, as the window does, would recover all four.
+  *small*. They pushed nothing, not even the `IS_DEFINED` every comparison implies, because
+  `CosmosFilterSplitRule.CollectPaths` found no path in an accessor that addresses none. *Since the switch*
+  S reads the clause: `<> 2` and `NOT (= 2)` send the path's presence and `IS NOT NULL` is exact
+  (differential 323–325), and the walk went with J (g18). The last, `RETURNING DECIMAL(10, 2) = 2.255`,
+  where Calcite casts the value up to `DECIMAL(11, 3)`, is the shape of §10's *A typed reading compared
+  with a fraction keeps no presence*.
 
 *Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
 literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
@@ -2620,8 +2621,9 @@ across documents* and *A join of a container to itself* is the record.
   column or a cast under `UPPER`, `LOWER`, `COALESCE` or `||`, and every one of those but the
   `COALESCE` is null for a null — which is why the run never met a function that answers a value
   over one, and review did. Drawing `CONCAT_WS`, a constructor read through `CARDINALITY` or an
-  element, and a library function or two would let it ask the question `IsNullWhereAnOperandIs`
-  answers. Each costs Calcite's evaluation of it in every statement that draws it.
+  element, and a library function or two would let it ask the question the strictness rows answer
+  (`CosmosStrictness`; J's `IsNullWhereAnOperandIs` until g18). Each costs Calcite's evaluation of it in
+  every statement that draws it.
 - **Where the gate's partition run belongs** — *small, and the owner's call.* Every run of the
   differential class judges the first 200 predicates, in three to five minutes; the gate's 1,000
   run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
@@ -2869,21 +2871,25 @@ across documents* and *A join of a container to itself* is the record.
   `IS_NUMBER(c.price) AND c.price > 50` weaken to presence. RU, never rows. No carrier operator, re-typed accessor or
   other way of sending what the Rex does not mean is built. The fix is a guarded spelling S can prove, in the shape of
   `CASE WHEN IS_NUMBER(x) THEN CAST(x AS DOUBLE) > n ELSE FALSE END`, once the loader reads `IS_NUMBER` and `CASE`: Stage 3.
-- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED` and the
-  type test where the facts say the path holds the type (`Guarded`); the template always writes them, so under such a
-  declaration S's weakening is longer text for the same rows.
-- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* The split rule's walk
-  reads a connective inside a conjunct it cannot translate for its truth or falsity, `AND` true needing every
-  conjunct's paths and `OR` false every branch's (`CollectPaths`); S reads the conjunct's top call and its operands as
-  values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
-  both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
-  `LIKE` in the IR.
+- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* J deleted `IS_DEFINED` and the type test
+  where the facts say the path holds the type (`Guarded`, gone with J at g18); the template always writes them, so under
+  such a declaration S's weakening is longer text for the same rows.
+- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* J's walk read a
+  connective inside a conjunct it could not translate for its truth or falsity, `AND` true needing every conjunct's
+  paths and `OR` false every branch's (`CollectPaths`, gone with J at g18); S reads the conjunct's top call and its
+  operands as values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where
+  the walk kept both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with
+  type tests and `LIKE` in the IR.
 - **The shadow's sites read the flow's arm** — *done at g17.* The arm is gone, and the sites ask S unconditionally but
   where a test turns S off for its flow (`CosmosRendering.TurnOff`): one `volatile bool` a statement and a `toRel`.
 - **What g17 deleted** — *done.* The shadow's arm and observer, the split rule's `Shadowed` and `projecting`, the
   statement's record of whether its admission took S's answers and its sets beside its own; the bundle hook, the sets
   asked beside and the plants G9, G11 and G12 read moved to a test schema's probe (`ICosmosRenderingProbe`). The
   production and test lines are in the pull request's measure report.
+- **What g18 deleted** — *done.* J, the split rule's own weakening, which nothing had called since g17: 933 lines,
+  with M11's site and its value in the translator's faults (`DESIGN.md`, *J deleted*). Left for g19, each read by
+  nothing now: K's `CosmosNumericWindow.TryRead` and the translator's `TryRenderedTextValue` and
+  `TryParseRenderedNumber`.
 - **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
   `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
   container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the
@@ -2915,7 +2921,8 @@ across documents* and *A join of a container to itself* is the record.
   refuses from the stratum's facts, as a raw string ordering it cannot prove, is then pushed by nothing: the grammar's
   round trip shows the shape (a raw column's orderings), and the switch's listing classes each such statement with its
   weakening (none dropped for it at the gate). With S writing, the inner filter's statement asks S of every member the
-  loader reads, so the gate need only be the translator's for a member S does not own: g18, when J goes.
+  loader reads, so the gate need only be the translator's for a member S does not own. g18 deleted J and kept the gate,
+  its plans byte-equal to the switch's, as spec §5.1 keeps `TryTranslate` for Stage 2; narrowing it is Stage 3's.
 - **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
   only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
   residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,

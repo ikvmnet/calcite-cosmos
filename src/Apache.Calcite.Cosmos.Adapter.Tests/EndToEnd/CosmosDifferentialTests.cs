@@ -1316,9 +1316,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // The bare accessor, which is that cast with nothing written: Calcite renders the number 30
             // as '30' and keeps the document, the service does not. Held to the same literal test, so
-            // the first pushes and the other two are declined and decided in process, over the
-            // disjunction the split rule pushes -- the string or the number, the string or the
-            // boolean. The bracketed literal is exact over the accessor, an array being null to it.
+            // the first pushes and the other two were declined and decided in process, over the
+            // disjunction the split rule's own weakening pushed -- the string or the number, the
+            // string or the boolean. Since the switch S sends '30' as the property's presence and
+            // 'true' whole, as the string or the boolean. The bracketed literal is exact over the
+            // accessor, an array being null to it.
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'bikes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", false),

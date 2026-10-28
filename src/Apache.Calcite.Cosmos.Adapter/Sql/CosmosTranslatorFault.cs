@@ -44,8 +44,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary><c>RETURNING DECIMAL</c> is written as the path (78e5939).</summary>
         M10 = 1 << 9,
 
-        /// <summary>A text equality's weakening loses its number (8d57df0); planted at the split rule's weakening.</summary>
-        M11 = 1 << 10,
+        // M11 (1 << 10), a text equality's weakening that loses its number (8d57df0), was planted in the split
+        // rule's own weakening, and went with it: S writes every weakening, and M11 is planted in its lift
+        // (RenderingGenerateMutationTests).
 
         /// <summary>Control: a <c>CASE</c> condition written in the <c>CASE</c>'s position, which the loader does not read.</summary>
         X1 = 1 << 11,

@@ -369,7 +369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <remarks>
         /// <para>
-        /// It did not plan. The split rule pushes <c>c.label = '30' OR c.label = 30</c> under the
+        /// It did not plan. The split rule pushed <c>c.label = '30' OR c.label = 30</c> under the
         /// comparison Calcite makes, and wrote both over one raw value; a connection registers
         /// <c>FILTER_REDUCE_EXPRESSIONS</c> among Calcite's defaults, its simplifier compared the string
         /// with the double, and the statement failed with a <c>ClassCastException</c> — <c>= '30'</c>,

@@ -7727,6 +7727,41 @@ wherever S sends the form the translator writes from the same stratum, but where
 a test inside a junction, which the printer writes bare and the reader reads as one form: five members of S's
 weakenings a pull request, sent by the inner filters since the switch, reported.
 
+### J deleted
+
+**What went (g18).** J, the split rule's own weakening: the guards a fact deletes (`Guarded`, `Known`), the string
+branch over a rendering (`TryTextComparisonWeakening`, `TryRenderedAccessor`, `IsCharacter`), the presence walk
+(`CollectPaths`, `Reading`, `Negated`, `Union`, `Common`, `IsNullWhereAnOperandIs`, `TryComparedWithBoolean`,
+`KindOf`, the `ObservesAbsence` forwarder), the numeric window's bound (`TryBoundNumericCast`), the text-equality
+alternatives with their re-typed accessor and `VARIANT` box (`TryTextEqualityAlternatives`, `NumberRenderedAs`,
+`EqualsOtherThanText`), and its entry points (`TryWeaken`, `TryWeakenConjunct`, `TryWeakenDisjunction`): 933 of the
+rule's 1,269 lines. M11's site went with the alternatives, and its value with it from the translator's faults.
+`RawValue` had moved to `RenderingRexBuilder` (g14). `TryComparedWithBoolean` had not moved to the loader, which reads
+a predicate compared with `TRUE` as that comparison's call, its strictness the rows' (g04), so J's copy went with J. No
+plan moves: nothing has called J since g17, the split rule pushing S's weakening of every residual and none where a
+test turns S off.
+
+**Where its decisions are now.** Each is S's, a rule or a row, or a loss listed by name:
+- **The presence walk** is the `strict` and `weaken` rules over the `strictop` and `strictreader` rows: J's list of
+  functions null over a null is `Calcite.ListedFunctionsAreNullOverANullOperand`, Calcite's `Strong.Policy.ANY` is read
+  by `CosmosStrictness` as J read it, and a call neither names implies nothing, as before. Presence stops at the call
+  that answers over a null, so no whole-expression refusal stands in for `ObservesAbsence`, which the translator keeps
+  for its guard. A connective inside an opaque term, which the walk read for its truth or falsity, is read as a value
+  (`TODO.md`, a loss beside J).
+- **A disjunction's weakening** is the `weaken` rules' join of its branches' implied forms, none where a branch implies
+  nothing, as `TryWeakenDisjunction` gave up on one.
+- **The string branch** is template C1, which the gate admits under the statement's set; under the emulator's it is
+  unproven over strings nothing keeps U+0000 out of, and P4 weakens there to presence (O7, listed).
+- **The guards a fact deletes** are not deleted: C1 writes them whatever is declared, longer text for the same rows
+  (`TODO.md`).
+- **The numeric window and the text equality's number branch** are not written: no accessor of the conjunct writes
+  either as its form means, so each weakens to presence (O7's loss 1 and the cast's, until Stage 3's guarded spelling).
+  The re-typed accessor went with them, and the `VARIANT` box, which cost a reducing host 1.5–3 s of planning.
+
+**What is left of it.** `CosmosNumericWindow.TryRead` (K) and the translator's `TryRenderedTextValue` and
+`TryParseRenderedNumber` are read by nothing now, and g19 deletes them; the translator's other plants, M1–M10, X1 and
+X2, are planted by no test and go at g20.
+
 ---
 
 ## Differential testing
