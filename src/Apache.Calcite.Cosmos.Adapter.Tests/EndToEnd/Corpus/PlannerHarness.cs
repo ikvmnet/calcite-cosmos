@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         internal static RelNode Plan(string sql, IEnumerable<CosmosContainerMetadata> containers, SqlOperatorTable operators, bool collations, bool calc)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var tables = containers.Select(container => new CosmosTable(TestReasoning.Bind(container))).ToList();
+            var tables = containers.Select(TestReasoning.Bind).Select(bound => TestReasoning.Checked(new CosmosTable(bound), bound)).ToList();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             foreach (var table in tables)

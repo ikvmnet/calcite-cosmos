@@ -187,7 +187,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             var tables = new Dictionary<string, CosmosTable>();
 
             foreach (var container in All)
-                tables[container.Name] = new CosmosTable(reasoning is null ? TestReasoning.Bind(container) : container.WithReasoning(reasoning));
+            {
+                var bound = reasoning is null ? TestReasoning.Bind(container) : container.WithReasoning(reasoning);
+                tables[container.Name] = TestReasoning.Checked(new CosmosTable(bound), bound);
+            }
 
             return tables;
         }

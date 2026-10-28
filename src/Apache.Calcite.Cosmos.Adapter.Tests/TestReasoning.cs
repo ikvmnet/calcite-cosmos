@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -49,6 +50,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <returns>The bound theory, the same copy each time for the same theory.</returns>
         public static JsonFactTheory Bind(JsonFactTheory theory) =>
             theory.Generations is not null ? theory : Theories.GetValue(theory, t => t.In(Shared.Facts));
+
+        /// <summary>
+        /// Returns a table a harness built per plan, having checked that it reasons in <see cref="Shared"/> or in the
+        /// reasoning its metadata was handed with: a fixture left unbound makes a reasoning of its own each plan and
+        /// compiles its declaration again, which passes every assertion and only costs time.
+        /// </summary>
+        /// <param name="table">The table.</param>
+        /// <param name="given">The metadata it was built over.</param>
+        /// <returns>The table.</returns>
+        /// <exception cref="InvalidOperationException">The table made a reasoning of its own.</exception>
+        public static CosmosTable Checked(CosmosTable table, CosmosContainerMetadata given) =>
+            ReferenceEquals(table.Container.Reasoning, Shared) || (given.Reasoning is not null && ReferenceEquals(table.Container.Reasoning, given.Reasoning))
+                ? table
+                : throw new InvalidOperationException($"The fixture '{given.Name}' made a reasoning of its own: bind it with TestReasoning.Bind where it is declared.");
 
     }
 

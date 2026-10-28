@@ -89,8 +89,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// </summary>
         static readonly CosmosContainerMetadata[] Containers =
         [
-            new("products", new[] { "/category" }),
-            new("typed", new[] { "/category" }),
+            TestReasoning.Bind(new CosmosContainerMetadata("products", new[] { "/category" })),
+            TestReasoning.Bind(new CosmosContainerMetadata("typed", new[] { "/category" })),
             Declaring("ordering", "/category", CosmosPushdownProbeTests.OrderingSchema),
             Declaring("declared", "/category", """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }"""),
             Declaring("kinds", "/kind", CosmosPushdownProbeTests.KindsSchema),
@@ -319,7 +319,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         static RelNode PlanOver(string sql)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var tables = Containers.Select(container => new CosmosTable(container)).ToArray();
+            var tables = Containers.Select(container => TestReasoning.Checked(new CosmosTable(container), container)).ToArray();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             foreach (var table in tables)
