@@ -401,9 +401,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </para>
         /// <para>
         /// <b>It is the cast of the rendering, written as a clause</b>, and is read as one:
-        /// <see cref="TryNumericCastOperand(RexNode, RexBuilder)"/> takes it, so a comparison through it
-        /// pushes the window it puts a stored number in and is rechecked above, exactly as
-        /// <c>CAST(JSON_VALUE(…) AS INTEGER)</c> is. Refused as a path
+        /// <see cref="TryNumericCastOperand(RexNode, RexBuilder)"/> takes it, so the oracle's loader reads a
+        /// comparison through it as the window it puts a stored number in, as it reads
+        /// <c>CAST(JSON_VALUE(…) AS INTEGER)</c>; what is sent is the presence S proves of the path, and the
+        /// comparison is rechecked above. Refused as a path
         /// everywhere else — <see cref="IsJsonAccessor"/> — so a projection, a sort key, a grouping key,
         /// a partition key and a fact all stay where Calcite computes them.
         /// </para>
@@ -1244,9 +1245,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// a whole number beyond a long, are sent as nothing, and the caller declines.
         /// </para>
         /// <para>
-        /// The window a cast's comparison pushes asks this of each side, for the same reason:
-        /// <see cref="Metadata.CosmosNumericWindow"/>. Loosened by one beyond 2^53, a bound sent as a
-        /// double came back as the number it was loosened from, and excluded the document holding it.
+        /// The loader asks this of a number a conversion is compared with, and the window a cast's
+        /// comparison pushed asked it of each side until S wrote the weakenings: loosened by one beyond
+        /// 2^53, a bound sent as a double came back as the number it was loosened from, and excluded the
+        /// document holding it.
         /// </para>
         /// </remarks>
         /// <param name="value">The number.</param>
@@ -1391,8 +1393,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// document, and <c>NOT (… = 'bikes')</c> kept the object and the array.
         /// </para>
         /// <para>
-        /// <c>null</c> for the raw value — a promoted column, a field typed as itself, an accessor the
-        /// split rule re-typed <c>ANY</c> — which is null only where the path is absent or holds null,
+        /// <c>null</c> for the raw value — a promoted column, a field typed as itself, an accessor S's Rex
+        /// builder typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>) — which is null only where the path is absent or holds null,
         /// and which the null test and the guard already say in full.
         /// </para>
         /// </remarks>
@@ -1411,7 +1413,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (node is RexCall call && call.getOperator().getName() == "JSON_VALUE")
             {
-                // Typed ANY by the split rule to name the raw value at the path rather than the
+                // Typed ANY by S's Rex builder to name the raw value at the path rather than the
                 // reading -- see IsDocumentValueType -- and the raw value is what that comparison is.
                 if (IsDocumentValueType(call.getType()?.getSqlTypeName()))
                     return null;
@@ -1806,8 +1808,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // plan its type. Handled ahead of the kind switch so that every clause reaching here —
             // a projection, a predicate, a sort key, an aggregate argument — gets it without a case
             // of its own.
-            if ((IsJsonAccessor(call) || CosmosTranslatorFaults.Has(CosmosTranslatorFault.M10) && IsParsingJsonValue(call))
-                && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
+            if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
                 RequireTheEngineCouldRead(call, jsonPath);
 
@@ -1820,11 +1821,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             // Said here rather than left to the function table, which would call JSON_VALUE unsupported:
-            // it is the conversion the clause names that has no Cosmos form, and the bound it implies
-            // still pushes -- see IsParsingJsonValue.
+            // it is the conversion the clause names that has no Cosmos form, and a comparison through it
+            // sends the path's presence S proves -- see IsParsingJsonValue.
             if (IsParsingJsonValue(call))
                 throw new CosmosTranslationException(
-                    "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine. A comparison through it pushes the bound it implies, as a cast to a number does.");
+                    "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine; a comparison through it sends the property's presence.");
 
             // The position a NOT puts its operand in belongs to predicates, and only the connectives
             // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
@@ -2142,8 +2143,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// <para>
         /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
-        /// right, what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not, and
-        /// what the oracle's loader reads a value through (<see cref="Metadata.CosmosPredicateLoader"/>),
+        /// right, and what the oracle's loader reads a value through (<see cref="Metadata.CosmosPredicateLoader"/>),
+        /// S's weakening among what it proves,
         /// and so every fact a filter establishes and every key it pins.
         /// </para>
         /// <para>
@@ -2180,34 +2181,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Recognises a comparand that is the rendering of a document value — the value under a cast
-        /// to text, or a bare <c>JSON_VALUE</c> read as text — and returns the value.
-        /// </summary>
-        /// <param name="node">The expression to inspect.</param>
-        /// <param name="scalarOnly">
-        /// On success, whether only a scalar can render: <c>JSON_VALUE</c> answers null for an object
-        /// or an array, where the cast over <c>ANY</c> renders them with a bracket.
-        /// </param>
-        /// <returns>The value rendered, or <c>null</c> where this is not that shape.</returns>
-        internal static RexNode? TryRenderedTextValue(RexNode node, out bool scalarOnly)
-        {
-            if (TryTextCastValue(node) is RexNode operand)
-            {
-                scalarOnly = IsTextJsonValue(operand);
-                return operand;
-            }
-
-            if (IsTextJsonValue(node) && IsPlainJsonValue(node))
-            {
-                scalarOnly = true;
-                return node;
-            }
-
-            scalarOnly = false;
-            return null;
-        }
-
-        /// <summary>
         /// Determines whether text is one no JSON value other than that string renders as, for the
         /// value it is compared against.
         /// </summary>
@@ -2233,43 +2206,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsUnambiguousScalarText(string text)
         {
             return Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false && text is not ("true" or "false");
-        }
-
-        /// <summary>
-        /// Parses text as the number Calcite renders one as, where it is one.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Whether text is a number's is the oracle's grammar</b> (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>),
-        /// the one the rendering preimage is written in, so the translator and the oracle cannot part on which text a
-        /// stored number can render as: digits, a point, an exponent, a sign. Java's <c>BigDecimal</c> reads the value,
-        /// and read alone it was a second grammar, accepting digits of every script, which no number renders in.
-        /// </para>
-        /// <para>
-        /// Read as a double because that is what the service holds; a literal the type cannot represent exactly rounds as
-        /// the stored text rounds, to the same double. A value beyond the double range parses and comes back infinite,
-        /// which the caller decides; an exponent beyond the parse's range is no number at all. Text out of the grammar is
-        /// refused before it is parsed, so the parse never refuses by throwing, which under IKVM captures a stack trace
-        /// each time and was a measured share of planning (#201).
-        /// </para>
-        /// </remarks>
-        internal static bool TryParseRenderedNumber(string text, out double number)
-        {
-            number = 0;
-
-            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false)
-                return false;
-
-            try
-            {
-                number = new java.math.BigDecimal(text).doubleValue();
-                return true;
-            }
-            catch (java.lang.NumberFormatException)
-            {
-                number = 0;
-                return false;
-            }
         }
 
         /// <summary>
@@ -2708,7 +2644,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// value from its rendering.
         /// </para>
         /// </remarks>
-        internal bool IsTextRendering(RexNode node)
+        bool IsTextRendering(RexNode node)
         {
             if (IsTextJsonValue(node))
                 return true;
@@ -2735,7 +2671,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="node">The expression to inspect.</param>
         /// <param name="upper">On success, whether the fold is to upper case.</param>
         /// <returns>The folded expression, or <c>null</c> where this is not a fold.</returns>
-        internal static RexNode? TryCaseFoldOperand(RexNode node, out bool upper)
+        static RexNode? TryCaseFoldOperand(RexNode node, out bool upper)
         {
             upper = false;
 
@@ -3492,39 +3428,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>Not for translation.</b> Nothing renders a numeric cast: Calcite converts the stored
         /// value and the service compares it as it stands, so the two select different documents and
-        /// the operator is declined. What this is for is <see cref="Rel.Convert.CosmosFilterSplitRule"/>,
-        /// which pushes a restriction the predicate <em>implies</em> and rechecks the predicate itself
-        /// above — a bound on the raw value is such a restriction, and the cast is what says the value
-        /// is being read as a number at all.
+        /// the operator is declined. What this is for is the predicate loader, which reads the cast as
+        /// a conversion of the value beneath it, so that S states the window the comparison
+        /// <em>implies</em> (<c>PredicateAtom</c>'s numeric cast, with its saturation and rounding) —
+        /// the cast is what says the value is being read as a number at all.
         /// </para>
         /// <para>
         /// <b>A parsing <c>RETURNING</c> is the same question</b>, and was read as the stored value
         /// instead — see <see cref="IsParsingJsonValue"/>. It has no operand to return, the clause
         /// adding none, so the value it converts is written out: the same call typed as the bare
-        /// accessor is, which is the rendering a cast to a number reads and which the translator writes
-        /// as the path where the bound compares it with a number. Built rather than found, hence the
+        /// accessor is, which is the rendering a cast to a number reads. Built rather than found, hence the
         /// builder.
         /// </para>
         /// </remarks>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _, out _);
-
-        /// <inheritdoc cref="TryNumericCastOperand(RexNode, RexBuilder)" />
         /// <param name="node">The expression to inspect.</param>
         /// <param name="rexBuilder">Builds the rendering a parsing <c>RETURNING</c> converts.</param>
-        /// <param name="saturates">
-        /// On success, the range the conversion saturates to, or <c>null</c> where it does not
-        /// saturate. A comparison against one of these two values matches every stored value beyond it,
-        /// which a bound must not exclude.
-        /// </param>
-        /// <param name="roundsFrom">
-        /// On success, the magnitude from which the conversion may move a value by a whole unit, or
-        /// <c>null</c> where it never does. A window around a bound that far out holds nothing.
-        /// </param>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates, out java.math.BigDecimal? roundsFrom)
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder)
         {
-            saturates = null;
-            roundsFrom = null;
-
             if (node is not RexCall call)
                 return null;
 
@@ -3537,7 +3457,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // 12345 -- but the comparison may: a literal with more digits casts the value up instead,
             // CAST(...):DECIMAL(11, 1) against 12345, which checks the precision and which this does not
             // read through; and a literal whose whole digits the clause's type cannot hold raises when
-            // cast down to it, which CosmosNumericWindow refuses to read. A behaviour clause substitutes a
+            // cast down to it, which the loader reads as no constant. A behaviour clause substitutes a
             // value the path does not hold, and is not this.
             if (IsParsingJsonValue(call))
             {
@@ -3557,11 +3477,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             // The targets whose conversion is known to land within one of the stored value, which is
-            // what a caller can state a bound from. Measured against Calcite's own runtime, and four
+            // what a bound can be stated from. Measured against Calcite's own runtime, and four
             // plausible members are absent because measuring them is what ruled them out:
             //
             //   INTEGER, BIGINT  over a raw value, truncate toward zero and saturate at the limits --
-            //                    within one, except at the limits, which the caller handles. Over
+            //                    within one, except at the limits, which the atom handles. Over
             //                    JSON_VALUE's rendering, Java's integer parse of the text: a whole number
             //                    lands exactly, and a point, an exponent or a whole number beyond the
             //                    type raises (ACastOfTheAccessorToANumberParsesTheRendering). A bound only
@@ -3570,7 +3490,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             //                    below 2^52. From there half a unit in the last place reaches a half, and
             //                    the stored value and the literal each round to a double: a whole unit
             //                    apart, they can land on one, and = 2^60 keeps a stored 2^60 + 1 (the
-            //                    differential corpus, over declared). The caller states nothing there.
+            //                    differential corpus, over declared). The atom states nothing there.
             //   SMALLINT, TINYINT  do not saturate, they wrap: toShort(1e30) is -1 and toByte(1e30) is
             //                    255, which bear no relation to the stored value at all.
             //   FLOAT, REAL      round to float precision: float(1e30) differs from 1e30 by 1.5e22.
@@ -3582,17 +3502,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (IsRenderedDocumentValue(operand) == false)
-                return null;
-
-            if (target == SqlTypeName.INTEGER)
-                saturates = (new java.math.BigDecimal(int.MinValue), new java.math.BigDecimal(int.MaxValue));
-            else if (target == SqlTypeName.BIGINT)
-                saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
-            else
-                roundsFrom = new java.math.BigDecimal(Apache.Calcite.Cosmos.Facts.Saturation.Renderings.DoubleUnitFrom);
-
-            return operand;
+            return IsRenderedDocumentValue(operand) ? operand : null;
         }
 
         /// <summary>
@@ -3636,10 +3546,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // On a conjunct's AND and OR spine, what each operand is written as, which the conjunct's recheck reads
             // back where it is no comparison of its own (CosmosRecheck).
             var spine = _positive?.Contains(call) == true;
-
-            // WriteCallCore, the one caller, puts the position back.
-            if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M5))
-                _negated = false;
 
             for (var i = 0; i < operands.size(); i++)
             {
@@ -3713,7 +3619,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireOperandCount(call, 1);
 
             var saved = _negated;
-            _negated = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M4) ? saved : saved == false;
+            _negated = saved == false;
 
             builder.Append("(NOT ");
             Write(builder, Operand(call, 0));
@@ -3912,16 +3818,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     {
                         builder.Append(" OR IS_NULL(").Append(path).Append(") OR NOT IS_DEFINED(").Append(path).Append(')');
 
-                        if (tests is not null && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M2) == false)
+                        if (tests is not null)
                             builder.Append(" OR NOT ").Append(AnyOfOperand(tests, path));
                     }
                 }
                 else
                 {
                     // False wherever SQL's comparison is unknown, which discards the row here.
-                    if (CosmosTranslatorFaults.Has(CosmosTranslatorFault.M3) == false)
-                        foreach (var (path, _) in paths)
-                            builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
+                    foreach (var (path, _) in paths)
+                        builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
 
                     // And where the reading answers null for more than that. The one comparison that
                     // reaches here is the inequality, and through a typed accessor this is the test of
@@ -3934,7 +3839,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // Restricting is therefore what the standard asks for, and closer to it than
                     // either the engine or the unrestricted pushdown.
                     foreach (var (path, tests) in paths)
-                        if (tests is not null && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X2) == false)
+                        if (tests is not null)
                             builder.Append(AnyOfOperand(tests, path)).Append(" AND ");
 
                     WriteComparand(builder, call, op);
@@ -4107,9 +4012,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
-                if ((CosmosTranslatorFaults.Has(CosmosTranslatorFault.M7) ? TryTextCastValue(left) : TryTextCastOperand(left, right)) is RexNode unwrappedLeft)
+                if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
                     left = unwrappedLeft;
-                else if ((CosmosTranslatorFaults.Has(CosmosTranslatorFault.M7) ? TryTextCastValue(right) : TryTextCastOperand(right, left)) is RexNode unwrappedRight)
+                else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
                 else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
                     || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
@@ -4117,8 +4022,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // which case each is the stored value and the comparand need not be inspected at all
                     // -- which is what lets a parameter through. Known from the facts this conjunct is
                     // rendered from, which never hold what it establishes itself.
-                    && RendersOnlyStrings(leftValue, rightValue) == false
-                    && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M6) == false)
+                    && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
 
                 // Two values that may both hold a JSON type a side reads as null the service equates as values — a JSON
@@ -4132,8 +4036,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
             else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
-                && RendersOnlyStrings(leftValue, rightValue) == false
-                && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M8) == false)
+                && RendersOnlyStrings(leftValue, rightValue) == false)
             {
                 // The same gap the equality has, negated. Measured over the typed container, one
                 // document per JSON type: `label <> 'bikes'` gained the array and the object, which
@@ -4142,8 +4045,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // pushes what it implies.
                 throw new CosmosTranslationException("An inequality over JSON_VALUE read as text compares a rendering, and the service's inequality is true across JSON types where the rendering is null.");
             }
-            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused
-                && CosmosTranslatorFaults.Has(CosmosTranslatorFault.M9) == false)
+            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused)
             {
                 // An ordering comparison is an order the service computes, and is asked as one
                 // (CosmosServiceOrder.Compare): each side must read exactly what the service compares,
@@ -4248,14 +4150,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// The translator says only what each side is — a literal, a parameter, a path and how it is read,
         /// or another value — and <see cref="Metadata.CosmosServiceOrder.Compare"/> decides, as it decides
-        /// every order the service computes. The split rule's weakening asks the same of the comparison it
-        /// pushes over the raw value.
+        /// every order the service computes.
         /// </remarks>
         /// <param name="left">One side, beneath any box the validator's coercion put around it.</param>
         /// <param name="right">The other.</param>
         /// <param name="inclusive">Whether equal values satisfy the comparison: <c>&lt;=</c> and <c>&gt;=</c>.</param>
         /// <returns>The verdict.</returns>
-        internal Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
+        Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
         {
             var (l, r) = OrderOperands(left, right);
             return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive);
@@ -4283,9 +4184,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             right = StripVariantCoercion(right);
 
             // A rendering compared with text is compared as text, in Calcite. Compared with a number it is not
-            // Calcite's comparison at all — the validator compares text with text — but the split rule's bound on
-            // the raw value, which carries its own type test (CosmosFilterSplitRule.TryBoundNumericCast), and is read
-            // as that value.
+            // Calcite's comparison at all — the validator compares text with text — but a bound on the raw value
+            // beneath its own type test, as the split rule's numeric window wrote one before S wrote its weakenings,
+            // and is read as that value.
             var text = IsTextComparand(left) && IsTextComparand(right);
 
             return (OrderOperand(left, text), OrderOperand(right, text));
@@ -4379,7 +4280,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Determines whether two equal values satisfy a comparison of a kind: an equality, <c>&lt;=</c> and
         /// <c>&gt;=</c>.
         /// </summary>
-        internal static bool IsInclusive(SqlKind.__Enum kind)
+        static bool IsInclusive(SqlKind.__Enum kind)
         {
             return kind is SqlKind.__Enum.EQUALS
                 or SqlKind.__Enum.LESS_THAN_OR_EQUAL
@@ -4582,8 +4483,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// What decides that a comparison is against a rendering. <c>JSON_VALUE</c> read as text is
         /// <c>VARCHAR</c>, so a comparison against another character value is Calcite comparing two
         /// renderings — and the service comparing a raw value against one. A comparison against a
-        /// <em>number</em> is not that: nothing types such a call from SQL, and the one that exists
-        /// is built by <c>CosmosFilterSplitRule</c> against the raw value on purpose, which is
+        /// <em>number</em> is not that: nothing types such a call from SQL, and the split rule's own
+        /// weakening built one against the raw value on purpose, before S wrote the weakenings —
         /// exactly the comparison the service should make.
         /// </remarks>
         static bool IsCharacter(RexNode node)
@@ -4678,12 +4579,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Two consumers, one question.</b> The split rule asks it to decide whether a branch
-        /// implies the paths it reads are defined, and pushes <c>IS_DEFINED</c> of each where it
-        /// does — see <see cref="Rel.Convert.CosmosFilterSplitRule"/>. The guard a comparison takes
-        /// asks it to decide whether SQL's comparison is unknown exactly where those paths are null —
-        /// see <see cref="WriteComparison"/>. Both are the claim that the expression follows its
-        /// paths into unknown, and an expression that observes absence is the one it is false of.
+        /// <b>The guard's question.</b> The guard a comparison takes asks it to decide whether SQL's
+        /// comparison is unknown exactly where the paths it reads are null — see
+        /// <see cref="WriteComparison"/>: the claim that the expression follows its paths into unknown,
+        /// and an expression that observes absence is the one it is false of. The split rule's own
+        /// weakening asked it too, of whether a branch implied its paths defined, until S wrote the
+        /// weakenings from the strictness rows and the split rule's was deleted.
         /// </para>
         /// <para>
         /// Measured against a real account, a comparison on an absent property is <em>undefined</em>
@@ -4755,9 +4656,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// than unknown.
         /// </summary>
         /// <remarks>
-        /// Asked of the node as it stands, because one consumer does not expand it. The split rule
-        /// weakens the predicate the planner hands it, and over a projection Calcite's own
-        /// simplification hands it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
+        /// Asked of the node as it stands, because a consumer need not expand it. The split rule's own
+        /// weakening, before S wrote them, read the predicate the planner handed it, and over a projection
+        /// Calcite's own simplification handed it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
         /// arrived as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS TRUE])</c>, read as strict, and was
         /// weakened to <c>IS_DEFINED(c.metadata.sku)</c> — keeping one product where SQL keeps all
         /// seven.
@@ -4991,7 +4892,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     RequireTheEngineCouldRead(accessor, path);
 
                 var rendered = path.ToString();
-                var tests = CosmosTranslatorFaults.Has(CosmosTranslatorFault.M1) ? null : ReadingTests(value);
+                var tests = ReadingTests(value);
 
                 if (negated)
                 {
@@ -5299,7 +5200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 {
                     builder.Append('(');
 
-                    _negated = position && CosmosTranslatorFaults.Has(CosmosTranslatorFault.X1);
+                    _negated = false;
                     _value = false;
                     Write(builder, (RexNode)operands.get(i));
                     _negated = position;

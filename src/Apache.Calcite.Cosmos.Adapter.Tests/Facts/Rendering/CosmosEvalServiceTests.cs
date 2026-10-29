@@ -97,6 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             readonly string _database;
             CosmosClient? _client;
+            bool _created;
 
             public Fixture() : this("eval") { }
 
@@ -105,6 +106,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             public Container? Container { get; protected set; }
 
             public string? Unavailable { get; private set; }
+
+            /// <summary>What the service charged for the documents written and the queries asked, in request units: what a run on an account costs.</summary>
+            public double Charged { get; private set; }
 
             public async ValueTask InitializeAsync()
             {
@@ -122,7 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 30 : 120));
                     _client = new CosmosClient(endpoint, key, options);
-                    await Seed((await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database, cts.Token);
+                    var database = (await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database;
+                    _created = true;
+                    await Seed(database, cts.Token);
                 }
                 catch (Exception e)
                 {
@@ -136,7 +142,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             public ValueTask DisposeAsync()
             {
-                try { _client?.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+                // Only a database this fixture made is deleted: with no service answering there is none, and asking
+                // would fail the class's cleanup on a leg that names no account.
+                if (_created)
+                    try { _client!.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+
                 _client?.Dispose();
                 return default;
             }
@@ -152,7 +162,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     node["id"] = id;
                     node["pk"] = partition;
                     using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
-                    (await Container!.UpsertItemStreamAsync(stream, new PartitionKey(partition))).EnsureSuccessStatusCode();
+                    using var response = (await Container!.UpsertItemStreamAsync(stream, new PartitionKey(partition))).EnsureSuccessStatusCode();
+                    Charged += response.Headers.RequestCharge;
                     written[id] = (J.Obj)Read(JsonDocument.Parse(json).RootElement)!;
                 }
 
@@ -173,6 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     while (feed.HasMoreResults)
                     {
                         using var response = (await feed.ReadNextAsync()).EnsureSuccessStatusCode();
+                        Charged += response.Headers.RequestCharge;
                         using var json = await JsonDocument.ParseAsync(response.Content);
                         rows.AddRange(json.RootElement.GetProperty("Documents").EnumerateArray().Select(e => e.Clone()));
                     }

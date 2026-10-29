@@ -148,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>A bound binds numbers and nothing else</b>, as JSON Schema's <c>minimum</c> does: a string
         /// at the path is no counterexample. That is also what a comparison through a numeric cast can
         /// say, because the cast converts a stored string too — see
-        /// <c>CosmosNumericWindow</c>.
+        /// <c>PredicateAtom</c>'s numeric cast.
         /// </para>
         /// <para>
         /// One claim per side rather than an interval, so that a union whose branches bound the same

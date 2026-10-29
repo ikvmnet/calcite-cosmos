@@ -140,10 +140,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            // The baseline is not that nothing pushes. The split rule already weakens the comparison
-            // to the one thing it implies without knowing the stored form — that the path is there —
-            // and rechecks the comparison itself above.
-            query.Sql.Should().Contain("IS_DEFINED(c.ref)");
+            // The baseline is the kind's exact form alone. The translator weakened the comparison to the path's
+            // presence; the IR reads a cast to UUID as opaque, so S proves nothing beneath it (an O7 listed loss,
+            // J's presence unproven to S), and the comparison is rechecked above over every kind.
+            query.Sql.Should().EndWith("WHERE (c.kind = @p0)");
             query.Sql.Should().NotContain("c.ref = @", "nothing says what the stored form is, so the comparison itself has no Cosmos form");
             query.PartitionKeyValues.Should().BeNull("and with no value pinned there is no partition to route to");
 
@@ -355,12 +355,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A guard exists to admit what a fact would have excluded, so a fact deletes it.
+        /// A declared type makes the cast's comparison exact: nothing at the path is a string the cast parses.
         /// </summary>
         /// <remarks>
-        /// The numeric bound is still a bound with the type known -- the cast converts, so the window
-        /// stays and the recheck with it. What goes is the disjunct admitting non-numbers, which is
-        /// every document the service would otherwise return for the recheck to throw away.
+        /// Over a path declared an integer the cast is the value itself, and S sends the comparison whole, where the
+        /// translator pushed its window beneath a residual. Where nothing says so, the comparison is one through a cast,
+        /// which S weakens to the path's presence (O7's listed loss until Stage 3's guarded spelling).
         /// </remarks>
         [Fact]
         public void ADeclaredTypeDeletesTheGuardThatAdmittedTheOtherTypes()
@@ -373,22 +373,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
 
             var with = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
-            with.Sql.Should().Contain("c.n > @").And.Contain("c.n < @", "the bound is still a bound: the cast converts");
-            with.Sql.Should().NotContain("IS_NUMBER", "and nothing at that path is not a number");
+            with.Sql.Should().EndWith("WHERE (c.n = @p0)", "the cast of an integer is the integer");
 
             var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
-            without.Sql.Should().Contain("NOT IS_NUMBER(c.n)", "where nothing says so, the guard stays");
+            without.Sql.Should().EndWith("WHERE IS_DEFINED(c.n)", "where nothing says so, the cast may parse a string");
         }
 
         /// <summary>
-        /// And a declared presence deletes the definedness test, which is there only to stop the type
-        /// guard admitting every document that lacks the path.
+        /// And a declared presence deletes the definedness test: the presence S sends for a comparison through a cast
+        /// restricts nothing where every document holds the path.
         /// </summary>
         [Fact]
         public void ADeclaredPresenceDeletesTheDefinednessTest()
         {
-            // required without a type: presence known, kind not, so the type guard stays and the
-            // definedness test that exists for its sake does not.
+            // required without a type: presence known, kind not, so the cast may parse a string and the comparison
+            // weakens to the path's presence, which the declaration makes vacuous.
             const string Present = """{ "required": ["n"] }""";
 
             var declared = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
@@ -397,11 +396,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
 
             var with = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
-            with.Sql.Should().Contain("NOT IS_NUMBER(c.n)", "the kind is still unknown");
-            with.Sql.Should().NotContain("IS_DEFINED(c.n)", "but nothing lacks the path");
+            with.Sql.Should().NotContain("WHERE", "nothing lacks the path: " + with.Sql);
 
             var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
-            without.Sql.Should().Contain("IS_DEFINED(c.n)");
+            without.Sql.Should().EndWith("WHERE IS_DEFINED(c.n)");
         }
 
         /// <summary>
@@ -1308,8 +1306,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             equality.Parameters.Should().Contain(p => (p.Value as string) == "42", "there is no width to pad to");
 
             var ordering = Query(FindCosmos(PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 100""", container, out _)), container);
-            ordering.Sql.Should().Contain("NOT IS_NUMBER(c.n)",
-                "the ordering falls back to the weakening every uncast comparison gets: " + ordering.Sql);
+            ordering.Sql.Should().EndWith("WHERE IS_DEFINED(c.n)",
+                "the ordering falls back to the presence every comparison through a cast sends: " + ordering.Sql);
             ordering.Parameters.Should().NotContain(p => (p.Value as string) == "100",
                 "'9' sorts after '42', so the lexical order is not the numeric one and no spelling is written");
         }
@@ -1477,19 +1475,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         /// <summary>
         /// A conjunct that reaches the service is deleted only for siblings that reach it too: <c>label &lt;&gt; 'zzz'</c>
-        /// over a path declared nothing goes down only as its weakening, which does not imply the null test, so the exact
-        /// test stays and the null, the array and the object it excludes do not cross the wire.
+        /// over a path declared nothing reaches it with the null test kept, so the null, the array and the object it
+        /// excludes do not cross the wire; <c>label &gt; 'a'</c> S sends exactly, the string case or a boolean, and its
+        /// sending is what deletes the null test it implies.
         /// </summary>
         [Theory]
-        [InlineData("""JSON_VALUE(c."DOC", '$.label') <> 'zzz'""")]
-        [InlineData("""JSON_VALUE(c."DOC", '$.label') > 'a'""")]
-        public void AnExactNullTestIsNotDeletedForASiblingLeftAbove(string sibling)
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') <> 'zzz'""", "NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)")]
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') > 'a'""", "WHERE ((c.label > @p0) OR IS_BOOL(c.label))")]
+        public void AnExactNullTestIsNotDeletedForASiblingLeftAbove(string sibling, string sent)
         {
             var container = Declared(false);
             var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.label') IS NOT NULL AND {sibling}""", container, out _);
 
-            Query(FindCosmos(best), container).Sql.Should().Contain("NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)",
-                "the null test is exact, and its sibling goes down only as a weakening: " + PlanText(best));
+            Query(FindCosmos(best), container).Sql.Should().Contain(sent, PlanText(best));
         }
 
         [Fact]

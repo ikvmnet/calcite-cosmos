@@ -84,9 +84,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A1–A4 over single atoms are what the translator writes, beneath its <c>NOT</c> where an atom stands at <c>Neg</c>:
-        /// every one-atom conjunct the check run's statements send is its template's form for the atom the loader reads, but
-        /// the respellings R5 names, an <c>IN</c>'s points in the set's order and <c>NOT (x IS NULL)</c> in <c>IS NOT NULL</c>'s
-        /// spelling; and so is a sample statement's, written at admission and read back, where the run sends none of its shape.
+        /// a sample statement's admitted conjunct, written by the translator from the statement's own stratum and read back,
+        /// is its template's form for the atom the loader reads. And every one-atom conjunct the check run's statements send
+        /// — S's print since the switch — is the form some template spells for that atom.
         /// </summary>
         [Fact]
         public void EveryTemplateSpellsWhatTheTranslatorWrites()
@@ -99,22 +99,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var admitted = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).ToList();
                 admitted.Should().ContainSingle(sql);
-                var (spelled, read) = Respelled(admitted[0].Statement.Statement.Conjuncts[admitted[0].Conjunct], admitted[0].Text, admitted[0].Parameters);
-                spelled.Should().Be(read, $"{sql} wrote {admitted[0].Text}");
-                Template(admitted[0].Statement.Statement.Conjuncts[admitted[0].Conjunct]).Should().Be(template, sql);
+                var (statement, conjunct, parameters) = (admitted[0].Statement, admitted[0].Conjunct, new Adapter.Sql.CosmosParameterList());
+                statement.TranslatorFor(conjunct, parameters).TryTranslateConjunct(statement.Conjuncts[conjunct], out var text).Should().BeTrue(sql);
+                var (spelled, read) = Respelled(statement.Statement.Conjuncts[conjunct], text!, parameters.Parameters);
+                spelled.Should().Be(read, $"{sql} wrote {text}");
+                Template(statement.Statement.Conjuncts[conjunct]).Should().Be(template, sql);
                 GC.KeepAlive(recorder);
             }
 
             var run = RenderingCheckRun.PerPullRequest.Value;
             var sent = run.Conjuncts.Where(c => c.Site == 2 && c.Skip is null && Atom(run.Irs[c.Ir]) is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque))
                 .DistinctBy(c => c.Ir + " " + c.Text).Select(c => (c.Input, c.Name, c.Text, Ir: run.Irs[c.Ir], Forms: Respelled(run.Irs[c.Ir], c.Text, c.Bound!))).ToList();
-            var respelled = sent.Where(c => c.Forms.Spelled.Equals(c.Forms.Read) == false).ToList();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{sent.Count} one-atom conjuncts sent, {respelled.Count} respelled: " + string.Join("; ", respelled.Select(c => $"{c.Input} {c.Name} {c.Text}")));
+            var other = sent.Where(c => c.Forms.Spelled.Equals(c.Forms.Read) == false).ToList();
+            TestContext.Current.TestOutputHelper?.WriteLine($"{sent.Count} one-atom conjuncts sent, {other.Count} by another template than the translator's: " + string.Join("; ", other.Select(c => $"{c.Input} {c.Name} {c.Text}")));
             sent.Should().HaveCountGreaterThan(100);
-            respelled.Where(c => Atom(c.Ir) is SqlPredicate.In
-                    ? c.Forms.Read.Members.ToHashSet().SetEquals(c.Forms.Spelled.Members) == false
-                    : c.Ir is not SqlPredicate.Not { Operand: SqlPredicate.IsNull } || c.Forms.Read.Equals(Spelled(c.Ir, TemplateId.NullTest, RenderPosition.Pos)) == false)
-                .Select(c => $"{c.Input} {c.Name}: {c.Text} read {c.Forms.Read}, spelled {c.Forms.Spelled}").Should().BeEmpty();
+            other.Where(c => System.Enum.GetValues<TemplateId>().Any(id => Spelled(c.Ir, id, c.Ir is SqlPredicate.Not ? RenderPosition.Neg : RenderPosition.Pos).Equals(c.Forms.Read)) == false)
+                .Select(c => $"{c.Input} {c.Name}: {c.Text} read {c.Forms.Read}, no template's").Should().BeEmpty();
         }
 
         /// <summary>A conjunct's atom: itself, or beneath one <c>NOT</c>.</summary>

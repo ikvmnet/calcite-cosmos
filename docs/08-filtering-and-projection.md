@@ -32,6 +32,23 @@ An `OR` is different: dropping a branch would lose the rows only that branch mat
 is sent whole where every branch renders, and otherwise **weakened** — something every branch implies
 is sent, and the disjunction is rechecked in process.
 
+**What is sent is proved first.** A conjunct over document values — comparisons with literals, `IN`
+lists, null tests, and `AND`, `OR` and `NOT` over them — is sent only in a form the adapter has proved
+keeps exactly the rows SQL keeps, on the service the schema names (`serviceTarget`, Chapter 4): the
+cheapest such form, with its guards. Where it proves none, the conjunct is kept in process and only
+what it proves the conjunct implies is sent as its weakening. A conjunct holding a parameter, a
+function, a `LIKE`, a `CASE` or an array's element is still written as the adapter writes it where
+that is exact — a parameter compared over a path the service types, a `LIKE` over a declared string;
+where it is not, what is sent is the weakening the adapter proves the conjunct implies: the property's
+presence for a parameter, a `LIKE` or a function, and nothing for an ordering over an array's element.
+
+**A conjunct the proof declines reads the container.** On a schema's first plan the proof waits for
+its reasoning to be built, at most five seconds; a statement whose question is too large to finish is
+declined too. A conjunct declined so stays in process with nothing sent for it: the answer is still
+right, but the container is read for it, and the decline is counted on `cosmos.rendering.declines`
+(Chapter 20). Where conjuncts proved one at a time are not proved together, none is sent exactly, but
+each is sent as the weakening proved for it and rechecked.
+
 ## 8.2 What renders
 
 | SQL | Cosmos SQL |
@@ -106,29 +123,50 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 → WHERE (c.name = @p0)
 ```
 
-An equality against text that a number or boolean could also render as is sent as both, and
-rechecked:
+An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
+text a number could render as — a stored `30.0` renders otherwise — sends only that the property is
+there, and is rechecked:
 
 ```sql
+WHERE JSON_VALUE(c."DOC", '$.code') = 'true'
+→ WHERE ((c.code = @p0) OR (c.code = @p1))   -- "true", true
+
 WHERE JSON_VALUE(c."DOC", '$.code') = '30'
-→ WHERE (c.code = '30' OR c.code = 30)   -- then rechecked in process
+→ WHERE IS_DEFINED(c.code)   -- then rechecked in process
 ```
 
-Inequalities, range comparisons and `LIKE` over `JSON_VALUE` are sent restricted to the case where
-the two engines agree — the property is a string — and everything else is passed through for the
-recheck:
+An inequality against text only a string renders as is sent exactly, with the accessor's null guard;
+against text a number or a boolean renders as — `<> '30'`, `<> 'true'` — a weakening is sent and the
+inequality rechecked, since the service's `30 != "30"` is true of a stored 30. An ordering against a
+string is sent exactly where every number's text and every boolean's falls on one side of the literal,
+SQL ordering text by code unit: a number's text — digits and `-` — sorts below the letters, and `true`
+and `false` above the digits and the capitals, so `> 'Trail'` is sent with the booleans it keeps,
+`< 'Trail'` with the numbers, and `> 'zzz'` keeps neither. Where a kind's renderings fall on both sides
+— `> 'g'`, between `false` and `true` — or both kinds are kept, as by `< 'zzz'`, a weakening is sent and
+the ordering rechecked. On the emulator, which orders a U+0000 inside a string as stored, an ordering is
+sent only where nothing at the path can hold one (a `pattern`, Chapter 14.4); otherwise only the
+property's presence is, and the ordering is rechecked. `LIKE` sends that the property is there, and is
+matched in process:
 
 ```sql
+WHERE JSON_VALUE(c."DOC", '$.name') <> 'Trail'
+→ WHERE (IS_DEFINED(c.name) AND NOT IS_NULL(c.name) AND IS_PRIMITIVE(c.name) AND (c.name != @p0))
+
+WHERE JSON_VALUE(c."DOC", '$.name') > 'Trail'
+→ WHERE ((c.name > @p0) OR IS_BOOL(c.name))
+
+WHERE JSON_VALUE(c."DOC", '$.name') < 'Trail'
+→ WHERE ((c.name < @p0) OR IS_NUMBER(c.name))
+
 WHERE JSON_VALUE(c."DOC", '$.name') LIKE 'Trail%'
-→ WHERE (NOT IS_STRING(c.name) OR STARTSWITH(c.name, @p0))   -- then rechecked
+→ WHERE IS_DEFINED(c.name)   -- then rechecked
 ```
 
-For a property that holds strings in every document, the first branch matches nothing and the service
-does all the work; the recheck is cheap. **If the container declares that the path holds a string**
-(Chapter 14), there is no second type to disagree about, the comparison is sent exactly, and nothing
-is rechecked — which also lets a row limit travel with it. An array's element, `$.tags[0]`, is weakened
-and rechecked whatever the container declares: a declaration states what a property holds, and none
-reaches an element (Chapter 11.3).
+**If the container declares that the path holds a string** (Chapter 14), there is no second type to
+disagree about: the comparison and the `LIKE` are sent as written, nothing is rechecked, and a row limit
+travels with them. A comparison over an array's element, `$.tags[0]`, runs in process whatever the
+container declares, except an equality with text only a string renders as, which is sent: a declaration
+states what a property holds, and none reaches an element (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
 that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,
@@ -162,7 +200,7 @@ WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 
 This is the spelling to use for numbers that are stored as numbers. **Except `RETURNING DECIMAL`**,
 which parses a stored string — `"2"` is 2 to it (Chapter 7) — and is handled as the cast to a number
-below: a bound is sent, and the comparison rechecked in process.
+below: the property's presence is sent, and the comparison rechecked in process.
 
 ### `CAST` to text: exact
 
@@ -175,43 +213,35 @@ Only a `VARCHAR` with no length. `CAST(x AS VARCHAR(3))` truncates and `CHAR(8)`
 is sent only what it implies. The same holds for routing: a sized cast over the partition key does not
 route (8.5).
 
-### `CAST` to a number: a bound, then a recheck
+### `CAST` to a number: the property's presence, then a recheck
 
 `CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, and `30.7`,
 whose text is no integer, fails the statement (cast to `DOUBLE` to read it) — and the service cannot
-reproduce a conversion. But the comparison still *implies* something the service can check: every
-document it keeps has a raw value above 9. So the adapter sends that bound and rechecks the cast in
-process:
+reproduce a conversion. What the adapter can prove the comparison implies is that the property is there,
+so that is sent, and the cast is rechecked in process:
 
 ```
-→ WHERE IS_DEFINED(c.price) AND (NOT IS_NUMBER(c.price) OR c.price > 9)
+→ WHERE IS_DEFINED(c.price)
 ```
 
-Non-numbers pass through to the recheck, because Calcite converts a stored `"30"` too. For a property
-that really holds numbers, the service does nearly all the filtering — and where the container
-declares the property an integer (Chapter 14), the type test is dropped and it does all of it. The
-bound is applied for casts to `INTEGER`, `BIGINT` and `DOUBLE`, and for `RETURNING DECIMAL`, which is
-the same conversion written as a clause. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and
-`REAL` (which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
-evaluated in process only. So is a cast to `DOUBLE` compared with a number beyond 2^52
-(4,503,599,627,370,496), where a double no longer holds a unit: `= 2^60` is true of a stored
-2^60 + 1.
+Where the container declares the property an integer (Chapter 14), the cast is the value itself, and
+the comparison is sent exactly. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and `REAL`
+(which round), `DECIMAL` (which can raise) and to a date send nothing, and run in process. A bound on
+the stored number is not sent: no form the service runs means what the conversion does over a stored
+string, and only what is proved is sent (see Chapter 23).
 
-`RETURNING DECIMAL` sends the bound where Calcite compares the literal at the clause's type, which
-under plain `DECIMAL` it always does, truncating the literal to a whole number. Where the literal's
-type is the wider — `RETURNING DECIMAL(10, 2) = 2.255`, or `RETURNING DECIMAL(5, 1) = 12345`, an
-`INTEGER` literal — Calcite casts the value up instead, and the comparison runs in process whole.
-Where the clause cannot hold the literal — `RETURNING DECIMAL(19, 18) = 50` — Calcite raises on every
-row, and so does the statement.
+`RETURNING DECIMAL` is the same conversion written as a clause:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = 2
-→ WHERE IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))
+→ WHERE IS_DEFINED(c.body)
   In process: the comparison, which keeps "2", " 2 " and "2.0"
 ```
 
 A declaration that the property is a string does not make that comparison false: the clause reads the
-string.
+string. A declaration that it is an integer sends it exactly, `WHERE (c.body = @p0)`. Where the clause
+cannot hold the literal — `RETURNING DECIMAL(19, 18) = 50` — Calcite raises on every row, and so does the
+statement.
 
 If the values are numbers in the documents, prefer `RETURNING` to `CAST`: it is exact.
 
@@ -485,7 +515,7 @@ documents it has to read.
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
-| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the bound a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |

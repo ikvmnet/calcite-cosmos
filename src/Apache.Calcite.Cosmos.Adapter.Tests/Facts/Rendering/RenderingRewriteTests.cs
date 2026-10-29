@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ARewrittenConjunctsBestKeepsWhatItsOriginalKeeps()
         {
-            var rewrites = RenderingCheckRun.PerPullRequest.Value.Shadow!.Rewrites.ToList();
+            var rewrites = RenderingCheckRun.PerPullRequest.Value.Generated!.Rewrites.ToList();
             var (judged, witnesses) = (0, new List<string>());
             foreach (var set in RenderingGenerateRun.Sets)
             {
@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AWrongLoweringIsFound()
         {
-            var row = RenderingCheckRun.PerPullRequest.Value.Shadow!.Rewrites.First(r => r.Answer?.Best is { Kind: ServiceFormKind.Compare, Literal: { } l }
+            var row = RenderingCheckRun.PerPullRequest.Value.Generated!.Rewrites.First(r => r.Answer?.Best is { Kind: ServiceFormKind.Compare, Literal: { } l }
                 && JsonValues.IsString(l) && JsonValues.StringOf(l) != JsonValues.StringOf(l).ToUpperInvariant());
             var best = row.Answer!.Best!;
             var wrong = ServiceForm.CompareOf(best.Test, best.Path!, JsonValues.Of(JsonValues.StringOf(best.Literal!).ToUpperInvariant()));

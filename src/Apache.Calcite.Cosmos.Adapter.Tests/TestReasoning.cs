@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
@@ -30,10 +31,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         static readonly ConditionalWeakTable<CosmosContainerMetadata, CosmosContainerMetadata> Containers = new();
         static readonly ConditionalWeakTable<JsonFactTheory, JsonFactTheory> Theories = new();
 
+        /// <summary>The harness planning in this flow, whose reasonings <see cref="Checked"/> holds a table to; none outside one.</summary>
+        static readonly AsyncLocal<HarnessReasonings?> Harness = new();
+
         /// <summary>
-        /// Gets the reasoning the fixtures share.
+        /// Gets the reasoning the fixtures share, made where first asked for and its S build awaited before anything plans
+        /// in it: every filter a plan pushes asks S, and a first question that waited past its bound would decline and
+        /// change the plan. A process that never asks, as the first-plan line's child does not, builds none.
         /// </summary>
-        public static CosmosReasoning Shared { get; } = new();
+        public static CosmosReasoning Shared => Made.Value;
+
+        static readonly Lazy<CosmosReasoning> Made = new(() =>
+        {
+            var reasoning = new CosmosReasoning();
+            reasoning.Rendering.Ready.Wait();
+            return reasoning;
+        });
 
         /// <summary>
         /// Returns the metadata bound to <see cref="Shared"/>, or as it is where a schema has bound it already.
@@ -54,16 +67,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <summary>
         /// Returns a table a harness built per plan, having checked that it reasons in <see cref="Shared"/> or in the
         /// reasoning its metadata was handed with: a fixture left unbound makes a reasoning of its own each plan and
-        /// compiles its declaration again, which passes every assertion and only costs time.
+        /// compiles its declaration again, which passes every assertion and only costs time. Where a harness of its own
+        /// plans (<see cref="HarnessReasonings.Planning"/>), it must reason in one that harness made.
         /// </summary>
         /// <param name="table">The table.</param>
         /// <param name="given">The metadata it was built over.</param>
         /// <returns>The table.</returns>
-        /// <exception cref="InvalidOperationException">The table made a reasoning of its own.</exception>
-        public static CosmosTable Checked(CosmosTable table, CosmosContainerMetadata given) =>
-            ReferenceEquals(table.Container.Reasoning, Shared) || (given.Reasoning is not null && ReferenceEquals(table.Container.Reasoning, given.Reasoning))
+        /// <exception cref="InvalidOperationException">The table made a reasoning of its own, or reasons outside its harness's.</exception>
+        public static CosmosTable Checked(CosmosTable table, CosmosContainerMetadata given) => Harness.Value is { } harness
+            ? harness.Made(table.Container.Reasoning)
+                ? table
+                : throw new InvalidOperationException($"The fixture '{given.Name}' reasons outside its harness's reasonings: bind it to the harness's reasoning where the harness builds it.")
+            : (given.Reasoning is not null && ReferenceEquals(table.Container.Reasoning, given.Reasoning)) || ReferenceEquals(table.Container.Reasoning, Shared)
                 ? table
                 : throw new InvalidOperationException($"The fixture '{given.Name}' made a reasoning of its own: bind it with TestReasoning.Bind where it is declared.");
+
+        /// <summary>Holds every table checked in this flow to the harness's reasonings until disposed, then puts back what it found.</summary>
+        internal static IDisposable Within(HarnessReasonings harness)
+        {
+            var restore = new Restore(Harness.Value);
+            Harness.Value = harness;
+            return restore;
+        }
+
+        /// <summary>Puts the flow's harness back as <see cref="Within"/> found it.</summary>
+        sealed class Restore(HarnessReasonings? was) : IDisposable
+        {
+
+            public void Dispose() => Harness.Value = was;
+
+        }
 
     }
 

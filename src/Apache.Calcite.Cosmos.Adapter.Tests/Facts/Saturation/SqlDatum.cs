@@ -33,6 +33,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         public sealed record Double(double Value) : SqlDatum;
 
+        /// <summary>A number <c>BigDecimal</c> parsed from text no decimal holds, compared exactly by its digits.</summary>
+        public sealed record Decimal(string Spelled) : SqlDatum;
+
         public sealed record Boolean(bool Value) : SqlDatum;
 
     }

@@ -42,10 +42,11 @@ new CalciteConnectionStringBuilder { Model = "config/model.json" };
 ```
 
 **Azure or the emulator.** Add `"serviceTarget": "emulator"` to the operand when the endpoint is the Cosmos DB
-emulator; `azure`, the default, says it is Azure. The adapter is moving to prove each filter it sends against what the
-service it runs on was measured to do, and the emulator stores and orders some strings unlike Azure (Appendix E.2). For
-now the operand is read and kept on each container, and changes no plan. A host that builds its own tables sets it with
-`CosmosContainerMetadata.WithServiceTarget`.
+emulator; `azure`, the default, says it is Azure. The adapter proves the comparisons, `IN` lists and null tests over
+literals it sends in a filter against what the service it runs on was measured to do (Chapter 8), and the emulator
+stores and orders some strings unlike Azure (Appendix E.2): an ordering over a string that may hold U+0000 is sent to
+Azure, and against the emulator only the property's presence is sent and the ordering rechecked in process. A host
+that builds its own tables sets it with `CosmosContainerMetadata.WithServiceTarget`.
 
 ## 4.2 One database, or a whole account
 

@@ -739,7 +739,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Gets the service the container's statements run on (<see cref="CosmosServiceTarget"/>), Azure unless a model or a
-        /// host says otherwise; no plan reads it yet.
+        /// host says otherwise: what its filters' Cosmos text is proven on.
         /// </summary>
         public CosmosServiceTarget ServiceTarget => _serviceTarget;
 

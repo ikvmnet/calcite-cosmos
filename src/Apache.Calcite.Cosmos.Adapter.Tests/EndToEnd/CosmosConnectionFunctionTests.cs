@@ -213,6 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
               "operand": {
                 "endpoint": "{{Endpoint}}",
                 "key": "{{Key}}",
+                "serviceTarget": "{{CosmosEmulator.ServiceTargetOperand}}",
                 "database": "{{DatabaseName}}",
                 "containers": [
                   "products",
@@ -362,12 +363,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A text equality that the service cannot decide plans through a connection, pushes the
-        /// string or the value that renders as it, and keeps the rows Calcite keeps.
+        /// A text equality that the service cannot decide plans through a connection, pushes what is proved of it — the
+        /// string or the boolean that renders as it, or where a number may render otherwise only the property's presence —
+        /// and keeps the rows Calcite keeps.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// It did not plan. The split rule pushes <c>c.label = '30' OR c.label = 30</c> under the
+        /// It did not plan. The split rule pushed <c>c.label = '30' OR c.label = 30</c> under the
         /// comparison Calcite makes, and wrote both over one raw value; a connection registers
         /// <c>FILTER_REDUCE_EXPRESSIONS</c> among Calcite's defaults, its simplifier compared the string
         /// with the double, and the statement failed with a <c>ClassCastException</c> — <c>= '30'</c>,
@@ -377,8 +379,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// The rows are the half a plan cannot show. Each literal is held by a string and by a value of
         /// another type that Calcite renders as it, so a branch that went missing loses a row here; and
-        /// <c>'false'</c> is the one the reducing host folds to <c>NOT c.label</c>, which the service
+        /// <c>'false'</c> is the one the reducing host folded to <c>NOT c.label</c>, which the service
         /// has to hold true of the stored <c>false</c> alone.
+        /// </para>
+        /// <para>
+        /// Since the switch the rendering graph writes it: for <c>'true'</c> and <c>'false'</c> the conjunct is sent whole,
+        /// written at implementation as the string or the boolean, exact, so the plan's filter is the conjunct itself; for
+        /// <c>'30'</c>, which a stored 30.0 renders otherwise, the property's presence alone, O7's listed loss 1, its rows
+        /// the same.
         /// </para>
         /// </remarks>
         [Fact]
@@ -386,12 +394,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             RequireService();
 
-            foreach (var (predicate, expected) in new[]
+            foreach (var (predicate, expected, pushed) in new[]
             {
-                ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }),
-                ("""JSON_VALUE(c."DOC", '$.label') = 'true'""", new[] { "t", "w" }),
-                ("""JSON_VALUE(c."DOC", '$.label') = 'false'""", new[] { "f" }),
-                ("""CAST(JSON_VALUE(c."DOC", '$.label') AS VARCHAR) = '30'""", new[] { "n", "s" }),
+                ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }, "CosmosFilter(condition=[IS_DEFINED("),
+                ("""JSON_VALUE(c."DOC", '$.label') = 'true'""", new[] { "t", "w" }, "CosmosFilter(condition=[=(JSON_VALUE($0, '$.label'), 'true')])"),
+                ("""JSON_VALUE(c."DOC", '$.label') = 'false'""", new[] { "f" }, "CosmosFilter(condition=[=(JSON_VALUE($0, '$.label'), 'false')])"),
+                ("""CAST(JSON_VALUE(c."DOC", '$.label') AS VARCHAR) = '30'""", new[] { "n", "s" }, "CosmosFilter(condition=[IS_DEFINED("),
             })
             {
                 var sql = """SELECT c."id" FROM "labels" AS c WHERE """ + predicate;
@@ -402,7 +410,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     command.CommandText = "EXPLAIN PLAN FOR " + sql;
                     var plan = (string?)await command.ExecuteScalarAsync() ?? "";
 
-                    plan.Should().Contain("CosmosFilter(condition=[OR(", "the alternatives should reach the service:\n" + plan);
+                    plan.Should().Contain(pushed, "what is proved of it should reach the service:\n" + plan);
                 }
 
                 (await QueryAsync(sql)).Should().Equal(expected, predicate);

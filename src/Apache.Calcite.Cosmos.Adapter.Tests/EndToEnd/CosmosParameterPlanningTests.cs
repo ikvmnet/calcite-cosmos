@@ -196,17 +196,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// This is what degrades when a plan is given less to work with, and it is sound rather than
         /// unfortunate: the rows are right either way.
         /// </para>
+        /// <para>
+        /// The weakening is the rendering graph's, which reads a parameter as presence and no candidate, so every operator
+        /// sends the property's presence alone. An inequality sent the string branch before the switch,
+        /// <c>(NOT IS_STRING(c.type)) OR (… c.type != @p0)</c>: an O7 loss, request units and never rows, held here
+        /// since the switch's listing plans no statement with a parameter (<c>TODO.md</c>).
+        /// </para>
         /// </remarks>
-        [Fact]
-        public void OverAnUndeclaredPathTheComparisonIsWeakenedRatherThanRefused()
+        [Theory]
+        [InlineData("=")]
+        [InlineData("<>")]
+        [InlineData(">")]
+        [InlineData("<=")]
+        [InlineData("LIKE")]
+        public void OverAnUndeclaredPathTheComparisonIsWeakenedRatherThanRefused(string op)
         {
-            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.type') = ?""";
+            var sql = $"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.type') {op} ?""";
 
-            Query(Sql).Sql.Should().Contain("IS_DEFINED(c.type)",
-                "the restriction the comparison implies still reaches the service");
+            Query(sql).Sql.Should().EndWith("WHERE IS_DEFINED(c.type)",
+                "the restriction the comparison implies still reaches the service, and only that");
 
-            PlanText(Sql).Should().Contain("ClrCursorFilter",
-                "and the equality itself is rechecked above: " + PlanText(Sql));
+            PlanText(sql).Should().Contain("ClrCursorFilter",
+                "and the comparison itself is rechecked above: " + PlanText(sql));
         }
 
         /// <summary>

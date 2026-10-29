@@ -96,11 +96,14 @@ the values do, which the form says too.
 
 ### An exact comparison where there would be a weakened one
 
-A comparison over `JSON_VALUE` is normally sent weakened — `NOT IS_STRING(c.carrier) OR c.carrier >=
-@p0` — and rechecked, because the service orders values across JSON types where SQL compares their
-text (Chapter 8). Where the schema says the path holds a string, there is no second type to disagree
-over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can travel with it. A
-`type` declaration earns its keep on its own. It also lets a string function over the path push —
+A comparison over `JSON_VALUE` is normally sent in a longer form, or only as the property's presence,
+because the service orders values across JSON types where SQL compares their text (Chapter 8): an
+ordering with each other kind whose text SQL orders on its side, `(c.carrier >= @p0) OR IS_BOOL(c.carrier)` —
+on the emulator only where nothing at the path holds a U+0000 — and a `LIKE`, or an equality with text a
+number renders as, as `IS_DEFINED(c.carrier)` and a recheck. Where the schema says the path holds a
+string, there is no second type to disagree over: the cheapest exact form is the comparison as written,
+`c.carrier >= @p0`, it is sent with nothing rechecked, and a `FETCH` can travel with it. A `type`
+declaration earns its keep on its own. It also lets a string function over the path push —
 a concatenation, a `REPLACE`, a `COALESCE` — in a filter and in a projection, which over an undeclared
 path run in process, the accessor reading a stored number as text. A case mapping, a length and a trim
 ask the characters too, which a `pattern` proves (14.4).

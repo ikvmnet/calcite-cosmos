@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -32,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Initializes a new instance, with generations of the default limits and a rendering oracle over the registry's
-        /// definition, its graph not yet built.
+        /// definition, its graph not yet built, which prints each generation's warm-up answer as it is built.
         /// </summary>
         public CosmosReasoning() :
             this(new JsonFactGenerations())
@@ -41,20 +42,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Initializes a new instance over the given generations, and the given oracle where there is one: a test's, with
-        /// limits or a plant of its own.
+        /// Initializes a new instance over the given generations, and the given oracle and probe where there are: a test's,
+        /// with limits or a plant of its own.
         /// </summary>
         /// <param name="facts">The generations the schema's declarations compile into.</param>
         /// <param name="rendering">The rendering oracle; <c>null</c> for one over the registry's definition.</param>
+        /// <param name="probe">A test's probe of its filters' admission; <c>null</c> for none, as in production.</param>
+        /// <param name="renderingOff">Whether a test turns S off for the schema (<see cref="RenderingOff"/>); never in production.</param>
         /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
-        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null)
+        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null, ICosmosRenderingProbe? probe = null, bool renderingOff = false)
         {
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
+            Probe = probe;
+            RenderingOff = renderingOff;
 
-            // Made, never started: its graph is defined on a thread of its own once something first asks it.
-            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition));
+            // Made, never started: its graph is defined on a thread of its own once something first asks it, and each
+            // generation's warm-up answer printed there, into a box the build holds rather than the reasoning, so that a
+            // schema let go while its build runs goes with it.
+            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition, exercised: Printing(_warmed)));
         }
+
+        readonly StrongBox<string?> _warmed = new();
+
+        static Action<SqlPredicate, RenderingAnswer> Printing(StrongBox<string?> warmed) =>
+            (question, answer) => warmed.Value = CosmosRendering.Print(question, answer);
 
         /// <summary>
         /// Gets the generations of graphs every container of the schema reasons in.
@@ -72,6 +84,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// their keys are spelled from.
         /// </summary>
         public RenderingOracle Rendering { get; }
+
+        /// <summary>A test's probe of the schema's filters' admission (<see cref="ICosmosRenderingProbe"/>); none in production.</summary>
+        internal ICosmosRenderingProbe? Probe { get; }
+
+        /// <summary>
+        /// Whether a test turned S off for the schema: its filters are admitted by the translator alone, nothing is weakened,
+        /// and no plan starts a build — the pairing lines 29 and 29b read. A schema's, as its probe is, so no flow carries it.
+        /// </summary>
+        internal bool RenderingOff { get; }
+
+        /// <summary>What the rendering graph's last generation printed its warm-up answer as; none before the first is built.</summary>
+        internal string? Warmed => _warmed.Value;
 
     }
 

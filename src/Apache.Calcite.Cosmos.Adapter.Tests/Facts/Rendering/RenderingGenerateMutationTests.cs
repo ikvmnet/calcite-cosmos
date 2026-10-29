@@ -24,12 +24,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The mutation line in S (spec g06; line 16; gates map §4.3): each of Stage 1's historical faults planted where S would
-    /// carry it, in a graph of its own, and Stage 1's triggers shadowed through it under each set a leg plans under. M1–M3
+    /// carry it, in a graph of its own, and Stage 1's triggers planned through it under each set a leg plans under. M1–M3
     /// replace a template's row with one writing its form wrongly; M4 and M5 are rules beside the right ones; M6–M10 come
     /// through the definition's <c>Pair</c> and <c>Leaf</c>; M11 is a lift rule. A template is untrusted, so the gate
     /// refutes the planted form at the cell that showed the fault, nothing wrong is sent or implied, and the loss shows as a
-    /// regression. The rest are trusted: S sends or implies a wrong form, and source A, which shares none of S, finds its
-    /// document.
+    /// conjunct the tip sends that the plant declines. The rest are trusted: S sends or implies a wrong form, and source A,
+    /// which shares none of S, finds its document.
     /// </summary>
     public sealed class RenderingGenerateMutationTests
     {
@@ -75,8 +75,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly ConcurrentDictionary<string, Lazy<Planted>> Runs = new(StringComparer.Ordinal);
 
-        /// <summary>Every trigger shadowed unplanted, once a process.</summary>
-        internal static readonly Lazy<Planted> Tip = new(() => Shadowed(new("tip", true, d => d, _ => { }, [.. Plants.Values.SelectMany(p => p.Triggers).Select(t => (t.Sql, (string?)null)).Distinct()])));
+        /// <summary>Every trigger planned unplanted, once a process.</summary>
+        internal static readonly Lazy<Planted> Tip = new(() => Planned(new("tip", true, d => d, _ => { }, [.. Plants.Values.SelectMany(p => p.Triggers).Select(t => (t.Sql, (string?)null)).Distinct()])));
 
         /// <summary>
         /// A plant is caught. Untrusted, it proposed its forms, each trigger it was found by refutes the planted form at the
@@ -114,8 +114,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
         }
 
-        /// <summary>A plant's run, once a process: its triggers shadowed through it.</summary>
-        internal static Planted Run(string fault) => Runs.GetOrAdd(fault, f => new Lazy<Planted>(() => Shadowed(Plants[f]))).Value;
+        /// <summary>A plant's run, once a process: its triggers planned through it.</summary>
+        internal static Planted Run(string fault) => Runs.GetOrAdd(fault, f => new Lazy<Planted>(() => Planned(Plants[f]))).Value;
 
         static void Caught(Planted planted)
         {
@@ -124,8 +124,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var t in planted.Triggers)
             {
                 output?.WriteLine($"{plant.Name} {t.Sql}");
-                foreach (var c in t.Classes)
-                    output?.WriteLine($"  {c.Set} {c.Ir}: {c.Class} {c.Reason}; S {c.Form?.Text}");
+                foreach (var c in t.Sends)
+                    output?.WriteLine($"  {c.Set} {c.Ir}: {(c.Owned ? "S's" : "the translator's")}, round {c.Round}; S {c.Form?.Text}");
                 foreach (var (set, judged) in t.Judged)
                     output?.WriteLine($"  {set}: {judged}; " + string.Join(" | ", judged.Witnesses.Take(2)));
                 foreach (var r in Refuted(planted, t).Select(r => $"{r.Node} at {r.Position}: {r.Form.Text} refuted at {Show(r.Refutation)}").Distinct())
@@ -142,7 +142,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 planted.Triggers.SelectMany(t => t.Bundles).SelectMany(b => b.Answers.Values).Select(a => a.Best).OfType<ServiceForm>()
                     .Where(best => best.Subforms.Any(refuted.Contains)).Select(best => best.Text).Should().BeEmpty("no root sends a form the gate refuted");
                 planted.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("nothing S sends or implies is wrong");
-                planted.Triggers.SelectMany(t => t.Classes).Should().Contain(c => c.Class == RenderingGenerateRun.Regression, "the loss shows as a regression");
+                var tip = Tip.Value.Triggers.SelectMany(t => t.Sends.Where(c => c.Form is not null).Select(c => (t.Sql, c.Set, c.Ir))).ToHashSet();
+                planted.Triggers.SelectMany(t => t.Sends.Where(c => c.Owned && c.Form is null && tip.Contains((t.Sql, c.Set, c.Ir)))).Should().NotBeEmpty("the loss shows as a conjunct the tip sends declined");
                 return;
             }
 
@@ -160,30 +161,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             t.Bundles.SelectMany(b => b.Refutations ?? []).Where(r => planted.Plant.Proposed.ContainsKey(r.Form));
 
         /// <summary>What a run sends or implies of each trigger's conjuncts under each set: the forms admitted, weakenings and implied members.</summary>
-        static HashSet<string> Sent(Planted planted) => [.. planted.Triggers.SelectMany(t => t.Classes.Select(c => $"{c.Set} {t.Sql} {c.Ir}: sends {c.Form?.Text}")
+        static HashSet<string> Sent(Planted planted) => [.. planted.Triggers.SelectMany(t => t.Sends.Select(c => $"{c.Set} {t.Sql} {c.Ir}: sends {c.Form?.Text}")
             .Concat(t.Bundles.SelectMany(b => b.Forms.Where(f => f.What != RenderingGenerateRun.Judged.Agreement).Select(f => $"{b.Set} {t.Sql} {f.Node}: {f.What} at {f.Position} {f.Form.Text}"))))];
 
         /// <summary>
-        /// Plans a plant's triggers, as the differential plans them, with its graph shadowing each under the sets the legs
-        /// plan under, and holds each trigger's generate bundles to source A under each set.
+        /// Plans a plant's triggers, as the differential plans them, in a schema asking its graph under the sets the legs plan
+        /// under, and holds each trigger's generate bundles to source A under each set.
         /// </summary>
-        static Planted Shadowed(Plant plant)
+        static Planted Planned(Plant plant)
         {
             var graph = Graph(plant.Define, plant.Rules);
             var statements = plant.Triggers.Select(t => t.Sql).ToList();
-            var run = Shadowed(graph, "mutation " + plant.Name, statements);
-            var shadow = run.Shadow!;
+            var run = Generated(graph, "mutation " + plant.Name, statements);
+            var generated = run.Generated!;
             var triggers = new List<Trigger>();
             foreach (var (sql, caught) in plant.Triggers)
             {
                 var name = statements.IndexOf(sql).ToString(CultureInfo.InvariantCulture);
-                var ids = shadow.Admissions.Where(a => a.Name == name).Select(a => a.Bundle).Concat(shadow.Weakenings.Where(w => w.Name == name).Select(w => w.Bundle ?? 0)).ToHashSet();
-                var bundles = shadow.Bundles.Where(b => ids.Contains(b.Id)).ToList();
+                var ids = generated.Asked.Where(a => a.Name == name).Select(a => a.Bundle).Concat(generated.Weakenings.Where(w => w.Name == name).Select(w => w.Bundle ?? 0)).ToHashSet();
+                var bundles = generated.Bundles.Where(b => ids.Contains(b.Id)).ToList();
                 var judged = new Dictionary<RenderingSet, RenderingSoundnessTests.Tally>();
                 foreach (var set in RenderingGenerateRun.AssertedSets)
                     RenderingSoundnessTests.Generated(judged[set] = new RenderingSoundnessTests.Tally(), bundles.Where(b => b.Set == set), $"{plant.Name} {set}");
 
-                triggers.Add(new(sql, caught, bundles, judged, [.. shadow.Classes.Where(c => c.Name == name).OrderBy(c => c.Set).ThenBy(c => c.Statement).ThenBy(c => c.Conjunct)]));
+                triggers.Add(new(sql, caught, bundles, judged, [.. generated.Sends.Where(c => c.Name == name).OrderBy(c => c.Set).ThenBy(c => c.Statement).ThenBy(c => c.Conjunct)]));
             }
 
             GC.KeepAlive(graph);
@@ -198,9 +199,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return graph;
         }
 
-        /// <summary>Statements planned as the differential plans them, shadowed through a graph under the sets the legs plan under.</summary>
-        internal static RenderingCheckRun Shadowed(RenderingGraph graph, string input, IReadOnlyList<string> statements) =>
-            RenderingCheckRun.Over(RenderingInputs.Differential(input, statements, RenderingInputs.Containers), shadow: new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets));
+        /// <summary>
+        /// Statements planned as the differential plans them, in a schema of their own asking a graph under the sets the legs
+        /// plan under.
+        /// </summary>
+        internal static RenderingCheckRun Generated(RenderingGraph graph, string input, IReadOnlyList<string> statements)
+        {
+            var generated = new RenderingGenerateRun(graph, RenderingGenerateRun.AssertedSets);
+            return RenderingCheckRun.Over(RenderingInputs.Differential(input, statements, generated.Bind(CosmosDifferentialTests.Containers)), generated: generated);
+        }
 
         /// <summary>A planted best: a negation's operand's best at the position <paramref name="at"/> gives, negated, as the negation's.</summary>
         internal static void NegationBestFrom(RenderingTheory t, string name, Func<Var<RenderPosition>, Term<RenderPosition>> at) =>
@@ -376,12 +383,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         }
 
-        /// <summary>A plant's run: its triggers planned and shadowed.</summary>
+        /// <summary>A plant's run: its triggers planned.</summary>
         internal sealed record Planted(Plant Plant, RenderingCheckRun Run, IReadOnlyList<Trigger> Triggers);
 
-        /// <summary>A trigger shadowed: its generate bundles, source A over them under each set, and each conjunct's class.</summary>
+        /// <summary>A trigger planned: its generate bundles, source A over them under each set, and what each statement sent of each conjunct.</summary>
         internal sealed record Trigger(string Sql, string? Caught, IReadOnlyList<RenderingGenerateRun.Bundle> Bundles, IReadOnlyDictionary<RenderingSet, RenderingSoundnessTests.Tally> Judged,
-            IReadOnlyList<RenderingGenerateRun.Classed> Classes);
+            IReadOnlyList<RenderingGenerateRun.Sent> Sends);
 
     }
 

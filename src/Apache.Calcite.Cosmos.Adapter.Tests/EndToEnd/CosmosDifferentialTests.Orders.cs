@@ -1414,20 +1414,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// comparison with a parameter went to the sorts, which a statement counts first: <c>id &lt; ?</c> beside
         /// <c>t LIKE 'a%'</c>, its sort now pushed too, so the gate's comparisons are 25, <c>orders_declared</c>'s 21.
         /// </para>
+        /// <para>
+        /// The switch to the rendering graph lowered seven of the gate's, measured on the emulator, under its set: a text
+        /// ordering over a string nothing keeps U+0000 out of — <c>s</c> and <c>t</c> in <c>orders_ascii</c>, whose pattern
+        /// admits U+0000, <c>s</c>, <c>t</c> and the undeclared <c>id</c> in <c>orders_declared</c>, <c>id</c> in
+        /// <c>orders_plain</c> — which the emulator orders as stored, is declined (O2's residue, R4), and the sort or extreme
+        /// above it stays in process with it. Sorts went from 225 to 220, <c>orders_declared</c> 107 to 103 and
+        /// <c>orders_ascii</c> 91 to 90; extremes from 25 to 23, <c>orders_ascii</c> 13 to 12 and <c>orders_plain</c> 4 to 3.
+        /// The translator's pushes there were unproven on the emulator, so each loss is a correctness fix (owner, 2026-10-22),
+        /// its statement listed in <c>TODO.md</c>; under Azure's set they push. The default run's floors held.
+        /// </para>
         /// </remarks>
         static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
-            (null, "sort", 35, 225),
-            (null, "extreme", 5, 25),
+            (null, "sort", 35, 220),
+            (null, "extreme", 5, 23),
             (null, "page", 0, 3),
             (null, "comparison", 5, 25),
             ("orders_plain", "sort", 5, 27),
-            ("orders_plain", "extreme", 0, 4),
-            ("orders_declared", "sort", 19, 107),
+            ("orders_plain", "extreme", 0, 3),
+            ("orders_declared", "sort", 19, 103),
             ("orders_declared", "extreme", 3, 8),
             ("orders_declared", "comparison", 3, 21),
-            ("orders_ascii", "sort", 11, 91),
-            ("orders_ascii", "extreme", 2, 13),
+            ("orders_ascii", "sort", 11, 90),
+            ("orders_ascii", "extreme", 2, 12),
         ];
 
     }

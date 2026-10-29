@@ -691,6 +691,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             "Filter.HierarchicalGap",
             "Filter.PointReadSet",
             "Filter.PartitionInList",
+            // Since the switch: S sends the brand's inequality exactly, where the translator weakened it, and the
+            // last conjunct left in process goes (P9).
+            "Filter.DeepConjunction",
             "Filter.TypeTests",
             "Filter.DisjunctionOfConjunctions",
             "Filter.NestedKeyContainer",

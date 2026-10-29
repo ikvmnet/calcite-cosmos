@@ -235,15 +235,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads what a reading is compared with: a parameter, a literal, and against a conversion to a number the
-            /// constant <see cref="CosmosNumericWindow"/> reads there.
+            /// constant <see cref="TryConstantNumber"/> reads there.
             /// </summary>
             /// <remarks>
             /// <para>
             /// <b>A number a conversion is compared with arrives cast</b> — <c>&lt;= 30.5</c> against a cast to
             /// <c>DOUBLE</c> as <c>CAST(30.5:DECIMAL(3, 1)):DOUBLE</c>, and against <c>RETURNING DECIMAL</c> as the
-            /// literal cast to the clause's scale — and is read as the window reads it, in one place: a cast to a
-            /// number is the constant, except one to a <c>DECIMAL</c> its whole digits do not fit, which raises in
-            /// Calcite and is no constant at all. A cast that drops scale truncates the literal, which the conversion
+            /// literal cast to the clause's scale — and is read in one place: a cast to a number is the constant,
+            /// except one to a <c>DECIMAL</c> its whole digits do not fit, which raises in Calcite and is no constant
+            /// at all. A cast that drops scale truncates the literal, which the conversion
             /// <c>RETURNING DECIMAL</c> is, alone, reads as such (<c>PredicateAtom</c>); against any other reading a
             /// truncated literal would be read as a number Calcite does not compare with, and is not read.
             /// </para>
@@ -266,7 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// Reads a number through the casts around it to <c>DOUBLE</c> and to <c>DECIMAL</c>, or answers <c>null</c>:
             /// where another cast converts it, where a <c>DECIMAL</c> drops its scale and <paramref name="truncates"/> is
-            /// clear, or where <see cref="CosmosNumericWindow"/> reads no constant.
+            /// clear, or where <see cref="TryConstantNumber"/> reads no constant.
             /// </summary>
             static java.math.BigDecimal? Constant(RexNode node, bool truncates)
             {
@@ -286,7 +286,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         return null;
                 }
 
-                return CosmosNumericWindow.TryConstantNumber(node);
+                return TryConstantNumber(node);
+            }
+
+            /// <summary>
+            /// Reads the number a constant side of a comparison denotes, through any casts around it.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// The constant arrives wrapped as often as not — Calcite widens a literal to the type it is being
+            /// compared against, so <c>&lt;= 30.5</c> arrives as <c>CAST(30.5:DECIMAL(3, 1)):DOUBLE</c>
+            /// — and a cast of a constant to a number is that constant. Any imprecision in the widening is
+            /// far inside the whole unit the atom's window is loosened by (<c>PredicateAtom</c>). A literal that
+            /// is not a number, which is what a string on this side would be, is refused: nothing is known about
+            /// where converting it lands.
+            /// </para>
+            /// <para>
+            /// <b>Except a cast to a <c>DECIMAL</c> too narrow for it, which raises.</b> Where the two sides'
+            /// common type would pass nineteen digits, Calcite casts the literal down to the other side's
+            /// type rather than both up: <c>RETURNING DECIMAL(19, 18) = 50</c> compares with
+            /// <c>CAST(50):DECIMAL(19, 18)</c>, which has one whole digit and raises on every row. Read as 50,
+            /// a window around it answered where the engine raises — over a path declared a number the service kept
+            /// nothing between 49 and 51, and over one declared at most 10 the filter was rewritten to
+            /// <c>FALSE</c>. A cast that drops scale truncates, which moves the literal by less than one; one
+            /// its whole digits do not fit is refused.
+            /// </para>
+            /// </remarks>
+            static java.math.BigDecimal? TryConstantNumber(RexNode node)
+            {
+                var narrowest = int.MaxValue;
+
+                while (node is RexCall call &&
+                       (SqlKind.__Enum)call.getKind().ordinal() is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST &&
+                       call.getOperands().size() == 1)
+                {
+                    if (call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL)
+                        narrowest = Math.Min(narrowest, call.getType().getPrecision() - call.getType().getScale());
+
+                    node = (RexNode)call.getOperands().get(0);
+                }
+
+                if (node is not RexLiteral literal || literal.getValue() is not java.math.BigDecimal value)
+                    return null;
+
+                // The whole digits the literal has, against the fewest any cast on the way down allows.
+                var whole = value.precision() - value.scale();
+                return whole > narrowest && value.signum() != 0 ? null : value;
             }
 
             static RexNode Innermost(RexNode node)
@@ -386,6 +431,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 lock (_lock)
                     return Value(node);
+            }
+
+            /// <summary>
+            /// Each path a conjunct reads, by its spelling (<see cref="SqlValue.Spell"/>), and how: the node its raw value
+            /// is and an accessor typed as a number or a boolean, which the Rex builder writes a weakening's members over.
+            /// </summary>
+            /// <remarks>
+            /// Each largest node read as a reading of a path, inside an opaque term too, and beneath a cast the reading it
+            /// converts, a cast being no accessor. The raw value is a raw reading itself, and a rendering or a typed
+            /// <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed otherwise
+            /// has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first raw value is
+            /// kept, each being the same value. A path read through typed accessors of two SQL types keeps none: S proves a
+            /// comparison over one atom's reader (<c>rex-writable</c>), and written over the other's it would mean another
+            /// value in Calcite, so the builder writes no such member, and that weakening is not pushed.
+            /// </remarks>
+            public IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(RexNode conjunct, RexBuilder rexBuilder)
+            {
+                var accessors = new Dictionary<string, RenderingRexBuilder.Accessor>(StringComparer.Ordinal);
+                var ambiguous = new HashSet<string>(StringComparer.Ordinal);
+
+                void Walk(RexNode node)
+                {
+                    node = CosmosRexTranslator.StripRedundantTextCast(node);
+                    var value = Value(node);
+                    if (value is { PathRead: JsonDocumentPath path } && value is not SqlValue.Cast)
+                    {
+                        var raw = value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null;
+                        var typed = value is SqlValue.Typed { Type: var type }
+                            && Cosmos.Facts.Rendering.RenderingRexGrammar.TypeTests.ContainsKey(Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type)) ? node : null;
+                        var (spelled, held) = (SqlValue.Spell(path), accessors.GetValueOrDefault(SqlValue.Spell(path)));
+                        if (held?.Typed is { } kept && typed is not null && Equals(kept.getType()?.getSqlTypeName(), typed.getType()?.getSqlTypeName()) == false)
+                            ambiguous.Add(spelled);
+
+                        accessors[spelled] = new(held?.Raw ?? raw, held?.Typed ?? typed);
+                        return;
+                    }
+
+                    if (node is RexCall call)
+                        foreach (var operand in Operands(call))
+                            Walk(operand);
+                }
+
+                lock (_lock)
+                    Walk(Expand(conjunct));
+
+                foreach (var spelled in ambiguous)
+                    accessors[spelled] = accessors[spelled] with { Typed = null };
+
+                return accessors;
             }
 
             /// <summary>

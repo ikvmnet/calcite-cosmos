@@ -6,6 +6,7 @@ using System.Text;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -14,8 +15,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// A filter as the predicate oracle reads it: its conjuncts loaded, admitted stratum by stratum by the translator, and
-    /// every question a rule asks of it answered from the facts the question's licence admits.
+    /// A filter as the predicate oracle reads it: its conjuncts loaded, admitted stratum by stratum — those the rendering
+    /// graph owns by it, the rest by the translator — and every question a rule asks of it answered from the facts the
+    /// question's licence admits.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -79,6 +81,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
         readonly object _lock = new();
+        bool[]? _owned;
+
+        /// <summary>S's side of the admission under the set it is proven under, then each a test's probe asks beside it; none where a test turned S off.</summary>
+        List<CosmosFilterRendering>? _renderings;
         CosmosStatementScope? _scope;
         IReadOnlyList<int>? _redundant;
         bool? _contradictory;
@@ -184,36 +190,152 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
 
         /// <summary>
-        /// The statement, admitted by the translator stratum by stratum the first time a question asks of a stratum.
+        /// Gets S as the container's schema asks it: its reasoning's oracle, bound wherever F was asked of the statement.
+        /// </summary>
+        /// <exception cref="ArgumentException">The container is bound to no schema's reasoning.</exception>
+        internal RenderingOracle Rendering => (_container.Reasoning ?? throw JsonFactTheory.Unbound()).Rendering;
+
+        /// <summary>
+        /// The statement, admitted stratum by stratum the first time a question asks of a stratum.
         /// </summary>
         CosmosStatementScope Scope
         {
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, (i, facts) =>
-                    {
-                        // The shadow's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
-                        if (CosmosRenderingCapture.Armed)
-                            CosmosRenderingCapture.Observer?.Read(this);
-
-                        var parameters = new CosmosParameterList();
-                        if (Translator(facts, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
-                            return false;
-
-                        if (CosmosRenderingCapture.Armed)
-                            CosmosRenderingCapture.Observer?.Admitted(this, i, text!, parameters);
-
-                        return true;
-                    });
+                    return _scope ??= Oracle.Admit(Statement, Render);
             }
         }
+
+        /// <summary>
+        /// One round of admission: S asked once a round of the conjuncts it owns (<see cref="CosmosFilterRendering"/>), which
+        /// it answers alone, its "no" included (O2, O8), and after the last round says whether its admissions stand; the
+        /// translator asked of each other pending conjunct, in order, from the node the round hands it.
+        /// </summary>
+        AdmissionRound.Answer Render(AdmissionRound round)
+        {
+            // The rendering check's: the rounds ran, which a statement none of whose conjuncts rendered says here alone.
+            if (CosmosRenderingCapture.Armed)
+                CosmosRenderingCapture.Observer?.Read(this, round);
+
+            var ours = Rendered(round);
+            if (round.Closing)
+                return new([], ours);
+
+            var translated = new List<int>();
+            foreach (var i in round.Pending)
+            {
+                if (_renderings is not null && Owned(i))
+                    continue;
+
+                var parameters = new CosmosParameterList();
+                if (Translator(round.NodeFor(i).View, parameters).TryTranslateConjunct(Conjuncts[i], out var text) == false)
+                    continue;
+
+                if (CosmosRenderingCapture.Armed)
+                    CosmosRenderingCapture.Observer?.Admitted(this, i, text!, parameters);
+
+                translated.Add(i);
+            }
+
+            return new(translated, ours);
+        }
+
+        /// <summary>
+        /// S asked of a round under the statement's own set, whose admissions it hands back, and under each set a test's probe
+        /// asks beside it; the capture told of each admission as S's print, as it is told of the translator's text.
+        /// </summary>
+        IReadOnlyList<int> Rendered(AdmissionRound round)
+        {
+            if (_renderings is null)
+            {
+                // A statement's admission is asked of S from its first round, unless a test turned its schema's S off.
+                if (round is not { Number: 1, Again: false, Closing: false } || _container.Reasoning is { RenderingOff: true })
+                    return [];
+
+                _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];
+                // Only the statement's own set's declines are counted: what a host's plan pays.
+                var probe = _container.Reasoning?.Probe;
+                _renderings = [.. new[] { CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(probe?.Sets ?? []).Distinct()
+                    .Select((set, n) => new CosmosFilterRendering(this, set, probe, _owned, n == 0 ? _container.Name : null))];
+            }
+
+            var ours = _renderings[0].Answer(round, _scope!);
+            foreach (var other in _renderings.Skip(1))
+                other.Answer(round, _scope!);
+
+            if (round.Closing == false && CosmosRenderingCapture.Armed)
+                foreach (var i in ours)
+                {
+                    var parameters = new CosmosParameterList();
+                    CosmosRenderingCapture.Observer?.Admitted(this, i, Print(i, _renderings[0].Admissions[i].Form, parameters), parameters);
+                }
+
+            return ours;
+        }
+
+        /// <summary>Whether S owns a conjunct: syntactic on the IR, never S's answer (<see cref="RenderingFamily.Owns"/>).</summary>
+        bool Owned(int conjunct) => (_owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)])[conjunct];
+
+        /// <summary>Prints a form S chose for a conjunct into a list, over the paths the conjunct reads.</summary>
+        string Print(int conjunct, ServiceForm form, CosmosParameterList parameters) =>
+            RenderingPrinter.Print(form, Statement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters);
+
+        /// <summary>
+        /// Whether the printer writes a form S chose for a conjunct: legality, read before S's admission stands, so that
+        /// implementation never meets a form it cannot print for a plan Volcano chose.
+        /// </summary>
+        internal bool Prints(int conjunct, ServiceForm form)
+        {
+            try
+            {
+                _ = Print(conjunct, form, new CosmosParameterList());
+                return true;
+            }
+            catch (Exception e) when (e is CosmosTranslationException or InvalidOperationException or ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>The form S chose for a conjunct it admitted, which implementation prints; none where S was asked nothing.</summary>
+        internal ServiceForm? Form(int conjunct) => RenderingFor(null) is { } r && Scope.StratumOf(conjunct) > 0 ? r.Resolution.Forms.GetValueOrDefault(conjunct) : null;
+
+        /// <summary>
+        /// S's side of the admission under a set, the statement's own where none is named, resolved: read once the rounds are
+        /// done, as at implementation, the closing bundle opened then where one answers the weakenings; none where the
+        /// statement asked S nothing.
+        /// </summary>
+        internal (CosmosFilterRendering Rendering, CosmosFilterRendering.Resolution Resolution)? RenderingFor(RenderingSet? set)
+        {
+            lock (_lock)
+            {
+                _ = Scope.Residual;
+                return _renderings?.FirstOrDefault(r => set is null || r.Set == set) is { } rendering ? (rendering, rendering.Resolve(Scope)) : null;
+            }
+        }
+
+        /// <summary>
+        /// S's weakening of a residual conjunct under a set, the statement's own where none is named, and the Rex the split
+        /// rule pushes for it (<see cref="RenderingRexBuilder"/>): none where S gave none, or the builder writes none.
+        /// </summary>
+        internal (ServiceForm? Form, RexNode? Rex) WeakeningOf(int conjunct, RenderingSet? set = null)
+        {
+            var form = RenderingFor(set)?.Resolution.Weakenings.GetValueOrDefault(conjunct);
+            return (form, form is null ? null : RenderingRexBuilder.Build(form, _rexBuilder, AccessorsOf(conjunct)));
+        }
+
+        /// <summary>Each path a conjunct reads, by its spelling, and its accessor: what the Rex builder writes its weakening over.</summary>
+        internal IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(int conjunct) => _loading.AccessorsOf(Conjuncts[conjunct], _rexBuilder);
 
         /// <summary>The statement's scope, for the rendering check's importer.</summary>
         internal CosmosStatementScope ScopeForCheck => Scope;
 
         /// <summary>The declaration the statement reasons from, for the rendering check's importer.</summary>
         internal JsonFactTheory DeclarationForCheck => Oracle.Theory;
+
+        /// <summary>The builder the strata render through, for the rendering check's Rex builder round trip.</summary>
+        internal RexBuilder RexBuilderForCheck => _rexBuilder;
 
         /// <summary>The binding the conjuncts read their fields through, for the rendering check's in-process judge of a weakening.</summary>
         internal (IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) BindingForCheck => (_fields, _readings);
@@ -291,7 +413,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // each index says.
                 var conjunct = next++;
                 System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
-                var text = TranslatorFor(conjunct, parameters).TranslateConjunct(node);
+                // A conjunct S admitted prints the form it chose, no bundle and no question; the translator writes the rest.
+                var text = Form(conjunct) is { } form ? Print(conjunct, form, parameters) : TranslatorFor(conjunct, parameters).TranslateConjunct(node);
                 builder.Append(text);
                 if (CosmosRenderingCapture.Armed)
                     CosmosRenderingCapture.Observer?.Written(this, conjunct, text, parameters);

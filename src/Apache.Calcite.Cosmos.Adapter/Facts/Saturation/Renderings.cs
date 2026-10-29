@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.RegularExpressions;
 
 using Eggnog;
@@ -90,15 +91,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Reads number text as the decimal it spells, where a decimal holds it exactly.
+        /// Reads number text as the decimal it spells, where a decimal holds it exactly: never .NET's parse, which reads
+        /// <c>1E-50</c> as 0 and a text past 28 places rounded.
         /// </summary>
         public static bool TryExactNumber(string text, out decimal value)
         {
             value = 0;
-            if (MayBeNumberText(text) == false || SignificantDigits(text) > 28)
-                return false;
-
-            return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            return MayBeNumberText(text) && SignificantDigits(text) <= 28 && ExactDecimal(text) is var (digits, exponent) && TryDecimal(digits, exponent, out value);
         }
 
         /// <summary>The text Calcite renders a boolean as.</summary>
@@ -194,12 +193,78 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             && double.TryParse(Trimmed(text), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
 
         /// <summary>
-        /// <c>BigDecimal</c>'s parse, for <c>RETURNING DECIMAL</c>: the number in <see cref="JsonValues"/>' spelling, held
-        /// approximately past a decimal; or <c>null</c>.
+        /// <c>BigDecimal</c>'s parse, for <c>RETURNING DECIMAL</c>: the number in <see cref="JsonValues"/>' spelling, exact
+        /// where a decimal holds the text's value and held approximately past one; or <c>null</c>, where Java raises.
         /// </summary>
-        public static string? ParseDecimal(string text) => Regex.IsMatch(Trimmed(text), @"^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$", RegexOptions.CultureInvariant) == false ? null
-            : decimal.TryParse(Trimmed(text), NumberStyles.Float, CultureInfo.InvariantCulture, out var exact) ? Of(exact)
-            : Of(double.Parse(Trimmed(text), NumberStyles.Float, CultureInfo.InvariantCulture));
+        /// <remarks>
+        /// Never .NET's decimal parse, which reads <c>1e-50</c> as 0 and rounds a text past 28 places, each an exact spelling
+        /// of another number. Only the test model's reading of a cell reads it; production compares through
+        /// <see cref="DecimalSide"/>, exact at any length.
+        /// </remarks>
+        public static string? ParseDecimal(string text) => ExactDecimal(text) is not { } x ? null
+            : TryDecimal(x.Digits, x.Exponent, out var exact) ? Of(exact)
+            : Approximately(double.Parse(Trimmed(text), NumberStyles.Float, CultureInfo.InvariantCulture), x.Exponent >= 0);
+
+        /// <summary>
+        /// The sign of the number <c>BigDecimal</c> parses text as, less a decimal, exactly; or <c>null</c>, where Java raises.
+        /// </summary>
+        public static int? DecimalSide(string text, decimal c)
+        {
+            if (ExactDecimal(text) is not var (digits, exponent))
+                return null;
+
+            // c = u / 10^s. Of one sign, the magnitudes' orders of ten decide, unless they are within one, where the two are
+            // scaled to the lesser power, a few digits more than the two hold.
+            var parts = decimal.GetBits(c);
+            var (u, s) = (new BigInteger((uint)parts[2]) << 64 | new BigInteger((uint)parts[1]) << 32 | (uint)parts[0], (parts[3] >> 16) & 0xFF);
+            var sign = c == 0 ? 0 : c < 0 ? -1 : 1;
+            if (digits.Sign != sign || digits.IsZero)
+                return digits.Sign.CompareTo(sign);
+
+            var (x, n) = (BigInteger.Abs(digits), (long)BigInteger.Abs(digits).ToString(CultureInfo.InvariantCulture).Length);
+            var m = (long)u.ToString(CultureInfo.InvariantCulture).Length;
+            var magnitude = n - 1 + exponent >= m - s ? 1 : m - 1 - s >= n + exponent ? -1
+                : (x * BigInteger.Pow(10, (int)(exponent - Math.Min(exponent, -s)))).CompareTo(u * BigInteger.Pow(10, (int)(-s - Math.Min(exponent, -s))));
+            return magnitude * sign;
+        }
+
+        /// <summary>
+        /// Text in <c>BigDecimal</c>'s grammar as its digits and a power of ten, trailing zeros taken out; <c>null</c> where
+        /// Java raises, an exponent or a scale past an <c>int</c> among it.
+        /// </summary>
+        static (BigInteger Digits, long Exponent)? ExactDecimal(string text)
+        {
+            var match = Regex.Match(Trimmed(text), @"^(?<sign>[+-]?)(?:(?<whole>[0-9]+)\.?(?<fraction>[0-9]*)|\.(?<fraction>[0-9]+))(?:[eE](?<exponent>[+-]?[0-9]+))?$", RegexOptions.CultureInvariant);
+            if (match.Success == false)
+                return null;
+
+            var (whole, fraction, exponent) = (match.Groups["whole"].Value, match.Groups["fraction"].Value, 0L);
+            if (match.Groups["exponent"].Success && long.TryParse(match.Groups["exponent"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent) == false
+                || exponent is < int.MinValue or > int.MaxValue || fraction.Length - exponent is < int.MinValue or > int.MaxValue)
+                return null;
+
+            var digits = BigInteger.Parse("0" + whole + fraction, CultureInfo.InvariantCulture) * (match.Groups["sign"].Value == "-" ? -1 : 1);
+            exponent -= fraction.Length;
+            while (digits.IsZero == false && (digits % 10).IsZero)
+                (digits, exponent) = (digits / 10, exponent + 1);
+
+            return (digits, digits.IsZero ? 0 : exponent);
+        }
+
+        /// <summary>The decimal that is exactly digits × 10^exponent, or <c>false</c> where none is: past 96 bits or 28 places.</summary>
+        static bool TryDecimal(BigInteger digits, long exponent, out decimal exact)
+        {
+            exact = 0;
+            if (exponent > 28 && digits.IsZero == false || exponent < -28)
+                return false;
+
+            var unscaled = BigInteger.Abs(digits) * BigInteger.Pow(10, (int)Math.Max(exponent, 0));
+            if (unscaled.GetBitLength() > 96)
+                return false;
+
+            exact = new decimal((int)(uint)(unscaled & uint.MaxValue), (int)(uint)(unscaled >> 32 & uint.MaxValue), (int)(uint)(unscaled >> 64), digits.Sign < 0, (byte)Math.Max(0, -exponent));
+            return true;
+        }
 
         static int SignificantDigits(string text)
         {

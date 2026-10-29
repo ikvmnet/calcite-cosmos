@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly (string Type, string[] Fields, Kind Kind, string Reason)[] Classed =
         [
             ("Adapter.Client.CosmosDocument", ["ServiceProperties"], StaticFact, "the properties the service writes on every item"),
-            ("Adapter.Client.CosmosInstrumentation", ["ActivitySource", "Meter", "RequestCharge", "Responses"], Infra, "telemetry, which no plan reads"),
+            ("Adapter.Client.CosmosInstrumentation", ["ActivitySource", "Meter", "RenderingDeclines", "RequestCharge", "Responses"], Infra, "telemetry, which no plan reads"),
             ("Adapter.Client.CosmosJson", ["UnixEpochDay"], StaticFact, "a date"),
             ("Adapter.CosmosModelClasses", ["Patterns"], StaticFact, "the classes a model may name"),
             ("Adapter.CosmosSchemaFactory", ["Mapper"], Infra, "Jackson's mapper for model operands, its caches keyed by Java types"),
@@ -120,6 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Metadata.CosmosRendering", ["Defined"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness; every schema's S is defined from it"),
             ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Current"], TestArm, "the observer a test arms for its flow"),
+            ("Adapter.Metadata.CosmosRenderingCost", ["Armed", "Clock", "Flow"], TestArm, "what a test measures of its flow: the samples S's questions cost, and the thread's clock it hands"),
             ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node, which reaches the table whose container it remembers; internal, asked by the planner alone"),
             ("Adapter.Metadata.CosmosSchemaRecognition", ["Cosmos"], StaticFact, "the recognisers of Cosmos DB's schema keywords"),
             ("Adapter.Metadata.CosmosServiceFacts", ["Properties", "Stated"], StaticFact, "what the service guarantees of its own properties, as rules"),
@@ -146,8 +147,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Sql.CosmosSchemaFunctions", ["Instance"], StaticFact, "the functions a schema offers"),
             ("Adapter.Sql.CosmosSql", ["ReservedWords"], StaticFact, "Cosmos SQL's reserved words"),
             ("Adapter.Sql.CosmosStringFunctions", ["Counted", "Mapped", "Searched", "Trimmed", "Verdicts"], StaticFact, "what the service's string functions were measured to refuse"),
-            ("Adapter.Sql.CosmosTranslatorFaults", ["Armed", "Current"], TestArm, "the translator's fault a test plants for its flow"),
             ("Adapter.Sql.CosmosTypeTestImplementor", ["Bodies"], StaticFact, "the in-process bodies of the type tests"),
+            ("Adapter.Sql.RenderingPrinterFaults", ["Armed", "Current"], TestArm, "the printer's fault a test plants for its flow"),
 
             ("Facts.JsonDocumentPath", ["Root"], StaticFact, "the root path"),
             ("Facts.JsonFactSet", ["Empty"], StaticFact, "the empty set"),

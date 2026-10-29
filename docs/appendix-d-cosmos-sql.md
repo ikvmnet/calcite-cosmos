@@ -102,7 +102,7 @@ through stored procedures and transactional batches, which the adapter does not 
 | --- | --- |
 | a table | a container, `FROM <container> c` |
 | the `DOC` column | `c` |
-| `JSON_VALUE(c."DOC", '$.a.b')` | `c.a.b`, guarded |
+| `JSON_VALUE(c."DOC", '$.a.b')` | `c.a.b`, guarded as proved (Chapter 8) |
 | `WHERE` | `WHERE` |
 | `SELECT a, b` | `SELECT VALUE { "a": …, "b": … }` |
 | `ORDER BY … FETCH n` | `ORDER BY … OFFSET 0 LIMIT n` |

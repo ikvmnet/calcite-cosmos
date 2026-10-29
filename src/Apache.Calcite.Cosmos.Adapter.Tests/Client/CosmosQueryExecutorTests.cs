@@ -1031,6 +1031,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var operand = new java.util.HashMap();
             operand.put("endpoint", Endpoint);
             operand.put("key", Key);
+            operand.put("serviceTarget", CosmosEmulator.ServiceTargetOperand);
             operand.put("database", DatabaseName);
             operand.put("connectionMode", "gateway");
 

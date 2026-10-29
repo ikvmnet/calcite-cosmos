@@ -215,9 +215,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// too. So it addresses no path, in any clause, and is left to the engine.
         /// </para>
         /// <para>
-        /// What a comparison through it still implies is the window a cast to a number puts a stored number in, and
-        /// the value it converts is the accessor read as text — the operand a cast would have had, written out because
-        /// the clause adds none.
+        /// The oracle's loader reads a comparison through it as the window a cast to a number puts a stored number in,
+        /// which S states and does not write (O7), and the value it converts is the accessor read as text — the operand a
+        /// cast would have had, written out because the clause adds none.
         /// </para>
         /// </remarks>
         [Fact]

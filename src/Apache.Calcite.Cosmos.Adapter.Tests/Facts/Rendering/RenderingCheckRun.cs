@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -45,20 +46,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The targets the asserted set serves, each of which a proof must hold on.</summary>
         public static IEnumerable<RenderingTarget> Targets => ProbeRows.Measured.Serves[AssertedSet];
 
-        /// <summary>One S a process, its generations defined from the registry's rows, which the shadow asks too.</summary>
+        /// <summary>One S a process, its generations defined from the registry's rows, which generate mode's runs ask too.</summary>
         internal static readonly RenderingGraph Measured = new(() => ProbeRows.Measured);
 
         readonly RenderingGraph Graph;
 
         /// <summary>
-        /// The pull request's run, once a process, in a reasoning of its own: the partition run's 200 predicates, or 1,000 at
-        /// the gate; and generate mode's shadow over every statement it plans, riding its pass.
+        /// The pull request's run, once a process, in generate mode's schema of its own: the partition run's 200 predicates, or
+        /// 1,000 at the gate; and every bundle production's sites open as it plans, told through that schema's probe.
         /// </summary>
         public static readonly Lazy<RenderingCheckRun> PerPullRequest = new(() =>
         {
-            var reasoning = new CosmosReasoning();
-            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)),
-                shadow: new RenderingGenerateRun(askOracleEvery: 16));
+            var generated = new RenderingGenerateRun();
+            var reasoning = generated.Reasoning;
+            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)).Append(RenderingInputs.CastOfTyped(reasoning)),
+                generated: generated);
         });
 
         readonly Action<RenderingSet, TimeSpan>? Timed;
@@ -66,14 +68,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <param name="memo">The memo, or one of its own.</param>
         /// <param name="graph">The S it checks in: the registry's, or a plant's of its own.</param>
         /// <param name="timed">Told each bundle's time from open to dispose, with its set (the cost line).</param>
-        /// <param name="shadow">Generate mode's shadow, asked of each statement once its checks are made; none where <c>null</c>.</param>
-        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null) =>
-            (Memo, Graph, Timed, Shadow) = (memo ?? new RenderingMemo(), graph ?? Measured, timed, shadow);
+        /// <param name="generated">Generate mode's run, whose schema the inputs plan in, read once each statement's checks are made; none where <c>null</c>.</param>
+        public RenderingCheckRun(RenderingMemo? memo = null, RenderingGraph? graph = null, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? generated = null) =>
+            (Memo, Graph, Timed, Generated) = (memo ?? new RenderingMemo(), graph ?? Measured, timed, generated);
 
         public RenderingMemo Memo { get; }
 
-        /// <summary>Generate mode's shadow of every statement planned, where the run carries one.</summary>
-        public RenderingGenerateRun? Shadow { get; }
+        /// <summary>Generate mode's run over every statement planned, where the run carries one.</summary>
+        public RenderingGenerateRun? Generated { get; }
 
         /// <summary>Every conjunct a check holds, one row each, with what the check says.</summary>
         public ConcurrentQueue<Checked> Conjuncts { get; } = new();
@@ -93,13 +95,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Text a <c>WHERE</c> holds that no site wrote: written outside the translator.</summary>
         public ConcurrentQueue<(string Input, string Name, string Text)> Outside { get; } = new();
 
+        /// <summary>A statement admitted more than once, or one holding a conjunct S owns admitted while its plan was implemented.</summary>
+        public ConcurrentQueue<(string Input, string Name, string Why)> Readmitted { get; } = new();
+
+        /// <summary>How many statements were admitted, and how many of those first while implementing, owning nothing.</summary>
+        public (long Statements, long UnownedAtImplementation) Admissions => (Interlocked.Read(ref _admissions), Interlocked.Read(ref _unownedAtImplementation));
+
+        long _admissions, _unownedAtImplementation;
+
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
 
-        /// <summary>Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time.</summary>
-        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? shadow = null)
+        /// <summary>
+        /// Checks every input; the corpus's share one harness and are planned one at a time, the rest two at a time. Where a
+        /// generate run is given, the inputs plan in its schema (<see cref="RenderingGenerateRun.Reasoning"/>).
+        /// </summary>
+        public static RenderingCheckRun Over(IEnumerable<RenderingInputs.Statement> inputs, Action<RenderingSet, TimeSpan>? timed = null, RenderingGenerateRun? generated = null)
         {
-            var run = new RenderingCheckRun(timed: timed, shadow: shadow);
+            var run = new RenderingCheckRun(timed: timed, generated: generated);
             var all = inputs.ToList();
             foreach (var input in all.Where(i => i.Input == "corpus"))
                 run.Plan(input);
@@ -211,6 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return;
                 }
 
+                recorder.Implementing = true;
                 foreach (var cosmos in PlanDigests.Subtrees(planned, n => n is CosmosRel))
                 {
                     if (PlannerHarness.TableOf(cosmos) is not CosmosTable table)
@@ -228,6 +242,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         Failures.Enqueue((input.Input, input.Name, "implements: " + PlanDigests.Failure(e)));
                     }
                 }
+            }
+
+            // A statement admits once, in planning: implementation finds admission's statement by its node and binding. The
+            // unnest rule asks its element filter under a placeholder alias, so implementation admits that one afresh; its
+            // element paths are opaque in the IR, so S owns none of it and the translator's answer is the one it gave.
+            foreach (var admitted in recorder.Admissions.GroupBy(a => a.Statement))
+            {
+                Interlocked.Increment(ref _admissions);
+                var owned = admitted.Key.Statement.Conjuncts.Any(RenderingFamily.Owns);
+                if (admitted.Count() > 1 || owned && admitted.Any(a => a.Implementing))
+                    Readmitted.Enqueue((input.Input, input.Name, $"{admitted.Count()} admissions, {admitted.Count(a => a.Implementing)} implementing: {admitted.Key.Statement.Digest}"));
+                else if (admitted.Any(a => a.Implementing))
+                    Interlocked.Increment(ref _unownedAtImplementation);
             }
 
             // Read after the statement, never during its planning: the importer opens nothing planning did not.
@@ -261,23 +288,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     [.. admitted.SelectMany(r => r.Parameters.Select(p => p with { Name = p.Name + "_" + r.Conjunct }))]);
             }
 
-            // The split rule weakens each time it is asked, and a residual conjunct renders one way from its statement's facts.
+            // The split rule pushes S's weakening each time it is asked, and a residual conjunct renders one way from its statement's facts.
             foreach (var weakening in records.Where(r => r.Site == 3).DistinctBy(r => (r.Statement, r.Conjunct, CosmosSqlFormReader.Inline(r.Text, r.Parameters))))
                 CheckWeakening(input, unit++, statements, weakening);
 
-            // The shadow reads the same scopes, after planning, each statement's records its own; and the statements none of
-            // whose conjuncts rendered, which wrote none.
+            // Generate mode's run reads what production's sites asked of S, after planning; and the statements none of whose
+            // conjuncts rendered, which wrote none.
             var read = statements.Concat(recorder.Read.Except(statements)).ToList();
-            if (Shadow is { } shadow)
+            if (Generated is { } generated)
                 foreach (var statement in read)
                 {
                     try
                     {
-                        shadow.Shadow(input, read.IndexOf(statement), statement, records);
+                        generated.Read(input, read.IndexOf(statement), statement);
                     }
                     catch (Exception e)
                     {
-                        Failures.Enqueue((input.Input, input.Name, "shadows: " + PlanDigests.Failure(e)));
+                        Failures.Enqueue((input.Input, input.Name, "generates: " + PlanDigests.Failure(e)));
                     }
                 }
 
@@ -380,7 +407,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static List<(int Conjunct, SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules, int[] Assumes)> Beneath(List<CaptureRecord> held, List<string?> skips)
         {
             var judged = Enumerable.Range(0, held.Count).Where(i => skips[i] is null).ToList();
-            var shared = Shared(judged.Select(i => IrOf(held[i])));
+            var shared = CosmosFilterRendering.SharedAtoms(judged.Select(i => IrOf(held[i])));
             var beneath = new List<(int, SqlPredicate, ImportSource, Scope?, PredicateRules?, int[])>();
             foreach (var i in judged)
             {
@@ -392,23 +419,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(conjunct));
                 var source = new ImportSource(statement.Statement.Digest, "render conjunct " + conjunct, statement.StratumOf(conjunct));
-                beneath.AddRange(Atoms(IrOf(held[i])).Distinct().Where(a => shared.Contains(a) == false).Select(a => (i, a, source, node.Context, node.Rules, assumes)));
+                beneath.AddRange(CosmosFilterRendering.AtomsOf(IrOf(held[i])).Distinct().Where(a => shared.Contains(a) == false).Select(a => (i, a, source, node.Context, node.Rules, assumes)));
             }
 
             return beneath;
         }
 
-        /// <summary>The atoms two conjuncts share, which neither's stratum is stated beneath, since one may be what the other's assumes.</summary>
-        internal static HashSet<SqlPredicate> Shared(IEnumerable<SqlPredicate> conjuncts) =>
-            [.. conjuncts.SelectMany(c => Atoms(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key)];
-
         /// <summary>Each cell a bundle's outcomes cut, by its spelling, with its path: what a refutation's cells name.</summary>
         internal static Dictionary<string, (string Path, PathCell Cell)> Cells(RenderingBundle bundle) => bundle.Scope.Rows(bundle.Theory.Outcomes).Select(r => (CellOutcomes)r.Output!)
             .SelectMany(o => o.Cells.Select(at => (Spelled: o.Path + "=" + at.Cell.Text, o.Path, at.Cell))).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled, c => (c.Path, c.Cell));
-
-        /// <summary>The atoms of a conjunct that read one path: what a cell of it is cut for.</summary>
-        internal static IEnumerable<SqlPredicate> Atoms(SqlPredicate conjunct) =>
-            conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque) && t.Paths.Count() == 1);
 
         internal static string? Skip(CaptureRecord record, ReadForm read, bool rechecked) =>
             Parts(IrOf(record)).Any(p => p is SqlValue.Parameter) || record.Parameters.Any(p => p.Value is CosmosDynamicValue) || rechecked ? "parameter"

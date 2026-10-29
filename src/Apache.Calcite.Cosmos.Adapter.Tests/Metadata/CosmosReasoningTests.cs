@@ -74,7 +74,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// leaves nothing it learned reachable — not its reasoning, its generations, their graph, the bound theory nor its
         /// oracle, nor S's oracle, generation and graph. Before this, F's binding table, keyed on the static service facts,
         /// held the bound copy and through it the generations and their graph, and the metadata planned in them stayed
-        /// reachable too; and S was the process's. Planning asked S nothing, and started no build of it.
+        /// reachable too; and S was the process's. Each schema's first plan started its S's build, which is awaited before
+        /// the schema goes, since a build running roots its graph until it is done.
         /// </summary>
         [Fact]
         public void ASchemaLetGoTakesItsGraphsWithIt()
@@ -109,7 +110,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var generation = reasoning.Facts.Current;
             var hosted = Table(schema, "c").Container.Reasoning!;
             (generation.Number, reasoning.Facts.Started, hosted.Facts.Started).Should().Be((1, 1, 1), "each plan compiled its containers into its schema's first generation");
-            (reasoning.Rendering.Graph.Started, hosted.Rendering.Graph.Started).Should().Be((false, false), "nothing in planning asks S yet, so nothing builds it");
+            (reasoning.Rendering.Graph.Started, hosted.Rendering.Graph.Started).Should().Be((true, true), "a schema's first plan starts its S's build");
+            hosted.Rendering.Ready.Wait();
 
             // S built and asked once, from the filter's node, so that its generation, memo and readings hold something.
             var rendering = reasoning.Rendering;
@@ -118,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var scope = CosmosOracle.For(declared.Facts).Admit(new PredicateStatement([kind]));
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
             rendering.Ask(RenderingSet.Production, [kind], null, new ImportSource(scope.Statement.Digest, "declaration", 1), d0, rules).Declined.Should().BeNull();
-            (rendering.Memo.Count, rendering.Graph.Generations).Should().Be((1, 1));
+            (rendering.Memo.Count > 0, rendering.Graph.Generations).Should().Be((true, 1), "planning asked S, and so did the question");
             var theory = rendering.Graph.Current();
             GC.KeepAlive(scope);
 

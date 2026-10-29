@@ -449,11 +449,12 @@ statements, fourteen of which answered differently before. What that leaves:
   `n` first. The same reading would make the clause a second spelling of the numeric-string lowering
   (`CosmosFactRewriter.NumericAccessorOf`), which reads only the cast.
 - **`<>`, a negated equality, `IS NOT NULL`, and a literal with more digits than the clause** —
-  *small*. They push nothing, not even the `IS_DEFINED` every comparison implies, because
-  `CosmosFilterSplitRule.CollectPaths` finds no path in an accessor that addresses none. The last is
-  `RETURNING DECIMAL(10, 2) = 2.255`, where Calcite casts the value up to `DECIMAL(11, 3)` and the window
-  does not read through a cast to `DECIMAL`, so the container is read whole. Seeing through the parse to
-  the rendering there, as the window does, would recover all four.
+  *small*. They pushed nothing, not even the `IS_DEFINED` every comparison implies, because
+  `CosmosFilterSplitRule.CollectPaths` found no path in an accessor that addresses none. *Since the switch*
+  S reads the clause: `<> 2` and `NOT (= 2)` send the path's presence and `IS NOT NULL` is exact
+  (differential 323–325), and the walk went with J (g18). The last, `RETURNING DECIMAL(10, 2) = 2.255`,
+  where Calcite casts the value up to `DECIMAL(11, 3)`, is the shape of §10's *A typed reading compared
+  with a fraction keeps no presence*.
 
 *Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
 literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
@@ -2043,11 +2044,11 @@ of record is in its repository, as
   - gap 4, a range beyond a declared `maximum`, and gap 5, a range outside an integer `enum`. `JsonSchemaFacts`
     reads `minimum`, `maximum` and both spellings of their exclusive forms as `LowerBound` and `UpperBound` claims,
     which bind numbers only. The extractor reads a comparison through a numeric cast as the window
-    `CosmosNumericWindow` gives, the one the split rule pushes.
+    `PredicateAtom`'s numeric cast states (`CosmosNumericWindow`'s until g19), which S states and does not send.
 - **F10's window, asked of every comparison.** The window states a side only where the cast's saturation limit
   fails the comparison, where it used to ask that of an equality alone. No literal reaches the window with a
-  bound beyond the opposite limit today: Calcite widens the cast to compare one, and the window does not read
-  through the widening. `AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead.
+  bound beyond the opposite limit today: Calcite widens the cast to compare one, a cast of a cast the loader reads
+  as opaque, so nothing is sent for it (`ACastTheLoaderReadsAsOpaqueSendsNothing`).
 
 **The gate is the adapter suite and the theory's soundness oracle**, not agreement with Horn. Horn's known wrong
 answers (F2–F4) are not the specification. The oracle covers stored forms, extension claims and numbers no decimal
@@ -2181,8 +2182,8 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
   the text accessor, the raw value, `RETURNING`, the numeric cast and the cast to text as readings of their own;
   comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `IS_DEFINED`, `AND`, `OR`, `NOT`; everything else
-  opaque. `RETURNING DECIMAL` and the constants a conversion is compared with are read as the translator and
-  `CosmosNumericWindow` read them.
+  opaque. `RETURNING DECIMAL` is read as the translator reads it, and the constants a conversion is compared with by
+  the loader's own `TryConstantNumber`, `CosmosNumericWindow`'s until g19 deleted it.
 - **`PredicateRules`**, 45 rules and a split beside `JsonRules`. Every constructor is unextractable.
 - **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata, the licence table with the
   arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
@@ -2248,9 +2249,9 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   lowered forms. It wants a declaration in which each path's form hangs on the other's value, which nothing in the
   corpus or the tests has; the strata would settle it as they settle rendering, an ordering lowered only on the
   conjuncts lowered before it.
-- **The translator over the IR** — *large, Stage 3a's other half.* The weakening's window is
-  `CosmosNumericWindow`'s and the atom's both, agreeing through one constant and one reading of a literal, until a
-  translator over the IR takes it from the one.
+- **The translator over the IR** — *large, Stage 3a's other half.* The numeric window was `CosmosNumericWindow`'s and
+  the atom's both, agreeing through one reading of the constant. Since g19 it is the atom's alone, which S states and
+  does not write (O7, below), and the constant is the loader's; a translator over the IR would write it from there.
 - **What the checker does not reach yet** — *small each.*
   - **The raw readings against Calcite.** A `VARIANT` is the adapter reader's, so C2 needs the reader's
     materialisation of a document, or the emulator; until then the evaluator draws them from the table, which tests
@@ -2497,7 +2498,13 @@ across documents* and *A join of a container to itself* is the record.
   sends `(IS_NUMBER(c.w) ? c.w : null)` as a column, planned on 2026-10-20, and a 1E+19 at `w` would fail
   the statement where the condition is false and Calcite answers null. `COALESCE`'s later operands, and the
   right side of an `AND` or `OR` Calcite short-circuits, are the same question. The fix is the one above:
-  such a fragment, where a branch guards it and its reading can refuse, is not pushed.
+  such a fragment, where a branch guards it and its reading can refuse, is not pushed. The rendering graph's switch
+  (Stage 2) neither fixes nor worsens it: it writes `WHERE` conjuncts alone, `NoProjectionReachesS` holds that it is
+  never asked of a projected expression, and the loader reads `CASE` as opaque. Stage 3 owns it: once value positions
+  are in the IR, a branch's fragment is read beneath its condition and failure-free off it, with the set-aside cells the
+  strata use, and nothing added in C#; its gates are the statement and a document in the differential, recorded as a
+  divergence the day value positions open, source A sampling a branch's false condition beside a refusing reading, and
+  C6 running projections.
 
 ---
 
@@ -2614,8 +2621,9 @@ across documents* and *A join of a container to itself* is the record.
   column or a cast under `UPPER`, `LOWER`, `COALESCE` or `||`, and every one of those but the
   `COALESCE` is null for a null — which is why the run never met a function that answers a value
   over one, and review did. Drawing `CONCAT_WS`, a constructor read through `CARDINALITY` or an
-  element, and a library function or two would let it ask the question `IsNullWhereAnOperandIs`
-  answers. Each costs Calcite's evaluation of it in every statement that draws it.
+  element, and a library function or two would let it ask the question the strictness rows answer
+  (`CosmosStrictness`; J's `IsNullWhereAnOperandIs` until g18). Each costs Calcite's evaluation of it in
+  every statement that draws it.
 - **Where the gate's partition run belongs** — *small, and the owner's call.* Every run of the
   differential class judges the first 200 predicates, in three to five minutes; the gate's 1,000
   run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
@@ -2681,11 +2689,6 @@ across documents* and *A join of a container to itself* is the record.
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
   where Calcite answers TRUE; the cells read the rendering.
-- **`RETURNING DECIMAL`'s cells parse a text past 28 places as a decimal rounds it** — *small, a wrong answer on S's
-  cells, before g15.* `Renderings.ParseDecimal` parses with .NET's decimal, which reads `1e-50` as 0 and
-  `2.00000000000000000000000000001` as 2, where `BigDecimal` reads each exactly; so a stored string holding such a text
-  is placed equal to the whole literal Calcite finds unequal. Reaching it needs an import that holds the string. The
-  side wants an exact comparison of the text's digits with the literal, unknown where a double ties.
 - **One numeric order answer serves both targets** — *small, for the next probe-account run.* `Service.IntegersOrderExactly`
   answers `Order/Number` `numeric` on both, and `ServiceLeaf` places a whole number in int64 both as itself and as its
   double, since the theory spells it alike written with a point, which the emulator holds as a double and Azure as an
@@ -2703,8 +2706,10 @@ across documents* and *A join of a container to itself* is the record.
   stratum assumes as Calcite does (`DESIGN.md`); beside a typed number, `DECIMAL`, a double or a cast of a raw value the
   stratum may be wrong, and the translator relies on it: over a typed column, kind 5.0000000000000001 reads as 5 and a
   label the declaration leaves free beside it may be the number 7, which the bare `c.label = "7"` a later round writes
-  drops (`AStratumAConjunctReadCoarselyRestsOnIsNotRead`). Such a check stays unproven, and the push is the facts
-  graph's to fix, with its coarse readings (*F does not read the cell readings*, below).
+  drops (`AStratumAConjunctReadCoarselyRestsOnIsNotRead`). Since the switch S writes the family and states nothing
+  beneath such a stratum (`CosmosStatementScope.StratumFor` gives the root), so the label stays in process with its
+  presence sent: a regression O2 lists, its reason *a stratum read at the root*. RU, never rows; the facts graph reading
+  the cells (*F does not read the cell readings*, below) would give the push back.
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
@@ -2782,10 +2787,10 @@ across documents* and *A join of a container to itself* is the record.
   over the undeclared label the emulator orders a U+0000 as stored, so under `Emulator` they are declined. A declaration
   is what a user writes for them there.
 - **A typed inequality's type test guards structures, which the typed union cannot refute** — *small, for D12.* X2,
-  the control that drops it, lets an object or an array through: `RETURNING` reads one as null, where the service's
-  `!=` is true, and the column fails the statement, so the union reads the cell `(UR,t)`, unproven. The spec expected
-  Exact, counting strings and booleans alone. The column's own reading would separate the two, and `RETURNING`'s would
-  refute the plant.
+  the translator's control that dropped it (deleted at g20), let an object or an array through: `RETURNING` reads one
+  as null, where the service's `!=` is true, and the column fails the statement, so the union read the cell `(UR,t)`,
+  unproven. The spec expected Exact, counting strings and booleans alone. The column's own reading would separate the
+  two, and `RETURNING`'s would refute such a drop.
 - **Source B prints what the differential's operator table plans** — *small.* A raw value is a column only at a key
   path, so the container keys on three of the declaration's six paths and a raw reading of `b`, `o` or `o.v` is not
   printed, nor is a parameter, `IS_DEFINED` (`CosmosOperators` is not in that table) or a literal with a control
@@ -2803,22 +2808,27 @@ across documents* and *A join of a container to itself* is the record.
   writes `typed:DECIMAL` for `RETURNING DECIMAL` and for a column typed `DECIMAL`, which reads a number's text exactly
   and raises over anything else (`Calcite.ColumnReadsWholeNumbersAsItsType`). The cells read the union, so the string
   `"2"` the clause parses is TRUE beside the column's raise, and M10's path there is unproven where §5.4 expected the
-  definite cell: the translator's mutation line holds nine of ten. S's plant of M10 is caught, source A judging a
-  document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of `IS NULL`. The
-  column's own reading in the IR would give both back.
-- **The weakening checked is the text the split rule wrote** — *small.* Shim 3 reads what the residual conjunct's
-  translator wrote; the filter beneath renders the weakening again, from strata of its own, and sites 1 and 2 hold that
-  text to the weakening's node where the loader reads it, which for most it does not (`IS_STRING`, `IS_NUMBER`). The node
-  is the one both render, so the texts part only where the facts do; that they agree is not checked.
-- **The rendering check skips parameters whole** — *small, for Stage 2.* A conjunct whose IR holds a parameter, or whose
-  text binds a dynamic value or an anchor slot, is skipped, and the differential's 33 statements with parameters are not
-  planned for the check at all: a parameter's value is in neither the IR nor the import, and a claim proven for the value
-  one plan bound says nothing of the next. Claiming a form over every value a parameter's type admits is the reading
-  generate mode needs anyway.
-- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are unmeasured** — *medium, for Stage 2.*
-  The loader reads a pattern as opaque, so a conjunct holding one is skipped and its check is unproven. The rows S would
-  read are owed with it: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes
-  (N6) and `LIKE` (N7) matched by code point, and how an integral number reads back (N11).
+  definite cell: the translator's mutation line held nine of ten until it retired. S's plant of M10 is caught, source A
+  judging a document in `RETURNING` mode. The coarse reading leaves the column's raise over a structure out of
+  `IS NULL`. The column's own reading in the IR would give both back.
+- **The weakening checked is the text the split rule wrote** — *small.* Since the switch the weakening is S's, built as
+  a Rex (`RenderingRexBuilder`) and written by the residual conjunct's translator; shim 3 reads that text, and the filter
+  beneath admits the weakening again, S writing every member the loader reads and the translator the opaque ones
+  (`IS_STRING`, `IS_NUMBER`), which sites 1 and 2 hold to the weakening's node where the loader reads it. That the two
+  texts agree is not checked; the grammar's round trip holds the writer to the form.
+- **Parameters stay the translator's** — *small, Stage 3.* S owns no conjunct holding a parameter (`RenderingFamily.Owns`),
+  so the translator still writes them, with its recheck spine, and the check run skips them whole: a parameter's value
+  is in neither the IR nor the import, and a claim proven for the value one plan bound says nothing of the next; the
+  differential's 33 statements with parameters are not planned for the check. A relational gate claiming a form over
+  every value a parameter's type admits, with parameter witnesses, is Stage 3's, and with it the parameterised
+  weakenings the translator kept (O7).
+- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are unmeasured** — *medium, Stage 3 (O3,
+  deferred).* The loader reads a pattern as opaque, so a conjunct holding one is the translator's when exact (P7, a
+  declared string), skipped by the check, and weakened by S to the presence its accessor implies, where the translator
+  pushed a string branch with `STARTSWITH` or `CONTAINS`: O7's loss 4, 18 such statements at the gate and one more whose
+  disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are owed with it:
+  `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6) and `LIKE` (N7)
+  matched by code point, and how an integral number reads back (N11).
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
   with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
@@ -2861,38 +2871,145 @@ across documents* and *A join of a container to itself* is the record.
   `IS_NUMBER(c.price) AND c.price > 50` weaken to presence. RU, never rows. No carrier operator, re-typed accessor or
   other way of sending what the Rex does not mean is built. The fix is a guarded spelling S can prove, in the shape of
   `CASE WHEN IS_NUMBER(x) THEN CAST(x AS DOUBLE) > n ELSE FALSE END`, once the loader reads `IS_NUMBER` and `CASE`: Stage 3.
-- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* The split rule deletes `IS_DEFINED` and the
-  type test where the facts say the path holds the type (`Guarded`); the template always writes them, so under such a
-  declaration S's weakening is longer text for the same rows.
-- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* The split rule's walk
-  reads a connective inside a conjunct it cannot translate for its truth or falsity, `AND` true needing every
-  conjunct's paths and `OR` false every branch's (`CollectPaths`); S reads the conjunct's top call and its operands as
-  values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where the walk kept
-  both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with type tests and
-  `LIKE` in the IR.
-- **The shadow's read at admission is an inert site before g15's** — *small, O4's inventory.* The capture tells its
-  observer when a statement's rounds run, from the renderer `CosmosOracle.Admit` is handed: one `volatile bool` read for
-  each conjunct a round asks, unarmed in production, beside the capture's two sites and the fault plants. g15's site A
-  takes its place, and the count of inert sites O4 accepted (15 measured at nothing, `stage1-measure.md` §3) gains one
-  until then.
-- **The conjunct-filing lever is decided at g15, with the hierarchy** — *small.* §6.3 takes it if the 5–7-condition shape
-  or the hierarchy's first plan passes its line. The shadow now reports cost per query beside per statement
-  (`shadow-summary.txt`), but holds no hierarchy, and its times are taken beside other work; so g05 decided nothing.
-  `RenderingPerQueryCostTests` measures both shapes on the build machine and decides it.
-- **S's first build in a process outlasts a question's wait at full load** — *small, for g15's line 29 and g16.* Built
-  first in a fresh process at 100 % load, the first generation took 6.0–8.4 s, past the 5 s a question waits before it
-  declines as unavailable (O8: the container read for that statement); warm, it defines in 267–477 ms, hashes in
-  70–143 ms and asks in 14–50 ms, so the rest is the process's first touch of the registry, of Calcite's operator tables
-  `CosmosStrictness` reads, and of the JIT. A plan waits once, not a wait a question. g16 starts it at the first
-  `CosmosTable`; `TheFirstPlanInAProcessIsWithinItsLine` measures it paired, with the build's parts (define, hash, warm
-  up), which are where to cut if the line fails.
-- **The warm-up's answer is not printed** — *small, for g13.* Each generation answers one question before it is current;
-  its build is to print that answer, so the printer is warm too, once there is a printer.
-- **The cost accumulator is g15's** — *small.* `RenderingCost` is the record the spec drew as g15's
-  `RenderingCostSample`: hits, bundles, declines, iterations and time. g15's `CosmosRenderingCost` sums it and holds the
-  roots a flow, and the per-query test reads a query's shape off their atoms' union (`RenderingGenerateRun.ShapeOf`) and
-  asserts the lines; candidates, bytes and the graph's use join the record there, with the reader that needs them.
-  `RenderingAnswerMemo` has no `Clear` and counts no bytes an entry, which that test adds.
+- **C1 keeps the guards a declaration makes vacuous** — *small, text only.* J deleted `IS_DEFINED` and the type test
+  where the facts say the path holds the type (`Guarded`, gone with J at g18); the template always writes them, so under
+  such a declaration S's weakening is longer text for the same rows.
+- **Strictness inside an opaque conjunct reads values only** — *small, a loss beside J (O7).* J's walk read a
+  connective inside a conjunct it could not translate for its truth or falsity, `AND` true needing every conjunct's
+  paths and `OR` false every branch's (`CollectPaths`, gone with J at g18); S reads the conjunct's top call and its
+  operands as values, and no connective is strict, so `(a = 1 AND UPPER(b) = 'x') <> FALSE` weakens to nothing where
+  the walk kept both paths. RU, never rows. Reading connectives at a position inside the term would retire it, with
+  type tests and `LIKE` in the IR.
+- **The shadow's sites read the flow's arm** — *done at g17.* The arm is gone, and the sites ask S unconditionally but
+  in a schema a test made with S off (`CosmosReasoning.RenderingOff`), read once a statement and at a `toRel`. At g17 S
+  off was a flow arm; the switch's review moved it onto the schema, so no arm of the shadow's reaches `main`.
+- **What g17 deleted** — *done.* The shadow's arm and observer, the split rule's `Shadowed` and `projecting`, the
+  statement's record of whether its admission took S's answers and its sets beside its own; the bundle hook, the sets
+  asked beside and the plants G9, G11 and G12 read moved to a test schema's probe (`ICosmosRenderingProbe`). The
+  production and test lines are in the pull request's measure report.
+- **What g18 deleted** — *done.* J, the split rule's own weakening, which nothing had called since g17: 933 lines,
+  with M11's site and its value in the translator's faults (`DESIGN.md`, *J deleted*).
+- **What g19 deleted** — *done.* K, `CosmosNumericWindow`, 191 lines, its `TryConstantNumber` moved into the loader (44),
+  and J's two helpers in the translator, `TryRenderedTextValue` and `TryParseRenderedNumber` (63), with
+  `TryNumericCastOperand`'s saturation and rounding outputs, which only K read (`DESIGN.md`, *K deleted*).
+- **What g20 deleted** — *done.* The translator's fault plants, M1–M10, X1 and X2, which no test had planted since the
+  switch: the enum, the flow's arm and the thirteen sites that read it, 109 lines (`DESIGN.md`, *The translator's fault
+  plants deleted*). Spec §3.5's deletions are done; what the translator still decides beside S is Stage 3's (site W's
+  gate and the translator over the IR, above and below).
+- **The unnest rule asks its element filter under a placeholder alias** — *small, before the IR reads an element path.*
+  `CosmosUnnestRule` asks whether the element's filter renders over a binding whose element is `t`, any alias not the
+  container's, and implementation binds the alias it allocates, so `CosmosFilterStatement.Of` finds no statement and the
+  filter admits again at implementation (three statements a pull request: `Unnest.FilteredElement`, `Unnest.TwoArrays`
+  twice). The translator answers alike, and S owns none of it while element paths are opaque in the IR
+  (`CosmosDocumentPaths`), so `ImplementationNeverAdmitsAgain` holds the rule for statements with an owned conjunct.
+  Once the IR reads an element path, the rule asks under the alias implementation binds, or the statement is found
+  without it.
+- **The printer binds the number a form holds, not the type Calcite gave its literal** — *small, for g16's rehearsal.*
+  A number compared through a reading Calcite types approximate (`RETURNING DOUBLE`) is bound by the translator as a
+  double and by the printer as the decimal the form holds, and a decimal's scale (`30.0`) is not in the form: the same
+  number to the service, but another parameter in the plan digest. Of the same-form conjuncts, 2 of 158 a pull request
+  and 8 of 275 at the gate are such, all J's re-typed text-equality number branch, which the switch stops pushing (O7,
+  loss 1), and none differs in scale, since no literal of the corpus or the inputs has a trailing zero: of 16,285
+  random literals the loader reads, 1,376 bind another scale (`30.0` as `30`, `100E-2` as `1`), the same value and type.
+  The rehearsal's listing holds no statement whose literal carries another scale, and its 23 respellings by parameter
+  are the same values bound in another order (R5), so the printer was not changed at the switch. Should a literal with
+  a trailing zero reach it, `Print` takes each comparison's reading beside the form, from the conjunct's IR, binding a
+  number compared through an approximate one as a double and a decimal at its literal's scale: about 15 lines.
+- **The reader reads no `IN`, bare path or constant** — *small.* `CosmosSqlFormReader` reads each as opaque, so the
+  printer's round trip cannot hold one; S chooses none (no template proposes an `IN` until N4, and `sendable` lifts no
+  constant), and their spelling is held by a unit test alone. A template that proposes one brings the reader with it.
+- **The printer reads its fault switch at each node** — *small, O4's inventory.* `RenderingPrinterFaults` is read, one
+  `volatile bool`, for each path name, `NOT` and junction a print writes; since the switch implementation prints every
+  form S chose, so the count of inert sites O4 accepted grows by those reads, unmeasured beside a plan's own time.
+- **Site W gates S's weakening on the translator** — *small, kept at the switch.* Site W builds S's weakening
+  (`RenderingRexBuilder`) and asks `TryTranslate`, as spec §5.1 keeps it for Stage 2: writing legality, which can only
+  withhold a push (RU), never add or change one. A weakening holding its conjunct's own comparison that the translator
+  refuses from the stratum's facts, as a raw string ordering it cannot prove, is then pushed by nothing: the grammar's
+  round trip shows the shape (a raw column's orderings), and the switch's listing classes each such statement with its
+  weakening (none dropped for it at the gate). With S writing, the inner filter's statement asks S of every member the
+  loader reads, so the gate need only be the translator's for a member S does not own. g18 deleted J and kept the gate,
+  its plans byte-equal to the switch's, as spec §5.1 keeps `TryTranslate` for Stage 2; narrowing it is Stage 3's.
+- **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
+  only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
+  residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
+  as J wrote `IS_DEFINED` over it until g18, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
+  inputs meets it. Writing nothing there instead leaves 20 shapes S holds implied in the grammar unwritten, against
+  "S holds only what the builder writes"; the reader is the same `typed:T` as a `RETURNING`, so the grammar cannot tell
+  the two apart. The column's document accessor, where the binding holds one, would give it a raw value.
+- **A path read through typed accessors of two SQL types writes no number** — *small, a bridge until each member carries
+  its reader.* S proves a comparison over one atom's reader and the form keeps no reader, so where a conjunct reads one
+  path as `RETURNING INTEGER` and `BIGINT` (or `DOUBLE`, or `BOOLEAN`), `AccessorsOf` keeps no typed accessor and the
+  builder writes no member comparing it with a number or a boolean: that weakening is not pushed, RU, never rows. None of
+  the inputs' weakenings meets it (`APathReadThroughTwoTypesWritesNoNumberOverEither` holds the shape). The proper fix:
+  the lift writes each `implied` member with the reader `rex-writable` judged it over (a value change, no rule), and the
+  builder looks up the accessor by it; it lands with Stage 3's value positions, which need a reader each anyway, or
+  before, should the rehearsal list a weakening this refuses.
+- **A typed reading compared with a fraction keeps no presence** — *small, O7's loss 5 until Stage 3.* Calcite compares
+  `RETURNING INTEGER >= 2.5` through a cast to `DECIMAL`, which the loader reads no reading of (it reads a numeric cast of
+  text or a raw value alone), so the conjunct is one opaque term with no path, and S proves no weakening where J keeps
+  `IS_DEFINED`: J's was unproven to S, the listed loss (`RenderingInputs.CastOfTyped`, a check-run input, held it in
+  line 13b until that line retired at g17). RU, never
+  rows. The loader reading such a cast as a value would give the strictness rows presence; it changes F's terms, and so
+  plans, and lands with D12, the typed column's own reading.
+- **Tests that held J's or the translator's reasons** — *done at the switch.* Each was restated over S's behaviour —
+  the weakening held to the conjunct's rows, a respelling or a gain pinned as S writes it, a loss named by its O7 or O2
+  class — and none by changing S: the planner's and the declared facts' SQL-asserting tests, the stratum test, the
+  reader's order test (its `u > 'a'` sent on Azure alone), the translator's mutation line (retired; its faults live in
+  S's plants), recall's replay (no translator fault reaches the statement), the weakening checks and the corpus's wholly
+  pushed list (`Filter.DeepConjunction` joins it, P9). One respelling stays: where a weakening holds an `IS_NULL` the
+  loader reads as opaque, the translator writes the whole Rex and guards S's guarded member again — the same rows.
+- **The grammar's round trip costs a leg seconds** — *small, O5.* `EveryWritableShapeRoundTrips` took 9.3 s at 100 %
+  load in a process of its own, S defined (1,138 shapes; a generate bundle an accessor and set, and a check bundle a
+  claim, a comparison's once a set). Line 32 reads it in the leg's wall time. If PR C's legs pass O5's budget, an atom's
+  claims go into one check bundle.
+- **The determinism test asks S, and costs a leg about 23 s** — *small, O5.* `TheDigestsAreDeterministic` builds its
+  harness schema's oracle and asks S over the corpus twice, both passes over that one schema, sites A and W, for line
+  26's `RepeatsOpenNoBundle`: 31–33 s against 8.5–8.9 s at `main`, at 82–100 % load, hidden on 8 threads by a longer test
+  beside it. O5 priced it at +0 to +1 s. Line 32 is read from the whole-suite rehearsal and the pull request's own CI
+  against `main`; past the budget, what is left to cut is the harness schema's own build, defined from the definition
+  the process has already read, never a graph another schema built.
+- **Conjunct filing stays a lever, not taken** — *small.* §6.3 takes it if the 5–7-condition shape or the hierarchy's first
+  plan reads above its pass line on the build machine at low load; at 100 % load S's wall time crossed both while its
+  thread time held them (the measure report). A reading at lower load decides it. Filing each conjunct's answer under its
+  own key cuts the first plans of the statements Volcano splits.
+- **A later plan over a new data source is a first plan** — *done at g15r: line 30 restated (owner, 2026-10-27), the
+  content-keyed memo withdrawn.* Connections that share a data source, pooled or owned, plan against one schema and its
+  containers, so any later plan reads what a kept connection reads; a new data source, a root rebuilt after an idle
+  prune or `ClearPool`, and each connection under `Pooling=false` are new schemas, whose first plans are lines 29b's and
+  30's first. The line's earlier "fresh connection" built a data source and containers per connection, a new schema each,
+  which only a memory shared across schemas could hand hits (2.4–5.0 ms at the median, 10.2 and 34.9 ms outliers, at
+  67–85 % load); a memo keyed by the declaration's content would be that, a process-wide learned cache, which the schema
+  rule excludes. `TheHierarchyIsWithinItsLine` now plans over one data source, a `CosmosSchema` added with `AddSchema`:
+  at g15r (Release, net10.0, 100 % load, three runs) the first plans over a new data source, its schema's build
+  awaited, read 182–757 ms of S, and the later plans, over five new connections and five on one kept connection,
+  0.85–3.14 ms at the median and 6.07 ms at most, opening no bundle.
+- **S's first build in a process is the registry's first read** — *small.* Started at a schema's first plan, as the
+  switch does at a table's first `toRel`, the build ran beside the first plan, whose first question waited
+  94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the
+  first plan's wall time differs by −0.47 s over fifteen pairs, against line 29's 0.5 s and its 1.0 s kill; one run of
+  five read +1.21 s. The registry's first read is where to cut, should a quieter host show the build in the plan. The
+  registry's rows and the definition read from them are fixed facts and stay once a process (`CosmosRendering.Definition`);
+  each schema object builds its own graph from them at its first plan, so a schema made in a warm process pays the warm
+  build off its planning thread, its first plan waiting at most 5 s. Line 29 reads the cold case, line 29b the warm one:
+  at g15r, ten new schemas in a warm process, alternately with S writing and without, read 459–497 ms more wall time at
+  the median over three runs (pairs 337–708 ms) at 100 % load, against 29b's 0.5 s and its 1.0 s kill; with the build
+  awaited first, S's own time in the plan was 15.2–22.6 ms at the median. So `CosmosSchemaFactory.create` does not warm
+  before it reads the containers' definitions. At g17 line 29b read over its pass in three runs of three, 519–663 ms
+  against 500 and under the 1.0 s kill, at 100 % load, S's own time 14.9–18.7 ms once built; and again at the switch's
+  review, S off then a schema's, 502–647 ms (pairs 449–1003 ms), S's own time 16.2–28.2 ms, with line 29 at −188 ms. The spec takes the warm in
+  `create` where 29b reads over; 29b's harness makes its schemas without `create`, so that warm cannot move its
+  reading, which is the warm build (1.2–1.3 s) sharing a saturated processor with the plan. *For the owner:* (a) add
+  the warm, about 3 lines, overlapping the build (defined and settled in 329–405 ms, hashed in 78–164 ms) with a
+  factory host's definition reads — the spec's condition, and an improvement for those hosts, not a fix for 29b; or
+  (b) leave it, as decided at g15r. Neither is the proper fix for a new schema's build, which is R1's frozen theory
+  shared between schemas.
+- **The thread clock stays beside the wall** — *small, decided 2026-10-27.* `ThreadCpu` (80 test lines) and its plumbing
+  in the cost instrument (about 9 production lines) read S's own processor time beside each wall reading: the only
+  evidence that separates a busy host's stretch from S's own cost, on which lines 24, 25, 29 and 30's crossings at 100 %
+  load are judged. It survives g17 with the cost instrument.
+- **An answer's size is read off the heap** — *small.* `InterningPerBundleIsCounted` reports the heap grown over the
+  corpus's answers remembered, divided by their count: an upper bound, since F's contexts and Calcite's caches grow beside
+  them. Measuring an answer's own graph of objects would read §6.1's estimate of 1–4 KB an entry exactly.
 - **A successor's failed build is retried, not fatal** — *small, for the owner.* Spec §6.2 makes a definition that
   throws S's end for the process: the rows are fixed in the assembly, so every schema's definition would throw alike;
   that holds of the first definition alone. A successor's build is one schema's graph's, the same definition built once
@@ -2928,22 +3045,52 @@ across documents* and *A join of a container to itself* is the record.
   hashing the theory once a definition (70–143 ms of each build) and loading the settled rows are levers that are
   fixed facts too; retiring a generation sooner, or interning a question's literals by the vocabulary, would bound the
   rest.
-- **Concurrent builds are unmeasured** — *small, when the switch warms S.* Schemas made at once build at once, each
-  on a dedicated thread, and a first plan waits at most 5 s for its own schema's build, blocking the thread it plans
-  on. Measure 4 and 8 builds at once, and `Pooling=false` connections opened and closed in a loop, with the thread
-  pool's queue and unrelated async work's latency beside. A process-wide gate on builds would hold no learned state,
-  and would be a stopgap; the proper fix is the shared frozen theory above.
+- **Schemas built at once pass the wait on a busy host** — *small, for the owner.* Schemas made at once build at once,
+  each on a dedicated thread, and a first plan waits at most 5 s for its own schema's build, blocking the thread it
+  plans on. Measured at the switch's review (R2; Release, net10.0, eight logical processors other work kept at 100 %),
+  N new schemas planning a filtered first statement at once in a process that had built one: N = 4 declined none in
+  three runs (builds ready 1.1–2.0 s); N = 8 declined 3 of 8 in one run of five (ready 2.0–10.0 s); N = 16 declined 10,
+  1 and 9 of 16 (ready 3.5–15.9 s); each declined plan waited 5.0–6.3 s, read the container and counted `unavailable`
+  once. In a fresh process the builds were ready past 5 s but no plan declined, Calcite's own first plan taking longer.
+  Ten or twenty schemas planning no filter in a loop left 5–7 builds running, and the next filtered first plan still
+  waited no more than 1.0 s. Options: (a) a process-wide gate on builds — a stopgap holding no learned state, which
+  orders the builds rather than giving them more processor, so it changes which first plans decline more than how many;
+  (b) the warm in `CosmosSchemaFactory.create` above — a stopgap that overlaps one build with its reads and does nothing
+  for many at once; (c) R1's frozen theory shared between schemas — the proper fix, unscheduled, on Eggnog's interning.
+  Until one lands, each such decline is O8's accepted cost, and the counter shows it (docs chapters 19, 20 and 22).
+  `Pooling=false` connections opened and closed in a loop, with the thread pool's queue beside, are not measured.
 - **Line 32 is read from the pull request's own CI run** — *small, at PR A's measure report.* O5's budget is whole-leg
   wall time against `main`, every leg: the build reports timed `Facts.Rendering` alone on this machine (+5 to +33 s,
   with 18 to 41 s between two runs of one binary), and the new tests outside it add about 12 s cold. The slowest leg,
   osx-x64 net8.0, ran 2.4 times linux-x64 net10.0 on `main`, so its increment is the one to read; past the budget, O5's
   levers (`Portable` reported at the gate alone, among them).
 - **A junction root's Unproven names no refutation** — *small, diagnostic.* Generate mode composes no refutation, so
-  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell. The shadow
-  reads a junction's reason off its arms.
-- **The generate shadow follows the translator's rounds** — *small, until g15.* Its later-round nodes are the facts
-  graph's, built from what the translator admitted, so where S admits a conjunct the translator does not, or declines one
-  it pushes, the next round's node is not the one S's own loop would read. Production's sites see S's own rounds.
+  `ReadBest` on a junction with no exact form gives no reason. An atom's names its least refuted cell.
+- **A test's schema probes admission** — *small, kept.* What the shadow's observer handed production's sites and was told
+  of them, but for the comparisons with the translator, is a test schema's probe (`CosmosReasoning.Probe`): the sets a
+  statement is asked under beside its own, each bundle S opens, and G9's, G11's and G12's plants. G11 and G12 plant
+  where they act, the node a round's conjunct is stated beneath and the reading precision `StratumFor` reads: planted in
+  `CosmosOracle.RenderedFrom` G11 never reaches S, which G11 itself shows, so the TODO's plan to plant there falls.
+  Production's reasonings hold none, and a statement reads it once.
+- **Line 6's floors count conjuncts, not which** — *small.* Each input holds at least the conjuncts it sent exactly at
+  the switch under each asserted set, so a conjunct lost beside one gained in the same input passes; `sent.tsv` lists
+  each conjunct with what it sent, so a floor by statement digest would hold which, at a few test lines.
+- **C6 lists the forms over a path the service sets apart** — *small.* A form over `id`, the partition key or a system
+  property cannot be run over the document drawn, since the fixture writes `id` and the partition key and the service
+  `_ts`; each is a row of `conformance.tsv` with why it was not run (32 a pull request, 52 at the gate at g15; at the
+  gate since the switch 56 under `Emulator`, and 72 under `Production` on the probe account's run of 2026-10-28, which
+  ran none of them on Azure either), every one a spelling the translator writes alike. Writing each such document in a
+  partition of its own, under the `id` drawn where it is a string, would run those reading `id`.
+- **The answers a statement's terms keep live as long as the terms** — *small.* Kept by the oracle, set, theory and the
+  question's name by content, in a weak table keyed by the terms object, which F's memory of statement trees bounds
+  (its least recently used out first: 256 statements a theory, one theory a declared container and one for those that
+  declare none), not §6.1's 4,096 entries of the oracle's memory. So a schema can hold more answers than its memo, at
+  4.5–5.2 KB each, where the memo has let one go: a probe whose memo kept 16 held 120 after 120 statements over two
+  declared containers. Keying the table by the memo's key and re-reading the memo would cap it at 4,096, but hand a
+  statement of the same terms a later answer to its question where the memo let the first go, so it is not done; docs
+  chapter 19 says what a schema holds. G9 plants the name without the
+  opaque readings, which two statements of one digest can part in; the conjuncts', junctions' and strata's parts are
+  digests and node names, which no two questions of one statement's terms share.
 - **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
   `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
   rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Folded` decides nothing.
@@ -2951,12 +3098,12 @@ across documents* and *A join of a container to itself* is the record.
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
   `IS_DEFINED AND NOT IS_NULL AND IS_PRIMITIVE AND (NOT IS_STRING OR c)`, would be a template of its own.
-- **Looser weakenings the shadow lists against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
+- **Looser weakenings the shadow listed against J** — *small, O7's.* Read off J's verdict at the weakening's key and the
   grammar's rows: J's implied but holding a member the Rex builder cannot write (the text-equality alternatives' number
   branch, C3, and K's windows over a cast), and J's unproven to S (a typed `DECIMAL` window past 2^53, which a double
-  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`).
-  `shadow-weakening.tsv` names J's verdict beside each; line 13b reads it from g15, and any other looser one is
-  unlisted.
+  near the bound would leave out, and the string branch over strings that may hold U+0000 under `Emulator`). Line 13b
+  read them from g15 to the switch, whose listing holds each; it retired with the shadow at g17, J being asked by
+  nothing, and P4 is held to J's weakenings as the shadow read them at the switch.
 - **A guarded string branch would deliver P4's `>= '30'` tighter under `Emulator`** — *small.* It passes line 19 on O7's
   loss 5; the branch would be a template of its own.
 - **The witnesses hold S's plants where one conjunct is wrong at one cell** — *small.* P19, P5, P6 and the `HAVING`
@@ -2975,6 +3122,78 @@ across documents* and *A join of a container to itself* is the record.
 - **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
   Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
+- **The switch's listing** — *done at g16.* With S writing, 699 of the gate's 3,492 statements plan otherwise than at
+  `main`, each in `Planning/Switch/switch-listing.tsv` with its class, held by
+  `PlanDigestTests.TheSwitchChangesOnlyWhatTheShadowListed` (explicit, at the gate): 116 gains, 102 respellings, 208
+  weakenings tighter, 61 alike, 18 regressions O2 lists, 187 weakenings looser or dropped on O7's list (4 beside a gain,
+  11 beside another conjunct's tighter), and 7 benign — 6 whose weakening's Rex types a literal otherwise with the SQL
+  byte-equal, and 1 (`differential 404`) admitted a round earlier, plan and SQL unchanged. Each class is read off the
+  shadow's weakening rows for its statement; g16's labeller read a row's first token, an admission's, so 43 changed
+  weakenings were labelled respellings and 11 looser ones tighter, until the switch's review relabelled them, the
+  hashes untouched.
+- **The switch's listing retires after the switch merges** — *small, the pull request after it.* The test pins every
+  gate plan the listing does not name to pre-switch `main` by one hash, so once the switch is `main` any pull request
+  that rightly moves a plan fails it, and nothing regenerates it. It is line 21's evidence at this pull request's gates
+  alone: delete `TheSwitchChangesOnlyWhatTheShadowListed`, `Planning/Switch/switch-listing.tsv` and its embedded
+  resource once the gates are recorded in the measure report. Later plan changes are held by `WriteDigests` at a
+  change's parent and tip, as appendix E says. Where the shadow could not read the translator's weakening (58 statements), the two
+  were read side by side: an element path (21 dropped, 14 a member dropped), `LIKE` (19), arithmetic (4), each O7's.
+- **O2's residue at the switch** — *small each, the stage named.* What S declines inside its family, each RU, never rows,
+  the conjunct kept in process with its weakening: a typed `BIGINT` compared past 2^53 (differential 348–351, 354, 452;
+  D12's column reading); a raw value cast to text (partitions 1372, 1651; the raw reading's cast rows); a text ordering
+  over a string nothing keeps U+0000 out of, under the emulator's set (R4; a declaration that keeps it out, or Azure's
+  set); a later round whose stratum rests on a coarse reading, read at the root (F reading the cells); and an inner
+  filter's conjunct the translator admitted exactly and S weakens (differential 237, 449–451, 453; the raw reading's
+  boxed literal). The yardstick at the gate lost seven pushes to the third, each a correctness fix on the emulator
+  (owner, 2026-10-22), its floors restated: `MAX(_ts)` where `s > '_'` and a sort where `t > 'é'` over `orders_ascii`,
+  whose pattern admits U+0000; sorts where `t > '_'`, `t > 'true'`, `id > '1'` and `s > 'ab'` over `orders_declared`;
+  `MIN(_ts)` where `id > '_'` over `orders_plain`. The reader's order test sends `u > 'a'` on Azure alone, for the same
+  reason.
+- **O7's losses at the switch** — *small each, Stage 3 unless named.* The translator's weakenings S does not reproduce,
+  each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1); a compound
+  compared with `TRUE` or `FALSE`, read as opaque, as nothing (loss 3); `LIKE`'s string branch, as presence (loss 4, with
+  O3); presence the translator read through a term the IR holds opaque — a cast to `DATE`, `UUID` or a wrapping type, a
+  cast Calcite widens around another to compare a literal past the target's range, a nested accessor, a typed reading
+  compared with a fraction — as nothing (loss 5); an element path, as nothing or with its member gone (until the IR
+  reads one); arithmetic, as presence; a number compared through a cast or `RETURNING DECIMAL`, as presence (the owner's
+  2026-10-24 decision, until the guarded spelling); and a parameter compared over a path not declared a string, as
+  presence, where the translator sent an inequality's string branch (a parameter atom is presence and no candidate to S).
+  Each the gate plans is held in the listing by its statement. The listing digests no statement with a parameter, so the
+  last is held by `CosmosParameterPlanningTests` alone, and the cast of a cast by `CosmosPlannerTests`.
+- **The stacked-filter composite is not proved** — *small, Stage 3.* Filters stacked over one scan are conjoined at
+  `Rel/CosmosFilter.cs` outside any one statement, so S proves each filter's `WHERE` and not their `AND`; S's forms hold
+  no parted bound, so they cannot form a parted range there, and the translator's own orderings carry its exposure as
+  before. `CosmosFilterRule.IsTranslatable` asking S for the `WHERE` with the one beneath would close it.
+- **The declared-fact rewrite lowers before S** — *medium, Stage 3.* `CosmosFactRewriter` turns a UUID or instant
+  comparison into a string one from the declared stored form before any statement is built, so S proves forms for the
+  lowered conjunct and the lowering itself is C#'s. Line 33 checks it against S meanwhile (`RenderingRewriteTests`).
+  Stage 3 makes the lowering templates over the declaration's stored-form facts and deletes the rewrite before the split.
+- **A weakening's opaque members mean in Calcite what their bodies compute** — *small, Stage 3.* The inner filter's
+  statement hands members the loader reads as opaque (`IS_STRING`, `IS_NUMBER`) to the translator, which writes them
+  back; that they mean in process what the service computes rests on `CosmosFunctionBodiesTests`, not on S. Type tests
+  in the IR would put it in S.
+- **Lines 6 and 13b read the listing until g17** — *done at g17.* Line 6 is floors per input, each the conjuncts the
+  input sent exactly at the switch under each asserted set (`RenderingSentTests.EachInputSendsAtLeastItsFloor`); line
+  13b retired with the shadow. The mutation and gate-fault plants plan with S writing, their losses read against the
+  unplanted run's.
+- **Line 12 reads a sent `WHERE` under `Portable`** — *small.* The check run claims each `WHERE` as sent under the asserted
+  set, `Portable`, and the emulator's beside it, while production plans under each container's own, `Production` on
+  Azure; so a `WHERE` S proved under `Production` alone — an ordering over a string that may hold U+0000, as
+  differential 2's `(c.label > @p0) OR IS_BOOL(c.label)` — reads Unproven there, and line 12's kill on "an Unproven
+  `WHERE` S's composite proved" cannot be told apart from it; at the gate those forms took the coverage line past 5 % (82
+  of 1,358). Every conjunct the check reads is S's now, so the coverage line — retired as a kill line by spec §7 — reports
+  S's figures, and line 12's other parts hold: no refutation, every bundle complete. Checking each `WHERE` under the set
+  it was planned under too would let the kill be asserted, and S's forms be held to the line again.
+- **Source B's long run judges some forms on no measured document** — *small.* At 5,000 trials with S writing
+  (`NoGeneratedFormHasAWitnessOverALongRun`, line 1b), 0 witnesses over 110,580 proofs, and 213 forms beneath a stratum
+  no cell meets; but 621 forms S would send are judged on no measured document. The 40 it prints are each over a reading
+  the evaluator tosses a coin on — a cast of a raw value or of text to a number, a typed `DECIMAL` — and none is beneath a
+  stratum. The pull request's 30 trials meet none (line 2). Modelling those readings in `IrEval`, beside the raw orderings above, would
+  measure them.
+- **The service-backed fixtures name their service** — *small.* A fixture that plans against the account the tests run on
+  (the differential, the connection, lookup and self-join tests) names the emulator (`serviceTarget`) wherever the
+  endpoint is this machine's, so the emulator legs plan under the emulator's set and the probe account's run under
+  Azure's; the planner's tests, which run no statement, plan under each container's own set, Azure's, on every leg.
 - **The rendering check costs more than decision D11 accepted** — *small, for the owner.* D11 accepted about +13–17 s
   a pull request on a leg with no emulator and +10–20 s on the emulator leg. Measured at PR D's review (2026-10-22,
   net10.0 Release, the machine 56–83 % busy): `Facts.Rendering` took 83.5 s against 58.1 s at `main`, +25.4 s a leg (98.0 s

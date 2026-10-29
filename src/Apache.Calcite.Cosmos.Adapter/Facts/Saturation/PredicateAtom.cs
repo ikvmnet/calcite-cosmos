@@ -989,7 +989,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <b>What it does to anything else is not</b>, and a string, a boolean, and over a raw value a null or a
             /// structure, may convert to anything or raise. A row that keeps a comparison holds a number within the
             /// window <see cref="Window"/> gives, or something that is not a number at all: the window binds numbers
-            /// only, as a bound does. It is <c>CosmosNumericWindow</c>'s, and so is the reason it is loose.
+            /// only, as a bound does. It is loose by a whole unit on purpose: converting a number to a number moves it by
+            /// less than one whichever way the conversion rounds, and which way, and the sign, need not be decided to make
+            /// it sound.
             /// </para>
             /// </remarks>
             sealed class NumberCast : Reading
@@ -1075,7 +1077,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 return T | F | R;
 
                             return _roundsFrom is not null ? (Renderings.ParseDouble(text) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(DoubleBound.Of(c)), 0) : R)
-                                : _parsesDecimal ? (Renderings.ParseDecimal(text) is string n ? By(TryNumberOf(n, out var e) ? e.CompareTo(c) : DoubleBound.Compare(ApproximateOf(n)!.Value, c), 0) : R)
+                                : _parsesDecimal ? (Renderings.DecimalSide(text, c) is int side ? By(side, 0) : R)
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
                         }
 
@@ -1196,7 +1198,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// The window a TRUE comparison puts a stored number in: above one less than the bound, and below one more.
                 /// A side holds only where the cast's saturation limit fails the comparison, every stored number beyond a
                 /// limit converting to it; and neither holds around a bound a double's unit in the last place is whole at,
-                /// where the stored value and the literal each round by up to half of it (<c>CosmosNumericWindow</c>).
+                /// where the stored value and the literal each round by up to half of it (measured, <c>= 2^60</c> keeps a
+                /// stored 2^60 + 1).
                 /// </summary>
                 (decimal? Above, decimal? Below) Window(string op, decimal bound)
                 {

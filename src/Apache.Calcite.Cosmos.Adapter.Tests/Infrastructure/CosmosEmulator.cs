@@ -88,6 +88,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         public static bool IsEmulator => Resolve().IsEmulator;
 
         /// <summary>
+        /// Gets the service a model names the account as (<c>serviceTarget</c>), which sets what the adapter proves its
+        /// filters' text on: the emulator wherever the endpoint is this machine's, as every emulator the tests reach is,
+        /// named or not, and Azure otherwise, as the probe account is.
+        /// </summary>
+        public static Adapter.Metadata.CosmosServiceTarget ServiceTarget =>
+            Endpoint is { } endpoint && new Uri(endpoint).IsLoopback ? Adapter.Metadata.CosmosServiceTarget.Emulator : Adapter.Metadata.CosmosServiceTarget.Azure;
+
+        /// <summary>Gets <see cref="ServiceTarget"/> as a model's <c>serviceTarget</c> operand spells it.</summary>
+        public static string ServiceTargetOperand => ServiceTarget == Adapter.Metadata.CosmosServiceTarget.Emulator ? "emulator" : "azure";
+
+        /// <summary>
         /// Gets why no account is available, or <c>null</c> where one is.
         /// </summary>
         public static string? Unavailable => Resolve().Unavailable;

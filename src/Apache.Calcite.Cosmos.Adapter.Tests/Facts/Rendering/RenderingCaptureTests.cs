@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.Planning;
-using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
 
@@ -14,8 +14,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The capture changes no plan: every plan digest is the same with a recorder armed as without, each arm in a reasoning
-    /// of its own.
+    /// The capture and a schema's probe change no plan: every plan digest is the same with a recorder armed, in a reasoning
+    /// whose probe asks S under every set beside the statement's own, as in one of its own with neither (spec g15, g17,
+    /// line 21).
     /// </summary>
     public sealed class RenderingCaptureTests
     {
@@ -30,8 +31,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static void Unchanged(Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements)
         {
-            var recorder = new RenderingRecorder();
-            PlanDigests.Unchanged(recorder.Arm, statements, _ => recorder.Records.Should().NotBeEmpty("the capture was armed"));
+            var (recorder, probe) = (new RenderingRecorder(), new RenderingProbeCounter());
+            PlanDigests.Unchanged(recorder.Arm, statements, _ =>
+            {
+                recorder.Records.Should().NotBeEmpty("the capture was armed");
+                TestContext.Current.TestOutputHelper?.WriteLine($"the probe: {probe.Opened} bundles opened");
+                probe.Opened.Should().BePositive("S was asked at admission");
+            }, new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(), probe: probe));
         }
 
     }

@@ -88,19 +88,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Lines 1 and 2 (spec g05): every form the generate shadow's bundles derived over IR-read atoms — each agreement at
+        /// Lines 1 and 2 (spec g05): every form generate mode's bundles derived over IR-read atoms — each agreement at
         /// both positions, every composite among them, each implied form and each weakening — held to source A's documents
         /// drawn from its bundle's import, on every target its set serves, under each set a leg plans under and the one
-        /// beside; and source B's trials, each statement shadowed and judged on its declared documents. No witness, and no
-        /// form S would send judged on no measured document.
+        /// beside; and source B's trials, each statement planned and judged on its declared documents. No witness, and no
+        /// form S would send judged on no measured document, but one beneath a stratum the bundle's cells prove no document
+        /// meets (<see cref="OnCells"/>).
         /// </summary>
         [Fact]
         public void NoGeneratedFormHasAWitness()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
             var (a, unmeasured) = (new Dictionary<RenderingSet, Tally>(), new List<string>());
             foreach (var set in RenderingGenerateRun.Sets)
-                unmeasured.AddRange(Generated(a[set] = new Tally(), shadow.Bundles.Where(b => b.Set == set), "source A"));
+                unmeasured.AddRange(Generated(a[set] = new Tally(), generated.Bundles.Where(b => b.Set == set), "source A"));
 
             var b = new Tally();
             var unmeasuredB = SourceB(Trials, b, generated: true);
@@ -118,6 +119,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Line 1b (from the switch): source B's long run, 5,000 trials, each statement planned with S writing and every
+        /// generated form judged on the trial's declared documents or its bundle's cells. No witness. The forms judged on no
+        /// measured document are printed, not judged: at this size the evaluator tosses a coin on some readings — a cast of a
+        /// raw value or of text, a typed <c>DECIMAL</c> — that the pull request's 30 trials never reach (<c>TODO.md</c>).
+        /// </summary>
+        [Fact(Explicit = true)]
+        public void NoGeneratedFormHasAWitnessOverALongRun()
+        {
+            var b = new Tally();
+            var unmeasured = SourceB(LongTrials, b, generated: true);
+            TestContext.Current.TestOutputHelper?.WriteLine($"source B, generated: {b}; forms S would send judged on no measured document: {unmeasured.Count}");
+            foreach (var line in unmeasured.Take(40))
+                TestContext.Current.TestOutputHelper?.WriteLine("  unmeasured: " + line);
+
+            b.Proofs.Should().BePositive();
+            b.Witnesses.Should().BeEmpty();
+        }
+
+        /// <summary>
         /// Line 1c (spec g05): every residual opaque conjunct S weakens in the pull request's run, under each set, evaluated
         /// by Calcite in process over source A's documents drawn from its weakening bundle's import widened to the paths the
         /// weakening reads, beside the literals the conjunct compares with; wherever Calcite keeps the row, the weakening
@@ -127,10 +147,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public void NoOpaqueWeakeningHasAWitnessInProcess()
         {
-            var shadow = RenderingCheckRun.PerPullRequest.Value.Shadow!;
+            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
             var (judged, kept, unread, witnesses) = (0, 0, 0, new List<string>());
             var compiled = new Dictionary<object, Func<J.Obj, Truths?>?>(ReferenceEqualityComparer.Instance);
-            foreach (var w in shadow.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
+            foreach (var w in generated.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
             {
                 var (conjunct, (fields, readings)) = w.Opaque!.Value;
                 if ((compiled.TryGetValue(conjunct, out var truth) ? truth : compiled[conjunct] = CalciteInProcess.Compile(conjunct, fields, readings)) is not { } calcite)
@@ -161,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"{shadow.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
             judged.Should().BePositive();
             witnesses.Should().BeEmpty();
         }
@@ -169,8 +189,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Source A over generate bundles: each bundle's forms judged on documents drawn from its import, or a trial's declared
         /// ones. A form of a node whose atoms are stated beneath a stratum is exact where the conjuncts that stratum assumes
-        /// hold in any mode, and held to no failure elsewhere. Returns each form S would send — a root's best, a residual
-        /// root's weakening — that no document measured.
+        /// hold in any mode, and held to no failure elsewhere. A form S would send that none of those measured is judged on
+        /// the bundle's cells (<see cref="OnCells"/>), and is vacuous where no cell meets its stratum. Returns each form S
+        /// would send — a root's best, a residual root's weakening — that no document measured and whose stratum some
+        /// document meets.
         /// </summary>
         internal static List<string> Generated(Tally tally, IEnumerable<RenderingGenerateRun.Bundle> bundles, string source, IReadOnlyList<J.Obj>? declared = null)
         {
@@ -181,17 +203,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var forms = bundle.Forms.Select(f => (Form: f, Assumes: Assumes(claim, f.Node), Sent: Sent(bundle, f))).ToList();
                 var (measured, drawn, ruledOut) = (new int[forms.Count], 0, 0);
                 tally.Proofs += forms.Count;
-                foreach (var document in declared ?? Draw(claim))
-                {
-                    drawn++;
-                    if (declared is null && RuledOut(claim, document))
-                    {
-                        ruledOut++;
-                        continue;
-                    }
 
+                void Judge(J.Obj document, IEnumerable<int> which)
+                {
                     tally.Judged++;
-                    foreach (var node in Enumerable.Range(0, forms.Count).GroupBy(i => forms[i].Form.Node.Digest))
+                    foreach (var node in which.GroupBy(i => forms[i].Form.Node.Digest))
                     {
                         var first = forms[node.First()];
                         var (calcite, exact) = (Tally.Calcite(first.Form.Node, document, world), Holds(claim, document, world, first.Assumes));
@@ -202,12 +218,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                 }
 
-                unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0)
+                foreach (var document in declared ?? Draw(claim))
+                {
+                    drawn++;
+                    if (declared is null && RuledOut(claim, document))
+                    {
+                        ruledOut++;
+                        continue;
+                    }
+
+                    Judge(document, Enumerable.Range(0, forms.Count));
+                }
+
+                // A stratum S's own admissions state need not be met by any document drawn: such a form is judged on the
+                // bundle's cells, and where no cell meets its stratum no document does, so there is nothing to measure.
+                var vacuous = new HashSet<int>();
+                foreach (var stratum in Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0).GroupBy(i => string.Join(",", forms[i].Assumes)).ToList())
+                {
+                    var (met, cells) = (false, 0);
+                    foreach (var (document, holds) in OnCells(bundle, claim, world, forms[stratum.First()].Assumes))
+                    {
+                        cells++;
+                        met |= holds;
+                        if (RuledOut(claim, document) == false)
+                            Judge(document, stratum);
+                    }
+
+                    if (met == false && cells > 0)
+                        vacuous.UnionWith(stratum.Where(i => measured[i] == 0));
+                }
+
+                tally.Vacuous += vacuous.Count;
+                unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0 && vacuous.Contains(i) == false)
                     .Select(i => $"{source} {bundle.Set} bundle {bundle.Id}: {forms[i].Form.What} {forms[i].Form.Form.Text} for {forms[i].Form.Node}, "
                         + $"{drawn} documents drawn, {ruledOut} ruled out, stratum assuming {string.Join(", ", forms[i].Assumes.Select(a => claim.Conjuncts[a]))}"));
             }
 
             return unmeasured;
+        }
+
+        /// <summary>
+        /// Documents over a bundle's cells: every combination of one witness a cell of each path the conjuncts a stratum
+        /// assumes read, each other path the claim imports set to its cells' witnesses in turn; and whether the stratum holds
+        /// of each. The cells partition what the import admits, the declaration as the root reads it, cut for every atom the
+        /// bundle's roots hold, the stratum's conjuncts among them, and an atom reads one truth across a cell
+        /// (<c>PredicateAtomCellTests</c>), so where no combination meets the stratum no document the container holds does:
+        /// a stratum over a number that a text ordering needs a string for, say. None where a path the stratum reads has no
+        /// cell, or the combinations pass 4,096.
+        /// </summary>
+        internal static IEnumerable<(J.Obj Document, bool Holds)> OnCells(RenderingGenerateRun.Bundle bundle, RenderingMemo.Claimed claim, World world, IReadOnlyList<int> assumes)
+        {
+            var witnesses = (bundle.Cells ?? []).GroupBy(c => c.Path)
+                .ToDictionary(g => g.Key, g => g.Select(c => PathCellTests.Decode(c.Witness)).DistinctBy(v => v is null ? "absent" : Documents.Json(v)).ToList());
+            var stratum = assumes.SelectMany(i => claim.Conjuncts[i].Paths).Select(SqlValue.Spell).Distinct().ToList();
+            if (assumes.Count == 0 || stratum.Any(p => witnesses.ContainsKey(p) == false) || stratum.Aggregate(1L, (n, p) => n * witnesses[p].Count) > 4096)
+                yield break;
+
+            var others = claim.Imports.Keys.Where(p => stratum.Contains(p) == false && witnesses.ContainsKey(p)).ToList();
+            var paths = stratum.Concat(others).ToList();
+            var combinations = stratum.Aggregate((IEnumerable<IReadOnlyList<J?>>)[[]], (all, p) => all.SelectMany(c => witnesses[p].Select(v => (IReadOnlyList<J?>)[.. c, v]))).ToList();
+            for (var j = 0; j < combinations.Count; j++)
+            {
+                var document = RenderingDocumentSampler.Document(paths, [.. combinations[j], .. others.Select(p => witnesses[p][j % witnesses[p].Count])]);
+                yield return (document, Holds(claim, document, world, assumes));
+            }
         }
 
         /// <summary>How many documents a generate bundle whose later round is stated beneath a stratum draws, so that its stratum's conjuncts hold on some.</summary>
@@ -257,7 +331,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Source B into a tally: each trial's check-mode proofs, or with <paramref name="generated"/> each trial's statements
-        /// shadowed and the generate bundles' forms judged; returns the forms S would send that no declared document measured.
+        /// planned in a generate run's schema and its bundles' forms judged; returns the forms S would send that no declared
+        /// document measured.
         /// </summary>
         internal static List<string> SourceB(int trials, Tally tally, bool generated)
         {
@@ -269,13 +344,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (printed.Count == 0)
                     continue;
 
-                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(new CosmosReasoning());
+                var generate = generated ? new RenderingGenerateRun() : null;
+                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(generate?.Reasoning ?? new CosmosReasoning());
                 var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]),
-                    shadow: generated ? new RenderingGenerateRun() : null);
+                    generated: generate);
                 tally.Statements++;
                 tally.Unplanned += run.Failures.Count;
-                if (generated)
-                    unmeasured.AddRange(Generated(tally, run.Shadow!.Bundles, $"source B trial {trial}", documents));
+                if (generate is not null)
+                    unmeasured.AddRange(Generated(tally, generate.Bundles, $"source B trial {trial}", documents));
                 else
                     SourceA(run, tally, documents);
             }
@@ -333,7 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal sealed class Tally
         {
 
-            public int Statements, Unplanned, Proofs, Judged, Agreed, Unmeasured, Skipped;
+            public int Statements, Unplanned, Proofs, Judged, Agreed, Unmeasured, Skipped, Vacuous;
 
             public List<string> Witnesses { get; } = [];
 
@@ -432,7 +508,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             public override string ToString() => $"{Statements} statements ({Unplanned} not planned), {Proofs} proofs over {Judged} documents: {Agreed} agreed, "
-                + $"{Unmeasured} unmeasured, {Skipped} skipped, {Witnesses.Count} witnesses";
+                + $"{Unmeasured} unmeasured, {Skipped} skipped, {Vacuous} beneath a stratum no cell meets, {Witnesses.Count} witnesses";
 
         }
 

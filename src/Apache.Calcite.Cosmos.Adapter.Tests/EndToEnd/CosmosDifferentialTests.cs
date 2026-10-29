@@ -504,7 +504,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var typeFactory = new JavaTypeFactoryImpl();
             var tables = containers.Select(c =>
             {
-                var bound = TestReasoning.Bind(c.Metadata);
+                // Proven on the service the statements run on: the emulator's own set wherever the account is one.
+                var bound = TestReasoning.Bind(c.Metadata).WithServiceTarget(CosmosEmulator.ServiceTarget);
                 return TestReasoning.Checked(new CosmosTable(bound, Recorded(new CosmosQueryExecutor(c.Container), sent)), bound);
             }).ToList();
 
@@ -1315,9 +1316,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // The bare accessor, which is that cast with nothing written: Calcite renders the number 30
             // as '30' and keeps the document, the service does not. Held to the same literal test, so
-            // the first pushes and the other two are declined and decided in process, over the
-            // disjunction the split rule pushes -- the string or the number, the string or the
-            // boolean. The bracketed literal is exact over the accessor, an array being null to it.
+            // the first pushes and the other two were declined and decided in process, over the
+            // disjunction the split rule's own weakening pushed -- the string or the number, the
+            // string or the boolean. Since the switch S sends '30' as the property's presence and
+            // 'true' whole, as the string or the boolean. The bracketed literal is exact over the
+            // accessor, an array being null to it.
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'bikes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", false),
@@ -1585,7 +1588,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // An exact literal was sent with a point, and the service reads it as a double; declared's v holds 2^53,
             // 2^53 + 1, 2^60 and 2^60 + 1 as the integers they are. Found by the review of the RETURNING DECIMAL fix.
             //
-            // The window around a cast's comparison, loosened by one, where one is nothing to a double: 2^60 - 1 came
+            // The window K put around a cast's comparison until g19, loosened by one, where one is nothing to a double: 2^60 - 1 came
             // back as 2^60 and excluded it. A cast to DOUBLE beside them, which rounds a stored integer from 2^52. And
             // the window around a literal a hair below a whole number: RETURNING DECIMAL truncates 2.9999999999999999
             // to 2, and the bound below it, 1.9999999999999999, came back as 2 and excluded the stored 2.
@@ -1988,7 +1991,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The orders of strings beyond the BMP that the reader completes as the rows arrive, each pushed and checked:
-        /// the statement, whether the fallback is expected to run, and whether the answer is a sequence.
+        /// the statement, whether the answer is a sequence, and whether the order is sent under the emulator's set.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -2005,23 +2008,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// anchors, or reads the fallback, and says which on its activity. <see cref="EveryOrderTheReaderCompletesAgrees"/>
         /// holds it to having done one or the other, so that agreement here is known to be the reader's and not chance.
         /// </para>
+        /// <para>
+        /// <b>One is sent on Azure alone.</b> <c>u &gt; 'a'</c> is a text ordering over strings nothing keeps U+0000 out of,
+        /// which the emulator orders as stored, so under the emulator's set S declines it (O2's residue, R4): the filter
+        /// stays in process, and the sort above it with it. Its rows agree all the same.
+        /// </para>
         /// </remarks>
-        static readonly (string Sql, bool Ordered)[] CompletedByTheReader =
+        static readonly (string Sql, bool Ordered, bool OnTheEmulator)[] CompletedByTheReader =
         [
-            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true),
-            ("SELECT MAX(c.\"id\") FROM ordering AS c", false),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true),
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true, true),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true, false),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false, true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true, true),
         ];
 
         /// <summary>
         /// Every order the reader completes answers as Calcite would, was sent to the service, and was completed: a run
-        /// re-sorted between anchors, or the fallback read.
+        /// re-sorted between anchors, or the fallback read; but one the account's set keeps in process, which is sent no
+        /// order and still answers as Calcite would.
         /// </summary>
         [Fact]
         public async Task EveryOrderTheReaderCompletesAgrees()
@@ -2031,7 +2040,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var failures = new List<string>();
 
-            foreach (var (sql, ordered) in CompletedByTheReader)
+            foreach (var (sql, ordered, onTheEmulator) in CompletedByTheReader)
             {
                 if (await Compare(sql, ordered) is string failure)
                     failures.Add(failure);
@@ -2056,8 +2065,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     await Run(sql, pushdown: true, sent);
                 }
 
-                if (sent.Any(s => s.Contains(" ORDER BY ", StringComparison.Ordinal) || s.Contains("MAX(", StringComparison.Ordinal)) == false)
-                    failures.Add($"{sql}\n  sent no order: {string.Join(" || ", sent)}");
+                var sends = onTheEmulator || CosmosEmulator.ServiceTarget != CosmosServiceTarget.Emulator;
+                if (sent.Any(s => s.Contains(" ORDER BY ", StringComparison.Ordinal) || s.Contains("MAX(", StringComparison.Ordinal)) != sends)
+                    failures.Add($"{sql}\n  {(sends ? "sent no order" : "sent an order the emulator's set keeps in process")}: {string.Join(" || ", sent)}");
+                else if (sends == false)
+                    continue;
                 else if (orders.Any(a => a.GetTagItem("cosmos.order.reissued") is true || a.GetTagItem("cosmos.order.buffered") is int buffered && buffered > 0) == false)
                     failures.Add($"{sql}\n  the reader neither re-sorted a run nor read the fallback: {string.Join("; ", orders.Select(a => $"{a.GetTagItem("cosmos.order.program")} reissued={a.GetTagItem("cosmos.order.reissued")} buffered={a.GetTagItem("cosmos.order.buffered")}"))}\n  sent: {string.Join(" || ", sent)}");
             }

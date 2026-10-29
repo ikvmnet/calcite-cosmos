@@ -66,6 +66,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal const string ParameterisedResidual = "a parameterised residual",
             ParameterisedSql = "SELECT c.\"id\" FROM typed AS c WHERE c.\"$.category\" = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <> ?";
 
+        /// <summary>
+        /// A typed reading compared with a fraction, residual beside an admitted equality: Calcite compares it through a cast
+        /// to <c>DECIMAL</c> the loader reads no reading of, so the conjunct is opaque and S proves no presence, where J
+        /// keeps <c>IS_DEFINED</c> (O7's loss 5, the check run's, beside <see cref="All"/>, as <see cref="Parameterised"/> is).
+        /// </summary>
+        /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
+        public static Statement CastOfTyped(CosmosReasoning? reasoning = null)
+        {
+            var containers = CosmosDifferentialTests.Containers.Select(c => reasoning is null ? c : c.WithReasoning(reasoning)).ToArray();
+            return Differential("probe", [CastOfTypedSql], containers).Single() with { Name = CastOfTypedResidual };
+        }
+
+        internal const string CastOfTypedResidual = "a typed reading compared through a cast",
+            CastOfTypedSql = "SELECT c.\"id\" FROM typed AS c WHERE c.\"$.category\" = 'a' AND JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) >= 2.5";
+
         /// <summary>The planner corpus, planned through one harness.</summary>
         /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
         public static IEnumerable<Statement> Corpus(CosmosReasoning? reasoning = null)

@@ -31,8 +31,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <summary>
     /// Generate mode's theory (spec g03), on synthetic bundles: the forms it keeps for an atom, through <c>NOT</c> and a
     /// junction, and for the round's junction; what it never lifts; presence; the weakening at a leaf, a junction and a
-    /// negation; and the one discipline every read passes. Every run over the inputs completing within its limits is the
-    /// shadow's (<c>RenderingShadowTests</c>).
+    /// negation; and the one discipline every read passes. Every run over the inputs completing within its limits is
+    /// generate mode's run's (<c>RenderingSentTests</c>).
     /// </summary>
     public sealed class RenderingGenerateTests
     {
@@ -335,8 +335,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// P6: <c>NOT (c.category = 'bikes' AND CAST(price AS DOUBLE) &gt; 50)</c> weakens beneath its <c>NOT</c> at
         /// <c>Neg</c>. No number comparison over the cast is a member: the cast parses a string Calcite then compares, where
         /// the service compares no string, so no accessor of the conjunct writes <c>c.price &gt; 50</c> as it means, and
-        /// C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> waits on a carrier the Rex builder would send it through (O7).
-        /// The cast's comparison weakens to its presence at <c>Neg</c>.
+        /// C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> is O7's listed loss until Stage 3's guarded spelling
+        /// (<c>CASE WHEN IS_NUMBER(x) THEN … END</c>); no carrier is built. The cast's comparison weakens to its presence at
+        /// <c>Neg</c>.
         /// </summary>
         [Fact]
         public void P6WeakensAtNegToWhatTheRexBuilderWrites()

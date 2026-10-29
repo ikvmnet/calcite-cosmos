@@ -1323,7 +1323,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// </summary>
         /// <remarks>
         /// A stored 1E+19 read as a <c>BIGINT</c> is refused, and over a document the conjunct drops the
-        /// statement failed where Calcite answers. A <c>DOUBLE</c> refuses no number, and still moves.
+        /// statement failed where Calcite answers. A <c>DOUBLE</c> refuses no number, and still moves. S sends no
+        /// weakening of the cast to <c>UUID</c>, which the IR reads as opaque, so the residual projection carries the
+        /// document beneath the filter alone (a projection placement the switch listed), and the <c>BIGINT</c> stays above.
         /// </remarks>
         [Fact]
         public void ShouldNotPushAReadingThatCanRefuseUnderAResidualFilter()
@@ -1335,7 +1337,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var total = RelOptUtil.toString(PlanToClrAsAHostDoes(
                 "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\", JSON_VALUE(c.\"DOC\", '$.data.count' RETURNING DOUBLE) AS \"n\" FROM products AS c " + Residual));
 
-            refusing.Should().NotContain("CosmosProject", "the BIGINT is read above the conjunct, by Calcite: " + refusing);
+            System.Text.RegularExpressions.Regex.Matches(refusing, "data.count").Count.Should().Be(1, "the BIGINT is read above the conjunct, by Calcite: " + refusing);
+            refusing.Should().NotContain("CosmosProject(b=", refusing);
             refusing.Should().Contain("ClrCursorProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')])", refusing);
             refusing.Should().Contain("CosmosFilter", "what renders of the filter still reaches the service: " + refusing);
 

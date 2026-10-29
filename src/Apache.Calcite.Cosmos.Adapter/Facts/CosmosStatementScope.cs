@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
@@ -61,13 +62,16 @@ namespace Apache.Calcite.Cosmos.Facts
     {
 
         readonly StatementTerms _terms;
-        readonly Func<int, JsonFactSet, bool>? _renders;
+        readonly Func<AdmissionRound, AdmissionRound.Answer>? _renders;
         readonly Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? _renderedFrom;
         readonly IReadOnlyCollection<JsonDocumentPath> _declared;
         readonly object _lock = new();
         Admission? _admission;
 
-        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
+        /// <summary>The admission whose rounds are running, under the lock: what <see cref="StratumFor"/> reads meanwhile.</summary>
+        Admission? _admitting;
+
+        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
         {
             _terms = terms;
             _renders = renders;
@@ -107,6 +111,29 @@ namespace Apache.Calcite.Cosmos.Facts
         public int StratumOf(int conjunct) => Admitted.Round[Check(conjunct)];
 
         /// <summary>
+        /// Returns the stratum a round's atoms may be stated beneath in a bundle imported from the root (spec §5.2): the
+        /// deepest node of the chain at or above <paramref name="node"/> every conjunct of which it assumes is in the bundle
+        /// and read exactly by the facts graph (<see cref="RenderingFamily.ReadExactly(SqlPredicate)"/>), and the root, which
+        /// assumes none, otherwise and for a node not of the chain; with its depth in the chain, zero for the root, and the
+        /// conjuncts it assumes by index. A coarse reading may leave out cells Calcite keeps, and a translator's conjunct rests
+        /// on no proof S holds. Asked of the rounds so far while they run, by the renderer they hand a round.
+        /// </summary>
+        /// <param name="node">The round's node, or where the rounds stopped.</param>
+        /// <param name="inBundle">Whether a conjunct is in the bundle: S's, through the round's junction.</param>
+        /// <param name="readExactly">A plant's reading precision (G12); none for the reading precision's rows.</param>
+        internal (StatementTerms.Node Node, int Depth, IReadOnlyList<int> Assumes) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool>? readExactly)
+        {
+            lock (_lock)
+                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? RenderingFamily.ReadExactly);
+        }
+
+        /// <summary>Where the rounds stopped: the last round's node, or the child that stopped them; never the last stratum opened after.</summary>
+        internal StatementTerms.Node Stopped => Admitted.Stopped;
+
+        /// <summary>The tree of contexts the statement is admitted in, which every statement of its digest shares within a generation.</summary>
+        internal StatementTerms Terms => _terms;
+
+        /// <summary>
         /// The strata, admitted the first time something asks of them.
         /// </summary>
         Admission Admitted
@@ -119,8 +146,9 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The rounds of admission: each asks the renderer, of every conjunct not yet admitted, whether it renders given
-        /// the facts of the stratum so far, and those that do enter a stratum beneath together.
+        /// The rounds of admission: each hands the renderer every conjunct not yet admitted and the stratum so far, and those
+        /// it admits enter a stratum beneath together. Where S admitted any, their composite is asked after the last round,
+        /// and where it is not proven the rounds run again with S admitting nothing.
         /// </summary>
         sealed class Admission
         {
@@ -136,28 +164,71 @@ namespace Apache.Calcite.Cosmos.Facts
 
             StatementTerms.Node _final;
 
+            /// <summary>Where the rounds stopped.</summary>
+            public StatementTerms.Node Stopped { get; private set; }
+
             public Admission(CosmosStatementScope scope)
             {
                 _scope = scope;
+                Round = new int[scope.Statement.Conjuncts.Count];
+                Before = new StatementTerms.Node?[Round.Length];
+                _final = Stopped = scope._terms.Root;
+                Strata = Array.Empty<IReadOnlyList<int>>();
+                Residual = Array.Empty<int>();
 
-                var terms = scope._terms;
-                var conjuncts = scope.Statement.Conjuncts;
+                scope._admitting = this;
+                try
+                {
+                    // S's admissions stand only where the AND of them is proven: the host concludes nothing of their parts.
+                    if (Rounds(again: false) is { Count: > 0 } byS
+                        && scope._renders!(Asked(Strata.Count + 1, _final, Residual, closing: true)).ByS is var standing
+                        && byS.All(standing.Contains) == false)
+                        Rounds(again: true);
+                }
+                finally
+                {
+                    scope._admitting = null;
+                }
+            }
+
+            /// <summary>
+            /// Runs the rounds from the root, and returns the conjuncts S admitted: on the rounds run again, none.
+            /// </summary>
+            List<int> Rounds(bool again)
+            {
+                var terms = _scope._terms;
+                var conjuncts = _scope.Statement.Conjuncts;
                 var count = conjuncts.Count;
-                Round = new int[count];
-                Before = new StatementTerms.Node?[count];
+                Array.Clear(Round);
+                Array.Clear(Before);
+                _chain.Clear();
+                _pending = null;
 
                 var strata = new List<IReadOnlyList<int>>();
-                var node = terms.Root;
+                var byS = new List<int>();
+                var (node, admitted) = (terms.Root, 0);
                 _chain.Add(node);
 
-                if (scope._renders is { } renders)
+                if (_scope._renders is { } renders)
                 {
                     for (var round = 1; node.Contradictory == false; round++)
                     {
-                        var added = new List<int>();
+                        // Asked once a round, of every conjunct still pending; in index order, as each was asked before.
+                        var pending = new List<int>(count - admitted);
                         for (var i = 0; i < count; i++)
-                            if (Round[i] == 0 && renders(i, (scope._renderedFrom?.Invoke(terms, node, conjuncts[i]) ?? node).View))
+                            if (Round[i] == 0)
+                                pending.Add(i);
+
+                        var answer = renders(Asked(round, node, pending, again: again));
+                        var added = new List<int>();
+                        foreach (var i in pending)
+                        {
+                            var ours = again == false && answer.ByS.Contains(i);
+                            if (ours || answer.Translated.Contains(i))
                                 added.Add(i);
+                            if (ours)
+                                byS.Add(i);
+                        }
 
                         if (added.Count == 0)
                             break;
@@ -170,10 +241,11 @@ namespace Apache.Calcite.Cosmos.Facts
                         }
 
                         strata.Add(added);
+                        admitted += added.Count;
 
                         // Once every conjunct is admitted no round reads another stratum, and a filter pushed whole asks
                         // nothing of the last: it is opened when something asks of every admitted conjunct.
-                        if (strata.Sum(s => s.Count) == count)
+                        if (admitted == count)
                         {
                             _pending = (node, added.Select(i => conjuncts[i]).ToArray());
                             break;
@@ -188,18 +260,34 @@ namespace Apache.Calcite.Cosmos.Facts
                     }
                 }
 
-                _final = node;
+                _final = Stopped = node;
                 Strata = strata;
                 Residual = Enumerable.Range(0, count).Where(i => Round[i] == 0).ToArray();
+                return byS;
+            }
+
+            /// <summary>A round as the renderer is handed it: each conjunct rendered from the round's node, but where a test plants another.</summary>
+            AdmissionRound Asked(int round, StatementTerms.Node node, IReadOnlyList<int> pending, bool again = false, bool closing = false) =>
+                new(round, node, pending, _scope._renderedFrom is { } planted ? i => planted(_scope._terms, node, _scope.Statement.Conjuncts[i]) : _ => node) { Again = again, Closing = closing };
+
+            public (StatementTerms.Node, int, IReadOnlyList<int>) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool> readExactly)
+            {
+                // The chain's j-th node assumes what rounds 1 to j admitted.
+                var conjuncts = _scope.Statement.Conjuncts;
+                for (var j = _chain.LastIndexOf(node); j > 0; j--)
+                    if (Enumerable.Range(0, Round.Length).All(i => Round[i] == 0 || Round[i] > j || inBundle(i) && readExactly(conjuncts[i])))
+                        return (_chain[j], j, [.. Enumerable.Range(0, Round.Length).Where(i => Round[i] > 0 && Round[i] <= j)]);
+
+                return (_chain[0], 0, []);
             }
 
             public int[] Round { get; }
 
             public StatementTerms.Node?[] Before { get; }
 
-            public IReadOnlyList<IReadOnlyList<int>> Strata { get; }
+            public IReadOnlyList<IReadOnlyList<int>> Strata { get; private set; }
 
-            public IReadOnlyList<int> Residual { get; }
+            public IReadOnlyList<int> Residual { get; private set; }
 
 
             /// <summary>

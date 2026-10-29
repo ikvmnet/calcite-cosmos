@@ -34,7 +34,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Azure unless the model says the emulator; a name that is neither is a model error. The metadata carries it
         /// through every copy, and it chooses the set: an ordering over a label that may hold U+0000, which the emulator
         /// orders as stored, is proven for Azure and not for the emulator, each asked of its schema's oracle under its
-        /// key: a reasoning of the test's own, which both containers are bound to.
+        /// key: a reasoning of the test's own, which both containers are bound to; its warm-up answer, printed on the
+        /// build's thread, is the translator's text for P1.
         /// </summary>
         [Fact]
         public async System.Threading.Tasks.Task TheTargetChoosesTheSet()
@@ -53,6 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var oracle = reasoning.Rendering;
             await oracle.Ready;
             oracle.Available.Should().BeTrue();
+            reasoning.Warmed.Should().Be("(IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label) AND (c.label != @p0))", "the warm-up's answer is printed as it is built");
             var ordering = Cmp(Text(P("label")), "<", Lit("a"));
             var answers = new[] { azure, emulated }.Select(c => c.Reasoning!.Rendering.Ask(CosmosRendering.SetFor(c.ServiceTarget), [ordering], null, new ImportSource("test", "test", 0), null, null)).ToList();
             answers.Select(a => a.Key!.Set).Should().Equal(RenderingSet.Production, RenderingSet.Emulator);

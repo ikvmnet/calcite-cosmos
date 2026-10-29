@@ -207,6 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         {
                             ["endpoint"] = Endpoint,
                             ["key"] = Key,
+                            ["serviceTarget"] = CosmosEmulator.ServiceTargetOperand,
                             ["database"] = DatabaseName,
                             ["connectionMode"] = "gateway",
                             ["containers"] = new JsonArray

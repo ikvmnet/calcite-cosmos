@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -21,12 +24,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The gate faults (spec g06; line 18), each in a graph of its own: a row contradicting another, a template that drops
-    /// the null guard, a service evaluation mutated beneath it, a candidate contaminated across two disjuncts of one path,
-    /// a union; and in generate mode a best lifted from an implied agreement, presence written at <c>Neg</c> as at
-    /// <c>Pos</c>, a negation's best from its operand's at <c>Pos</c>, the importer reading a conjunct's own stratum, a
-    /// later round read beneath a stratum resting on a coarse reading, and a composite whose later arm fails where its
-    /// stratum sets cells aside. Every one is caught.
+    /// The gate faults (spec g06, g15; line 18), each in a graph of its own: a row contradicting another, a template that
+    /// drops the null guard, a service evaluation mutated beneath it, a candidate contaminated across two disjuncts of one
+    /// path, a union; and in generate mode a best lifted from an implied agreement, presence written at <c>Neg</c> as at
+    /// <c>Pos</c>, a negation's best from its operand's at <c>Pos</c>, the production key without a value the import reads,
+    /// an answer that may not be read sent, the importer reading a conjunct's own stratum, a later round read beneath a
+    /// stratum resting on a coarse reading, a Rex builder that drops a disjunct, and a composite whose later arm fails where
+    /// its stratum sets cells aside. Every one is caught.
     /// </summary>
     public sealed class RenderingGateFaultTests
     {
@@ -94,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             mattering.Should().BePositive();
             kept.Should().BeEmpty();
 
-            Shadowed(graph, NotBikes).Bundles.SelectMany(b => b.Refutations ?? []).Where(r => r.Form.Equals(Unguard(Restricted)))
+            Planned(graph, NotBikes).Bundles.SelectMany(b => b.Refutations ?? []).Where(r => r.Form.Equals(Unguard(Restricted)))
                 .Select(r => RenderingGenerateMutationTests.Show(r.Refutation)).Distinct().Should().Equal("$[\"label\"]=null (U,t)");
             RenderingGenerateMutationTests.Show(RenderingRecallTests.Replay(NotBikes, [Unguarded], [RenderingRecallTests.Bikes], new RenderingCheckRun(graph: new RenderingGraph(() => ByRendering(Measured))))
                 .Asserted).Should().Be("$[\"label\"]=null (U,t)");
@@ -111,12 +115,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G3_AMutatedServiceEvaluationIsFoundBySourceA()
         {
-            var shadow = Shadowed(Unguarding(d => d with { Leaf = NullUnequalIsFalse(d.Leaf) }), NotBikes);
-            var sent = shadow.Classes.Where(c => c.Ir == Ne(Text(LabelPath), "bikes").Digest).Select(c => c.Form).ToList();
+            var generated = Planned(Unguarding(d => d with { Leaf = NullUnequalIsFalse(d.Leaf) }), NotBikes);
+            var sent = generated.Sends.Where(c => c.Ir == Ne(Text(LabelPath), "bikes").Digest).Select(c => c.Form).ToList();
             TestContext.Current.TestOutputHelper?.WriteLine(string.Join("; ", sent.Select(f => f?.Text)));
             sent.Should().NotBeEmpty().And.OnlyContain(f => Unguard(Restricted).Equals(f), "the mutated leaf makes the gate agree, and Min prefers it");
-            SourceA(shadow).Witnesses.Should().Contain(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal));
-            RenderingPairwiseTests.Compare(shadow).Disagreements.Should().Contain(d => d.Contains("(candidates)", StringComparison.Ordinal) && d.Contains("{\"label\":null}", StringComparison.Ordinal));
+            SourceA(generated).Witnesses.Should().Contain(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal));
+            RenderingPairwiseTests.Compare(generated).Disagreements.Should().Contain(d => d.Contains("(candidates)", StringComparison.Ordinal) && d.Contains("{\"label\":null}", StringComparison.Ordinal));
 
             var entry = RenderingRecallTests.Replay(NotBikes, [Unguarded], [RenderingRecallTests.Bikes], new RenderingCheckRun(graph: new RenderingGraph(() => ByRendering(Measured) is var d ? d with { Leaf = NullUnequalIsFalse(d.Leaf) } : d)));
             entry.Asserted.Kind.Should().Be(RenderingVerdictKind.Proven, "the mutated leaf makes the gate agree");
@@ -199,12 +203,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// G6: a best lifted from an implied agreement. The raw inequality's bare form keeps a null, so it is implied and not
         /// exact, and cheaper than the guarded form the translator sends: lifted, S sends it. Source A judges a best as the
-        /// Equal agreement it must be and finds the null, and the pairwise check parts it from the translator's text.
+        /// Equal agreement it must be and finds the null, and the pairwise check parts it from the guarded candidate the gate
+        /// agreed exact beside it.
         /// </summary>
         [Fact]
         public void G6_ABestLiftedFromAnImpliedAgreementIsFoundBySourceAAndThePairwiseCheck()
         {
-            var shadow = Shadowed(Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "lift").DefineRule("planted: an implied agreement that may be sent is a best candidate", r =>
+            var generated = Planned(Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "lift").DefineRule("planted: an implied agreement that may be sent is a best candidate", r =>
             {
                 var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
                 var b = r.Var<ValueSet<string>>("b");
@@ -214,9 +219,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             })), "SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" <> 'bikes'");
 
             var bare = ServiceForm.CompareOf(CosmosServiceTest.NotEqual, SqlValue.Spell(CategoryPath), JsonValues.Of("bikes"));
-            shadow.Classes.Select(c => c.Form).Should().NotBeEmpty().And.OnlyContain(f => bare.Equals(f), "the implied bare form is the cheapest");
-            SourceA(shadow).Witnesses.Should().Contain(w => w.Contains("on {\"category\":null}", StringComparison.Ordinal));
-            RenderingPairwiseTests.Compare(shadow).Disagreements.Should().Contain(d => d.Contains("the translator's", StringComparison.Ordinal));
+            generated.Sends.Select(c => c.Form).Should().NotBeEmpty().And.OnlyContain(f => bare.Equals(f), "the implied bare form is the cheapest");
+            SourceA(generated).Witnesses.Should().Contain(w => w.Contains("on {\"category\":null}", StringComparison.Ordinal));
+            RenderingPairwiseTests.Compare(generated).Disagreements.Should().Contain(d => d.Contains("(candidates)", StringComparison.Ordinal) && d.Contains("{\"category\":null}", StringComparison.Ordinal));
         }
 
         /// <summary>
@@ -227,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G7_PresenceWrittenAtNegAsAtPosIsFoundBySourceA()
         {
-            var shadow = Shadowed(Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "strict").DefineRule("planted: a predicate over a strict value implies its path present at either position", r =>
+            var generated = Planned(Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "strict").DefineRule("planted: a predicate over a strict value implies its path present at either position", r =>
             {
                 var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
                 var n = r.Var<string>("n");
@@ -235,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Then(theory.Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(Compute.Of(n, path => ServiceForm.TestOf(CosmosServiceTest.IsDefined, path)))));
             })), RenderingRecallTests.Cases["P4"].Sql, RenderingRecallTests.Cases["P6"].Sql);
 
-            SourceA(shadow).Found.Should().Contain(f => f.Position == RenderPosition.Neg && f.Form.Kind == ServiceFormKind.Test && f.Form.Test == CosmosServiceTest.IsDefined);
+            SourceA(generated).Found.Should().Contain(f => f.Position == RenderPosition.Neg && f.Form.Kind == ServiceFormKind.Test && f.Form.Test == CosmosServiceTest.IsDefined);
         }
 
         /// <summary>
@@ -256,9 +261,186 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// G9: the production key without one value the import reads — the characters, the strata stated beneath, the set,
+        /// the theory's digest, an opaque term's reading. Each planted, two questions that differ in that value alone share a
+        /// key, and the second is handed the first's answer where its own bundle answers otherwise: what the key's tests
+        /// catch, asking the key for each (<c>TheKeyHoldsEveryValueTheImportReads</c>, <c>AnOpaquesReadingIsInTheKey</c>,
+        /// <c>TheTargetChoosesTheSet</c>). As built, every pair keys apart, each answered by its own bundle.
+        /// </summary>
+        [Fact]
+        public void G9_AKeyWithoutAValueTheImportReadsServesAnotherAnswer()
+        {
+            var below = Cmp(Text(LabelPath), "<", Lit("bikes"));
+            static Func<RenderingOracle, RenderingOracle.RenderingBundleAnswer> Asked(RenderingSet set, SqlPredicate root, (Scope? Context, PredicateRules? Rules) node,
+                IReadOnlyList<(SqlPredicate, ImportSource, Scope?, PredicateRules?)>? beneath = null, IReadOnlyDictionary<long, SqlValue>? opaques = null) =>
+                oracle => oracle.Ask(set, [root], opaques, Source, node.Context, node.Rules, beneath);
+
+            // The characters: the label's strings declared free of U+0000, or not, under the emulator's order.
+            var (ascii, free) = (Declared(Theory(Outright(LabelPath, new JsonClaim.Characters(JsonCharacterBand.None))), below), Declared(Theory(), below));
+            // The strata: a not-equal stated beneath the stratum where its path is 'x', or nowhere.
+            var (x, y) = (Eq(Text(LabelPath), "x"), Ne(Text(LabelPath), "y"));
+            var statement = Oracle(Theory()).Admit(new PredicateStatement([x, y]), (i, _) => i == 0);
+            var (d0, stratum) = (statement.ContextFor(OracleLicence.RenderConjunct(0)), statement.ContextFor(OracleLicence.RenderConjunct(1)));
+            // The theory: IS_PRIMITIVE of an object measured the other way on Azure, the rows another generation is defined with.
+            static bool Flipped(MeasuredOutcome r) => r.Key.Test == CosmosServiceTest.IsPrimitive && r.Key.Cell == CosmosValueClass.Object && r.Target == RenderingTarget.Azure;
+            var changed = RenderingDefinition.Measured([.. Rows.Select(r => Flipped(r) ? r with { Answer = r.Answer == CosmosAnswer.False ? CosmosAnswer.True : CosmosAnswer.False } : r)])
+                with { StrictOperators = Measured.StrictOperators, StrictReaders = Measured.StrictReaders };
+            Rows.Where(Flipped).Should().NotBeEmpty();
+            var notBikes = Ne(Text(LabelPath), "bikes");
+            // The opaque reading: two conjuncts the loader read apart, as AnOpaquesReadingIsInTheKey reads them.
+            var (upper, unlisted) = (new Dictionary<long, SqlValue> { [0] = new SqlValue.Call("UPPER", [Text(P("name"))]) },
+                new Dictionary<long, SqlValue> { [0] = new SqlValue.Call("CONCAT_WS", [Lit("-"), Text(P("name")), Text(P("sku"))]) });
+            var opaque = Opaque(0);
+            var bands = string.Join("|", JsonValues.CharacterClasses.Select(c => Regex.Escape(c.Member)));
+
+            var pairs = new (string What, Func<RenderingQuestionKey, RenderingQuestionKey> Plant, Func<RenderingOracle, RenderingOracle.RenderingBundleAnswer> First,
+                Func<RenderingOracle, RenderingOracle.RenderingBundleAnswer> Second, SqlPredicate Root, bool Successor)[]
+            {
+                ("the characters", k => k with { Import = Regex.Replace(k.Import, @"\[(""(" + bands + @")"",?)*\](?=\])", "[]") },
+                    Asked(RenderingSet.Emulator, below, ascii.ContextFor(OracleLicence.Declaration)), Asked(RenderingSet.Emulator, below, free.ContextFor(OracleLicence.Declaration)), below, false),
+                ("the strata stated beneath", k => k with { Import = Regex.Replace(k.Import, @",""(?:[^""\\]|\\.)*"" beneath \[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]", "") },
+                    Asked(RenderingCheckRun.AssertedSet, y, d0, [(y, Source with { Licence = "render round 2", Round = 2 }, stratum.Context, stratum.Rules)]), Asked(RenderingCheckRun.AssertedSet, y, d0), y, false),
+                ("the set", k => k with { Set = RenderingSet.Portable },
+                    Asked(RenderingSet.Production, below, (null, null)), Asked(RenderingSet.Emulator, below, (null, null)), below, false),
+                ("the theory's digest", k => k with { Theory = "planted" },
+                    Asked(RenderingSet.Production, notBikes, (null, null)), Asked(RenderingSet.Production, notBikes, (null, null)), notBikes, true),
+                ("an opaque term's reading", k => k with { Roots = string.Join("\n", k.Roots.Split('\n').Where(l => l.StartsWith("opaque#", StringComparison.Ordinal) == false)) },
+                    Asked(RenderingCheckRun.AssertedSet, opaque, (null, null), opaques: upper), Asked(RenderingCheckRun.AssertedSet, opaque, (null, null), opaques: unlisted), opaque, false),
+            };
+
+            foreach (var (what, plant, first, second, root, successor) in pairs)
+                foreach (var planted in new[] { false, true })
+                {
+                    // A successor defined from the changed row, swapped in between the two questions; as built, its own digest.
+                    var defined = 0;
+                    var graph = new RenderingGraph(() => successor && Interlocked.Increment(ref defined) > 1 ? changed : Measured);
+                    var oracle = new RenderingOracle(graph, wait: Timeout.InfiniteTimeSpan, keyOf: planted ? plant : null);
+                    var a = first(oracle);
+                    if (successor)
+                    {
+                        graph.Current().RanOut = true;
+                        graph.Current();
+                        graph.Generations.Should().Be(2, "the successor is defined from the changed row");
+                    }
+
+                    var b = second(oracle);
+                    var own = second(new RenderingOracle(successor ? new RenderingGraph(() => changed) : graph, wait: Timeout.InfiniteTimeSpan));
+                    static string Said(RenderingAnswer x) => x.Best?.Text ?? x.Weakening?.Text ?? x.Kind + " " + x.Reason;
+                    var (said, served, owned) = ((a.Of(root).Kind, a.Of(root).Best, a.Of(root).Weakening), (b.Of(root).Kind, b.Of(root).Best, b.Of(root).Weakening),
+                        (own.Of(root).Kind, own.Of(root).Best, own.Of(root).Weakening));
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{what}, {(planted ? "planted" : "as built")}: first {Said(a.Of(root))}, second served {Said(b.Of(root))}, its own {Said(own.Of(root))}");
+                    owned.Should().NotBe(said, $"{what}: the two questions are answered apart");
+                    if (planted)
+                        (b.Key, b.Cost.Hits, served).Should().Be((a.Key, 1, said), $"{what}: planted, the second is handed the first's answer");
+                    else
+                        (b.Key == a.Key, served).Should().Be((false, owned), $"{what}: as built, the second keys apart and is answered by its own bundle");
+                }
+
+            GC.KeepAlive((ascii, free, statement));
+        }
+
+        /// <summary>
+        /// G9 over the answers a statement's terms keep, which hand a question asked before its answer with no key built: two
+        /// statements of one digest, each one opaque term — a <c>LIKE</c>, outside the IR — differing in its reading alone,
+        /// planned over one connection's containers, so that they share terms. As built each opens a bundle of its own; with
+        /// the question's name planted without the opaque readings, the second is handed the first's answer and opens none.
+        /// The strata's nodes and the junctions are named by content as the conjuncts are, so no two questions within one
+        /// statement's terms share a name.
+        /// </summary>
+        [Fact]
+        public void G9_ATermsAnswersWithoutAnOpaquesReadingServeAnotherStatement()
+        {
+            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a%'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b%'"];
+            var graph = new RenderingGraph(() => Measured);
+            foreach (var planted in new[] { false, true })
+            {
+                var generated = new RenderingGenerateRun(graph, [RenderingSet.Production], signature: planted ? s => s[..s.LastIndexOf('\n')] : null);
+                var containers = generated.Bind(CosmosDifferentialTests.Containers);
+                var asked = new List<IReadOnlyList<RenderingCostSample>>();
+                foreach (var statement in RenderingInputs.Differential("g9", sql, containers))
+                    using (CosmosRenderingCost.Measure(out var samples))
+                    {
+                        _ = statement.Plan();
+                        asked.Add(samples);
+                    }
+
+                var (first, second) = (asked[0], asked[1]);
+                TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")}: the first {first.Sum(s => s.Cost.Bundles)} bundles over {first.Count} questions, the second {second.Sum(s => s.Cost.Bundles)} over {second.Count}; "
+                    + string.Join(", ", first.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct()));
+                second.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct().Should().BeEquivalentTo(first.SelectMany(s => s.Roots).Select(r => r.Digest).Distinct(), "one digest: the two share terms");
+                if (planted)
+                    second.Should().NotBeEmpty().And.OnlyContain(s => s.Cost.Bundles == 0 && s.Cost.Hits == 1, "planted, the second is handed the first's answer");
+                else
+                    (first.Sum(s => s.Cost.Bundles) > 0, second.Sum(s => s.Cost.Bundles) > 0).Should().Be((true, true), "as built, each is answered by a bundle of its own");
+                GC.KeepAlive(containers);
+            }
+        }
+
+        /// <summary>
+        /// G10: an answer that may not be read reaches no plan, nor one read twice. Planned with S writing, a run that did not
+        /// complete (an iteration limit of three) and a contradicted bundle (G5's union planted) admit nothing and weaken
+        /// nothing — the statement sends no <c>WHERE</c> of S's, and the contradiction is declined — where the registry's S
+        /// sends P1's restricted form; and a generation retired between admission and implementation changes nothing
+        /// implementation writes, which asks S nothing: it prints what admission kept.
+        /// </summary>
+        [Fact]
+        public void G10_AnAnswerThatMayNotBeReadReachesNoPlan()
+        {
+            var union = Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: two atoms of one path are one", r =>
+            {
+                var (e1, e2, p) = r.Vars<Pred, Pred, JPath>("e1", "e2", "p");
+                var (a1, a2) = r.Vars<PredicateAtom, PredicateAtom>("a1", "a2");
+                r.When(theory.Ir.Atom.Of(e1, p, a1), theory.Ir.Atom.Of(e2, p, a2), e1.IsNot(e2));
+                r.Then(e1.Is(e2));
+            }));
+            const string Two = "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') <> 'bikes' AND JSON_VALUE(c.\"DOC\", '$.label') <> 'boots'";
+            var graph = new RenderingGraph(() => Measured);
+            var cases = new (string What, RenderingOracle Oracle, string Sql, bool Sends)[]
+            {
+                ("the registry's S", new RenderingOracle(graph, wait: Timeout.InfiniteTimeSpan), NotBikes, true),
+                ("a run that did not complete", new RenderingOracle(graph, wait: Timeout.InfiniteTimeSpan, limit: _ => 3), NotBikes, false),
+                ("a contradicted bundle", new RenderingOracle(union, wait: Timeout.InfiniteTimeSpan), Two, false),
+            };
+
+            foreach (var (what, oracle, sql, sends) in cases)
+            {
+                var (query, _) = Written(oracle, sql);
+                TestContext.Current.TestOutputHelper?.WriteLine($"{what}: {query} {oracle.Counts}");
+                query.Contains("WHERE", StringComparison.Ordinal).Should().Be(sends, what);
+                if (what == "a contradicted bundle")
+                    oracle.Counts.Declines.Should().BePositive("a conflict declines");
+            }
+
+            // Retired between admission and implementation: implementation prints what admission kept, and asks nothing.
+            var kept = new RenderingOracle(graph, wait: Timeout.InfiniteTimeSpan);
+            var (before, implement) = Written(kept, NotBikes);
+            graph.Current().RanOut = true;
+            using (CosmosRenderingCost.Measure(out var samples))
+            {
+                implement().Should().Be(before, "implementation prints the form admission kept");
+                samples.Should().BeEmpty("implementation asks S nothing");
+            }
+        }
+
+        /// <summary>A statement planned in a schema whose oracle is the one given, under <c>Production</c>: what it sends, and how to implement it again.</summary>
+        static (string Query, Func<string> Implement) Written(RenderingOracle oracle, string sql)
+        {
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(), oracle);
+            var statement = RenderingInputs.Differential("g10", [sql], [.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(reasoning))]).Single();
+            var planned = statement.Plan();
+
+            // Implementation writes as admission took S's answers, asking S nothing.
+            string Implement() => string.Join(" | ", Planning.PlanDigests.Subtrees(planned, n => n is Adapter.Rel.CosmosRel)
+                .Select(c => (Cosmos: c, Table: EndToEnd.Corpus.PlannerHarness.TableOf(c) as CosmosTable)).Where(c => c.Table is not null)
+                .Select(c => EndToEnd.Corpus.PlannerHarness.Implement(c.Cosmos, c.Table!.Container).Sql));
+
+            return (Implement(), Implement);
+        }
+
+        /// <summary>
         /// G11 (#117's shape): the stratum a conjunct is rendered from replaced by one holding its own facts. Planted in the
         /// oracle (<see cref="CosmosOracle.RenderedFrom"/>) it never reaches S, the importer reading the licence table's node,
-        /// which assumes no conjunct it renders. Planted where it acts, the node the shadow states a round's conjunct beneath
+        /// which assumes no conjunct it renders. Planted where it acts, the node admission states a round's conjunct beneath
         /// with the licence table's assumptions kept, S proves the bare form, and line 1 itself finds the null label it keeps.
         /// </summary>
         [Fact]
@@ -282,13 +464,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             handed.Should().ContainSingle().Which.Node.Assumes(conjunct).Should().BeTrue("the plant hands the conjunct its own facts");
             scope.AssumedIn(OracleLicence.RenderConjunct(0)).Should().BeEmpty("the licence table renders no conjunct from its own facts");
 
-            var container = new CosmosContainerMetadata("t", ["/kind"]).WithFacts([Outright(LabelPath, Present)]).WithReasoning(new CosmosReasoning());
+            var container = new CosmosContainerMetadata("t", ["/kind"]).WithFacts([Outright(LabelPath, Present)]);
             foreach (var planted in new[] { false, true })
             {
-                var shadow = RenderingCheckRun.Over(RenderingInputs.Differential("own stratum", [NotBikes.Replace("FROM typed", "FROM t", StringComparison.Ordinal)], [container]),
-                    shadow: new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, renderedFrom: planted ? (statement, _) => statement.ContextFor(OracleLicence.Kept) : null)).Shadow!;
-                shadow.Classes.Where(c => c.Ir == conjunct.Digest).Select(c => c.Form).Should().NotBeEmpty().And.OnlyContain(f => (planted ? Bare : Restricted).Equals(f), planted ? "planted" : "as built");
-                SourceA(shadow).Witnesses.Any(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal)).Should().Be(planted, "line 1 finds the null label the bare form keeps");
+                var generated = new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, renderedFrom: planted ? (statement, _) => statement.ContextFor(OracleLicence.Kept) : null);
+                RenderingCheckRun.Over(RenderingInputs.Differential("own stratum", [NotBikes.Replace("FROM typed", "FROM t", StringComparison.Ordinal)], generated.Bind([container])), generated: generated);
+                generated.Sends.Where(c => c.Ir == conjunct.Digest).Select(c => c.Form).Should().NotBeEmpty().And.OnlyContain(f => (planted ? Bare : Restricted).Equals(f), planted ? "planted" : "as built");
+                SourceA(generated).Witnesses.Any(w => w.Contains("on {\"label\":null}", StringComparison.Ordinal)).Should().Be(planted, "line 1 finds the null label the bare form keeps");
             }
 
             GC.KeepAlive(scope);
@@ -306,7 +488,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
         {
             var container = new CosmosContainerMetadata("t", ["/kind"])
-                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithReasoning(new CosmosReasoning());
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]);
             const string Sql = "SELECT c.\"id\" FROM t AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c.\"DOC\", '$.label') = '7'";
             var document = new J.Obj(new(StringComparer.Ordinal) { ["kind"] = new J.Num(5.0000000000000001m), ["label"] = new J.Num(7m) });
 
@@ -315,18 +497,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             foreach (var (planted, keeps) in new[] { (false, true), (true, false) })
             {
-                var shadow = RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [Sql], [container]),
-                    shadow: new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, readExactly: planted ? _ => true : null)).Shadow!;
+                var generated = new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, readExactly: planted ? _ => true : null);
+                RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [Sql], generated.Bind([container])), generated: generated);
                 foreach (var set in RenderingGenerateRun.AssertedSets)
                 {
-                    var sent = shadow.Classes.Where(c => c.Set == set).Select(c => c.Form).Concat(shadow.Weakenings.Where(w => w.Set == set && w.Residual).Select(w => w.Mine)).OfType<ServiceForm>().ToList();
+                    var sent = generated.Sends.Where(c => c.Set == set).Select(c => c.Form).Concat(generated.Weakenings.Where(w => w.Set == set && w.Residual).Select(w => w.Mine)).OfType<ServiceForm>().ToList();
                     var kept = Measured.Serves[set].All(target => sent.All(f => CosmosEval.On(f, document, target) == ServiceOutcomes.True));
                     TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")} {set}: {string.Join(" AND ", sent.Select(f => f.Text))}: keeps {kept}");
                     kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
                 }
 
-                SourceA(shadow).Witnesses.Any(w => w.Contains("\"label\":7}", StringComparison.Ordinal)).Should().Be(planted, planted ? "planted" : "as built");
+                SourceA(generated).Witnesses.Any(w => w.Contains("\"label\":7}", StringComparison.Ordinal)).Should().Be(planted, planted ? "planted" : "as built");
             }
+        }
+
+        /// <summary>
+        /// G13 (critic finding 2): a Rex builder planted to drop a disjunct, the last of the first <c>OR</c> it meets, which
+        /// strengthens a weakening and drops rows Calcite keeps. Both round trips catch it: over every shape the grammar
+        /// writes, and over every weakening the pull request's run would push; as built, neither finds anything.
+        /// </summary>
+        [Fact]
+        public void G13_ABuilderThatDropsADisjunctIsCaughtByBothRoundTrips()
+        {
+            static ServiceForm Dropped(ServiceForm form)
+            {
+                if (form.Kind == ServiceFormKind.Or)
+                    return form.Members.Count == 2 ? form.Members[0] : ServiceForm.JunctionOf(CosmosServiceTest.Or, form.Members.Take(form.Members.Count - 1));
+
+                for (var i = 0; i < form.Members.Count; i++)
+                    if (Dropped(form.Members[i]) is var dropped && dropped.Equals(form.Members[i]) == false)
+                        return form.Kind == ServiceFormKind.Not ? ServiceForm.NotOf(dropped) : ServiceForm.JunctionOf(form.Test, form.Members.Select((m, j) => j == i ? dropped : m));
+
+                return form;
+            }
+
+            static RenderingRexBuilderTests.Builder Planted(RenderingRexBuilderTests.Builder build) => form => build(Dropped(form));
+
+            var (shapes, pushed) = (RenderingRexBuilderTests.Shapes(Planted, first: true).Problems, RenderingRexBuilderTests.Pushed(Planted, first: true).Problems);
+            TestContext.Current.TestOutputHelper?.WriteLine($"over the grammar: {shapes.FirstOrDefault()}; over the run's weakenings: {pushed.FirstOrDefault()}");
+            shapes.Should().Contain(p => p.Contains("altered", StringComparison.Ordinal), "the grammar's round trip catches it");
+            pushed.Should().Contain(p => p.Contains("altered", StringComparison.Ordinal), "the pushed weakenings' round trip catches it");
         }
 
         /// <summary>
@@ -392,18 +602,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static RenderingGraph Planted(Func<RenderingDefinition, RenderingDefinition>? define = null, Action<RenderingTheory>? rules = null) =>
             RenderingGenerateMutationTests.Graph(define ?? (d => d), rules ?? (_ => { }));
 
-        static RenderingGenerateRun Shadowed(RenderingGraph graph, params string[] statements)
+        static RenderingGenerateRun Planned(RenderingGraph graph, params string[] statements)
         {
-            var run = RenderingGenerateMutationTests.Shadowed(graph, "gate fault", statements);
+            var run = RenderingGenerateMutationTests.Generated(graph, "gate fault", statements);
             run.Failures.Should().BeEmpty();
-            return run.Shadow!;
+            return run.Generated!;
         }
 
-        /// <summary>Source A over a shadow's generate bundles.</summary>
-        static RenderingSoundnessTests.Tally SourceA(RenderingGenerateRun shadow)
+        /// <summary>Source A over a run's generate bundles.</summary>
+        static RenderingSoundnessTests.Tally SourceA(RenderingGenerateRun generated)
         {
             var tally = new RenderingSoundnessTests.Tally();
-            RenderingSoundnessTests.Generated(tally, shadow.Bundles, "gate fault");
+            RenderingSoundnessTests.Generated(tally, generated.Bundles, "gate fault");
             TestContext.Current.TestOutputHelper?.WriteLine($"{tally}: {string.Join(" | ", tally.Witnesses.Take(3))}");
             return tally;
         }
