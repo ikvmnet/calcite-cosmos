@@ -7602,7 +7602,8 @@ carries) makes the composite not stand, as one unproven does, so implementation 
 same terms (`CosmosOracle` keeps one tree a digest), whose rounds ask the same questions of the same frozen nodes. The
 merged-view hierarchy's first plan asks S 449 questions over 25 keys, where the spec drew about 23 statements a plan: at
 the oracle's 20 µs a hit, 9–27 ms each later plan over the same schema, on any connection that shares it, against line
-30's 10. So the oracle keeps what each statement's terms were answered (`RenderingOracle.Answered`, weak on the terms),
+30's 10 ms at the 90th centile and 5 at the median.
+So the oracle keeps what each statement's terms were answered (`RenderingOracle.Answered`, weak on the terms),
 by the set, the theory the answer was computed under and a question named within them by content — its conjuncts' and
 junctions' digests, the node each conjunct is stated beneath, since a node names its import within its terms, and the
 opaque terms' readings — and a question asked before is handed its answer with no key built. Statements of one digest
@@ -7630,7 +7631,13 @@ remembers nothing, which is what a new schema's oracle is once its build is done
 **What it costs.** S is 3–4 % of the hierarchy's first plan; the lines are judged on S's wall time, the machine's load
 and S's thread time printed beside every reading, and the readings are in the pull request's measure report. A query
 with four conditions opens the three bundles five to seven do, so it is held to their line (25); "no filter" is read off
-the plan — no filter, join, correlate or unnest node — never off what S was asked, so line 27 can fail.
+the plan — no filter, join, correlate or unnest node — never off what S was asked, so line 27 can fail. Line 30 judges
+the hierarchy's later plans as the others judge cost, by the median and 90th centile of each statement's ten, five over
+new connections of its data source and five over one kept connection, which plan against one schema: ≤ 5 / ≤ 10 ms,
+killed above 10 ms at the 90th centile. That no later plan opens a bundle is the memo working, not a cost, and is held of
+every plan. 10 ms is the line the spec once held every later plan to; a hit reads no clock of the thread, so a preemption
+or a collection lands whole in one plan's wall time, as one of a hundred read 13.79 ms of hits at 100 % load, and the 90th
+centile of ten reads past one such plan where the greatest does not.
 
 **What a test can reach.** Admission reads its statement's reasoning's probe once a statement, none in production, and
 whether a test made that schema with S off (`CosmosReasoning.RenderingOff`), as a table's `toRel` does before it warms;

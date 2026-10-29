@@ -2973,7 +2973,8 @@ across documents* and *A join of a container to itself* is the record.
   thread time held them (the measure report). A reading at lower load decides it. Filing each conjunct's answer under its
   own key cuts the first plans of the statements Volcano splits.
 - **A later plan over a new data source is a first plan** — *done at g15r: line 30 restated (owner, 2026-10-27), the
-  content-keyed memo withdrawn.* Connections that share a data source, pooled or owned, plan against one schema and its
+  content-keyed memo withdrawn; its later plans judged by median and p90 (owner, 2026-10-28).*
+  Connections that share a data source, pooled or owned, plan against one schema and its
   containers, so any later plan reads what a kept connection reads; a new data source, a root rebuilt after an idle
   prune or `ClearPool`, and each connection under `Pooling=false` are new schemas, whose first plans are lines 29b's and
   30's first. The line's earlier "fresh connection" built a data source and containers per connection, a new schema each,
@@ -2982,7 +2983,18 @@ across documents* and *A join of a container to itself* is the record.
   rule excludes. `TheHierarchyIsWithinItsLine` now plans over one data source, a `CosmosSchema` added with `AddSchema`:
   at g15r (Release, net10.0, 100 % load, three runs) the first plans over a new data source, its schema's build
   awaited, read 182–757 ms of S, and the later plans, over five new connections and five on one kept connection,
-  0.85–3.14 ms at the median and 6.07 ms at most, opening no bundle.
+  0.85–3.14 ms at the median and 6.07 ms at most, opening no bundle. The line then held every later plan to 10 ms, and
+  at the switch's gates (five runs, 100 % load) one of a hundred crossed it: `BoltParts` over a new connection,
+  13.79 ms, all 449 questions hits, one of them 11.13 ms in a plan that saw 209 collections; the other 99 read
+  ≤ 6.23 ms, 0.80–2.95 ms at the median. A hit reads no clock of the thread, so a preemption or a pause lands whole in
+  one plan's wall time, and a per-plan line judges the host's worst moment rather than S. So line 30 judges the later
+  plans as lines 23–26 judge cost: each statement's ten, which plan against one schema and are one population (over
+  five, the 90th centile would be their greatest), ≤ 5 ms at the median and ≤ 10 ms at the 90th centile, killed above
+  10 ms there — the spec's 10 ms held over nine plans in ten, and 5 ms the top of its estimate for a later plan
+  (0.2–5 ms) — and every later plan still opens no bundle, which is the memo working, not a cost. Restated (Release,
+  net10.0, 85–99 % load at the median, three runs): first plans 416–554 ms of S for `BoltParts` and 135–303 ms for
+  `BoltPartsByCatalogName`; the ten later plans 0.70–1.16 / 2.86–2.91 ms (median / p90) and 0.68–0.81 / 0.82–1.04 ms,
+  3.20 ms at most, opening no bundle.
 - **S's first build in a process is the registry's first read** — *small.* Started at a schema's first plan, as the
   switch does at a table's first `toRel`, the build ran beside the first plan, whose first question waited
   94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the

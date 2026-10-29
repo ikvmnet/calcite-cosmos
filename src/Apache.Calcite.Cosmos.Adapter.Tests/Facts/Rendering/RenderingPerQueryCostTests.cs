@@ -96,10 +96,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Line 30, restated (owner, 2026-10-27): the neutral merged-view hierarchy (<see cref="MergedViewHierarchy"/>), each
-        /// statement planned first over a new data source, its schema's build awaited, S's own time ≤ 1.0 s; then five times
-        /// over new connections of that data source and five over one kept connection, each ≤ 10 ms, opening no bundle; a new
-        /// data source is a first plan. Every reading is printed, S's share of the plan's time beside, before any is judged.
+        /// Line 30, restated (owner, 2026-10-27), its later plans judged by median and p90 as lines 23–26 are (owner,
+        /// 2026-10-28): the neutral merged-view hierarchy (<see cref="MergedViewHierarchy"/>), each statement planned first
+        /// over a new data source, its schema's build awaited, S's own time ≤ 1.0 s; then five times over new connections of
+        /// that data source and five over one kept connection, each opening no bundle, which is the memo working rather than
+        /// a cost and so holds every plan; and S's own time over the ten ≤ 5 ms at the median and ≤ 10 ms at the 90th
+        /// centile, killed above 10 ms there; a new data source is a first plan. The ten are one population, since
+        /// connections that share a data source plan against one schema, and only the ten have a 90th centile that is not
+        /// their greatest, which over five it would be. 10 ms is the spec's line, to which it once held every later plan: at
+        /// the 90th centile nine plans in ten keep it, and the one a preemption or a collection stretches is printed, not
+        /// judged alone, since a hit reads no clock of the thread and a pause lands in its wall time, as one later plan of a
+        /// hundred read 13.79 ms, all hits, at 100 % load. 5 ms is the top of the spec's estimate for a later plan
+        /// (0.2–5 ms) and half the 90th centile's line. Every reading is printed, S's share of the plan's time beside,
+        /// before any is judged.
         /// </summary>
         [Fact(Explicit = true)]
         public async Task TheHierarchyIsWithinItsLine()
@@ -134,15 +143,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 List<Planned> kept;
                 using (var connection = MergedViewHierarchy.Open(dataSource))
                     kept = [.. Enumerable.Range(0, Again).Select(_ => Plan(connection))];
+                List<Planned> later = [.. fresh, .. kept];
 
-                foreach (var (what, later) in new[] { ("new connections", fresh), ("one kept connection", kept) })
-                    Print($"{name}, later over {what}: S p50 {At(Sorted(later.Select(l => l.S)), 0.5):F2} max {later.Max(l => l.S):F2} ms, its thread time p50 {At(Sorted(later.Select(l => l.Thread)), 0.5):F2} max {later.Max(l => l.Thread):F2} ms, over {later.Max(l => l.Questions)} questions, "
-                        + $"the slowest question {later.Max(l => l.Slowest):F2} ms, {later.Sum(l => l.Collections)} collections in {later.Count} plans; bundles {later.Sum(l => l.Bundles)}; "
-                        + $"the plan p50 {At(Sorted(later.Select(l => l.Wall)), 0.5):F0} ms, S {Share(later.Sum(l => l.S), later.Sum(l => l.Wall))} of it; {load}");
+                foreach (var (what, plans) in new[] { ("new connections", fresh), ("one kept connection", kept), ("both, the ten judged", later) })
+                {
+                    var (s, thread) = (Sorted(plans.Select(l => l.S)), Sorted(plans.Select(l => l.Thread)));
+                    Print($"{name}, later over {what}: S p50 {At(s, 0.5):F2} p90 {At(s, 0.9):F2} max {s[^1]:F2} ms, its thread time p50 {At(thread, 0.5):F2} p90 {At(thread, 0.9):F2} max {thread[^1]:F2} ms, over {plans.Max(l => l.Questions)} questions, "
+                        + $"the slowest question {plans.Max(l => l.Slowest):F2} ms, {plans.Sum(l => l.Collections)} collections in {plans.Count} plans; bundles {plans.Sum(l => l.Bundles)}; "
+                        + $"the plan p50 {At(Sorted(plans.Select(l => l.Wall)), 0.5):F0} ms, S {Share(plans.Sum(l => l.S), plans.Sum(l => l.Wall))} of it; {load}");
+                }
 
                 first.S.Should().BeLessThanOrEqualTo(1000, $"{name}'s first plan, line 30");
-                foreach (var (what, later) in new[] { ("new connections", fresh), ("one kept connection", kept) })
-                    later.Should().OnlyContain(l => l.S <= 10 && l.Bundles == 0, $"{name} planned again over {what} of its data source, line 30");
+                foreach (var (what, plans) in new[] { ("new connections", fresh), ("one kept connection", kept) })
+                    plans.Should().OnlyContain(l => l.Bundles == 0, $"{name} planned again over {what} of its data source opens no bundle, line 30");
+                var again = Sorted(later.Select(l => l.S));
+                (At(again, 0.5), At(again, 0.9)).Should().Match<(double Median, double P90)>(a => a.Median <= 5 && a.P90 <= 10,
+                    $"{name} planned again over its data source, S's own time over the ten: ≤ 5 / ≤ 10 ms, line 30; {load}");
             }
         }
 
