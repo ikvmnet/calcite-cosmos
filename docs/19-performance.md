@@ -107,9 +107,12 @@ statement used and which it could have used.
   schema looks the answer up, in a millisecond or less. A filter that differs only in a literal is a new
   filter, so an application that writes its values inline pays this for each new value; a parameter costs
   nothing here, but over a path not declared a string sends only the property's presence (Chapter 8). A
-  schema remembers its last 4,096 answers, up to about 20 MB, and beside them those the statements its
-  planner still remembers were given: up to 256 statements for each container that declares a schema, and
-  256 for those that declare none.
+  schema remembers its last 4,096 answers, about 4 MB, and beside them those the statements its planner
+  still remembers were given: up to 256 statements for each container that declares a schema, and 256 for
+  those that declare none. Each distinct filter also leaves values in the schema's rendering reasoning that
+  forgetting its answer does not give back, about 33 MB for every 4,096: measured, a schema that had planned
+  4,096 distinct filters held about 44 MB in all. The reasoning is rebuilt once it holds 800,000 such
+  values, near 200 MB by extrapolation, and the old one lives beside the new while it builds.
 - **Each schema builds its rendering reasoning once, in the background.** The first plan over a schema object
   starts it on a thread of its own: the process's first a few seconds, since it reads the adapter's rules
   then, and a schema made later a fraction of a second to about two. A first plan that arrives before it is
