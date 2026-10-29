@@ -97,6 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             readonly string _database;
             CosmosClient? _client;
+            bool _created;
 
             public Fixture() : this("eval") { }
 
@@ -125,7 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 30 : 120));
                     _client = new CosmosClient(endpoint, key, options);
-                    await Seed((await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database, cts.Token);
+                    var database = (await _client.CreateDatabaseIfNotExistsAsync(_database, cancellationToken: cts.Token)).Database;
+                    _created = true;
+                    await Seed(database, cts.Token);
                 }
                 catch (Exception e)
                 {
@@ -139,7 +142,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             public ValueTask DisposeAsync()
             {
-                try { _client?.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+                // Only a database this fixture made is deleted: with no service answering there is none, and asking
+                // would fail the class's cleanup on a leg that names no account.
+                if (_created)
+                    try { _client!.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+
                 _client?.Dispose();
                 return default;
             }
