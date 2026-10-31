@@ -897,14 +897,6 @@ namespace Apache.Calcite.Cosmos.Adapter
         }
 
         /// <summary>
-        /// Translates an expression against the current field bindings.
-        /// </summary>
-        /// <param name="node">The expression to translate.</param>
-        /// <returns>The Cosmos SQL text.</returns>
-        /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node) => CreateTranslator(null).Translate(node);
-
-        /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
         /// </summary>
         /// <remarks>
@@ -940,7 +932,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Separate from <see cref="Translate(RexNode)"/> because the facts a node establishes are
+        /// Separate from a value's rendering because the facts a node establishes are
         /// only established by a predicate. The equality in <c>SELECT x = 'B'</c> asserts nothing
         /// about <c>x</c>; the same equality in a <c>WHERE</c> asserts it of every row that survives,
         /// and reading the first as the second would prove things the query never said.

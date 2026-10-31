@@ -166,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var implementor = Implementor();
             implementor.Fields = new[] { CosmosPath.Root("c").Property("name") };
 
-            implementor.Query.Where = implementor.Translate(
+            implementor.Query.Where = implementor.TranslateCondition(
                 _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bike")));
 
             var query = implementor.Build();
@@ -181,8 +181,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var implementor = Implementor();
             implementor.Fields = new[] { CosmosPath.Root("c").Property("name") };
 
-            var first = implementor.Translate(_rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("a")));
-            var second = implementor.Translate(_rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("b")));
+            var first = implementor.TranslateCondition(_rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("a")));
+            var second = implementor.TranslateCondition(_rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("b")));
 
             first.Should().Be("(c.name = @p0)");
             second.Should().Be("(c.name = @p1)");
@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <remarks>
-        /// A projection rebinds the field ordinals, so a translator created afterwards must see
+        /// A projection rebinds the field ordinals, so a condition rendered afterwards must see
         /// the new paths rather than the ones captured at construction.
         /// </remarks>
         [Fact]
@@ -199,10 +199,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var implementor = Implementor();
 
             implementor.Fields = new[] { CosmosPath.Root("c").Property("a") };
-            implementor.Translate(Ref(0, SqlTypeName.ANY)).Should().Be("c.a");
+            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("c.a");
 
             implementor.Fields = new[] { CosmosPath.Root("c").Property("b") };
-            implementor.Translate(Ref(0, SqlTypeName.ANY)).Should().Be("c.b");
+            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("c.b");
         }
 
         [Fact]
