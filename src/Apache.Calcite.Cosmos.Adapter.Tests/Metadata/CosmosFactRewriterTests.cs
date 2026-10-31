@@ -76,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <c>DOUBLE</c> and not <c>DECIMAL</c>, which these were written with: <c>RETURNING DECIMAL</c> parses a stored
         /// string, so <c>= 2</c> through it keeps a document storing <c>"2"</c>, and a contradiction with a declared
         /// string was the wrong answer it gave. It addresses no path now, so no field is bound to one — see
-        /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/> and
+        /// <see cref="CosmosRexShapes.IsParsingJsonValue"/> and
         /// <see cref="ADecimalReturningIsNoClaimThatThePathHoldsANumber"/>.
         /// </remarks>
         RexNode Number() => Ref(2, SqlTypeName.DOUBLE);

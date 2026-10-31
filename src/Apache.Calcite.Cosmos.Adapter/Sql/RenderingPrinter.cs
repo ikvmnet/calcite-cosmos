@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// In the translator's spelling, so a form S chose as the translator wrote it prints the translator's text: a
     /// <c>NOT</c> over a test bare, as its guards write <c>NOT IS_NULL(p)</c>, and over anything else in parentheses, as
     /// <c>WriteNot</c> does; every literal bound through <see cref="CosmosParameterList.Add"/> as the translator binds
-    /// Calcite's exact literals (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>). What the form cannot say, the
+    /// Calcite's exact literals (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>). What the form cannot say, the
     /// type Calcite gave a literal: <c>DESIGN.md</c>, <i>The printer</i>.
     /// </remarks>
     internal static class RenderingPrinter
@@ -119,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// The value a literal is bound as: text, a boolean, null; one held approximately as its double; and an exact number
-        /// as the translator binds Calcite's exact literal of it, by its own rule (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>).
+        /// as the translator binds Calcite's exact literal of it, by its own rule (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>).
         /// </summary>
         static object? ValueOf(string literal)
         {
@@ -136,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (JsonValues.ApproximateOf(literal) is { } approximate)
                 return approximate;
 
-            return JsonValues.TryNumberOf(literal, out var number) && CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number.ToString(CultureInfo.InvariantCulture))) is { } exact
+            return JsonValues.TryNumberOf(literal, out var number) && CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(number.ToString(CultureInfo.InvariantCulture))) is { } exact
                 ? exact : throw new CosmosTranslationException($"No value the service can be sent compares there as the number {literal}.");
         }
 

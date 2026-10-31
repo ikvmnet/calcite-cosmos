@@ -136,7 +136,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosToClrCursorConverter", ["OpenAsyncMethod", "OpenMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosConstraintCompiler", ["Cache"], PlanScoped, "keyed weakly on the type factory, then on the table, so it keeps neither whatever factory a caller passes"),
-            ("Adapter.Rel.CosmosFilter.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Rel.CosmosLookupJoin", ["JoinAsyncMethod", "JoinMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 

@@ -961,7 +961,7 @@ true where the path is there, a JSON null included, and never unknown. Opaque, a
 nothing, and a weakening beside one kept a test the presence it states would have deleted.
 
 `RETURNING DECIMAL` addresses no path: it is the cast of the rendering written as a clause, and
-`CosmosRexTranslator.TryNumericCastOperand` reads it so, returning the text it converts. The loader asks that, and
+`CosmosRexShapes.TryNumericCastOperand` reads it so, returning the text it converts. The loader asks that, and
 names the reading whose meaning is that parse, `typed(p, DECIMAL)`; a cast is read the same way, so what a
 conversion is and what it is compared with are the translator's to recognise and the atom's to say, once each.
 
@@ -1827,7 +1827,7 @@ Nothing stored lies between a number and the nearest double but that double, and
 accessor Calcite tells that double from the number only where it is whole — `RETURNING DOUBLE` rounds
 the literal as the service does, and an integer is read exactly. So a decimal is wrong exactly where its double is a whole number
 other than the number: an integer beyond 2^53 a double does not hold, and a fraction a hair from a whole
-number, `2.9999999999999999`, which reads as 3. `CosmosRexTranslator.TryGetExactNumberValue` sends a
+number, `2.9999999999999999`, which reads as 3. `CosmosRexLiterals.TryGetExactNumberValue` sends a
 decimal everywhere else, a `long` for a whole number there, and nothing for the fraction or for a whole
 number beyond a `long` — the literal is declined, and a bound not stated. A parameter's value arriving
 with the execution binds the same way, and fails the execution where nothing serves, the plan having
@@ -2375,7 +2375,7 @@ accessor renders what the cast over `ANY` renders — `30` as `30`, `1e30` as `1
 `true`, a string as itself — and answers null for an absent path, a null, an object and an array,
 which the comparison then does not keep; and it applies no width at run time, `RETURNING VARCHAR(3)`
 returning `'bikes'` whole. So the argument above holds for it unchanged, and
-`CosmosRexTranslator.IsRenderedDocumentValue` admits the two-operand `JSON_VALUE` of a character type
+`CosmosRexShapes.IsRenderedDocumentValue` admits the two-operand `JSON_VALUE` of a character type
 beside a value typed `ANY` (#71). A `RETURNING` that converts is refused, since the cast then renders
 a converted value; `JSON_QUERY` is refused, being the JSON text of an object and null for a scalar;
 and a behaviour clause is refused, substituting a value where the path has none — a refusal that,
@@ -2587,7 +2587,7 @@ planner; a failure under a host's, whose `FILTER_PROJECT_TRANSPOSE` copies the a
 the projection with the accessor inlined, and the implementor then refuses what the rule had accepted
 (#83). The binding now carries how each column is read — `CosmosImplementor.TryBindOutput` reports it
 beside the paths, derived as `CosmosProject` derives it — and the translator holds a field read as
-text to every test it holds the accessor to: `CosmosRexTranslator.IsTextRendering` is the accessor
+text to every test it holds the accessor to: `CosmosRexPaths.IsTextRendering` is the accessor
 test in both spellings. So the comparison declines over the column exactly as over the accessor, and
 `CosmosFilterSplitRule` pushes the same guard above the projection, `NOT IS_STRING(c.name) OR
 STARTSWITH(c.name, 'Acadia')`, and rechecks the pattern in process.
@@ -2623,7 +2623,7 @@ same string rather than differing by whatever spaces the document happened to ca
 **Only the plain form.** A validated `JSON_QUERY` always carries five operands — the wrapper and both
 behaviours are present as symbols whether or not they were written — and each of them substitutes
 something the path does not hold: measured, `WITH UNCONDITIONAL ARRAY WRAPPER` over the string `bikes`
-answers `["bikes"]` and `EMPTY OBJECT ON ERROR` answers `{}`. `CosmosRexTranslator.IsPlainJsonQuery`
+answers `["bikes"]` and `EMPTY OBJECT ON ERROR` answers `{}`. `CosmosRexShapes.IsPlainJsonQuery`
 is the test, read by enum *name* rather than ordinal, and `IsJsonAccessor` now applies it — so a
 wrapper form addresses no path in any clause and is left in process, where the engine computes what it
 means.
@@ -2657,7 +2657,7 @@ runs —
 A rendering would have to reproduce that table, keyed on the clause, the mode the path is spelled in
 and the JSON type found, and keep reproducing it across releases; and `ERROR ON ERROR` raises, which —
 as with the array `RETURNING` — no pushed column reproduces at all. Declining is right for every row,
-because it is not an answer. So `CosmosRexTranslator.IsPlainJsonValue` is the test and `IsJsonAccessor`
+because it is not an answer. So `CosmosRexShapes.IsPlainJsonValue` is the test and `IsJsonAccessor`
 applies it: a clause-carrying accessor addresses no path in any clause, its column binds to nothing,
 and operators above it decline as they do over any computed column. The operand-count tests now ask
 the same question instead of a proxy for it.
@@ -4725,7 +4725,7 @@ argument — and the validator types `?0` from the cast and keeps it, so a plan 
 only, so `CLR_ST_GEOG_DISTANCE(location, CAST(? AS GEOMETRY)) < 50000` was declined whole: the
 comparison stayed above the statement, the sort became a `ClrCursorSort`, and every document crossed
 the wire to be measured, where the same query against a literal point pushed both (#187). The cast
-converts nothing, so `CosmosRexTranslator.IsGeographyParameter` names the shape and the parameter is
+converts nothing, so `CosmosRexPaths.IsGeographyParameter` names the shape and the parameter is
 written where the cast stood — `ST_DISTANCE(c.location, @p0)` — the way the constructor falls away
 over a literal. Only `GEOMETRY` to `GEOMETRY`: a cast into one from text is a parse, and nothing here
 performs it.
@@ -5160,7 +5160,7 @@ read with a `_self` the query leaves out. So `DOC` is the bytes of *a query's* a
 read does not serve it — see *Not every statement is a query*.
 
 **Every pushdown resolves its path in one place.** A clause that needs a document path gets it from
-`CosmosRexTranslator.TryResolvePath`, so a projection, a filter, a sort, a sort with a fetch,
+`CosmosRexPaths.TryResolvePath`, so a projection, a filter, a sort, a sort with a fetch,
 `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison,
 `IS NOT NULL`, `UNNEST` and a lookup join on either side all reach a path the same way — and a path
 assembled at run time is declined for all of them at once.
@@ -5273,7 +5273,7 @@ number 2, which beside a declared `"type": "string"` is a contradiction: the fil
 `FALSE`. Over a container declared so, holding `"2"`, `" 2 "`, `"3"` and `"2.0"`, `= 2` returned
 nothing where Calcite returns three documents, and `> 2` nothing where it returns one.
 
-So `CosmosRexTranslator.IsParsingJsonValue` names it, and `IsJsonAccessor` refuses it as the array
+So `CosmosRexShapes.IsParsingJsonValue` names it, and `IsJsonAccessor` refuses it as the array
 `RETURNING` is refused: it addresses no path in any clause, so a column, a sort key, a grouping key, a
 partition key and a fact all stay where Calcite computes them. What it still implies is what a cast to
 a number implies — it *is* that cast, written as a clause — so `TryNumericCastOperand` reads it, and
@@ -5340,7 +5340,7 @@ the planner does not rewrite `COUNT(x)` into `COUNT(*)`. The service-owned `id`,
 keep the concrete types they are guaranteed to carry.
 
 The typing is load-bearing for pushdown, and the change from `ANY` to `VARIANT` is carried through
-rather than dropped. `CosmosRexTranslator.IsRenderedDocumentValue` reads a `VARIANT` operand as "the
+rather than dropped. `CosmosRexShapes.IsRenderedDocumentValue` reads a `VARIANT` operand as "the
 value the service holds", exactly as it read the `ANY` an accessor is re-typed to, so a cast over it
 renders rather than converts. Calcite coerces the *other* side of a comparison with a `VARIANT`
 column — a literal becomes `CAST(… AS VARIANT)`, a `LIKE` subject `CAST(… AS VARCHAR)` — where an
@@ -5504,6 +5504,10 @@ src/
       CosmosParameterList.cs          ✔ @pN binding
       CosmosQueryBuilder.cs           ✔ Statement assembly and language-constraint enforcement
       CosmosRexTranslator.cs          ✔ RexNode → Cosmos scalar expression
+      CosmosRexPaths.cs               ✔ A Rex read as the document path it addresses, against one binding
+      CosmosRexShapes.cs              ✔ A Rex's accessor and cast shapes, which read no binding
+      CosmosRexLiterals.cs            ✔ A literal as the CLR value the service is sent
+      CosmosSearchFunctions.cs        ✔ The full text and scoring functions, by name
       CosmosTranslationException.cs   ✔ Refusal signal
       CosmosAxioms.cs                 ✔ The measured facts a pushdown relies on, each with its test
     Internal/
@@ -7894,6 +7898,39 @@ site took the branch it keeps.
 **Where the faults are caught now.** Each is planted in S where S would carry it, and caught by the gate or by source
 A (*Faults planted in S*, line 16). With J (g18), K (g19) and the plants gone, the deletions of spec §3.5 are done and
 S's theory holds 56 rules (line 31).
+
+---
+
+## The rendering graph beyond the WHERE
+
+Stage 3 moves into S what `Sql/CosmosRexTranslator.cs` still decides: `CASE` conditions, type tests, functions,
+parameters, the declared-fact lowering and every projected value; and then deletes the file. Each step below says what
+it moved or proved, and the sections that name the translator for a family are rewritten when that family switches.
+
+### The Rex readers, apart from the translator
+
+**What moved (h01).** The readers every pushdown shares, which read a Rex's shape and nothing about the documents, are
+four types of their own in `Sql/`, and the translator delegates to them:
+
+- `CosmosRexPaths`, a binding (the path each field is bound to, how each is read back, the correlation variable that
+  stands for the row) and what reads a Rex against it: `TryResolvePath`, the SQL/JSON path, the geography operands, and
+  the two rendering tests that read the binding's readings, `IsTextRendering` and `IsScalarRendering`.
+- `CosmosRexShapes`, the accessor and cast shapes that read no binding: which `JSON_VALUE` and `JSON_QUERY` spellings
+  are plain, which parse, which casts render a document value and which convert one, the validator's coercions.
+- `CosmosRexLiterals`, a literal as the CLR value the service is sent, `TryGetExactNumberValue`'s rule among them.
+- `CosmosSearchFunctions`, the full text and scoring functions by name, and which way each ranks.
+
+**Why first.** The predicate loader, the fact rewrite, the joins, the unnest, the filter's cost and the implementor's
+binding walk built a translator to resolve a path and asked it nothing else. Until they stop, no family's code can leave
+the translator without leaving them a reader. They now build a `CosmosRexPaths`; a node that holds a translator for
+what it writes and also resolves a path asks the translator's `Paths`, which is the same binding. The sites that still
+build a translator do so to write, or to ask a family's own question, and each is switched with its family.
+
+**A move, and nothing else.** Each member keeps its code and a one-paragraph summary that points here or to the
+section holding its reasoning; plans are byte-equal. What the move needed beyond the spec's list went with it: `KindOf`
+and `Operand`, which every reader dispatches through; `TryGetArrayIndex`, which `TryResolvePath` reads; and
+`IsRenderedDocumentValue`, which the two cast readers ask. The readers take no facts, no container and no parameters,
+so the filter's cost no longer keeps a `RexBuilder` of its own.
 
 ---
 

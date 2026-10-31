@@ -414,11 +414,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(scan, out var fields, out var readings, out _) == false)
                 return false;
 
-            // One source of facts for the method: what holds of every document either side reads, which the translator
-            // resolving the keys' paths is handed too.
+            // One source of facts for the method: what holds of every document either side reads, which the keys'
+            // paths are judged against.
             var container = table.Container;
             var facts = Either(f, g, fields, readings, container, rexBuilder);
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), facts, null, container, readings);
+            var resolver = new CosmosRexPaths(fields, readings);
             var equated = new List<RexNode>();
             var paths = new List<JsonDocumentPath>();
 
@@ -444,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (equated.Contains(lk) == false)
                     equated.Add(lk);
 
-                if (TryKeyPath(lk, translator, facts, out var path) && path is JsonDocumentPath key && paths.Contains(key) == false)
+                if (TryKeyPath(lk, resolver, facts, out var path) && path is JsonDocumentPath key && paths.Contains(key) == false)
                     paths.Add(key);
             }
 
@@ -468,7 +468,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     continue;
                 }
 
-                if (Covers(compiled, equated, paths, translator) == false)
+                if (Covers(compiled, equated, paths, resolver) == false)
                     continue;
 
                 // Scoped by a predicate, the constraint holds among the documents it admits, and a join pairs
@@ -537,13 +537,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// put the pair outside the constraint's claim, a null equalling nothing.
         /// </para>
         /// </remarks>
-        static bool Covers(CosmosConstraintCompiler.Compiled compiled, List<RexNode> equated, List<JsonDocumentPath> paths, CosmosRexTranslator translator)
+        static bool Covers(CosmosConstraintCompiler.Compiled compiled, List<RexNode> equated, List<JsonDocumentPath> paths, CosmosRexPaths resolver)
         {
             foreach (var key in compiled.Keys)
             {
-                var value = CosmosRexTranslator.StripRedundantTextCast(key);
+                var value = CosmosRexShapes.StripRedundantTextCast(key);
 
-                if ((value is RexInputRef || CosmosRexTranslator.IsTextJsonValue(value)) && translator.TryResolvePath(value, out var resolved))
+                if ((value is RexInputRef || CosmosRexShapes.IsTextJsonValue(value)) && resolver.TryResolvePath(value, out var resolved))
                 {
                     if (CosmosDocumentPaths.From(resolved, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath path || paths.Contains(path) == false)
                         return false;
@@ -659,7 +659,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the documents the other side reads, unless that side proves it too.
         /// </para>
         /// </remarks>
-        static bool TryKeyPath(RexNode node, CosmosRexTranslator translator, JsonFactSet facts, out JsonDocumentPath? path)
+        static bool TryKeyPath(RexNode node, CosmosRexPaths resolver, JsonFactSet facts, out JsonDocumentPath? path)
         {
             path = null;
 
@@ -668,19 +668,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (cast.getType().getSqlTypeName() != SqlTypeName.UUID)
                     return false;
 
-                var text = CosmosRexTranslator.StripRedundantTextCast((RexNode)cast.getOperands().get(0));
-                if (CosmosRexTranslator.IsTextJsonValue(text) == false || translator.TryResolvePath(text, out var resolved) == false)
+                var text = CosmosRexShapes.StripRedundantTextCast((RexNode)cast.getOperands().get(0));
+                if (CosmosRexShapes.IsTextJsonValue(text) == false || resolver.TryResolvePath(text, out var resolved) == false)
                     return false;
 
                 path = CosmosDocumentPaths.From(resolved, CosmosImplementor.DefaultRootAlias);
                 return path is JsonDocumentPath uuid && facts.RepresentationOf(uuid) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
             }
 
-            var value = CosmosRexTranslator.StripRedundantTextCast(node);
-            if (value is not RexInputRef && CosmosRexTranslator.IsTextJsonValue(value) == false)
+            var value = CosmosRexShapes.StripRedundantTextCast(node);
+            if (value is not RexInputRef && CosmosRexShapes.IsTextJsonValue(value) == false)
                 return false;
 
-            if (translator.TryResolvePath(value, out var accessed) == false)
+            if (resolver.TryResolvePath(value, out var accessed) == false)
                 return false;
 
             // One scalar kind is what makes its text a faithful reading of its value.

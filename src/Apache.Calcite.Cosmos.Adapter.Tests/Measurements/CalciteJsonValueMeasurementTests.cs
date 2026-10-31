@@ -209,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// So the clause's meaning is a table over the clause, the mode and the JSON type found, and
         /// <c>ERROR ON ERROR</c> raises, which no pushed column reproduces. That is why the adapter
         /// renders no behaviour clause but the defaults written down —
-        /// <c>CosmosRexTranslator.IsPlainJsonValue</c> — and leaves the rest to the engine, which this
+        /// <c>CosmosRexShapes.IsPlainJsonValue</c> — and leaves the rest to the engine, which this
         /// pins. The guarded path rendered for the plain accessor answers null wherever a default
         /// answers here, so pushing it was a wrong answer and not a missed pushdown.
         /// </para>
@@ -480,7 +480,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
         /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
-        /// at the limit (<c>CosmosRexTranslator.TryNumericCastOperand</c>). A double's parse reads every rendering of a
+        /// at the limit (<c>CosmosRexShapes.TryNumericCastOperand</c>). A double's parse reads every rendering of a
         /// number. A string spelling a number is parsed as one, and anything else raises.
         /// </para>
         /// <para>

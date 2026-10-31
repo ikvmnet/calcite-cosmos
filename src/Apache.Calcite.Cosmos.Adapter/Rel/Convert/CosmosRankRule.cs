@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             var rank = (RexNode)inner.getProjects().get(key);
-            if (CosmosRexTranslator.IsScoringFunction(rank) == false)
+            if (CosmosSearchFunctions.IsScoringFunction(rank) == false)
                 return null;
 
             // ORDER BY RANK returns the best match first, and the service refuses a direction for it (SC2222, measured
@@ -126,9 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // text score and a fusion of ranks. An ascending one is not that order, and stays with Calcite, where the
             // score has no value and the statement fails saying an ascending score is never ranked
             // (CosmosSchemaFunction.Refusal). A vector distance is best first ascending or descending by a distance
-            // function the metadata does not hold (CosmosRexTranslator.BestFirstDescending). Asked as every order the
+            // function the metadata does not hold (CosmosSearchFunctions.BestFirstDescending). Asked as every order the
             // service computes is; a score reads no facts.
-            var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: CosmosRexTranslator.IsBestFirstDescending(rank));
+            var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: CosmosSearchFunctions.IsBestFirstDescending(rank));
             var ordered = new Metadata.CosmosOrderKey(operand, (org.apache.calcite.rel.RelFieldCollation)collations.get(0));
             if (Metadata.CosmosServiceOrder.OrderBy(JsonFactSet.Empty, new[] { ordered }, Metadata.CosmosRendering.SetFor(_convention.Container.ServiceTarget)).IsProved == false)
                 return null;

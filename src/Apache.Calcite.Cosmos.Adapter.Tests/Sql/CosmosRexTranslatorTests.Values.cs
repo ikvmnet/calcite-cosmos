@@ -89,9 +89,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var label = Text("$.label", Ref(2, SqlTypeName.VARCHAR));
 
-            CosmosRexTranslator.TryTextCastValue(Cast(label, SqlTypeName.VARCHAR, 3)).Should().BeNull();
-            CosmosRexTranslator.TryTextCastValue(Cast(label, SqlTypeName.CHAR, 8)).Should().BeNull();
-            CosmosRexTranslator.TryTextCastValue(_rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true), SqlStdOperatorTable.CAST, Of(label)))
+            CosmosRexShapes.TryTextCastValue(Cast(label, SqlTypeName.VARCHAR, 3)).Should().BeNull();
+            CosmosRexShapes.TryTextCastValue(Cast(label, SqlTypeName.CHAR, 8)).Should().BeNull();
+            CosmosRexShapes.TryTextCastValue(_rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true), SqlStdOperatorTable.CAST, Of(label)))
                 .Should().BeSameAs(label);
 
             CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, Cast(label, SqlTypeName.VARCHAR, 3), Str("bik"))).Should().BeFalse();
@@ -136,10 +136,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var nested = Text("$", Text("$.name", Ref(2, SqlTypeName.VARCHAR)));
 
-            Translator().TryResolvePath(nested, out _).Should().BeFalse();
+            Translator().Paths.TryResolvePath(nested, out _).Should().BeFalse();
             CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, nested)).Should().BeFalse();
 
-            TranslatorOverARendering().TryResolvePath(Text("$.v", Ref(0, SqlTypeName.VARCHAR)), out _)
+            TranslatorOverARendering().Paths.TryResolvePath(Text("$.v", Ref(0, SqlTypeName.VARCHAR)), out _)
                 .Should().BeFalse("and nor through a field a projection bound to one");
 
             var fragment = _rex.makeCall(
@@ -147,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 SqlStdOperatorTable.JSON_QUERY,
                 Of(Ref(2, SqlTypeName.VARCHAR), Str("$.metadata")));
 
-            Translator().TryResolvePath(Text("$.sku", fragment), out var path).Should().BeTrue();
+            Translator().Paths.TryResolvePath(Text("$.sku", fragment), out var path).Should().BeTrue();
             path!.ToString().Should().Be("c.metadata.sku");
         }
 
@@ -225,26 +225,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var price = Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 19, 0);
 
-            CosmosRexTranslator.IsParsingJsonValue(price).Should().BeTrue();
-            Translator().TryResolvePath(price, out _).Should().BeFalse("a parse is not the value at the path");
+            CosmosRexShapes.IsParsingJsonValue(price).Should().BeTrue();
+            Translator().Paths.TryResolvePath(price, out _).Should().BeFalse("a parse is not the value at the path");
             CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, price, Num(2))).Should().BeFalse();
             CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.EQUALS, price, Num(2)))).Should().BeFalse();
             CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, price)).Should().BeFalse();
             Translator().TryTranslateProjection(price, out _, out _).Should().BeFalse();
 
-            CosmosRexTranslator.TryNumericCastOperand(price, _rex).Should().Match<RexNode>(
-                rendering => CosmosRexTranslator.IsTextJsonValue(rendering), "the value it converts is the rendering");
-            Translator().TryResolvePath(CosmosRexTranslator.TryNumericCastOperand(price, _rex)!, out var path).Should().BeTrue();
+            CosmosRexShapes.TryNumericCastOperand(price, _rex).Should().Match<RexNode>(
+                rendering => CosmosRexShapes.IsTextJsonValue(rendering), "the value it converts is the rendering");
+            Translator().Paths.TryResolvePath(CosmosRexShapes.TryNumericCastOperand(price, _rex)!, out var path).Should().BeTrue();
             path!.ToString().Should().Be("c.price");
 
-            CosmosRexTranslator.IsParsingJsonValue(Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 10, 2)).Should().BeTrue("at any scale");
+            CosmosRexShapes.IsParsingJsonValue(Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 10, 2)).Should().BeTrue("at any scale");
 
             // The control: a RETURNING that asserts is the value where Calcite answers one, and is written as the path.
             var asserted = _rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.INTEGER), true), SqlStdOperatorTable.JSON_VALUE, Of(Ref(2, SqlTypeName.VARCHAR), Str("$.price")));
 
-            CosmosRexTranslator.IsParsingJsonValue(asserted).Should().BeFalse();
+            CosmosRexShapes.IsParsingJsonValue(asserted).Should().BeFalse();
             Translate(Call(SqlStdOperatorTable.EQUALS, asserted, Num(2))).Should().Be("(c.price = @p0)");
-            CosmosRexTranslator.TryNumericCastOperand(asserted, _rex).Should().BeNull("an asserted type is no conversion");
+            CosmosRexShapes.TryNumericCastOperand(asserted, _rex).Should().BeNull("an asserted type is no conversion");
         }
 
     }

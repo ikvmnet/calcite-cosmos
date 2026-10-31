@@ -285,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             if (node.getType().getSqlTypeName() != org.apache.calcite.sql.type.SqlTypeName.BOOLEAN
-                && translator.TryResolvePath(node, out var path) && path is not null
+                && translator.Paths.TryResolvePath(node, out var path) && path is not null
                 && translator.TryTranslateProjection(node, out _, out _))
             {
                 var digest = node.ToString();

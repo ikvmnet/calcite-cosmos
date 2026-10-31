@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// grouping or a <c>DISTINCT</c> over a path holding an object sent the object back for a
         /// column declared a number, which the reader refused. <c>RETURNING DECIMAL</c>, which parses
         /// rather than asserting, addresses no path at all — see
-        /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — so no key is bound to one.
+        /// <see cref="CosmosRexShapes.IsParsingJsonValue"/> — so no key is bound to one.
         /// </para>
         /// <para>
         /// <b>A rendering groups by its text, and the service by the value it renders.</b> A key read

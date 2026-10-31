@@ -131,8 +131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// <c>RETURNING DECIMAL</c> addresses no path — <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — and is read
-        /// through the cast of the text it is, <see cref="CosmosRexTranslator.TryNumericCastOperand(RexNode, RexBuilder)"/>:
+        /// <c>RETURNING DECIMAL</c> addresses no path — <see cref="CosmosRexShapes.IsParsingJsonValue"/> — and is read
+        /// through the cast of the text it is, <see cref="CosmosRexShapes.TryNumericCastOperand(RexNode, RexBuilder)"/>:
         /// the reading whose meaning is the parse (<c>typed:DECIMAL</c>), with the literal cast to its scale read as the
         /// window reads it, and one its whole digits do not fit read as nothing.
         /// </summary>

@@ -179,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Each literal bound as the translator binds Calcite's exact literal of the same number
-        /// (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>), and refused where the translator declines it; text,
+        /// (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>), and refused where the translator declines it; text,
         /// a boolean and null as themselves; a number held approximately as its double; and a lone surrogate refused by the
         /// list, as every value the translator binds is.
         /// </summary>
@@ -191,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var number in new[] { "30", "30.0", "-7", "1.5", "0.1", "9007199254740992", "9007199254740993", "1152921504606846977", "-1152921504606846977",
                 "2.9999999999999999", "100000000000000000000000000", "79228162514264337593543950335" })
             {
-                var theirs = CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number));
+                var theirs = CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(number));
                 var literal = JsonValues.Of(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture));
                 if (theirs is null)
                     FluentActions.Invoking(() => Bound(literal)).Should().Throw<CosmosTranslationException>(number);

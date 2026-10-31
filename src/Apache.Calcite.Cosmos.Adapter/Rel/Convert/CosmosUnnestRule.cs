@@ -155,9 +155,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // The correlate's own id: this is a lateral traversal, so the variable its array
             // expression is written against stands for the very row being scanned.
-            var translator = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), fields, new CosmosParameterList(), Facts.JsonFactSet.Empty, correlate.getCorrelationId(), convention.Container);
+            var paths = new CosmosRexPaths(fields, ownRow: correlate.getCorrelationId());
 
-            if (translator.TryResolvePath(array, out _) == false)
+            if (paths.TryResolvePath(array, out _) == false)
                 return false;
 
             // A predicate over the element becomes a WHERE this rule builds itself, so whether it

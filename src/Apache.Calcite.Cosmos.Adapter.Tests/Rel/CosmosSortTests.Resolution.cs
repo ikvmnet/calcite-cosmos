@@ -142,12 +142,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // ── Path resolution ───────────────────────────────────────────────────────
 
-            CosmosRexTranslator Translator() => new(_rex, Fields, new CosmosParameterList(), JsonFactSet.Empty);
+            CosmosRexPaths Paths() => new(Fields);
 
             [Fact]
             public void FieldReferenceResolvesToAPath()
             {
-                Translator().TryResolvePath(_rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1), out var path).Should().BeTrue();
+                Paths().TryResolvePath(_rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1), out var path).Should().BeTrue();
                 path!.ToString().Should().Be("c.name");
             }
 
@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 var inner = _rex.makeCall(SqlStdOperatorTable.ITEM, map, _rex.makeLiteral("address", _types.createSqlType(SqlTypeName.VARCHAR, 7)));
                 var outer = _rex.makeCall(SqlStdOperatorTable.ITEM, inner, _rex.makeLiteral("city", _types.createSqlType(SqlTypeName.VARCHAR, 4)));
 
-                Translator().TryResolvePath(outer, out var path).Should().BeTrue();
+                Paths().TryResolvePath(outer, out var path).Should().BeTrue();
                 path!.ToString().Should().Be("c.address.city");
             }
 
@@ -169,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     SqlStdOperatorTable.UPPER,
                     _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1));
 
-                Translator().TryResolvePath(node, out var path).Should().BeFalse();
+                Paths().TryResolvePath(node, out var path).Should().BeFalse();
                 path.Should().BeNull();
             }
 

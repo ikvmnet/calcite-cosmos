@@ -972,7 +972,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// </summary>
             /// <remarks>
             /// <para>
-            /// <b>What it does to a number was measured</b> (<c>CosmosRexTranslator.TryNumericCastOperand</c>):
+            /// <b>What it does to a number was measured</b> (<c>CosmosRexShapes.TryNumericCastOperand</c>):
             /// <c>INTEGER</c> and <c>BIGINT</c> truncate toward zero and saturate at their limits, and <c>DOUBLE</c> is the
             /// number. So a number's converted value is known, and a range of numbers converts to a range. Over an <c>ANY</c>
             /// column Calcite wraps a long beyond an int instead, and over a <c>VARIANT</c> raises (<c>TODO.md</c>).

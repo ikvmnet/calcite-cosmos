@@ -1887,7 +1887,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// <b>The case #125 was filed for.</b> A constant timestamp cannot be rendered — Cosmos has no
         /// temporal type and nothing declares which encoding a container uses, so
-        /// <c>CosmosRexTranslator.GetLiteralValue</c> refuses one rather than guessing. Before the
+        /// <c>CosmosRexLiterals.GetLiteralValue</c> refuses one rather than guessing. Before the
         /// split that refusal took the whole projection with it, and the statement became
         /// <c>SELECT VALUE c</c>: every document crossed the wire so that the client could compute a
         /// constant.

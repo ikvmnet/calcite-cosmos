@@ -109,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// </summary>
         /// <remarks>
         /// The service reads a decimal as a double, and 2^60 + 1 sent as one matched the document holding 2^60 —
-        /// <c>CosmosRexTranslator.TryGetExactNumberValue</c>. The plan was made to send the value, so one no value serves
+        /// <c>CosmosRexLiterals.TryGetExactNumberValue</c>. The plan was made to send the value, so one no value serves
         /// fails the execution rather than being sent as a number it is not.
         /// </remarks>
         [Fact]

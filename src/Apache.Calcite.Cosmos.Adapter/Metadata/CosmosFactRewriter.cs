@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // the one without it -- asked of its siblings and never of itself, and one at a time, so
             // that two conjuncts implying each other do not both go.
             var redundant = statement?.Redundant ?? Array.Empty<int>();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), JsonFactSet.Empty);
+            var paths = new CosmosRexPaths(fields);
 
             var operands = new java.util.ArrayList();
             var changed = redundant.Count > 0;
@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // disjunction translation would have rendered anyway -- and the expansion is kept only
                 // if something was actually lowered, so a conjunct this has no opinion about reaches
                 // the planner in the shape it arrived.
-                var rewritten = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), translator, rexBuilder, fields, rootAlias));
+                var rewritten = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), paths, rexBuilder, fields, rootAlias));
 
                 operands.add(rewritten ?? conjuncts[i]);
                 changed |= rewritten is not null;
@@ -179,18 +179,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly IReadOnlyList<RexNode> _conditions;
             JsonFactSet? _known;
 
-            public Rewriting(CosmosFilterStatement? statement, int conjunct, IReadOnlyList<RexNode> conditions, CosmosRexTranslator translator, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, string rootAlias)
+            public Rewriting(CosmosFilterStatement? statement, int conjunct, IReadOnlyList<RexNode> conditions, CosmosRexPaths paths, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, string rootAlias)
             {
                 _statement = statement;
                 _conjunct = conjunct;
                 _conditions = conditions;
-                Translator = translator;
+                Paths = paths;
                 RexBuilder = rexBuilder;
                 Fields = fields;
                 RootAlias = rootAlias;
             }
 
-            public CosmosRexTranslator Translator { get; }
+            public CosmosRexPaths Paths { get; }
 
             public RexBuilder RexBuilder { get; }
 
@@ -216,7 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Returns where a rewrite stands inside the arm a condition guards.
             /// </summary>
             public Rewriting Within(RexNode condition) =>
-                new(_statement, _conjunct, _conditions.Append(condition).ToArray(), Translator, RexBuilder, Fields, RootAlias);
+                new(_statement, _conjunct, _conditions.Append(condition).ToArray(), Paths, RexBuilder, Fields, RootAlias);
 
         }
 
@@ -632,7 +632,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             or nameof(SqlKind.__Enum.IS_TRUE) or nameof(SqlKind.__Enum.IS_NOT_TRUE)
                             or nameof(SqlKind.__Enum.IS_FALSE) or nameof(SqlKind.__Enum.IS_NOT_FALSE)
                             or nameof(SqlKind.__Enum.CASE) or nameof(SqlKind.__Enum.SEARCH) => true,
-                        _ => CosmosRexTranslator.IsTextJsonValue(call) && CosmosRexTranslator.IsPlainJsonValue(call)
+                        _ => CosmosRexShapes.IsTextJsonValue(call) && CosmosRexShapes.IsPlainJsonValue(call)
                             || CosmosOperators.IsAbsenceObserving(call.getOperator()),
                     };
 
@@ -779,7 +779,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var operand = (RexNode)cast.getOperands().get(0);
 
-            if (at.Translator.TryResolvePath(operand, out var path) == false || path is null)
+            if (at.Paths.TryResolvePath(operand, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path, at.RootAlias) is not JsonDocumentPath document)
@@ -798,7 +798,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredUuid(castNode, ordering, at.Translator, () => at.Known, at.RootAlias, out var representation) is not RexNode operand)
+            if (TryStoredUuid(castNode, ordering, at.Paths, () => at.Known, at.RootAlias, out var representation) is not RexNode operand)
                 return null;
 
             // And the form has to be one whose stored spelling this knows how to write. A
@@ -823,12 +823,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="castNode">The expression that may read a path as a UUID.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
-        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="paths">Resolves the path underneath.</param>
         /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexTranslator translator, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexPaths paths, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -844,7 +844,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var operand = (RexNode)cast.getOperands().get(0);
 
-            if (translator.TryResolvePath(operand, out var path) == false || path is null)
+            if (paths.TryResolvePath(operand, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path, rootAlias) is not JsonDocumentPath document)
@@ -853,7 +853,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (known().RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
                 return null;
 
-            if (ordering ? OrdersAsTheValues(known(), document, null, CosmosTemporalParts.None, translator.Set) == false : declared.PreservesEquality == false)
+            if (ordering ? OrdersAsTheValues(known(), document, null, CosmosTemporalParts.None, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production) == false : declared.PreservesEquality == false)
                 return null;
 
             representation = declared;
@@ -875,7 +875,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="document">The path.</param>
         /// <param name="format">A parse's format, or <c>null</c> for a cast.</param>
         /// <param name="held">The halves of an instant the conversion's value holds; none for a UUID or a number.</param>
-        /// <param name="set">The set the statement is sent under, the translator's.</param>
+        /// <param name="set">The set the ordering is asked under: Production, as the rewrite reads no container; the comparison it writes is decided again under its container's set where the translator writes it.</param>
         /// <returns><c>true</c> where the stored strings order as the values.</returns>
         static bool OrdersAsTheValues(JsonFactSet facts, JsonDocumentPath document, string? format, CosmosTemporalParts held, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet set) =>
             CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForConversion(document, format, held), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: true, set).IsProved;
@@ -914,7 +914,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredInstant(temporalNode, ordering, at.Translator, () => at.Known, at.RootAlias, out var representation) is not RexNode accessor)
+            if (TryStoredInstant(temporalNode, ordering, at.Paths, () => at.Known, at.RootAlias, out var representation) is not RexNode accessor)
                 return null;
 
             if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
@@ -945,19 +945,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="temporalNode">The expression that may read a path as an instant.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
-        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="paths">Resolves the path underneath.</param>
         /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexPaths paths, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
             if (TextAccessorOf(temporalNode, out var format, out var held) is not RexNode accessor)
                 return null;
 
-            if (translator.TryResolvePath(accessor, out var path) == false || path is null)
+            if (paths.TryResolvePath(accessor, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path, rootAlias) is not JsonDocumentPath document)
@@ -970,7 +970,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // the engine, and is licensed only where the engine can do it (CosmosStoredForms.Reads). An ordering asks
             // that and that the form keeps the order, as every order the service computes is asked.
             if (ordering
-                ? OrdersAsTheValues(known(), document, format, held, translator.Set) == false
+                ? OrdersAsTheValues(known(), document, format, held, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production) == false
                 : declared.PreservesEquality == false || CosmosStoredForms.Reads(declared, format, held) == false)
                 return null;
 
@@ -1019,7 +1019,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (NumericAccessorOf(numericNode) is not RexNode accessor)
                 return null;
 
-            if (at.Translator.TryResolvePath(accessor, out var path) == false || path is null)
+            if (at.Paths.TryResolvePath(accessor, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path, at.RootAlias) is not JsonDocumentPath document)
@@ -1030,7 +1030,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (ordering ? OrdersAsTheValues(at.Known, document, null, CosmosTemporalParts.None, at.Translator.Set) == false : representation.PreservesEquality == false)
+            if (ordering ? OrdersAsTheValues(at.Known, document, null, CosmosTemporalParts.None, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production) == false : representation.PreservesEquality == false)
                 return null;
 
             if (CosmosStoredForms.RenderInteger(representation, value) is not string stored)
@@ -1050,7 +1050,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// type rather than converting to it, and a path holding a string never extracts as a number,
         /// so the clause fails at run time rather than naming this shape. Except <c>DECIMAL</c>, which
         /// parses a stored string as the cast does and is a second spelling in principle; it addresses
-        /// no path — <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — and reading it here is a
+        /// no path — <see cref="CosmosRexShapes.IsParsingJsonValue"/> — and reading it here is a
         /// recovery <c>TODO.md</c> records rather than a shape this misses.
         /// </para>
         /// <para>

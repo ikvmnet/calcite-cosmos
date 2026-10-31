@@ -230,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [InlineData("10000000000000000000")]
         public void AnExactNumberItsDoubleServesIsSentAsADecimal(string number)
         {
-            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<decimal>()
+            CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<decimal>()
                 .Which.Should().Be(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture));
         }
 
@@ -240,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [InlineData("-1152921504606846975", -1152921504606846975L)]
         public void AWholeNumberItsDoubleMisreadsIsSentAsALong(string number, long exact)
         {
-            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<long>().Which.Should().Be(exact);
+            CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<long>().Which.Should().Be(exact);
 
             var t = Translator();
             t.Translate(_rex.makeExactLiteral(new java.math.BigDecimal(number)));
@@ -253,7 +253,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [InlineData("10000000000000000001")]
         public void ANumberNoValueServesIsNotSent(string number)
         {
-            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeNull();
+            CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeNull();
             CanTranslate(Translator(), _rex.makeExactLiteral(new java.math.BigDecimal(number))).Should().BeFalse();
         }
 
@@ -1088,7 +1088,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the literal to <c>CAST(… AS VARIANT)</c> where an <c>ANY</c> column left it bare. The box
         /// carries the value — the service compares the raw document value against it — and the rendered
         /// statement is the one the <c>ANY</c> column produced, <c>c.name = @p0</c>. See
-        /// <c>CosmosRexTranslator.StripVariantCoercion</c> and the <c>VARIANT</c> arm of
+        /// <c>CosmosRexShapes.StripVariantCoercion</c> and the <c>VARIANT</c> arm of
         /// <c>WriteCast</c>.
         /// </remarks>
         [Fact]
