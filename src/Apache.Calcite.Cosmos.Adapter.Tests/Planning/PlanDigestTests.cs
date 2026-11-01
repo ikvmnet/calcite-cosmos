@@ -56,7 +56,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Writes every digest to <c>TestResults/rendering/plan-digests.tsv</c>, or to the file
         /// <c>COSMOS_PLAN_DIGESTS</c> names: the partition run's first 200 predicates, or its 1,000 where
         /// <c>COSMOS_PARTITION_GATE=1</c>; every statement planned over one harness schema, its build awaited first,
-        /// and no question S was asked declined.
+        /// and no question S was asked declined. Planned for Azure, or for the emulator, as an emulator leg plans, where
+        /// <c>COSMOS_PLAN_DIGESTS_TARGET=emulator</c>.
         /// </summary>
         /// <remarks>
         /// Run at a commit's parent and at the commit, with <c>-explicit only</c>. The two files must be byte-equal,
@@ -70,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             var harness = new HarnessReasonings();
             var reasoning = harness.Make();
             using (harness.Planning())
-                File.WriteAllText(path, string.Join("\n", PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates, reasoning)) + "\n");
+                File.WriteAllText(path, string.Join("\n", PlanDigests.All(CosmosDifferentialTests.PartitionedPredicates, reasoning, Target)) + "\n");
 
             // A decline leaves its conjunct residual with no weakening, a digest the listing does not explain. Every
             // statement is planned in the harness's reasoning, which a table that made its own, or was bound to another,
@@ -78,6 +79,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             TestContext.Current.TestOutputHelper?.WriteLine($"the harness's reasonings: {harness.Counts}");
             harness.Counts.Declines.Should().Be(0, "the switch's listing holds no plan a decline changed");
         }
+
+        static CosmosServiceTarget Target => string.Equals(Environment.GetEnvironmentVariable("COSMOS_PLAN_DIGESTS_TARGET"), "emulator", StringComparison.OrdinalIgnoreCase)
+            ? CosmosServiceTarget.Emulator : CosmosServiceTarget.Azure;
 
         /// <summary>
         /// Line 21 at the switch (spec g16): the gate's digests, every statement planned with S writing over one harness

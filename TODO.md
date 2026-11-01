@@ -1383,12 +1383,19 @@ the distribution the gate is sized for.
     (`JsonValues.LengthsOf`). The schema reader does not read `minLength` or `maxLength`, which count code
     points: a `minLength` of n bounds the UTF-16 units from below by n and a `maxLength` of n from above by 2n,
     which is all the theory's units need of them (below, *The other bounds*).
-  - **The emulator's U+0000, `REPLICATE` and `REPLACE` are not Azure's** — *recorded.* It stores U+0000 as
-    U+FDD0 followed by `0`, so every function over such a string differs; its `REPLICATE` has no limit; and a
-    parameter holding U+0000 in `REPLACE`'s replacement or a `CONCAT` fails the statement with 500
-    `PostgresError(E22P05)` (Appendix E). Azure is the target, so none of them is declined. The differential
-    corpus holds no U+0000 and no repetition near the limit, and the measurement tests that pin Azure's rows
-    skip on the emulator's.
+  - **The emulator's U+0000, U+FDD0, `REPLICATE` and `REPLACE` are not Azure's** — *measured, the fix under
+    way.* It stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1` (`Facts/EmulatorStoredText.cs`), and counts,
+    cuts, compares, orders and returns what it stores; its `REPLICATE` has no limit; and a U+0000 made from a path,
+    by `CONCAT` or `REPLACE`'s replacement, fails the statement with a 500 (Appendix E). Measured on both images on
+    2026-10-31, each an `Emulator` row: `Service.EmulatorComparesTheSpellingItIsSent` (a value sent in the stored
+    spelling is exact for `=`, `IN`, `!=` and `STARTSWITH`, and for `ENDSWITH` and `CONTAINS` unless it begins
+    with `0` or `1`; `CONTAINS(p, U+FDD0 '0')` is an exact test for U+0000), `Service.EmulatorCountsTheStringItStores`,
+    `Service.EmulatorFailsANulMadeFromAPath`, `Service.EmulatorPointReadOfAnEscapedId` and
+    `Service.EmulatorDecodesWhatItReturns`: a constant the service returns comes back decoded, so one sent in the
+    stored spelling comes back as written, and a raw U+0000 returned anywhere is a 500. Until the writer sends the
+    stored spelling and refuses what it cannot prove, a statement over such strings may answer apart from Calcite
+    under `Emulator`; Azure's plans do not change. The differential corpus holds no U+0000 and no repetition near
+    the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is

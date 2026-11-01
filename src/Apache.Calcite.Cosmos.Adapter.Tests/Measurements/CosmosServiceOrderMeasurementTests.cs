@@ -12,6 +12,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using FluentAssertions.Execution;
@@ -237,6 +238,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var strings = Container("strings");
             await CosmosOutcomeHarness.Holds(strings, "Service.StringOrderIsCodePoint");
             (await Rows(strings, "SELECT VALUE MAX(c.s) FROM c")).Should().Equal("\U0001F600");
+        }
+
+        /// <summary>
+        /// The emulator orders, compares and extremes a string as it stores it, U+FDD0 escaped as well as U+0000
+        /// (<see cref="EmulatorStoredText"/>): U+FDD0 as U+FDD0 <c>1</c>, which sorts where code point order puts U+FDD0,
+        /// and U+0000 as U+FDD0 <c>0</c>, above U+E000, where Calcite puts it least.
+        /// A value sent in that spelling is compared with it as stored. Azure orders U+0000 least, and there the test skips.
+        /// Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task TheEmulatorEscapesUFDD0Too()
+        {
+            if (_database is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            string[] strings = ["", "0", "1", "a", "z", "\u0001", "\0", "\0a", "a\0", "﷏", "﷐", "﷐0", "﷐1", "﷐a", "\0﷐", "﷑", "", "￿"];
+            var escapes = await Fresh(new ContainerProperties("escapes", "/pk"), TestContext.Current.CancellationToken);
+            for (var i = 0; i < strings.Length; i++)
+                await Write(escapes, new JObject { ["id"] = $"e{i:D2}", ["pk"] = "a", ["s"] = strings[i] }.ToString(Newtonsoft.Json.Formatting.None), TestContext.Current.CancellationToken);
+
+            var ascending = await Rows(escapes, "SELECT VALUE c.s FROM c ORDER BY c.s ASC");
+            if (ascending[0] == "\0" || ascending[1] == "\0")
+                Assert.Skip("This service orders U+0000 least, as Azure does; the emulator orders it as it stores it.");
+
+            var stored = strings.OrderBy(EmulatorStoredText.Of, StringComparer.Ordinal).ToList();
+            ascending.Should().Equal(stored, "the order is the stored spelling's, by code point");
+            (await Rows(escapes, "SELECT VALUE c.s FROM c ORDER BY c.s DESC")).Should().Equal(Enumerable.Reverse(stored), "and DESC its exact reverse");
+            (await Rows(escapes, "SELECT VALUE MIN(c.s) FROM c")).Should().Equal(stored[0]);
+            (await Rows(escapes, "SELECT VALUE MAX(c.s) FROM c")).Should().Equal(stored[^1]);
+
+            foreach (var v in new[] { "\0", "﷐", "﷐0", "a", "" })
+            {
+                var sent = EmulatorStoredText.Of(v);
+                (await Rows(escapes, "SELECT VALUE c.s FROM c WHERE c.s > @p", ("@p", sent))).Order(StringComparer.Ordinal)
+                    .Should().Equal(strings.Where(s => string.CompareOrdinal(EmulatorStoredText.Of(s), sent) > 0).Order(StringComparer.Ordinal), $"> {v} sent as stored");
+                (await Rows(escapes, "SELECT VALUE c.s FROM c WHERE c.s < @p", ("@p", sent))).Order(StringComparer.Ordinal)
+                    .Should().Equal(strings.Where(s => string.CompareOrdinal(EmulatorStoredText.Of(s), sent) < 0).Order(StringComparer.Ordinal), $"< {v} sent as stored");
+            }
+
+            // Without U+0000 the stored order is code point order: U+FDD0 is no order defect.
+            stored.Where(s => s.Contains('\0') == false).Should().Equal(strings.Where(s => s.Contains('\0') == false).Order(StringComparer.Ordinal));
         }
 
         /// <summary>

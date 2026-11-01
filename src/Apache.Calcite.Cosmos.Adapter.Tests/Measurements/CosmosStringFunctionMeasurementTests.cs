@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 using Apache.Calcite.Data;
 
@@ -35,6 +36,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// asking which endpoint answered, so that an emulator that starts behaving as Azure does makes it assert. Measured on
     /// the probe account on 2026-10-19 (<c>reports/verify-strings.md</c>; the trim set over the whole basic plane, plane 1
     /// and U+E0000 to U+E01EF).
+    /// </para>
+    /// <para>
+    /// <b>The emulator's own facts, apart.</b> The emulator stores U+0000 and U+FDD0 escaped (<c>EmulatorStoredText</c>),
+    /// and counts, cuts, compares and returns what it stores; the tests of its spelling run over a container of their own
+    /// and skip where U+0000 is stored as written, as on Azure. Measured on both images on 2026-10-31.
     /// </para>
     /// <para>
     /// <b>Calcite's side is measured in process</b> (<see cref="CalciteStringFunctionMeasurementTests"/>): it counts
@@ -568,6 +574,227 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             sup.Should().HaveCount(2, "ab 5,001 times is 10,002 code points, and a, U+1F600, b 3,334 times is too, though 3,333 times is 13,332 units");
         }
+
+        // ── The emulator's spelling ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The strings the emulator's spelling is read over, each its own document in a container of its own: U+0000 and
+        /// U+FDD0 alone, doubled, mixed, around ASCII and before <c>0</c> and <c>1</c>, beside the units either side of the
+        /// escape. The emulator probe's 28 of 2026-10-31, on both images.
+        /// </summary>
+        static readonly string[] Spellings =
+        [
+            "", "a", "b", "z", "0", "1", "abc", "\0", "\uFDD0", "\0\0", "\uFDD0\uFDD0", "\0\uFDD0", "\uFDD0\0",
+            "a\0", "\0a", "a\0b", "a\uFDD0", "\uFDD0a", "a\uFDD0b", "a\0\uFDD0b", "\uFDD00", "\uFDD01", "a\uFDD00b",
+            "\uE000", "\uFFFF", "A\0B", "\0b", "\uFDD0b",
+        ];
+
+        /// <summary>The values compared with them: every kind of escape, ASCII, and the digits an escape's second unit is.</summary>
+        static readonly string[] Sent =
+        [
+            "", "\0", "\uFDD0", "a\0", "\0a", "a\0b", "\uFDD0a", "a\uFDD0", "a\uFDD0b", "\uFDD00", "\uFDD01",
+            "\0\uFDD0", "0", "1", "a", "b", "z", "\uE000", "a\0\uFDD0b", "\0b",
+        ];
+
+        static Task<Container>? _spelling;
+
+        /// <summary>
+        /// The container of <see cref="Spellings"/>, written once the first test asks, so that a service refusing one leaves
+        /// the class's other tests standing; skipped where the service stores U+0000 as written, as Azure does.
+        /// </summary>
+        static async Task<Container> Spelling()
+        {
+            Strings_();
+
+            var container = await (_spelling ??= Create());
+            var lengths = await Values(container, "SELECT VALUE [c.id, LENGTH(c.s)] FROM c WHERE c.id IN (\"e07\", \"e08\")");
+            if (lengths["e07"].GetInt32() == 1)
+                Assert.Skip("This service stores U+0000 as written (LENGTH 1), as Azure does; the emulator stores it as U+FDD0 and 0.");
+
+            return container;
+
+            static async Task<Container> Create()
+            {
+                try { await _database!.GetContainer("spelling").DeleteContainerAsync(); } catch (CosmosException) { }
+                var spelling = (await _database!.CreateContainerIfNotExistsAsync(new ContainerProperties("spelling", "/pk"))).Container;
+                for (var i = 0; i < Spellings.Length; i++)
+                    (await Write(spelling, $"e{i:D2}", Spellings[i], CancellationToken.None)).Should().BeTrue("the emulator stores every one");
+
+                return spelling;
+            }
+        }
+
+        /// <summary>The ids of the documents a statement kept, in order.</summary>
+        static async Task<List<string>> Kept(Container container, string where, params (string Name, object Value)[] parameters) =>
+            [.. (await Values(container, $"SELECT VALUE [c.id, c.id] FROM c WHERE {where}", parameters)).Keys.Order(StringComparer.Ordinal)];
+
+        /// <summary>The ids of the documents Calcite keeps for a test over the stored strings.</summary>
+        static List<string> Calcite(Func<string, bool> test) =>
+            [.. Enumerable.Range(0, Spellings.Length).Where(i => test(Spellings[i])).Select(i => $"e{i:D2}")];
+
+        /// <summary>
+        /// The emulator compares a value as it is sent with the string as it stores it (<see cref="EmulatorStoredText"/>):
+        /// sent in its stored spelling, as a parameter or a literal, a value is kept exactly where Calcite keeps it under
+        /// <c>=</c>, <c>IN</c>, <c>!=</c> and <c>STARTSWITH</c>, and so is one compared with a function of the path; under
+        /// <c>ENDSWITH</c> and <c>CONTAINS</c>, both ways, unless it begins with <c>0</c> or <c>1</c>, which an escape's
+        /// second unit matches. Sent as written, a value holding either character is kept nowhere, so <c>=</c> drops the row
+        /// and <c>!=</c> keeps it. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task TheEmulatorComparesWhatItIsSentWithWhatItStores()
+        {
+            var spelling = await Spelling();
+
+            var exact = new (string Where, Func<string, string, bool> Calcite)[]
+            {
+                ("c.s = @p", (s, v) => s == v),
+                ("c.s IN (@p, \"zz-none\")", (s, v) => s == v),
+                ("c.s != @p", (s, v) => s != v),
+                ("STARTSWITH(c.s, @p)", (s, v) => s.StartsWith(v, StringComparison.Ordinal)),
+                ("CONCAT(c.s, \"\") = @p", (s, v) => s == v),
+            };
+            var unlessADigitLeads = new (string Where, Func<string, string, bool> Calcite)[]
+            {
+                ("ENDSWITH(c.s, @p)", (s, v) => s.EndsWith(v, StringComparison.Ordinal)),
+                ("CONTAINS(c.s, @p)", (s, v) => s.Contains(v, StringComparison.Ordinal)),
+                ("NOT CONTAINS(c.s, @p)", (s, v) => s.Contains(v, StringComparison.Ordinal) == false),
+            };
+
+            foreach (var v in Sent)
+            {
+                foreach (var (where, calcite) in exact.Concat(unlessADigitLeads.Where(_ => v is not ['0' or '1', ..])))
+                    (await Kept(spelling, where, ("@p", EmulatorStoredText.Of(v)))).Should().Equal(Calcite(s => calcite(s, v)), $"{where} with {Spell(v)} sent as stored");
+
+                (await Kept(spelling, "c.s = " + Literal(EmulatorStoredText.Of(v)))).Should().Equal(Calcite(s => s == v), $"= {Spell(v)} written as stored");
+            }
+
+            (await Kept(spelling, "ENDSWITH(c.s, @p)", ("@p", "0"))).Should().Contain("e07", "a stored U+0000 ends in 0");
+            (await Kept(spelling, "c.s = @p", ("@p", "\0"))).Should().BeEmpty("U+0000 sent as written is no string the emulator stores");
+            (await Kept(spelling, "c.s != @p", ("@p", "\uFDD0"))).Should().Contain("e08", "nor is U+FDD0, so != keeps the row equal to it");
+        }
+
+        /// <summary>
+        /// The emulator counts, cuts, reverses and searches a path's string as it stores it, U+0000 and U+FDD0 two units
+        /// each, and returns whole escape pairs decoded: so <c>LENGTH</c> of U+0000 is 2, <c>LEFT(s, 1)</c> of it a lone
+        /// U+FDD0, <c>REVERSE</c> of it <c>0</c> then U+FDD0, and <c>INDEX_OF</c> the stored index, one more for each
+        /// escape before it. Without either character each answers as on Azure. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task TheEmulatorCountsAndCutsTheStringItStores()
+        {
+            var spelling = await Spelling();
+
+            var functions = new (string Sql, Func<string, object> OfStored)[]
+            {
+                ("LENGTH(c.s)", s => s.Length),
+                ("SUBSTRING(c.s, 1, 2)", s => s.Length > 1 ? s.Substring(1, Math.Min(2, s.Length - 1)) : ""),
+                ("LEFT(c.s, 1)", s => s[..Math.Min(1, s.Length)]),
+                ("RIGHT(c.s, 2)", s => s[^Math.Min(2, s.Length)..]),
+                ("REVERSE(c.s)", s => new string([.. s.Reverse()])),
+                ("INDEX_OF(c.s, @b)", s => s.IndexOf('b', StringComparison.Ordinal)),
+                ("INDEX_OF(c.s, @nul)", s => s.IndexOf(EmulatorStoredText.Of("\0"), StringComparison.Ordinal)),
+            };
+
+            foreach (var (sql, ofStored) in functions)
+            {
+                var answered = await Values(spelling, $"SELECT VALUE [c.id, {sql}] FROM c", ("@b", "b"), ("@nul", EmulatorStoredText.Of("\0")));
+                for (var i = 0; i < Spellings.Length; i++)
+                {
+                    var expected = ofStored(EmulatorStoredText.Of(Spellings[i]));
+                    var value = answered[$"e{i:D2}"];
+                    if (expected is int count)
+                        value.GetInt32().Should().Be(count, $"{sql} of {Spell(Spellings[i])}");
+                    else
+                        value.GetString().Should().Be(Decoded((string)expected), $"{sql} of {Spell(Spellings[i])}");
+                }
+            }
+        }
+
+        /// <summary>What the emulator returns of a stored spelling: each whole escape pair decoded, a lone U+FDD0 as itself.</summary>
+        static string Decoded(string stored) => Regex.Replace(stored, "﷐([01])", m => m.Groups[1].Value == "0" ? "\0" : "﷐");
+
+        /// <summary>
+        /// <c>CONTAINS(p, U+FDD0 0)</c> is true exactly of the strings holding U+0000, the stored spelling of U+0000 being
+        /// the only place U+FDD0 meets <c>0</c>; and its <c>NOT</c> of the rest. A raw U+0000 in the pattern is no such
+        /// test. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task TheStoredSpellingOfU0000IsAnExactTest()
+        {
+            var spelling = await Spelling();
+
+            (await Kept(spelling, "CONTAINS(c.s, @p)", ("@p", EmulatorStoredText.Of("\0")))).Should().Equal(Calcite(s => s.Contains('\0')));
+            (await Kept(spelling, "NOT CONTAINS(c.s, @p)", ("@p", EmulatorStoredText.Of("\0")))).Should().Equal(Calcite(s => s.Contains('\0') == false));
+            (await Kept(spelling, "CONTAINS(c.s, @p)", ("@p", EmulatorStoredText.Of("\uFDD0")))).Should().Equal(Calcite(s => s.Contains('\uFDD0')), "and U+FDD0 1 of the strings holding U+FDD0");
+        }
+
+        /// <summary>
+        /// A function that makes U+0000 from a path fails the whole statement with a 500 on the emulator: <c>CONCAT</c> of a
+        /// path and U+0000, as a literal or a parameter, and <c>REPLACE</c> whose replacement holds one, wherever the search
+        /// is found. A constant <c>CONCAT</c> of U+0000 loses it silently. Azure answers the replacement written as it is,
+        /// and there the test skips. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task AFunctionThatMakesU0000FromAPathFails()
+        {
+            var strings = Strings_();
+
+            var made = await Status(strings, "SELECT VALUE [c.id, CONCAT(c.s, @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0"));
+            if (made == HttpStatusCode.OK)
+                Assert.Skip("This service answers a U+0000 made from a path, as Azure does; the emulator fails the statement.");
+
+            made.Should().Be(HttpStatusCode.InternalServerError);
+            (await Status(strings, "SELECT VALUE [c.id, CONCAT(c.s, \"\\u0000\")] FROM c WHERE c.id = \"ascii\"")).Should().Be(HttpStatusCode.InternalServerError, "a literal fails as a parameter does");
+            (await Status(strings, "SELECT VALUE [c.id, REPLACE(c.s, \"B\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0"))).Should().Be(HttpStatusCode.InternalServerError, "a replacement made where the search is found");
+            (await Values(strings, "SELECT VALUE [c.id, REPLACE(c.s, \"z\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0")))["ascii"].GetString().Should().Be("aBc", "and none where it is not");
+            (await Values(strings, "SELECT VALUE [c.id, CONCAT(\"a\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0")))["ascii"].GetString().Should().Be("a", "a constant loses it");
+        }
+
+        /// <summary>
+        /// What the emulator returns of a constant is decoded as a stored string is: U+FDD0 <c>0</c> comes back U+0000, U+FDD0
+        /// <c>1</c> comes back U+FDD0, and a lone U+FDD0 as itself, so a constant sent in the stored spelling comes back as
+        /// written, alone, in a conditional's arm and in a coalesce. Sent raw, a U+0000 returned fails the statement with a
+        /// 500, anywhere a value is returned, and a U+FDD0 followed by a digit comes back as the escape it spells. Azure
+        /// returns U+0000 as written, and there the test skips. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task AConstantTheEmulatorReturnsIsDecodedAsStored()
+        {
+            var strings = Strings_();
+
+            const string Ascii = " FROM c WHERE c.id = \"ascii\"";
+            var raw = await Status(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", "\0"));
+            if (raw == HttpStatusCode.OK)
+                Assert.Skip("This service returns a U+0000 sent raw, as Azure does; the emulator fails the statement.");
+
+            raw.Should().Be(HttpStatusCode.InternalServerError);
+            foreach (var returned in new[] { "(c.s = \"aBc\" ? @p : \"x\")", "(c.missing ?? @p)", "{\"k\": @p}", "\"\\u0000\"" })
+                (await Status(strings, $"SELECT VALUE [c.id, {returned}]" + Ascii, ("@p", "a\0b"))).Should().Be(HttpStatusCode.InternalServerError, returned);
+
+            foreach (var value in new[] { "\0", "a\0b", "\uFDD0", "a\uFDD0b", "\uFDD00", "\0\uFDD0" })
+                foreach (var returned in new[] { "@p", "(c.s = \"aBc\" ? @p : \"x\")", "(c.missing ?? @p)" })
+                    (await Values(strings, $"SELECT VALUE [c.id, {returned}]" + Ascii, ("@p", EmulatorStoredText.Of(value))))["ascii"].GetString()
+                        .Should().Be(value, $"{returned} with {Spell(value)} sent as stored");
+
+            (await Values(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", "a\uFDD0b")))["ascii"].GetString().Should().Be("a\uFDD0b", "a lone U+FDD0 comes back as itself");
+            (await Values(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", "\uFDD00")))["ascii"].GetString().Should().Be("\0", "U+FDD0 0 sent raw comes back as the U+0000 it spells");
+        }
+
+        /// <summary>Runs a statement and answers the status its first page came back with.</summary>
+        static async Task<HttpStatusCode> Status(Container container, string sql, params (string Name, object Value)[] parameters)
+        {
+            var query = new QueryDefinition(sql);
+            foreach (var (name, value) in parameters)
+                query = query.WithParameter(name, value);
+
+            using var iterator = container.GetItemQueryStreamIterator(query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey("a") });
+            using var response = await iterator.ReadNextAsync(TestContext.Current.CancellationToken);
+            return response.StatusCode;
+        }
+
+        /// <summary>A string as a literal of the service's: U+0000 to U+001F escaped, every other unit as it is.</summary>
+        static string Literal(string text) =>
+            "\"" + string.Concat(text.Select(c => c switch { '"' => "\\\"", '\\' => "\\\\", < ' ' => $"\\u{(int)c:x4}", _ => c.ToString() })) + "\"";
 
         // ── What the adapter answers ──────────────────────────────────────────────────────────
 

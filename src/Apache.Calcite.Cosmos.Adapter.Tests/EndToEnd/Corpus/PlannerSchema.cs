@@ -182,13 +182,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
 
         /// <inheritdoc cref="CreateTables()"/>
         /// <param name="reasoning">The reasoning the containers are bound to, or <c>null</c> for the suite's shared one.</param>
-        internal static IReadOnlyDictionary<string, CosmosTable> CreateTables(CosmosReasoning? reasoning)
+        /// <param name="target">The service the containers' statements are planned for.</param>
+        internal static IReadOnlyDictionary<string, CosmosTable> CreateTables(CosmosReasoning? reasoning, CosmosServiceTarget target = CosmosServiceTarget.Azure)
         {
             var tables = new Dictionary<string, CosmosTable>();
 
             foreach (var container in All)
             {
-                var bound = reasoning is null ? TestReasoning.Bind(container) : container.WithReasoning(reasoning);
+                var bound = (reasoning is null ? TestReasoning.Bind(container) : container.WithReasoning(reasoning)).WithServiceTarget(target);
                 tables[container.Name] = TestReasoning.Checked(new CosmosTable(bound), bound);
             }
 

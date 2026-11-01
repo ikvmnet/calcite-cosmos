@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -165,6 +166,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public async Task ReadManyAnswersAnIdAskedTwiceOnce()
         {
             (await ReadMany("1", "1")).Should().Equal("1:category,id,pk");
+        }
+
+        /// <summary>
+        /// On the emulator an id holding U+0000 or U+FDD0 is not read by itself: a point read of one holding U+0000 is a
+        /// 500, of one holding U+FDD0 a 404, and of U+FDD0 <c>0</c>, an id of its own, the document whose id is U+0000,
+        /// that being how the emulator stores it; <c>ReadMany</c> leaves out every id that holds either beside other
+        /// characters. A query of the id sent in its stored spelling finds the document exactly. Azure reads such an id as
+        /// written, and there the test skips. Measured on both images on 2026-10-31.
+        /// </summary>
+        [Fact]
+        public async Task AnIdHoldingAnEscapeIsNotReadByItsId()
+        {
+            if (_container is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            string[] ids = ["\0", "a\0", "﷐", "a﷐", "﷐0", "﷐1", "plain"];
+            var database = _container!.Database;
+            try { await database.GetContainer("escaped").DeleteContainerAsync(cancellationToken: TestContext.Current.CancellationToken); } catch (CosmosException) { }
+            var escaped = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("escaped", "/pk"), cancellationToken: TestContext.Current.CancellationToken)).Container;
+            foreach (var id in ids)
+            {
+                // Written raw, as the emulator probe wrote it, U+0000 alone escaped as JSON requires.
+                var json = "{\"id\":\"" + string.Concat(id.Select(c => c < ' ' ? $"\\u{(int)c:x4}" : c.ToString())) + "\",\"pk\":\"a\"}";
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                using var created = await escaped.CreateItemStreamAsync(stream, new PartitionKey("a"), cancellationToken: TestContext.Current.CancellationToken);
+                created.EnsureSuccessStatusCode();
+            }
+
+            async Task<(System.Net.HttpStatusCode Status, string? Id)> Read(string id)
+            {
+                using var read = await escaped.ReadItemStreamAsync(id, new PartitionKey("a"), cancellationToken: TestContext.Current.CancellationToken);
+                if (read.IsSuccessStatusCode == false)
+                    return (read.StatusCode, null);
+
+                using var document = await JsonDocument.ParseAsync(read.Content, cancellationToken: TestContext.Current.CancellationToken);
+                return (read.StatusCode, document.RootElement.GetProperty("id").GetString());
+            }
+
+            var nul = await Read("\0");
+            if (nul == (System.Net.HttpStatusCode.OK, "\0"))
+                Assert.Skip("This service reads an id holding U+0000 by itself, as Azure does; the emulator does not.");
+
+            nul.Status.Should().Be(System.Net.HttpStatusCode.InternalServerError);
+            (await Read("a\0")).Status.Should().Be(System.Net.HttpStatusCode.InternalServerError);
+            (await Read("﷐")).Should().Be((System.Net.HttpStatusCode.NotFound, (string?)null));
+            (await Read("a﷐")).Should().Be((System.Net.HttpStatusCode.NotFound, (string?)null));
+            (await Read("﷐0")).Should().Be((System.Net.HttpStatusCode.OK, "\0"), "U+FDD0 0 is how U+0000 is stored, so it reads that document, not its own");
+            (await Read("﷐1")).Should().Be((System.Net.HttpStatusCode.OK, "﷐"));
+            (await Read("plain")).Should().Be((System.Net.HttpStatusCode.OK, "plain"));
+
+            using (var many = await escaped.ReadManyItemsStreamAsync([.. ids.Select(id => (id, new PartitionKey("a")))], cancellationToken: TestContext.Current.CancellationToken))
+            {
+                many.EnsureSuccessStatusCode();
+                using var document = await JsonDocument.ParseAsync(many.Content, cancellationToken: TestContext.Current.CancellationToken);
+                var back = document.RootElement.GetProperty("Documents").EnumerateArray().Select(d => d.GetProperty("id").GetString()!).ToList();
+                back.Should().NotContain(["a\0", "a﷐"], "ReadMany leaves an id holding an escape beside other characters out");
+                back.Should().Contain("plain");
+                back.Count.Should().BeLessThan(ids.Length);
+            }
+
+            foreach (var id in ids)
+            {
+                var query = new QueryDefinition("SELECT VALUE c.id FROM c WHERE c.id = @p").WithParameter("@p", EmulatorStoredText.Of(id));
+                var found = new List<string>();
+                using var iterator = escaped.GetItemQueryIterator<string>(query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey("a") });
+                while (iterator.HasMoreResults)
+                    found.AddRange(await iterator.ReadNextAsync(TestContext.Current.CancellationToken));
+
+                found.Should().Equal([id], "the id sent as stored finds its own document");
+            }
         }
 
     }

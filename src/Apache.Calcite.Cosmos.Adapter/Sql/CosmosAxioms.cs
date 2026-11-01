@@ -69,6 +69,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         static readonly DateOnly Family = new(2026, 10, 20);
 
+        static readonly DateOnly Spelling = new(2026, 10, 31);
+
         // A connective's operands that are no truth, each measured over its own witnesses; declared before the rows read it.
         static readonly Class[] NoTruth = [Class.Undefined, Class.Absent, Class.Null, Class.Number, Class.String, Class.Object, Class.Array];
 
@@ -393,13 +395,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ── What a string function computes (CosmosStringFunctions) ─────────────────────
 
             new("Service.LengthCountsCodePoints",
-                "LENGTH counts code points: a, U+1F600, b is 3, where Calcite's CHAR_LENGTH counts 4 UTF-16 units. Without a surrogate the two counts are one.",
+                "LENGTH counts code points: a, U+1F600, b is 3, where Calcite's CHAR_LENGTH counts 4 UTF-16 units. On Azure the two counts are one without a surrogate; the emulator counts the code points of what it stores (EmulatorStoredText), U+0000 and U+FDD0 two each, so there they are one only without a surrogate, U+0000 or U+FDD0 (Service.EmulatorCountsTheStringItStores).",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.LengthCountsCodePoints"),
             new("Service.SubstringCountsUnits",
-                "SUBSTRING, LEFT and RIGHT count UTF-16 units, and a window whose edge splits a surrogate pair returns the half as U+FFFD, where Calcite returns a lone surrogate; without a surrogate they answer as Calcite's. The emulator counts code points.",
+                "SUBSTRING, LEFT and RIGHT count UTF-16 units, and a window whose edge splits a surrogate pair returns the half as U+FFFD, where Calcite returns a lone surrogate; without a surrogate they answer as Calcite's. The emulator counts the code points of what it stores, U+0000 and U+FDD0 two each, and returns half an escape pair as a lone U+FDD0 or digit (Service.EmulatorCountsTheStringItStores).",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.SubstringLeftAndRightCountUnitsAndSendASplitPairAsReplacement"),
             new("Service.IndexOfCountsUnits",
-                "INDEX_OF counts UTF-16 units, so INDEX_OF + 1 is Calcite's POSITION over every string: b in a, U+1F600, b is at 3. The emulator counts code points and answers 2.",
+                "INDEX_OF counts UTF-16 units, so INDEX_OF + 1 is Calcite's POSITION over every string: b in a, U+1F600, b is at 3. The emulator counts the code points of what it stores and answers 2, one more for each U+0000 or U+FDD0 before the match (Service.EmulatorCountsTheStringItStores).",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.IndexOfCountsUnits"),
             new("Service.CaseMappingIsSimple",
                 "UPPER, LOWER and the case-insensitive CONTAINS, STARTSWITH and ENDSWITH map case by a simple mapping, which agrees with Java's full one over ASCII and leaves ß, U+FB00, U+017F, U+0130 and U+212A as they are. The emulator maps the last three.",
@@ -441,6 +443,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "REPLACE of an empty search is its subject.",
                 CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.AReplacementOfAnEmptySearchIsTheSubject"),
 
+            // ── The emulator's spelling of what it stores (EmulatorStoredText) ────────────────
+
+            new("Service.EmulatorComparesTheSpellingItIsSent",
+                "The emulator compares a parameter, a literal and a constant built from them as sent, unescaped, with a string as it stores it, U+0000 as U+FDD0 followed by 0 and U+FDD0 as U+FDD0 followed by 1: a value sent as written that holds either character equals no stored string, and one sent in the stored spelling is kept exactly where Calcite keeps it under =, IN, != and STARTSWITH, against a path or a function of one, and under ENDSWITH, CONTAINS and NOT CONTAINS unless it begins with 0 or 1, which an escape's second unit matches. CONTAINS of U+FDD0 followed by 0 is true exactly of the strings holding U+0000 (TheStoredSpellingOfU0000IsAnExactTest).",
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorComparesWhatItIsSentWithWhatItStores"),
+            new("Service.EmulatorCountsTheStringItStores",
+                "The emulator's LENGTH, SUBSTRING, LEFT, RIGHT, REVERSE and INDEX_OF work on a path's string as it stores it, U+0000 and U+FDD0 two units each, and what they return is decoded wherever a whole escape pair comes back: LENGTH of U+0000 is 2, LEFT of it by 1 a lone U+FDD0, its REVERSE 0 then U+FDD0.",
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorCountsAndCutsTheStringItStores"),
+            new("Service.EmulatorFailsANulMadeFromAPath",
+                "On the emulator a function that makes U+0000 from a path fails the statement with a 500: CONCAT of a path and U+0000, a literal or a parameter, and REPLACE whose replacement holds one wherever the search is found. A constant CONCAT of U+0000 loses it.",
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.AFunctionThatMakesU0000FromAPathFails"),
+            new("Service.EmulatorDecodesWhatItReturns",
+                "The emulator returns a constant decoded as it returns a stored string, U+FDD0 followed by 0 as U+0000, U+FDD0 followed by 1 as U+FDD0, a lone U+FDD0 as itself: a constant sent in the stored spelling comes back as written, alone, in a conditional's arm and in a coalesce, and a U+0000 sent as written fails the statement with a 500 wherever a value is returned.",
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.AConstantTheEmulatorReturnsIsDecodedAsStored"),
+            new("Service.EmulatorPointReadOfAnEscapedId",
+                "On the emulator a point read of an id holding U+0000 is a 500 and of one holding U+FDD0 a 404, a point read of U+FDD0 followed by 0 answers the document whose id is U+0000, and ReadMany leaves out an id holding either beside other characters; a query of the id sent in the stored spelling finds its document exactly.",
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosReadManyMeasurementTests.AnIdHoldingAnEscapeIsNotReadByItsId"),
+
             // ── What a document holds, read back (CosmosJson) ─────────────────────────────
 
             new("Service.IntegerOutsideLongIsStoredAsADouble",
@@ -453,7 +473,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ── The service's order (CosmosServiceOrder, CosmosContainerMetadata.IsSortSupported) ───
 
             new("Service.StringOrderIsCodePoint",
-                "A document's strings are ordered, compared and extremed by code point, which is UTF-8 byte order, with no collation and no normalisation: U+E000 below U+1F600, which UTF-16 order puts above. The emulator stores U+0000 as U+FDD0 followed by 0 and orders and compares what it stores, so it puts U+0000 above U+E000; Azure orders and compares U+0000 by code point, the least, and reads past it.",
+                "A document's strings are ordered, compared and extremed by code point, which is UTF-8 byte order, with no collation and no normalisation: U+E000 below U+1F600, which UTF-16 order puts above. The emulator stores U+0000 as U+FDD0 followed by 0 and U+FDD0 as U+FDD0 followed by 1 (EmulatorStoredText) and orders and compares what it stores, so it puts U+0000 above every unit from U+0001 to U+FDCF, U+E000 among them, and U+FDD0 where code point order does (TheEmulatorEscapesUFDD0Too); Azure orders and compares U+0000 by code point, the least, and reads past it.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ADocumentsStringsOrderByCodePoint",
                 [
                     new(Test.Order, Class.String, Emulator, "none=storedcodepoint"),

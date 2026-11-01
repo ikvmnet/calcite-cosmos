@@ -73,9 +73,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// Initializes a new instance over <see cref="PlannerSchema"/>, its containers bound to the given reasoning, or to
         /// <see cref="TestReasoning.Shared"/> where <c>null</c>.
         /// </summary>
-        internal PlannerHarness(CosmosReasoning? reasoning)
+        internal PlannerHarness(CosmosReasoning? reasoning, CosmosServiceTarget target = CosmosServiceTarget.Azure)
         {
-            _tables = PlannerSchema.CreateTables(reasoning);
+            _tables = PlannerSchema.CreateTables(reasoning, target);
             _typeFactory = new JavaTypeFactoryImpl();
             _rootSchema = CalciteSchema.createRootSchema(false);
 
