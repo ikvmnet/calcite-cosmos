@@ -99,12 +99,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A comparison with a literal: over an absent path undefined; within a type by the type's order
-        /// (Service.ComparisonWithinAType), a string's by code point, as the emulator stores U+0000 there
-        /// (Service.StringOrderIsCodePoint), and a number by the value the service holds
+        /// (Service.ComparisonWithinAType), a string's by code point, on the emulator the stored value against the literal
+        /// as the statement sends it, each in the stored spelling with both escapes (EmulatorStoredText,
+        /// Service.EmulatorComparesTheSpellingItIsSent), and a number by the value the service holds
         /// (Service.NumbersBeyondLongCompareAsDoubles); across types = false, != true and an ordering undefined
         /// (Service.EqualityAcrossTypesIsFalse, Service.InequalityOverNullIsTrue, Service.OrderingAcrossTypesIsUndefined).
-        /// An ordering of booleans, a null literal, and on the emulator a literal holding U+0000, which no row says how it
-        /// sends, have none.
+        /// An ordering of booleans, a null literal, and on the emulator an ordering against a literal holding U+0000, which
+        /// the stored spelling does not keep (U+FDD0 0 above U+0001..U+FDCF), have none.
         /// </summary>
         static ServiceOutcomes? Compare(CosmosServiceTest op, J? value, string literal, RenderingTarget target)
         {
@@ -115,8 +116,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             int? order = (value, TypeOf(literal)) switch
             {
                 (_, NullType) => null,
-                (J.Str, StringType) when target == RenderingTarget.Emulator && StringOf(literal).Contains('\0') => null,
-                (J.Str s, StringType) => target == RenderingTarget.Emulator ? ByCodePoint(Stored(s.Value), StringOf(literal)) : ByCodePoint(s.Value, StringOf(literal)),
+                (J.Str, StringType) when target == RenderingTarget.Emulator && equality == false && StringOf(literal).Contains('\0') => null,
+                (J.Str s, StringType) => target == RenderingTarget.Emulator ? ByCodePoint(EmulatorStoredText.Of(s.Value), EmulatorStoredText.Of(StringOf(literal))) : ByCodePoint(s.Value, StringOf(literal)),
                 (J.Num or J.Huge, IntegerType or FractionType) when IsExactNumber(literal) => Numeric(value, NumberOf(literal), literal.StartsWith(IntegerType, StringComparison.Ordinal), target),
                 (J.Num or J.Huge, IntegerType or FractionType) => null,
                 (J.Bool b, BooleanType) when equality => (b.Encoded == literal) ? 0 : 1,
@@ -139,8 +140,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }),
             };
         }
-
-        static string Stored(string text) => text.Replace("\0", "﷐" + "0", StringComparison.Ordinal);
 
         /// <summary>Strings by code point, a lone surrogate as U+FFFD.</summary>
         static int ByCodePoint(string a, string b)

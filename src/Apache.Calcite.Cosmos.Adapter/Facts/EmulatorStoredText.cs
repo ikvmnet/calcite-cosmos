@@ -58,6 +58,30 @@ namespace Apache.Calcite.Cosmos.Facts
             return stored.ToString();
         }
 
+        /// <summary>
+        /// The string a spelling of <see cref="Of"/> spells: each U+FDD0 <c>0</c> as U+0000 and each U+FDD0 <c>1</c> as
+        /// U+FDD0, so that <c>Read(Of(s))</c> is <c>s</c>; a U+FDD0 followed by anything else is read as itself. For a
+        /// reader that holds a value as it was sent and compares it in process with what the service returned decoded.
+        /// </summary>
+        public static string Read(string stored)
+        {
+            ArgumentNullException.ThrowIfNull(stored);
+
+            if (stored.AsSpan().IndexOf(Escape) < 0)
+                return stored;
+
+            var text = new StringBuilder(stored.Length);
+            for (var i = 0; i < stored.Length; i++)
+            {
+                if (stored[i] == Escape && i + 1 < stored.Length && stored[i + 1] is '0' or '1')
+                    text.Append(stored[++i] == '0' ? '\0' : Escape);
+                else
+                    text.Append(stored[i]);
+            }
+
+            return text.ToString();
+        }
+
         /// <summary>Whether the emulator spells a string otherwise than as written: whether it holds U+0000 or U+FDD0.</summary>
         public static bool Escapes(string text)
         {

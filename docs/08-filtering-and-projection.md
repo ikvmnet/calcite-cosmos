@@ -125,7 +125,11 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 
 An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
 text a number could render as — a stored `30.0` renders otherwise — sends only that the property is
-there, and is rechecked:
+there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
+and compares what it is sent with that, a value holding either — a literal, a parameter, an `IN`
+member, a `LIKE 'abc%'` prefix — is sent in that spelling, so `=`, `IN`, `<>` and the prefix answer
+exactly; a value holding neither is sent as it is, and Azure is sent every value as written
+(Appendix E):
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.code') = 'true'
@@ -338,7 +342,8 @@ statement goes to that partition.
 **Point reads.** A lookup by `id` and a complete partition key, with nothing else in the predicate —
 nothing the schema does not already make true of every document — is not run as a query at all. It
 is a point read — `ReadItem`, about 1 RU, no query engine — against the 2.3 RU or more a query costs
-at best:
+at best (on the emulator an `id` or key holding U+0000 or U+FDD0 is queried instead, and not routed,
+since its read was not measured in the spelling the emulator stores; Appendix E):
 
 ```sql
 SELECT c."id", c."_ts" FROM "products" AS c
@@ -523,6 +528,7 @@ documents it has to read.
 | `REPLACE`, and a `LIKE` of the `'%abc%'` shape, over a string that may hold U+0000 | Azure reads the string only up to its first U+0000 in those (Appendix B.2) |
 | `REPLACE` whose search may be empty; `REPEAT` without a literal count, or over a subject not proved short enough; the `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries | the service answers undefined where Calcite answers the subject, the repetition, or the string beside a null (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
+| on the emulator, a constant holding U+0000 or U+FDD0, or a text parameter, anywhere but a comparison with a stored value or a column the service returns as it is — a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern, `MEMBER OF`, a `CASE` in a `WHERE` | the emulator stores both characters in another spelling, and what it does with them there was not measured in it (Appendix E); a `CASE` arm or `COALESCE` fallback in the select list is sent in that spelling, and Azure sends them all |
 | a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |

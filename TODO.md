@@ -1392,9 +1392,14 @@ the distribution the gate is sized for.
     with `0` or `1`; `CONTAINS(p, U+FDD0 '0')` is an exact test for U+0000), `Service.EmulatorCountsTheStringItStores`,
     `Service.EmulatorFailsANulMadeFromAPath`, `Service.EmulatorPointReadOfAnEscapedId` and
     `Service.EmulatorDecodesWhatItReturns`: a constant the service returns comes back decoded, so one sent in the
-    stored spelling comes back as written, and a raw U+0000 returned anywhere is a 500. Until the writer sends the
-    stored spelling and refuses what it cannot prove, a statement over such strings may answer apart from Calcite
-    under `Emulator`; Azure's plans do not change. The differential corpus holds no U+0000 and no repetition near
+    stored spelling comes back as written, and a raw U+0000 returned anywhere is a 500. The writer now sends a compared
+    value in the stored spelling — a literal, a parameter named stored for the binding to spell, a lookup key —
+    queries an `id` or key holding either rather than reading or routing on it, sends a constant the service returns
+    in the stored spelling too — a projected one, a `CASE` arm, a `COALESCE` operand, which M6 measured come back as
+    written — and computes in process a constant or a text parameter anywhere else, a function's operand, `MEMBER OF`
+    and a generic `LIKE` pattern among them; the planted differential (`CosmosDifferentialTests.Planted.cs`, D1–D3,
+    D14 and §4.6's R rows) holds each. Left: the orders, and functions, `ENDSWITH` and `CONTAINS` over the stored
+    spelling. Azure's plans do not change. The differential corpus holds no U+0000 and no repetition near
     the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed

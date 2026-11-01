@@ -41,6 +41,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static RenderingSet SetFor(CosmosServiceTarget target) => target == CosmosServiceTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
 
         /// <summary>
+        /// Whether a set holds a target that stores a string in another spelling than it is sent, the emulator's
+        /// (<see cref="EmulatorStoredText"/>): read off each target's measured string order, the row S reads
+        /// (<c>Service.StringOrderIsCodePoint</c>), answering <see cref="CosmosAnswer.StoredCodePoint"/>. Such a set's
+        /// statements send a compared value in the stored spelling, and decline what was not measured in it. A constant of
+        /// the registry, read once, not learned state.
+        /// </summary>
+        public static bool StoresSpelled(RenderingSet set) => Spelled.Value.Contains(set);
+
+        /// <summary>Whether a target's statements are written for a stored spelling: <see cref="StoresSpelled(RenderingSet)"/> of its set.</summary>
+        public static bool StoresSpelled(CosmosServiceTarget target) => StoresSpelled(SetFor(target));
+
+        static readonly System.Lazy<HashSet<RenderingSet>> Spelled = new(() =>
+        {
+            var definition = Definition;
+            var order = MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None);
+            return [.. definition.Serves.Where(s => definition.Rows.Any(r => r.Key == order && r.Answer == CosmosAnswer.StoredCodePoint && s.Value.Contains(r.Target))).Select(s => s.Key)];
+        });
+
+        /// <summary>
         /// Asks S one question through an oracle, the statement's schema's or a test's (<see cref="RenderingOracle.Ask"/>):
         /// the one bundle code path every site takes, and where the flow is measured (<see cref="CosmosRenderingCost"/>), what
         /// it cost: the oracle's count and time, the candidates proposed, counted without reading a row, the bytes the thread

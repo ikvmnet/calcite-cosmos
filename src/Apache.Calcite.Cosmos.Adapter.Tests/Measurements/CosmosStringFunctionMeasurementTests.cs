@@ -753,9 +753,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// What the emulator returns of a constant is decoded as a stored string is: U+FDD0 <c>0</c> comes back U+0000, U+FDD0
         /// <c>1</c> comes back U+FDD0, and a lone U+FDD0 as itself, so a constant sent in the stored spelling comes back as
-        /// written, alone, in a conditional's arm and in a coalesce. Sent raw, a U+0000 returned fails the statement with a
-        /// 500, anywhere a value is returned, and a U+FDD0 followed by a digit comes back as the escape it spells. Azure
-        /// returns U+0000 as written, and there the test skips. Measured on both images on 2026-10-31.
+        /// written, alone, in a conditional's arm, in a coalesce, as an object's or an array's member and inside an object
+        /// sent whole. Sent raw, a U+0000 returned fails the statement with a 500, anywhere a value is returned, and a U+FDD0
+        /// followed by a digit comes back as the escape it spells. Azure returns U+0000 as written, and there the test skips.
+        /// Measured on both images on 2026-10-31.
         /// </summary>
         [Fact]
         public async Task AConstantTheEmulatorReturnsIsDecodedAsStored()
@@ -775,6 +776,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var returned in new[] { "@p", "(c.s = \"aBc\" ? @p : \"x\")", "(c.missing ?? @p)" })
                     (await Values(strings, $"SELECT VALUE [c.id, {returned}]" + Ascii, ("@p", EmulatorStoredText.Of(value))))["ascii"].GetString()
                         .Should().Be(value, $"{returned} with {Spell(value)} sent as stored");
+
+            // Nested where the statement builds the value, or where the parameter is the object: each string decoded.
+            foreach (var value in new[] { "\0", "a\0b", "﷐", "\0﷐" })
+            {
+                var stored = EmulatorStoredText.Of(value);
+                (await Values(strings, "SELECT VALUE [c.id, {\"k\": @p}]" + Ascii, ("@p", stored)))["ascii"].GetProperty("k").GetString().Should().Be(value, $"an object member, {Spell(value)}");
+                (await Values(strings, "SELECT VALUE [c.id, [@p]]" + Ascii, ("@p", stored)))["ascii"][0].GetString().Should().Be(value, $"an array element, {Spell(value)}");
+                var whole = (await Values(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", new Dictionary<string, object> { ["k"] = stored, ["a"] = new[] { stored } })))["ascii"];
+                whole.GetProperty("k").GetString().Should().Be(value, $"an object parameter's member, {Spell(value)}");
+                whole.GetProperty("a")[0].GetString().Should().Be(value, $"an object parameter's array, {Spell(value)}");
+            }
 
             (await Values(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", "a\uFDD0b")))["ascii"].GetString().Should().Be("a\uFDD0b", "a lone U+FDD0 comes back as itself");
             (await Values(strings, "SELECT VALUE [c.id, @p]" + Ascii, ("@p", "\uFDD00")))["ascii"].GetString().Should().Be("\0", "U+FDD0 0 sent raw comes back as the U+0000 it spells");

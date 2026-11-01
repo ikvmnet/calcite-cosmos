@@ -33,11 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Every kind, and where the targets part: 2^53 + 1 written with a point, which the emulator holds as a double and
-        /// Azure as an int64; one in [2^63, 2^64), which both compare as its double; and strings holding U+0000, which the
-        /// emulator stores as U+FDD0 then 0 and orders as stored.
+        /// Azure as an int64; one in [2^63, 2^64), which both compare as its double; and strings holding U+0000 or U+FDD0,
+        /// which the emulator stores as U+FDD0 then 0 or 1 and orders as stored.
         /// </summary>
         static readonly string[] Values = ["null", "true", "false", "30", "30.0", "2.5", "-1", "9007199254740993", "9007199254740993.0", "9223372036854775809", "\"\"", "\"30\"",
-            "\"bikes\"", "\"a\\u0000\"", "\"bike\\u0000x\"", "\"\\u0000\"", "\"\\uE000\"", "\"\\uD83D\\uDE00\"", "{}", "[]"];
+            "\"bikes\"", "\"a\\u0000\"", "\"bike\\u0000x\"", "\"\\u0000\"", "\"\\uE000\"", "\"\\uD83D\\uDE00\"", "\"\\uFDD0\"", "\"\\u0000\\uFDD0\"", "{}", "[]"];
 
         static readonly CosmosParameter[] Bound = [new("@s", "bikes"), new("@t", "30"), new("@n", 30L), new("@f", 2.5), new("@b", true), new("@c", "a"),
             new("@m", 9007199254740993L), new("@h", 9223372036854775808d)];

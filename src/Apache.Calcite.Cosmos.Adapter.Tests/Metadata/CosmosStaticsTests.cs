@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPartitionKeyExtractor.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Metadata.CosmosPatternReader.Parser", ["Digit", "Word"], StaticFact, "character classes"),
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
-            ("Adapter.Metadata.CosmosRendering", ["Defined"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness; every schema's S is defined from it"),
+            ("Adapter.Metadata.CosmosRendering", ["Defined", "Spelled"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness, and the sets storing a spelling read off it; every schema's S is defined from it"),
             ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Current"], TestArm, "the observer a test arms for its flow"),
             ("Adapter.Metadata.CosmosRenderingCost", ["Armed", "Clock", "Flow"], TestArm, "what a test measures of its flow: the samples S's questions cost, and the thread's clock it hands"),
             ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node, which reaches the table whose container it remembers; internal, asked by the planner alone"),
@@ -141,7 +141,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 
             ("Adapter.Sql.CosmosAxiomRows", ["Owed", "Targets"], StaticFact, "the registry's rows owed a target, and the targets"),
-            ("Adapter.Sql.CosmosAxioms", ["All", "Family", "NoTruth", "Orders", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
+            ("Adapter.Sql.CosmosAxioms", ["All", "Family", "NoTruth", "Orders", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
             ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
             ("Adapter.Sql.CosmosRexTranslator", ["ArrayReading", "DirectFunctions", "FragmentReading", "GeographyFunctions", "ScalarReading"], StaticFact, "the functions the translator writes as they are"),
             ("Adapter.Sql.CosmosSchemaFunctions", ["Instance"], StaticFact, "the functions a schema offers"),

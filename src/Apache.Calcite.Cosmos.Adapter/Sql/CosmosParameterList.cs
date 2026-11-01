@@ -32,6 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly List<CosmosParameter> _parameters = new();
         readonly List<CosmosOrderComparison> _comparisons = new();
         readonly List<CosmosRecheck> _rechecks = new();
+        readonly List<string> _stored = new();
         readonly string _prefix;
 
         /// <summary>
@@ -80,6 +81,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public IReadOnlyList<CosmosRecheck> Rechecks => _rechecks;
 
         /// <summary>
+        /// Gets the names of the parameters whose string value is sent in the stored spelling of the statement's target
+        /// when it is bound, the emulator's (<see cref="Facts.EmulatorStoredText"/>): those the service compares with a
+        /// path. Kept beside the parameters, as <see cref="Comparisons"/> are, so that a slot's own spelling is unchanged.
+        /// </summary>
+        public IReadOnlyList<string> Stored => _stored;
+
+        /// <summary>
         /// Binds <paramref name="value"/> and returns the name to emit in its place.
         /// </summary>
         /// <remarks>
@@ -124,6 +132,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public void Recheck(CosmosRecheck conjunct)
         {
             _rechecks.Add(conjunct ?? throw new ArgumentNullException(nameof(conjunct)));
+        }
+
+        /// <summary>
+        /// Records that a parameter bound when the statement runs is sent in the stored spelling (<see cref="Stored"/>).
+        /// </summary>
+        /// <param name="name">The parameter's name, as <see cref="Add"/> returned it.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="name"/> is <c>null</c>.</exception>
+        public void Spell(string name)
+        {
+            _stored.Add(name ?? throw new ArgumentNullException(nameof(name)));
         }
 
     }

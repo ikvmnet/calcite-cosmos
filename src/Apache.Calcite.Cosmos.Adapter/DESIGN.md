@@ -6412,6 +6412,21 @@ which also parts code point from a comparator that stops reading at U+0000, as A
 is `CodePoint` over them: its `ORDER BY` and its `>` both put U+0000 least and read past it. So the string order is a
 key the targets answer apart, and a set serving both places a string by both comparators.
 
+**What the emulator is sent is what it stores,** E(v): U+0000 as U+FDD0 `0`, U+FDD0 as U+FDD0 `1`. It compares what it
+is sent, unescaped, with E(s) (`Service.EmulatorComparesTheSpellingItIsSent`), so `StoredCodePoint` compares E(a) with
+E(b) by code point, both escapes, and `Place` reads a literal as E of it. A set whose order row answers
+`StoredCodePoint` stores spelled (`CosmosRendering.StoresSpelled`, read off the registry, not learned): its translator
+binds a compared literal as E of it, names a compared parameter stored (`CosmosQuery.Stored`) for the binding to spell,
+and the cursor's recheck reads it back; a lookup key is spelled by the speller. A returned position is sent stored as
+well: a projected constant, a `CASE` arm, a `COALESCE` operand, an object's or array's member, which the emulator returns
+decoded, so as written (`Service.EmulatorDecodesWhatItReturns`, M6); a raw U+0000 there is a 500. It is carried from
+the projection down through `CASE` arms and casts alone, and a parameter there only where it is typed text, the one
+value the binding spells. Anywhere else, a function's operand, a `CASE` condition or a `CASE` in a filter or a key, a
+value holding either character, and a parameter that may be text, is refused: nothing there was measured in the stored
+spelling, and a U+0000 made from a path is a 500 (`Service.EmulatorFailsANulMadeFromAPath`). A point read of E(`id`) was measured only where it
+aliases (`Service.EmulatorPointReadOfAnEscapedId`), and a route by a header carrying either not at all, so an `id` or
+key holding one is queried. Azure stores as written, and none of this reaches it.
+
 **A composite is checked by composing its atoms** through `ServiceLeaf` and `ServiceCompound` on the table S settles for
 each target it names, and is the measured answer on each, every atom it reads being measured definite on both. A
 constant is read by its row (`Service.AConstantIsItsOwnTruth`), as S reads it. The guarded accessor answers values, not

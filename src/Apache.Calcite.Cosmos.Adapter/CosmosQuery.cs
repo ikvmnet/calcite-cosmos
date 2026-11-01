@@ -59,6 +59,10 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// against a parameter not being a lookup.
     /// </para>
     /// </param>
-    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null, CosmosOrderProgram? Order = null);
+    /// <param name="Stored">
+    /// The parameters whose string value is sent in the stored spelling of the statement's target when it is bound, or
+    /// <c>null</c> for none: <see cref="CosmosParameterList.Stored"/>, which only the emulator's statements name.
+    /// </param>
+    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null, CosmosOrderProgram? Order = null, IReadOnlyList<string>? Stored = null);
 
 }

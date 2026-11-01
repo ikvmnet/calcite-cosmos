@@ -30,10 +30,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="paths">Each path the form reads, by its spelling, as the conjunct's IR reads it.</param>
         /// <param name="rootAlias">The alias the statement reads the document under.</param>
         /// <param name="parameters">The list the literals are bound into.</param>
+        /// <param name="spelled">Whether the statement's target stores a string in another spelling than it is sent
+        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(RenderingSet)"/>): then each literal, every one a compared
+        /// value, is bound in that spelling, which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>).</param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
-        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters)
+        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool spelled = false)
         {
+            object? Bound(string literal) => spelled && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
+
             var builder = new StringBuilder();
 
             void Path(string spelled)
@@ -50,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 builder.Append(parenthesised ? "(" : "");
                 Path(compare.Path!);
-                builder.Append(' ').Append(ServiceForm.OperatorOf(compare.Test)).Append(' ').Append(parameters.Add(ValueOf(compare.Literal!)));
+                builder.Append(' ').Append(ServiceForm.OperatorOf(compare.Test)).Append(' ').Append(parameters.Add(Bound(compare.Literal!)));
                 builder.Append(parenthesised ? ")" : "");
             }
 
@@ -69,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     case ServiceFormKind.In:
                         builder.Append('(');
                         Path(f.Path!);
-                        builder.Append(" IN (").Append(string.Join(", ", Rotated([.. f.Literals]).Select(l => parameters.Add(ValueOf(l))))).Append("))");
+                        builder.Append(" IN (").Append(string.Join(", ", Rotated([.. f.Literals]).Select(l => parameters.Add(Bound(l))))).Append("))");
                         break;
                     case ServiceFormKind.Bare:
                         Path(f.Path!);

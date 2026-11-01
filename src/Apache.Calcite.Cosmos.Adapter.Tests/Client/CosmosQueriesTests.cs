@@ -214,6 +214,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             geometry.getSRID().Should().Be(4326);
         }
 
+        /// <summary>
+        /// A parameter the statement names as stored (<see cref="CosmosQuery.Stored"/>) is sent in the emulator's spelling,
+        /// U+0000 as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0 <c>1</c>, after its type's length holds it as Calcite does, which
+        /// truncates what it was given; any other is sent as it arrived.
+        /// </summary>
+        [Fact]
+        public void AStoredParameterIsSentInTheStoredSpellingAfterItsLengthHoldsIt()
+        {
+            var query = new CosmosQuery("SELECT VALUE c.id FROM c WHERE (c.s = @p0) AND (c.t = @p1)",
+                [new("@p0", new CosmosDynamicValue(0) { Length = 3 }), new("@p1", new CosmosDynamicValue(1))], Stored: ["@p0"]);
+
+            var bound = CosmosQueries.Bind(query, new Context(("?0", "\0﷐\0x"), ("?1", "a\0")));
+            bound.Parameters[0].Value.Should().Be("﷐0﷐1﷐0", "truncated to three units, then each escaped");
+            bound.Parameters[1].Value.Should().Be("a\0", "a parameter not named stored is sent as it arrived");
+
+            CosmosQueries.Bind(query, new Context(("?0", "abc"), ("?1", null))).Parameters[0].Value.Should().Be("abc", "a value holding neither is its own spelling");
+        }
+
         /// <remarks>
         /// A slot the context has no value for is a null parameter, not a shape.
         /// </remarks>

@@ -38,6 +38,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             EmulatorStoredText.Escapes(text).Should().Be(text != stored);
         }
 
+        /// <summary>
+        /// A spelling reads back as what it spells, for every string the probe stored: a reader holding a value as it was
+        /// sent compares it with what the service returned decoded.
+        /// </summary>
+        [Fact]
+        public void ASpellingReadsBackAsWhatItSpells()
+        {
+            foreach (var text in Probed)
+                EmulatorStoredText.Read(EmulatorStoredText.Of(text)).Should().Be(text);
+
+            EmulatorStoredText.Read("a﷐").Should().Be("a﷐", "an escape unit followed by neither digit reads as itself");
+        }
+
         /// <summary>A string holding neither character is its own spelling, the same instance, so nothing is built.</summary>
         [Fact]
         public void AStringHoldingNeitherIsItself()

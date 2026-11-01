@@ -60,6 +60,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                 bound[i] = parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
 
+                // In the stored spelling of the target, the emulator's, where the service compares the value with a path
+                // (Service.EmulatorComparesTheSpellingItIsSent): after Held's truncation, Calcite truncating what it was
+                // given, and before the encoder is asked, which the spelling cannot change the answer of.
+                if (bound[i].Value is string text && IsStored(query, parameters[i].Name))
+                    bound[i] = bound[i] with { Value = Facts.EmulatorStoredText.Of(text) };
+
                 // The SDK's UTF-8 encoder refuses an unpaired surrogate while it writes the statement, unnamed and before
                 // anything is sent (Service.LoneSurrogateParameterIsNeverSent). A literal holding one is refused when the
                 // plan is made, and computed in process; a parameter's value arrives only now, and a column computed from
@@ -181,6 +187,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             return Metadata.CosmosUuidForms.Spell(form, v)
                 ?? throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be written in the stored form '{form.Name}'.");
+        }
+
+        /// <summary>Whether a statement sends a parameter in its target's stored spelling (<see cref="CosmosQuery.Stored"/>).</summary>
+        internal static bool IsStored(CosmosQuery query, string name)
+        {
+            if (query.Stored is not { } names)
+                return false;
+
+            for (var i = 0; i < names.Count; i++)
+                if (string.Equals(names[i], name, StringComparison.Ordinal))
+                    return true;
+
+            return false;
         }
 
         /// <summary>

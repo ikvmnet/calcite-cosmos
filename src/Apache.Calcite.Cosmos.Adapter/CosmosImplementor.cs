@@ -942,7 +942,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         public CosmosQuery Build()
         {
             var program = OrderProgram();
-            return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program);
+            return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program,
+                _parameters.Stored.Count > 0 ? new List<string>(_parameters.Stored) : null);
         }
 
         readonly List<(string Expression, CosmosOrderedKey Key)> _anchoredKeys = new();
