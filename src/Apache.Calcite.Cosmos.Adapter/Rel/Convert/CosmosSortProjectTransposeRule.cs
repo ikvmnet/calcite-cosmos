@@ -86,9 +86,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// facts say orders as the converted value, under this key's direction and placement.
         /// </summary>
         /// <remarks>
-        /// Before the last key the spelling has to order exactly, one spelling a value, or it parts what the next key
-        /// orders; on the last a finer order will do. Asked of the key followed by itself, which R4 drops after an exact
-        /// key and keeps after a finer one, so that the question decides it by its own rule.
+        /// A leading key is asked as itself twice, which R4 drops after an exact key and keeps, before the last, after a
+        /// finer one: so only the last key may take a form that spells a value two ways.
         /// </remarks>
         static bool IsStoredFormConversion(Project project, RexNode node, RelFieldCollation collation, bool last)
         {

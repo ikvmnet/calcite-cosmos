@@ -807,8 +807,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosStoredForms.Reads(representation, format, held) == false)
                 return refused with { Why = format is not null ? "a parse whose format does not read the stored form" : "a cast the engine cannot read the stored form by" };
 
-            // Ties both ways need one spelling a value: a form that keeps the order but spells a value two ways parts at the
-            // service what Calcite ties, finer than Calcite, which only the last key may be (R4), and which no comparison is.
             return representation.PreservesEquality
                 ? refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" }
                 : refused with { Agreement = CosmosOrderAgreement.Refines, Why = "a conversion of a stored form that spells a value more than one way" };

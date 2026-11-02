@@ -33,19 +33,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             if (call.getOperator().getName() == "JSON_VALUE")
             {
-                // A behaviour clause substitutes something the path does not hold, and which documents
-                // it substitutes for is Calcite's to say -- measured, not the ones the standard names.
-                // See IsPlainJsonValue.
                 if (IsPlainJsonValue(call) == false)
                     return false;
-
-                // A RETURNING that parses is a conversion of what the path holds and not the value, so
-                // it addresses no path in any clause either -- see IsParsingJsonValue.
                 if (IsParsingJsonValue(call))
                     return false;
-
-                // An array RETURNING on JSON_VALUE is not a construct SQL defines, so it addresses no
-                // path in any clause -- see IsArrayReturningJsonValue.
                 return IsArrayReturningJsonValue(call) == false;
             }
 
@@ -93,9 +84,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || call.getOperator().getName() != "JSON_QUERY")
                 return false;
 
-            // Two operands is the call with nothing said, which a caller building one by hand writes
-            // and which is plain by construction -- there is no clause on it to differ from the plain
-            // form. The validator always writes five, so both shapes reach here.
             if (call.getOperands().size() == 2)
                 return true;
 

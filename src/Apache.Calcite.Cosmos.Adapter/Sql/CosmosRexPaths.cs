@@ -77,8 +77,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <returns><c>true</c> if the expression denotes a path; otherwise <c>false</c>.</returns>
         internal bool TryResolvePath(RexNode node, out CosmosPath? path)
         {
-            // Under the emulator a member's name holding U+0000 or U+FDD0 is stored escaped, and a path naming one written
-            // as spelled reads nothing: it is no path there, and what reads it is computed in process over the document.
             if (Resolve(node, out path) && (_spelled == false || NamesAnEscape(path) == false))
                 return true;
 
@@ -111,8 +109,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // A field of a correlation variable standing for this input's own row addresses that
                 // row, so it resolves against the same bindings as a plain field reference. This is
                 // how the array expression of a lateral unnest arrives. A variable standing for
-                // anything else is refused — see IsOwnRow.
-                case RexFieldAccess access when access.getReferenceExpr() is RexCorrelVariable variable && IsOwnRow(variable)
+                // anything else — a join's other side, in the same shape — would name a plausible, wrong
+                // path, and one the caller has not named its own is none (DESIGN.md, The document column).
+                case RexFieldAccess access when access.getReferenceExpr() is RexCorrelVariable variable && _ownRow is not null && _ownRow.equals(variable.id)
                     && access.getField().getIndex() >= 0 && access.getField().getIndex() < _fields.Count:
                     path = _fields[access.getField().getIndex()];
                     return path is not null;
@@ -163,19 +162,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether a correlation variable stands for this input's own row.
-        /// </summary>
-        /// <remarks>
-        /// A lateral traversal correlates an input on itself and a join on the other side, in the same shape of expression;
-        /// resolved against these bindings the second would name a plausible, wrong document path. Where the caller has not
-        /// said which variable is its own, none is. See DESIGN.md, <i>The document column</i>.
-        /// </remarks>
-        bool IsOwnRow(RexCorrelVariable variable)
-        {
-            return _ownRow is not null && _ownRow.equals(variable.id);
-        }
-
-        /// <summary>
         /// Resolves a SQL/JSON accessor to the document path it addresses.
         /// </summary>
         /// <remarks>
@@ -188,14 +174,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             path = null;
 
-            // The document an accessor addresses through has to be a document. A scalar rendering is
-            // text, which Calcite parses as JSON to read the path out of, and the service has the
-            // value: measured over products, `JSON_VALUE(JSON_VALUE(DOC, '$.name'), '$') IS NOT NULL`
-            // resolved to c.name and kept every document, where Calcite fails to parse
-            // `Trail Blazer` and answers null for each. A path stored as a JSON string is the case it
-            // means, and there the service's nested path is undefined where Calcite reads a value.
-            // The document column and a plain JSON_QUERY are what remain, the fragment's text parsing
-            // back to the fragment the nested path addresses.
             if (IsScalarRendering(Operand(call, 0)))
                 return false;
 
@@ -225,10 +203,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// The accepted grammar is <c>$</c> followed by any number of <c>.name</c>, <c>['name']</c> and <c>[0]</c> steps. That
         /// is the whole of what a document path is; everything else is refused.
         /// </remarks>
-        /// <param name="basePath">The path the document itself is at.</param>
-        /// <param name="text">The SQL/JSON path expression.</param>
-        /// <param name="path">On success, the resolved path.</param>
-        /// <returns><c>true</c> where the expression is a plain path.</returns>
         internal static bool TryExtendByJsonPath(CosmosPath basePath, string text, out CosmosPath? path)
         {
             path = null;
