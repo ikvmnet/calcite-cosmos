@@ -401,13 +401,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A sort keyed by a stored form's conversion moves beneath the projection that converts it, ordering the stored
         /// text, on the last key where the form keeps the order and not equality, and before another only where it keeps
-        /// both: a UUID spelled in either case orders its two spellings of one value apart, which Calcite ties for the
-        /// next key to order. The form is planted; no registered one keeps the order without equality.
+        /// both: a form that spells one value two ways orders the two spellings apart, which Calcite ties for the next key
+        /// to order. The form is planted by its two flags; no registered one keeps the order without equality.
         /// </summary>
         [Fact]
         public void AFormThatSpellsAValueTwoWaysIsSortedBeneathItsConversionOnTheLastKeyOnly()
         {
-            var planted = Planted(new CosmosRepresentation("uuid-either-case", PreservesEquality: false, PreservesOrder: true));
+            var planted = Planted(new CosmosRepresentation("two-spellings-in-order", PreservesEquality: false, PreservesOrder: true));
             var registered = Planted(CosmosUuidForms.CanonicalLowerSortable);
             const string Last = """SELECT JSON_VALUE(c."DOC", '$.k') AS "k", CAST(JSON_VALUE(c."DOC", '$.u') AS UUID) AS "u" FROM items AS c ORDER BY 2 NULLS FIRST FETCH NEXT 2 ROWS ONLY""";
             const string Leading = """SELECT JSON_VALUE(c."DOC", '$.k') AS "k", CAST(JSON_VALUE(c."DOC", '$.u') AS UUID) AS "u" FROM items AS c ORDER BY 2 NULLS FIRST, 1 NULLS FIRST FETCH NEXT 2 ROWS ONLY""";

@@ -1418,7 +1418,8 @@ the distribution the gate is sized for.
     in the stored spelling, and `CosmosStringFunctions`' emulator rules, which move to the axiom rows' functions when
     that class is deleted; `Compare`'s own code goes once S carries its rule. The predicate `NulOrdering` is measured
     again first: a raw `CONTAINS(p, '\u0000')` matches nearly everything on the emulator, and `CONTAINS(p, U+FDD0 '0')`
-    is the exact test.
+    is the exact test. The plant joins 3B's gate. Kill line 10's floors and TLP's `PushedPartitions` are per target,
+    the emulator's this fix's (§10, *What the emulator's fix hands Stage 3*), and 3R lowers none of them.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is
@@ -3230,6 +3231,10 @@ across documents* and *A join of a container to itself* is the record.
   and its negation, partitions 12 and 13, which the default run asks too, so it reads 204; and `(c."id" || '!') NOT IN
   ('30', 'TRUE')` and its negation, 686 and 687 (D13), with differential 485's `||`, `REVERSE`, `REPLACE` and `REPEAT`
   over `strings.s` in process. Under Production all ten push.
+- **What the emulator's fix hands Stage 3** — *3B, recorded at §4.* S carries `Compare`'s emulator refusal, the
+  stored spelling of compared positions and the string functions' emulator rules as data, the plant joins 3B's gate,
+  and `NulOrdering` is measured again first; §4's *What Stage 3 owes it* holds the list. 3R took none of it but the
+  readers' guard on a member named with U+0000 or U+FDD0, which every reader built for a container keeps.
 - **A U+FDD0 class in the theory** — *an `Emulator`-only gain, for 3B or later; not soundness.* Under the emulator's
   set a string function asks its operands to hold no U+0000 and no unit from U+E000, the high band U+FDD0 is read in
   (`CosmosStringFunctions.RuleOf`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a

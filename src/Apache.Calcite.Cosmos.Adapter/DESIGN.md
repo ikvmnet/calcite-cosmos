@@ -313,8 +313,8 @@ unsigned 128-bit order — for every value, with nothing pinned. Uppercase is th
 cases is not canonical and no pattern recognises it, so nothing changes there.
 
 **Order without equality licenses the last key only.** The two flags are set apart, and order alone, a
-form that sorts in value order while spelling one value two ways (none is registered; a UUID in either
-case would be one), parts at the service values Calcite ties. That order is finer than Calcite's: a
+form that sorts in value order while spelling one value two ways (none is registered; a fixed-width number
+whose fraction may carry trailing zeros, `001.5` and `001.50`, would be one), parts at the service values Calcite ties. That order is finer than Calcite's: a
 sort's last key and an extreme may have it, and no key before another and no range comparison may.
 `CosmosServiceOrder.ReadConversion` reads such a conversion as refining, and the sort-past-projection
 transpose asks a leading key's conversion as a key with one after it. `CosmosServiceOrderModelTests` and
@@ -7762,7 +7762,7 @@ own set's are counted, and only where S writes it, since only those change what 
 
 **What changed is listed.** With S writing, 699 of the gate's 3,492 statements plan otherwise than at `main`: the
 Writes-armed rehearsal's digests, which the switch reproduces byte for byte, each change classed against the shadow's
-weakening and admission rows for its statement (`Planning/Switch/switch-listing.tsv`): 116 gains, 102 respellings, 208
+weakening and admission rows for its statement (the listing, now in the history): 116 gains, 102 respellings, 208
 weakenings tighter, 61 alike, 18 regressions on O2's list, 187 weakenings looser or dropped on O7's list, and 7 benign.
 A statement is classed by its worst row, so one whose weakening loosened beside a gain or another conjunct's tighter is
 listed as the loss. The unarmed shadow could not list them: it follows the
