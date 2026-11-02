@@ -49,6 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="rowType">The input row type, which gives each key the type Calcite orders.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="facts">What every row sorted is known to satisfy (L1).</param>
+        /// <param name="set">The targets the statement runs on, the container's (<see cref="CosmosRendering.SetFor"/>).</param>
         /// <param name="keys">On success, the keys written, as the service's policy names their paths.</param>
         /// <param name="paths">On success, per key written, its path, or <c>null</c> for a distance.</param>
         /// <param name="written">On success, per key written, its position in the collation.</param>
@@ -64,6 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             org.apache.calcite.rel.type.RelDataType rowType,
             string rootAlias,
             JsonFactSet facts,
+            Facts.Rendering.RenderingSet set,
             out IReadOnlyList<CosmosSortKey> keys,
             out IReadOnlyList<CosmosPath?> paths,
             out IReadOnlyList<int> written,
@@ -101,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 resolved[i] = path;
             }
 
-            var verdict = CosmosServiceOrder.OrderBy(facts, operands);
+            var verdict = CosmosServiceOrder.OrderBy(facts, operands, set);
             if (verdict.IsProved == false && verdict.IsAnchored == false)
                 return false;
 
@@ -283,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // Every question the rule asked, asked again of the facts it decided under.
             var facts = implementor.FactsOf(Facts);
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, out var keys, out var paths, out var written, out var ordered) == false)
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, CosmosRendering.SetFor(implementor.Container.ServiceTarget), out var keys, out var paths, out var written, out var ordered) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to an order the service computes as Calcite would.");
 
             if (implementor.Container.IsSortSupported(keys) == false)

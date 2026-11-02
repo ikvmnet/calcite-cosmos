@@ -197,6 +197,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 if (counter is null)
                     throw new CosmosExecutionException("A whole-partition delete needs something to count the partition with.");
 
+                // A route by a header holding either escape is unmeasured there, as for every point write.
+                if (write.StoresSpelled && Array.Exists(values, v => v is string s && Facts.EmulatorStoredText.Escapes(s)))
+                    throw new CosmosExecutionException("A whole-partition delete's key holds U+0000 or U+FDD0, which the emulator stores escaped: routed as written, it would delete another partition or none, so the statement stops before deleting.");
+
                 var partition = PartitionKeyOf(values);
 
                 var count = await counter(partition, cancellationToken).ConfigureAwait(false);
@@ -218,6 +222,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 using var document = JsonDocument.Parse(bytes);
 
                 var partitionKey = PartitionKeyOf(document.RootElement, write);
+
+                if (write.Operation is CosmosWriteOperation.Delete or CosmosWriteOperation.Update && write.StoresSpelled && Unaddressable(document.RootElement, write) is string named)
+                    throw new CosmosExecutionException($"A row being written holds U+0000 or U+FDD0 in its {named}, which the emulator stores escaped: addressed as written, its point write answers another document or none, so the statement stops before writing it.");
 
                 switch (write.Operation)
                 {
@@ -483,6 +490,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             }
 
             return builder.Build();
+        }
+
+        /// <summary>
+        /// Names the part of a row that addresses its document and holds U+0000 or U+FDD0, its <c>id</c> or a partition
+        /// key's value, or returns <c>null</c>. Measured on both images: a point delete or replace of an <c>id</c> holding
+        /// U+0000 is a 500, of one holding U+FDD0 a 404, and of U+FDD0 <c>0</c> answers the document whose <c>id</c> is
+        /// U+0000 (<c>Service.EmulatorPointReadOfAnEscapedId</c> measures the read).
+        /// </summary>
+        static string? Unaddressable(JsonElement document, CosmosWrite write)
+        {
+            if (CosmosDocument.Read(document, "/" + Metadata.CosmosContainerMetadata.IdPropertyName) is string id && Facts.EmulatorStoredText.Escapes(id))
+                return "id";
+
+            foreach (var path in write.PartitionKeyPaths)
+                if (CosmosDocument.Contains(document, path) && CosmosDocument.Read(document, path) is string value && Facts.EmulatorStoredText.Escapes(value))
+                    return "partition key";
+
+            return null;
         }
 
         static Microsoft.Azure.Cosmos.PartitionKey PartitionKeyOf(JsonElement document, CosmosWrite write)

@@ -8,7 +8,12 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+
 using FluentAssertions;
+
+using Microsoft.Azure.Cosmos;
 
 using Xunit;
 
@@ -411,9 +416,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Runs and judges predicates, asking each statement of each once however often it comes up —
-        /// the generator repeats itself, and narrowing a failure asks again of the parts.
+        /// the generator repeats itself, and narrowing a failure asks again of the parts. Over the corpus's containers, or
+        /// over the ones given.
         /// </summary>
-        sealed class PartitionJudge
+        sealed class PartitionJudge(IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? containers = null)
         {
 
             readonly ConcurrentDictionary<string, Lazy<Task<(Outcome Outcome, IReadOnlyList<string> Sent)>>> _statements = new();
@@ -436,7 +442,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 {
                     var sent = new List<string>();
                     var clock = Stopwatch.StartNew();
-                    var outcome = await Attempt(sql, pushdown, sent);
+                    var outcome = await Attempt(sql, pushdown, sent, containers: containers);
                     _timings.Add((clock.Elapsed.TotalMilliseconds, key));
                     return (outcome, (IReadOnlyList<string>)sent);
                 })).Value;
@@ -576,7 +582,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             });
 
             var size = predicates.Count == GatePartitionedPredicates ? "the gate's" : "the first of the gate's " + GatePartitionedPredicates + "; COSMOS_PARTITION_GATE=1 asks for all of them";
-            var floor = predicates.Count == GatePartitionedPredicates ? PushedPartitions.Gate : PushedPartitions.Default;
+            var floors = PushedPartitions.Single(f => f.Target == CosmosEmulator.ServiceTarget);
+            var floor = predicates.Count == GatePartitionedPredicates ? floors.Gate : floors.Default;
             var summary = $"{predicates.Count} predicates ({size}), {predicates.Select(p => p.Vocabulary.Table + " " + p.Predicate.Sql).Distinct().Count()} distinct, " +
                 $"{judged.Count(p => p.Judged == false)} not judged because Calcite raised, {failing.Count} failing; " +
                 $"{judge.Statements} statements run, {judge.Pushed} partitions sending a WHERE (the floor is {floor}); " +
@@ -611,11 +618,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The least number of partitions run that send the service a <c>WHERE</c>, over the default run and over the gate:
-        /// as many as did at the switch to the rendering graph, measured on the emulator under its set: 206 in the default
-        /// run's 795 statements, 993 in the gate's 3,880.
+        /// The least number of partitions run that send the service a <c>WHERE</c>, over the default run and over the gate,
+        /// per target: as many as did at the switch to the rendering graph, measured on the emulator under its set: 206 in
+        /// the default run's 795 statements, 993 in the gate's 3,880.
         /// </summary>
-        static readonly (int Default, int Gate) PushedPartitions = (206, 993);
+        /// <remarks>
+        /// Per target from the fix for the emulator's U+0000 and U+FDD0 on, the Azure row the one above, unchanged. Under the
+        /// emulator's set the gate's count went from 993 to 987, by six partitions each shown wrong there and each a
+        /// correctness fix (owner, 2026-10-31, "Yes, fix PR first"; 2026-11-01, "Cut it"), listed in <c>TODO.md</c>: three
+        /// order comparisons of text that may hold U+0000 against a literal (D7), refused at the order fix, which left this
+        /// floor as it was, and three partitions over <c>id NOT LIKE '_prin_'</c>, whose <c>_</c> the emulator matches
+        /// against one stored unit of an escape (D11). Then to 983, and the default run's from 206 to 204, by four the cut
+        /// refuses (owner, 2026-11-01, "Cut it"): <c>(id || '!') LIKE 'B%'</c> and <c>NOT IN ('30', 'TRUE')</c>, each with
+        /// its negation, a concatenation now asking its path operand too (D13). Under Azure's set every one of them pushes.
+        /// </remarks>
+        static readonly (CosmosServiceTarget Target, int Default, int Gate)[] PushedPartitions =
+        [
+            (CosmosServiceTarget.Azure, 206, 993),
+            (CosmosServiceTarget.Emulator, 204, 983),
+        ];
 
         /// <summary>
         /// Appends a line to the file <c>COSMOS_MEASUREMENT_LOG</c> names, where it names one. The

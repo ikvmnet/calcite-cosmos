@@ -449,6 +449,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Disposed.Should().BeTrue();
         }
 
+        /// <summary>
+        /// The emulator stores U+0000 and U+FDD0 escaped, so a write addressed by an <c>id</c> or key holding either
+        /// misaddresses there: it stops at that row, the rows before it written, and Azure writes it.
+        /// </summary>
+        [Fact]
+        public async Task AWriteStopsAtAnAddressTheEmulatorStoresEscaped()
+        {
+            var writer = new RecordingWriter();
+            var rows = new ListCursor<object?[]>([Row("a"), Row("b﷐"), Row("c")]);
+            var write = Write(CosmosWriteOperation.Delete) with { StoresSpelled = true };
+
+            var delete = async () => await Counts(CosmosCursors.WriteAsync(Open(rows), writer, write, r => r!, c => c, null, null, CancellationToken.None));
+            var partition = async () => await CosmosCursors.WriteAsync(Open(null), writer, Write(CosmosWriteOperation.DeletePartition, partition: ["b\uFDD0"]) with { StoresSpelled = true }, r => r!, c => c, null, (_, _) => Task.FromResult(1L), CancellationToken.None);
+
+            await delete.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*U+0000 or U+FDD0*id*");
+            await partition.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*U+0000 or U+FDD0*");
+            writer.Calls.Should().ContainSingle();
+
+            var azure = await Counts(CosmosCursors.WriteAsync(Open(new ListCursor<object?[]>([Row("b﷐")])), new RecordingWriter(), Write(CosmosWriteOperation.Delete), r => r!, c => c, null, null, CancellationToken.None));
+            azure.Should().Equal(1L);
+        }
+
         [Fact]
         public async Task AWholePartitionDeleteNeedsItsKeyAndACounter()
         {

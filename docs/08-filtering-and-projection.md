@@ -125,7 +125,11 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 
 An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
 text a number could render as — a stored `30.0` renders otherwise — sends only that the property is
-there, and is rechecked:
+there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
+and compares what it is sent with that, a value holding either — a literal, a parameter, an `IN`
+member, a `LIKE 'abc%'` prefix — is sent in that spelling, so `=`, `IN`, `<>` and the prefix answer
+exactly; a value holding neither is sent as it is, and Azure is sent every value as written
+(Appendix E):
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.code') = 'true'
@@ -338,7 +342,8 @@ statement goes to that partition.
 **Point reads.** A lookup by `id` and a complete partition key, with nothing else in the predicate —
 nothing the schema does not already make true of every document — is not run as a query at all. It
 is a point read — `ReadItem`, about 1 RU, no query engine — against the 2.3 RU or more a query costs
-at best:
+at best (on the emulator an `id` or key holding U+0000 or U+FDD0 is queried instead, and not routed,
+since its read was not measured in the spelling the emulator stores; Appendix E):
 
 ```sql
 SELECT c."id", c."_ts" FROM "products" AS c
@@ -471,6 +476,15 @@ over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a com
 instant with a parameter — the value is written in the stored spelling when the statement runs
 (Chapter 15).
 
+On the emulator, which stores U+0000 as U+FDD0 `0` — above every character from U+0001 to U+FDCF, where
+SQL puts U+0000 first — and compares what it stores, a text ordering (`<`, `<=`, `>`, `>=`, `BETWEEN`) over
+a property that may hold U+0000 is made in process, against a parameter, a literal or another property
+alike: `id` and a property declared only `"type": "string"` among them. Over a property whose schema keeps
+U+0000 out, a `pattern` such as `^[\u0001-\uD7FF]*$` (Chapter 14.4), one against a literal or another such
+property is sent as above; one against a parameter, which may hold U+0000, is made in process whatever
+the value. Its other escape, U+FDD0 as U+FDD0 `1`, keeps the order. Azure stores every string as written
+and is unaffected (Appendix E).
+
 **A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
 holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
 `'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
@@ -523,6 +537,9 @@ documents it has to read.
 | `REPLACE`, and a `LIKE` of the `'%abc%'` shape, over a string that may hold U+0000 | Azure reads the string only up to its first U+0000 in those (Appendix B.2) |
 | `REPLACE` whose search may be empty; `REPEAT` without a literal count, or over a subject not proved short enough; the `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries | the service answers undefined where Calcite answers the subject, the repetition, or the string beside a null (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
+| on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text — a list among them — anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern, `MEMBER OF ?` | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
+| on the emulator, a property or a selected column whose name holds U+0000 or U+FDD0 | the emulator stores a name in that spelling too, so the name written as it is reads nothing; read over the whole document. A table column so named cannot be read there at all |
+| on the emulator, `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, `POSITION`, `REPLACE`, `\|\|`, `REPEAT`, and a `LIKE` whose pattern holds `_`, `0` or `1` beyond a prefix, over a string that may hold U+0000, U+FDD0 or another character from U+E000 up | the emulator's functions work on the two units it stores each escape as, and count, cut and match them as two (Appendix B.2) |
 | a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |

@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public void Implement(CosmosImplementor implementor)
         {
             // The scan establishes the binding every operator above it resolves against.
-            implementor.Fields = CosmosImplementor.BindFields(getRowType(), implementor.RootAlias);
+            implementor.Fields = CosmosImplementor.BindFields(getRowType(), implementor.RootAlias, Metadata.CosmosRendering.StoresSpelled(implementor.Container.ServiceTarget));
 
             // Set after the binding, which clears them: the JSON column addresses the document root
             // like a promoted column and differs only in how a row reads it, so the reading is the whole

@@ -72,8 +72,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static string Key => CosmosEmulator.Key!;
         static bool IsEmulator => CosmosEmulator.IsEmulator;
 
+        // Per run on an emulator, so that two runs on one never share the documents one of them plants and the other
+        // deletes; on Azure one name, which a run killed part-way leaves for the next to reuse rather than to bill.
         static readonly string DatabaseName = "calcite_cosmos_diff_" +
-            System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
+            System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_") +
+            (IsEmulator ? "_" + Guid.NewGuid().ToString("N").Substring(0, 8) : "");
 
         internal static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
 
@@ -709,9 +712,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Plans and executes a statement one way, and keeps a failure as an answer rather than
         /// letting it escape.
         /// </summary>
-        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null)
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? containers = null)
         {
-            try { return new Outcome((await Run(sql, pushdown, sent, CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
+            try { return new Outcome((await Run(sql, pushdown, sent, containers ?? CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
             catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
         }
 
@@ -2009,28 +2012,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// holds it to having done one or the other, so that agreement here is known to be the reader's and not chance.
         /// </para>
         /// <para>
-        /// <b>One is sent on Azure alone.</b> <c>u &gt; 'a'</c> is a text ordering over strings nothing keeps U+0000 out of,
-        /// which the emulator orders as stored, so under the emulator's set S declines it (O2's residue, R4): the filter
-        /// stays in process, and the sort above it with it. Its rows agree all the same.
+        /// <b>Every one is sent on Azure alone.</b> <c>s</c>, <c>u</c> and <c>id</c> are strings nothing keeps U+0000 out of,
+        /// which the emulator stores as U+FDD0 <c>0</c> and so orders above U+0001 to U+FDCF. Under the emulator's set S
+        /// declines a text sort and a <c>MAX</c> over them, and <c>u &gt; 'a'</c> with the sort above it (O2's residue, R4;
+        /// DESIGN.md, <em>The emulator's U+0000, refused</em>): each runs in process, sent no order, and its rows agree all
+        /// the same. Under the emulator this list holds only that; the reader's completion is held on Azure.
         /// </para>
         /// </remarks>
         static readonly (string Sql, bool Ordered, bool OnTheEmulator)[] CompletedByTheReader =
         [
-            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true, true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true, true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true, true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true, true),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true, true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true, true),
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true, false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true, false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true, false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true, false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true, false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true, false),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true, false),
-            ("SELECT MAX(c.\"id\") FROM ordering AS c", false, true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true, true),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false, false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true, false),
         ];
 
         /// <summary>
         /// Every order the reader completes answers as Calcite would, was sent to the service, and was completed: a run
-        /// re-sorted between anchors, or the fallback read; but one the account's set keeps in process, which is sent no
-        /// order and still answers as Calcite would.
+        /// re-sorted between anchors, or the fallback read; but those the account's set keeps in process, which are sent no
+        /// order and still answer as Calcite would.
         /// </summary>
         [Fact]
         public async Task EveryOrderTheReaderCompletesAgrees()

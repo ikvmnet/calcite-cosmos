@@ -1383,12 +1383,34 @@ the distribution the gate is sized for.
     (`JsonValues.LengthsOf`). The schema reader does not read `minLength` or `maxLength`, which count code
     points: a `minLength` of n bounds the UTF-16 units from below by n and a `maxLength` of n from above by 2n,
     which is all the theory's units need of them (below, *The other bounds*).
-  - **The emulator's U+0000, `REPLICATE` and `REPLACE` are not Azure's** — *recorded.* It stores U+0000 as
-    U+FDD0 followed by `0`, so every function over such a string differs; its `REPLICATE` has no limit; and a
-    parameter holding U+0000 in `REPLACE`'s replacement or a `CONCAT` fails the statement with 500
-    `PostgresError(E22P05)` (Appendix E). Azure is the target, so none of them is declined. The differential
-    corpus holds no U+0000 and no repetition near the limit, and the measurement tests that pin Azure's rows
-    skip on the emulator's.
+  - **The emulator's U+0000, U+FDD0, `REPLICATE` and `REPLACE` are not Azure's** — *measured, the fix under
+    way.* It stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1` (`Facts/EmulatorStoredText.cs`), and counts,
+    cuts, compares, orders and returns what it stores; its `REPLICATE` has no limit; and a U+0000 made from a path,
+    by `CONCAT` or `REPLACE`'s replacement, fails the statement with a 500 (Appendix E). Measured on both images on
+    2026-10-31, each an `Emulator` row: `Service.EmulatorComparesTheSpellingItIsSent` (a value sent in the stored
+    spelling is exact for `=`, `IN`, `!=` and `STARTSWITH`, and for `ENDSWITH` and `CONTAINS` unless it begins
+    with `0` or `1`; `CONTAINS(p, U+FDD0 '0')` is an exact test for U+0000), `Service.EmulatorCountsTheStringItStores`,
+    `Service.EmulatorFailsANulMadeFromAPath`, `Service.EmulatorPointReadOfAnEscapedId` and
+    `Service.EmulatorDecodesWhatItReturns`: a constant the service returns comes back decoded, so one sent in the
+    stored spelling comes back as written, and a raw U+0000 returned anywhere is a 500. The writer now sends a compared
+    value in the stored spelling — a literal, a parameter named stored for the binding to spell, a lookup key —
+    queries an `id` or key holding either rather than reading or routing on it, and computes in process a constant or
+    a parameter that may hold text anywhere else — a returned one, a `CASE` arm, a `COALESCE` operand, a function's
+    operand, `MEMBER OF` and a generic `LIKE` pattern among them, sending a returned one spelled being cut ("Cut it",
+    2026-11-01) — and refuses a list or object parameter holding either, a path or column named with either, and a
+    `DELETE` or `UPDATE` reaching an `id` or key holding either, whose point write misaddresses there; the planted
+    differential (`CosmosDifferentialTests.Planted.cs`, D1–D3, D14, the N and A rows, §4.6's R rows and
+    `APlantedWriteStopsAtAnIdItCannotAddress`) holds each. The orders are refused: a text sort either way, `MIN` and
+    `MAX`, and an ordering against a parameter, outright, or against a literal or another path over text that may
+    hold U+0000, the order the emulator runs being E's, which puts U+0000 above every unit from U+0001 to U+FDCF; the
+    planted differential's D4–D7 rows hold it both ways. A string function over a stored escape stays in process:
+    under the emulator's set `CosmosStringFunctions.RuleOf(call, set)` asks U+0000 and the high band U+FDD0 lies in of
+    the operands its function works on — a count's, a reversal's, `POSITION`'s subject, each of `REPLACE`'s, every
+    operand of a `CONCAT` and a `REPEAT`'s subject, a path among them, and a `LIKE`'s subject where its pattern holds
+    `_`, `0` or `1` beyond a prefix, the fold's `ENDSWITH` and `CONTAINS` among them — and the planted differential's D8–D13 rows
+    (`planted_text`) and the planted partition pass (`EveryPlantedPredicatePartitionsTheRows`) hold it. Azure's plans
+    do not change. The differential corpus holds no U+0000 and no repetition near
+    the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is
@@ -2746,7 +2768,9 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point. Since g10 that includes the raw orderings over `id`: the gate's 18 are S's under
-  `Production` and declined under `Emulator`, where nothing keeps U+0000 out of an `id`.
+  `Production` and declined under `Emulator`, where nothing keeps U+0000 out of an `id`. The translator's own order
+  questions now match S there (`CosmosServiceOrder`, the fix for the emulator's U+0000): a sort, an extreme and an
+  ordering over such text are declined under `Emulator` too.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -3149,6 +3173,79 @@ across documents* and *A join of a container to itself* is the record.
   whose pattern admits U+0000; sorts where `t > '_'`, `t > 'true'`, `id > '1'` and `s > 'ab'` over `orders_declared`;
   `MIN(_ts)` where `id > '_'` over `orders_plain`. The reader's order test sends `u > 'a'` on Azure alone, for the same
   reason.
+- **The emulator's U+0000 lowered the `Emulator` floors** — *recorded, a correctness fix.* The owner approved on
+  2026-10-31, "Yes, fix PR first", that the `Emulator` floors come down by exactly the pushes shown unsound there, and
+  on 2026-11-01, asked whether to cut the order fix to plain refusals under the emulator, "Cut it": the emulator being
+  the adapter's own test target, a push lost to a refusal there is no over-refusal. The yardstick's floors are per
+  target (`PushedFloors`); the Azure rows are unchanged. Read on 8085 (EN20261008), default / gate, base → new:
+  sort 35 / 220 → 17 / 106; extreme 5 / 23 → 3 / 18; page 0 / 3 → 0 / 3; comparison 5 / 25 → 6 / 17;
+  `orders_plain` sort 5 / 27 → 4 / 12, extreme 0 / 3 → 0 / 2; `orders_declared` sort 19 / 103 → 5 / 34, extreme
+  3 / 8 → 2 / 6, comparison 3 / 21 → 1 / 6; `orders_ascii` sort 11 / 90 → 8 / 60, extreme 2 / 12 → 1 / 10. Every lost
+  statement is one of three kinds, over `s`, `t`, `g` or `id`, which nothing keeps U+0000 out of (`orders_ascii`'s
+  pattern admits it): a text sort, either way (D4, D5; default 19, gate 112); a sort over another key beneath an
+  ordering against a parameter the cut refuses (D6, "Cut it": the `UNION ALL` over `orders_ascii` whose branch is
+  `WHERE s > ?`, sorted by `w` read as `BIGINT`, in both runs, and `WHERE t > ? AND id IN ('_', '1') ORDER BY w` at
+  the gate; default 1, gate 2); an extreme over such text (D4, D5; `MIN(g)` and `MIN(s)` in the default run, gate 6);
+  an ordering against a parameter, refused outright by the cut (D6; `id > ?`, `id < ?`, `t > ?`, `s > ?`, default 5,
+  gate 20). The default run's lost
+  statements by trace line, the gate's likewise, are `reports/emu-nul/yardstick-c3-default-lost.txt` and
+  `…-gate-lost.txt`, diffed against `821295f`'s default trace and `19d0565`'s gate trace on the same image. The anchor
+  that kept a path holding no U+0000 against a parameter pushed was cut at the review ("Cut it"), every ordering
+  against a parameter now refused under `Emulator`: read on 8085, the default run's comparisons went 6 → 0 and its
+  sorts 17 → 15, `orders_declared`'s comparison 1 → 0, `orders_ascii`'s sorts 8 → 6; the gate's comparisons 17 → 0,
+  its sorts 106 → 77, `orders_declared`'s sorts 34 → 26 and comparisons 6 → 0, `orders_ascii`'s sorts 60 → 39. Each
+  lost statement holds an ordering of `id`, `e`, `s` or `t` against a parameter — `orders_ascii`'s `id > ?`, `e > ?`
+  and `e < ?`, the `UNION ALL` over `orders_declared`'s `e < ?`, and the sorts beneath them, `e > ? ORDER BY e FETCH
+  NEXT 3` among them — listed by trace line in `reports/emu-nul/yardstick-c5-default-lost.txt` and `…-gate-lost.txt`
+  (against `a9efcac`'s traces; the lists hold the planted pass's too). The seek pushes 0 of 36 under `Emulator` and
+  36 under Production. `EveryOrderTheReaderCompletesAgrees` holds its `CompletedByTheReader` rows over `ordering`'s
+  `s`, `u` and `id` on Azure alone, eight of them D4/D5 ("Yes, fix PR first"): `ORDER BY id`; `s` sorted `NULLS
+  FIRST`, `DESC NULLS LAST`, and, where not null, ascending, descending, under `FETCH NEXT 2` and as the key of `id`;
+  and `MAX(id)`; the ninth, `u > 'a'`, was the 2026-10-22 entry's. So CI, whose one service is the emulator, no longer
+  runs the reader's completion or the keyset seek through a service, only `CosmosOrderedCursorTests`' canned
+  streams; a schema keeping U+0000 out of those paths would not give them back without the anchor the cut removed,
+  so they wait for a job on Azure. Under Production every one of them pushes, and its plans are byte-equal.
+  Not lowered: anything read under Production, and every floor not named here. The string rules and the wider plant
+  (U+0000 at `orders_ascii`'s `s`, U+FDD0 beside it elsewhere) moved none: on 8085 the gate lost one `orders_ascii`
+  sort beneath `t LIKE '_'` (D11), a statement not judged before, and read sort 106, extreme 18, comparison 17 and
+  page 3, the floors. The partition run's gate floor is per target too (`PushedPartitions`): Azure's stays 206 / 993,
+  and the emulator's is 206 / 987, read on 8083 (EN20260907) at the string rules and equal to the count of the
+  emulator's plan digests, 990 at the order fix and 993 before it; then 983, and the default run's 204, at the review
+  (below). The six lost, each sending no `WHERE` now and each
+  shown wrong: the order fix's three, `(c."id" || '!') > '30'`, `(c."id" || '!') < '30'` and `c."id" < '6'` in a `CASE`
+  beside `COALESCE(name, 'none') > '1'` (D7 by the model; digest lines 1562, 2923, 2475), which that commit refused
+  without lowering this floor; and the string rules' three, `c."id" NOT LIKE '_prin_'` in two partitions and under a
+  double negation with a category test (D11; digest lines 1281, 2163, 2164), `_` matching one unit of an escape there.
+  The cut of the concatenation's path exemption ("Cut it") loses four more, read on 8085: `(c."id" || '!') LIKE 'B%'`
+  and its negation, partitions 12 and 13, which the default run asks too, so it reads 204; and `(c."id" || '!') NOT IN
+  ('30', 'TRUE')` and its negation, 686 and 687 (D13), with differential 485's `||`, `REVERSE`, `REPLACE` and `REPEAT`
+  over `strings.s` in process. Under Production all ten push.
+- **A U+FDD0 class in the theory** — *an `Emulator`-only gain, for 3B or later; not soundness.* Under the emulator's
+  set a string function asks its operands to hold no U+0000 and no unit from U+E000, the high band U+FDD0 is read in
+  (`CosmosStringFunctions.RuleOf`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a
+  reversal, a `POSITION`, a `REPLACE` or a `LIKE` it could keep. A class of its own in `chars`, reached as Z is, would
+  give them back; Azure asks neither and gains nothing.
+- **The probe account's next run checks Azure's order over the U+FDD0 witnesses** — *unrun.* The yardstick's plant
+  now holds U+FDD0 alone, after a letter, before a `0` and after a U+0000 (`OrderPlanted`), and U+0000 at
+  `orders_ascii`'s `s`, and its planted pass compares with them; Azure's order over them is measured nowhere yet, so
+  the planted pass's Azure rows stand on `Service.StringOrderIsCodePoint` until that run is recorded. The order's
+  pinning witnesses (`CosmosOutcomeWitnesses`, String/None) do not hold U+FDD0 or U+FDD0 `0` either, which spec §5
+  promised: added, they fail `CosmosAxiomsTests.EveryAzureClaimHasARecordedRun` until that run reads the cell, and on
+  8083 (2026-11-02) `ADocumentsStringsOrderByCodePoint` read no one answer over them, the harness placing them by a
+  `>` it sends raw. Both for that run; the planted differential's D4–D7 rows hold the emulator's order meanwhile.
+- **The emulator's sorts, extremes and orderings over U+0000 could be recovered** — *an optimisation, for the owner.*
+  An ascending split by the exact holds-U+0000 test, `CONTAINS(p, U+FDD0 '0')`, with a per-feed-range reader, would
+  push the rows free of it in order and the rest apart; a `<` weakened with that test would keep an ordering against a
+  parameter pushed. The owner cut both on 2026-11-01 ("Cut it"): the emulator is the adapter's own test target, and
+  Azure is unaffected. Not soundness.
+- **The gate fails five statements over `v` on EN20261008** — *found, not this fix's.* On 8085, `19d0565` and the fix
+  alike, `ORDER BY v` in process, `DISTINCT v` and the like answer `9.223372036854776E18` where Calcite reads
+  `9223372036854775808` (the double 2^63 printed two ways), classified as rows rather than as the finding of its own
+  the yardstick holds apart. The default run passes. Read the image's printing against the `PrintedTwoWays` table.
+- **An in-process sort over text holding U+0000 can raise** — *calcite-dotnet's.* With the emulator's sort over
+  `t` refused, the gate's `ORDER BY c."$.category", t NULLS FIRST OFFSET 1` over `orders_ascii` is sorted by the CLR
+  runtime, which raises "Failed to compare two elements in the array" over the plant's U+0000 (culture comparison,
+  the merge item's `JavaComparisons.Compare`); Calcite raises the same over the statement, so it is not judged.
 - **O7's losses at the switch** — *small each, Stage 3 unless named.* The translator's weakenings S does not reproduce,
   each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1); a compound
   compared with `TRUE` or `FALSE`, read as opaque, as nothing (loss 3); `LIKE`'s string branch, as presence (loss 4, with

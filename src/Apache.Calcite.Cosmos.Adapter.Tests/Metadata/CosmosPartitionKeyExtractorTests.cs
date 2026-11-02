@@ -326,6 +326,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             fraction.Should().Equal(5.5d);
         }
 
+        // ── Under the emulator ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Under the emulator an id holding U+0000 is not read by its id, alone or in a batch, and a key value holding one
+        /// neither completes a key nor routes: the emulator stores it as U+FDD0 <c>0</c>, a point read of it is a 500, and a
+        /// header carrying it was not measured (<c>Service.EmulatorPointReadOfAnEscapedId</c>). Azure reads and routes on it.
+        /// </summary>
+        /// <remarks>
+        /// No U+FDD0 literal can be written, Calcite casting it to ISO-8859-1, and only a literal reaches a point read, so
+        /// U+0000 is the one asked; the decline is the same test of either (<c>EmulatorStoredText.Escapes</c>).
+        /// </remarks>
+        [Fact]
+        public void AnIdOrAKeyHoldingU0000IsNeitherReadNorRoutedUnderTheEmulator()
+        {
+            var azure = Container("/category");
+            var emulator = Container("/category").WithServiceTarget(CosmosServiceTarget.Emulator);
+
+            var read = And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("a\0")));
+            CosmosPartitionKeyExtractor.TryExtractPointRead(read, Fields, null, azure, "c", out _, out var id).Should().BeTrue();
+            id.Should().Be("a\0");
+            CosmosPartitionKeyExtractor.TryExtractPointRead(read, Fields, null, emulator, "c", out _, out _).Should().BeFalse();
+            CosmosPartitionKeyExtractor.TryExtractPointRead(And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("a"))), Fields, null, emulator, "c", out _, out _)
+                .Should().BeTrue("an id holding neither character is its own spelling");
+
+            var set = And(Eq(Ref(1), Str("bikes")), Or(Eq(Ref(3), Str("a")), Eq(Ref(3), Str("\0"))));
+            ExtractSet(set, azure, out _, out var ids).Should().BeTrue();
+            ids.Should().BeEquivalentTo(["a", "\0"]);
+            ExtractSet(set, emulator, out _, out _).Should().BeFalse();
+
+            var key = Eq(Ref(1), Str("bikes\0"));
+            Extract(key, azure, out var values).Should().BeTrue();
+            values.Should().Equal("bikes\0");
+            Extract(key, emulator, out _).Should().BeFalse();
+            ExtractPrefix(key, emulator, out _).Should().BeFalse();
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(key, Fields, null, emulator, "c", out _).Should().BeFalse();
+            Extract(Eq(Ref(1), Str("bikes")), emulator, out _).Should().BeTrue();
+        }
+
         // ── Not recovered ─────────────────────────────────────────────────────────
 
         /// <remarks>

@@ -206,6 +206,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             FluentActions.Invoking(() => Bound(JsonValues.Of("a\uD800"))).Should().Throw<CosmosTranslationException>();
         }
 
+        /// <summary>
+        /// The emulator stores a member's name escaped as it stores a value, so where the target stores spelled a path
+        /// naming U+0000 or U+FDD0 is refused, and printed as it is elsewhere.
+        /// </summary>
+        [Fact]
+        public void APathNamingAnEscapeIsRefusedWhereTheTargetStoresSpelled()
+        {
+            foreach (var name in new[] { "m\0", "m﷐" })
+            {
+                var path = JsonDocumentPath.Root.Property(name);
+                var paths = new Dictionary<string, JsonDocumentPath> { [SqlValue.Spell(path)] = path };
+                var form = ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(path), JsonValues.Of("v"));
+
+                FluentActions.Invoking(() => RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList(), stored: true)).Should().Throw<CosmosTranslationException>(name);
+                RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList()).Should().Contain(Alias + "[");
+            }
+        }
+
     }
 
 }

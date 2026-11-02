@@ -3148,7 +3148,24 @@ JSON type — undefined, null, false, true, numbers, strings, arrays, objects; `
 value, int64 exactly, and strings by code point. Across partitions the SDK merges the streams by
 `String.CompareOrdinal`, UTF-16 code units, which is also Calcite's order. Measured on the emulator and on the probe
 account, one partition and two. A proof here never depends on how many partitions a container has, because it makes
-the three agree over the values the facts admit.
+the three agree over the values the facts admit. Under `Emulator`, over text that may hold U+0000, the partition's order
+is not that: it orders E(s), U+0000 as U+FDD0 `0` above every unit from U+0001 to U+FDCF, and the SDK merges those
+streams by code unit over the decoded values, so `DESC` across partitions gives `a, \0, b` and `MAX` `a` where Calcite
+gives `b, a, \0` and `b` (splitprobe). No proof there rests on the merge: R1 refuses such a key (*The emulator's
+U+0000, refused*).
+
+**The emulator's U+0000, refused.** Which order a target runs is its measured row, read as S reads it: a set whose
+`Service.StringOrderIsCodePoint` row answers `StoredCodePoint` stores spelled (`CosmosRendering.StoresSpelled`), and
+every order question takes the statement's set (`OrderBy`, `Extreme`, `Compare`, from `CosmosRendering.SetFor` of the
+container written to). E keeps code point order between strings neither of which holds U+0000, and reverses a pair
+only where U+0000 meets a unit from U+0001 to U+FDCF at the first difference; U+FDD0's escape is an equality and spelling
+defect, never an order one. So under that set a sort key or an extreme's operand that may hold U+0000 is refused in
+both directions — no value certifies the rows around a U+0000, and the merge breaks a carry — and so is an ordering
+comparison either side of which may: two paths, a path and a literal, a computed text, or anything against a
+parameter, which may always hold one, outright, nothing weaker sent and no anchor read (owner, 2026-11-01: "Cut it";
+the emulator is the adapter's own test target, so its smallest sound rule wins). Equality needs nothing: in the
+stored spelling it is exact. Under Azure none of
+this is reached, and its plans are byte-equal.
 
 **Four rules decide every reading.**
 - **R1, characters.** Code point order and UTF-16 order part only where a surrogate meets a unit from U+E000: at the
@@ -3576,7 +3593,8 @@ three things; a review measured a fourth, and three functions that part over som
   string, where `%a%b%`, `%_b%`, `%b`, `a%b` and `a_b` keep it. A search holding U+0000 matches every string, and
   `REPLACE` of one replaces every byte. `INDEX_OF`, `STARTSWITH`, `ENDSWITH`, `LENGTH`, the comparisons, the order and a
   replacement holding U+0000 read past it (`Service.NulEndsWhatReplaceAndContainsRead`). The emulator stores U+0000 as
-  U+FDD0 followed by `0`, so there every function over one differs, and nothing is learned of the service.
+  U+FDD0 followed by `0`, and U+FDD0 as U+FDD0 followed by `1`, and its functions work on those units; what that asks
+  is below, and nothing of it is learned of the service.
 - **Not a character: a window's start, a repetition's count, a replacement's search.** Calcite clips a window that
   starts before the string, `SUBSTRING('abc' FROM 0 FOR 2)` being `a`, and the service answers a negative start with the
   empty string projected (`Service.SubstringOfANegativeStartIsEmpty`) — in a `WHERE` on Azure, compared with `''`, for
@@ -3620,6 +3638,22 @@ it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the f
 asks the same of its pattern's text (`FoldsAlike`), the case mapping's class named once for both. Where one is not
 proved the translation is refused, and the function stays in process over the value the service sends, which is what a
 path declared nothing of always did; the rest of the statement pushes.
+
+**On the emulator a function over a stored escape stays in process.** The emulator stores U+0000 as U+FDD0 `0` and
+U+FDD0 as U+FDD0 `1` (`EmulatorStoredText`), and measured on both images (`reports/emu-nul/spec.md`, D8 to D13) its
+functions work on those units: `LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` count them, `REVERSE` reverses them, `INDEX_OF`
+counts them, a `LIKE` `_` matches one and a `0` or `1` matches an escape's second, the fold's `ENDSWITH` and `CONTAINS`
+likewise, and a U+0000 the service makes itself — a `CONCAT` of a sent and a stored one, a `REPLACE` — is a 500, while
+`REPLACE` reads stored units. So where the rendering set stores spelled (`CosmosRendering.StoresSpelled`),
+`CosmosStringFunctions.RuleOf(call, set)` asks Z and H — U+FDD0 has no class of its own, and is read as the high band it
+lies in, a gain for the theory to take (`TODO.md`) — of the operands those work on: a count's, beside S; a reversal's;
+`POSITION`'s subject, its second operand; each of `REPLACE`'s three; every operand of a `CONCAT` and a `REPEAT`'s subject,
+a path among them, the exemption of a stored operand cut (owner, 2026-11-01: "Cut it"); and a `LIKE`'s subject where its
+pattern holds a `_`, `0` or `1` beyond a plain prefix, or is not a literal. A pattern holding U+0000 is a constant
+holding an escape, refused outside a comparison already. The fold's `ENDSWITH` and `CONTAINS` are written only for a
+`LIKE` the rule has already seen, so no rule of their own is needed. A constant holding an escape and a parameter that
+may hold text, outside a comparison, were already refused (*What the emulator is sent is what it stores*). Azure's rule is the one above, and no Azure plan moved; the emulator's are recorded in
+`reports/emu-nul/emulator-listing.tsv`.
 
 **What stays in process still reads only what it needs, in a projection.** A declined function over a path's reading
 sends the reading, `{"$f0": (IS_PRIMITIVE(c.s) ? c.s : null)}`, the projection split putting the accessor beneath the
@@ -3821,15 +3855,16 @@ second statement, in order and stopping at the next anchor, never more rows than
 manual's 20.3).
 
 **How it is checked.** `CosmosServiceOrderModelTests` holds every anchored verdict to the reader's own check over the
-model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before
-the last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found
-the last key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe
-account's measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a
-value that is no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite
-inventory's measurements. The eight recorded divergences of string order push again, each held to the reader having
-re-sorted a run or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`), and the yardstick judges every
-order the reader completes (*Differential testing*). `CosmosOrderMergeMeasurementTests` runs the reader through the
-adapter's executor over two physical partitions, on an account that has them.
+model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before the
+last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found the last
+key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe account's
+measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a value that is
+no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite inventory's
+measurements. The eight recorded divergences of string order push again, each held to the reader having re-sorted a run
+or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`) on Azure, the emulator refusing each (*The
+emulator's U+0000, refused*), and the yardstick judges every order the reader completes (*Differential testing*).
+`CosmosOrderMergeMeasurementTests` runs the reader through the adapter's executor over two physical partitions, on an
+account that has them.
 
 **What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under a `NOT` or beneath a
 grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
@@ -6410,7 +6445,32 @@ whatever a path holds, and an ordering is proven only where the import holds no 
 U+0000, and an order is the comparator that sorts them as `ORDER BY` does and places them as `>` beside each does,
 which also parts code point from a comparator that stops reading at U+0000, as Azure's `CONTAINS` does. Azure's order
 is `CodePoint` over them: its `ORDER BY` and its `>` both put U+0000 least and read past it. So the string order is a
-key the targets answer apart, and a set serving both places a string by both comparators.
+key the targets answer apart, and a set serving both places a string by both comparators. The translator's own order
+questions read the same row (*The emulator's U+0000, refused*): a sort, an extreme or an ordering over text that may
+hold U+0000 is declined under `Emulator`, so the order that S proves and the order C# writes agree there.
+
+**What the emulator is sent is what it stores,** E(v): U+0000 as U+FDD0 `0`, U+FDD0 as U+FDD0 `1`. It compares what it
+is sent, unescaped, with E(s) (`Service.EmulatorComparesTheSpellingItIsSent`), so `StoredCodePoint` compares E(a) with
+E(b) by code point, both escapes, and `Place` reads a literal as E of it. A set whose order row answers
+`StoredCodePoint` stores spelled (`CosmosRendering.StoresSpelled`, read off the registry, not learned): its translator
+binds a compared literal as E of it, names a compared parameter stored (`CosmosQuery.Stored`) for the binding to spell,
+and the cursor's recheck reads it back; a lookup key is spelled by the speller. The binding spells a string; a list or
+an object holding either character, bound to a stored name, is refused by name there, its members not spelled. Anywhere
+but a compared position — a projected constant, a `CASE` arm or condition, a `COALESCE` operand, a function's operand —
+a value holding either character, and a parameter that may hold text (a list, a map or a row among them), is refused:
+the emulator returns what it stores decoded (`Service.EmulatorDecodesWhatItReturns`, M6), a raw U+0000 returned is a
+500, and a U+0000 made from a path is a 500 too (`Service.EmulatorFailsANulMadeFromAPath`). Sending a returned constant
+in E, which M6 measured comes back as written, was cut for the smaller rule (owner, 2026-11-01: "Cut it"). A full-text
+function or `REGEXMATCH` given such a parameter has no body in process, so that statement fails where Azure's answers:
+kept, no sent form being shown to answer as Azure's does there. A function over a stored value that may hold either is
+asked so too (*What a string function computes, asked of its characters*). A member's name is stored in E as well, so
+a path naming one that holds either, written as it is, reads nothing: it binds no path (`CosmosRexTranslator.NamesAnEscape`,
+`CosmosImplementor.BindFields`), a projection or an aggregate whose row names one is not converted, and the builder
+refuses such an alias. A point read of E(`id`) was measured only where it aliases (`Service.EmulatorPointReadOfAnEscapedId`),
+and a route by a header carrying either not at all, so an `id` or key holding one is queried. A point delete or
+replace of one misaddresses, measured on both images: a 500, a 404, or another document written; so a write's cursor
+stops raising at a row whose `id` or key holds either, before writing it (`CosmosCursors.Unaddressable`), the rows
+before it written as a failure part-way always leaves them. Azure stores as written, and none of this reaches it.
 
 **A composite is checked by composing its atoms** through `ServiceLeaf` and `ServiceCompound` on the table S settles for
 each target it names, and is the measured answer on each, every atom it reads being measured definite on both. A

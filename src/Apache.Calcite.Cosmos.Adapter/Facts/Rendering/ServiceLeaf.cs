@@ -131,11 +131,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static CosmosValueClass Side(int order) => order < 0 ? CosmosValueClass.Below : order > 0 ? CosmosValueClass.Above : CosmosValueClass.Equal;
 
-        /// <summary>Two strings under a comparator of strings, the one the harness holds the service's order to.</summary>
+        /// <summary>
+        /// Two strings under a comparator of strings, the one the harness holds the service's order to. Under the emulator's,
+        /// the stored value against the literal as the statement sends it, each in the stored spelling with both escapes
+        /// (<see cref="EmulatorStoredText.Of"/>): what it compares, measured (<c>Service.EmulatorComparesTheSpellingItIsSent</c>).
+        /// </summary>
         internal static int Compare(CosmosAnswer comparator, string a, string b) => comparator switch
         {
             CosmosAnswer.Utf16 => string.CompareOrdinal(a, b),
-            CosmosAnswer.StoredCodePoint => ByCodePoint(a.Replace("\0", (char)0xFDD0 + "0"), b.Replace("\0", (char)0xFDD0 + "0")),
+            CosmosAnswer.StoredCodePoint => ByCodePoint(EmulatorStoredText.Of(a), EmulatorStoredText.Of(b)),
             _ => ByCodePoint(a, b),
         };
 

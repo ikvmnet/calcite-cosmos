@@ -72,6 +72,12 @@ property is nullable as far as the planner knows, so in practice:
   line; or whole, where the path is not indexed. The same holds of `RETURNING BIGINT` over an integer
   nothing bounds, checked for a number past 2^53. Grouped, there is no one row to check, and it runs in
   process unless the characters are declared.
+- **On the emulator, `MIN` and `MAX` over text that may hold U+0000 run in process**, grouped or not.
+  The emulator stores U+0000 as U+FDD0 `0`, after every character from U+0001 to U+FDCF, and takes the
+  extreme of what it stores: `MIN(c."id")` comes back as U+0001 where SQL's is U+0000, and across
+  partitions the SDK picks the extreme of the per-partition answers by that order too, so no answer
+  certifies itself. A schema that keeps U+0000 out (Chapter 9.3) keeps them pushed. Azure stores every
+  string as written and is unaffected (Appendix E).
 
 ```sql
 SELECT MIN(JSON_VALUE(c."DOC", '$.year' RETURNING INTEGER)) FROM "books" AS c

@@ -106,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known, groupSet.isEmpty() == false) == false)
+                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known, groupSet.isEmpty() == false, convention.Container.ServiceTarget) == false)
                     return false;
 
                 var arguments = call.getArgList();
@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var aggregate = (Aggregate)rel;
 
-            if (CosmosImplementor.TryBindOutput(aggregate.getInput(), out _, out _, out _, out _, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(aggregate.getInput(), out _, out _, out _, out _, out var container) == false || CosmosImplementor.NamesAnEscape(aggregate.getRowType(), container))
                 return null;
 
             // Built under the facts the legality test decided under, which the node asks again.

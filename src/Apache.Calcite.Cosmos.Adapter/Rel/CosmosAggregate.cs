@@ -70,9 +70,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="facts">What every row aggregated is known to satisfy (L1), which an extreme is asked of.</param>
         /// <param name="grouped">Whether the aggregate groups, so that an extreme is one per group: one the plan proves only
         /// around anchors is checked as the row arrives, and only an ungrouped aggregate has one row to check.</param>
+        /// <param name="target">The service the container's statements run on, whose measured string order an extreme reads.</param>
         /// <returns><c>true</c> if the call may be pushed down; otherwise <c>false</c>.</returns>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public static bool CanImplement(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, bool grouped)
+        public static bool CanImplement(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, bool grouped, CosmosServiceTarget target)
         {
             if (call is null)
                 throw new ArgumentNullException(nameof(call));
@@ -113,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     // skip the same values: asked once, of the facts the rows aggregated satisfy. See
                     // CosmosServiceOrder.Extreme, and ExtremeOf for the operand. One proved only around anchors is
                     // checked as the row arrives (CosmosOrderExtreme), which needs the one row an ungrouped aggregate has.
-                    return ExtremeVerdict(call, inputRowType, fields, readings, facts) is { } verdict
+                    return ExtremeVerdict(call, inputRowType, fields, readings, facts, CosmosRendering.SetFor(target)) is { } verdict
                         && (verdict.IsProved || verdict.IsAnchored && grouped == false);
 
                 case SqlKind.__Enum.AVG:
@@ -224,14 +225,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Asks whether the service's <c>MIN</c> or <c>MAX</c> of a call's argument is Calcite's, or returns <c>null</c>
         /// for a call that is neither, or whose argument binds no path.
         /// </summary>
-        static CosmosOrderVerdict? ExtremeVerdict(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts)
+        static CosmosOrderVerdict? ExtremeVerdict(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, Facts.Rendering.RenderingSet set)
         {
             var arguments = call.getArgList();
             if ((SqlKind.__Enum)call.getAggregation().getKind().ordinal() is not (SqlKind.__Enum.MIN or SqlKind.__Enum.MAX) || arguments.size() != 1)
                 return null;
 
             return ExtremeOf(((java.lang.Integer)arguments.get(0)).intValue(), inputRowType, fields, readings) is CosmosOrderOperand operand
-                ? CosmosServiceOrder.Extreme(facts, operand)
+                ? CosmosServiceOrder.Extreme(facts, operand, set)
                 : null;
         }
 
@@ -409,7 +410,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CanImplement(call, inputRowType, fields, inputReadings, facts, grouped) == false)
+                if (CanImplement(call, inputRowType, fields, inputReadings, facts, grouped, implementor.Container.ServiceTarget) == false)
                     throw new CosmosTranslationException($"Aggregate '{call}' has no faithful Cosmos equivalent.");
 
                 var name = (string)names.get(output++);
@@ -418,7 +419,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 // An extreme proved only around anchors, which the reader checks and, where it is none, reads again: in its
                 // argument's order where the service orders by the path, which may then stop at the first anchor.
-                if (ExtremeVerdict(call, inputRowType, fields, inputReadings, facts) is { IsAnchored: true } verdict)
+                if (ExtremeVerdict(call, inputRowType, fields, inputReadings, facts, CosmosRendering.SetFor(implementor.Container.ServiceTarget)) is { IsAnchored: true } verdict)
                 {
                     var argument = ((java.lang.Integer)call.getArgList().get(0)).intValue();
                     var path = fields[argument]!;

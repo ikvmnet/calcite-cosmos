@@ -10,6 +10,7 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
 
 using Apache.Calcite.Extensions.Runtime;
 
@@ -150,6 +151,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// A stream in the emulator's stored order, one partition: U+0000 stored as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0
+        /// <c>1</c>, by code point, so <c>\0</c> and <c>\0a</c> come after U+E000. A <see cref="CosmosOrderAnchor.Text"/>
+        /// anchor takes them for anchors and keeps U+E000 ahead of them, where Calcite puts them first: no value certifies
+        /// the rows around a U+0000 there, which is why a sort over text that may hold one is refused under the emulator
+        /// (<see cref="CosmosServiceOrder.OrderBy"/>). Azure's streams stay as they are.
+        /// </summary>
+        [Fact]
+        public async Task UnderTheEmulatorATextAnchorTakesAU0000ForOne()
+        {
+            string[] stream = ["a", "\uE000", "\0", "\0a", "\uFDD0", "\U0001F600"];
+            stream.Select(EmulatorStoredText.Of).Should().BeInAscendingOrder(Comparer<string>.Create(ServiceOrderModel.CompareCodePoints), "the emulator's stored order");
+
+            (await Read(new StubExecutor(_ => stream.Select(Row)), new CosmosQuery(Statement, [], Order: Sort())))
+                .Should().Equal(["a", "\uE000", "\0", "\0a", "\U0001F600", "\uFDD0"], "a Text anchor takes U+0000 for one, after U+E000");
+        }
+
+/// <summary>
         /// The stream the probe account returned over two physical partitions, one holding characters from both sides
         /// of U+D800: each partition by code point, merged by the SDK by UTF-16 code unit, range 0 first on a tie — in
         /// neither order, and in Calcite's once read.

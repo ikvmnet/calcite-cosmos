@@ -108,6 +108,11 @@ read, and a container is not less deletable for lacking a predicate over its key
 
 A document already gone when its delete arrives is not counted, and is not an error.
 
+On the emulator, which stores U+0000 and U+FDD0 in another spelling, a point write cannot address a
+document whose `id` or partition key holds either: it answers another document, or none. A `DELETE` or
+`UPDATE` reaching such a row stops there and raises, leaving the rows before it written (13.6), and a
+whole-partition delete naming such a key raises before deleting. Azure writes them as any other.
+
 ### Deleting a whole partition
 
 A `DELETE` whose predicate pins exactly the complete partition key, and nothing else:

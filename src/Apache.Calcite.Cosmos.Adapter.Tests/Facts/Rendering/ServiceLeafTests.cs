@@ -182,6 +182,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
         }
 
+        /// <summary>
+        /// Under the emulator's order the literal is compared as the statement sends it, in the stored spelling, both
+        /// escapes on both sides (h03-kill §2, D14): a stored U+0000 is not the stored U+FDD0 <c>0</c>, which the one escape
+        /// alone spelled alike, and a stored U+FDD0 equals the literal U+FDD0 sent as U+FDD0 <c>1</c>.
+        /// </summary>
+        [Fact]
+        public void TheStoredOrderEscapesU0000AndUFDD0Both()
+        {
+            var (fdd0, aliased) = ("﷐", "﷐" + "0");
+            ServiceLeaf.Compare(CosmosAnswer.StoredCodePoint, "\0", aliased).Should().BeLessThan(0, "U+FDD0 0 against U+FDD0 1 0");
+            ServiceLeaf.Compare(CosmosAnswer.StoredCodePoint, fdd0, fdd0).Should().Be(0);
+            ServiceLeaf.Compare(CosmosAnswer.StoredCodePoint, fdd0, fdd0 + "\u0001").Should().BeLessThan(0, "U+FDD0 1 is a prefix of U+FDD0 1 U+0001");
+
+            var table = ProbeRows.TableOf(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }
+                .Select(side => Row(CosmosServiceTest.Equal, CosmosValueClass.String, side, side == CosmosValueClass.Equal ? CosmosAnswer.True : CosmosAnswer.False))
+                .Append(Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, CosmosAnswer.StoredCodePoint)));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("\0"), CutKind.Literal), new CutPoint(Of(fdd0), CutKind.Literal)));
+            var equal = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(aliased)), cells, table, ValueSet<string>.Empty);
+            At(equal, Of("\0")).Should().Be(ServiceOutcomes.False, "the one escape spelled U+0000 as the literal U+FDD0 0");
+            At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(fdd0)), cells, table, ValueSet<string>.Empty), Of(fdd0)).Should().Be(ServiceOutcomes.True);
+        }
+
+        /// <summary>
+        /// A range is placed by its bounds against the literal, which keeps its order in the stored spelling wherever neither
+        /// holds U+0000 (h03-kill §2): strings with no U+0000 up to U+FDD0 lie below U+FDD0 U+0001, as each spelled is below
+        /// U+FDD0 1 U+0001, the literal as it is sent.
+        /// </summary>
+        [Fact]
+        public void TheStoredOrderPlacesARangeWithoutU0000ByItsBounds()
+        {
+            var table = Less(CosmosAnswer.StoredCodePoint, CosmosAnswer.True);
+            var (fdd0, above) = (Of("﷐"), Of("﷐\u0001"));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(JsonCharacterBand.HighBmp), ValueSet.Of(new CutPoint(fdd0, CutKind.Literal), new CutPoint(above, CutKind.Literal)));
+            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, above), cells, table, ValueSet<string>.Empty);
+            At(less, fdd0).Should().Be(ServiceOutcomes.True);
+            At(less, new PathCell.Strings(null, fdd0, ValueSet<string>.Empty, ClassSet(JsonCharacterBand.HighBmp)).Text).Should().Be(ServiceOutcomes.True);
+        }
+
         /// <summary>An entry of two answers means both; an order of two comparators places a cell by each.</summary>
         [Fact]
         public void AMultiValuedEntryAnswersTheUnion()

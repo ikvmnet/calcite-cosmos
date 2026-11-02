@@ -36,8 +36,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Numeric,
 
         /// <summary>
-        /// Strings ordered by code point as the emulator stores them, a U+0000 as U+FDD0 followed by <c>0</c>
-        /// (<c>Service.StringOrderIsCodePoint</c>).
+        /// Strings ordered by code point as the emulator stores them, a U+0000 as U+FDD0 followed by <c>0</c> and a U+FDD0
+        /// as U+FDD0 followed by <c>1</c> (<see cref="EmulatorStoredText"/>, <c>Service.StringOrderIsCodePoint</c>); a value
+        /// compared with them is compared as it is sent, so a statement sends it in that spelling.
         /// </summary>
         StoredCodePoint,
 

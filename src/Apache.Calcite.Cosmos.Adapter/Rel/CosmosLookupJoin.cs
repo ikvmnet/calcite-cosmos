@@ -315,8 +315,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
 
-            if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, container => Facts ?? CosmosOracle.For(container.Facts).Declared, out var key) == false)
+            var spelled = false;
+            if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, container => { spelled = Metadata.CosmosRendering.StoresSpelled(container.ServiceTarget); return Facts ?? CosmosOracle.For(container.Facts).Declared; }, out var key) == false)
                 throw new Sql.CosmosTranslationException("The lookup key can no longer be restricted.");
+
+            // A key the service compares with the path, sent in the stored spelling of the container's target where it has
+            // one, the emulator's; the documents come back decoded, so the probe rows match their keys as before.
+            var spell = key.Uuid is { } uuid ? CosmosLookup.SpellUuid(uuid) : null;
+            if (spelled)
+                spell = CosmosLookup.SpellStored(spell);
 
             var (query, paths, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
 
@@ -341,7 +348,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 getJoinType() == JoinRelType.LEFT
                     ? UnmatchedSelector(physType, buildPhysType, buildType)
                     : Expression.Constant(null, typeof(Func<,>).MakeGenericType(buildType, physType.RowType)),
-                Expression.Constant(key.Uuid is { } uuid ? CosmosLookup.SpellUuid(uuid) : null, typeof(Func<object, object?>)),
+                Expression.Constant(spell, typeof(Func<object, object?>)),
             ]);
         }
 

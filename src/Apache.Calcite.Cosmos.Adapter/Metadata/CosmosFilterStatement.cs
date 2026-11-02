@@ -279,7 +279,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>Prints a form S chose for a conjunct into a list, over the paths the conjunct reads.</summary>
         string Print(int conjunct, ServiceForm form, CosmosParameterList parameters) =>
-            RenderingPrinter.Print(form, Statement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters);
+            RenderingPrinter.Print(form, Statement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters, CosmosRendering.StoresSpelled(_container.ServiceTarget));
 
         /// <summary>
         /// Whether the printer writes a form S chose for a conjunct: legality, read before S's admission stands, so that

@@ -140,6 +140,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (@out is not CosmosConvention convention || CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out _, out var container) == false)
                 return null;
 
+            if (CosmosImplementor.NamesAnEscape(project.getRowType(), container))
+                return null;
+
             // Built under the facts the legality test decided under, which the node renders with.
             return new CosmosProject(
                 project.getCluster(),

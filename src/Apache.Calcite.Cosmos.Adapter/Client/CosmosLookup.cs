@@ -104,6 +104,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Returns the function writing a key in the stored spelling of a target that has one, the emulator's
+        /// (<see cref="Facts.EmulatorStoredText"/>), after the spelling it is given: a string key holding U+0000 or U+FDD0
+        /// is compared with the path as the service stores it, measured exact for <c>IN</c>
+        /// (<c>Service.EmulatorComparesTheSpellingItIsSent</c>), and any other key is its own spelling.
+        /// </summary>
+        /// <param name="spell">The spelling the key is written in first, or <c>null</c> for the key itself.</param>
+        /// <returns>The spelling function.</returns>
+        public static Func<object, object?> SpellStored(Func<object, object?>? spell)
+        {
+            return key => (spell is null ? key : spell(key)) switch
+            {
+                string text => Facts.EmulatorStoredText.Of(text),
+                var other => other,
+            };
+        }
+
+        /// <summary>
         /// Builds the statement for one batch by binding its keys.
         /// </summary>
         /// <remarks>

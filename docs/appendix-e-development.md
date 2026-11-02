@@ -33,7 +33,7 @@ statements Azure rejects and to reject features Azure implements:
 | `SUBSTRING`, `LEFT`, `RIGHT` and `INDEX_OF` over a character beyond U+FFFF | count code points | count UTF-16 units, as Calcite does, and send half of a split pair as U+FFFD |
 | `UPPER('\u017F')`, `LOWER('\u0130')`, `LOWER('\u212A')` | `S`, `i`, `k` | left as they are |
 | `TRIM`, `LTRIM`, `RTRIM` | remove white space but U+0085, U+00A0, U+180E, U+2007 and U+202F | remove those too |
-| a string holding U+0000 | stored as U+FDD0 followed by `0`, so `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
+| a string holding U+0000 or U+FDD0 | stored as U+FDD0 followed by `0` or `1`, a member's name too, and compared with what it is sent unescaped: the adapter sends a compared value — a literal, a parameter, a lookup key — in that spelling, so `=`, `IN`, `<>` and `STARTSWITH` answer exactly, and queries an `id` or key holding either rather than reading or routing on it; a constant or parameter anywhere else, a path or a selected column named with either, is computed in process, a raw U+0000 returned being a 500; a `DELETE` or `UPDATE` stops, raising, at a row whose `id` or key holds either, whose point write would answer another document or none (Chapter 13); sorts and compares in that spelling, U+0000 after every character from U+0001 to U+FDCF, so a text sort, `MIN`, `MAX` or ordering over text that may hold U+0000, or against a parameter, runs in process (Chapters 8.7, 9.3, 10); and `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
 | `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500 `PostgresError(E22P05)`; so does a `CONCAT` of one | replaces with it as written |
 | `REPLICATE` past 10,000 code points | repeats on | undefined |
 | a container's document count | always zero | the count, lagging recent writes |
@@ -162,6 +162,16 @@ Apache.Calcite.Cosmos.Adapter.Tests.exe \
 - **`COSMOS_MEASUREMENT_LOG`** receives every smallest failing statement with its family and what it
   sent, and **`COSMOS_ORDER_TRACE`** names a file that receives one line per statement — container,
   form, what was pushed, the verdict and the family — for comparing two commits.
+
+Under the emulator, which stores U+0000 and U+FDD0 in another spelling (the table above), the class
+also plants documents holding both, in values, an `id`, a partition key and a member's name:
+**`EveryPlantedStatementAnswersAsCalcite`** asks the statements that meet them,
+**`EveryPlantedPredicatePartitionsTheRows`** partitions the generated predicates over them, the
+yardstick asks its orders over them too, and **`APlantedWriteStopsAtAnIdItCannotAddress`** holds a write
+reaching such an `id` to raising. The floors are read per target, an Emulator floor lower by exactly the
+pushes the emulator's spelling refuses, each named in `TODO.md`. On an emulator the database is named
+per run and deleted at its end, so two runs on one emulator never share it; on an account it is one
+name, which a run killed part-way leaves for the next to reuse.
 
 `CosmosServiceOrderModelTests` asks the same question with no service at all: a model of each
 partition's order, the SDK's merge and Calcite's, over every value a fact set admits. Its sweep,

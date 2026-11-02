@@ -30,12 +30,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
         /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
-        public static IEnumerable<Statement> All(int partitionedPredicates, CosmosReasoning? reasoning = null)
+        /// <param name="target">The service every container's statements are planned for: Azure, or the emulator, as an emulator leg plans.</param>
+        public static IEnumerable<Statement> All(int partitionedPredicates, CosmosReasoning? reasoning = null, CosmosServiceTarget target = CosmosServiceTarget.Azure)
         {
-            foreach (var statement in Corpus(reasoning))
+            foreach (var statement in Corpus(reasoning, target))
                 yield return statement;
 
-            var containers = CosmosDifferentialTests.Containers.Select(c => reasoning is null ? c : c.WithReasoning(reasoning)).ToArray();
+            var containers = CosmosDifferentialTests.Containers.Select(c => (reasoning is null ? c : c.WithReasoning(reasoning)).WithServiceTarget(target)).ToArray();
             foreach (var statement in Differential("differential", CosmosDifferentialTests.Statements, containers))
                 yield return statement;
 
@@ -83,9 +84,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>The planner corpus, planned through one harness.</summary>
         /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
-        public static IEnumerable<Statement> Corpus(CosmosReasoning? reasoning = null)
+        /// <param name="target">The service every container's statements are planned for.</param>
+        public static IEnumerable<Statement> Corpus(CosmosReasoning? reasoning = null, CosmosServiceTarget target = CosmosServiceTarget.Azure)
         {
-            var harness = new PlannerHarness(reasoning);
+            var harness = new PlannerHarness(reasoning, target);
             foreach (var query in PlannerQueries.All)
                 yield return new("corpus", query.Name, query.Sql, () => harness.PlanToAsync(query.Sql));
         }

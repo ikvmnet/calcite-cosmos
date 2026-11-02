@@ -329,7 +329,10 @@ completed as the rows arrive: the reader checks each key, a page's edges, an ext
 character at or above U+D800, and reads the statement again where one is (Chapter 9.3) — a scan of each key
 on ordinary text, and a second request only where such a character lands where it matters (Chapter 19.8).
 A grouped `MIN` or `MAX` is not checked, and needs the ✔. **✘** stays in process: the rows a comparison of
-two paths drops never arrive to be checked.
+two paths drops never arrive to be checked. These are Azure's; on the emulator, which stores U+0000 after
+every character from U+0001 to U+FDCF, a sort, an extreme or a comparison over strings that may hold
+U+0000, and any comparison with a parameter, stays in process, so a pattern starting at `\u0001` is the
+one that keeps them pushed there (Chapter 9.3, Appendix E).
 
 A literal compares exactly in every row because, under the default charset, it holds nothing at or
 above U+0100 (Chapter 8.3).
@@ -356,7 +359,10 @@ push over the path:
 `UPPER(x) LIKE '%A%'` asks both its columns: the service's case-insensitive `CONTAINS` folds the
 service's way, so the string has to be ASCII, and it stops at a U+0000, so it has to hold none. The
 first two rows prove both, and it is sent as `CONTAINS(c.x, @p0, true)`; a `LIKE` of any other shape —
-`'a%'`, `'a_b'`, `'%a%b%'` — pushes over any declared string, `_` being one code point to both.
+`'a%'`, `'a_b'`, `'%a%b%'` — pushes over any declared string, `_` being one code point to both. On the
+emulator, which stores U+0000 and U+FDD0 as two units each, a count, a window, a `LIKE` holding `_`, `0`
+or `1` beyond a prefix, and the other functions Appendix B.2 names push only over strings holding neither,
+and U+FDD0 lies above U+E000, so the rows proving nothing beyond U+FFFF do not prove it (Appendix B.2).
 
 Proved when the plan is made, with nothing checked as the rows arrive. In process means Calcite computes
 the function over the string the service sends: in a projection the path alone is still read at the

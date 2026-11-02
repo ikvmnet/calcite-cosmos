@@ -70,6 +70,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly JsonFactSet _facts;
 
         /// <summary>
+        /// Whether the container's target stores a string in another spelling than it is sent, the emulator's
+        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(Metadata.CosmosServiceTarget)"/>). Then a compared operand is
+        /// sent stored (<see cref="_comparing"/>), and anything else that may hold U+0000 or U+FDD0 (a constant, a text
+        /// parameter, a member's name) is computed in process: DESIGN.md, <i>What the emulator is sent is what it
+        /// stores</i>.
+        /// </summary>
+        readonly bool _spelled;
+
+        /// <summary>
+        /// Whether the operand being written stands in a compared position (<see cref="_spelled"/>): set by the writer
+        /// of a comparison, of a pattern or of a search, for its value operand alone, and cleared beneath any call but a
+        /// cast, which hands the value on.
+        /// </summary>
+        bool _comparing;
+
+        /// <summary>
         /// Gets what is known of the documents this expression is evaluated over: the facts the
         /// caller's licence admits, or where it named none, what the container declares of every
         /// document.
@@ -92,6 +108,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </para>
         /// </remarks>
         internal JsonFactSet Facts => _facts;
+
+        /// <summary>
+        /// The set the statement is sent under, its container's target's (<see cref="Metadata.CosmosRendering.SetFor"/>),
+        /// whose measured string order an ordering comparison reads; Azure's for a translator built without a container,
+        /// which only resolves paths and decides no order.
+        /// </summary>
+        internal Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet Set => _container is null ? Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production : Metadata.CosmosRendering.SetFor(_container.ServiceTarget);
 
         /// <summary>
         /// Initializes a new instance.
@@ -138,6 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _ownRow = ownRow;
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
+            _spelled = container is not null && Metadata.CosmosRendering.StoresSpelled(container.ServiceTarget);
         }
 
         /// <summary>
@@ -194,6 +218,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="path">On success, the resolved path.</param>
         /// <returns><c>true</c> if the expression denotes a path; otherwise <c>false</c>.</returns>
         public bool TryResolvePath(RexNode node, out CosmosPath? path)
+        {
+            // Under the emulator a member's name holding U+0000 or U+FDD0 is stored escaped, and a path naming one written
+            // as spelled reads nothing: it is no path there, and what reads it is computed in process over the document.
+            if (Resolve(node, out path) && (_spelled == false || NamesAnEscape(path) == false))
+                return true;
+
+            path = null;
+            return false;
+        }
+
+        /// <summary>Whether a path names a member holding U+0000 or U+FDD0, which the emulator stores escaped.</summary>
+        internal static bool NamesAnEscape(CosmosPath? path)
+        {
+            if (path is not null)
+                foreach (var segment in path.Segments)
+                    if (segment.IsIndex == false && EmulatorStoredText.Escapes(segment.Name!))
+                        return true;
+
+            return false;
+        }
+
+        bool Resolve(RexNode node, out CosmosPath? path)
         {
             switch (node)
             {
@@ -500,7 +546,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return false;
             }
 
-            return value is string text && TryExtendByJsonPath(basePath, text, out path);
+            return value is string text && TryExtendByJsonPath(basePath, text, out path) && (_spelled == false || NamesAnEscape(path) == false);
         }
 
         /// <summary>
@@ -905,9 +951,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <b>What each function asks is <see cref="CosmosStringFunctions"/>'s, and only that.</b> A count asks that no
         /// string it counts hold a surrogate, a case mapping that it be ASCII, a trim that it hold nothing the service trims
         /// beside a space; <c>POSITION</c>, <c>REVERSE</c>, <c>CONCAT</c>, <c>REPLACE</c> and <c>REPEAT</c> ask nothing.
-        /// This reads the answer off the facts the translation was licensed (<see cref="Facts"/>), for every input the
-        /// counted argument's characters come from (<see cref="Unproved"/>). Refused, the function stays in process, where
-        /// Calcite computes it over the value the service sends, which is what happens over a path nothing is declared of.
+        /// Under the emulator, which stores U+0000 and U+FDD0 escaped, each that works on the stored units asks that they
+        /// hold neither, of the set the statement is sent under (<see cref="Set"/>). This reads the answer off the facts
+        /// the translation was licensed (<see cref="Facts"/>), for every input the counted argument's characters come from
+        /// (<see cref="Unproved"/>). Refused, the function stays in process, where Calcite computes it over the value the
+        /// service sends, which is what happens over a path nothing is declared of.
         /// </para>
         /// <para>
         /// <b>Asked once, of the whole expression, before anything is written</b>, as a rendering is
@@ -925,7 +973,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || TryResolvePath(call, out _))
                 return;
 
-            if (CosmosStringFunctions.RuleOf(call) is { } rule)
+            if (CosmosStringFunctions.RuleOf(call, Set) is { } rule)
                 foreach (var ordinal in rule.Asked)
                     if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), rule.Refused) is string input)
                         throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {rule.Why}, and nothing proves {input} holds no {rule.Named}.");
@@ -1075,7 +1123,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteDynamicParam(builder, parameter);
                     break;
                 case RexCall call:
-                    WriteCall(builder, call);
+                    var compared = _comparing;
+                    _comparing = compared && KindOf(call) is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST;
+
+                    try
+                    {
+                        WriteCall(builder, call);
+                    }
+                    finally
+                    {
+                        _comparing = compared;
+                    }
+
                     break;
                 default:
                     throw new CosmosTranslationException($"Unsupported expression '{node.getKind().name()}' of type '{node.GetType().Name}'.");
@@ -1106,8 +1165,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="parameter">The parameter to write.</param>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
-            builder.Append(_parameters.Add(SlotOf(parameter)));
+            if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
+                throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
+
+            var name = _parameters.Add(SlotOf(parameter));
+            if (_spelled)
+                _parameters.Spell(name);
+
+            builder.Append(name);
         }
+
+        /// <summary>
+        /// Writes an operand in a compared position (<see cref="_spelled"/>): the value of a comparison, or a pattern or a
+        /// search the service matches against a path.
+        /// </summary>
+        void WriteCompared(StringBuilder builder, RexNode node)
+        {
+            var compared = _comparing;
+            _comparing = true;
+
+            try
+            {
+                Write(builder, node);
+            }
+            finally
+            {
+                _comparing = compared;
+            }
+        }
+
+        /// <summary>
+        /// Returns a value as it is sent: in the stored spelling where the target stores one and the value is compared;
+        /// refused where it holds a character that spelling escapes and is not (<see cref="_spelled"/>).
+        /// </summary>
+        /// <exception cref="CosmosTranslationException">The value holds U+0000 or U+FDD0 outside a compared position.</exception>
+        object? Sent(object? value, bool compared)
+        {
+            if (_spelled == false || EmulatorStoredText.Escapes(value) == false)
+                return value;
+
+            if (compared && value is string text)
+                return EmulatorStoredText.Of(text);
+
+            throw new CosmosTranslationException("Under the emulator a constant holding U+0000 or U+FDD0 is computed in process where the service does not compare it: sent as written a U+0000 fails the statement, and in the stored spelling nothing but a comparison was measured.");
+        }
+
+        /// <summary>
+        /// Whether a parameter of a type may arrive as text or holding text: a character type, one that holds any value,
+        /// or a collection or row, whose elements the binding does not spell (<c>CosmosQueries.Bind</c>).
+        /// </summary>
+        static bool MayHoldText(org.apache.calcite.rel.type.RelDataType? type) =>
+            type?.getSqlTypeName() is not SqlTypeName name
+            || name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.ANY || name == SqlTypeName.VARIANT
+            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN
+            || name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET || name == SqlTypeName.MAP || name == SqlTypeName.ROW;
 
         /// <summary>
         /// Returns the slot a parameter's value is bound into: its ordinal, and the length its type holds a string to.
@@ -1142,13 +1253,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var path = _fields[index]
                 ?? throw new CosmosTranslationException($"Field ordinal {index} is a computed projection and has no document path.");
 
+            if (_spelled && NamesAnEscape(path))
+                throw new CosmosTranslationException($"Under the emulator field ordinal {index} names a member holding U+0000 or U+FDD0, which it stores escaped, and is computed in process.");
+
             path.WriteTo(builder);
         }
 
         void WriteLiteral(StringBuilder builder, RexLiteral literal)
         {
             // Bind rather than inline, so that statement text is independent of data.
-            builder.Append(_parameters.Add(GetLiteralValue(literal)));
+            builder.Append(_parameters.Add(Sent(GetLiteralValue(literal), _comparing)));
         }
 
         /// <summary>
@@ -1753,7 +1867,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         bool WriteJsonConstant(StringBuilder builder, JsonElement value)
         {
-            builder.Append(_parameters.Add(ToParameterValue(value)));
+            builder.Append(_parameters.Add(Sent(ToParameterValue(value), _comparing)));
             return true;
         }
 
@@ -2075,12 +2189,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             WriteBinary(builder, Operand(call, 0), Operand(call, 1), op);
         }
 
-        void WriteBinary(StringBuilder builder, RexNode left, RexNode right, string op)
+        void WriteBinary(StringBuilder builder, RexNode left, RexNode right, string op, bool compared = false)
         {
             builder.Append('(');
-            Write(builder, left);
+            if (compared)
+                WriteCompared(builder, left);
+            else
+                Write(builder, left);
             builder.Append(' ').Append(op).Append(' ');
-            Write(builder, right);
+            if (compared)
+                WriteCompared(builder, right);
+            else
+                Write(builder, right);
             builder.Append(')');
         }
 
@@ -3725,17 +3845,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 builder.Append(written);
                 foreach (var parameter in parameters)
-                    builder.Append(" OR IS_NULL(").Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()))).Append(')');
+                    builder.Append(" OR IS_NULL(").Append(Guard(parameter)).Append(')');
             }
             else
             {
                 foreach (var parameter in parameters)
-                    builder.Append("NOT IS_NULL(").Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()))).Append(") AND ");
+                    builder.Append("NOT IS_NULL(").Append(Guard(parameter)).Append(") AND ");
 
                 builder.Append(written);
             }
 
             builder.Append(')');
+        }
+
+        /// <summary>
+        /// Binds the parameter a comparison's guard tests for null: in the stored spelling where the comparison's is, which
+        /// is null where the value is (<see cref="_spelled"/>).
+        /// </summary>
+        string Guard(org.apache.calcite.rex.RexDynamicParam parameter)
+        {
+            var name = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()));
+            if (_spelled)
+                _parameters.Spell(name);
+
+            return name;
         }
 
         /// <summary>
@@ -4073,7 +4206,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException("An ordering comparison the service answers otherwise than Calcite: " + refused.Reason + ".");
             }
 
-            WriteBinary(builder, left, right, op);
+            WriteBinary(builder, left, right, op, compared: true);
         }
 
         /// <summary>
@@ -4126,6 +4259,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var name = _parameters.Add(SlotOf(parameter));
             var lower = op is ">" or ">=";
             var bound = _parameters.Add(SlotOf(parameter) with { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
+            if (_spelled)
+            {
+                _parameters.Spell(name);
+                _parameters.Spell(bound);
+            }
 
             var exact = $"({expression} {op} {name})";
             builder.Append(exact);
@@ -4159,7 +4297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
         {
             var (l, r) = OrderOperands(left, right);
-            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive);
+            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive, Set);
         }
 
         /// <summary>
@@ -5000,7 +5138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 builder.Append(function).Append('(');
                 Write(builder, StripTextCoercion(value));
-                builder.Append(", ").Append(_parameters.Add(text)).Append(", true)");
+                builder.Append(", ").Append(_parameters.Add(Sent(text, compared: true))).Append(", true)");
                 return;
             }
 
@@ -5009,7 +5147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 builder.Append("STARTSWITH(");
                 Write(builder, StripTextCoercion(Operand(call, 0)));
-                builder.Append(", ").Append(_parameters.Add(pattern.Substring(0, pattern.Length - 1))).Append(')');
+                builder.Append(", ").Append(_parameters.Add(Sent(pattern.Substring(0, pattern.Length - 1), compared: true))).Append(')');
                 return;
             }
 
@@ -5125,7 +5263,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var value = GetLiteralValue(accessor);
 
             if (value is string name)
-                CosmosSql.WritePropertyAccess(builder, name);
+                CosmosSql.WritePropertyAccess(builder, _spelled && EmulatorStoredText.Escapes(name)
+                    ? throw new CosmosTranslationException("Under the emulator a member's name holding U+0000 or U+FDD0 is stored escaped, and an accessor naming one is computed in process.")
+                    : name);
             else if (TryGetArrayIndex(value, out var index))
                 CosmosSql.WriteIndexAccess(builder, index);
             else
@@ -5491,7 +5631,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (call.getType()?.getSqlTypeName() is SqlTypeName type && (type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR) && CosmosStringFunctions.HasVerdict(name) == false)
                 throw new CosmosTranslationException($"{name} is computed in process: what it asks of its operands' characters for the service to answer as Calcite does has not been measured.");
 
-            WriteFunctionCall(builder, call, mapping.Name);
+            // REPLACE's search is matched against the subject, a compared position (_spelled); its replacement is not.
+            WriteFunctionCall(builder, call, mapping.Name, name == "REPLACE" ? 1 : -1);
         }
 
         /// <summary>
@@ -5764,7 +5905,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// Writes a call as <c>NAME(arg, …)</c> over all of its operands.
         /// </summary>
-        void WriteFunctionCall(StringBuilder builder, RexCall call, string name)
+        void WriteFunctionCall(StringBuilder builder, RexCall call, string name, int compared = -1)
         {
             builder.Append(name).Append('(');
 
@@ -5773,7 +5914,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (i > 0)
                     builder.Append(", ");
 
-                Write(builder, Operand(call, i));
+                if (i == compared)
+                    WriteCompared(builder, Operand(call, i));
+                else
+                    Write(builder, Operand(call, i));
             }
 
             builder.Append(')');
@@ -5912,10 +6056,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException("POSITION with a start offset has no Cosmos equivalent.");
 
             // SQL is POSITION(substring IN string); INDEX_OF takes the string first.
+            // The pattern is matched against the string, a compared position (_spelled).
             builder.Append("(INDEX_OF(");
             Write(builder, Operand(call, 1));
             builder.Append(", ");
-            Write(builder, Operand(call, 0));
+            WriteCompared(builder, Operand(call, 0));
             builder.Append(") + 1)");
         }
 
@@ -6099,11 +6244,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 var other => throw new CosmosTranslationException($"The edit distance of CLR_FT_FUZZY must be a whole number, and '{other}' is not one."),
             };
 
-            builder.Append(_parameters.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            builder.Append(_parameters.Add(Sent(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["term"] = text,
                 ["distance"] = distance,
-            }));
+            }, compared: false)));
         }
 
         void WriteRrf(StringBuilder builder, RexCall call)

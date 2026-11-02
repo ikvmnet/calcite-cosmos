@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using org.apache.calcite.rex;
 
@@ -37,8 +39,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>).</description></item>
     /// <item><description><b>Nothing of the characters, for the rest.</b> <c>INDEX_OF</c> counts units on Azure, so
     /// <c>POSITION</c> is Calcite's there over every string, and is pushed; the emulator counts code points, a difference
-    /// recorded (<c>Service.IndexOfCountsUnits</c>) and not declined. <c>REVERSE</c> and <c>CONCAT</c> agree projected
-    /// everywhere; Azure's <c>REVERSE</c> compared in a <c>WHERE</c> with a parameter holding a supplementary character
+    /// recorded (<c>Service.IndexOfCountsUnits</c>) and not declined, and the units it stores, which is. <c>REVERSE</c>
+    /// and <c>CONCAT</c> agree projected on Azure; Azure's <c>REVERSE</c> compared in a <c>WHERE</c> with a parameter holding a supplementary character
     /// keeps nothing, which nothing pushes (<c>TODO.md</c>). <c>REPEAT</c> and <c>REPLACE</c> ask of what is not a
     /// character: a count and a length that keep a repetition within the service's limit, and a search that is not empty
     /// (<see cref="RepeatsAsCalcite"/>, <see cref="SearchesSomething"/>).</description></item>
@@ -55,7 +57,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <para>
     /// <b>Every string function the translator writes has a verdict here</b> (<see cref="HasVerdict"/>), the ones that ask
     /// nothing of the characters among them, and one written by name with none is refused: a function added to the
-    /// translator's table is computed in process until what it asks has been said.
+    /// translator's table is computed in process until what it asks has been said. Under the emulator, which stores
+    /// U+0000 and U+FDD0 escaped, the functions that work on the stored units ask more (<see cref="RuleOf(RexCall, RenderingSet)"/>).
     /// </para>
     /// <para>
     /// <b>And what cannot be sent at all.</b> A value holding a lone surrogate is refused by the SDK's UTF-8 encoder
@@ -93,6 +96,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the service's REPLACE, CONTAINS and the LIKE it answers as a CONTAINS read a string only up to its first U+0000, and a search holding one matches every string");
 
         /// <summary>
+        /// The two characters the emulator stores escaped, U+0000 as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0 <c>1</c>
+        /// (<see cref="EmulatorStoredText"/>): U+FDD0 has no class of its own, and is read as the high band it lies in.
+        /// </summary>
+        const JsonCharacterBand Escaped = JsonCharacterBand.Nul | JsonCharacterBand.HighBmp;
+
+        const string EscapedNamed = "U+0000 or unit from U+E000, U+FDD0 among them,";
+
+        static readonly Rule CountedStored = new(JsonCharacterBand.Surrogates | Escaped, "surrogate, " + EscapedNamed, [0],
+            "the service counts code points or units, and the emulator the units it stores, two for U+0000 and two for U+FDD0, where Calcite counts the string's units");
+
+        static readonly Rule ReversedStored = new(Escaped, EscapedNamed, [0],
+            "the emulator reverses the units it stores, which turns an escape inside out");
+
+        static readonly Rule PositionedStored = new(Escaped, EscapedNamed, [1],
+            "the emulator's INDEX_OF counts the units it stores, one more for each escape before the match");
+
+        static readonly Rule ReplacedStored = new(Escaped, EscapedNamed, [0, 1, 2],
+            "the emulator's REPLACE works on the units it stores, a search beginning 0 or 1 meeting an escape's second unit, and a replacement holding U+0000 fails the statement where one holding U+FDD0 mixes the written spelling into the stored one");
+
+        static readonly Rule ConcatenatedStored = new(Escaped, EscapedNamed, [],
+            "the emulator joins what it stores with what it makes, and a U+0000 made there fails the statement or vanishes where a U+FDD0 made there is read back as an escape's first unit");
+
+        static readonly Rule RepeatedStored = ConcatenatedStored with { Asked = [0] };
+
+        static readonly Rule PatternedStored = new(Escaped, EscapedNamed, [0],
+            "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
+
+        /// <summary>
         /// Every string function the translator writes by name, and what it asks of its operands' characters; <c>null</c>
         /// for one that asks nothing of them. <c>TRIM</c> and <c>LIKE</c> are read by their kind (<see cref="RuleOf"/>).
         /// </summary>
@@ -123,11 +154,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         };
 
         /// <summary>
-        /// Returns what a function asks of its operands' characters for the service's answer to be Calcite's, or
-        /// <c>null</c> where it asks nothing of them.
+        /// Returns what a function asks of its operands' characters for the answer of a statement sent under a set to be
+        /// Calcite's, or <c>null</c> where it asks nothing of them.
+        /// </summary>
+        /// <remarks>
+        /// Under a set that stores a string escaped, the emulator's, a function that works on the stored units asks the
+        /// operands it works on to hold neither escape: DESIGN.md, <i>On the emulator a function over a stored escape stays
+        /// in process</i>.
+        /// </remarks>
+        /// <param name="call">The function.</param>
+        /// <param name="set">The set the statement is sent under (<see cref="CosmosRendering.StoresSpelled(RenderingSet)"/>).</param>
+        public static Rule? RuleOf(RexCall call, RenderingSet set)
+        {
+            var rule = RuleOf(call);
+            if (CosmosRendering.StoresSpelled(set) == false)
+                return rule;
+
+            if (call.getKind().name() == "LIKE")
+            {
+                if (call.getOperands().size() != 2 || call.getOperands().get(1) is not RexLiteral { } literal || literal.getValue() is not org.apache.calcite.util.NlsString pattern)
+                    return PatternedStored;
+
+                // A prefix is sent stored whatever it holds, and E being a prefix code, E(s) starts with E(p) exactly
+                // where s starts with p.
+                var text = pattern.getValue();
+                return IsPrefix(text) ? rule
+                    : text.IndexOfAny(['_', '0', '1']) >= 0 ? PatternedStored
+                    : rule;
+            }
+
+            if (rule == Counted)
+                return CountedStored;
+
+            return call.getOperator().getName() switch
+            {
+                "REVERSE" => ReversedStored,
+                "POSITION" => PositionedStored,
+                "REPLACE" => ReplacedStored,
+                "CONCAT" or "||" => ConcatenatedStored with { Asked = [.. System.Linq.Enumerable.Range(0, call.getOperands().size())] },
+                "REPEAT" => RepeatedStored,
+                _ => rule,
+            };
+        }
+
+        /// <summary>
+        /// Returns what a function asks of its operands' characters for the service's answer to be Calcite's where it
+        /// stores a string as written, Azure's, or <c>null</c> where it asks nothing of them.
         /// </summary>
         /// <param name="call">The function.</param>
-        public static Rule? RuleOf(RexCall call)
+        static Rule? RuleOf(RexCall call)
         {
             switch (call.getKind().name())
             {
@@ -175,6 +250,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="least">The fewest units the search holds, or <c>null</c> where nothing bounds it.</param>
         public static bool SearchesSomething(long? least) => least >= 1;
+
+        /// <summary>
+        /// Determines whether a <c>LIKE</c> pattern is a prefix match, its one wildcard a trailing <c>%</c>, which the
+        /// translator writes as <c>STARTSWITH</c>.
+        /// </summary>
+        static bool IsPrefix(string pattern) =>
+            pattern.EndsWith('%') && pattern.IndexOfAny(['%', '_']) == pattern.Length - 1;
 
         /// <summary>
         /// Determines whether a <c>LIKE</c> pattern is one the service answers as a <c>CONTAINS</c>: one run of text with no

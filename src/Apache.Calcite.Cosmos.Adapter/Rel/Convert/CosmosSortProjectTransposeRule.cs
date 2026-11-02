@@ -104,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
 
             var facts = CosmosRowFacts.Of(project.getInput(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.OrderBy);
-            return CosmosServiceOrder.OrderBy(facts, new[] { new CosmosOrderKey(CosmosOrderOperand.ForConversion(document, null, held), collation) }).IsProved;
+            return CosmosServiceOrder.OrderBy(facts, new[] { new CosmosOrderKey(CosmosOrderOperand.ForConversion(document, null, held), collation) }, CosmosRendering.SetFor(container?.ServiceTarget ?? CosmosServiceTarget.Azure)).IsProved;
         }
 
         /// <summary>

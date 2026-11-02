@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -54,9 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var facts = Declared();
             var id = Typed("id", SqlTypeName.VARCHAR);
 
-            CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false).IsProved.Should().BeFalse();
-            CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR), inclusive: false).IsProved.Should().BeFalse("two strings of any character");
+            CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("two strings of any character");
         }
 
         /// <remarks>
@@ -74,14 +75,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var id = Typed("id", SqlTypeName.VARCHAR);
             var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
 
-            var verdict = CosmosServiceOrder.Compare(facts, id, parameter, inclusive: false);
+            var verdict = CosmosServiceOrder.Compare(facts, id, parameter, inclusive: false, RenderingSet.Production);
             verdict.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
             verdict.Anchors.Should().Equal(CosmosOrderAnchor.Text);
 
-            CosmosServiceOrder.Compare(facts, parameter, id, inclusive: false).Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
-            CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR), inclusive: false).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
-            CosmosServiceOrder.Compare(facts, parameter, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no path for the reader to recheck");
-            CosmosServiceOrder.Compare(facts, Text("v"), parameter, inclusive: false).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering of what may not be a string no value certifies");
+            CosmosServiceOrder.Compare(facts, parameter, id, inclusive: false, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
+            CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            CosmosServiceOrder.Compare(facts, parameter, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no path for the reader to recheck");
+            CosmosServiceOrder.Compare(facts, Text("v"), parameter, inclusive: false, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering of what may not be a string no value certifies");
         }
 
         // ── What the rows prove ───────────────────────────────────────────────────────────────
@@ -103,23 +104,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared("""{ "type": "object", "required": ["w", "d", "s"], "properties": { "w": { "type": "integer" }, "d": { "type": "number" }, "s": { "type": "string" }, "t": { "type": ["string", "null"] } } }""");
 
-            var id = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("id", SqlTypeName.VARCHAR)) });
+            var id = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("id", SqlTypeName.VARCHAR)) }, RenderingSet.Production);
             id.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
             id.Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Text);
             id.Reason.Should().Contain("text across U+D800");
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("w", SqlTypeName.BIGINT)) }).Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Number);
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("w", SqlTypeName.BIGINT)) }, RenderingSet.Production).Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Number);
 
-            var both = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)), Key(Typed("d", SqlTypeName.DOUBLE), RelFieldCollation.Direction.DESCENDING), Key(Text("s")) });
+            var both = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)), Key(Typed("d", SqlTypeName.DOUBLE), RelFieldCollation.Direction.DESCENDING), Key(Text("s")) }, RenderingSet.Production);
             both.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
             both.Written.Should().Equal(0, 1, 2);
             both.Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Number, CosmosOrderAnchor.Number, CosmosOrderAnchor.Text);
             both.Keys.Select(k => k.Descending).Should().Equal(false, true, false);
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)) }).IsProved.Should().BeTrue("the last key may be finer at the service");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)) }, RenderingSet.Production).IsProved.Should().BeTrue("the last key may be finer at the service");
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("t"), nulls: RelFieldCollation.NullDirection.LAST) }).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no value moves the nulls");
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("v")) }).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("t"), nulls: RelFieldCollation.NullDirection.LAST) }, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no value moves the nulls");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("v")) }, RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering");
         }
 
         /// <remarks>
@@ -131,9 +132,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared("""{ "type": "object", "properties": { "w": { "type": "integer" }, "n": { "type": ["string", "null"] } } }""");
 
-            CosmosServiceOrder.Extreme(facts, Typed("id", SqlTypeName.VARCHAR)).Anchors.Should().Equal(CosmosOrderAnchor.Text);
-            CosmosServiceOrder.Extreme(facts, Typed("w", SqlTypeName.BIGINT)).Anchors.Should().Equal(CosmosOrderAnchor.Number);
-            CosmosServiceOrder.Extreme(facts, Text("n")).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            CosmosServiceOrder.Extreme(facts, Typed("id", SqlTypeName.VARCHAR), RenderingSet.Production).Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            CosmosServiceOrder.Extreme(facts, Typed("w", SqlTypeName.BIGINT), RenderingSet.Production).Anchors.Should().Equal(CosmosOrderAnchor.Number);
+            CosmosServiceOrder.Extreme(facts, Text("n"), RenderingSet.Production).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
         }
 
         /// <remarks>
@@ -216,8 +217,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared("""{ "type": "object", "properties": { "s": { "enum": ["a", "B"] }, "u": { "enum": [""] } } }""");
 
-            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Text("u"), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false).IsProved.Should().BeFalse("U+E000 against a supplementary character");
+            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("u"), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("U+E000 against a supplementary character");
         }
 
         /// <remarks>
@@ -237,11 +238,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var facts = Declared("""{ "type": "object", "properties": { "s": { "enum": ["a", "B"] } } }""");
             var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
 
-            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), parameter, inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, parameter, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), parameter, inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, parameter, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse();
 
-            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForLiteral(JsonScalar.From("")), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForLiteral(JsonScalar.From("\U0001F600")), inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForLiteral(JsonScalar.From("")), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("s"), CosmosOrderOperand.ForLiteral(JsonScalar.From("\U0001F600")), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         /// <remarks>
@@ -263,26 +264,132 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var id = Typed("id", SqlTypeName.VARCHAR);
             var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(id) }).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Extreme(facts, id).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, id, parameter, inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(id) }, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Extreme(facts, id, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, id, parameter, inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
 
-            CosmosServiceOrder.Compare(facts, Text("s"), Text("e"), inclusive: false).IsProved.Should().BeTrue("below U+D800 against anything");
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("w")) }).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Text("w"), Text("s"), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Text("w"), parameter, inclusive: false).IsProved.Should().BeFalse("a high unit against a surrogate");
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("e")) }).IsProved.Should().BeFalse("a surrogate stored lone is U+FFFD");
+            CosmosServiceOrder.Compare(facts, Text("s"), Text("e"), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue("below U+D800 against anything");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("w")) }, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("w"), Text("s"), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("w"), parameter, inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("a high unit against a surrogate");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("e")) }, RenderingSet.Production).IsProved.Should().BeFalse("a surrogate stored lone is U+FFFD");
+        }
+
+        // ── Under the emulator ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// <c>s</c> may hold U+0000, its pattern admitting it; <c>a</c> and <c>f</c> may not, <c>f</c> holding U+FDD0;
+        /// <c>e</c> holds three values either side of U+D800; <c>id</c> anything.
+        /// </summary>
+        static JsonFactSet EmulatorFacts() => Declared("""
+            { "type": "object", "required": ["s", "a", "f", "e"], "properties": {
+                "s": { "type": "string", "pattern": "^[\\u0000-\\uD7FF]*$" },
+                "a": { "type": "string", "pattern": "^[a-z]*$" },
+                "f": { "type": "string", "pattern": "^[a-z\\uFDD0]*$" },
+                "e": { "enum": ["a", "", "😀"] } } }
+            """);
+
+        /// <summary>A sort's verdict over one key, ascending and descending, and an extreme's over the same operand.</summary>
+        static CosmosOrderVerdictKind[] Ordered(JsonFactSet facts, CosmosOrderOperand operand, RenderingSet set) =>
+        [
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(operand) }, set).Kind,
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(operand, RelFieldCollation.Direction.DESCENDING, RelFieldCollation.NullDirection.LAST) }, set).Kind,
+            CosmosServiceOrder.Extreme(facts, operand, set).Kind,
+        ];
+
+        /// <remarks>
+        /// <para>
+        /// R1 reads the target's measured string order (<c>Service.StringOrderIsCodePoint</c>): the emulator stores U+0000
+        /// as U+FDD0 <c>0</c>, above every unit from U+0001 to U+FDCF, where Calcite puts it least. Measured on both images,
+        /// <c>MIN(c.s)</c> is U+0001 where Calcite's is U+0000, and a two-partition merge by code unit puts an anchor before
+        /// a row of the other partition that belongs first. So a sort either way and an extreme over text that may hold
+        /// one is refused there; Azure's verdicts stand. Text that cannot is anchored as before, on
+        /// <see cref="CosmosOrderAnchor.Text"/>, none of its values holding U+0000; U+FDD0, stored as U+FDD0 <c>1</c>, keeps
+        /// the order and is refused nothing.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void UnderTheEmulatorTextThatMayHoldANulOrdersAlikeWithNothing()
+        {
+            var facts = EmulatorFacts();
+            var (proved, anchored, refused) = (CosmosOrderVerdictKind.Proved, CosmosOrderVerdictKind.Anchored, CosmosOrderVerdictKind.Refused);
+
+            Ordered(facts, Text("s"), RenderingSet.Production).Should().Equal(proved, proved, proved);
+            Ordered(facts, Text("s"), RenderingSet.Emulator).Should().Equal(refused, refused, refused);
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("s")) }, RenderingSet.Emulator).Reason.Should().Contain("U+0000");
+            Ordered(facts, Typed("id", SqlTypeName.VARCHAR), RenderingSet.Production).Should().Equal(anchored, anchored, anchored);
+            Ordered(facts, Typed("id", SqlTypeName.VARCHAR), RenderingSet.Emulator).Should().Equal(refused, refused, refused);
+            Ordered(facts, Text("a"), RenderingSet.Emulator).Should().Equal(proved, proved, proved);
+            Ordered(facts, Text("f"), RenderingSet.Emulator).Should().Equal(proved, proved, proved);
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("e")) }, RenderingSet.Production).Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Text);
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("e")) }, RenderingSet.Emulator).Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Text);
+            CosmosServiceOrder.Extreme(facts, Text("e"), RenderingSet.Emulator).Anchors.Should().Equal(CosmosOrderAnchor.Text);
         }
 
         /// <remarks>
+        /// <para>
+        /// A comparison under the emulator, its values sent in the stored spelling: the two orders part only where U+0000
+        /// meets a unit from U+0001 to U+FDCF (measured, 6 of 26 pairs of paths wrong, exactly there). A comparison against a
+        /// parameter, which may hold U+0000, is refused whatever the path holds, where Azure proved it outright or anchored
+        /// on <see cref="CosmosOrderAnchor.Text"/>, nothing weaker being sent (owner, 2026-11-01: "Cut it"). Two paths, or a path and a literal, either of which may hold U+0000,
+        /// are refused: nothing recovers the rows the service drops. A conversion's parameter is written in its stored
+        /// form, which holds none.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void UnderTheEmulatorAComparisonOverANulIsRefused()
+        {
+            var facts = EmulatorFacts();
+            var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
+            var id = Typed("id", SqlTypeName.VARCHAR);
+
+            CosmosOrderVerdict Compare(CosmosOrderOperand left, CosmosOrderOperand right, RenderingSet set) => CosmosServiceOrder.Compare(facts, left, right, inclusive: false, set);
+
+            Compare(Text("a"), parameter, RenderingSet.Production).IsProved.Should().BeTrue();
+            Compare(Text("a"), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(parameter, Text("a"), RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(Text("e"), parameter, RenderingSet.Production).Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            Compare(Text("e"), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+
+            Compare(Text("s"), parameter, RenderingSet.Production).IsProved.Should().BeTrue("below U+D800 against anything");
+            Compare(Text("s"), parameter, RenderingSet.Emulator).Reason.Should().Contain("U+0000");
+            Compare(Text("s"), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "nothing weaker is sent (owner, 2026-11-01: \"Cut it\")");
+            Compare(id, parameter, RenderingSet.Production).Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            Compare(parameter, id, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+
+            Compare(Text("s"), Text("a"), RenderingSet.Production).IsProved.Should().BeTrue();
+            Compare(Text("s"), Text("a"), RenderingSet.Emulator).Reason.Should().Contain("U+0000");
+            Compare(Text("a"), Text("s"), RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(Text("a"), Text("f"), RenderingSet.Emulator).IsProved.Should().BeTrue("U+FDD0's escape keeps the order");
+            Compare(Text("s"), CosmosOrderOperand.ForLiteral(JsonScalar.From("b")), RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(Text("a"), CosmosOrderOperand.ForLiteral(JsonScalar.From("b")), RenderingSet.Emulator).IsProved.Should().BeTrue();
+            Compare(Text("a"), CosmosOrderOperand.ForLiteral(JsonScalar.From("b\u0000")), RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a value that may hold U+0000 against a constant");
+
+            CosmosServiceOrder.Equate(facts, Text("s"), parameter).IsProved.Should().BeTrue("equality in the stored spelling is exact");
+
+            // A stored form's conversion, its parameter written in the form: whatever Azure answers, the emulator does.
+            var at = At("at");
+            var stored = CosmosOracle.For(TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" })).WithFacts(new[]
+            {
+                new JsonFact(at, new JsonClaim.Represents(CosmosUuidForms.CanonicalLowerSortable)), new JsonFact(at, new JsonClaim.Present()), new JsonFact(at, new JsonClaim.OfType(JsonType.String)),
+            }.Select(JsonFactRule.Unconditional)).Facts).Declared;
+            var conversion = CosmosOrderOperand.ForConversion(at, null, CosmosTemporalParts.None);
+            var azure = CosmosServiceOrder.Compare(stored, conversion, parameter, inclusive: true, RenderingSet.Production);
+            azure.IsProved.Should().BeTrue(azure.Reason);
+            CosmosServiceOrder.Compare(stored, conversion, parameter, inclusive: true, RenderingSet.Emulator).IsProved.Should().BeTrue();
+        }
+
+/// <remarks>
         /// Text over a path that may hold a number is a rendering, compared as text in Calcite and as another type at
         /// the service.
         /// </remarks>
         [Fact]
         public void ARenderingOfWhatMayNotBeAStringIsNotCompared()
         {
-            CosmosServiceOrder.Compare(Declared(), Text("v"), CosmosOrderOperand.ForLiteral(JsonScalar.From("30")), inclusive: false).IsProved.Should().BeFalse();
-            CosmosServiceOrder.Compare(Declared("""{ "type": "object", "properties": { "v": { "type": "string" } } }"""), Text("v"), CosmosOrderOperand.ForLiteral(JsonScalar.From("30")), inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(Declared(), Text("v"), CosmosOrderOperand.ForLiteral(JsonScalar.From("30")), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(Declared("""{ "type": "object", "properties": { "v": { "type": "string" } } }"""), Text("v"), CosmosOrderOperand.ForLiteral(JsonScalar.From("30")), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         /// <remarks>
@@ -296,11 +403,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared("""{ "type": "object", "properties": { "t": { "type": ["string", "null"], "pattern": "^[a-z]*$" }, "s": { "type": "string", "pattern": "^[a-z]*$" }, "k": { "type": ["integer", "null"] } } }""");
 
-            CosmosServiceOrder.Compare(facts, Text("t"), Text("t"), inclusive: true).Reason.Should().Contain("a JSON null on both sides");
-            CosmosServiceOrder.Compare(facts, Text("t"), Text("t"), inclusive: false).IsProved.Should().BeTrue("null < null is false at the service too");
-            CosmosServiceOrder.Compare(facts, Text("t"), Text("s"), inclusive: true).IsProved.Should().BeTrue("s is never null");
-            CosmosServiceOrder.Compare(facts, Text("t"), CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), inclusive: true).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), Typed("k", SqlTypeName.INTEGER), inclusive: true).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, Text("t"), Text("t"), inclusive: true, RenderingSet.Production).Reason.Should().Contain("a JSON null on both sides");
+            CosmosServiceOrder.Compare(facts, Text("t"), Text("t"), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue("null < null is false at the service too");
+            CosmosServiceOrder.Compare(facts, Text("t"), Text("s"), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue("s is never null");
+            CosmosServiceOrder.Compare(facts, Text("t"), CosmosOrderOperand.ForLiteral(JsonScalar.From("a")), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), Typed("k", SqlTypeName.INTEGER), inclusive: true, RenderingSet.Production).IsProved.Should().BeFalse();
             CosmosServiceOrder.Equate(facts, Text("t"), Text("t")).IsProved.Should().BeFalse();
             CosmosServiceOrder.Equate(facts, Typed("k", SqlTypeName.INTEGER), Typed("k", SqlTypeName.INTEGER)).IsProved.Should().BeFalse();
             CosmosServiceOrder.Equate(facts, Text("t"), Text("s")).IsProved.Should().BeTrue();
@@ -313,8 +420,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ANumberIsComparedWithoutBounds()
         {
-            CosmosServiceOrder.Compare(Declared(), Typed("w", SqlTypeName.BIGINT), CosmosOrderOperand.ForParameter(SqlTypeName.BIGINT), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(Declared(), Typed("d", SqlTypeName.DOUBLE), CosmosOrderOperand.ForLiteral(JsonScalar.From(1e300)), inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(Declared(), Typed("w", SqlTypeName.BIGINT), CosmosOrderOperand.ForParameter(SqlTypeName.BIGINT), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(Declared(), Typed("d", SqlTypeName.DOUBLE), CosmosOrderOperand.ForLiteral(JsonScalar.From(1e300)), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         /// <remarks>
@@ -332,15 +439,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var facts = Declared();
             var m = CosmosOrderOperand.ForLiteral(JsonScalar.From("m"));
 
-            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Text), m, inclusive: false).Reason.Should().Contain("a rendering of what may not be a string");
-            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Typed), m, inclusive: false).IsProved.Should().BeFalse("a column of text renders what it reads");
-            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.ANY, CosmosReading.Typed), m, inclusive: false).IsProved.Should().BeTrue("the stored value, against a string below U+D800, is the weakening's string branch");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Text), m, inclusive: false, RenderingSet.Production).Reason.Should().Contain("a rendering of what may not be a string");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Typed), m, inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("a column of text renders what it reads");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.ANY, CosmosReading.Typed), m, inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue("the stored value, against a string below U+D800, is the weakening's string branch");
 
             var element = CosmosOrderOperand.ForPath(null, SqlTypeName.INTEGER, CosmosReading.Typed);
-            CosmosServiceOrder.Compare(facts, element, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true).IsProved.Should().BeTrue("a number read as one, every other type read as null and undefined against a number");
-            CosmosServiceOrder.Compare(facts, element, element, inclusive: true).Reason.Should().Contain("a JSON null");
+            CosmosServiceOrder.Compare(facts, element, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue("a number read as one, every other type read as null and undefined against a number");
+            CosmosServiceOrder.Compare(facts, element, element, inclusive: true, RenderingSet.Production).Reason.Should().Contain("a JSON null");
             CosmosServiceOrder.Equate(facts, element, element).IsProved.Should().BeFalse();
-            CosmosServiceOrder.Compare(facts, element, Typed("k", SqlTypeName.INTEGER), inclusive: false).IsProved.Should().BeFalse("either may hold a string, which the service compares and both read as null");
+            CosmosServiceOrder.Compare(facts, element, Typed("k", SqlTypeName.INTEGER), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("either may hold a string, which the service compares and both read as null");
         }
 
         /// <remarks>
@@ -358,18 +465,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var facts = Declared("""{ "type": "object", "properties": { "k": { "type": ["integer", "null"] }, "n": { "type": "integer" } } }""");
             var computed = CosmosOrderOperand.ForExpression(SqlTypeName.INTEGER, nullable: true);
 
-            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForParameter(SqlTypeName.INTEGER), inclusive: true).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: true).Reason.Should().Contain("a JSON null on both sides");
-            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: false).IsProved.Should().BeTrue("k holds a number or a null, and a null is less than nothing");
-            CosmosServiceOrder.Compare(facts, computed, Typed("n", SqlTypeName.INTEGER), inclusive: true).IsProved.Should().BeTrue("n holds a number wherever it is there");
-            CosmosServiceOrder.Compare(facts, computed, computed, inclusive: false).IsProved.Should().BeFalse("two computed values may both hold a string");
+            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForParameter(SqlTypeName.INTEGER), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: true, RenderingSet.Production).Reason.Should().Contain("a JSON null on both sides");
+            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue("k holds a number or a null, and a null is less than nothing");
+            CosmosServiceOrder.Compare(facts, computed, Typed("n", SqlTypeName.INTEGER), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue("n holds a number wherever it is there");
+            CosmosServiceOrder.Compare(facts, computed, computed, inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("two computed values may both hold a string");
 
             var always = CosmosOrderOperand.ForExpression(SqlTypeName.DOUBLE, nullable: false);
-            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.DOUBLE), always, inclusive: true).IsProved.Should().BeTrue("a value in every row is never null");
-            CosmosServiceOrder.Compare(facts, computed, always, inclusive: true).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.DOUBLE), always, inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue("a value in every row is never null");
+            CosmosServiceOrder.Compare(facts, computed, always, inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
 
-            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForExpression(SqlTypeName.DATE, nullable: false), CosmosOrderOperand.ForParameter(SqlTypeName.DATE), inclusive: false).IsProved.Should().BeFalse("an instant the service computes is no value it orders as Calcite does");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForExpression(SqlTypeName.DATE, nullable: false), CosmosOrderOperand.ForParameter(SqlTypeName.DATE), inclusive: false, RenderingSet.Production).IsProved.Should().BeFalse("an instant the service computes is no value it orders as Calcite does");
         }
 
         /// <remarks>
@@ -381,9 +488,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared("""{ "type": "object", "properties": { "k": { "type": ["integer", "null"] }, "n": { "type": "integer" } } }""");
 
-            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true).IsProved.Should().BeFalse();
-            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(facts, Typed("n", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true, RenderingSet.Production).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: false, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Typed("n", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         // ── Extremes ──────────────────────────────────────────────────────────────────────────
@@ -397,9 +504,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Declared();
 
-            CosmosServiceOrder.Extreme(facts, Typed("_etag", SqlTypeName.VARCHAR)).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Extreme(facts, Typed("_ts", SqlTypeName.BIGINT)).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Extreme(facts, Typed("id", SqlTypeName.VARCHAR)).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Extreme(facts, Typed("_etag", SqlTypeName.VARCHAR), RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Extreme(facts, Typed("_ts", SqlTypeName.BIGINT), RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Extreme(facts, Typed("id", SqlTypeName.VARCHAR), RenderingSet.Production).IsProved.Should().BeFalse();
         }
 
         /// <remarks>
@@ -409,11 +516,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AnExtremeSkipsOnlyWhatBothSkip()
         {
-            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "n": { "type": "integer" } } }"""), Typed("n", SqlTypeName.INTEGER)).IsProved.Should().BeTrue("absent or an integer");
-            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "n": { "type": ["integer", "null"] } } }"""), Typed("n", SqlTypeName.INTEGER)).IsProved.Should().BeFalse("a JSON null is the service's MIN");
-            CosmosServiceOrder.Extreme(Declared(), Typed("n", SqlTypeName.INTEGER)).IsProved.Should().BeFalse("an object makes the service's answer undefined");
-            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "w": { "type": "integer" } } }"""), Typed("w", SqlTypeName.BIGINT)).IsProved.Should().BeFalse("unbounded");
-            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "w": { "type": "integer", "minimum": 0, "maximum": 4294967296 } } }"""), Typed("w", SqlTypeName.BIGINT)).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "n": { "type": "integer" } } }"""), Typed("n", SqlTypeName.INTEGER), RenderingSet.Production).IsProved.Should().BeTrue("absent or an integer");
+            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "n": { "type": ["integer", "null"] } } }"""), Typed("n", SqlTypeName.INTEGER), RenderingSet.Production).IsProved.Should().BeFalse("a JSON null is the service's MIN");
+            CosmosServiceOrder.Extreme(Declared(), Typed("n", SqlTypeName.INTEGER), RenderingSet.Production).IsProved.Should().BeFalse("an object makes the service's answer undefined");
+            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "w": { "type": "integer" } } }"""), Typed("w", SqlTypeName.BIGINT), RenderingSet.Production).IsProved.Should().BeFalse("unbounded");
+            CosmosServiceOrder.Extreme(Declared("""{ "type": "object", "properties": { "w": { "type": "integer", "minimum": 0, "maximum": 4294967296 } } }"""), Typed("w", SqlTypeName.BIGINT), RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         // ── Scores and distances ──────────────────────────────────────────────────────────────
@@ -429,9 +536,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var facts = JsonFactSet.Empty;
             var score = CosmosOrderOperand.ForScore(bestFirstDescending: true);
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(score, RelFieldCollation.Direction.DESCENDING) }).IsProved.Should().BeTrue();
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(score, RelFieldCollation.Direction.ASCENDING) }).Reason.Should().Contain("descending");
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(CosmosOrderOperand.ForScore(bestFirstDescending: false), RelFieldCollation.Direction.DESCENDING) }).IsProved.Should().BeFalse();
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(score, RelFieldCollation.Direction.DESCENDING) }, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(score, RelFieldCollation.Direction.ASCENDING) }, RenderingSet.Production).Reason.Should().Contain("descending");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(CosmosOrderOperand.ForScore(bestFirstDescending: false), RelFieldCollation.Direction.DESCENDING) }, RenderingSet.Production).IsProved.Should().BeFalse();
         }
 
         /// <remarks>
@@ -444,9 +551,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var distance = CosmosOrderOperand.ForDistance(new[] { At("location") });
 
-            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(distance, nulls: RelFieldCollation.NullDirection.FIRST) }).IsProved.Should().BeTrue();
-            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(distance, nulls: RelFieldCollation.NullDirection.LAST) }).IsProved.Should().BeFalse();
-            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(CosmosOrderOperand.ForDistance(null), nulls: RelFieldCollation.NullDirection.FIRST) }).IsProved.Should().BeTrue();
+            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(distance, nulls: RelFieldCollation.NullDirection.FIRST) }, RenderingSet.Production).IsProved.Should().BeTrue();
+            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(distance, nulls: RelFieldCollation.NullDirection.LAST) }, RenderingSet.Production).IsProved.Should().BeFalse();
+            CosmosServiceOrder.OrderBy(Declared(), new[] { Key(CosmosOrderOperand.ForDistance(null), nulls: RelFieldCollation.NullDirection.FIRST) }, RenderingSet.Production).IsProved.Should().BeTrue();
         }
 
         // ── Keys ──────────────────────────────────────────────────────────────────────────────
@@ -466,7 +573,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Key(Typed("n", SqlTypeName.INTEGER)),
                 Key(Typed("n", SqlTypeName.BIGINT), RelFieldCollation.Direction.DESCENDING),
                 Key(Typed("_ts", SqlTypeName.BIGINT)),
-            });
+            }, RenderingSet.Production);
 
             verdict.IsProved.Should().BeTrue(verdict.Reason);
             verdict.Written.Should().Equal(1, 3);

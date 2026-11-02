@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             foreach (var path in container.PartitionKeyPaths)
             {
-                if (pinned.TryGetValue(path, out var value) == false)
+                if (pinned.TryGetValue(path, out var value) == false || Unsent(value, container))
                     break;
 
                 prefix.Add(value);
@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // Cosmos types id as a string. Anything else pinned to it is a predicate that matches
             // nothing, and is not something to turn into a read.
-            if (pinned.TryGetValue(IdPolicy, out var value) == false || value is not string pinnedId)
+            if (pinned.TryGetValue(IdPolicy, out var value) == false || value is not string pinnedId || Unsent(pinnedId, container))
                 return false;
 
             if (Complete(pinned, container, out var partitionKey) == false || read.SaysNothingElse(licence) == false)
@@ -259,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 setAt = i;
             }
 
-            if (set is null || read.SaysNothingElse(licence, except: setAt) == false)
+            if (set is null || set.Exists(id => Unsent(id, container)) || read.SaysNothingElse(licence, except: setAt) == false)
                 return false;
 
             values = partitionKey;
@@ -411,7 +411,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             for (var i = 0; i < resolved.Length; i++)
             {
-                if (pinned.TryGetValue(container.PartitionKeyPaths[i], out var value) == false)
+                if (pinned.TryGetValue(container.PartitionKeyPaths[i], out var value) == false || Unsent(value, container))
                     return false;
 
                 resolved[i] = value;
@@ -420,6 +420,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             values = resolved;
             return true;
         }
+
+        /// <summary>
+        /// Whether a pinned value is one no read or route is sent: where the container's target stores a string in
+        /// another spelling than it is sent, the emulator's, a string holding a character it escapes
+        /// (<see cref="EmulatorStoredText"/>).
+        /// </summary>
+        /// <remarks>
+        /// Measured on both images (<c>Service.EmulatorPointReadOfAnEscapedId</c>): a point read of an id holding U+0000
+        /// is a 500 and of one holding U+FDD0 a 404, the stored spelling read raw answers the document it spells, and
+        /// <c>ReadMany</c> returns half. A partition key header carrying either was not measured, in either spelling. So
+        /// such a value stays in the statement's <c>WHERE</c>, sent stored, which was measured exact, and the statement is
+        /// a query across partitions: a few request units more, and right.
+        /// </remarks>
+        static bool Unsent(object? value, CosmosContainerMetadata container) =>
+            value is string text && EmulatorStoredText.Escapes(text) && CosmosRendering.StoresSpelled(container.ServiceTarget);
 
         /// <summary>
         /// Reads a predicate as the statement the oracle answers.

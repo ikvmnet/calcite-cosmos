@@ -328,6 +328,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(text).Should().NotBe(Guid.Parse(text), "text is not a UUID until something says it is one");
         }
 
+        /// <summary>
+        /// Under the emulator a string key is sent in the stored spelling, U+0000 as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0
+        /// <c>1</c>, which <c>IN</c> compares as the service stores the path; the documents come back decoded, so each
+        /// pairs with the key it was fetched for, as written. A key holding neither is sent as it is.
+        /// </summary>
+        [Fact]
+        public async Task AKeyIsSentInTheStoredSpellingWhereTheTargetHasOne()
+        {
+            var executor = new RecordingExecutor("""{"category":"a\u0000"}""", """{"category":"﷐"}""", """{"category":"bikes"}""");
+
+            var rows = await Collect(CosmosLookup.Join(
+                Async("a\0", "﷐", "bikes"),
+                executor,
+                null!,
+                Query(),
+                "@k",
+                3,
+                b => b,
+                element => element.GetProperty("category").GetString()!,
+                p => p,
+                (b, p) => b + "/" + p,
+                spell: CosmosLookup.SpellStored(null)));
+
+            Keys(executor.Executed.Single()).Should().Equal("a﷐0", "﷐1", "bikes");
+            rows.Should().Equal("a\0/a\0", "﷐/﷐", "bikes/bikes");
+            CosmosLookup.SpellStored(_ => 7d)("x").Should().Be(7d, "a key another spelling writes as no string is that spelling");
+        }
+
         // ── A left join ───────────────────────────────────────────────────────────
 
         static Task<List<string>> LeftJoin(IClrCursor<string?> build, RecordingExecutor executor, int batchSize = 3, int cacheSize = 0) =>

@@ -7,6 +7,7 @@ using System.Text;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -281,13 +282,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 var facts = Declared(keys.Select((k, i) => (paths[i], k.Operand.Facts)));
                 var ordered = keys.Select((k, i) => new CosmosOrderKey(OperandOf(k.Operand, paths[i]), Collation(k))).ToList();
 
-                return From(CosmosServiceOrder.OrderBy(facts, ordered));
+                return From(CosmosServiceOrder.OrderBy(facts, ordered, RenderingSet.Production));
             }
 
             public Verdict Extreme(Operand operand, bool max)
             {
                 var path = PathOf(operand.Reading, "v");
-                return From(CosmosServiceOrder.Extreme(Declared([(path, operand.Facts)]), OperandOf(operand, path)));
+                return From(CosmosServiceOrder.Extreme(Declared([(path, operand.Facts)]), OperandOf(operand, path), RenderingSet.Production));
             }
 
             public Verdict Compare(Operand left, Comparand right, Comparison kind)
@@ -313,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 else
                     other = CosmosOrderOperand.ForParameter(TypeOf(left.Reading));
 
-                return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other, inclusive: kind == Comparison.GreaterOrEqual));
+                return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other, inclusive: kind == Comparison.GreaterOrEqual, RenderingSet.Production));
             }
 
             /// <summary>
@@ -1132,7 +1133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeNull("a comparison reads the document, where a stored 2^63 raises the RETURNING BIGINT rather than reading back below 2^63 - 1");
         }
 
-        /// <summary>
+/// <summary>
         /// Every verdict the question gives over the sweep's operands holds in the model, and the
         /// verdicts it refuses that the model says it could have given are counted.
         /// </summary>

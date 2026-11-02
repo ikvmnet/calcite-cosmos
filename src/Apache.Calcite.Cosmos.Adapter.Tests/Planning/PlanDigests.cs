@@ -38,8 +38,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// </summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>
         /// <param name="reasoning">The reasoning every container is bound to, or <c>null</c> for the suite's shared one.</param>
-        public static IEnumerable<string> All(int partitionedPredicates, CosmosReasoning? reasoning = null) =>
-            Lines(RenderingInputs.All(partitionedPredicates, reasoning));
+        /// <param name="target">The service every container's statements are planned for.</param>
+        public static IEnumerable<string> All(int partitionedPredicates, CosmosReasoning? reasoning = null, CosmosServiceTarget target = CosmosServiceTarget.Azure) =>
+            Lines(RenderingInputs.All(partitionedPredicates, reasoning, target));
 
         /// <summary>
         /// The planner corpus's digests, one line a statement.
