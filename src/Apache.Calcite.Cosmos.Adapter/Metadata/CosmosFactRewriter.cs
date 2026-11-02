@@ -798,7 +798,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredUuid(castNode, ordering, at.Paths, () => at.Known, at.RootAlias, out var representation) is not RexNode operand)
+            if (TryStoredUuid(castNode, ordering, at.Paths, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production, () => at.Known, at.RootAlias, out var representation) is not RexNode operand)
                 return null;
 
             // And the form has to be one whose stored spelling this knows how to write. A
@@ -824,11 +824,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="castNode">The expression that may read a path as a UUID.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
         /// <param name="paths">Resolves the path underneath.</param>
+        /// <param name="set">The set the statement is sent under: the translator's, or Production for the rewrite, which reads no container.</param>
         /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexPaths paths, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexPaths paths, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet set, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -853,7 +854,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (known().RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
                 return null;
 
-            if (ordering ? OrdersAsTheValues(known(), document, null, CosmosTemporalParts.None, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production) == false : declared.PreservesEquality == false)
+            if (ordering ? OrdersAsTheValues(known(), document, null, CosmosTemporalParts.None, set) == false : declared.PreservesEquality == false)
                 return null;
 
             representation = declared;
@@ -875,7 +876,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="document">The path.</param>
         /// <param name="format">A parse's format, or <c>null</c> for a cast.</param>
         /// <param name="held">The halves of an instant the conversion's value holds; none for a UUID or a number.</param>
-        /// <param name="set">The set the ordering is asked under: Production, as the rewrite reads no container; the comparison it writes is decided again under its container's set where the translator writes it.</param>
+        /// <param name="set">The set the statement is sent under, the translator's.</param>
         /// <returns><c>true</c> where the stored strings order as the values.</returns>
         static bool OrdersAsTheValues(JsonFactSet facts, JsonDocumentPath document, string? format, CosmosTemporalParts held, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet set) =>
             CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForConversion(document, format, held), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: true, set).IsProved;
@@ -914,7 +915,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredInstant(temporalNode, ordering, at.Paths, () => at.Known, at.RootAlias, out var representation) is not RexNode accessor)
+            if (TryStoredInstant(temporalNode, ordering, at.Paths, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production, () => at.Known, at.RootAlias, out var representation) is not RexNode accessor)
                 return null;
 
             if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
@@ -946,11 +947,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="temporalNode">The expression that may read a path as an instant.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
         /// <param name="paths">Resolves the path underneath.</param>
+        /// <param name="set">The set the statement is sent under: the translator's, or Production for the rewrite, which reads no container.</param>
         /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexPaths paths, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexPaths paths, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet set, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -970,7 +972,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // the engine, and is licensed only where the engine can do it (CosmosStoredForms.Reads). An ordering asks
             // that and that the form keeps the order, as every order the service computes is asked.
             if (ordering
-                ? OrdersAsTheValues(known(), document, format, held, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production) == false
+                ? OrdersAsTheValues(known(), document, format, held, set) == false
                 : declared.PreservesEquality == false || CosmosStoredForms.Reads(declared, format, held) == false)
                 return null;
 

@@ -3503,7 +3503,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var ordering = op is not ("=" or "!=");
 
-            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, _paths, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, _paths, Set, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
                 return false;
 
             var rounding = op switch
@@ -3555,7 +3555,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var ordering = op is not ("=" or "!=");
 
-            if (Metadata.CosmosFactRewriter.TryStoredUuid(uuid, ordering, _paths, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+            if (Metadata.CosmosFactRewriter.TryStoredUuid(uuid, ordering, _paths, Set, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
                 return false;
 
             if (ordering && Metadata.CosmosUuidForms.OrdersEveryValue(representation) == false)
