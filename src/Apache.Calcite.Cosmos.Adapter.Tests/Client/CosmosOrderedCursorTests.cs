@@ -167,53 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 .Should().Equal(["a", "\uE000", "\0", "\0a", "\U0001F600", "\uFDD0"], "a Text anchor takes U+0000 for one, after U+E000");
         }
 
-        /// <summary>
-        /// <c>c.id &gt; ?</c> under the emulator, over an <c>id</c> that holds no U+0000: anchored on a value holding none
-        /// (<see cref="CosmosOrderAnchor.TextWithoutNul"/>). The stub answers as the emulator does, comparing each id's
-        /// stored spelling with the value sent in its own. Sent exact, <c>b\0</c> would lose <c>b</c>U+0001, which Calcite
-        /// keeps above it and the emulator stores below its <c>b</c> U+FDD0 <c>0</c>: so it is read weakened, under a bound
-        /// stopped before the U+0000, and rechecked. Under <see cref="CosmosOrderAnchor.Text"/> it certifies, and the row
-        /// is lost.
-        /// </summary>
-        [Fact]
-        public async Task UnderTheEmulatorAValueHoldingU0000IsNoAnchor()
-        {
-            const string Where = "SELECT VALUE { \"id\": c.id, \"$k0\": c.id } FROM c WHERE (c.id > @p0)";
-            const string Weakened = "(c.id >= @p1)";
-            IReadOnlyList<CosmosParameter> slots =
-            [
-                new("@p0", new CosmosDynamicValue(0)),
-                new("@p1", new CosmosDynamicValue(0) { Bound = CosmosAnchorBound.Lower }),
-            ];
-
-            string[] stored = ["a", "b", "b\u0001", "c", "\uFDD0", "a\uFDD0"];
-            bool Kept(CosmosQuery q, string id)
-            {
-                var sent = q.Parameters.ToDictionary(p => p.Name, p => (string)p.Value!);
-                var spelled = EmulatorStoredText.Of(id);
-                return q.Sql.Contains(Weakened, StringComparison.Ordinal)
-                    ? ServiceOrderModel.CompareCodePoints(spelled, sent["@p1"]) >= 0
-                    : ServiceOrderModel.CompareCodePoints(spelled, sent["@p0"]) > 0;
-            }
-
-            CosmosQuery Query(CosmosOrderAnchor anchor) => new(Where, slots, Stored: ["@p0", "@p1"], Order: new CosmosOrderProgram([], false, null, null, Where,
-                [new CosmosOrderComparison("@p0", "@p1", ">", anchor, "c.id", "(c.id > @p0)", Weakened, "IS_STRING(c.id)", "$k0")], [CosmosRecheck.Compared(0)], []));
-
-            var executor = new StubExecutor(q => stored.Where(id => Kept(q, id)).Select(Row));
-
-            (await Read(executor, Query(CosmosOrderAnchor.TextWithoutNul), new Context(("?0", "b\0")))).Should().Equal("b\u0001", "c", "\uFDD0");
-            executor.Executed.Single().Sql.Should().Be(Where.Replace("(c.id > @p0)", Weakened), "a value holding U+0000 is no anchor");
-            executor.Executed.Single().Parameters.Single(p => p.Name == "@p1").Value.Should().Be("b", "the bound stops before U+0000");
-
-            executor.Executed.Clear();
-            (await Read(executor, Query(CosmosOrderAnchor.TextWithoutNul), new Context(("?0", "b")))).Should().Equal("b\u0001", "c", "\uFDD0");
-            executor.Executed.Single().Sql.Should().Be(Where, "a value holding no U+0000 and nothing from U+D800 is one");
-
-            executor.Executed.Clear();
-            (await Read(executor, Query(CosmosOrderAnchor.Text), new Context(("?0", "b\0")))).Should().Equal(["c", "\uFDD0"], "a Text anchor certifies b U+0000, and the emulator drops b U+0001");
-        }
-
-        /// <summary>
+/// <summary>
         /// The stream the probe account returned over two physical partitions, one holding characters from both sides
         /// of U+D800: each partition by code point, merged by the SDK by UTF-16 code unit, range 0 first on a tie — in
         /// neither order, and in Calcite's once read.

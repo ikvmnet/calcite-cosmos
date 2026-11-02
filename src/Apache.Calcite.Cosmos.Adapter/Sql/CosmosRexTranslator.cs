@@ -71,36 +71,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Whether the container's target stores a string in another spelling than it is sent, the emulator's
-        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(Metadata.CosmosServiceTarget)"/>): read off the target the
-        /// statement is sent to, never a probe's. A translator built without a container only resolves paths, and writes
-        /// for Azure.
+        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(Metadata.CosmosServiceTarget)"/>). Then a compared operand is
+        /// sent stored (<see cref="_comparing"/>), and anything else that may hold U+0000 or U+FDD0 (a constant, a text
+        /// parameter, a member's name) is computed in process: DESIGN.md, <i>What the emulator is sent is what it
+        /// stores</i>.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Then a value is sent as it is stored, where it is compared.</b> The emulator stores U+0000 as U+FDD0 <c>0</c>
-        /// and U+FDD0 as U+FDD0 <c>1</c>, and compares what it is sent, unescaped, with that
-        /// (<see cref="EmulatorStoredText"/>): a value holding either, sent as written, is equal to nothing it should be.
-        /// Sent in the stored spelling, measured on both images: exact for <c>=</c>, <c>IN</c>, <c>!=</c> and
-        /// <c>STARTSWITH</c>, and for <c>ENDSWITH</c>, <c>CONTAINS</c> and <c>REPLACE</c>'s search unless the value
-        /// begins with <c>0</c> or <c>1</c> (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). So an operand that
-        /// stands where the service compares it with a path, or with a function of one, a compared position
-        /// (<see cref="_comparing"/>), is bound so: a literal now, a parameter when it is bound
-        /// (<see cref="CosmosParameterList.Spell"/>). A value holding neither is its own spelling, so nothing over such
-        /// values changes.
-        /// </para>
-        /// <para>
-        /// <b>So too where it is returned.</b> A value the service returns as it was sent, the column itself, a
-        /// <c>CASE</c> arm, a <c>COALESCE</c> operand or an object's or array's member, is a 500 where it holds a raw
-        /// U+0000, and comes back exactly as written where sent stored, both characters
-        /// (<c>Service.EmulatorDecodesWhatItReturns</c>): a returned position (<see cref="_returning"/>), bound so too.
-        /// </para>
-        /// <para>
-        /// <b>And refused anywhere else.</b> A position whose value a function goes on to count, cut, join or search, and a
-        /// member's name, were not measured in the stored spelling, and a U+0000 made there from a path is a 500
-        /// (<c>Service.EmulatorFailsANulMadeFromAPath</c>). So a literal holding either character, and a parameter that may
-        /// be text, are computed in process there.
-        /// </para>
-        /// </remarks>
         readonly bool _spelled;
 
         /// <summary>
@@ -109,13 +84,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// cast, which hands the value on.
         /// </summary>
         bool _comparing;
-
-        /// <summary>
-        /// Whether the operand being written stands in a returned position (<see cref="_spelled"/>): set for a projected
-        /// column, handed on to a <c>CASE</c>'s arms, which <c>COALESCE</c> is, and through a cast, and cleared beneath
-        /// anything else, a <c>CASE</c>'s conditions too.
-        /// </summary>
-        bool _returning;
 
         /// <summary>
         /// Gets what is known of the documents this expression is evaluated over: the facts the
@@ -250,6 +218,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="path">On success, the resolved path.</param>
         /// <returns><c>true</c> if the expression denotes a path; otherwise <c>false</c>.</returns>
         public bool TryResolvePath(RexNode node, out CosmosPath? path)
+        {
+            // Under the emulator a member's name holding U+0000 or U+FDD0 is stored escaped, and a path naming one written
+            // as spelled reads nothing: it is no path there, and what reads it is computed in process over the document.
+            if (Resolve(node, out path) && (_spelled == false || NamesAnEscape(path) == false))
+                return true;
+
+            path = null;
+            return false;
+        }
+
+        /// <summary>Whether a path names a member holding U+0000 or U+FDD0, which the emulator stores escaped.</summary>
+        internal static bool NamesAnEscape(CosmosPath? path)
+        {
+            if (path is not null)
+                foreach (var segment in path.Segments)
+                    if (segment.IsIndex == false && EmulatorStoredText.Escapes(segment.Name!))
+                        return true;
+
+            return false;
+        }
+
+        bool Resolve(RexNode node, out CosmosPath? path)
         {
             switch (node)
             {
@@ -556,7 +546,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return false;
             }
 
-            return value is string text && TryExtendByJsonPath(basePath, text, out path);
+            return value is string text && TryExtendByJsonPath(basePath, text, out path) && (_spelled == false || NamesAnEscape(path) == false);
         }
 
         /// <summary>
@@ -985,21 +975,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (CosmosStringFunctions.RuleOf(call, Set) is { } rule)
                 foreach (var ordinal in rule.Asked)
-                    if (ordinal < call.getOperands().size() && (rule.PathsExempt == false || IsStored(Operand(call, ordinal)) == false) && Unproved(Operand(call, ordinal), rule.Refused) is string input)
+                    if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), rule.Refused) is string input)
                         throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {rule.Why}, and nothing proves {input} holds no {rule.Named}.");
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
         }
-
-        /// <summary>
-        /// Determines whether an operand is text the service reads as it stores it, not text it makes: a path, a cast of
-        /// one, or a concatenation, whose own operands are asked where it is reached in turn. What a rule that exempts
-        /// paths asks nothing of (<see cref="CosmosStringFunctions.Rule.PathsExempt"/>).
-        /// </summary>
-        bool IsStored(RexNode node) =>
-            node is RexCall { } call && call.getOperator().getName() is "CONCAT" or "||"
-            || Values.ReadValue(node) is SqlValue.Text or SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Text or SqlValue.Raw };
 
         /// <summary>
         /// Returns an expression the facts do not prove free of some classes of character, spelled, or <c>null</c> where
@@ -1143,9 +1124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     break;
                 case RexCall call:
                     var compared = _comparing;
-                    var returning = _returning;
                     _comparing = compared && KindOf(call) is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST;
-                    _returning = returning && KindOf(call) is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST or SqlKind.__Enum.CASE;
 
                     try
                     {
@@ -1154,7 +1133,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     finally
                     {
                         _comparing = compared;
-                        _returning = returning;
                     }
 
                     break;
@@ -1187,9 +1165,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="parameter">The parameter to write.</param>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
-            // Returned, only text the binding spells: a value of another type that may be text arrives as an object.
-            if (_spelled && _comparing == false && MayBeText(parameter.getType()) && (_returning == false || IsCharacter(parameter.getType()) == false))
-                throw new CosmosTranslationException("Under the emulator a parameter that may be text is computed in process where the service neither compares nor returns it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
+            if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
+                throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
 
             var name = _parameters.Add(SlotOf(parameter));
             if (_spelled)
@@ -1218,89 +1195,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Returns a value as it is sent: in the stored spelling where the target stores one and the value is compared or
-        /// returned; refused where it holds a character that spelling escapes and is neither (<see cref="_spelled"/>).
+        /// Returns a value as it is sent: in the stored spelling where the target stores one and the value is compared;
+        /// refused where it holds a character that spelling escapes and is not (<see cref="_spelled"/>).
         /// </summary>
-        /// <exception cref="CosmosTranslationException">The value holds U+0000 or U+FDD0 outside those positions.</exception>
-        object? Sent(object? value, bool compared, bool returned = false)
+        /// <exception cref="CosmosTranslationException">The value holds U+0000 or U+FDD0 outside a compared position.</exception>
+        object? Sent(object? value, bool compared)
         {
-            if (_spelled == false || Escapes(value) == false)
+            if (_spelled == false || EmulatorStoredText.Escapes(value) == false)
                 return value;
 
             if (compared && value is string text)
                 return EmulatorStoredText.Of(text);
 
-            if (returned)
-                return Returned(value);
-
-            throw new CosmosTranslationException("Under the emulator a constant holding U+0000 or U+FDD0 is computed in process where the service neither compares nor returns it: sent as written a U+0000 fails the statement, and in the stored spelling a function over it was not measured.");
+            throw new CosmosTranslationException("Under the emulator a constant holding U+0000 or U+FDD0 is computed in process where the service does not compare it: sent as written a U+0000 fails the statement, and in the stored spelling nothing but a comparison was measured.");
         }
 
         /// <summary>
-        /// A returned value in the stored spelling, each string at any depth (<c>Service.EmulatorDecodesWhatItReturns</c>);
-        /// a member's name holding either character was not measured, and is refused.
+        /// Whether a parameter of a type may arrive as text or holding text: a character type, one that holds any value,
+        /// or a collection or row, whose elements the binding does not spell (<c>CosmosQueries.Bind</c>).
         /// </summary>
-        static object? Returned(object? value)
-        {
-            switch (value)
-            {
-                case string text:
-                    return EmulatorStoredText.Of(text);
-                case IDictionary<string, object?> members:
-                    var spelled = new Dictionary<string, object?>(StringComparer.Ordinal);
-                    foreach (var member in members)
-                    {
-                        if (EmulatorStoredText.Escapes(member.Key))
-                            throw new CosmosTranslationException("Under the emulator an object constant whose member's name holds U+0000 or U+FDD0 is computed in process: what it returns of one was not measured.");
-
-                        spelled[member.Key] = Returned(member.Value);
-                    }
-
-                    return spelled;
-                case IEnumerable<object?> items:
-                    var list = new List<object?>();
-                    foreach (var item in items)
-                        list.Add(Returned(item));
-
-                    return list;
-                default:
-                    return value;
-            }
-        }
-
-        /// <summary>Whether a value to bind holds U+0000 or U+FDD0 in a string, at any depth.</summary>
-        static bool Escapes(object? value)
-        {
-            switch (value)
-            {
-                case string text:
-                    return EmulatorStoredText.Escapes(text);
-                case IDictionary<string, object?> members:
-                    foreach (var member in members)
-                        if (EmulatorStoredText.Escapes(member.Key) || Escapes(member.Value))
-                            return true;
-
-                    return false;
-                case IEnumerable<object?> items:
-                    foreach (var item in items)
-                        if (Escapes(item))
-                            return true;
-
-                    return false;
-                default:
-                    return false;
-            }
-        }
-
-        /// <summary>Whether a parameter of a type may arrive as text: a character type, or one that holds any value.</summary>
-        static bool MayBeText(org.apache.calcite.rel.type.RelDataType? type) =>
+        static bool MayHoldText(org.apache.calcite.rel.type.RelDataType? type) =>
             type?.getSqlTypeName() is not SqlTypeName name
             || name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.ANY || name == SqlTypeName.VARIANT
-            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN;
-
-        /// <summary>Whether a parameter of a type arrives as a string, or as null: a character type.</summary>
-        static bool IsCharacter(org.apache.calcite.rel.type.RelDataType? type) =>
-            type?.getSqlTypeName() is SqlTypeName name && (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR);
+            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN
+            || name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET || name == SqlTypeName.MAP || name == SqlTypeName.ROW;
 
         /// <summary>
         /// Returns the slot a parameter's value is bound into: its ordinal, and the length its type holds a string to.
@@ -1335,13 +1253,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var path = _fields[index]
                 ?? throw new CosmosTranslationException($"Field ordinal {index} is a computed projection and has no document path.");
 
+            if (_spelled && NamesAnEscape(path))
+                throw new CosmosTranslationException($"Under the emulator field ordinal {index} names a member holding U+0000 or U+FDD0, which it stores escaped, and is computed in process.");
+
             path.WriteTo(builder);
         }
 
         void WriteLiteral(StringBuilder builder, RexLiteral literal)
         {
             // Bind rather than inline, so that statement text is independent of data.
-            builder.Append(_parameters.Add(Sent(GetLiteralValue(literal), _comparing, _returning)));
+            builder.Append(_parameters.Add(Sent(GetLiteralValue(literal), _comparing)));
         }
 
         /// <summary>
@@ -1946,7 +1867,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         bool WriteJsonConstant(StringBuilder builder, JsonElement value)
         {
-            builder.Append(_parameters.Add(Sent(ToParameterValue(value), _comparing, _returning)));
+            builder.Append(_parameters.Add(Sent(ToParameterValue(value), _comparing)));
             return true;
         }
 
@@ -3149,7 +3070,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             reading = CosmosReading.Typed;
 
             _guardNestedAccessors = true;
-            _returning = true;
 
             try
             {
@@ -3158,7 +3078,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _guardNestedAccessors = false;
-                _returning = false;
             }
         }
 
@@ -5344,7 +5263,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var value = GetLiteralValue(accessor);
 
             if (value is string name)
-                CosmosSql.WritePropertyAccess(builder, name);
+                CosmosSql.WritePropertyAccess(builder, _spelled && EmulatorStoredText.Escapes(name)
+                    ? throw new CosmosTranslationException("Under the emulator a member's name holding U+0000 or U+FDD0 is stored escaped, and an accessor naming one is computed in process.")
+                    : name);
             else if (TryGetArrayIndex(value, out var index))
                 CosmosSql.WriteIndexAccess(builder, index);
             else
@@ -5412,7 +5333,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // value is read, so it is a predicate where the arms may be values -- see _value.
             var position = _negated;
             var value = _value;
-            var returning = _returning;
 
             try
             {
@@ -5422,11 +5342,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                     _negated = false;
                     _value = false;
-                    _returning = false;
                     Write(builder, (RexNode)operands.get(i));
                     _negated = position;
                     _value = value;
-                    _returning = returning;
 
                     builder.Append(" ? ");
                     Write(builder, (RexNode)operands.get(i + 1));
@@ -5441,7 +5359,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 _negated = position;
                 _value = value;
-                _returning = returning;
             }
         }
 

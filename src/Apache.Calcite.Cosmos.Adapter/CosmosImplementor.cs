@@ -144,6 +144,22 @@ namespace Apache.Calcite.Cosmos.Adapter
         }
 
         /// <summary>
+        /// Determines whether a row type names a field holding U+0000 or U+FDD0 where the container's target stores a
+        /// member's name escaped, the emulator's: a projection writing that name as a member reads nothing back.
+        /// </summary>
+        internal static bool NamesAnEscape(org.apache.calcite.rel.type.RelDataType rowType, CosmosContainerMetadata? container)
+        {
+            if (container is null || CosmosRendering.StoresSpelled(container.ServiceTarget) == false)
+                return false;
+
+            foreach (var name in rowType.getFieldNames().toArray())
+                if (name is string text && EmulatorStoredText.Escapes(text))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
         /// Derives the ordinal-to-path binding for a row type.
         /// </summary>
         /// <remarks>
@@ -161,16 +177,18 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         /// <param name="rowType">The row type to bind.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="spelled">Whether the container's target stores a member's name escaped, the emulator's: then a
+        /// column naming one holding U+0000 or U+FDD0 binds no path, and whatever reads it is computed in process.</param>
         /// <returns>The binding, indexed by field ordinal.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="rowType"/> is <c>null</c>.</exception>
-        public static IReadOnlyList<CosmosPath?> BindFields(org.apache.calcite.rel.type.RelDataType rowType, string? rootAlias = null)
+        public static IReadOnlyList<CosmosPath?> BindFields(org.apache.calcite.rel.type.RelDataType rowType, string? rootAlias = null, bool spelled = false)
         {
             if (rowType is null)
                 throw new ArgumentNullException(nameof(rowType));
 
             var root = CosmosPath.Root(string.IsNullOrEmpty(rootAlias) ? DefaultRootAlias : rootAlias);
             var fields = rowType.getFieldList();
-            var paths = new CosmosPath[fields.size()];
+            var paths = new CosmosPath?[fields.size()];
 
             for (var i = 0; i < paths.Length; i++)
             {
@@ -197,6 +215,11 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 paths[i] = root.Property(name);
             }
+
+            if (spelled)
+                for (var i = 0; i < paths.Length; i++)
+                    if (CosmosRexTranslator.NamesAnEscape(paths[i]))
+                        paths[i] = null;
 
             return paths;
         }
@@ -400,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     return false;
 
                 case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table:
-                    fields = BindFields(scan.getRowType());
+                    fields = BindFields(scan.getRowType(), spelled: CosmosRendering.StoresSpelled(table.Container.ServiceTarget));
                     readings = BindReadings(scan.getRowType());
                     ordering = new CosmosOrdering[fields.Count];
                     container = table.Container;
@@ -621,7 +644,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             _container = container ?? throw new ArgumentNullException(nameof(container));
 
             var alias = string.IsNullOrEmpty(rootAlias) ? DefaultRootAlias : rootAlias;
-            _query = new CosmosQueryBuilder(container.Name, alias);
+            _query = new CosmosQueryBuilder(container.Name, alias) { StoresSpelled = CosmosRendering.StoresSpelled(container.ServiceTarget) };
 
             // Until a scan binds the row type, the sole field is the document itself. This is the
             // binding the row model starts from.

@@ -628,12 +628,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// correctness fix (owner, 2026-10-31, "Yes, fix PR first"; 2026-11-01, "Cut it"), listed in <c>TODO.md</c>: three
         /// order comparisons of text that may hold U+0000 against a literal (D7), refused at the order fix, which left this
         /// floor as it was, and three partitions over <c>id NOT LIKE '_prin_'</c>, whose <c>_</c> the emulator matches
-        /// against one stored unit of an escape (D11). The default run's held. Under Azure's set every one of them pushes.
+        /// against one stored unit of an escape (D11). Then to 983, and the default run's from 206 to 204, by four the cut
+        /// refuses (owner, 2026-11-01, "Cut it"): <c>(id || '!') LIKE 'B%'</c> and <c>NOT IN ('30', 'TRUE')</c>, each with
+        /// its negation, a concatenation now asking its path operand too (D13). Under Azure's set every one of them pushes.
         /// </remarks>
         static readonly (CosmosServiceTarget Target, int Default, int Gate)[] PushedPartitions =
         [
             (CosmosServiceTarget.Azure, 206, 993),
-            (CosmosServiceTarget.Emulator, 206, 987),
+            (CosmosServiceTarget.Emulator, 204, 983),
         ];
 
         /// <summary>

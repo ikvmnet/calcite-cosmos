@@ -72,10 +72,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static string Key => CosmosEmulator.Key!;
         static bool IsEmulator => CosmosEmulator.IsEmulator;
 
-        // Per run, so that two runs on one account never share the documents one of them plants and the other deletes.
+        // Per run on an emulator, so that two runs on one never share the documents one of them plants and the other
+        // deletes; on Azure one name, which a run killed part-way leaves for the next to reuse rather than to bill.
         static readonly string DatabaseName = "calcite_cosmos_diff_" +
             System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_") +
-            "_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            (IsEmulator ? "_" + Guid.NewGuid().ToString("N").Substring(0, 8) : "");
 
         internal static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
 

@@ -38,17 +38,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             EmulatorStoredText.Escapes(text).Should().Be(text != stored);
         }
 
-        /// <summary>
-        /// A spelling reads back as what it spells, for every string the probe stored: a reader holding a value as it was
-        /// sent compares it with what the service returned decoded.
-        /// </summary>
+        /// <summary>A value to send escapes where a string at any depth does: an element, a member's value or its name.</summary>
         [Fact]
-        public void ASpellingReadsBackAsWhatItSpells()
+        public void AValueEscapesAtAnyDepth()
         {
-            foreach (var text in Probed)
-                EmulatorStoredText.Read(EmulatorStoredText.Of(text)).Should().Be(text);
-
-            EmulatorStoredText.Read("a﷐").Should().Be("a﷐", "an escape unit followed by neither digit reads as itself");
+            EmulatorStoredText.Escapes((object?)new object?[] { "a", 1L, null }).Should().BeFalse();
+            EmulatorStoredText.Escapes((object?)new object?[] { "a", new object?[] { "b\0" } }).Should().BeTrue();
+            EmulatorStoredText.Escapes((object?)new System.Collections.Generic.Dictionary<string, object?> { ["k"] = "﷐" }).Should().BeTrue();
+            EmulatorStoredText.Escapes((object?)new System.Collections.Generic.Dictionary<string, object?> { ["k\0"] = 1L }).Should().BeTrue();
+            EmulatorStoredText.Escapes((object?)42L).Should().BeFalse();
         }
 
         /// <summary>A string holding neither character is its own spelling, the same instance, so nothing is built.</summary>

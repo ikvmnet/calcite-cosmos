@@ -128,27 +128,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// D13: a concatenation or a repetition joins what the emulator stores with what it makes. A path is stored
-        /// already, and joined as stored (<c>CONCAT(c.s, 'x')</c> was measured right over every string); an operand the
-        /// service computes is asked to hold neither escape, a nested concatenation being asked in its turn. Azure asks
-        /// nothing.
+        /// D13: a concatenation or a repetition joins what the emulator stores with what it makes, so every operand is
+        /// asked to hold neither escape, a path among them (owner, 2026-11-01: "Cut it"). Azure asks nothing.
         /// </summary>
         [Fact]
-        public void AConcatenationAsksWhatTheServiceMakesUnderTheEmulator()
+        public void AConcatenationAsksEveryOperandUnderTheEmulator()
         {
             var made = Call(SqlStdOperatorTable.UPPER, Str());
 
-            Pushes(Emulator, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue("a path is joined as stored");
-            Pushes(Emulator, null, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Str(), Lit("!")).Should().BeTrue();
-            Pushes(Emulator, null, SqlStdOperatorTable.CONCAT, Call(SqlStdOperatorTable.CONCAT, Str(), Lit("a")), Str()).Should().BeTrue("a concatenation of paths is asked in its turn");
-
-            Pushes(Azure, Z, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeTrue();
+            Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
+            Pushes(Emulator, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeFalse("a path is asked as any operand is");
+            Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Str(), Lit("!")).Should().BeTrue();
             Pushes(Emulator, Z, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeFalse("UPPER's value may hold U+0000, made at the service");
             Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeTrue("and holds neither where its argument holds neither");
 
             Pushes(Azure, Z, SqlLibraryOperators.REPEAT, made, Int(0)).Should().BeTrue();
-            Pushes(Emulator, Z, SqlLibraryOperators.REPEAT, made, Int(0)).Should().BeFalse("REPEAT's subject joins CONCAT's rule");
-            Pushes(Emulator, Z, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a path is repeated as stored");
+            Pushes(Emulator, Z, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeFalse("REPEAT's subject joins CONCAT's rule");
+            Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue();
         }
 
         /// <summary>

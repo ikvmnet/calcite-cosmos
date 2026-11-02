@@ -330,10 +330,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// <para>
         /// A comparison under the emulator, its values sent in the stored spelling: the two orders part only where U+0000
-        /// meets a unit from U+0001 to U+FDCF (measured, 6 of 26 pairs of paths wrong, exactly there). Against a parameter,
-        /// a path that cannot hold U+0000 is anchored on a value holding no U+0000 either, where Azure proved it outright or
-        /// anchored on <see cref="CosmosOrderAnchor.Text"/>; one that can is refused, whatever the value, nothing weaker
-        /// being sent (owner, 2026-11-01: "Cut it"). Two paths, or a path and a literal, either of which may hold U+0000,
+        /// meets a unit from U+0001 to U+FDCF (measured, 6 of 26 pairs of paths wrong, exactly there). A comparison against a
+        /// parameter, which may hold U+0000, is refused whatever the path holds, where Azure proved it outright or anchored
+        /// on <see cref="CosmosOrderAnchor.Text"/>, nothing weaker being sent (owner, 2026-11-01: "Cut it"). Two paths, or a path and a literal, either of which may hold U+0000,
         /// are refused: nothing recovers the rows the service drops. A conversion's parameter is written in its stored
         /// form, which holds none.
         /// </para>
@@ -348,10 +347,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosOrderVerdict Compare(CosmosOrderOperand left, CosmosOrderOperand right, RenderingSet set) => CosmosServiceOrder.Compare(facts, left, right, inclusive: false, set);
 
             Compare(Text("a"), parameter, RenderingSet.Production).IsProved.Should().BeTrue();
-            Compare(Text("a"), parameter, RenderingSet.Emulator).Anchors.Should().Equal(CosmosOrderAnchor.TextWithoutNul);
-            Compare(parameter, Text("a"), RenderingSet.Emulator).Anchors.Should().Equal(CosmosOrderAnchor.TextWithoutNul);
+            Compare(Text("a"), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            Compare(parameter, Text("a"), RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
             Compare(Text("e"), parameter, RenderingSet.Production).Anchors.Should().Equal(CosmosOrderAnchor.Text);
-            Compare(Text("e"), parameter, RenderingSet.Emulator).Anchors.Should().Equal(CosmosOrderAnchor.TextWithoutNul);
+            Compare(Text("e"), parameter, RenderingSet.Emulator).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
 
             Compare(Text("s"), parameter, RenderingSet.Production).IsProved.Should().BeTrue("below U+D800 against anything");
             Compare(Text("s"), parameter, RenderingSet.Emulator).Reason.Should().Contain("U+0000");
@@ -382,32 +381,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosServiceOrder.Compare(stored, conversion, parameter, inclusive: true, RenderingSet.Emulator).IsProved.Should().BeTrue();
         }
 
-        /// <remarks>
-        /// The emulator's anchor: <see cref="CosmosOrderAnchor.TextWithoutNul"/> is a <see cref="CosmosOrderAnchor.Text"/>
-        /// value holding no U+0000. Its bounds stop at U+0000
-        /// too, so that it holds no character the stored spelling escapes; Azure's stop at U+D800 alone.
-        /// </remarks>
-        [Fact]
-        public void TheEmulatorsAnchorAndBoundsStopAtU0000()
-        {
-            static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
-
-            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, Json("\"a\\u0000\"")).Should().BeTrue("below U+D800");
-            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.TextWithoutNul, Json("\"a\\u0000\"")).Should().BeFalse();
-            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.TextWithoutNul, Json("\"a\"")).Should().BeTrue();
-            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.TextWithoutNul, Json("\"\\uFDD0\"")).Should().BeFalse("from U+D800");
-            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.TextWithoutNul, Json("null")).Should().BeTrue();
-
-
-            CosmosServiceOrder.LowerBound("ab\u0000c", CosmosOrderAnchor.Text).Should().Be("ab\u0000c");
-            CosmosServiceOrder.LowerBound("ab\u0000c", CosmosOrderAnchor.TextWithoutNul).Should().Be("ab");
-            CosmosServiceOrder.LowerBound("a\uE000\u0000", CosmosOrderAnchor.TextWithoutNul).Should().Be("a");
-            CosmosServiceOrder.UpperBound("ab\u0000c", CosmosOrderAnchor.TextWithoutNul).Should().Be("ac");
-            CosmosServiceOrder.UpperBound("\u0000a", CosmosOrderAnchor.TextWithoutNul).Should().BeNull();
-            CosmosServiceOrder.UpperBound("ab\u0000c", CosmosOrderAnchor.Text).Should().Be("ab\u0000d");
-        }
-
-        /// <remarks>
+/// <remarks>
         /// Text over a path that may hold a number is a rendering, compared as text in Calcite and as another type at
         /// the service.
         /// </remarks>

@@ -30,14 +30,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="paths">Each path the form reads, by its spelling, as the conjunct's IR reads it.</param>
         /// <param name="rootAlias">The alias the statement reads the document under.</param>
         /// <param name="parameters">The list the literals are bound into.</param>
-        /// <param name="spelled">Whether the statement's target stores a string in another spelling than it is sent
+        /// <param name="stored">Whether the statement's target stores a string in another spelling than it is sent
         /// (<see cref="Metadata.CosmosRendering.StoresSpelled(RenderingSet)"/>): then each literal, every one a compared
-        /// value, is bound in that spelling, which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>).</param>
+        /// value, is bound in that spelling, which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>), and a path
+        /// naming a member holding either escape is refused.</param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
-        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool spelled = false)
+        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false)
         {
-            object? Bound(string literal) => spelled && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
+            object? Bound(string literal) => stored && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
 
             var builder = new StringBuilder();
 
@@ -48,7 +49,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 builder.Append(rootAlias);
                 foreach (var name in path.Names)
-                    CosmosSql.WritePropertyAccess(builder, RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                    // A name is stored spelled too, so written as it is it reads nothing there.
+                    CosmosSql.WritePropertyAccess(builder, stored && EmulatorStoredText.Escapes(name)
+                        ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
+                        : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
             }
 
             void Compare(ServiceForm compare, bool parenthesised)

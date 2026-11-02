@@ -141,10 +141,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             _rowBuilder = rowBuilder ?? throw new ArgumentNullException(nameof(rowBuilder));
             _comparer = new CosmosKeyComparer(program.Keys);
 
-            // As Calcite holds them: a value sent in the emulator's stored spelling is read back to what it spells, the
-            // rechecks comparing it with rows the service returned decoded.
             foreach (var parameter in query.Parameters)
-                _values[parameter.Name] = parameter.Value is string text && CosmosQueries.IsStored(query, parameter.Name) ? Facts.EmulatorStoredText.Read(text) : parameter.Value;
+                _values[parameter.Name] = parameter.Value;
 
             _offset = Limit(program.Offset) ?? 0;
             _fetch = Limit(program.Fetch);

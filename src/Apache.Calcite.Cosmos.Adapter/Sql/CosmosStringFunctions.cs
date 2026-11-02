@@ -72,10 +72,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// What a function asks of the characters of some of its operands: the classes refused, what they are called, the
-        /// operands asked, by position, and why; and whether a path among them, or a concatenation of paths, is asked
-        /// nothing, being stored already in the spelling the function works on (<see cref="RuleOf(RexCall, RenderingSet)"/>).
+        /// operands asked, by position, and why.
         /// </summary>
-        public sealed record Rule(JsonCharacterBand Refused, string Named, int[] Asked, string Why, bool PathsExempt = false);
+        public sealed record Rule(JsonCharacterBand Refused, string Named, int[] Asked, string Why);
 
         /// <summary>
         /// The classes a case mapping asks its argument to be free of: everything outside ASCII, where Java's full mapping
@@ -117,15 +116,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the emulator's REPLACE works on the units it stores, a search beginning 0 or 1 meeting an escape's second unit, and a replacement holding U+0000 fails the statement where one holding U+FDD0 mixes the written spelling into the stored one");
 
         static readonly Rule ConcatenatedStored = new(Escaped, EscapedNamed, [],
-            "the emulator joins what it stores with what it makes, and a U+0000 made there fails the statement or vanishes where a U+FDD0 made there is read back as an escape's first unit",
-            PathsExempt: true);
+            "the emulator joins what it stores with what it makes, and a U+0000 made there fails the statement or vanishes where a U+FDD0 made there is read back as an escape's first unit");
 
         static readonly Rule RepeatedStored = ConcatenatedStored with { Asked = [0] };
 
         static readonly Rule PatternedStored = new(Escaped, EscapedNamed, [0],
             "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
-
-        static readonly Rule PatternedNul = PatternedStored with { Asked = [0, 1] };
 
         /// <summary>
         /// Every string function the translator writes by name, and what it asks of its operands' characters; <c>null</c>
@@ -162,17 +158,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Calcite's, or <c>null</c> where it asks nothing of them.
         /// </summary>
         /// <remarks>
-        /// <b>Under a set that stores a string escaped, the emulator's, a function works on what is stored.</b> The emulator
-        /// stores U+0000 as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0 <c>1</c>, and its functions count, cut, reverse, search and
-        /// join those units, decoding only a whole pair that comes back (<c>Service.EmulatorCountsTheStringItStores</c>,
-        /// <c>Service.EmulatorFailsANulMadeFromAPath</c>). So each rule is widened by both characters, U+FDD0 read as the
-        /// high band (<see cref="Escaped"/>), on the operands it works on: a count's, a reversal's and a <c>POSITION</c>'s
-        /// subject; <c>REPLACE</c>'s three; a <c>LIKE</c>'s subject where the pattern holds a <c>_</c>, a <c>0</c> or a
-        /// <c>1</c>, which can meet one unit of an escape, the fold's <c>CONTAINS</c> and <c>ENDSWITH</c> among them — a
-        /// prefix, written as <c>STARTSWITH</c>, starts where the subject does and is exact; and a concatenation's or a
-        /// repetition's operands that the service makes rather than reads, a path being stored already and joined as
-        /// stored, measured right. <c>UPPER</c>, <c>LOWER</c>, a trim of spaces and <c>STARTSWITH</c> were measured right
-        /// over both, and gain nothing. Under any other set nothing is widened.
+        /// Under a set that stores a string escaped, the emulator's, a function that works on the stored units asks the
+        /// operands it works on to hold neither escape: DESIGN.md, <i>On the emulator a function over a stored escape stays
+        /// in process</i>.
         /// </remarks>
         /// <param name="call">The function.</param>
         /// <param name="set">The set the statement is sent under (<see cref="CosmosRendering.StoresSpelled(RenderingSet)"/>).</param>
@@ -191,7 +179,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // where s starts with p.
                 var text = pattern.getValue();
                 return IsPrefix(text) ? rule
-                    : text.Contains('\0') ? PatternedNul
                     : text.IndexOfAny(['_', '0', '1']) >= 0 ? PatternedStored
                     : rule;
             }

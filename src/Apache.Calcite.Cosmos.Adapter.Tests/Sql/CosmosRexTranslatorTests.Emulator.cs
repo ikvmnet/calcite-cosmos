@@ -99,57 +99,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
-            /// A constant the service returns, the column or a <c>CASE</c> arm, is a 500 sent raw where it holds U+0000, and
-            /// comes back exactly as written sent stored (<c>Service.EmulatorDecodesWhatItReturns</c>): so a projected one is
-            /// bound stored, and a parameter there named stored. Under Azure each is as written.
+            /// Anywhere but a compared position, a projected column or a <c>CASE</c> arm among them, a literal holding either
+            /// character, and a parameter that may hold text, are computed in process (owner, 2026-11-01: "Cut it"). A number
+            /// is not text, and a constant holding neither is sent as it is; under Azure nothing changes.
             /// </summary>
             [Fact]
-            public void AConstantTheServiceReturnsIsBoundInTheStoredSpelling()
-            {
-                var condition = _t.Call(SqlStdOperatorTable.GREATER_THAN, _t.Ref(1, SqlTypeName.INTEGER), _t.Num(1));
-
-                Translator(CosmosServiceTarget.Emulator).TranslateProjection(_t.Call(SqlStdOperatorTable.CASE, condition, _t.Str("a\0"), Name), out _)
-                    .Should().Be("((c.price > @p0) ? @p1 : c.name)");
-                _t._parameters.Parameters[1].Value.Should().Be("a﷐0");
-
-                Translator(CosmosServiceTarget.Azure).TranslateProjection(_t.Call(SqlStdOperatorTable.CASE, condition, _t.Str("a\0"), Name), out _);
-                _t._parameters.Parameters[1].Value.Should().Be("a\0");
-
-                Translator(CosmosServiceTarget.Emulator).TranslateProjection(_t.Call(SqlStdOperatorTable.CASE, condition, Param, Name), out _);
-                _t._parameters.Stored.Should().Equal(["@p1"]);
-
-                Translator(CosmosServiceTarget.Azure).TranslateProjection(_t.Call(SqlStdOperatorTable.CASE, condition, Param, Name), out _);
-                _t._parameters.Stored.Should().BeEmpty();
-            }
-
-            /// <summary>
-            /// Anywhere else, a <c>CASE</c> in a filter, a condition, or an operand a function goes on to work on, nothing was
-            /// measured in the stored spelling: a literal holding either character, and a parameter that may be text, are
-            /// computed in process there. A number is not text, and a constant holding neither is sent as it is.
-            /// </summary>
-            [Fact]
-            public void AConstantNeitherComparedNorReturnedIsRefusedWhereItMayHoldAnEscape()
+            public void AConstantNotComparedIsRefusedWhereItMayHoldAnEscape()
             {
                 var condition = _t.Call(SqlStdOperatorTable.GREATER_THAN, _t.Ref(1, SqlTypeName.INTEGER), _t.Num(1));
                 var arm = _t.Call(SqlStdOperatorTable.CASE, condition, _t.Str("\0"), Name);
                 var parameterArm = _t.Call(SqlStdOperatorTable.CASE, condition, Param, Name);
 
-                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(arm, out _).Should().BeFalse("not returned: a sort or group key, say");
-                Translator(CosmosServiceTarget.Azure).TryTranslateValue(arm, out _).Should().BeTrue();
-                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(parameterArm, out _).Should().BeFalse();
-                Translator(CosmosServiceTarget.Azure).TryTranslateValue(parameterArm, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).TryTranslateProjection(arm, out _, out _).Should().BeFalse("a returned constant is not spelled");
+                Translator(CosmosServiceTarget.Azure).TryTranslateProjection(arm, out _, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).TryTranslateProjection(parameterArm, out _, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Azure).TryTranslateProjection(parameterArm, out _, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(arm, out _).Should().BeFalse("a sort or group key, say");
 
-                Translator(CosmosServiceTarget.Emulator).TryTranslateProjection(_t.Call(SqlStdOperatorTable.UPPER, arm), out _, out _)
-                    .Should().BeFalse("an arm a function goes on to work on is not returned");
                 Translator(CosmosServiceTarget.Emulator).TryTranslateProjection(_t.Call(SqlStdOperatorTable.CASE, _t.Call(SqlStdOperatorTable.EQUALS, _t.Str("\0"), Name), _t.Str("y"), Name), out _, out _)
-                    .Should().BeTrue("a condition's literal is compared, not returned");
-                Translator(CosmosServiceTarget.Emulator).TryTranslateProjection(_t.Call(SqlStdOperatorTable.CASE, condition, _t._rex.makeDynamicParam(_t._types.createSqlType(SqlTypeName.ANY), 0), Name), out _, out _)
-                    .Should().BeFalse("a parameter that may be text but arrives as an object is not spelled when it is bound");
-
+                    .Should().BeTrue("a condition's literal is compared");
                 Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.CASE, condition, _t.Str("x"), Name), out _)
                     .Should().BeTrue("a constant holding neither character is sent as it is");
                 Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.PLUS, _t.Ref(1, SqlTypeName.INTEGER), _t._rex.makeDynamicParam(_t._types.createSqlType(SqlTypeName.INTEGER), 0)), out _)
                     .Should().BeTrue("a parameter of a number is no text");
+            }
+
+            /// <summary>
+            /// A parameter that is a list is not spelled when it is bound, so outside a compared position it is refused:
+            /// <c>MEMBER OF ?</c> is <c>ARRAY_CONTAINS(@p, ...)</c>, whose elements the service compares with the stored path.
+            /// A service-only function given a text parameter fails the statement there, having no body in process.
+            /// </summary>
+            [Fact]
+            public void AListParameterAndAServiceOnlyFunctionsTextParameterAreRefused()
+            {
+                var list = _t._rex.makeDynamicParam(_t._types.createMultisetType(_t._types.createSqlType(SqlTypeName.VARCHAR), -1), 0);
+                var member = _t.Call(SqlStdOperatorTable.MEMBER_OF, Name, list);
+                var regex = _t.Call(CosmosOperators.RegexMatch, Name, Param);
+
+                Translator(CosmosServiceTarget.Emulator).TryTranslate(member, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Azure).TryTranslate(member, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).TryTranslate(regex, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Azure).TryTranslate(regex, out _).Should().BeTrue();
+            }
+
+            /// <summary>
+            /// The emulator stores a member's name escaped too, so a path naming one that holds U+0000 or U+FDD0, written as
+            /// spelled, reads nothing: no path there, and an accessor naming one is computed in process over the document. A
+            /// literal cannot hold U+FDD0, so it reaches a statement as a column's name, which binds no path there.
+            /// </summary>
+            [Fact]
+            public void APathNamingAnEscapeIsNoPath()
+            {
+                var item = _t.Call(SqlStdOperatorTable.ITEM, _t.Ref(2, SqlTypeName.ANY), _t.Str("m\0"));
+
+                Translator(CosmosServiceTarget.Emulator).TryResolvePath(item, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(item, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Azure).TryTranslateValue(item, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).TryResolvePath(_t.Call(SqlStdOperatorTable.ITEM, _t.Ref(2, SqlTypeName.ANY), _t.Str("m")), out _).Should().BeTrue();
+
+                var row = _t._types.builder().add("id", SqlTypeName.VARCHAR).add("m\uFDD0", SqlTypeName.VARCHAR).add("m\0", SqlTypeName.VARCHAR).build();
+                CosmosImplementor.BindFields(row, "c", spelled: true).Select(p => p?.ToString()).Should().Equal("c.id", null, null);
+                CosmosImplementor.BindFields(row, "c").Should().NotContainNulls();
             }
 
             /// <summary>
@@ -174,12 +184,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             /// <summary>
             /// Over a path that holds no U+0000, ASCII here, Azure proves the ordering against a parameter outright; the
-            /// emulator anchors it on a value holding no U+0000, whose bound stops there. Two such paths
+            /// emulator refuses it, the parameter able to hold one (owner, 2026-11-01: "Cut it"). Two such paths
             /// compare as on Azure; a path that may hold U+0000 against another is refused, nothing recovering the rows the
             /// service drops, where an equality of the two is sent as on Azure, exact in the stored spelling.
             /// </summary>
             [Fact]
-            public void AnOrderingOverTextThatHoldsNoNulIsAnchoredOnAValueHoldingNone()
+            public void AnOrderingOverTextThatHoldsNoNulIsRefusedAgainstAParameter()
             {
                 var below = _t.Call(SqlStdOperatorTable.LESS_THAN, Name, Param);
                 var paths = _t.Call(SqlStdOperatorTable.LESS_THAN, Name, Name);
@@ -187,8 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Translator(CosmosServiceTarget.Azure, Strings(JsonCharacterBand.None)).TranslateConjunct(below).Should().Be("(c.name < @p0)");
                 _t._parameters.Comparisons.Should().BeEmpty("proved when the plan is made");
 
-                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateConjunct(below).Should().Be("(c.name < @p0)");
-                _t._parameters.Comparisons.Single().Should().Match<CosmosOrderComparison>(c => c.Anchor == CosmosOrderAnchor.TextWithoutNul && c.Weakened == "(c.name < @p1)");
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TryTranslateConjunct(below, out _).Should().BeFalse("nothing weaker is sent (owner, 2026-11-01: \"Cut it\")");
 
                 Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateConjunct(paths).Should().Be("(c.name < c.name)");
                 Translator(CosmosServiceTarget.Azure, Strings(JsonCharacterBand.Nul)).TranslateConjunct(paths).Should().Be("(c.name < c.name)");

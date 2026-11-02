@@ -34,13 +34,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         Number,
 
-        /// <summary>
-        /// A <see cref="Text"/> value holding no U+0000 either, or a value read as null: a parameter's anchor against a
-        /// path that holds no U+0000, where the target stores U+0000 as U+FDD0 <c>0</c>, the emulator, which orders it
-        /// above every unit from U+0001 to U+FDCF where Calcite puts it least (<c>Service.StringOrderIsCodePoint</c>).
-        /// </summary>
-        TextWithoutNul,
-
     }
 
 }

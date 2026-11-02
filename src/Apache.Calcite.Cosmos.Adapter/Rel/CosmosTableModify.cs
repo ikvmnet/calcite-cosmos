@@ -244,7 +244,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             for (var i = 0; i < paths.Length; i++)
                 paths[i] = _table.Container.PartitionKeyPaths[i];
 
-            var write = new CosmosWrite(_write, names, paths, updates, _partitionKey);
+            var write = new CosmosWrite(_write, names, paths, updates, _partitionKey, Metadata.CosmosRendering.StoresSpelled(_table.Container.ServiceTarget));
 
             return
             [

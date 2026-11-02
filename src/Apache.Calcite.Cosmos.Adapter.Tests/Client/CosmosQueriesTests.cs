@@ -233,32 +233,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosQueries.Bind(query, new Context(("?0", "abc"), ("?1", null))).Parameters[0].Value.Should().Be("abc", "a value holding neither is its own spelling");
         }
 
-        /// <summary>
-        /// A bound is written under the anchor its comparison carries (<see cref="CosmosOrderComparison.Anchor"/>), the slot
-        /// carrying none: under the emulator's it stops before U+0000 as well as before U+D800, so that it holds no
-        /// character the stored spelling escapes; under Azure's, before U+D800 alone.
-        /// </summary>
-        [Theory]
-        [InlineData(CosmosOrderAnchor.Text, "ab\0c", "ab\0d")]
-        [InlineData(CosmosOrderAnchor.TextWithoutNul, "ab", "ac")]
-        public void ABoundStopsWhereItsComparisonsAnchorSays(CosmosOrderAnchor anchor, string lower, string upper)
-        {
-            CosmosOrderComparison Comparison(string op, string bound) => new("@p0", bound, op, anchor, "c.s", $"(c.s {op} @p0)", "", "IS_STRING(c.s)", "$c0");
-
-            var query = new CosmosQuery("SELECT VALUE c.id FROM c WHERE (c.s > @p0) AND (c.s < @p3)",
-                [
-                    new("@p0", new CosmosDynamicValue(0)),
-                    new("@p1", new CosmosDynamicValue(0) { Bound = CosmosAnchorBound.Lower }),
-                    new("@p2", new CosmosDynamicValue(0) { Bound = CosmosAnchorBound.Upper }),
-                ],
-                Order: new CosmosOrderProgram([], false, null, null, "", [Comparison(">", "@p1"), Comparison("<", "@p2")], [], []));
-
-            var bound = CosmosQueries.Bind(query, new Context(("?0", "ab\0c")));
-            bound.Parameters[1].Value.Should().Be(lower);
-            bound.Parameters[2].Value.Should().Be(upper);
-        }
-
-        /// <remarks>
+/// <remarks>
         /// A slot the context has no value for is a null parameter, not a shape.
         /// </remarks>
         [Fact]

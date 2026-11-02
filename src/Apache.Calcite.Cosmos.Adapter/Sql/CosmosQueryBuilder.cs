@@ -35,6 +35,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         string? _valueExpression;
 
         /// <summary>
+        /// Gets or sets whether the statement's target stores a member's name in another spelling than it is sent, the
+        /// emulator's, so that a projected name holding U+0000 or U+FDD0 is refused (<see cref="SelectProperty"/>).
+        /// </summary>
+        public bool StoresSpelled { get; init; }
+
+        /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="container">The container name to emit in the <c>FROM</c> clause.</param>
@@ -168,8 +174,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="expression">The rendered expression producing the value.</param>
         /// <exception cref="ArgumentException"><paramref name="alias"/> or <paramref name="expression"/> is <c>null</c> or empty.</exception>
         /// <exception cref="InvalidOperationException">A <c>VALUE</c> projection has already been set.</exception>
+        /// <exception cref="CosmosTranslationException">The alias holds U+0000 or U+FDD0 where <see cref="StoresSpelled"/>.</exception>
         public void SelectProperty(string alias, string expression)
         {
+            if (StoresSpelled && Facts.EmulatorStoredText.Escapes(alias ?? ""))
+                throw new CosmosTranslationException($"Under the emulator a projected name holding U+0000 or U+FDD0 is stored escaped, and the projection naming one is computed in process.");
+
             if (string.IsNullOrEmpty(alias))
                 throw new ArgumentException($"'{nameof(alias)}' cannot be null or empty.", nameof(alias));
             if (string.IsNullOrEmpty(expression))

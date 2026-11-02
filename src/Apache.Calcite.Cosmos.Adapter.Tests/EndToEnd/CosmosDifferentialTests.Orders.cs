@@ -1540,11 +1540,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the emulator's set a text sort, <c>MIN</c> and <c>MAX</c> over text that may hold U+0000 are refused either way,
         /// and so is an ordering of such text against a parameter, a literal or another path (D4 to D7 of
         /// <c>reports/emu-nul/spec.md</c>): read on 8085, the default run's sorts went from 35 to 17, its extremes from 5 to
-        /// 3; the gate's sorts from 220 to 106, extremes from 23 to 18, comparisons from 25 to 17, its pages held. Its
-        /// comparisons over <c>orders_ascii</c> rose from none to 11, five in the default run, an exact <c>id &gt; ?</c> or
-        /// <c>e &gt; ?</c> now anchored on a value holding no U+0000 and sent with its recheck. Every loss is one of those
-        /// kinds over <c>s</c>, <c>t</c>, <c>g</c> or <c>id</c>, each a correctness fix on the emulator (owner, 2026-10-31,
-        /// "Yes, fix PR first"; 2026-11-01, "Cut it"), listed in <c>TODO.md</c>; under Azure's set every one pushes.
+        /// 3; the gate's sorts from 220 to 106, extremes from 23 to 18, comparisons from 25 to 17, its pages held. An
+        /// ordering against a parameter is then refused whatever the path holds, the anchor on a value holding no U+0000
+        /// cut (owner, 2026-11-01, "Cut it"): the default run's comparisons went from 6 to none, its sorts from 17 to 15;
+        /// the gate's comparisons from 17 to none, its sorts from 106 to 77, each beneath such an ordering. Every loss is
+        /// one of those kinds, a correctness fix on the emulator (owner, 2026-10-31, "Yes, fix PR first") or a push the cut
+        /// refuses, listed in <c>TODO.md</c>; under Azure's set every one pushes.
         /// </para>
         /// </remarks>
         static readonly (CosmosServiceTarget Target, string? Container, string Kind, int Default, int Gate)[] PushedFloors =
@@ -1561,16 +1562,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             (CosmosServiceTarget.Azure, "orders_ascii", "sort", 11, 90),
             (CosmosServiceTarget.Azure, "orders_ascii", "extreme", 2, 12),
 
-            (CosmosServiceTarget.Emulator, null, "sort", 17, 106),
+            (CosmosServiceTarget.Emulator, null, "sort", 15, 77),
             (CosmosServiceTarget.Emulator, null, "extreme", 3, 18),
             (CosmosServiceTarget.Emulator, null, "page", 0, 3),
-            (CosmosServiceTarget.Emulator, null, "comparison", 6, 17),
+            (CosmosServiceTarget.Emulator, null, "comparison", 0, 0),
             (CosmosServiceTarget.Emulator, "orders_plain", "sort", 4, 12),
             (CosmosServiceTarget.Emulator, "orders_plain", "extreme", 0, 2),
-            (CosmosServiceTarget.Emulator, "orders_declared", "sort", 5, 34),
+            (CosmosServiceTarget.Emulator, "orders_declared", "sort", 5, 26),
             (CosmosServiceTarget.Emulator, "orders_declared", "extreme", 2, 6),
-            (CosmosServiceTarget.Emulator, "orders_declared", "comparison", 1, 6),
-            (CosmosServiceTarget.Emulator, "orders_ascii", "sort", 8, 60),
+            (CosmosServiceTarget.Emulator, "orders_declared", "comparison", 0, 0),
+            (CosmosServiceTarget.Emulator, "orders_ascii", "sort", 6, 39),
             (CosmosServiceTarget.Emulator, "orders_ascii", "extreme", 1, 10),
         ];
 

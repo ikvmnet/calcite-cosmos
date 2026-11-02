@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
+using FluentAssertions;
+
 using Microsoft.Azure.Cosmos;
 
 using Xunit;
@@ -33,11 +35,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// raw with what it stores; D2, a lookup join and a grouped join on such keys; D3, a point read and a
         /// <c>ReadMany</c> of an id holding U+0000, a 500 where the read was sent; D14, the comparisons with a literal the
         /// rendering graph owns, which it models the emulator comparing in the stored spelling; R, a constant the
-        /// service returns (§4.6), a <c>CASE</c> arm or a <c>COALESCE</c> operand, sent stored and returned as written;
+        /// service returns (§4.6), a <c>CASE</c> arm or a <c>COALESCE</c> operand, computed in process; N and A, a
+        /// member's name and a projected name holding either, which the emulator stores escaped too, computed in process;
         /// D4 and D5, a text sort either way and <c>MIN</c> and <c>MAX</c> over text that may hold U+0000, which the
-        /// emulator orders stored, U+0000 above every unit from U+0001 to U+FDCF; D6, such text against a parameter; and
-        /// D7, against another path. Those are refused under the emulator, and <c>planted_free</c>, whose text holds no
-        /// U+0000, is held to keep its pushes: a value holding one is no anchor there, and is read weakened and rechecked.
+        /// emulator orders stored, U+0000 above every unit from U+0001 to U+FDCF; D6, text against a parameter, which
+        /// may hold one; and D7, such text against another path. Those are refused under the emulator, and
+        /// <c>planted_free</c>, whose text holds no U+0000, is held to keep its sorts, extremes and path pairs.
         /// D8 to D13, the string functions the emulator computes over the units it stores: D8, a count or a window; D9,
         /// <c>REVERSE</c>; D10, <c>POSITION</c>; D11, a <c>LIKE</c> whose <c>_</c>, <c>0</c> or <c>1</c> can meet one
         /// unit of an escape; D12, the fold's <c>ENDSWITH</c> and <c>CONTAINS</c> likewise; D13, a U+0000 made at the
@@ -64,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             if (CosmosEmulator.ServiceTarget != CosmosServiceTarget.Emulator)
                 Assert.Skip("The plant holds what the emulator stores escaped; Azure stores it as written.");
 
-            var containers = await PlantedContainersSeeded();
+            var containers = await PlantedContainers.Value;
             var wrong = new List<string>();
             var unpushed = new List<string>();
 
@@ -204,12 +207,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 yield return new($"D5 {table}.{column} MAX", $"SELECT MAX({x}) FROM {table} AS c", null, free ? "MAX(" : null, new PlantedOrder(input, PlantedOrderKind.Max, null));
             }
 
-            // D6: a path against a parameter. Over planted_declared's s, which may hold U+0000, refused whatever the value;
-            // over planted_free's, anchored on a value holding no U+0000, one that holds one read weakened and rechecked.
+            // D6: a path against a parameter, which may hold U+0000: refused whatever the value, over planted_free's s too
+            // (owner, 2026-11-01: "Cut it").
             foreach (var table in new[] { "planted_declared", "planted_free" })
             {
                 var x = J("s");
-                var pushes = table == "planted_free" ? " WHERE " : null;
+                string? pushes = null;
                 foreach (var (name, value) in new[] { ("nul", Nul), ("a", "a"), ("b", "b"), ("b<nul>", "b" + Nul), ("a<nul>b", "a" + Nul + "b"), ("fdd0", Fdd0), ("b<fdd0>", "b" + Fdd0) })
                 {
                     foreach (var op in new[] { ">", ">=", "<", "<=" })
@@ -264,13 +267,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     yield return Case("D12", "UPPER LIKE '%0'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%0'", Marked("ENDSWITH("));
                     yield return Case("D12", "UPPER LIKE '%1%'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%1%'", Marked("CONTAINS("));
                     yield return Case("D12", "UPPER LIKE '%B'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%B'", "ENDSWITH(");
-                    yield return Case("D13", "s || UPPER(t)", $"SELECT c.\"id\", {J("s")} || UPPER({J("t")}) {from}", clean ? "CONCAT(" : null);
+                    yield return Case("D13", "s || UPPER(t)", $"SELECT c.\"id\", {J("s")} || UPPER({J("t")}) {from}", null);
                     yield return Case("D13", "t || UPPER(s)", $"SELECT c.\"id\", {J("t")} || UPPER({J("s")}) {from}", null);
                 }
 
-                // D13: a path joined as stored stays pushed; a U+0000 made at the service is refused, as is a replacement
-                // over text holding an escape.
-                yield return Case("D13", "|| '!'", $"SELECT c.\"id\", {x} || '!' {from}", "CONCAT(");
+                // D13: a concatenation pushes only over text holding neither character, a path asked as any operand is;
+                // a U+0000 made at the service is refused, as is a replacement over text holding an escape.
+                yield return Case("D13", "|| '!'", $"SELECT c.\"id\", {x} || '!' {from}", Marked("CONCAT("));
                 yield return Case("D13", "|| nul literal", $"SELECT c.\"id\", {x} || '{Nul}' {from}", null);
                 yield return new($"D13 {table}.{column} || ? nul", $"SELECT c.\"id\", {x} || CAST(? AS VARCHAR(10)) {from}", [Nul]);
                 yield return Case("D13", "REPLACE('1', 'x')", $"SELECT c.\"id\", REPLACE({x}, '1', 'x') {from}", Marked("REPLACE("));
@@ -295,21 +298,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 yield return new($"D3 {table} id IN (?, ?) and category", $"SELECT c.\"id\" FROM {table} AS c WHERE c.\"id\" IN (?, ?) AND {J("category")} = 'p0'", [Nul, Fdd0], " WHERE ");
             }
 
-            // §4.6: a constant the service returns, sent stored and returned as written; a parameter alike, U+FDD0 0 among
-            // them, which sent raw would come back as the U+0000 it spells. Over planted_plain the CASE and COALESCE stay in
-            // process whatever the value, its paths being undeclared, so it is judged and not held to push.
+            // §4.6: a constant the service returns, a raw U+0000 there a 500 and U+FDD0 0 read back as the U+0000 it spells:
+            // computed in process, literal and parameter alike (owner, 2026-11-01: "Cut it").
             foreach (var table in new[] { "planted_declared", "planted_plain" })
             {
-                var declared = table == "planted_declared";
                 var arm = $"CASE WHEN {J("category")} = 'p0' THEN";
-                yield return new($"R {table} CASE arm literal a<nul>b", $"SELECT c.\"id\", {arm} 'a{Nul}b' ELSE {J("s")} END FROM {table} AS c", null, declared ? " ? @p" : null);
+                yield return new($"R {table} CASE arm literal a<nul>b", $"SELECT c.\"id\", {arm} 'a{Nul}b' ELSE {J("s")} END FROM {table} AS c");
                 foreach (var (name, value) in new[] { ("nul", Nul), ("fdd0", Fdd0), ("<fdd0>0", Fdd0 + "0"), ("<nul><fdd0>", Nul + Fdd0) })
                 {
-                    yield return new($"R {table} CASE arm ? {name}", $"SELECT c.\"id\", {arm} ? ELSE {J("s")} END FROM {table} AS c", [value], declared ? " ? @p" : null);
-                    yield return new($"R {table} COALESCE(t, ?) {name}", $"SELECT c.\"id\", COALESCE({J("t")}, ?) FROM {table} AS c", [value], declared ? " : @p" : null);
+                    yield return new($"R {table} CASE arm ? {name}", $"SELECT c.\"id\", {arm} ? ELSE {J("s")} END FROM {table} AS c", [value]);
+                    yield return new($"R {table} COALESCE(t, ?) {name}", $"SELECT c.\"id\", COALESCE({J("t")}, ?) FROM {table} AS c", [value]);
                 }
             }
+
+            // N: a path naming a member that holds U+0000, which the emulator stores escaped as it stores a value, so that
+            // written as spelled it reads nothing; and a plain member beside it, still pushed. A: a projected name holding
+            // U+0000, a 500 sent raw, and U+FDD0 0, read back as the U+0000 it spells.
+            var m = $"JSON_VALUE(c.\"DOC\", '$[''m{Nul}'']')";
+            yield return new("N = 'v'", $"SELECT c.\"id\" FROM planted_names AS c WHERE {m} = 'v'");
+            yield return new("N IS NOT NULL", $"SELECT c.\"id\" FROM planted_names AS c WHERE {m} IS NOT NULL");
+            yield return new("N projected", $"SELECT c.\"id\", {m} FROM planted_names AS c");
+            yield return new("N COUNT IS NULL", $"SELECT COUNT(*) FROM planted_names AS c WHERE {m} IS NULL");
+            yield return new("N GROUP BY", $"SELECT {m}, COUNT(*) FROM planted_names AS c GROUP BY {m}");
+            yield return new("N IN ('v', 'zz')", $"SELECT c.\"id\" FROM planted_names AS c WHERE {m} IN ('v', 'zz')");
+            yield return new("N LIKE 'v%'", $"SELECT c.\"id\" FROM planted_names AS c WHERE {m} LIKE 'v%'");
+            yield return new("N plain member = 'w'", $"SELECT c.\"id\" FROM planted_names AS c WHERE JSON_VALUE(c.\"DOC\", '$.m') = 'w'", null, " WHERE ");
+            yield return new("A id AS x<nul>", $"SELECT c.\"id\" AS \"x{Nul}\" FROM planted_names AS c");
+            yield return new("A id AS x<fdd0>0", $"SELECT c.\"id\" AS \"x{Fdd0}0\" FROM planted_names AS c WHERE c.\"id\" = '1'");
         }
+
+        /// <summary>The documents of <c>planted_names</c>: a member whose name holds U+0000 and one holding U+FDD0, and a plain one.</summary>
+        static readonly string[] PlantedNamesDocuments =
+        [
+            System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["id"] = "1", ["category"] = "p0", ["m" + Nul] = "v" }),
+            System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["id"] = "2", ["category"] = "p1", ["m"] = "w" }),
+            System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["id"] = "3", ["category"] = "p0", ["m" + Fdd0] = "u" }),
+            System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["id"] = "4", ["category"] = "p1" }),
+        ];
+
+        static readonly CosmosContainerMetadata PlantedNames = new("planted_names", ["/category"]);
 
         /// <summary>A document of the plant, keeping what <c>orders_declared</c> declares: <c>s</c>, <c>b</c>, <c>e</c>, <c>w</c> and <c>d</c> present.</summary>
         static string PlantedDocument(string id, string category, string s, string? t) =>
@@ -401,36 +428,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly CosmosContainerMetadata PlantedKeys = new("planted_keys", ["/category"]);
 
-        static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? _plantedContainers;
+        /// <summary>The plant's containers, seeded once, the first time it runs, in the class's database, which its cleanup deletes.</summary>
+        static readonly Lazy<Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>>> PlantedContainers = new(() => SeededOnce(async (database, token) =>
+        [
+            (PlantedDeclared, await Seed(database, PlantedDeclared.Name, PlantedDocuments, token, policy: OrderIndexingPolicy(composites: true))),
+            (PlantedPlain, await Seed(database, PlantedPlain.Name, PlantedDocuments, token, policy: OrderIndexingPolicy(composites: false))),
+            (PlantedKeys, await Seed(database, PlantedKeys.Name, PlantedKeyDocuments, token)),
+            (PlantedFree, await Seed(database, PlantedFree.Name, PlantedFreeDocuments, token, policy: OrderIndexingPolicy(composites: true))),
+            (PlantedText, await Seed(database, PlantedText.Name, PlantedTextDocuments, token, policy: OrderIndexingPolicy(composites: true))),
+            (PlantedNames, await Seed(database, PlantedNames.Name, PlantedNamesDocuments, token)),
+        ]));
 
-        static readonly SemaphoreSlim _plantedSeeding = new(1, 1);
-
-        /// <summary>Seeds the plant's five containers once, the first time it runs, in the class's database, which its cleanup deletes.</summary>
-        static async Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>> PlantedContainersSeeded()
+        /// <summary>Seeds containers in the class's database under a five-minute limit.</summary>
+        static async Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>> SeededOnce(Func<Database, CancellationToken, Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>>> seed)
         {
-            await _plantedSeeding.WaitAsync();
-            try
-            {
-                if (_plantedContainers is null)
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-                    var database = _client!.GetDatabase(DatabaseName);
-                    _plantedContainers =
-                    [
-                        (PlantedDeclared, await Seed(database, PlantedDeclared.Name, PlantedDocuments, cts.Token, policy: OrderIndexingPolicy(composites: true))),
-                        (PlantedPlain, await Seed(database, PlantedPlain.Name, PlantedDocuments, cts.Token, policy: OrderIndexingPolicy(composites: false))),
-                        (PlantedKeys, await Seed(database, PlantedKeys.Name, PlantedKeyDocuments, cts.Token)),
-                        (PlantedFree, await Seed(database, PlantedFree.Name, PlantedFreeDocuments, cts.Token, policy: OrderIndexingPolicy(composites: true))),
-                        (PlantedText, await Seed(database, PlantedText.Name, PlantedTextDocuments, cts.Token, policy: OrderIndexingPolicy(composites: true))),
-                    ];
-                }
-
-                return _plantedContainers;
-            }
-            finally
-            {
-                _plantedSeeding.Release();
-            }
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            return await seed(_client!.GetDatabase(DatabaseName), cts.Token);
         }
 
         // ── The plant in the partitions ─────────────────────────────────────────────────────────────────────────────────
@@ -456,7 +469,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             if (CosmosEmulator.ServiceTarget != CosmosServiceTarget.Emulator)
                 Assert.Skip("The plant holds what the emulator stores escaped; Azure stores it as written.");
 
-            var judge = new PartitionJudge(await PartitionPlantSeeded());
+            var judge = new PartitionJudge(await PartitionPlant.Value);
             var typed = PlantedVocabulary(TypedVocabulary(), PlantedTyped.Name, TypedPlant);
             var products = PlantedVocabulary(ProductsVocabulary(), PlantedProducts.Name, ProductsPlant);
             var generator = new PredicateGenerator(new Random(PartitionPlantSeed));
@@ -502,7 +515,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             Table = table,
             Ids = [.. v.Ids, .. Ids(plant)],
-            Text = [.. v.Text, "REVERSE(c.\"id\")", "REVERSE(c.\"id\")"],
+            Text = [.. v.Text, "REVERSE(c.\"id\")"],
             Numbers = [.. v.Numbers, "POSITION('i' IN c.\"id\")", "POSITION('0' IN c.\"id\")"],
             TextLiterals = [.. v.TextLiterals, Nul, "a" + Nul + "b", "0", "1"],
             Patterns = [.. v.Patterns, "_", "%0", "%1", "_prin_", "_ike_", "_0"],
@@ -530,30 +543,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly CosmosContainerMetadata PlantedTyped = new("typed_planted", ["/category"]);
 
-        static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? _partitionPlant;
+        /// <summary>The two planted copies, seeded once, the first time the pass runs, in the class's database, which its cleanup deletes.</summary>
+        static readonly Lazy<Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>>> PartitionPlant = new(() => SeededOnce(async (database, token) =>
+        [
+            (PlantedProducts, await Seed(database, PlantedProducts.Name, [.. Documents, .. ProductsPlant], token)),
+            (PlantedTyped, await Seed(database, PlantedTyped.Name, [.. TypedDocuments, .. TypedPlant], token)),
+        ]));
 
-        /// <summary>Seeds the two planted copies once, the first time the pass runs, in the class's database, which its cleanup deletes.</summary>
-        static async Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>> PartitionPlantSeeded()
+        // ── The plant under a write ────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// A <c>DELETE</c> or an <c>UPDATE</c> addresses each row's document by its <c>id</c>, and the emulator's point write
+        /// of an <c>id</c> holding U+0000 is a 500, of one holding U+FDD0 a 404, and of U+FDD0 <c>0</c> the document whose
+        /// <c>id</c> is U+0000. So under the emulator a write stops, raising, at the first row whose <c>id</c> holds either,
+        /// and no other document is touched; a row whose <c>id</c> holds neither is written as before.
+        /// </summary>
+        [Fact]
+        public async Task APlantedWriteStopsAtAnIdItCannotAddress()
         {
-            await _plantedSeeding.WaitAsync();
-            try
-            {
-                if (_partitionPlant is null)
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-                    var database = _client!.GetDatabase(DatabaseName);
-                    _partitionPlant =
-                    [
-                        (PlantedProducts, await Seed(database, PlantedProducts.Name, [.. Documents, .. ProductsPlant], cts.Token)),
-                        (PlantedTyped, await Seed(database, PlantedTyped.Name, [.. TypedDocuments, .. TypedPlant], cts.Token)),
-                    ];
-                }
+            if (_client is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+            if (CosmosEmulator.ServiceTarget != CosmosServiceTarget.Emulator)
+                Assert.Skip("The plant holds what the emulator stores escaped; Azure stores it as written.");
 
-                return _partitionPlant;
-            }
-            finally
+            static string Doc(string id, string category, string tag) =>
+                System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["id"] = id, ["category"] = category, ["tag"] = tag });
+
+            var metadata = new CosmosContainerMetadata("planted_writes", ["/category"]);
+            var containers = await SeededOnce(async (database, token) =>
+            [
+                (metadata, await Seed(database, metadata.Name, [Doc("q", "k", "d0"), Doc("a" + Fdd0, "k", "d1"), Doc(Nul, "m", "keep"), Doc(Fdd0 + "0", "m", "alias"), Doc("u" + Fdd0, "u", "u1")], token)),
+            ]);
+
+            async Task<List<string>> Ids() => (await Run("SELECT c.\"id\" FROM planted_writes AS c", false, null, containers, null)).Select(Single).OrderBy(i => i, StringComparer.Ordinal).ToList();
+            var all = await Ids();
+
+            (await Run("DELETE FROM planted_writes WHERE JSON_VALUE(\"DOC\", '$.tag') = 'd0'", true, null, containers, null)).Select(Single).Should().Equal("1");
+            (await Ids()).Should().Equal(all.Where(i => i != "q"));
+
+            foreach (var sql in new[]
             {
-                _plantedSeeding.Release();
+                "DELETE FROM planted_writes WHERE JSON_VALUE(\"DOC\", '$.tag') = 'd1'",
+                "DELETE FROM planted_writes WHERE JSON_VALUE(\"DOC\", '$.tag') = 'alias'",
+                "UPDATE planted_writes SET \"DOC\" = '{\"id\":\"x\",\"category\":\"u\",\"tag\":\"u2\"}' WHERE JSON_VALUE(\"DOC\", '$.tag') = 'u1'",
+            })
+            {
+                var raised = await Record.ExceptionAsync(() => Run(sql, true, null, containers, null));
+                raised.Should().NotBeNull(sql);
+                raised!.ToString().Should().Contain("U+0000 or U+FDD0", sql);
+                (await Ids()).Should().Equal(all.Where(i => i != "q"), "nothing is written: " + sql);
             }
         }
 

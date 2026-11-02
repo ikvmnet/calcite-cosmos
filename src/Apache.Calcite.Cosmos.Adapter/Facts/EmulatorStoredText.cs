@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 
 namespace Apache.Calcite.Cosmos.Facts
@@ -9,23 +11,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// followed by <c>1</c>. Every other unit is stored as written, so a string holding neither is its own spelling.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>What the emulator does with what it is sent, measured on both images</b> (<c>Service.StringOrderIsCodePoint</c>,
-    /// <c>Service.EmulatorComparesTheSpellingItIsSent</c>). A path is compared, ordered, counted, cut, reversed and searched
-    /// in this spelling; a parameter, a literal and a constant built from them are compared as sent, unescaped, against
-    /// it. So a value sent as <see cref="Of"/> of itself compares with a stored string as Calcite compares the two for
-    /// <c>=</c>, <c>IN</c>, <c>!=</c> and <c>STARTSWITH</c>, and for <c>ENDSWITH</c> and <c>CONTAINS</c> unless the value
-    /// begins with <c>0</c> or <c>1</c>, which can match an escape's second unit. What comes back is decoded wherever a
-    /// whole escape pair comes back, a constant sent in this spelling included.
-    /// </para>
-    /// <para>
-    /// <b>The spelling keeps code-point order everywhere but at U+0000.</b> U+FDD0 <c>1</c> sorts where U+FDD0 does among
-    /// strings holding no U+0000, so U+FDD0 is an equality and spelling defect alone. U+FDD0 <c>0</c> puts U+0000 above
-    /// every unit from U+0001 to U+FDCF, U+E000 among them, where Calcite puts it least.
-    /// </para>
-    /// <para>
-    /// Azure stores every string as written: nothing outside the emulator reads this.
-    /// </para>
+    /// The spelling keeps code-point order everywhere but at U+0000, which it puts above every unit from U+0001 to
+    /// U+FDCF where Calcite puts it least (<c>Service.StringOrderIsCodePoint</c>); what the emulator compares, counts and
+    /// returns in it is <c>Service.EmulatorComparesTheSpellingItIsSent</c> and the rows beside it. Azure stores every
+    /// string as written: nothing outside the emulator reads this.
     /// </remarks>
     internal static class EmulatorStoredText
     {
@@ -58,35 +47,38 @@ namespace Apache.Calcite.Cosmos.Facts
             return stored.ToString();
         }
 
-        /// <summary>
-        /// The string a spelling of <see cref="Of"/> spells: each U+FDD0 <c>0</c> as U+0000 and each U+FDD0 <c>1</c> as
-        /// U+FDD0, so that <c>Read(Of(s))</c> is <c>s</c>; a U+FDD0 followed by anything else is read as itself. For a
-        /// reader that holds a value as it was sent and compares it in process with what the service returned decoded.
-        /// </summary>
-        public static string Read(string stored)
-        {
-            ArgumentNullException.ThrowIfNull(stored);
-
-            if (stored.AsSpan().IndexOf(Escape) < 0)
-                return stored;
-
-            var text = new StringBuilder(stored.Length);
-            for (var i = 0; i < stored.Length; i++)
-            {
-                if (stored[i] == Escape && i + 1 < stored.Length && stored[i + 1] is '0' or '1')
-                    text.Append(stored[++i] == '0' ? '\0' : Escape);
-                else
-                    text.Append(stored[i]);
-            }
-
-            return text.ToString();
-        }
-
         /// <summary>Whether the emulator spells a string otherwise than as written: whether it holds U+0000 or U+FDD0.</summary>
         public static bool Escapes(string text)
         {
             ArgumentNullException.ThrowIfNull(text);
             return text.AsSpan().IndexOfAny('\0', Escape) >= 0;
+        }
+
+        /// <summary>
+        /// Whether a value to send holds a string the emulator spells otherwise than as written, at any depth: a member's
+        /// name or value, or an element.
+        /// </summary>
+        public static bool Escapes(object? value)
+        {
+            switch (value)
+            {
+                case string text:
+                    return Escapes(text);
+                case IDictionary<string, object?> members:
+                    foreach (var (name, member) in members)
+                        if (Escapes(name) || Escapes(member))
+                            return true;
+
+                    return false;
+                case IEnumerable items:
+                    foreach (var item in items)
+                        if (Escapes(item))
+                            return true;
+
+                    return false;
+                default:
+                    return false;
+            }
         }
 
     }
