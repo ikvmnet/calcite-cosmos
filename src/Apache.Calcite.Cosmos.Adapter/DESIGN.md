@@ -3161,16 +3161,10 @@ container written to). E keeps code point order between strings neither of which
 only where U+0000 meets a unit from U+0001 to U+FDCF at the first difference; U+FDD0's escape is an equality and spelling
 defect, never an order one. So under that set a sort key or an extreme's operand that may hold U+0000 is refused in
 both directions — no value certifies the rows around a U+0000, and the merge breaks a carry — and so is an ordering
-comparison either side of which may: two paths, a path and a literal, a computed text, or such a path against a
-parameter, outright, nothing weaker sent (owner, 2026-11-01: "Cut it"; the emulator is the adapter's own test
-target, so its smallest sound rule wins). A path that holds none against a parameter is anchored on
-`CosmosOrderAnchor.TextWithoutNul`, a `Text` value holding no U+0000 either, where Azure proves it outright or anchors
-on `Text`: a value holding one parts from the path's units, so it is no anchor, and is read weakened under a bound
-that stops before its first U+0000 as well as before U+D800. The lemma: the bound b is then free of both, and for a
-path value s holding no U+0000, `s >cal v` gives `s ≥cal b`, b being a prefix of v, and two strings free of U+0000 and
-one of them below U+D800 order alike under E and under Calcite, so `s ≥emu b`; `<` raises b's last unit, which stays
-below U+D800 or is U+E000, never U+FDD0, and keeps the same argument. `CosmosServiceOrderModelTests` checks both over
-every pair of the probe's strings. Equality needs nothing: in the stored spelling it is exact. Under Azure none of
+comparison either side of which may: two paths, a path and a literal, a computed text, or anything against a
+parameter, which may always hold one, outright, nothing weaker sent and no anchor read (owner, 2026-11-01: "Cut it";
+the emulator is the adapter's own test target, so its smallest sound rule wins). Equality needs nothing: in the
+stored spelling it is exact. Under Azure none of
 this is reached, and its plans are byte-equal.
 
 **Four rules decide every reading.**
@@ -3653,13 +3647,12 @@ likewise, and a U+0000 the service makes itself — a `CONCAT` of a sent and a s
 `REPLACE` reads stored units. So where the rendering set stores spelled (`CosmosRendering.StoresSpelled`),
 `CosmosStringFunctions.RuleOf(call, set)` asks Z and H — U+FDD0 has no class of its own, and is read as the high band it
 lies in, a gain for the theory to take (`TODO.md`) — of the operands those work on: a count's, beside S; a reversal's;
-`POSITION`'s subject, its second operand; each of `REPLACE`'s three; every operand of a `CONCAT` and a `REPEAT`'s subject
-that the service computes rather than reads as stored, a path or a nested concatenation exempt as a path is from what
-the service makes, its own operands asked in turn; and a `LIKE`'s subject where its pattern holds a `_`, `0` or `1`
-beyond a plain prefix, or is not a literal, with the pattern itself where it holds a U+0000. The fold's `ENDSWITH` and
-`CONTAINS` are written only for a `LIKE` the rule has already seen, so no rule of their own is needed. A constant
-holding an escape and a text parameter, outside a comparison or a returned column, were already refused (*The rows' vectors,
-held by their tests*). Azure's rule is the one above, and no Azure plan moved; the emulator's are recorded in
+`POSITION`'s subject, its second operand; each of `REPLACE`'s three; every operand of a `CONCAT` and a `REPEAT`'s subject,
+a path among them, the exemption of a stored operand cut (owner, 2026-11-01: "Cut it"); and a `LIKE`'s subject where its
+pattern holds a `_`, `0` or `1` beyond a plain prefix, or is not a literal. A pattern holding U+0000 is a constant
+holding an escape, refused outside a comparison already. The fold's `ENDSWITH` and `CONTAINS` are written only for a
+`LIKE` the rule has already seen, so no rule of their own is needed. A constant holding an escape and a parameter that
+may hold text, outside a comparison, were already refused (*What the emulator is sent is what it stores*). Azure's rule is the one above, and no Azure plan moved; the emulator's are recorded in
 `reports/emu-nul/emulator-listing.tsv`.
 
 **What stays in process still reads only what it needs, in a projection.** A declined function over a path's reading
@@ -6461,16 +6454,23 @@ is sent, unescaped, with E(s) (`Service.EmulatorComparesTheSpellingItIsSent`), s
 E(b) by code point, both escapes, and `Place` reads a literal as E of it. A set whose order row answers
 `StoredCodePoint` stores spelled (`CosmosRendering.StoresSpelled`, read off the registry, not learned): its translator
 binds a compared literal as E of it, names a compared parameter stored (`CosmosQuery.Stored`) for the binding to spell,
-and the cursor's recheck reads it back; a lookup key is spelled by the speller. A returned position is sent stored as
-well: a projected constant, a `CASE` arm, a `COALESCE` operand, an object's or array's member, which the emulator returns
-decoded, so as written (`Service.EmulatorDecodesWhatItReturns`, M6); a raw U+0000 there is a 500. It is carried from
-the projection down through `CASE` arms and casts alone, and a parameter there only where it is typed text, the one
-value the binding spells. Anywhere else, a function's operand, a `CASE` condition or a `CASE` in a filter or a key, a
-value holding either character, and a parameter that may be text, is refused: nothing there was measured in the stored
-spelling, and a U+0000 made from a path is a 500 (`Service.EmulatorFailsANulMadeFromAPath`); a function over a stored value that may hold either is asked so too (*What a
-string function computes, asked of its characters*). A point read of E(`id`) was measured only where it
-aliases (`Service.EmulatorPointReadOfAnEscapedId`), and a route by a header carrying either not at all, so an `id` or
-key holding one is queried. Azure stores as written, and none of this reaches it.
+and the cursor's recheck reads it back; a lookup key is spelled by the speller. The binding spells a string; a list or
+an object holding either character, bound to a stored name, is refused by name there, its members not spelled. Anywhere
+but a compared position — a projected constant, a `CASE` arm or condition, a `COALESCE` operand, a function's operand —
+a value holding either character, and a parameter that may hold text (a list, a map or a row among them), is refused:
+the emulator returns what it stores decoded (`Service.EmulatorDecodesWhatItReturns`, M6), a raw U+0000 returned is a
+500, and a U+0000 made from a path is a 500 too (`Service.EmulatorFailsANulMadeFromAPath`). Sending a returned constant
+in E, which M6 measured comes back as written, was cut for the smaller rule (owner, 2026-11-01: "Cut it"). A full-text
+function or `REGEXMATCH` given such a parameter has no body in process, so that statement fails where Azure's answers:
+kept, no sent form being shown to answer as Azure's does there. A function over a stored value that may hold either is
+asked so too (*What a string function computes, asked of its characters*). A member's name is stored in E as well, so
+a path naming one that holds either, written as it is, reads nothing: it binds no path (`CosmosRexTranslator.NamesAnEscape`,
+`CosmosImplementor.BindFields`), a projection or an aggregate whose row names one is not converted, and the builder
+refuses such an alias. A point read of E(`id`) was measured only where it aliases (`Service.EmulatorPointReadOfAnEscapedId`),
+and a route by a header carrying either not at all, so an `id` or key holding one is queried. A point delete or
+replace of one misaddresses, measured on both images: a 500, a 404, or another document written; so a write's cursor
+stops raising at a row whose `id` or key holds either, before writing it (`CosmosCursors.Unaddressable`), the rows
+before it written as a failure part-way always leaves them. Azure stores as written, and none of this reaches it.
 
 **A composite is checked by composing its atoms** through `ServiceLeaf` and `ServiceCompound` on the table S settles for
 each target it names, and is the measured answer on each, every atom it reads being measured definite on both. A

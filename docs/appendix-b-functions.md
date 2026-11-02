@@ -54,9 +54,8 @@ reverse and search those units: `LENGTH` counts one U+0000 as two, `REVERSE` put
 `INDEX_OF` counts past it, a `LIKE` `_` matches half of it and a `0` or `1` in a pattern matches its
 second unit, and a U+0000 the service would make itself, in a `CONCAT` or a `REPLACE`, is an error. So
 on the emulator `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, the subject of `POSITION`, each
-operand of `REPLACE`, an operand of `||` or `REPEAT` that is not read as it is stored, and the subject of
-a `LIKE` whose pattern holds a `_`, a `0` or a `1` beyond a plain prefix — and its pattern too, where that
-holds a U+0000 — push only where it is proved to hold neither character; U+FDD0 is not told apart from
+operand of `REPLACE`, `||` and `REPEAT`, and the subject of a `LIKE` whose pattern holds a `_`, a `0` or a
+`1` beyond a plain prefix push only where it is proved to hold neither character; U+FDD0 is not told apart from
 the characters from U+E000 up, so a value that may hold one of those stays in process there as well.
 Azure stores both as they are, and none of this applies to it.
 
@@ -72,7 +71,7 @@ agree over, and the table says which.
 | `POSITION(a IN b)` | `(INDEX_OF(b, a) + 1)` | anything: Azure counts as Calcite does. The emulator counts an emoji as one, so there the position after one differs, and counts a stored U+0000 or U+FDD0 as two, so there `b` must hold neither |
 | `TRIM`, `LTRIM`, `RTRIM` (spaces) | `TRIM`, `LTRIM`, `RTRIM` | its argument holds nothing the service trims beside a space: U+0009–U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000. Trimming other characters stays in process |
 | `REPLACE(s, a, b)` | `REPLACE` | `s` and `a` hold no U+0000, which Azure's reads up to and no further; and `a` holds something — a literal that does, or a path whose `enum` lists no empty string — since the service's is undefined for an empty search, where Calcite's is `s` |
-| `CONCAT`, `\|\|` | `CONCAT` | anything. The `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries reads a null as the empty string, where the service's is undefined, and stays in process |
+| `CONCAT`, `\|\|` | `CONCAT` | anything on Azure; on the emulator, operands holding no U+0000 or U+FDD0. The `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries reads a null as the empty string, where the service's is undefined, and stays in process |
 | `LEFT`, `RIGHT` (*library*) | `LEFT`, `RIGHT` | no character beyond U+FFFF, as `SUBSTRING` |
 | `REVERSE` (*library*) | `REVERSE` | anything on Azure; on the emulator, an argument holding no U+0000 or U+FDD0 |
 | `REPEAT(s, n)` (*library*) | `REPLICATE` | `n` is a literal: 0, or a positive count with `s` short enough — a literal, or a path whose `enum` bounds its length — that the result stays within 10,000 code points. Azure's is undefined for a negative count, where Calcite's is the empty string, and past that length; the emulator's has no limit |

@@ -243,7 +243,7 @@ U+FDD0 `1`, and sorts what it stores: U+0000 comes after every character from U+
 SQL puts it first, so no row of such a property marks a place in the service's order that is SQL's,
 and across partitions the SDK merges streams in that stored order too. That covers `id` and a property
 declared only `"type": "string"`; a schema that keeps U+0000 out — a `pattern` such as an identifier, a
-UUID, or `^[\u0001-퟿]*$`, or an `enum` — keeps the sort pushed as above, U+FDD0's escape keeping
+UUID, or `^[\u0001-\uD7FF]*$`, or an `enum` — keeps the sort pushed as above, U+FDD0's escape keeping
 the order. Azure stores every string as written and is unaffected (Appendix E).
 
 Through a view, the adapter can move a sort and its row limit beneath a projection it cannot push, so
@@ -382,7 +382,8 @@ settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
 4. A string key, `id` included, pushes whatever its characters, checked as the rows arrive where nothing
    declares them (9.3); a `pattern` (Chapter 14.4), an `enum` or `const`, a declared UUID or timestamp
    form, or a `WHERE` listing the values proves it outright. A two-key sort led by a nullable key that some
-   documents lack and others hold null in stays in process.
+   documents lack and others hold null in stays in process. On the emulator a string key that may hold
+   U+0000 sorts in process whatever is checked (9.3, Appendix E).
 5. Two or more keys? Does the container have a composite index matching their order and directions?
    (A key the `WHERE` pins does not count — 9.2.)
 6. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a
