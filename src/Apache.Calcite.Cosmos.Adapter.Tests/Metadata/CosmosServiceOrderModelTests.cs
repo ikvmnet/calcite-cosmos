@@ -1133,6 +1133,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeNull("a comparison reads the document, where a stored 2^63 raises the RETURNING BIGINT rather than reading back below 2^63 - 1");
         }
 
+        /// <summary>
+        /// A planted stored form that keeps the order and not equality, which <see cref="CosmosRepresentation"/> allows and
+        /// no registered form is: a UUID in either case. Calcite ties its two spellings of one value and the service parts
+        /// them, so a later key would order rows the service has already ordered, and a range comparison against one
+        /// spelling keeps or drops the other by its case: the conversion may stand last only. The rows show it; the question
+        /// refuses the two keys and the comparison, and proves the one key and the extreme.
+        /// </summary>
+        [Fact]
+        public void AFormThatKeepsTheOrderAndNotEqualityOrdersTheLastKeyOnly()
+        {
+            var (u, k) = (JsonDocumentPath.Root.Property("u"), JsonDocumentPath.Root.Property("k"));
+            var upper = (U: "123E4567-E89B-12D3-A456-426614174000", K: "b");
+            var lower = (U: "123e4567-e89b-12d3-a456-426614174000", K: "a");
+
+            // Calcite: one UUID, so the second key decides, lower first; the service: the spellings, upper first.
+            Guid.Parse(upper.U).Should().Be(Guid.Parse(lower.U));
+            string.CompareOrdinal(lower.K, upper.K).Should().BeNegative();
+            string.CompareOrdinal(upper.U, lower.U).Should().BeNegative();
+
+            JsonFactSet Facts(CosmosRepresentation form) => CosmosOracle.For(TestReasoning.Bind(new CosmosContainerMetadata("planted", ["/pk"])).WithFacts(new[]
+            {
+                new JsonFact(u, new JsonClaim.Represents(form)), new JsonFact(u, new JsonClaim.Present()), new JsonFact(u, new JsonClaim.OfType(JsonType.String)), new JsonFact(u, new JsonClaim.Characters(JsonCharacterBand.None)),
+                new JsonFact(k, new JsonClaim.OfType(JsonType.String)), new JsonFact(k, new JsonClaim.Present()), new JsonFact(k, new JsonClaim.Characters(JsonCharacterBand.None)),
+            }.Select(JsonFactRule.Unconditional)).Facts).Declared;
+
+            var conversion = CosmosOrderOperand.ForConversion(u, null, CosmosTemporalParts.None);
+            CosmosOrderVerdict Sort(CosmosRepresentation form, bool twoKeys)
+            {
+                var first = new CosmosOrderKey(conversion, new RelFieldCollation(0));
+                var next = new CosmosOrderKey(CosmosOrderOperand.ForPath(k, SqlTypeName.VARCHAR, CosmosReading.Text), new RelFieldCollation(1));
+                return CosmosServiceOrder.OrderBy(Facts(form), twoKeys ? [first, next] : [first], RenderingSet.Production);
+            }
+
+            var planted = new CosmosRepresentation("uuid-either-case", PreservesEquality: false, PreservesOrder: true);
+            var refused = Sort(planted, twoKeys: true);
+            refused.Kind.Should().Be(CosmosOrderVerdictKind.Refused, "two spellings of one value part at the service, and the second key would order them again");
+            refused.Reason.Should().Contain("more than one way");
+            var last = Sort(planted, twoKeys: false);
+            last.IsProved.Should().BeTrue("on the last key a finer order is one Calcite allows: " + last.Reason);
+            CosmosServiceOrder.Extreme(Facts(planted), conversion, RenderingSet.Production).IsProved.Should().BeTrue("the service's extreme lies in Calcite's extreme tie class");
+            CosmosServiceOrder.Compare(Facts(planted), conversion, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: true, RenderingSet.Production)
+                .Kind.Should().Be(CosmosOrderVerdictKind.Refused, "the upper spelling is below the lower one, which a comparison against it parts");
+
+            var registered = CosmosUuidForms.CanonicalLowerSortable;
+            registered.PreservesEquality.Should().BeTrue();
+            Sort(registered, twoKeys: true).IsProved.Should().BeTrue("one spelling a value ties both ways");
+            CosmosServiceOrder.Compare(Facts(registered), conversion, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: true, RenderingSet.Production).IsProved.Should().BeTrue();
+        }
+
 /// <summary>
         /// Every verdict the question gives over the sweep's operands holds in the model, and the
         /// verdicts it refuses that the model says it could have given are counted.

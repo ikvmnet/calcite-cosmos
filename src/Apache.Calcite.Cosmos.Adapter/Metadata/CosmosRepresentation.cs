@@ -34,9 +34,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </param>
     /// <param name="PreservesOrder">
     /// Whether the lexical order of the stored strings is the order Calcite compares the values in.
-    /// Licenses the range comparisons, <c>ORDER BY</c>, <c>MIN</c>, <c>MAX</c>, and a <c>LIMIT</c>
-    /// pushed beneath a sort. Implies <see cref="PreservesEquality"/> is worth nothing on its own —
-    /// the two are set independently.
+    /// With <see cref="PreservesEquality"/>, licenses the range comparisons, <c>ORDER BY</c>, <c>MIN</c>,
+    /// <c>MAX</c>, and a <c>LIMIT</c> pushed beneath a sort. The two are set independently: without
+    /// equality two spellings of one value part where Calcite ties them, so an order is only finer than
+    /// Calcite's, and licenses a sort's last key and an extreme alone (<c>CosmosServiceOrder</c>).
     /// </param>
     /// <param name="Width">
     /// The number of characters every stored spelling occupies, where the form fixes one, and

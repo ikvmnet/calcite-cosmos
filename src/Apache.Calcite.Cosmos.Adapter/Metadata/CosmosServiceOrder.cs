@@ -786,6 +786,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// first two below every string and the others above: R3 decides, as of any key. A number or a boolean at the
         /// path is no spelling of the value, and is refused as a rendering is.
         /// </para>
+        /// <para>
+        /// <b>Exact needs equality as well as order.</b> <see cref="CosmosRepresentation"/> sets the two apart, and a form
+        /// that keeps the order with two spellings of a value parts what Calcite ties: it refines, and stands last only.
+        /// No registered form is one; <c>CosmosServiceOrderModelTests</c> plants it.
+        /// </para>
         /// </remarks>
         static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath? path, string? format, CosmosTemporalParts held)
         {
@@ -802,7 +807,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosStoredForms.Reads(representation, format, held) == false)
                 return refused with { Why = format is not null ? "a parse whose format does not read the stored form" : "a cast the engine cannot read the stored form by" };
 
-            return refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" };
+            // Ties both ways need one spelling a value: a form that keeps the order but spells a value two ways parts at the
+            // service what Calcite ties, finer than Calcite, which only the last key may be (R4), and which no comparison is.
+            return representation.PreservesEquality
+                ? refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" }
+                : refused with { Agreement = CosmosOrderAgreement.Refines, Why = "a conversion of a stored form that spells a value more than one way" };
         }
 
         /// <summary>

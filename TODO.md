@@ -1411,6 +1411,14 @@ the distribution the gate is sized for.
     (`planted_text`) and the planted partition pass (`EveryPlantedPredicatePartitionsTheRows`) hold it. Azure's plans
     do not change. The differential corpus holds no U+0000 and no repetition near
     the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
+    **What Stage 3 owes it.** The readers' move takes none of it: the order family keeps the refusals in C#, and its
+    one change there is a conversion's equality (*Order without equality licenses the last key only*, `DESIGN.md`).
+    S carries the rest as data when it takes the parameterised `WHERE`: `Compare`'s refusal under the emulator (a path
+    or computed text that may hold U+0000 against a parameter, a literal or another path), the compared positions sent
+    in the stored spelling, and `CosmosStringFunctions`' emulator rules, which move to the axiom rows' functions when
+    that class is deleted; `Compare`'s own code goes once S carries its rule. The predicate `NulOrdering` is measured
+    again first: a raw `CONTAINS(p, '\u0000')` matches nearly everything on the emulator, and `CONTAINS(p, U+FDD0 '0')`
+    is the exact test.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is

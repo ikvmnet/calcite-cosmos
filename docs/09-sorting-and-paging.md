@@ -147,7 +147,9 @@ be mapped to a document path"*. So:
   service accepts `ST_DISTANCE` in an `ORDER BY` — as the only key (Chapter 18).
 - **A declared stored form is the other route.** A column like `CAST(JSON_VALUE(…) AS UUID)` or a
   parsed timestamp is computed, but if the container declares that the stored strings sort the way the
-  values do, the sort is sent on the underlying path (Chapters 14 and 15).
+  values do, the sort is sent on the underlying path (Chapters 14 and 15). Before another key it is sent
+  only where each value has one stored spelling, as every form the adapter recognises does: two spellings
+  of one value sort apart at the service where Calcite ties them for the next key to order.
 
 **A key read as text sorts at the service only over a declared string.** `JSON_VALUE` without
 `RETURNING` is text: Calcite orders the text, and the service orders the stored value — by JSON type
