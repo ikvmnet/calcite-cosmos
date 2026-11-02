@@ -307,14 +307,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// One container of the yardstick: its metadata, the policy Azure would hold it to, and the
-        /// documents it is seeded with.
+        /// The documents planted beside each container's own, in two partitions: U+0000 alone, inside and leading, at
+        /// <c>t</c>, and at <c>s</c> where nothing proves its characters; and, where no pattern holds an id to an
+        /// identifier, an id holding one. The emulator stores U+0000 as U+FDD0 <c>0</c>, above every unit from U+0001 to
+        /// U+FDCF, where Calcite puts it least (<c>Service.StringOrderIsCodePoint</c>), so a text order the plan proved or
+        /// anchored over a path that may hold one is shown wrong here (<c>reports/emu-nul/spec.md</c>, D4 to D7). Apart
+        /// from the generated documents, so that nothing the generator draws moves. <c>orders_ascii</c>'s <c>s</c> holds
+        /// none and no U+FDD0 is planted: <c>CHAR_LENGTH(s)</c> pushes there by its pattern, and the emulator counts the
+        /// units it stores, two for either, which is the string functions' row (D8), not the orders'. Every other value is
+        /// one the generated documents could hold, <c>w</c> past an <c>INTEGER</c> among them (<see cref="OrderIntegers"/>),
+        /// so that no statement over them goes unjudged.
         /// </summary>
-        sealed record OrderContainer(CosmosContainerMetadata Metadata, IndexingPolicy Policy, string[] Documents)
+        static string[] OrderPlanted(bool ascii) =>
+        [
+            $$"""{"id":"nul","category":"o0","s":"{{(ascii ? "a\\u0001" : "\\u0000")}}","t":"a\u0000","k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+            $$"""{"id":"nul1","category":"o1","s":"{{(ascii ? "b" : "a\\u0000b")}}","t":"\u0000z","k":1,"b":false,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+            .. ascii ? [] : new[] { """{"id":"a\u0000","category":"o2","s":"a\u0001","t":null,"k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""" },
+        ];
+
+        /// <summary>The strings the plant holds, which the planted pass compares with.</summary>
+        static readonly string[] OrderPlantedStrings = ["\u0000", "a\u0000", "a\u0000b", "\u0000z", "a\u0001"];
+
+        /// <summary>
+        /// One container of the yardstick: its metadata, the policy Azure would hold it to, the documents it is
+        /// generated with, and those planted beside them (<see cref="OrderPlanted"/>).
+        /// </summary>
+        sealed record OrderContainer(CosmosContainerMetadata Metadata, IndexingPolicy Policy, string[] Documents, string[] Planted)
         {
+            /// <summary>What the container is seeded with: its documents and the planted ones.</summary>
+            public string[] Seeded { get; } = [.. Documents, .. Planted];
+
             public string Name => Metadata.Name;
 
-            /// <summary>Every string the documents hold, which a comparison with a parameter is made over.</summary>
+            /// <summary>
+            /// Every string the generated documents hold, which a comparison with a parameter is made over: the planted
+            /// ones apart, so that the default run's statements stay those the floors were read over.
+            /// </summary>
             public IReadOnlyList<string> Strings { get; } = Documents
                 .SelectMany(d => JsonDocument.Parse(d).RootElement.EnumerateObject())
                 .Where(p => p.Value.ValueKind == JsonValueKind.String)
@@ -324,6 +352,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             /// <summary>Each document by its partition key and id, which is what identifies a row.</summary>
             public IReadOnlyDictionary<(string, string), JsonElement> ById { get; } = Documents
+                .Concat(Planted)
                 .Select(d => JsonDocument.Parse(d).RootElement)
                 .ToDictionary(d => (d.GetProperty("category").GetString()!, d.GetProperty("id").GetString()!));
 
@@ -349,9 +378,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly OrderContainer[] OrderContainers =
         [
-            new(OrdersPlain, OrderIndexingPolicy(composites: false), OrderDocuments(ascii: false)),
-            new(OrdersDeclared, OrderIndexingPolicy(composites: true), OrderDocuments(ascii: false)),
-            new(OrdersAscii, OrderIndexingPolicy(composites: true), OrderDocuments(ascii: true)),
+            new(OrdersPlain, OrderIndexingPolicy(composites: false), OrderDocuments(ascii: false), OrderPlanted(ascii: false)),
+            new(OrdersDeclared, OrderIndexingPolicy(composites: true), OrderDocuments(ascii: false), OrderPlanted(ascii: false)),
+            new(OrdersAscii, OrderIndexingPolicy(composites: true), OrderDocuments(ascii: true), OrderPlanted(ascii: true)),
         ];
 
         static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? _orderContainers;
@@ -374,7 +403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                     var seeded = new List<(CosmosContainerMetadata, Container)>();
                     foreach (var container in OrderContainers)
-                        seeded.Add((container.Metadata, await Seed(database, container.Name, container.Documents, cts.Token, policy: container.Policy)));
+                        seeded.Add((container.Metadata, await Seed(database, container.Name, container.Seeded, cts.Token, policy: container.Policy)));
 
                     _orderContainers = seeded;
                 }
@@ -628,6 +657,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 18 => new OrderDraft(container, OrderForm.Rows, [], false, [new($"{Pick(TextOperands).Sql} {(random.Next(2) == 0 ? ">" : "<=")} {Pick(TextOperands).Sql}")], [], 0, null),
                 _ => Pinned(container),
             };
+
+            /// <summary>
+            /// The planted pass over one container, fixed and in order: a sort and a keyset either way, <c>MIN</c> and
+            /// <c>MAX</c> over each text key, each text operand against a parameter either way, and text against text
+            /// (forms 14 to 18, and the sorts they stand beside). The parameters are the planted values and a few of
+            /// the generated strings around them, not every one of <see cref="OrderContainer.Strings"/>, to keep the
+            /// pass to a few hundred statements.
+            /// </summary>
+            public static IEnumerable<OrderDraft> Planted(OrderContainer container)
+            {
+                string[] values = [.. OrderPlantedStrings, "", "a", "b", "\uE000", "\U0001F600"];
+                OrderExpression[] keys = [Text("s"), Text("t"), Id];
+
+                foreach (var key in keys)
+                    foreach (var descending in new[] { false, true })
+                        foreach (var fetch in new int?[] { null, 3 })
+                            yield return new OrderDraft(container, OrderForm.Sort, [new(key, descending, null)], true, [], [], 0, fetch);
+
+                foreach (var key in Present)
+                    foreach (var descending in new[] { false, true })
+                        yield return new OrderDraft(container, OrderForm.Sort, [new(key, descending, null)], true, [], [], 0, 3, Keyset: true);
+
+                foreach (var key in keys.Append(Text("e")))
+                    foreach (var form in new[] { OrderForm.Min, OrderForm.Max })
+                        yield return new OrderDraft(container, form, [new(key, false, null)], false, [], [], 0, null);
+
+                foreach (var operand in TextOperands)
+                    foreach (var comparison in new[] { ">", "<" })
+                        foreach (var value in values)
+                            yield return new OrderDraft(container, OrderForm.Rows, [], false, [new($"{operand.Sql} {comparison} ?", true, value)], [], 0, null);
+
+                foreach (var (left, right) in new[] { (Text("s"), Text("t")), (Text("t"), Text("s")), (Text("s"), Id), (Id, Text("t")) })
+                    foreach (var comparison in new[] { ">", "<=" })
+                        yield return new OrderDraft(container, OrderForm.Rows, [], false, [new($"{left.Sql} {comparison} {right.Sql}")], [], 0, null);
+            }
 
             /// <summary>A subquery's sort, which only a page keeps: Calcite drops one with none.</summary>
             OrderDraft Inner(OrderContainer container)
@@ -941,7 +1005,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Runtime = "the CLR runtime's own order";
 
             /// <summary>Whether a failure is of the order alone, the answer holding rows of its input in the right number.</summary>
-            static bool IsOrderOnly(OrderAllowability.Verdict verdict) =>
+            internal static bool IsOrderOnly(OrderAllowability.Verdict verdict) =>
                 verdict.Failure!.StartsWith("(A2)", StringComparison.Ordinal) || verdict.Failure.StartsWith("(A3)", StringComparison.Ordinal);
 
             /// <summary>
@@ -1219,7 +1283,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// The values are the strings the documents hold, so that each page starts where a reader paging the container
         /// would start it — an anchor, a string past U+D800, the empty string — and the page sizes leave edges inside and
-        /// outside a run of strings the two orders part.
+        /// outside a run of strings the two orders part. The plant stays in the containers, so that under the emulator a
+        /// row holding U+0000 that a comparison sent exact would keep or drop wrongly is there to be seen.
         /// </remarks>
         [Fact]
         public async Task ASeekPastTwoKeysIsOneCalciteAllows()
@@ -1234,30 +1299,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             CalciteSortKey[] keys = [new(0, false, false), new(1, false, false)];
 
             var failures = new List<string>();
+            var runtime = new List<string>();
             var pushed = 0;
 
             foreach (var s in new[] { "", "a", "a\U0001F600", "\uE000", "\U0001F600", "\uFFFF" })
                 foreach (var id in new[] { "a", "a\U0001F600", "\uFF21" })
                     foreach (var fetch in new[] { 2, 5 })
                     {
-                        var sql = $"SELECT {S} AS \"s\", c.\"id\" AS \"id\" {Where} ORDER BY 1, 2 FETCH NEXT {fetch} ROWS ONLY";
+                        var sql = $"SELECT {S} AS \"s\", c.\"id\" AS \"id\" {Where} ORDER BY 1, 2";
                         object?[] parameters = [s, s, id];
                         var sent = new List<string>();
 
-                        var answer = (await Run(sql, true, sent, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList();
+                        var answer = (await Run($"{sql} FETCH NEXT {fetch} ROWS ONLY", true, sent, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList();
                         var input = (await Run($"SELECT {S} AS \"s\", c.\"id\" AS \"id\" {Where}", false, null, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList();
+                        var ordered = sent.Any(q => q.Contains(" ORDER BY ", StringComparison.Ordinal));
 
                         var verdict = OrderAllowability.Judge(input, answer, 2, keys, 0, fetch, ordered: true);
-                        if (verdict.Failed)
-                            failures.Add($"{sql} [{string.Join(", ", parameters.Select(OrderAllowability.Show))}]\n  {verdict.Failure}\n  sent: {string.Join(" || ", sent)}");
+                        var shown = $"{sql} FETCH NEXT {fetch} ROWS ONLY [{string.Join(", ", parameters.Select(OrderAllowability.Show))}]\n  {verdict.Failure}\n  sent: {string.Join(" || ", sent)}";
 
-                        if (sent.Any(q => q.Contains(" ORDER BY ", StringComparison.Ordinal) && q.Contains(" OR ", StringComparison.Ordinal)))
+                        // The seek unpaged holds the right rows, in an order the runtime gave where the service was handed none.
+                        async Task<bool> UnpagedIsRuntimes()
+                        {
+                            var unsent = new List<string>();
+                            var unpaged = OrderAllowability.Judge(input, (await Run(sql, true, unsent, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList(), 2, keys, 0, null, ordered: true);
+                            return unpaged.Failed == false || unsent.Any(q => q.Contains(" ORDER BY ", StringComparison.Ordinal)) == false && OrderJudge.IsOrderOnly(unpaged);
+                        }
+
+                        // As the yardstick judges: where the service was handed no order and the answer holds the right rows,
+                        // the order is the CLR runtime's, multi-key text by culture; a window of the wrong rows only where the
+                        // same seek unpaged holds the right ones.
+                        if (verdict.Failed && ordered == false && OrderJudge.IsOrderOnly(verdict)
+                            && (verdict.Failure!.StartsWith("(A3)", StringComparison.Ordinal) == false || await UnpagedIsRuntimes()))
+                            runtime.Add(shown);
+                        else if (verdict.Failed)
+                            failures.Add(shown);
+
+                        if (ordered && sent.Any(q => q.Contains(" OR ", StringComparison.Ordinal)))
                             pushed++;
                     }
 
+            if (runtime.Count > 0)
+                Log($"## ASeekPastTwoKeysIsOneCalciteAllows: {runtime.Count} pages the CLR runtime's own order\n" + string.Join("\n", runtime));
+
             failures.Should().BeEmpty("every page of the seek must be one Calcite allows:\n" + string.Join("\n", failures));
-            pushed.Should().Be(36, "the seek is pushed whole, ordered and filtered, whatever its values hold");
+
+            // Under the emulator s and id may hold U+0000, which it orders as it stores it: the sort and the comparisons
+            // over them are refused there, and the seek runs in process (reports/emu-nul/spec.md, D4, D6).
+            pushed.Should().Be(CosmosEmulator.ServiceTarget == CosmosServiceTarget.Emulator ? SeekPushedUnderTheEmulator : 36, "the seek is pushed whole, ordered and filtered, whatever its values hold, where the target orders them as Calcite");
         }
+
+        /// <summary>
+        /// How many of the seek's 36 statements push under the emulator, read there on 8085: none, its sort and its
+        /// comparisons being over <c>s</c> and <c>id</c>, which declare no characters and so may hold U+0000.
+        /// </summary>
+        const int SeekPushedUnderTheEmulator = 0;
 
         [Fact]
         public async Task EveryOrderIsOneCalciteAllows()
@@ -1283,12 +1378,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     Log($"orders: judged {done} of {items.Count} in {clock.Elapsed.TotalSeconds:F0} s");
             });
 
+            // The planted pass: the forms that compare text, over the planted values beside the generated ones. Judged as
+            // any other statement, and counted toward no floor.
+            var plantedItems = OrderContainers.SelectMany(OrderGenerator.Planted).ToList();
+            var plantedJudged = new IReadOnlyList<OrderJudgement>[plantedItems.Count];
+            await Parallel.ForEachAsync(Enumerable.Range(0, plantedItems.Count), new ParallelOptions { MaxDegreeOfParallelism = PartitionParallelism }, async (i, _) =>
+            {
+                plantedJudged[i] = await judge.JudgeItem(plantedItems[i]);
+            });
+
             var judging = clock.Elapsed;
             var all = judged.SelectMany(j => j).ToList();
+            var planted = plantedJudged.SelectMany(j => j).ToList();
             // A wrong answer in a family that is no order's, already a finding of its own: reported, not held against the
             // orders. See Findings.
-            var findings = all.Where(j => j.Failed && j.Pushed == false && Findings.Contains(j.Family ?? "")).ToList();
-            var failing = all.Where(j => j.Failed && findings.Contains(j) == false).ToList();
+            var findings = all.Concat(planted).Where(j => j.Failed && j.Pushed == false && Findings.Contains(j.Family ?? "")).ToList();
+            var failing = all.Concat(planted).Where(j => j.Failed && findings.Contains(j) == false).ToList();
             var narrowed = new OrderJudgement[failing.Count];
 
             await Parallel.ForEachAsync(Enumerable.Range(0, failing.Count), new ParallelOptions { MaxDegreeOfParallelism = PartitionParallelism }, async (i, _) =>
@@ -1302,11 +1407,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 ? pushedByContainer.GetValueOrDefault((container, floor.Kind))
                 : pushedKinds.GetValueOrDefault(floor.Kind);
             var families = failing.GroupBy(f => f.Family ?? "other").OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}");
-            var runtime = all.Where(j => j.Runtime).ToList();
+            var runtime = all.Concat(planted).Where(j => j.Runtime).ToList();
 
             var size = items.Count == GateOrderedItems ? "the gate's" : "the first of the gate's " + GateOrderedItems + "; COSMOS_ORDER_GATE=1 asks for all of them";
             var summary = $"{items.Count} items ({size}), {all.Count} statements, {all.Count(j => j.Judged == false)} not judged, " +
                 $"pushed {string.Join(", ", pushedKinds.OrderBy(k => k.Key, StringComparer.Ordinal).Select(k => $"{k.Key} {k.Value}"))}; " +
+                $"the planted pass {planted.Count} statements, {planted.Count(j => j.Judged == false)} not judged, {planted.Count(j => j.Pushed)} pushing an order; " +
                 $"{failing.Count} failing ({string.Join(", ", families)}); {runtime.Count} the CLR runtime's own; " +
                 $"{findings.Count} findings of their own ({string.Join(", ", findings.GroupBy(f => f.Family).Select(g => $"{g.Key} {g.Count()}"))}); " +
                 $"{judge.Statements} runs; judged in {judging.TotalSeconds:F1} s, narrowed in {(clock.Elapsed - judging).TotalSeconds:F1} s";
@@ -1321,7 +1427,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 .ToList();
 
             Log("## EveryOrderIsOneCalciteAllows: " + summary);
-            Trace(all);
+            Trace(all.Concat(planted));
             foreach (var witness in witnesses)
                 Log("### " + witness);
             foreach (var own in runtime)
@@ -1329,7 +1435,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var finding in findings)
                 Log($"### a finding of its own, [{finding.Family}]: {finding.Draft}\n  {finding.Failure}\n  sent: {string.Join(" || ", finding.Sent)}");
 
-            var floors = PushedFloors.Where(f => Pushed((f.Container, f.Kind)) < (items.Count == GateOrderedItems ? f.Gate : f.Default))
+            var floors = PushedFloors.Where(f => f.Target == CosmosEmulator.ServiceTarget && Pushed((f.Container, f.Kind)) < (items.Count == GateOrderedItems ? f.Gate : f.Default))
                 .Select(f => $"{(f.Container is null ? "" : f.Container + " ")}{f.Kind}: {Pushed((f.Container, f.Kind))} pushed, the floor is {(items.Count == GateOrderedItems ? f.Gate : f.Default)}")
                 .ToList();
 
@@ -1424,20 +1530,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The translator's pushes there were unproven on the emulator, so each loss is a correctness fix (owner, 2026-10-22),
         /// its statement listed in <c>TODO.md</c>; under Azure's set they push. The default run's floors held.
         /// </para>
+        /// <para>
+        /// The floors are per target from the fix for the emulator's U+0000 on, the Azure rows those above, unchanged. Under
+        /// the emulator's set a text sort, <c>MIN</c> and <c>MAX</c> over text that may hold U+0000 are refused either way,
+        /// and so is an ordering of such text against a parameter, a literal or another path (D4 to D7 of
+        /// <c>reports/emu-nul/spec.md</c>): read on 8085, the default run's sorts went from 35 to 17, its extremes from 5 to
+        /// 3; the gate's sorts from 220 to 106, extremes from 23 to 18, comparisons from 25 to 17, its pages held. Its
+        /// comparisons over <c>orders_ascii</c> rose from none to 11, five in the default run, an exact <c>id &gt; ?</c> or
+        /// <c>e &gt; ?</c> now anchored on a value holding no U+0000 and sent with its recheck. Every loss is one of those
+        /// kinds over <c>s</c>, <c>t</c>, <c>g</c> or <c>id</c>, each a correctness fix on the emulator (owner, 2026-10-31,
+        /// "Yes, fix PR first"; 2026-11-01, "Cut it"), listed in <c>TODO.md</c>; under Azure's set every one pushes.
+        /// </para>
         /// </remarks>
-        static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
+        static readonly (CosmosServiceTarget Target, string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
-            (null, "sort", 35, 220),
-            (null, "extreme", 5, 23),
-            (null, "page", 0, 3),
-            (null, "comparison", 5, 25),
-            ("orders_plain", "sort", 5, 27),
-            ("orders_plain", "extreme", 0, 3),
-            ("orders_declared", "sort", 19, 103),
-            ("orders_declared", "extreme", 3, 8),
-            ("orders_declared", "comparison", 3, 21),
-            ("orders_ascii", "sort", 11, 90),
-            ("orders_ascii", "extreme", 2, 12),
+            (CosmosServiceTarget.Azure, null, "sort", 35, 220),
+            (CosmosServiceTarget.Azure, null, "extreme", 5, 23),
+            (CosmosServiceTarget.Azure, null, "page", 0, 3),
+            (CosmosServiceTarget.Azure, null, "comparison", 5, 25),
+            (CosmosServiceTarget.Azure, "orders_plain", "sort", 5, 27),
+            (CosmosServiceTarget.Azure, "orders_plain", "extreme", 0, 3),
+            (CosmosServiceTarget.Azure, "orders_declared", "sort", 19, 103),
+            (CosmosServiceTarget.Azure, "orders_declared", "extreme", 3, 8),
+            (CosmosServiceTarget.Azure, "orders_declared", "comparison", 3, 21),
+            (CosmosServiceTarget.Azure, "orders_ascii", "sort", 11, 90),
+            (CosmosServiceTarget.Azure, "orders_ascii", "extreme", 2, 12),
+
+            (CosmosServiceTarget.Emulator, null, "sort", 17, 106),
+            (CosmosServiceTarget.Emulator, null, "extreme", 3, 18),
+            (CosmosServiceTarget.Emulator, null, "page", 0, 3),
+            (CosmosServiceTarget.Emulator, null, "comparison", 6, 17),
+            (CosmosServiceTarget.Emulator, "orders_plain", "sort", 4, 12),
+            (CosmosServiceTarget.Emulator, "orders_plain", "extreme", 0, 2),
+            (CosmosServiceTarget.Emulator, "orders_declared", "sort", 5, 34),
+            (CosmosServiceTarget.Emulator, "orders_declared", "extreme", 2, 6),
+            (CosmosServiceTarget.Emulator, "orders_declared", "comparison", 1, 6),
+            (CosmosServiceTarget.Emulator, "orders_ascii", "sort", 8, 60),
+            (CosmosServiceTarget.Emulator, "orders_ascii", "extreme", 1, 10),
         ];
 
     }

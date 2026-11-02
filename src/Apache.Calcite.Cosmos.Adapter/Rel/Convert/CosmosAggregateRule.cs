@@ -106,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known, groupSet.isEmpty() == false) == false)
+                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known, groupSet.isEmpty() == false, convention.Container.ServiceTarget) == false)
                     return false;
 
                 var arguments = call.getArgList();

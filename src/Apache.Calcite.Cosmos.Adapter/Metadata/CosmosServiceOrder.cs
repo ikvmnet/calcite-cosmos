@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.type;
@@ -49,7 +50,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// which under the default charset are always below U+0100; a parameter's are anything until it is bound. Two
     /// constants the service compares by UTF-16 on Azure and by code point on the emulator, and a range whose bounds the
     /// two orders rank apart keeps nothing on Azure; both are inside what R1 refuses, since each needs a surrogate on one
-    /// side and a high unit on the other.</description></item>
+    /// side and a high unit on the other. Which order the target runs is its measured row, read as S reads it
+    /// (<see cref="CosmosRendering.StoresSpelled(RenderingSet)"/>): the emulator stores U+0000 as U+FDD0 <c>0</c>, above
+    /// every unit from U+0001 to U+FDCF, where Calcite puts it least, so there a sort or an extreme over strings that may
+    /// hold one is refused, no value certifying the rows around it, and so is a comparison over one; a path holding
+    /// none against a parameter is anchored on a value holding none (<see cref="Compare"/>). Its other escape, U+FDD0 as
+    /// U+FDD0 <c>1</c>, keeps the order.</description></item>
     /// <item><description><b>R2, readings.</b> Calcite orders what the column reads, and the service the stored value.
     /// Text over strings is the strings; text over a number or a boolean is a rendering, which sorts among the strings
     /// as text where the service sorts it by type and value. <c>INTEGER</c> and narrower read exactly what they read,
@@ -135,8 +141,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="facts">What every row ordered is known to satisfy: the sort's own row of the licence table.</param>
         /// <param name="keys">The keys, in order.</param>
+        /// <param name="set">The targets the statement is sent to (<see cref="CosmosRendering.SetFor"/>), whose measured
+        /// string order R1 reads.</param>
         /// <returns>A proof naming the keys to write, or a refusal saying why.</returns>
-        public static CosmosOrderVerdict OrderBy(JsonFactSet facts, IReadOnlyList<CosmosOrderKey> keys)
+        public static CosmosOrderVerdict OrderBy(JsonFactSet facts, IReadOnlyList<CosmosOrderKey> keys, RenderingSet set)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
@@ -201,7 +209,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return CosmosOrderVerdict.Refused("two JSON types, which the service orders by type first");
 
                 // R1: one path's strings against each other; and where their characters are not known, a string below
-                // U+D800 still orders alike against every other, which the rows can show.
+                // U+D800 still orders alike against every other, which the rows can show; but not against a U+0000 the
+                // target orders as it stores it, past every anchor, either direction: across partitions the SDK merges the
+                // streams by code unit, which is not their order there.
+                if (Unorderable(reading, set) is string nul)
+                    return CosmosOrderVerdict.Refused(nul);
+
                 if (OrdersItsStrings(reading) == false)
                 {
                     anchors[j] = CosmosOrderAnchor.Text;
@@ -248,8 +261,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="facts">What every row aggregated is known to satisfy: the grouping's own row of the licence table.</param>
         /// <param name="operand">The argument.</param>
+        /// <param name="set">The targets the statement is sent to, whose measured string order R1 reads.</param>
         /// <returns>A proof, or a refusal saying why.</returns>
-        public static CosmosOrderVerdict Extreme(JsonFactSet facts, CosmosOrderOperand operand)
+        public static CosmosOrderVerdict Extreme(JsonFactSet facts, CosmosOrderOperand operand, RenderingSet set)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
@@ -271,6 +285,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (IsOneClass(reading.Values) == false)
                 return CosmosOrderVerdict.Refused("two JSON types, which the service's extreme compares by type first");
+
+            // MIN and MAX alike: a partition's extreme is its stored order's, and the SDK takes the extreme of those by code
+            // unit, so neither lies on Calcite's side of an anchor there.
+            if (Unorderable(reading, set) is string nul)
+                return CosmosOrderVerdict.Refused(nul);
 
             if (OrdersItsStrings(reading) == false)
             {
@@ -307,14 +326,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// declared a string or null keep the documents holding a JSON null, which Calcite drops. So the null classes are
         /// asked, of the two sides together (<see cref="Equate"/> asks the same of an equality).
         /// </para>
+        /// <para>
+        /// <b>Where the target orders U+0000 as it stores it</b>, the emulator, a value is sent in its stored spelling
+        /// (<see cref="EmulatorStoredText"/>), and the two orders part only where U+0000 meets a unit from U+0001 to
+        /// U+FDCF. Two operands either of which may hold one are refused, a parameter always may: the rows the service
+        /// drops never arrive. The one exception is a path that holds none against a parameter, anchored on
+        /// <see cref="CosmosOrderAnchor.TextWithoutNul"/> where Azure proves it outright or anchors it on
+        /// <see cref="CosmosOrderAnchor.Text"/>: a value holding U+0000 parts from the path's units, and is read weakened
+        /// and rechecked, under a bound that stops before it (<see cref="LowerBound(string, CosmosOrderAnchor)"/>). A
+        /// conversion's parameter is written in the conversion's stored form (<c>CosmosFactRewriter</c>), and holds what
+        /// the form does. Nothing weaker is sent for a path that may hold U+0000 (owner, 2026-11-01: "Cut it").
+        /// </para>
         /// </remarks>
         /// <param name="facts">What the comparison may rely on: its own row of the licence table.</param>
         /// <param name="left">One side.</param>
         /// <param name="right">The other.</param>
         /// <param name="inclusive">Whether two equal values satisfy the comparison — <c>&lt;=</c> and <c>&gt;=</c> — so that
         /// a JSON null against a JSON null keeps the row at the service.</param>
+        /// <param name="set">The targets the statement is sent to, whose measured string order R1 reads.</param>
         /// <returns>A proof, or a refusal saying why.</returns>
-        public static CosmosOrderVerdict Compare(JsonFactSet facts, CosmosOrderOperand left, CosmosOrderOperand right, bool inclusive)
+        public static CosmosOrderVerdict Compare(JsonFactSet facts, CosmosOrderOperand left, CosmosOrderOperand right, bool inclusive, RenderingSet set)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
@@ -335,7 +366,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (ComparedNulls(l, r, inclusive) is string nulls)
                 return CosmosOrderVerdict.Refused(nulls);
 
-            if ((l.Values & r.Values & Classes.String) != Classes.None && Agree(l.Characters, r.Characters) == false)
+            var strings = (l.Values & r.Values & Classes.String) != Classes.None;
+            if (strings && CosmosRendering.StoresSpelled(set))
+            {
+                var path = left.Kind == CosmosOrderOperandKind.Parameter && right.Kind == CosmosOrderOperandKind.Path ? r
+                    : right.Kind == CosmosOrderOperandKind.Parameter && left.Kind == CosmosOrderOperandKind.Path ? l
+                    : (Reading?)null;
+                if (path is { } held && (held.Characters & JsonCharacterBand.Nul) == JsonCharacterBand.None)
+                    return CosmosOrderVerdict.Anchored("anchored, a parameter that may hold U+0000, which the emulator orders as it stores it", new[] { CosmosOrderAnchor.TextWithoutNul });
+
+                if (MayHoldNul(left, l, right) || MayHoldNul(right, r, left))
+                    return CosmosOrderVerdict.Refused(Unordered);
+            }
+
+            if (strings && Agree(l.Characters, r.Characters) == false)
             {
                 var unproved = "text across U+D800: " + Describe(l.Characters) + " against " + Describe(r.Characters);
 
@@ -431,10 +475,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where it certifies.</returns>
         public static bool IsAnchor(CosmosOrderAnchor anchor, System.Text.Json.JsonElement value) => anchor switch
         {
-            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || (JsonFactEncoding.Characters(Client.CosmosJson.Decode(value, Client.CosmosKeyComparer.Ordered)) & JsonCharacterBand.FromD800) == JsonCharacterBand.None,
+            CosmosOrderAnchor.Text => IsText(value, JsonCharacterBand.FromD800),
+            CosmosOrderAnchor.TextWithoutNul => IsText(value, JsonCharacterBand.FromD800 | JsonCharacterBand.Nul),
             CosmosOrderAnchor.Number => value.ValueKind != System.Text.Json.JsonValueKind.Number || value.TryGetDouble(out var number) && Math.Abs(number) < (double)TwoTo53,
             _ => true,
         };
+
+        /// <summary>Whether a value is no string, or one holding no character of the bands given.</summary>
+        static bool IsText(System.Text.Json.JsonElement value, JsonCharacterBand outside) =>
+            value.ValueKind != System.Text.Json.JsonValueKind.String || (JsonFactEncoding.Characters(Client.CosmosJson.Decode(value, Client.CosmosKeyComparer.Ordered)) & outside) == JsonCharacterBand.None;
 
         /// <summary>
         /// Says how Calcite compares an operand's values, for a reader that compares them itself: what its column reads.
@@ -479,10 +528,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="value">The parameter's value.</param>
         /// <returns>The bound.</returns>
-        public static string LowerBound(string value)
+        public static string LowerBound(string value) => LowerBound(value, CosmosOrderAnchor.Text);
+
+        /// <summary>
+        /// Returns the bound for <c>x &gt; p</c> and <c>x &gt;= p</c> under the anchor the comparison was given: under the
+        /// emulator's, <see cref="CosmosOrderAnchor.TextWithoutNul"/>, <paramref name="value"/> up to its first U+0000 as well.
+        /// </summary>
+        /// <remarks>
+        /// <b>Why it has to stop there.</b> The emulator compares the stored spelling of a path, which holds no U+0000
+        /// under that anchor (<see cref="Compare"/>), with the bound sent in its own; and the stored spelling keeps the order
+        /// of any two strings neither of which holds U+0000. A bound holding none keeps Azure's argument, both ends sent as
+        /// they order; one holding U+0000 would be stored above every unit from U+0001 to U+FDCF, so that <c>a</c>, above
+        /// <c>\0</c> in Calcite, is below its bound at the service. <see cref="UpperBound(string, CosmosOrderAnchor)"/>
+        /// raises this bound, U+D7FF to U+E000 and never to U+FDD0, so it holds none either. Checked by the model over every
+        /// pair of the probe's strings (<c>CosmosServiceOrderModelTests</c>).
+        /// </remarks>
+        /// <param name="value">The parameter's value.</param>
+        /// <param name="anchor">The anchor its comparison was given.</param>
+        /// <returns>The bound.</returns>
+        public static string LowerBound(string value, CosmosOrderAnchor anchor)
         {
+            var outside = anchor == CosmosOrderAnchor.TextWithoutNul ? JsonCharacterBand.FromD800 | JsonCharacterBand.Nul : JsonCharacterBand.FromD800;
+
             var below = 0;
-            while (below < value.Length && (JsonFactEncoding.Characters(value[below]) & JsonCharacterBand.FromD800) == JsonCharacterBand.None)
+            while (below < value.Length && (JsonFactEncoding.Characters(value[below]) & outside) == JsonCharacterBand.None)
                 below++;
 
             return value.Substring(0, below);
@@ -502,9 +571,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="value">The parameter's value.</param>
         /// <returns>The bound, or <c>null</c>.</returns>
-        public static string? UpperBound(string value)
+        public static string? UpperBound(string value) => UpperBound(value, CosmosOrderAnchor.Text);
+
+        /// <summary>
+        /// Returns the bound for <c>x &lt; p</c> and <c>x &lt;= p</c> under the anchor the comparison was given: built on
+        /// <see cref="LowerBound(string, CosmosOrderAnchor)"/>, so stopping at U+0000 too where that does.
+        /// </summary>
+        /// <param name="value">The parameter's value.</param>
+        /// <param name="anchor">The anchor its comparison was given.</param>
+        /// <returns>The bound, or <c>null</c>.</returns>
+        public static string? UpperBound(string value, CosmosOrderAnchor anchor)
         {
-            var lower = LowerBound(value);
+            var lower = LowerBound(value, anchor);
             if (lower.Length == 0)
                 return null;
 
@@ -851,6 +929,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static bool OrdersItsStrings(Reading reading) =>
             (reading.Values & Classes.String) == Classes.None || Agree(reading.Characters, reading.Characters);
+
+        /// <summary>Why text that may hold U+0000 orders alike with nothing where the target stores it escaped.</summary>
+        const string Unordered = "text that may hold U+0000, which the emulator orders as it stores it, above every unit from U+0001 to U+FDCF";
+
+        /// <summary>
+        /// Says why a reading's strings order alike with nothing under a set, or returns <c>null</c>: where they may hold
+        /// U+0000 and a target stores it escaped (<see cref="CosmosRendering.StoresSpelled(RenderingSet)"/>). U+FDD0 is not
+        /// asked: its escape keeps the order.
+        /// </summary>
+        static string? Unorderable(Reading reading, RenderingSet set) =>
+            (reading.Values & Classes.String) != Classes.None && (reading.Characters & JsonCharacterBand.Nul) != JsonCharacterBand.None && CosmosRendering.StoresSpelled(set)
+                ? Unordered
+                : null;
+
+        /// <summary>
+        /// Whether a side of a comparison may hold U+0000: a parameter may, but against a conversion, whose value is written
+        /// in the path's stored form; any other side by its characters.
+        /// </summary>
+        static bool MayHoldNul(CosmosOrderOperand operand, Reading reading, CosmosOrderOperand other) => operand.Kind == CosmosOrderOperandKind.Parameter
+            ? other.Kind != CosmosOrderOperandKind.Conversion
+            : (reading.Characters & JsonCharacterBand.Nul) != JsonCharacterBand.None;
 
         /// <summary>
         /// Determines whether two sets of strings order alike by code point and by UTF-16 code unit: unless one may hold a

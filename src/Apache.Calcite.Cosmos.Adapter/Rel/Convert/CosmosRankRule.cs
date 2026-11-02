@@ -130,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // service computes is; a score reads no facts.
             var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: CosmosRexTranslator.IsBestFirstDescending(rank));
             var ordered = new Metadata.CosmosOrderKey(operand, (org.apache.calcite.rel.RelFieldCollation)collations.get(0));
-            if (Metadata.CosmosServiceOrder.OrderBy(JsonFactSet.Empty, new[] { ordered }).IsProved == false)
+            if (Metadata.CosmosServiceOrder.OrderBy(JsonFactSet.Empty, new[] { ordered }, Metadata.CosmosRendering.SetFor(_convention.Container.ServiceTarget)).IsProved == false)
                 return null;
 
             // Offset is refused rather than guessed at: the documented pairings for the clause are TOP

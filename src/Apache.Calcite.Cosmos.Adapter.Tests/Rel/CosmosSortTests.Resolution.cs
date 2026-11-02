@@ -7,6 +7,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -102,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             }
 
             bool Resolves(RelCollation collation, JsonFactSet facts) =>
-                CosmosSort.TryResolveSortKeys(collation, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", facts, out _, out _, out _, out _);
+                CosmosSort.TryResolveSortKeys(collation, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", facts, RenderingSet.Production, out _, out _, out _, out _);
 
             // ── Field binding ─────────────────────────────────────────────────────────
 
@@ -185,6 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     RowType(),
                     "c",
                     Declared(Settled),
+                    RenderingSet.Production,
                     out var keys,
                     out var paths,
                     out var written,
@@ -223,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 var facts = Declared("""{ "type": "object", "required": ["name", "category"], "properties": { "name": { "enum": ["a", "b"] }, "category": { "enum": ["x", "y"] } } }""");
 
                 bool Resolves(int ordinal) =>
-                    CosmosSort.TryResolveSortKeys(Collation((ordinal, RelFieldCollation.Direction.ASCENDING)), fields, new[] { CosmosReading.Json, CosmosReading.Text, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", facts, out _, out _, out _, out _);
+                    CosmosSort.TryResolveSortKeys(Collation((ordinal, RelFieldCollation.Direction.ASCENDING)), fields, new[] { CosmosReading.Json, CosmosReading.Text, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", facts, RenderingSet.Production, out _, out _, out _, out _);
 
                 Resolves(1).Should().BeTrue("the text path resolves, the control that isolates the type as the cause");
                 Resolves(2).Should().BeFalse("a VARIANT has no order in Calcite, whatever the path holds");
@@ -292,7 +294,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     .add("tags", _types.createTypeWithNullability(_types.createArrayType(_types.createSqlType(SqlTypeName.VARCHAR), -1), true))
                     .build();
 
-                CosmosSort.TryResolveSortKeys(Collation((1, RelFieldCollation.Direction.ASCENDING)), fields, new[] { CosmosReading.Json, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", Declared("""{ "type": "object", "required": ["tags"], "properties": { "tags": { "type": "array" } } }"""), out _, out _, out _, out _)
+                CosmosSort.TryResolveSortKeys(Collation((1, RelFieldCollation.Direction.ASCENDING)), fields, new[] { CosmosReading.Json, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", Declared("""{ "type": "object", "required": ["tags"], "properties": { "tags": { "type": "array" } } }"""), RenderingSet.Production, out _, out _, out _, out _)
                     .Should().BeFalse();
             }
 
@@ -305,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             {
                 Resolves(Collation((2, RelFieldCollation.Direction.STRICTLY_DESCENDING)), Declared(Settled)).Should().BeFalse();
 
-                CosmosSort.TryResolveSortKeys(Collation((2, RelFieldCollation.Direction.STRICTLY_ASCENDING)), Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", Declared(Settled), out var keys, out _, out _, out _)
+                CosmosSort.TryResolveSortKeys(Collation((2, RelFieldCollation.Direction.STRICTLY_ASCENDING)), Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", Declared(Settled), RenderingSet.Production, out var keys, out _, out _, out _)
                     .Should().BeTrue();
                 keys[0].Descending.Should().BeFalse();
             }
@@ -328,7 +330,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             [Fact]
             public void EmptyCollationResolvesToNoKeys()
             {
-                CosmosSort.TryResolveSortKeys(RelCollations.EMPTY, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", Declared(), out var keys, out _, out _, out _).Should().BeTrue();
+                CosmosSort.TryResolveSortKeys(RelCollations.EMPTY, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", Declared(), RenderingSet.Production, out var keys, out _, out _, out _).Should().BeTrue();
                 keys.Should().BeEmpty();
             }
 
@@ -342,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <c>null</c> where it does not resolve.
             /// </summary>
             IReadOnlyList<CosmosOrderAnchor>? Anchors(RelCollation collation, JsonFactSet facts) =>
-                CosmosSort.TryResolveSortKeys(collation, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", facts, out _, out _, out _, out var checks)
+                CosmosSort.TryResolveSortKeys(collation, Fields, Readings, Array.Empty<CosmosOrdering>(), RowType(), "c", facts, RenderingSet.Production, out _, out _, out _, out var checks)
                     ? checks.Select(c => c.Anchor).ToList()
                     : null;
 
@@ -376,7 +378,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     .build();
 
                 bool Resolves(int ordinal, RelFieldCollation.Direction direction) =>
-                    CosmosSort.TryResolveSortKeys(Collation((ordinal, direction)), fields, new[] { CosmosReading.Typed, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", Declared(), out _, out _, out _, out _);
+                    CosmosSort.TryResolveSortKeys(Collation((ordinal, direction)), fields, new[] { CosmosReading.Typed, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), rowType, "c", Declared(), RenderingSet.Production, out _, out _, out _, out _);
 
                 Resolves(0, RelFieldCollation.Direction.DESCENDING).Should().BeTrue("_ts is a BIGINT the service bounds");
                 Resolves(1, RelFieldCollation.Direction.ASCENDING).Should().BeTrue("_etag's characters are stated, though no default policy lets it be ordered");
@@ -488,6 +490,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     RowType(),
                     "c",
                     Declared("""{ "type": "object", "required": ["name", "inventory"], "properties": { "name": { "const": "a" }, "inventory": { "type": "object", "required": ["quantity"], "properties": { "quantity": { "type": "integer" } } } } }"""),
+                    RenderingSet.Production,
                     out var keys,
                     out _,
                     out var written,
@@ -518,6 +521,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     rowType,
                     "c",
                     Declared("""{ "type": "object", "required": ["n"], "properties": { "n": { "type": "integer" } } }"""),
+                    RenderingSet.Production,
                     out var keys,
                     out _,
                     out _,
@@ -552,7 +556,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 .build();
 
             bool ResolvesOverUnnest(RelCollation collation) =>
-                CosmosSort.TryResolveSortKeys(collation, UnnestFields, new[] { CosmosReading.Json, CosmosReading.Typed, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), UnnestRowType(), "c", Declared(), out _, out _, out _, out _);
+                CosmosSort.TryResolveSortKeys(collation, UnnestFields, new[] { CosmosReading.Json, CosmosReading.Typed, CosmosReading.Typed }, Array.Empty<CosmosOrdering>(), UnnestRowType(), "c", Declared(), RenderingSet.Production, out _, out _, out _, out _);
 
             /// <remarks>
             /// Refused however few keys there are: the service rejects ordering by an element alias

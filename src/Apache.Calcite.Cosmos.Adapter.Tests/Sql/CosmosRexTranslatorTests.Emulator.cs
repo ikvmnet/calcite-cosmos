@@ -1,6 +1,7 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
+using System.Linq;
 
 using FluentAssertions;
 
@@ -36,7 +37,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, JsonFactSet.Empty, null, Container(target));
             }
 
+            CosmosRexTranslator Translator(CosmosServiceTarget target, JsonFactSet facts)
+            {
+                _t._parameters = new CosmosParameterList();
+                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
+            }
+
             RexNode Name => _t.Ref(0, SqlTypeName.VARCHAR);
+
+            /// <summary>Strings at field 0's path, holding characters of these classes; any, U+0000 among them, for <c>null</c>.</summary>
+            static JsonFactSet Strings(JsonCharacterBand? characters = null) => characters is { } bands
+                ? Declaring(new JsonClaim.OfType(JsonType.String), new JsonClaim.Characters(bands))
+                : Declaring(new JsonClaim.OfType(JsonType.String));
 
             RexNode Param => _t._rex.makeDynamicParam(_t._types.createSqlType(SqlTypeName.VARCHAR), 0);
 
@@ -136,6 +148,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     .Should().BeTrue("a constant holding neither character is sent as it is");
                 Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.PLUS, _t.Ref(1, SqlTypeName.INTEGER), _t._rex.makeDynamicParam(_t._types.createSqlType(SqlTypeName.INTEGER), 0)), out _)
                     .Should().BeTrue("a parameter of a number is no text");
+            }
+
+            /// <summary>
+            /// An ordering against a parameter, over a path that may hold U+0000: refused under the emulator whatever the
+            /// value, nothing weaker being sent for it (owner, 2026-11-01: "Cut it"), so the filter above stays in process.
+            /// Under Azure it is anchored on the value, as before.
+            /// </summary>
+            [Fact]
+            public void AnOrderingOverTextThatMayHoldANulIsRefusedAgainstAParameter()
+            {
+                var below = _t.Call(SqlStdOperatorTable.LESS_THAN, Name, Param);
+                var above = _t.Call(SqlStdOperatorTable.GREATER_THAN, Name, Param);
+
+                Translator(CosmosServiceTarget.Emulator, Strings()).TryTranslateConjunct(below, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Emulator, Strings()).TryTranslateConjunct(above, out _).Should().BeFalse();
+                _t._parameters.Comparisons.Should().BeEmpty();
+
+                Translator(CosmosServiceTarget.Azure, Strings()).TranslateConjunct(below).Should().Be("(c.name < @p0)");
+                _t._parameters.Comparisons.Single().Should().Match<CosmosOrderComparison>(c => c.Anchor == CosmosOrderAnchor.Text && c.Weakened == "(c.name < @p1)");
+                _t._parameters.Parameters.Should().HaveCount(2);
+            }
+
+            /// <summary>
+            /// Over a path that holds no U+0000, ASCII here, Azure proves the ordering against a parameter outright; the
+            /// emulator anchors it on a value holding no U+0000, whose bound stops there. Two such paths
+            /// compare as on Azure; a path that may hold U+0000 against another is refused, nothing recovering the rows the
+            /// service drops, where an equality of the two is sent as on Azure, exact in the stored spelling.
+            /// </summary>
+            [Fact]
+            public void AnOrderingOverTextThatHoldsNoNulIsAnchoredOnAValueHoldingNone()
+            {
+                var below = _t.Call(SqlStdOperatorTable.LESS_THAN, Name, Param);
+                var paths = _t.Call(SqlStdOperatorTable.LESS_THAN, Name, Name);
+
+                Translator(CosmosServiceTarget.Azure, Strings(JsonCharacterBand.None)).TranslateConjunct(below).Should().Be("(c.name < @p0)");
+                _t._parameters.Comparisons.Should().BeEmpty("proved when the plan is made");
+
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateConjunct(below).Should().Be("(c.name < @p0)");
+                _t._parameters.Comparisons.Single().Should().Match<CosmosOrderComparison>(c => c.Anchor == CosmosOrderAnchor.TextWithoutNul && c.Weakened == "(c.name < @p1)");
+
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateConjunct(paths).Should().Be("(c.name < c.name)");
+                Translator(CosmosServiceTarget.Azure, Strings(JsonCharacterBand.Nul)).TranslateConjunct(paths).Should().Be("(c.name < c.name)");
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.Nul)).TryTranslateConjunct(paths, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.Nul)).TranslateConjunct(Eq(Name, Name)).Should().Be("(c.name = c.name)");
             }
 
         }

@@ -3148,7 +3148,30 @@ JSON type — undefined, null, false, true, numbers, strings, arrays, objects; `
 value, int64 exactly, and strings by code point. Across partitions the SDK merges the streams by
 `String.CompareOrdinal`, UTF-16 code units, which is also Calcite's order. Measured on the emulator and on the probe
 account, one partition and two. A proof here never depends on how many partitions a container has, because it makes
-the three agree over the values the facts admit.
+the three agree over the values the facts admit. Under `Emulator`, over text that may hold U+0000, the partition's order
+is not that: it orders E(s), U+0000 as U+FDD0 `0` above every unit from U+0001 to U+FDCF, and the SDK merges those
+streams by code unit over the decoded values, so `DESC` across partitions gives `a, \0, b` and `MAX` `a` where Calcite
+gives `b, a, \0` and `b` (splitprobe). No proof there rests on the merge: R1 refuses such a key (*The emulator's
+U+0000, refused*).
+
+**The emulator's U+0000, refused.** Which order a target runs is its measured row, read as S reads it: a set whose
+`Service.StringOrderIsCodePoint` row answers `StoredCodePoint` stores spelled (`CosmosRendering.StoresSpelled`), and
+every order question takes the statement's set (`OrderBy`, `Extreme`, `Compare`, from `CosmosRendering.SetFor` of the
+container written to). E keeps code point order between strings neither of which holds U+0000, and reverses a pair
+only where U+0000 meets a unit from U+0001 to U+FDCF at the first difference; U+FDD0's escape is an equality and spelling
+defect, never an order one. So under that set a sort key or an extreme's operand that may hold U+0000 is refused in
+both directions — no value certifies the rows around a U+0000, and the merge breaks a carry — and so is an ordering
+comparison either side of which may: two paths, a path and a literal, a computed text, or such a path against a
+parameter, outright, nothing weaker sent (owner, 2026-11-01: "Cut it"; the emulator is the adapter's own test
+target, so its smallest sound rule wins). A path that holds none against a parameter is anchored on
+`CosmosOrderAnchor.TextWithoutNul`, a `Text` value holding no U+0000 either, where Azure proves it outright or anchors
+on `Text`: a value holding one parts from the path's units, so it is no anchor, and is read weakened under a bound
+that stops before its first U+0000 as well as before U+D800. The lemma: the bound b is then free of both, and for a
+path value s holding no U+0000, `s >cal v` gives `s ≥cal b`, b being a prefix of v, and two strings free of U+0000 and
+one of them below U+D800 order alike under E and under Calcite, so `s ≥emu b`; `<` raises b's last unit, which stays
+below U+D800 or is U+E000, never U+FDD0, and keeps the same argument. `CosmosServiceOrderModelTests` checks both over
+every pair of the probe's strings. Equality needs nothing: in the stored spelling it is exact. Under Azure none of
+this is reached, and its plans are byte-equal.
 
 **Four rules decide every reading.**
 - **R1, characters.** Code point order and UTF-16 order part only where a surrogate meets a unit from U+E000: at the
@@ -3821,15 +3844,16 @@ second statement, in order and stopping at the next anchor, never more rows than
 manual's 20.3).
 
 **How it is checked.** `CosmosServiceOrderModelTests` holds every anchored verdict to the reader's own check over the
-model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before
-the last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found
-the last key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe
-account's measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a
-value that is no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite
-inventory's measurements. The eight recorded divergences of string order push again, each held to the reader having
-re-sorted a run or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`), and the yardstick judges every
-order the reader completes (*Differential testing*). `CosmosOrderMergeMeasurementTests` runs the reader through the
-adapter's executor over two physical partitions, on an account that has them.
+model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before the
+last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found the last
+key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe account's
+measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a value that is
+no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite inventory's
+measurements. The eight recorded divergences of string order push again, each held to the reader having re-sorted a run
+or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`) on Azure, the emulator refusing each (*The
+emulator's U+0000, refused*), and the yardstick judges every order the reader completes (*Differential testing*).
+`CosmosOrderMergeMeasurementTests` runs the reader through the adapter's executor over two physical partitions, on an
+account that has them.
 
 **What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under a `NOT` or beneath a
 grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
@@ -6410,7 +6434,9 @@ whatever a path holds, and an ordering is proven only where the import holds no 
 U+0000, and an order is the comparator that sorts them as `ORDER BY` does and places them as `>` beside each does,
 which also parts code point from a comparator that stops reading at U+0000, as Azure's `CONTAINS` does. Azure's order
 is `CodePoint` over them: its `ORDER BY` and its `>` both put U+0000 least and read past it. So the string order is a
-key the targets answer apart, and a set serving both places a string by both comparators.
+key the targets answer apart, and a set serving both places a string by both comparators. The translator's own order
+questions read the same row (*The emulator's U+0000, refused*): a sort, an extreme or an ordering over text that may
+hold U+0000 is declined under `Emulator`, so the order that S proves and the order C# writes agree there.
 
 **What the emulator is sent is what it stores,** E(v): U+0000 as U+FDD0 `0`, U+FDD0 as U+FDD0 `1`. It compares what it
 is sent, unescaped, with E(s) (`Service.EmulatorComparesTheSpellingItIsSent`), so `StoredCodePoint` compares E(a) with

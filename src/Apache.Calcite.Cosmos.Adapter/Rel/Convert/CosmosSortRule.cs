@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // and which keys it is handed.
             var facts = Facts(sort, container);
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out var keys, out _, out _, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, Metadata.CosmosRendering.SetFor(convention.Container.ServiceTarget), out var keys, out _, out _, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Built under the facts the legality test decided under, which the node asks again; and saying whether the
             // order is completed as the rows arrive, which the digest shows.
             var facts = Facts(sort, container);
-            var anchored = CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out _, out _, out _, out var ordered)
+            var anchored = CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, Metadata.CosmosRendering.SetFor(container?.ServiceTarget ?? Metadata.CosmosServiceTarget.Azure), out _, out _, out _, out var ordered)
                 && ordered.Any(k => k.Anchor != Metadata.CosmosOrderAnchor.None);
 
             return new CosmosSort(

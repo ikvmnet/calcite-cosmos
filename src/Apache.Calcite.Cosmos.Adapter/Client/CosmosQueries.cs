@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     continue;
                 }
 
-                bound[i] = parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
+                bound[i] = parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot, AnchorOf(query, parameters[i].Name)) : Value(root, slot) };
 
                 // In the stored spelling of the target, the emulator's, where the service compares the value with a path
                 // (Service.EmulatorComparesTheSpellingItIsSent): after Held's truncation, Calcite truncating what it was
@@ -90,13 +90,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="root">The data context.</param>
         /// <param name="slot">The ordinal to read, and which bound to write.</param>
+        /// <param name="anchor">The anchor the comparison was given, which says where the bound stops: before U+0000 too
+        /// under the emulator's (<see cref="Metadata.CosmosServiceOrder.LowerBound(string, Metadata.CosmosOrderAnchor)"/>).</param>
         /// <returns>The bound, or <c>null</c>.</returns>
-        static object? Bounded(org.apache.calcite.DataContext root, CosmosDynamicValue slot) => Value(root, slot) switch
+        static object? Bounded(org.apache.calcite.DataContext root, CosmosDynamicValue slot, Metadata.CosmosOrderAnchor anchor) => Value(root, slot) switch
         {
-            string value when slot.Bound == CosmosAnchorBound.Lower => Metadata.CosmosServiceOrder.LowerBound(value),
-            string value => Metadata.CosmosServiceOrder.UpperBound(value),
+            string value when slot.Bound == CosmosAnchorBound.Lower => Metadata.CosmosServiceOrder.LowerBound(value, anchor),
+            string value => Metadata.CosmosServiceOrder.UpperBound(value, anchor),
             _ => null,
         };
+
+        /// <summary>
+        /// The anchor of the comparison a bound's slot belongs to, which the comparison carries and the slot does not, a
+        /// slot's spelling being what a plan's digest prints; <see cref="Metadata.CosmosOrderAnchor.Text"/> for none.
+        /// </summary>
+        static Metadata.CosmosOrderAnchor AnchorOf(CosmosQuery query, string bound)
+        {
+            if (query.Order is { } order)
+                foreach (var comparison in order.Comparisons)
+                    if (string.Equals(comparison.Bound, bound, StringComparison.Ordinal))
+                        return comparison.Anchor;
+
+            return Metadata.CosmosOrderAnchor.Text;
+        }
 
         /// <summary>
         /// Reads one dynamic parameter's value out of the data context and writes it in the stored

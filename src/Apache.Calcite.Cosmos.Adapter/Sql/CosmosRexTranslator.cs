@@ -142,6 +142,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal JsonFactSet Facts => _facts;
 
         /// <summary>
+        /// The set the statement is sent under, its container's target's (<see cref="Metadata.CosmosRendering.SetFor"/>),
+        /// whose measured string order an ordering comparison reads; Azure's for a translator built without a container,
+        /// which only resolves paths and decides no order.
+        /// </summary>
+        internal Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet Set => _container is null ? Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production : Metadata.CosmosRendering.SetFor(_container.ServiceTarget);
+
+        /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="rexBuilder">Used to expand <c>SEARCH</c> nodes back into comparison trees.</param>
@@ -4360,7 +4367,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
         {
             var (l, r) = OrderOperands(left, right);
-            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive);
+            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive, Set);
         }
 
         /// <summary>

@@ -1398,8 +1398,12 @@ the distribution the gate is sized for.
     in the stored spelling too — a projected one, a `CASE` arm, a `COALESCE` operand, which M6 measured come back as
     written — and computes in process a constant or a text parameter anywhere else, a function's operand, `MEMBER OF`
     and a generic `LIKE` pattern among them; the planted differential (`CosmosDifferentialTests.Planted.cs`, D1–D3,
-    D14 and §4.6's R rows) holds each. Left: the orders, and functions, `ENDSWITH` and `CONTAINS` over the stored
-    spelling. Azure's plans do not change. The differential corpus holds no U+0000 and no repetition near
+    D14 and §4.6's R rows) holds each. The orders are refused: a text sort either way, `MIN` and `MAX`, and an
+    ordering against a parameter, a literal or another path, over text that may hold U+0000, the order the emulator
+    runs being E's, which puts U+0000 above every unit from U+0001 to U+FDCF; a path that holds none against a
+    parameter is anchored on a value holding none (`CosmosOrderAnchor.TextWithoutNul`), and the planted differential's
+    D4–D7 rows hold it both ways. Left: functions, `ENDSWITH` and `CONTAINS` over the stored spelling. Azure's plans
+    do not change. The differential corpus holds no U+0000 and no repetition near
     the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
@@ -2758,7 +2762,9 @@ across documents* and *A join of a container to itself* is the record.
   whatever they hold. A path whose strings were never stated holds every class, U+0000 among them. If the check run
   finds such orderings common, what keeps U+0000 out of a path is a declaration to read, not a reason to read the
   comparator as code point. Since g10 that includes the raw orderings over `id`: the gate's 18 are S's under
-  `Production` and declined under `Emulator`, where nothing keeps U+0000 out of an `id`.
+  `Production` and declined under `Emulator`, where nothing keeps U+0000 out of an `id`. The translator's own order
+  questions now match S there (`CosmosServiceOrder`, the fix for the emulator's U+0000): a sort, an extreme and an
+  ordering over such text are declined under `Emulator` too.
 - **`Sql.CosmosFunctionBodiesTests` did not run at D7** — *small.* It needs an Entra role assignment and a container
   made beforehand (its remarks), so the probe account ran the JSON type class's
   `TheTypeTestBodiesAnswerWhatTheServiceAnswersOverEveryKind` instead, which holds the same bodies over the catalogue's
@@ -3161,6 +3167,37 @@ across documents* and *A join of a container to itself* is the record.
   whose pattern admits U+0000; sorts where `t > '_'`, `t > 'true'`, `id > '1'` and `s > 'ab'` over `orders_declared`;
   `MIN(_ts)` where `id > '_'` over `orders_plain`. The reader's order test sends `u > 'a'` on Azure alone, for the same
   reason.
+- **The emulator's U+0000 lowered the `Emulator` floors** — *recorded, a correctness fix.* The owner approved on
+  2026-10-31, "Yes, fix PR first", that the `Emulator` floors come down by exactly the pushes shown unsound there, and
+  on 2026-11-01, asked whether to cut the order fix to plain refusals under the emulator, "Cut it": the emulator being
+  the adapter's own test target, a push lost to a refusal there is no over-refusal. The yardstick's floors are per
+  target (`PushedFloors`); the Azure rows are unchanged. Read on 8085 (EN20261008), default / gate, base → new:
+  sort 35 / 220 → 17 / 106; extreme 5 / 23 → 3 / 18; page 0 / 3 → 0 / 3; comparison 5 / 25 → 6 / 17;
+  `orders_plain` sort 5 / 27 → 4 / 12, extreme 0 / 3 → 0 / 2; `orders_declared` sort 19 / 103 → 5 / 34, extreme
+  3 / 8 → 2 / 6, comparison 3 / 21 → 1 / 6; `orders_ascii` sort 11 / 90 → 8 / 60, extreme 2 / 12 → 1 / 10. Every lost
+  statement is one of three kinds, over `s`, `t`, `g` or `id`, which nothing keeps U+0000 out of (`orders_ascii`'s
+  pattern admits it): a text sort, either way, or a sort above a refused ordering (D4, D5; default 20, gate 114); an
+  extreme over such text (D4, D5; `MIN(g)` and `MIN(s)` in the default run, gate 6); an ordering against a parameter,
+  refused outright by the cut (D6; `id > ?`, `id < ?`, `t > ?`, `s > ?`, default 5, gate 20). The default run's lost
+  statements by trace line, the gate's likewise, are `reports/emu-nul/yardstick-c3-default-lost.txt` and
+  `…-gate-lost.txt`, diffed against `821295f`'s default trace and `19d0565`'s gate trace on the same image. The
+  comparisons rose by `orders_ascii`'s: an `id > ?` or `e > ?` Azure proves exact is anchored under `Emulator` on a value
+  holding no U+0000, and counts as a comparison, 5 in the default run and 11 at the gate. The seek pushes 0 of 36
+  under `Emulator` and 36 under Production. Under Production every one of them pushes, and its plans are byte-equal.
+  Not lowered: anything read under Production, and every floor not named here.
+- **The emulator's sorts, extremes and orderings over U+0000 could be recovered** — *an optimisation, for the owner.*
+  An ascending split by the exact holds-U+0000 test, `CONTAINS(p, U+FDD0 '0')`, with a per-feed-range reader, would
+  push the rows free of it in order and the rest apart; a `<` weakened with that test would keep an ordering against a
+  parameter pushed. The owner cut both on 2026-11-01 ("Cut it"): the emulator is the adapter's own test target, and
+  Azure is unaffected. Not soundness.
+- **The gate fails five statements over `v` on EN20261008** — *found, not this fix's.* On 8085, `19d0565` and the fix
+  alike, `ORDER BY v` in process, `DISTINCT v` and the like answer `9.223372036854776E18` where Calcite reads
+  `9223372036854775808` (the double 2^63 printed two ways), classified as rows rather than as the finding of its own
+  the yardstick holds apart. The default run passes. Read the image's printing against the `PrintedTwoWays` table.
+- **An in-process sort over text holding U+0000 can raise** — *calcite-dotnet's.* With the emulator's sort over
+  `t` refused, the gate's `ORDER BY c."$.category", t NULLS FIRST OFFSET 1` over `orders_ascii` is sorted by the CLR
+  runtime, which raises "Failed to compare two elements in the array" over the plant's U+0000 (culture comparison,
+  the merge item's `JavaComparisons.Compare`); Calcite raises the same over the statement, so it is not judged.
 - **O7's losses at the switch** — *small each, Stage 3 unless named.* The translator's weakenings S does not reproduce,
   each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1); a compound
   compared with `TRUE` or `FALSE`, read as opaque, as nothing (loss 3); `LIKE`'s string branch, as presence (loss 4, with

@@ -476,6 +476,14 @@ over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a com
 instant with a parameter — the value is written in the stored spelling when the statement runs
 (Chapter 15).
 
+On the emulator, which stores U+0000 as U+FDD0 `0` — above every character from U+0001 to U+FDCF, where
+SQL puts U+0000 first — and compares what it stores, a text ordering (`<`, `<=`, `>`, `>=`, `BETWEEN`) over
+a property that may hold U+0000 is made in process, against a parameter, a literal or another property
+alike: `id` and a property declared only `"type": "string"` among them. Over a property whose schema keeps
+U+0000 out, a `pattern` such as `^[\u0001-퟿]*$` (Chapter 14.4), it is sent as above, and a value
+holding U+0000 is one the reader weakens and rechecks, like a value past U+D800. Its other escape, U+FDD0
+as U+FDD0 `1`, keeps the order. Azure stores every string as written and is unaffected (Appendix E).
+
 **A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
 holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
 `'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
