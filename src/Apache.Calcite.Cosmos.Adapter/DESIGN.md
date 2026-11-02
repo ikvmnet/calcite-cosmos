@@ -3599,7 +3599,8 @@ three things; a review measured a fourth, and three functions that part over som
   string, where `%a%b%`, `%_b%`, `%b`, `a%b` and `a_b` keep it. A search holding U+0000 matches every string, and
   `REPLACE` of one replaces every byte. `INDEX_OF`, `STARTSWITH`, `ENDSWITH`, `LENGTH`, the comparisons, the order and a
   replacement holding U+0000 read past it (`Service.NulEndsWhatReplaceAndContainsRead`). The emulator stores U+0000 as
-  U+FDD0 followed by `0`, so there every function over one differs, and nothing is learned of the service.
+  U+FDD0 followed by `0`, and U+FDD0 as U+FDD0 followed by `1`, and its functions work on those units; what that asks
+  is below, and nothing of it is learned of the service.
 - **Not a character: a window's start, a repetition's count, a replacement's search.** Calcite clips a window that
   starts before the string, `SUBSTRING('abc' FROM 0 FOR 2)` being `a`, and the service answers a negative start with the
   empty string projected (`Service.SubstringOfANegativeStartIsEmpty`) — in a `WHERE` on Azure, compared with `''`, for
@@ -3643,6 +3644,23 @@ it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the f
 asks the same of its pattern's text (`FoldsAlike`), the case mapping's class named once for both. Where one is not
 proved the translation is refused, and the function stays in process over the value the service sends, which is what a
 path declared nothing of always did; the rest of the statement pushes.
+
+**On the emulator a function over a stored escape stays in process.** The emulator stores U+0000 as U+FDD0 `0` and
+U+FDD0 as U+FDD0 `1` (`EmulatorStoredText`), and measured on both images (`reports/emu-nul/spec.md`, D8 to D13) its
+functions work on those units: `LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` count them, `REVERSE` reverses them, `INDEX_OF`
+counts them, a `LIKE` `_` matches one and a `0` or `1` matches an escape's second, the fold's `ENDSWITH` and `CONTAINS`
+likewise, and a U+0000 the service makes itself — a `CONCAT` of a sent and a stored one, a `REPLACE` — is a 500, while
+`REPLACE` reads stored units. So where the rendering set stores spelled (`CosmosRendering.StoresSpelled`),
+`CosmosStringFunctions.RuleOf(call, set)` asks Z and H — U+FDD0 has no class of its own, and is read as the high band it
+lies in, a gain for the theory to take (`TODO.md`) — of the operands those work on: a count's, beside S; a reversal's;
+`POSITION`'s subject, its second operand; each of `REPLACE`'s three; every operand of a `CONCAT` and a `REPEAT`'s subject
+that the service computes rather than reads as stored, a path or a nested concatenation exempt as a path is from what
+the service makes, its own operands asked in turn; and a `LIKE`'s subject where its pattern holds a `_`, `0` or `1`
+beyond a plain prefix, or is not a literal, with the pattern itself where it holds a U+0000. The fold's `ENDSWITH` and
+`CONTAINS` are written only for a `LIKE` the rule has already seen, so no rule of their own is needed. A constant
+holding an escape and a text parameter, outside a comparison or a returned column, were already refused (*The rows' vectors,
+held by their tests*). Azure's rule is the one above, and no Azure plan moved; the emulator's are recorded in
+`reports/emu-nul/emulator-listing.tsv`.
 
 **What stays in process still reads only what it needs, in a projection.** A declined function over a path's reading
 sends the reading, `{"$f0": (IS_PRIMITIVE(c.s) ? c.s : null)}`, the projection split putting the accessor beneath the
@@ -6449,7 +6467,8 @@ decoded, so as written (`Service.EmulatorDecodesWhatItReturns`, M6); a raw U+000
 the projection down through `CASE` arms and casts alone, and a parameter there only where it is typed text, the one
 value the binding spells. Anywhere else, a function's operand, a `CASE` condition or a `CASE` in a filter or a key, a
 value holding either character, and a parameter that may be text, is refused: nothing there was measured in the stored
-spelling, and a U+0000 made from a path is a 500 (`Service.EmulatorFailsANulMadeFromAPath`). A point read of E(`id`) was measured only where it
+spelling, and a U+0000 made from a path is a 500 (`Service.EmulatorFailsANulMadeFromAPath`); a function over a stored value that may hold either is asked so too (*What a
+string function computes, asked of its characters*). A point read of E(`id`) was measured only where it
 aliases (`Service.EmulatorPointReadOfAnEscapedId`), and a route by a header carrying either not at all, so an `id` or
 key holding one is queried. Azure stores as written, and none of this reaches it.
 

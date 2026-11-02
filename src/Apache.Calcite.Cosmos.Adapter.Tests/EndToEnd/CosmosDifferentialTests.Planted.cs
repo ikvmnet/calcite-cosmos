@@ -38,12 +38,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// emulator orders stored, U+0000 above every unit from U+0001 to U+FDCF; D6, such text against a parameter; and
         /// D7, against another path. Those are refused under the emulator, and <c>planted_free</c>, whose text holds no
         /// U+0000, is held to keep its pushes: a value holding one is no anchor there, and is read weakened and rechecked.
+        /// D8 to D13, the string functions the emulator computes over the units it stores: D8, a count or a window; D9,
+        /// <c>REVERSE</c>; D10, <c>POSITION</c>; D11, a <c>LIKE</c> whose <c>_</c>, <c>0</c> or <c>1</c> can meet one
+        /// unit of an escape; D12, the fold's <c>ENDSWITH</c> and <c>CONTAINS</c> likewise; D13, a U+0000 made at the
+        /// service, and <c>REPLACE</c>. Those are refused over text that may hold either character, and
+        /// <c>planted_text</c>'s <c>t</c>, which holds neither, is held to push each.
         /// </para>
         /// <para>
         /// <b>Not judged, and why.</b> No U+FDD0 literal can be written, Calcite casting it to ISO-8859-1, so U+FDD0 reaches
         /// the service as a parameter or as stored data alone. Calcite's own <c>LIKE</c> with U+0000 in the pattern answers
         /// nothing or raises "Invalid escape sequence", so no such pattern is planted. <c>POSITION(? IN x)</c> fails
-        /// validation on both sides. The string functions and <c>LIKE</c> over such text are the later rows'.
+        /// validation on both sides.
         /// </para>
         /// <para>
         /// Run where the account is an emulator, and skipped on Azure, which stores every string as written and whose own
@@ -219,6 +224,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 foreach (var op in new[] { "<", ">", "<=", ">=" })
                     yield return new($"D7 {table} s {op} t", $"SELECT c.\"id\" FROM {table} AS c WHERE {J("s")} {op} {J("t")}", null, table == "planted_free" ? " WHERE " : null);
 
+            // D8 to D13: the string functions, which the emulator computes over the units it stores. Over text that may hold
+            // either character each that works on those units is refused and judged: planted_text's s, ASCII with U+0000,
+            // which main counted, folded and searched by its pattern; planted_free's s, U+FDD0 its one escape; and the
+            // undeclared s and id. planted_text's t holds neither, and is held to push every one.
+            foreach (var (table, column, x) in new[]
+            {
+                ("planted_text", "s", J("s")), ("planted_free", "s", J("s")), ("planted_declared", "s", J("s")), ("planted_plain", "id", "c.\"id\""),
+                ("planted_text", "t", J("t")),
+            })
+            {
+                var from = $"FROM {table} AS c";
+                var clean = column == "t";
+                string? Marked(string text) => clean ? text : null;
+                PlantedCase Case(string row, string label, string sql, string? pushes) => new($"{row} {table}.{column} {label}", sql, null, pushes);
+
+                yield return Case("D8", "CHAR_LENGTH", $"SELECT c.\"id\", CHAR_LENGTH({x}) {from}", Marked("LENGTH("));
+                yield return Case("D8", "CHAR_LENGTH = 1", $"SELECT c.\"id\" {from} WHERE CHAR_LENGTH({x}) = 1", Marked("LENGTH("));
+                yield return Case("D8", "SUBSTRING(2, 1)", $"SELECT c.\"id\", SUBSTRING({x} FROM 2 FOR 1) {from}", Marked("SUBSTRING("));
+                yield return Case("D8", "LEFT 1", $"SELECT c.\"id\", LEFT({x}, 1) {from}", Marked("LEFT("));
+                yield return Case("D8", "RIGHT 1", $"SELECT c.\"id\", RIGHT({x}, 1) {from}", Marked("RIGHT("));
+                yield return Case("D8", "GROUP BY LEFT 1", $"SELECT LEFT({x}, 1), COUNT(*) {from} GROUP BY LEFT({x}, 1)", Marked("LEFT("));
+                yield return Case("D9", "REVERSE", $"SELECT c.\"id\", REVERSE({x}) {from}", Marked("REVERSE("));
+                yield return Case("D9", "REVERSE = 'ba'", $"SELECT c.\"id\" {from} WHERE REVERSE({x}) = 'ba'", Marked("REVERSE("));
+                yield return Case("D10", "POSITION('b')", $"SELECT c.\"id\", POSITION('b' IN {x}) {from}", Marked("INDEX_OF("));
+                yield return Case("D10", "POSITION('0')", $"SELECT c.\"id\", POSITION('0' IN {x}) {from}", Marked("INDEX_OF("));
+                yield return Case("D10", "POSITION('b') = 2", $"SELECT c.\"id\" {from} WHERE POSITION('b' IN {x}) = 2", Marked("INDEX_OF("));
+
+                foreach (var pattern in new[] { "_", "a_b", "_0", "%0", "%1" })
+                    yield return Case("D11", $"LIKE '{pattern}'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '{pattern}'", Marked(" LIKE "));
+
+                // Patterns that meet no escape's unit stay pushed over any text.
+                yield return Case("D11", "LIKE '%b'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '%b'", " LIKE ");
+                yield return Case("D11", "LIKE 'a%'", $"SELECT c.\"id\" {from} WHERE {x} LIKE 'a%'", "STARTSWITH(");
+
+                // D12: the fold's ENDSWITH and CONTAINS, over planted_text alone, the one text a pattern proves ASCII.
+                if (table == "planted_text")
+                {
+                    yield return Case("D12", "UPPER LIKE '%0'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%0'", Marked("ENDSWITH("));
+                    yield return Case("D12", "UPPER LIKE '%1%'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%1%'", Marked("CONTAINS("));
+                    yield return Case("D12", "UPPER LIKE '%B'", $"SELECT c.\"id\" {from} WHERE UPPER({x}) LIKE '%B'", "ENDSWITH(");
+                    yield return Case("D13", "s || UPPER(t)", $"SELECT c.\"id\", {J("s")} || UPPER({J("t")}) {from}", clean ? "CONCAT(" : null);
+                    yield return Case("D13", "t || UPPER(s)", $"SELECT c.\"id\", {J("t")} || UPPER({J("s")}) {from}", null);
+                }
+
+                // D13: a path joined as stored stays pushed; a U+0000 made at the service is refused, as is a replacement
+                // over text holding an escape.
+                yield return Case("D13", "|| '!'", $"SELECT c.\"id\", {x} || '!' {from}", "CONCAT(");
+                yield return Case("D13", "|| nul literal", $"SELECT c.\"id\", {x} || '{Nul}' {from}", null);
+                yield return new($"D13 {table}.{column} || ? nul", $"SELECT c.\"id\", {x} || CAST(? AS VARCHAR(10)) {from}", [Nul]);
+                yield return Case("D13", "REPLACE('1', 'x')", $"SELECT c.\"id\", REPLACE({x}, '1', 'x') {from}", Marked("REPLACE("));
+                yield return Case("D13", "REPLACE('b', nul)", $"SELECT c.\"id\", REPLACE({x}, 'b', '{Nul}') {from}", null);
+            }
+
             // D2: a lookup join on such keys, inner, left and grouped.
             foreach (var table in new[] { "planted_declared", "planted_plain" })
             {
@@ -311,6 +369,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly CosmosContainerMetadata PlantedFree = OrdersContainer("planted_free", PlantedFreeSchema);
 
+        /// <summary>
+        /// The documents of <c>planted_text</c>: <c>s</c> ASCII with U+0000 inside, leading, trailing and doubled, which a
+        /// count, a fold and a search the pattern proves sound on Azure meet as two units under the emulator; <c>t</c>
+        /// ASCII without it, <c>0</c> and <c>1</c> among its characters, for the escapes' second units to be mistaken for.
+        /// </summary>
+        static readonly string[] PlantedTextDocuments =
+        [
+            PlantedDocument("x1", "p0", Nul, "a"),
+            PlantedDocument("x2", "p1", "a" + Nul + "b", "ab"),
+            PlantedDocument("x3", "p0", Nul + "b", "0"),
+            PlantedDocument("x4", "p1", "b" + Nul, "a1"),
+            PlantedDocument("x5", "p0", "a", "10"),
+            PlantedDocument("x6", "p1", "", "b"),
+            PlantedDocument("x7", "p0", "0", ""),
+            PlantedDocument("x8", "p1", Nul + Nul, "a0b"),
+        ];
+
+        /// <summary>What <c>planted_text</c> declares: <c>s</c> ASCII, U+0000 among it, and <c>t</c> ASCII without it.</summary>
+        const string PlantedTextSchema = """
+            { "type": "object", "required": ["s", "t"], "properties": {
+                "s": { "type": "string", "pattern": "^[\\u0000-\\u007F]*$" },
+                "t": { "type": "string", "pattern": "^[\\u0001-\\u007F]*$" } } }
+            """;
+
+        static readonly CosmosContainerMetadata PlantedText = OrdersContainer("planted_text", PlantedTextSchema);
+
         static readonly CosmosContainerMetadata PlantedDeclared = OrdersContainer("planted_declared", OrdersDeclaredSchema);
 
         static readonly CosmosContainerMetadata PlantedPlain = OrdersContainer("planted_plain", null);
@@ -321,7 +405,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly SemaphoreSlim _plantedSeeding = new(1, 1);
 
-        /// <summary>Seeds the plant's four containers once, the first time it runs, in the class's database, which its cleanup deletes.</summary>
+        /// <summary>Seeds the plant's five containers once, the first time it runs, in the class's database, which its cleanup deletes.</summary>
         static async Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>> PlantedContainersSeeded()
         {
             await _plantedSeeding.WaitAsync();
@@ -337,10 +421,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         (PlantedPlain, await Seed(database, PlantedPlain.Name, PlantedDocuments, cts.Token, policy: OrderIndexingPolicy(composites: false))),
                         (PlantedKeys, await Seed(database, PlantedKeys.Name, PlantedKeyDocuments, cts.Token)),
                         (PlantedFree, await Seed(database, PlantedFree.Name, PlantedFreeDocuments, cts.Token, policy: OrderIndexingPolicy(composites: true))),
+                        (PlantedText, await Seed(database, PlantedText.Name, PlantedTextDocuments, cts.Token, policy: OrderIndexingPolicy(composites: true))),
                     ];
                 }
 
                 return _plantedContainers;
+            }
+            finally
+            {
+                _plantedSeeding.Release();
+            }
+        }
+
+        // ── The plant in the partitions ─────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Ternary logic partitioning over the undeclared <c>products</c> and <c>typed</c> with the plant beside their
+        /// documents: ids and names holding U+0000 and U+FDD0, and an id <c>'_prin_'</c> and one <c>'_ike_'</c> match by
+        /// their U+0000s. Generated as <see cref="EveryPredicatePartitionsTheRows"/> is, over the same vocabulary and
+        /// <c>REVERSE</c>, <c>POSITION</c>, the literals and the patterns a stored escape parts (D9 to D11), so that a
+        /// generic <c>LIKE</c>, a <c>POSITION</c> or a <c>REVERSE</c> over an undeclared path with a literal is judged over
+        /// text holding either character.
+        /// </summary>
+        /// <remarks>
+        /// A pass of its own, which must pass and counts toward no floor: the containers are copies, so the corpus's
+        /// statements and the partition floor over <c>products</c> and <c>typed</c> read the documents they always did. Run
+        /// where the account is an emulator, as the planted differential is.
+        /// </remarks>
+        [Fact]
+        public async Task EveryPlantedPredicatePartitionsTheRows()
+        {
+            if (_client is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+            if (CosmosEmulator.ServiceTarget != CosmosServiceTarget.Emulator)
+                Assert.Skip("The plant holds what the emulator stores escaped; Azure stores it as written.");
+
+            var judge = new PartitionJudge(await PartitionPlantSeeded());
+            var typed = PlantedVocabulary(TypedVocabulary(), PlantedTyped.Name, TypedPlant);
+            var products = PlantedVocabulary(ProductsVocabulary(), PlantedProducts.Name, ProductsPlant);
+            var generator = new PredicateGenerator(new Random(PartitionPlantSeed));
+            var predicates = new[] { typed, products }.SelectMany(v => PartitionPlantAtoms.Select(atom => (Vocabulary: v, Predicate: (Predicate)new Atom(atom))))
+                .Concat(Enumerable.Range(0, DefaultPartitionedPredicates).Select(i => i % 2 == 0 ? typed : products).Select(v => (Vocabulary: v, Predicate: generator.Next(v))))
+                .ToList();
+
+            var judged = new Partitioning[predicates.Count];
+            await Parallel.ForEachAsync(Enumerable.Range(0, predicates.Count), new ParallelOptions { MaxDegreeOfParallelism = PartitionParallelism }, async (i, _) =>
+            {
+                judged[i] = await judge.Judge(predicates[i].Vocabulary, predicates[i].Predicate);
+            });
+
+            var witnesses = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var failing in judged.Where(p => p.Failed))
+            {
+                var narrowed = await judge.Narrow(failing);
+                witnesses.Add($"over {narrowed.Vocabulary.Table}: {Shown(narrowed.Predicate.Sql)}\n  " + string.Join("\n  ", narrowed.Failures.Select(Shown)));
+            }
+
+            var summary = $"{predicates.Count} predicates, {judged.Count(p => p.Judged == false)} not judged because Calcite raised, {judged.Count(p => p.Failed)} failing; {judge.Statements} statements run, {judge.Pushed} partitions sending a WHERE";
+            Log("## EveryPlantedPredicatePartitionsTheRows: " + summary);
+            if (witnesses.Count > 0)
+                Assert.Fail($"{summary}; {witnesses.Count} distinct smallest failing parts:\n" + string.Join("\n", witnesses));
+        }
+
+        /// <summary>
+        /// The atoms asked first of each planted copy, before the generated predicates, which may not draw them: the
+        /// families a stored escape parts over an undeclared <c>id</c> with literal constants (D9 to D11).
+        /// </summary>
+        static readonly string[] PartitionPlantAtoms =
+        [
+            "c.\"id\" LIKE '_'", "c.\"id\" LIKE '_prin_'", "c.\"id\" LIKE '_ike_'", "c.\"id\" LIKE '%0'", "c.\"id\" LIKE '%1'", "c.\"id\" LIKE '_0'",
+            "REVERSE(c.\"id\") LIKE '0%'", "REVERSE(c.\"id\") = 'b0'",
+            "POSITION('i' IN c.\"id\") = 2", "POSITION('p' IN c.\"id\") = 2", "POSITION('0' IN c.\"id\") > 0",
+        ];
+
+        /// <summary>The planted pass's seed, its own, so that it asks other predicates than the corpus's run.</summary>
+        const int PartitionPlantSeed = 20_261_101;
+
+        /// <summary>A vocabulary over a planted copy: its table, its ids with the plant's, and what parts a stored escape.</summary>
+        static Vocabulary PlantedVocabulary(Vocabulary v, string table, string[] plant) => v with
+        {
+            Table = table,
+            Ids = [.. v.Ids, .. Ids(plant)],
+            Text = [.. v.Text, "REVERSE(c.\"id\")", "REVERSE(c.\"id\")"],
+            Numbers = [.. v.Numbers, "POSITION('i' IN c.\"id\")", "POSITION('0' IN c.\"id\")"],
+            TextLiterals = [.. v.TextLiterals, Nul, "a" + Nul + "b", "0", "1"],
+            Patterns = [.. v.Patterns, "_", "%0", "%1", "_prin_", "_ike_", "_0"],
+        };
+
+        /// <summary>Planted beside <see cref="Documents"/>: U+0000 and U+FDD0 at <c>id</c> and <c>name</c>, and an id <c>'_prin_'</c> matches by its U+0000s.</summary>
+        static readonly string[] ProductsPlant =
+        [
+            """{"id":"\u0000","category":"bikes","name":"\u0000","price":1}""",
+            """{"id":"a\u0000b","category":"shoes","name":"a\u0000b","price":2}""",
+            """{"id":"﷐","category":"bikes","name":"﷐","price":3}""",
+            """{"id":"﷐0","category":"shoes","name":"b﷐","price":4}""",
+            """{"id":"\u0000prin\u0000","category":"shoes","name":"Sprint\u0000","price":80}""",
+        ];
+
+        /// <summary>Planted beside <see cref="TypedDocuments"/>: U+0000 and U+FDD0 at <c>id</c>, <c>name</c> and <c>label</c>, and an id <c>'_ike_'</c> matches by its U+0000s.</summary>
+        static readonly string[] TypedPlant =
+        [
+            """{"id":"\u0000","category":"a","name":"\u0000","price":30,"label":"a\u0000b"}""",
+            """{"id":"﷐","category":"b","name":"﷐","price":7,"label":"﷐"}""",
+            """{"id":"\u0000ike\u0000","category":"a","name":"x0","price":9,"label":"\u0000"}""",
+        ];
+
+        static readonly CosmosContainerMetadata PlantedProducts = new("products_planted", ["/category"]);
+
+        static readonly CosmosContainerMetadata PlantedTyped = new("typed_planted", ["/category"]);
+
+        static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? _partitionPlant;
+
+        /// <summary>Seeds the two planted copies once, the first time the pass runs, in the class's database, which its cleanup deletes.</summary>
+        static async Task<IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>> PartitionPlantSeeded()
+        {
+            await _plantedSeeding.WaitAsync();
+            try
+            {
+                if (_partitionPlant is null)
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                    var database = _client!.GetDatabase(DatabaseName);
+                    _partitionPlant =
+                    [
+                        (PlantedProducts, await Seed(database, PlantedProducts.Name, [.. Documents, .. ProductsPlant], cts.Token)),
+                        (PlantedTyped, await Seed(database, PlantedTyped.Name, [.. TypedDocuments, .. TypedPlant], cts.Token)),
+                    ];
+                }
+
+                return _partitionPlant;
             }
             finally
             {

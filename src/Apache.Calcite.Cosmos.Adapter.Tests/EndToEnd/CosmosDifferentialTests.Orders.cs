@@ -308,25 +308,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The documents planted beside each container's own, in two partitions: U+0000 alone, inside and leading, at
-        /// <c>t</c>, and at <c>s</c> where nothing proves its characters; and, where no pattern holds an id to an
-        /// identifier, an id holding one. The emulator stores U+0000 as U+FDD0 <c>0</c>, above every unit from U+0001 to
-        /// U+FDCF, where Calcite puts it least (<c>Service.StringOrderIsCodePoint</c>), so a text order the plan proved or
-        /// anchored over a path that may hold one is shown wrong here (<c>reports/emu-nul/spec.md</c>, D4 to D7). Apart
-        /// from the generated documents, so that nothing the generator draws moves. <c>orders_ascii</c>'s <c>s</c> holds
-        /// none and no U+FDD0 is planted: <c>CHAR_LENGTH(s)</c> pushes there by its pattern, and the emulator counts the
-        /// units it stores, two for either, which is the string functions' row (D8), not the orders'. Every other value is
-        /// one the generated documents could hold, <c>w</c> past an <c>INTEGER</c> among them (<see cref="OrderIntegers"/>),
-        /// so that no statement over them goes unjudged.
+        /// <c>s</c> and <c>t</c>; where no pattern holds an id to an identifier, an id holding one; and where no pattern
+        /// keeps text below U+D800, U+FDD0 alone, after a letter, before a <c>0</c> and after a U+0000, at <c>s</c>,
+        /// <c>t</c> and an id. The emulator stores U+0000 as U+FDD0 <c>0</c>, above every unit from U+0001 to U+FDCF,
+        /// where Calcite puts it least (<c>Service.StringOrderIsCodePoint</c>), and U+FDD0 as U+FDD0 <c>1</c>, and counts,
+        /// cuts and searches those units: so a text order the plan proved or anchored over a path that may hold U+0000, and
+        /// a string function over one that may hold either, is shown wrong here (<c>reports/emu-nul/spec.md</c>, D4 to
+        /// D8). Apart from the generated documents, so that nothing the generator draws moves. Every other value is one the
+        /// generated documents could hold, <c>w</c> past an <c>INTEGER</c> among them (<see cref="OrderIntegers"/>), so
+        /// that no statement over them goes unjudged.
         /// </summary>
         static string[] OrderPlanted(bool ascii) =>
         [
-            $$"""{"id":"nul","category":"o0","s":"{{(ascii ? "a\\u0001" : "\\u0000")}}","t":"a\u0000","k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
-            $$"""{"id":"nul1","category":"o1","s":"{{(ascii ? "b" : "a\\u0000b")}}","t":"\u0000z","k":1,"b":false,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
-            .. ascii ? [] : new[] { """{"id":"a\u0000","category":"o2","s":"a\u0001","t":null,"k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""" },
+            """{"id":"nul","category":"o0","s":"\u0000","t":"a\u0000","k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+            """{"id":"nul1","category":"o1","s":"a\u0000b","t":"\u0000z","k":1,"b":false,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+            .. ascii ? [] : new[]
+            {
+                """{"id":"a\u0000","category":"o2","s":"a\u0001","t":null,"k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+                """{"id":"fdd0","category":"o0","s":"\uFDD0","t":"\u0000\uFDD0","k":1,"b":false,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+                """{"id":"\uFDD00","category":"o1","s":"a\uFDD0","t":"\uFDD00","k":1,"b":true,"w":2147483648,"d":0.25,"e":"a","g":"123e4567-e89b-12d3-a456-426614174000","at":"2024-01-01 00:00:00"}""",
+            },
         ];
 
         /// <summary>The strings the plant holds, which the planted pass compares with.</summary>
-        static readonly string[] OrderPlantedStrings = ["\u0000", "a\u0000", "a\u0000b", "\u0000z", "a\u0001"];
+        static readonly string[] OrderPlantedStrings = ["\u0000", "a\u0000", "a\u0000b", "\u0000z", "a\u0001", "\uFDD0", "a\uFDD0", "\uFDD00", "\u0000\uFDD0"];
 
         /// <summary>
         /// One container of the yardstick: its metadata, the policy Azure would hold it to, the documents it is

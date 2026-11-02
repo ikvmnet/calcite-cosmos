@@ -80,8 +80,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
-            /// A prefix, a case-insensitive match and a <c>POSITION</c> pattern are compared positions too; <c>REPLACE</c>'s
-            /// replacement and a generic <c>LIKE</c> pattern are not, so a value holding U+0000 there stays in process.
+            /// A prefix, a case-insensitive match and a <c>POSITION</c> pattern are compared positions too, the last over a
+            /// subject proved to hold neither escape (D10); <c>REPLACE</c>'s replacement and a generic <c>LIKE</c> pattern are
+            /// not, so a value holding U+0000 there stays in process.
             /// </summary>
             [Fact]
             public void APatternIsBoundStoredAndAReplacementIsNot()
@@ -89,8 +90,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Translator(CosmosServiceTarget.Emulator).Translate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("\0%"))).Should().Be("STARTSWITH(c.name, @p0)");
                 _t._parameters.Parameters[0].Value.Should().Be("﷐0");
 
-                Translator(CosmosServiceTarget.Emulator).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
+                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
                 _t._parameters.Parameters[0].Value.Should().Be("a﷐0");
+                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name), out _).Should().BeFalse("the emulator counts a subject's stored units (D10)");
 
                 Translator(CosmosServiceTarget.Emulator).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("a_\0")), out _).Should().BeFalse();
                 Translator(CosmosServiceTarget.Azure).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("a_\0")), out _).Should().BeTrue();

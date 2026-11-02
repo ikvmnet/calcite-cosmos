@@ -711,9 +711,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Plans and executes a statement one way, and keeps a failure as an answer rather than
         /// letting it escape.
         /// </summary>
-        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null)
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)>? containers = null)
         {
-            try { return new Outcome((await Run(sql, pushdown, sent, CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
+            try { return new Outcome((await Run(sql, pushdown, sent, containers ?? CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
             catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
         }
 

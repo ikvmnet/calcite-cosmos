@@ -961,9 +961,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <b>What each function asks is <see cref="CosmosStringFunctions"/>'s, and only that.</b> A count asks that no
         /// string it counts hold a surrogate, a case mapping that it be ASCII, a trim that it hold nothing the service trims
         /// beside a space; <c>POSITION</c>, <c>REVERSE</c>, <c>CONCAT</c>, <c>REPLACE</c> and <c>REPEAT</c> ask nothing.
-        /// This reads the answer off the facts the translation was licensed (<see cref="Facts"/>), for every input the
-        /// counted argument's characters come from (<see cref="Unproved"/>). Refused, the function stays in process, where
-        /// Calcite computes it over the value the service sends, which is what happens over a path nothing is declared of.
+        /// Under the emulator, which stores U+0000 and U+FDD0 escaped, each that works on the stored units asks that they
+        /// hold neither, of the set the statement is sent under (<see cref="Set"/>). This reads the answer off the facts
+        /// the translation was licensed (<see cref="Facts"/>), for every input the counted argument's characters come from
+        /// (<see cref="Unproved"/>). Refused, the function stays in process, where Calcite computes it over the value the
+        /// service sends, which is what happens over a path nothing is declared of.
         /// </para>
         /// <para>
         /// <b>Asked once, of the whole expression, before anything is written</b>, as a rendering is
@@ -981,14 +983,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || TryResolvePath(call, out _))
                 return;
 
-            if (CosmosStringFunctions.RuleOf(call) is { } rule)
+            if (CosmosStringFunctions.RuleOf(call, Set) is { } rule)
                 foreach (var ordinal in rule.Asked)
-                    if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), rule.Refused) is string input)
+                    if (ordinal < call.getOperands().size() && (rule.PathsExempt == false || IsStored(Operand(call, ordinal)) == false) && Unproved(Operand(call, ordinal), rule.Refused) is string input)
                         throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {rule.Why}, and nothing proves {input} holds no {rule.Named}.");
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
         }
+
+        /// <summary>
+        /// Determines whether an operand is text the service reads as it stores it, not text it makes: a path, a cast of
+        /// one, or a concatenation, whose own operands are asked where it is reached in turn. What a rule that exempts
+        /// paths asks nothing of (<see cref="CosmosStringFunctions.Rule.PathsExempt"/>).
+        /// </summary>
+        bool IsStored(RexNode node) =>
+            node is RexCall { } call && call.getOperator().getName() is "CONCAT" or "||"
+            || Values.ReadValue(node) is SqlValue.Text or SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Text or SqlValue.Raw };
 
         /// <summary>
         /// Returns an expression the facts do not prove free of some classes of character, spelled, or <c>null</c> where

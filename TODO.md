@@ -1402,7 +1402,12 @@ the distribution the gate is sized for.
     ordering against a parameter, a literal or another path, over text that may hold U+0000, the order the emulator
     runs being E's, which puts U+0000 above every unit from U+0001 to U+FDCF; a path that holds none against a
     parameter is anchored on a value holding none (`CosmosOrderAnchor.TextWithoutNul`), and the planted differential's
-    D4–D7 rows hold it both ways. Left: functions, `ENDSWITH` and `CONTAINS` over the stored spelling. Azure's plans
+    D4–D7 rows hold it both ways. A string function over a stored escape stays in process: under the emulator's set
+    `CosmosStringFunctions.RuleOf(call, set)` asks U+0000 and the high band U+FDD0 lies in of the operands its
+    function works on — a count's, a reversal's, `POSITION`'s subject, each of `REPLACE`'s, every operand of a
+    `CONCAT` and a `REPEAT`'s subject the service computes, and a `LIKE`'s subject where its pattern holds `_`, `0` or
+    `1` beyond a prefix, the fold's `ENDSWITH` and `CONTAINS` among them — and the planted differential's D8–D13 rows
+    (`planted_text`) and the planted partition pass (`EveryPlantedPredicatePartitionsTheRows`) hold it. Azure's plans
     do not change. The differential corpus holds no U+0000 and no repetition near
     the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
@@ -3184,7 +3189,26 @@ across documents* and *A join of a container to itself* is the record.
   comparisons rose by `orders_ascii`'s: an `id > ?` or `e > ?` Azure proves exact is anchored under `Emulator` on a value
   holding no U+0000, and counts as a comparison, 5 in the default run and 11 at the gate. The seek pushes 0 of 36
   under `Emulator` and 36 under Production. Under Production every one of them pushes, and its plans are byte-equal.
-  Not lowered: anything read under Production, and every floor not named here.
+  Not lowered: anything read under Production, and every floor not named here. The string rules and the wider plant
+  (U+0000 at `orders_ascii`'s `s`, U+FDD0 beside it elsewhere) moved none: on 8085 the gate lost one `orders_ascii`
+  sort beneath `t LIKE '_'` (D11), a statement not judged before, and read sort 106, extreme 18, comparison 17 and
+  page 3, the floors. The partition run's gate floor is per target too (`PushedPartitions`): Azure's stays 206 / 993,
+  and the emulator's is 206 / 987, read on 8083 (EN20260907) at the string rules and equal to the count of the
+  emulator's plan digests, 990 at the order fix and 993 before it. The six lost, each sending no `WHERE` now and each
+  shown wrong: the order fix's three, `(c."id" || '!') > '30'`, `(c."id" || '!') < '30'` and `c."id" < '6'` in a `CASE`
+  beside `COALESCE(name, 'none') > '1'` (D7 by the model; digest lines 1562, 2923, 2475), which that commit refused
+  without lowering this floor; and the string rules' three, `c."id" NOT LIKE '_prin_'` in two partitions and under a
+  double negation with a category test (D11; digest lines 1281, 2163, 2164), `_` matching one unit of an escape there. The default run's 206 held. Under
+  Production all six push.
+- **A U+FDD0 class in the theory** — *an `Emulator`-only gain, for 3B or later; not soundness.* Under the emulator's
+  set a string function asks its operands to hold no U+0000 and no unit from U+E000, the high band U+FDD0 is read in
+  (`CosmosStringFunctions.RuleOf`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a
+  reversal, a `POSITION`, a `REPLACE` or a `LIKE` it could keep. A class of its own in `chars`, reached as Z is, would
+  give them back; Azure asks neither and gains nothing.
+- **The probe account's next run checks Azure's order over the U+FDD0 witnesses** — *unrun.* The yardstick's plant
+  now holds U+FDD0 alone, after a letter, before a `0` and after a U+0000 (`OrderPlanted`), and U+0000 at
+  `orders_ascii`'s `s`, and its planted pass compares with them; Azure's order over them is measured nowhere yet, so
+  the planted pass's Azure rows stand on `Service.StringOrderIsCodePoint` until that run is recorded.
 - **The emulator's sorts, extremes and orderings over U+0000 could be recovered** — *an optimisation, for the owner.*
   An ascending split by the exact holds-U+0000 test, `CONTAINS(p, U+FDD0 '0')`, with a per-feed-range reader, would
   push the rows free of it in order and the rest apart; a `<` weakened with that test would keep an ordering against a
