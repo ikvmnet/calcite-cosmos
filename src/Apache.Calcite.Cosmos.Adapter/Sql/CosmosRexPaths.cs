@@ -53,20 +53,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly bool _spelled;
 
         /// <summary>
-        /// Initializes a new instance.
+        /// Initializes a new instance over a binding, with whether its container stores a member's name escaped, which every
+        /// caller holding a container passes. A field <paramref name="readings"/> does not cover is read as its declared type.
         /// </summary>
-        /// <param name="fields">Maps input field ordinals onto document paths.</param>
-        /// <param name="readings">
-        /// How each field is read back, where the caller knows. Where it is <c>null</c> or shorter than the binding, every
-        /// field not covered is read as its declared type, which is what a scan's fields are.
-        /// </param>
-        /// <param name="ownRow">
-        /// The correlation variable that stands for the very row <paramref name="fields"/> describes, where one is in
-        /// scope. A lateral traversal is correlated on its own input; nothing else is.
-        /// </param>
-        /// <param name="spelled">Whether the container stores a member's name escaped (<see cref="_spelled"/>).</param>
-        /// <exception cref="ArgumentNullException"><paramref name="fields"/> is <c>null</c>.</exception>
-        public CosmosRexPaths(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings = null, org.apache.calcite.rel.core.CorrelationId? ownRow = null, bool spelled = false)
+        public CosmosRexPaths(IReadOnlyList<CosmosPath?> fields, bool spelled, IReadOnlyList<CosmosReading>? readings = null, org.apache.calcite.rel.core.CorrelationId? ownRow = null)
         {
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _readings = readings ?? Array.Empty<CosmosReading>();

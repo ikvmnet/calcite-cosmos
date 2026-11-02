@@ -166,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
             _spelled = container is not null && Metadata.CosmosRendering.StoresSpelled(container.ServiceTarget);
-            _paths = new CosmosRexPaths(fields, readings, ownRow, _spelled);
+            _paths = new CosmosRexPaths(fields, _spelled, readings, ownRow);
         }
 
         /// <summary>

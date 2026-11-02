@@ -569,6 +569,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A <c>UUID</c> key on a member whose name holds U+0000 is restricted only where the name is stored as it is
+        /// spelled: under the emulator, which stores it escaped, <c>c["k\u0000"] IN (…)</c> would read nothing and the
+        /// join would lose every row, so the key is no key there.
+        /// </summary>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, true)]
+        [InlineData(CosmosServiceTarget.Emulator, false)]
+        public void AUuidKeyNamedWithAnEscapeIsRestrictedOnlyWhereItsNameIsStoredAsSpelled(CosmosServiceTarget target, bool restricted)
+        {
+            var declared = Products.WithServiceTarget(target).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                { "type": "object",
+                  "properties": {
+                    "k\u0000": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } } }
+                """)!));
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>(), declared: declared);
+
+            var sql = "SELECT o.\"id\", p.\"Id\" FROM (SELECT CAST(JSON_VALUE(o.\"DOC\", '$.parkId') AS UUID) AS \"ParkId\", o.\"id\" FROM orders AS o) AS o JOIN (SELECT CAST(JSON_VALUE(c.\"DOC\", U&'$[\"k\\0000\"]') AS UUID) AS \"Id\" FROM products AS c) AS p ON o.\"ParkId\" = p.\"Id\"";
+            var logical = Find<org.apache.calcite.rel.core.Join>(PlanLogical(sql))!;
+            var probe = ((java.lang.Integer)logical.analyzeCondition().rightKeys.get(0)).intValue();
+
+            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(logical.getRight(), probe, container => CosmosRowFacts.Of(logical.getRight(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.Key), out _).Should().Be(restricted);
+        }
+
+        /// <summary>
         /// Finds the first node of a type in a tree, looking through a Volcano subset to the node it
         /// was built from, or <c>null</c> where there is none.
         /// </summary>

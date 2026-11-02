@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
             {
                 // The path readers a statement resolves through, so the accepted path forms are the ones it would address.
-                _paths = new CosmosRexPaths(fields, readings);
+                _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
                 _rootAlias = rootAlias;
             }

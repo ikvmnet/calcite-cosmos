@@ -418,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // paths are judged against.
             var container = table.Container;
             var facts = Either(f, g, fields, readings, container, rexBuilder);
-            var resolver = new CosmosRexPaths(fields, readings);
+            var resolver = new CosmosRexPaths(fields, CosmosRendering.StoresSpelled(container.ServiceTarget), readings);
             var equated = new List<RexNode>();
             var paths = new List<JsonDocumentPath>();
 

@@ -6476,7 +6476,7 @@ in E, which M6 measured comes back as written, was cut for the smaller rule (own
 function or `REGEXMATCH` given such a parameter has no body in process, so that statement fails where Azure's answers:
 kept, no sent form being shown to answer as Azure's does there. A function over a stored value that may hold either is
 asked so too (*What a string function computes, asked of its characters*). A member's name is stored in E as well, so
-a path naming one that holds either, written as it is, reads nothing: it binds no path (`CosmosRexTranslator.NamesAnEscape`,
+a path naming one that holds either, written as it is, reads nothing: it binds no path (`CosmosRexPaths.NamesAnEscape`,
 `CosmosImplementor.BindFields`), a projection or an aggregate whose row names one is not converted, and the builder
 refuses such an alias. A point read of E(`id`) was measured only where it aliases (`Service.EmulatorPointReadOfAnEscapedId`),
 and a route by a header carrying either not at all, so an `id` or key holding one is queried. A point delete or
@@ -7940,8 +7940,12 @@ build a translator do so to write, or to ask a family's own question, and each i
 **A move, and nothing else.** Each member keeps its code and a one-paragraph summary that points here or to the
 section holding its reasoning; plans are byte-equal. What the move needed beyond the spec's list went with it: `KindOf`
 and `Operand`, which every reader dispatches through; `TryGetArrayIndex`, which `TryResolvePath` reads; and
-`IsRenderedDocumentValue`, which the two cast readers ask. The readers take no facts, no container and no parameters,
+`IsRenderedDocumentValue`, which the two cast readers ask. The readers take no facts and no parameters, and of the
+container only whether its target stores a member's name escaped (#246), which every site holding a container passes;
 so the filter's cost no longer keeps a `RexBuilder` of its own.
+
+**Recorded where its family lives.** 3R's order fix is *Order without equality licenses the last key only*, beside the
+stored forms, and the switch listing's retirement is under *What changed is listed*.
 
 ---
 

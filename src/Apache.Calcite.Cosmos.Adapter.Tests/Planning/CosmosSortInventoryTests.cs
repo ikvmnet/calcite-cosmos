@@ -659,7 +659,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _, out _, out _, out var container) == false || container is null)
                 return (true, true);
 
-            if (new Adapter.Sql.CosmosRexPaths(fields).TryResolvePath(node, out var path) == false || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
+            if (new Adapter.Sql.CosmosRexPaths(fields, spelled: false).TryResolvePath(node, out var path) == false || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
                 return (true, true);
 
             // What the rows the filter keeps satisfy: a sibling's domain among it, which is what the comparison may lean on.

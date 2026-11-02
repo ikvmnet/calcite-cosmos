@@ -155,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // The correlate's own id: this is a lateral traversal, so the variable its array
             // expression is written against stands for the very row being scanned.
-            var paths = new CosmosRexPaths(fields, ownRow: correlate.getCorrelationId());
+            var paths = new CosmosRexPaths(fields, Metadata.CosmosRendering.StoresSpelled(convention.Container.ServiceTarget), ownRow: correlate.getCorrelationId());
 
             if (paths.TryResolvePath(array, out _) == false)
                 return false;

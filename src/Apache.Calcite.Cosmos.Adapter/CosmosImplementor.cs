@@ -500,7 +500,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     written |= CosmosClauses.Projection;
 
-                    var resolver = new CosmosRexPaths(input);
+                    var resolver = new CosmosRexPaths(input, spelled: false);
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
@@ -868,7 +868,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="ownRow">The correlation variable that stands for the row being bound, where one is in scope.</param>
         /// <returns>The path readers.</returns>
         internal CosmosRexPaths CreatePaths(org.apache.calcite.rel.core.CorrelationId? ownRow = null) =>
-            new(_fields, _readings, ownRow);
+            new(_fields, _container is not null && CosmosRendering.StoresSpelled(_container.ServiceTarget), _readings, ownRow);
 
         /// <summary>
         /// Returns the facts a node renders under: those it carries, or for one built without, what the container

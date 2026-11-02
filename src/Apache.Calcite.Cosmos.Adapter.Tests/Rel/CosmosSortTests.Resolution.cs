@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // ── Path resolution ───────────────────────────────────────────────────────
 
-            CosmosRexPaths Paths() => new(Fields);
+            CosmosRexPaths Paths() => new(Fields, spelled: false);
 
             [Fact]
             public void FieldReferenceResolvesToAPath()

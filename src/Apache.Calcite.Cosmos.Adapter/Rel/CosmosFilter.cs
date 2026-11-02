@@ -224,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static bool ReferencesUnindexedPath(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var paths = new CosmosRexPaths(fields);
+            var paths = new CosmosRexPaths(fields, spelled: false);
             var unindexed = false;
 
             void Walk(RexNode node)
@@ -278,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> where a full text function reads an undeclared path.</returns>
         internal static bool ReferencesUndeclaredFullTextPath(RexNode node, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var paths = new CosmosRexPaths(fields);
+            var paths = new CosmosRexPaths(fields, spelled: false);
             var undeclared = false;
 
             void Walk(RexNode current)

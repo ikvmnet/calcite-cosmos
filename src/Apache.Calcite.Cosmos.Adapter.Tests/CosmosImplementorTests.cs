@@ -205,6 +205,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("c.b");
         }
 
+        /// <remarks>
+        /// The path readers a node takes from the implementor resolve what its translator does, the emulator's escaped
+        /// member names among them: a path naming U+0000 is no path where the name is stored escaped, so the traversal
+        /// that asks it is not written over a name that reads nothing.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, true)]
+        [InlineData(CosmosServiceTarget.Emulator, false)]
+        public void PathsResolveWhatTheTranslatorResolves(CosmosServiceTarget target, bool resolves)
+        {
+            var implementor = Implementor(TestReasoning.Bind(new CosmosContainerMetadata("products")).WithServiceTarget(target));
+            implementor.Fields = new[] { CosmosPath.Root("c").Property("m\0") };
+
+            implementor.CreatePaths().TryResolvePath(Ref(0, SqlTypeName.VARCHAR), out _).Should().Be(resolves);
+            implementor.CreateTranslator(null).Paths.TryResolvePath(Ref(0, SqlTypeName.VARCHAR), out _).Should().Be(resolves);
+        }
+
         [Fact]
         public void ContainerMetadataIsReachableForRuleGuards()
         {
