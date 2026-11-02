@@ -200,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The weakening is the rendering graph's, which reads a parameter as presence and no candidate, so every operator
         /// sends the property's presence alone. An inequality sent the string branch before the switch,
         /// <c>(NOT IS_STRING(c.type)) OR (… c.type != @p0)</c>: an O7 loss, request units and never rows, held here
-        /// since the switch's listing plans no statement with a parameter (<c>TODO.md</c>).
+        /// since the switch's listing planned no statement with a parameter (<c>TODO.md</c>).
         /// </para>
         /// </remarks>
         [Theory]

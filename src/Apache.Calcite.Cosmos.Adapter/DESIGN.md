@@ -7537,7 +7537,7 @@ number, and the printer binds the decimal. To the service they are one number: w
 compare alike, and past it the decimal is the double's own value, held exactly. Nor does the form keep a decimal's
 scale, `30.0` against `30`, which the loader's spelling drops: the same number to the service, another parameter in a
 plan's digest, which no literal of the corpus or the inputs meets, since none is written with a trailing zero; the
-switch's listing counts any that does. Of the conjuncts S chose as the translator wrote them,
+switch's listing counted any that did. Of the conjuncts S chose as the translator wrote them,
 158 a pull request and 275 at the gate, every one prints the translator's text byte for byte, each parameter of the
 translator's value, type and scale, but 2 and 8: J's text-equality number branch, its accessor re-typed to `DOUBLE`,
 which an inner filter admits and S's weakening replaces at the switch (O7, loss 1). Were the switch's rehearsal to list
@@ -7690,7 +7690,7 @@ that a statement Volcano reads again is handed what its terms were given, never 
 held by `IsApplied` and `TryTranslate` as J's was, and calls no J, which g18 deletes; implementation prints the form
 admission kept into the statement's list, asking S nothing; the capture is told of S's prints as of the translator's
 texts. The residual projection rule fires where the split pushes nothing and a residual remains, so S's weakenings decide
-where it fires (spec §5.1); the switch's listing holds each move as a *projection placement*.
+where it fires (spec §5.1); the switch's listing held each move as a *projection placement*.
 
 **The cost instrument.** `CosmosRenderingCost` is an `AsyncLocal` list a test arms around a plan; each question `Ask`
 answers adds a `RenderingCostSample`: the roots, the oracle's count and time, the candidates proposed (counted with
@@ -7771,8 +7771,11 @@ weakening — an element path, `LIKE`, arithmetic, all opaque in the IR — the 
 each is a loss on O7's list; none drops a row, since S's weakening is implied by its conjunct (line 1) and the
 residual stays above. Two classes are the rehearsal's own and benign: a weakening's Rex typing its literal otherwise
 with the SQL unchanged, and a conjunct admitted a round earlier with plan and SQL unchanged.
-`TheSwitchChangesOnlyWhatTheShadowListed` holds every listed line to its recorded hash, every other line to `main`'s by
-the hash of them all, and each listed class to those the switch admits.
+`TheSwitchChangesOnlyWhatTheShadowListed` held every listed line to its recorded hash, every other line to `main`'s by
+the hash of them all, and each listed class to those the switch admits. It was the switch's evidence alone: with the
+switch on `main`, any change that rightly moved a plan would fail it, so once the switch's gates were recorded it and
+the listing were deleted (Stage 3's first pull request), the listing kept in the history at `c0be288`. A plan change
+since is held by `WriteDigests` at the change's parent and tip.
 
 **Correct declines are not regressions.** The yardstick's floors on the emulator lost seven pushes, each a text ordering
 over a string nothing keeps U+0000 out of, which the emulator orders as stored: the translator pushed them unproven on

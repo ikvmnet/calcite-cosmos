@@ -3163,13 +3163,15 @@ across documents* and *A join of a container to itself* is the record.
   shadow's weakening rows for its statement; g16's labeller read a row's first token, an admission's, so 43 changed
   weakenings were labelled respellings and 11 looser ones tighter, until the switch's review relabelled them, the
   hashes untouched.
-- **The switch's listing retires after the switch merges** — *small, the pull request after it.* The test pins every
-  gate plan the listing does not name to pre-switch `main` by one hash, so once the switch is `main` any pull request
-  that rightly moves a plan fails it, and nothing regenerates it. It is line 21's evidence at this pull request's gates
-  alone: delete `TheSwitchChangesOnlyWhatTheShadowListed`, `Planning/Switch/switch-listing.tsv` and its embedded
-  resource once the gates are recorded in the measure report. Later plan changes are held by `WriteDigests` at a
-  change's parent and tip, as appendix E says. Where the shadow could not read the translator's weakening (58 statements), the two
-  were read side by side: an element path (21 dropped, 14 a member dropped), `LIKE` (19), arithmetic (4), each O7's.
+- **The switch's listing retires after the switch merges** — *done, at Stage 3's first pull request.* The test
+  pinned every gate plan the listing did not name to pre-switch `main` by one hash, so once the switch was `main` a
+  pull request that rightly moved a plan would have failed it, and nothing regenerated it. It was line 21's evidence at
+  the switch's gates alone, and those are recorded in the measure report, so `TheSwitchChangesOnlyWhatTheShadowListed`,
+  `Planning/Switch/switch-listing.tsv` and its embedded resource are deleted; the listing stands in the history
+  (`git show c0be288:src/Apache.Calcite.Cosmos.Adapter.Tests/Planning/Switch/switch-listing.tsv`). Later plan changes
+  are held by `WriteDigests` at a change's parent and tip, as appendix E says. Where the shadow could not read the
+  translator's weakening (58 statements), the two were read side by side: an element path (21 dropped, 14 a member
+  dropped), `LIKE` (19), arithmetic (4), each O7's.
 - **O2's residue at the switch** — *small each, the stage named.* What S declines inside its family, each RU, never rows,
   the conjunct kept in process with its weakening: a typed `BIGINT` compared past 2^53 (differential 348–351, 354, 452;
   D12's column reading); a raw value cast to text (partitions 1372, 1651; the raw reading's cast rows); a text ordering
