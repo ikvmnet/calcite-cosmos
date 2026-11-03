@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         /// for it, the text (parameters inlined), the Rex, and how the text reads.
         /// </summary>
         internal sealed record Push(string Source, string Set, string Origin, string Position, string Row, string Class, string[] Classes, string[] Fixes,
-            string Piece, string Text, string Rex, bool Reads, bool RoundTrips, string Form)
+            string Piece, string Text, string Rex, bool Reads, bool RoundTrips, string Form, WhereTriage.Verdicts? Own = null, WhereTriage.Verdicts? Portable = null)
         {
             public string Key => Set + "\t" + Position + "\t" + Text;
         }
@@ -437,8 +437,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
                 var shape = ShapeOf(conjunct);
                 var classes = WhereClasses(shape, Syntax.ReadSyntax(written), set);
+                // h14's triage: S asked of the push under the plan's own set, and under Portable beside.
+                var own = WhereTriage.Of(statement, i, implementor.RootAlias, written, parameters, Enum.Parse<Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet>(set));
+                var portable = WhereTriage.Of(statement, i, implementor.RootAlias, written, parameters, Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Portable);
                 foreach (var cls in classes)
-                    yield return Make(source, set, origin, "where", cls, classes.Select(c => c.Class), text, written, conjunct, Form);
+                    yield return Make(source, set, origin, "where", cls, classes.Select(c => c.Class), text, written, conjunct, Form) with { Own = own, Portable = portable };
             }
         }
 
@@ -776,6 +779,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                         pushes.Add(push with { Source = IsOrder(push.Origin) ? "d" : IsUnit(push.Origin) ? "u" : "b" });
 
             File.WriteAllText(Path.Combine(output, "census.md"), Report(pushes, timings, suites));
+            File.WriteAllText(Path.Combine(output, "triage-generated.md"), WhereTriage.Report(pushes));
             foreach (var (id, _, _) in Rows.Append(("bare", "", "")).Append(("failure", "", "")))
                 File.WriteAllText(Path.Combine(output, $"coverage-{id}.tsv"), Coverage(pushes.Where(p => p.Row == id)));
 
@@ -797,13 +801,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
         static string Coverage(IEnumerable<Push> pushes)
         {
-            var text = new StringBuilder("set\tposition\ttext\tsources\toccurrences\tfirst origin\tclass\tclasses\tfixes\tpiece\treads\tround trips\tform\trex\n");
+            var text = new StringBuilder("set\tposition\ttext\tsources\toccurrences\tfirst origin\tclass\tclasses\tfixes\tpiece\treads\tround trips\tform\trex"
+                + "\ttriage\treason\tpos\tneg\tbest\tbest form\tportable pos\tportable best\trefutation\tir\tclaimed\n");
             foreach (var group in pushes.GroupBy(p => p.Key).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 var first = group.First();
                 text.Append(string.Join("\t", first.Set, first.Position, PlanDigest.Escape(first.Text), string.Join(",", group.Select(p => p.Source).Distinct().Order()),
                     group.Count(), PlanDigest.Escape(first.Origin), first.Class, string.Join("; ", first.Classes), string.Join("; ", group.SelectMany(p => p.Fixes).Distinct()),
-                    first.Piece, first.Reads, first.RoundTrips, first.Form, PlanDigest.Escape(first.Rex))).Append('\n');
+                    first.Piece, first.Reads, first.RoundTrips, first.Form, PlanDigest.Escape(first.Rex))).Append('\t');
+                var triaged = group.FirstOrDefault(p => p.Own is not null) ?? first;
+                var (cls, reason) = WhereTriage.Class(triaged);
+                var (own, portable) = (triaged.Own, triaged.Portable);
+                text.Append(string.Join("\t", cls, reason, own?.Pos, own?.Neg, own?.Best, PlanDigest.Escape(own?.BestForm ?? ""), portable?.Pos, portable?.Best,
+                    PlanDigest.Escape(own?.Refutation ?? ""), PlanDigest.Escape(own?.Ir ?? ""), PlanDigest.Escape(own?.Claimed ?? ""))).Append('\n');
             }
 
             return text.ToString();
