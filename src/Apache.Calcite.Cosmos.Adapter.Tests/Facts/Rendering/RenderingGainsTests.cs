@@ -93,6 +93,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         ];
 
         /// <summary>The statements planned over the differential's containers, and over the twin, each named by its place.</summary>
+        /// <summary>
+        /// P6 as the guarded spelling (h13, line 19; listed at h15): over the switch's definition, which asks
+        /// <c>KindRestrictedNumber</c> at <c>Neg</c>, P6's weakening beneath the <c>NOT</c> holds C4's
+        /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> under each set, and source A finds nothing in it. Production's
+        /// definition asks it from h15, when site W writes the <c>CASE</c> its Rex is; until then this is the preview.
+        /// </summary>
+        [Fact]
+        public void P6IsTheGuardedSpellingFromTheSwitch()
+        {
+            const string guarded = "(IS_NUMBER($[\"price\"]) AND ($[\"price\"] > \"integer|50\"))";
+            var graph = RenderingGenerateMutationTests.Graph(_ => ProbeRows.Switched, _ => { });
+            var run = RenderingGenerateMutationTests.Generated(graph, "gains switched", [P6]);
+            run.Failures.Should().BeEmpty();
+            foreach (var set in RenderingGenerateRun.AssertedSets)
+            {
+                var p6 = run.Generated!.Weakenings.Where(w => w.Set == set && w.Mine is not null).Select(w => w.Mine!).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set} P6 switched: " + string.Join("; ", p6.Select(w => w.Text)));
+                p6.Should().Contain(w => w.Subforms.Any(f => f.Text == guarded), $"P6's weakening holds the guarded comparison under {set}");
+            }
+
+            var tally = new RenderingSoundnessTests.Tally();
+            RenderingSoundnessTests.Generated(tally, run.Generated!.Bundles, "gains switched");
+            tally.Witnesses.Should().BeEmpty();
+            GC.KeepAlive(graph);
+        }
+
         static readonly List<string> PlainSql = [.. Exact.Where(e => e.Twin == false).Select(e => e.Sql).Distinct(), .. Weakened, P6, P7, .. Shorter],
             TwinSql = [.. Exact.Where(e => e.Twin).Select(e => e.Sql).Distinct()];
 

@@ -1689,6 +1689,18 @@ left, measured offline through the host's prepare (`CosmosPlanningTests`):
 - **The translator runs in rule matching.** `CosmosFilterSplitRule` and `CosmosProjectSplitRule` translate
   every candidate to decide it, about a sixth of what remains.
 
+### A text reading and a RETURNING reading of one path in one projection — *small, found by line 9c (h13)*
+
+`SELECT c."id", ((JSON_VALUE(c."DOC", '$.price') + 1) > 2 OR JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) <> 0) FROM
+products AS c` answers in process and, pushed, fails with *Unable to implement*: the pushed project reads
+`JSON_VALUE($0, '$.price')` once, and the calculation above it casts that column to an integer for the sum and compares
+the same column with the `RETURNING INTEGER` reading's 0. A `RETURNING` lives in the call's type, not its operands, and
+the split rules key a pushed fragment by `RexNode.ToString()` (`CosmosProjectSplitRule.cs:150`, `:321`, `:424`;
+`CosmosProjectResidualRule.cs:142-143`, `:291`), which prints both readings alike, so the second takes the first's
+column. Keying a fragment by its text and its type is the likely fix; it may change plans, so it is a listed commit of
+its own. Line 9c (`EveryCaseTakesTheArmItsConditionChooses`) declares the default run's two predicates that meet it,
+each held to still fail so; the gate's thousand may meet more. A raise, never a wrong row.
+
 ### Recorded decisions worth revisiting
 
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,
@@ -2977,6 +2989,17 @@ across documents* and *A join of a container to itself* is the record.
   `ANY` or `VARIANT` source A finds the row S then loses, but a `VARCHAR` column adds only raises, which the agreement
   sets aside (`Tolerated`) and source A skips, so its drop sends what S sends unplanted and is caught by nothing but the
   theory's digest. A check that a form S proves keeps no row on which Calcite raises would see it.
+- **G16b's S half shows the licence alone** — *small, h15.* Planted to read every condition exactly, `StratumFor`
+  licenses a `CASE`'s arm beneath a coarse affix, and as built it licenses none (`G16b_ACoarseAffixLicensesNoArmUnlessPlanted`);
+  but no production site asks an arm's stratum before the switch, so no statement reaches the plant and no witness can be
+  drawn. At h15, when site W asks it, the plant is to be held to source A the G12 way.
+- **M22's `Window` half is caught by its loss** — *small.* Dropping `NOT IS_NUMBER` from `Window` at `Pos` leaves a form
+  keeping fewer rows than Calcite, which is never a weakening, and the gate declines it without a refutation row; what
+  shows is the guarded weakening the switched tip holds and the plant does not. `KindRestrictedNumber`'s half is refuted
+  at the string 50. A refutation recorded for an under-approximation at `Pos` would pin both alike.
+- **The `CASE` recall's texts are reconstructions** — *recorded.* 4b65754's probe output for P7, P8, P9 and P18 was not
+  kept; each text is rebuilt from its cause (C, the condition written completed; D, `IS NULL` over a comparison) and
+  held on a service to keep the rows that commit's pushdown kept among documents 1 to 7 (`ACaseOnTheService`).
 - **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
   path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
   unproven. Partitions 1,428's `NOT (category < 'bikes')`, a second round's beside `category IN ('bikes!', 'shoes')`,

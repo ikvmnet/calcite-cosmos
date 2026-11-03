@@ -56,6 +56,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Line 39 over <c>CASE</c> (h13): a chain of <c>CASE</c>s as deep as five, each else-arm the next, its conditions and
+        /// arms over paths of their own, every path imported as anything. A chain past <see cref="RenderingBundle.NarrowDepth"/>
+        /// writes an else-arm both narrow beneath its negated conditions and wide, so the rows grow with the copies: each
+        /// bundle completes disciplined under each set with its rows under <see cref="RenderingBundle.RowLimit"/>, recorded.
+        /// The pull request's run reads the legacy reading, which holds a <c>CASE</c> opaque until h15, so these are its own.
+        /// </summary>
+        [Fact]
+        public void EveryCaseChainCompletesUnderTheRowLimit()
+        {
+            static SqlPredicate Chain(int depth, int at = 0) => depth == 0 ? Eq(Text(P("e" + at)), "x")
+                : new SqlPredicate.Case(Eq(Text(P("c" + at)), "a"), Ne(Text(P("t" + at)), "bikes"), Chain(depth - 1, at + 1));
+
+            var disciplined = new RenderingRun(RunStopReason.Completed, true, false);
+            var recorded = new List<string>();
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+                for (var depth = 1; depth <= 5; depth++)
+                {
+                    var root = Chain(depth);
+                    using var bundle = ProbeTheory.Open(set);
+                    var term = bundle.Write(root);
+                    foreach (var path in root.Paths.Distinct())
+                        bundle.Import(Source, path, PathValues.Anything, JsonValues.AllBands);
+                    bundle.Generate(term);
+                    var run = bundle.RunGenerate(RenderingBundle.WidthOf([root]));
+                    recorded.Add($"{set} depth {depth}: {bundle.Rows} rows, {bundle.Strata.Count} strata, {bundle.ReadBest(term).Kind}");
+                    run.Should().Be(disciplined, $"{set} depth {depth}");
+                    bundle.Rows.Should().BePositive().And.BeLessThan(RenderingBundle.RowLimit, $"{set} depth {depth}");
+                }
+
+            TestContext.Current.TestOutputHelper?.WriteLine(string.Join(Environment.NewLine, recorded));
+        }
+
+        /// <summary>
         /// The coverage report (spec §6), under the asserted set, counted as <see cref="RenderingReports.Coverage"/> says: S's
         /// share and the translator's. Reported, not a line: since the switch the check reads S's forms, written under each
         /// container's own set, Azure's, and a form proven there alone reads Unproven under <c>Portable</c>, so the 5 % line,

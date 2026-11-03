@@ -315,8 +315,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _ => null,
         };
 
-        /// <summary><c>SUBSTRING</c> over a start proved at least one: the service counts from 0.</summary>
-        public static string SubstringFrom(string subject, string start, string length) => $"SUBSTRING({subject}, ({start} - 1), {length})";
+        /// <summary><c>SUBSTRING</c> over a start proved at least one: the service counts from 0. M30 drops the shift (line 17).</summary>
+        public static string SubstringFrom(string subject, string start, string length) => RenderingPrinterFaults.Has(RenderingPrinterFault.M30)
+            ? $"SUBSTRING({subject}, {start}, {length})"
+            : $"SUBSTRING({subject}, ({start} - 1), {length})";
 
         /// <summary><c>SUBSTRING</c> over any start, clipped as Calcite clips a window that starts before the string.</summary>
         public static string SubstringClipped(string subject, string s, string n) =>

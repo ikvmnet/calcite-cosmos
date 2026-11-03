@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -10,6 +11,8 @@ using Apache.Calcite.Cosmos.Facts.Saturation;
 using FluentAssertions;
 
 using Xunit;
+
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingRexBuilderTests;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -81,6 +84,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             (unplanted, planted, other, Print()).Should().Be(("(NOT (c.category = @p0))", "(NOT c.Category = @p0)", "(NOT (c.category = @p0))", "(NOT (c.category = @p0))"));
+        }
+
+        /// <summary>
+        /// M30 (h13, line 17): a window's start sent from the service's base, which neither the round trip, reading the text
+        /// it wrote, nor the legacy run's forms, which hold no place, can see; the place form prints shifted and the
+        /// translator's window with it. What it keeps is caught on the service, by the differential and by the printed
+        /// place run as C6 runs a form (<c>CosmosDifferentialTests.APlantedWindowBaseIsCaught</c>).
+        /// </summary>
+        [Fact]
+        public void M30PrintsTheWindowFromTheServiceBase()
+        {
+            var window = Rex.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS,
+                Rex.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.SUBSTRING, JsonValue("name", org.apache.calcite.sql.type.SqlTypeName.VARCHAR),
+                    Rex.makeExactLiteral(new java.math.BigDecimal(2)), Rex.makeExactLiteral(new java.math.BigDecimal(3))),
+                Rex.makeLiteral("abc"));
+            var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias).Read(window);
+            var place = read.Computed.Last();
+            string Print() => RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, JsonValues.Of("abc")), read.Places.ToDictionary(SqlValue.Spell), "c",
+                new CosmosParameterList(), computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place });
+
+            var unplanted = Print();
+            string planted;
+            using (RenderingPrinterFaults.Plant(RenderingPrinterFault.M30))
+                planted = Print();
+
+            (unplanted, planted, Print()).Should().Be(("(SUBSTRING(c.name, (@p0 - 1), @p1) = @p2)", "(SUBSTRING(c.name, @p0, @p1) = @p2)", "(SUBSTRING(c.name, (@p0 - 1), @p1) = @p2)"));
         }
 
     }

@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// conjunct the tip sends that the plant declines. The rest are trusted: S sends or implies a wrong form, and source A,
     /// which shares none of S, finds its document.
     /// </summary>
-    public sealed class RenderingGenerateMutationTests
+    public sealed partial class RenderingGenerateMutationTests
     {
 
         const string Typed = "SELECT c.\"id\" FROM typed AS c WHERE ", Label = "JSON_VALUE(c.\"DOC\", '$.label')", Products = "SELECT c.\"id\" FROM products AS c WHERE ";
@@ -115,6 +115,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (RawCasts[3], "$[\"category\"]=boolean|true or boolean|false"))));
         }
 
+        /// <summary>The guarded number spelling's triggers (h13's M22): a parsed price's ordering, and its negation.</summary>
+        static readonly (string Sql, string? Caught)[] Guarded =
+            [(Products + "CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50", null), (Products + "NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", null)];
+
+        /// <summary>
+        /// M22 (h13, line 1c): the guarded number spelling's <c>IS_NUMBER</c> dropped, from <c>KindRestrictedNumber</c> at
+        /// <c>Neg</c> and from <c>Window</c>'s <c>NOT IS_NUMBER</c> at <c>Pos</c>, over the switch's definition, the one
+        /// that asks them. Each proposes, no root sends it, source A finds nothing, and what the switched tip weakens to or
+        /// implies with the guard the plant does not; <c>KindRestrictedNumber</c>'s is refuted at the cell pinned.
+        /// </summary>
+        [Theory]
+        [InlineData("KindRestrictedNumber")]
+        [InlineData("Window")]
+        public void M22IsCaughtAtTheGate(string template)
+        {
+            var (id, at) = template == "Window" ? (TemplateId.Window, RenderPosition.Pos) : (TemplateId.KindRestrictedNumber, RenderPosition.Neg);
+            var tip = SwitchedTip.Value;
+            tip.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("the switch's spelling is sound");
+            Caught(Planned(Template("M22 " + template, id, [at], f => f.Kind == ServiceFormKind.Test && f.Test == Op.IsNumber || f.Kind == ServiceFormKind.Not && f.Members[0] is { Kind: ServiceFormKind.Test, Test: Op.IsNumber },
+                M22Pinned[template], _ => ProbeRows.Switched)), tip);
+        }
+
+        /// <summary>
+        /// Each M22 template's triggers, the refutation pinned where the gate records one: <c>KindRestrictedNumber</c>'s bare
+        /// comparison at <c>Neg</c> on the string 50, whose text Calcite parses. <c>Window</c>'s, at <c>Pos</c>, keeps fewer
+        /// rows than Calcite and so is never a weakening; the gate declines it unrecorded, and its loss is what shows.
+        /// </summary>
+        static readonly Dictionary<string, (string Sql, string? Caught)[]> M22Pinned = new()
+        {
+            ["KindRestrictedNumber"] = [Guarded[0], (Guarded[1].Sql, "$[\"price\"]=string|50 (F,u)")],
+            ["Window"] = Guarded,
+        };
+
+        /// <summary>The guarded triggers planned over the switch's definition, unplanted.</summary>
+        static readonly Lazy<Planted> SwitchedTip = new(() => Planned(new Plant("switched tip", true, _ => ProbeRows.Switched, _ => { }, Guarded)));
+
         /// <summary>
         /// A <c>VARCHAR</c> column adds only raises to the union, which the agreement sets aside (<c>Tolerated</c>): dropped, S
         /// sends and implies what it does unplanted, and the theory is another, so it keeps answers of its own.
@@ -153,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A plant's run, once a process: its triggers planned through it.</summary>
         internal static Planted Run(string fault) => Runs.GetOrAdd(fault, f => new Lazy<Planted>(() => Planned(Plants[f]))).Value;
 
-        static void Caught(Planted planted)
+        static void Caught(Planted planted, Planted? against = null)
         {
             var (plant, output) = (planted.Plant, TestContext.Current.TestOutputHelper);
             planted.Run.Failures.Should().BeEmpty();
@@ -178,6 +214,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 planted.Triggers.SelectMany(t => t.Bundles).SelectMany(b => b.Answers.Values).Select(a => a.Best).OfType<ServiceForm>()
                     .Where(best => best.Subforms.Any(refuted.Contains)).Select(best => best.Text).Should().BeEmpty("no root sends a form the gate refuted");
                 planted.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("nothing S sends or implies is wrong");
+                if (against is not null)
+                {
+                    // Over a tip of its own the loss is any form the tip sends, weakens to or implies that the plant does not.
+                    var lost = Sent(against).Except(Sent(planted)).ToList();
+                    foreach (var l in lost)
+                        output?.WriteLine("  lost: " + l);
+                    lost.Should().NotBeEmpty("the loss shows as what the tip sends, weakens to or implies and the plant does not");
+                    return;
+                }
+
                 var tip = Tip.Value.Triggers.SelectMany(t => t.Sends.Where(c => c.Form is not null).Select(c => (t.Sql, c.Set, c.Ir))).ToHashSet();
                 planted.Triggers.SelectMany(t => t.Sends.Where(c => c.Owned && c.Form is null && tip.Contains((t.Sql, c.Set, c.Ir)))).Should().NotBeEmpty("the loss shows as a conjunct the tip sends declined");
                 return;
@@ -261,10 +307,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// An untrusted plant: a template's rows at the positions given replaced by a rule that proposes, of every shape the
         /// template fits, its form with the members the predicate names taken out.
         /// </summary>
-        static Plant Template(string name, TemplateId replaced, RenderPosition[] at, Func<ServiceForm, bool> dropped, (string, string?)[] triggers)
+        static Plant Template(string name, TemplateId replaced, RenderPosition[] at, Func<ServiceForm, bool> dropped, (string, string?)[] triggers, Func<RenderingDefinition, RenderingDefinition>? over = null)
         {
             Plant? plant = null;
-            return plant = new(name, false, d => d with { Templates = [.. d.Templates.Where(row => row.Item1 != replaced || at.Contains(row.Item2) == false)] }, t =>
+            return plant = new(name, false, d => (over?.Invoke(d) ?? d) is var b ? b with { Templates = [.. b.Templates.Where(row => row.Item1 != replaced || at.Contains(row.Item2) == false)] } : d, t =>
                 t.Graph.Rulesets.Single(r => r.Name == "spell").DefineRule($"planted {name}: {replaced} at {string.Join(" and ", at)}, its form written wrongly", r =>
                 {
                     var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");

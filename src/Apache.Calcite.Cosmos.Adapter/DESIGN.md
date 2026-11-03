@@ -8332,6 +8332,55 @@ boolean cast to text is never null, and S's null test loses the stored `true` a 
 column adds only raises, which the agreement sets aside, so its drop sends what S sends unplanted; the theory's digest
 still parts the two.
 
+### Faults, recall, gains and TLP over `CASE` (h13)
+
+**Where a `CASE` plant can reach S.** Until h15 production's S reads the legacy loader, which holds a `CASE`, a type test,
+an affix, a place, a pair and an element opaque, so a plant in the rules a `CASE` fires is never met by a planned
+statement. The `CASE` plants are judged at the bundle: a root written directly, its paths imported, generated in the
+plant's theory and in the probe's, every `Equal` agreement of the root and of a `NOT`'s operand held to Calcite by
+source A over the documents its import draws and a witness pinned. Each fires where the tip agrees nothing wrong, and
+source A finds the witness: M17's absorbing and ternary rules with the condition read at the case's position (the
+`_negated` leak), on `{"label":null,"kind":"b"}` and on `{"category":null,"id":"6"}`, P7's own document; M31, the
+opposite-else rule without `TwoValued`, on a null `x` under `NOT ((x > 5) IS TRUE)`; M32, an unknown else read as the
+opposite constant at `Neg`; M33, the narrow ternary without `TwoValued`. Line 9c cannot see an S plant before h15 for
+the same reason, and is the translator's `CASE` until then.
+
+**Element, guard, window.** M21 moves the loader's element one on, one back, or to the key its index spells; IrEval's
+meaning of the moved read parts from Calcite's own executor (`CalciteInProcess`) on some document, which is what source
+A, reading IrEval as Calcite, judges against. M22 drops `IS_NUMBER` from the guarded number spelling, over the switch's
+definition, the one that asks it: `KindRestrictedNumber`'s bare comparison at `Neg` is refuted on the string 50;
+`Window`'s, at `Pos`, keeps fewer rows than Calcite, so it is never a weakening and is declined unrecorded, and its loss
+shows as the guarded weakening a tip of its own holds. M30, the printer's fault, prints a window's start from the
+service's base: `SubstringFrom` is the translator's spelling and the place's, so the plant moves both; the round trip
+reads back what was written and cannot see it, and on a service the differential parts on the translator's statement
+and the printed place, run as C6 runs a form, keeps `x8`'s `a0b` for `x2`'s `ab`. Over `planted_text`'s `t`, which holds
+no U+0000 and so is pushed under either set (D8).
+
+**Gate faults.** G16 merges a path's text with its raw value, which differ on a null, a number and a boolean: the order
+test refuses the head and the bundle trips the wire. G16b's S half: planted to read every condition exactly,
+`StratumFor` licenses an arm beneath a coarse affix, and as built none; no production site asks an arm's stratum before
+h15, so only the licence shows (`TODO.md`).
+
+**Recall.** P7, P8, P9 and P18 (`soundness.md` §2, causes C and D) are refuted over the IR the non-legacy loader reads:
+each text's meaning, held to Calcite, is wrong on the document pinned, and its wrong part, offered at the condition's
+atom at `Pos`, is refuted at the least cell by text and never chooses the arm in S's best. The texts were not kept and are
+reconstructed; on a service each keeps the rows 4b65754's pushdown kept. The line stands at 12 of 13, P26 at h31.
+
+**Gains.** P1, P5, P7 and P8 are carried. P6's guarded spelling is a preview over the switch's definition:
+`IS_NUMBER(c.price) AND c.price > 50` in its weakening under each set, nothing found; production asks it from h15.
+
+**TLP over `CASE` (line 9c).** For each partition predicate φ, `CASE WHEN φ THEN 'T' WHEN NOT φ THEN 'F' ELSE 'U' END`
+projected and pushed labels each row as Calcite's φ is true, false or unknown. Of the default run's 199 distinct
+predicates the ternary is sent for 184 and every label agrees; two fail to implement, a defect of the projection's
+pushdown and not of the `CASE`: a text reading and a `RETURNING INTEGER` reading of one path share a pushed column,
+the split rules keying a fragment by a text that omits the type. They are declared, each held to still fail so
+(`TODO.md`).
+
+**Rows a bundle (line 39).** A chain of `CASE`s writes an else-arm narrow beneath its negated conditions to
+`NarrowDepth` and wide past it; a chain of depth 1 to 5 over paths of its own, all imported as anything, completes
+disciplined with 247, 551, 1,057, 1,949 and 3,494 rows under `Emulator` (246 to 3,464 under `Production`), far under
+`RowLimit`'s 50,000.
+
 ---
 
 ## Differential testing

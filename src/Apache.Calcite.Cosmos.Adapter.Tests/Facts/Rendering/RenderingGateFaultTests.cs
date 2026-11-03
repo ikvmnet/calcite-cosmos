@@ -600,6 +600,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingFamily.ReadExactly(new SqlPredicate.Case(exact, new SqlPredicate.Constant(true), new SqlPredicate.Constant(false))).Should().BeTrue();
         }
 
+        /// <summary>
+        /// G16 (F11; h13, line 18): the union of a path's text and its raw value, which differ wherever the value is a null,
+        /// a number or a boolean. A test-only rule whose head merges the two readings is refused by the order test, and in a
+        /// bundle over a label that may be null trips the wire.
+        /// </summary>
+        [Fact]
+        public void G16_TheUnionOfTextAndRawIsRefusedAndTripsTheWire()
+        {
+            var theory = RenderingTheory.Define(Measured);
+            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted G16: a path's text is its raw value", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                r.When(theory.Ir.Reads.Of(v, p, PredicateAtom.TextReader), theory.Ir.Reads.Of(w, p, PredicateAtom.RawReader), v.IsNot(w));
+                r.Then(v.Is(w));
+            });
+            RenderingOrderTests.Violations(theory).Should().Contain("gate/planted G16: a path's text is its raw value: a head merges classes");
+
+            using var bundle = theory.Open(RenderingCheckRun.AssertedSet);
+            var claimed = bundle.Write(Ne(Text(LabelPath), "bikes"));
+            bundle.Write(new SqlPredicate.IsNull(Raw(LabelPath)));
+            bundle.Import(Source, LabelPath, PathValues.Anything, JsonValues.AllBands);
+            bundle.Claim(claimed, Bare);
+            bundle.Run().OneNodePerClass.Should().BeFalse();
+            bundle.Read(claimed, Bare, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Conflict);
+        }
+
+        /// <summary>
+        /// G16b, its S half (h13): planted to read every condition exactly, <c>StratumFor</c> licenses a <c>CASE</c>'s arm
+        /// beneath a coarse affix, the cast to text of a raw kind, whose stratum the facts graph would read as the kind's own;
+        /// as built it licenses none. Only the licence shows until h15: no production site asks an arm's stratum before the
+        /// switch, so no statement reaches the plant and source A has nothing to find.
+        /// </summary>
+        [Fact]
+        public void G16b_ACoarseAffixLicensesNoArmUnlessPlanted()
+        {
+            var coarse = new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Cast("VARCHAR", Raw(KindPath)), "a%");
+            var root = new SqlPredicate.Case(coarse, Ne(Text(LabelPath), "bikes"), new SqlPredicate.Constant(false));
+            var scope = Admitted(Theory(When(KindPath, "a", LabelPath, Type(JsonType.String))), root);
+
+            scope.StratumFor(0, [coarse], null).Should().BeNull("as built, a coarse affix opens no stratum");
+            scope.StratumFor(0, [coarse], _ => true).Should().NotBeNull("planted, it licenses the arm beneath it");
+            GC.KeepAlive(scope);
+        }
+
         /// <summary>G2's graph: a planted template proposing, beside each template's form, that form with its null guard dropped, over a definition given.</summary>
         static RenderingGraph Unguarding(Func<RenderingDefinition, RenderingDefinition>? define = null) => Planted(define, theory =>
             theory.Graph.Rulesets.Single(r => r.Name == "spell").DefineRule("planted: a template's form with its null guard dropped", r =>

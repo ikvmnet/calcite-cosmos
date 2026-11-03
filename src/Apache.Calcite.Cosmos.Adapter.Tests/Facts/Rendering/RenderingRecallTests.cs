@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// shows it; offered to S as a planted template for its statement, never what S sends; and on a service the text keeps
     /// what it kept then.
     /// </summary>
-    public sealed class RenderingRecallTests : IClassFixture<RenderingRecallTests.Fixture>
+    public sealed partial class RenderingRecallTests : IClassFixture<RenderingRecallTests.Fixture>
     {
 
         const string Products = "SELECT c.\"id\" FROM products AS c WHERE ", Typed = "SELECT c.\"id\" FROM typed AS c WHERE ";
