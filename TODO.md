@@ -1699,7 +1699,10 @@ the split rules key a pushed fragment by `RexNode.ToString()` (`CosmosProjectSpl
 `CosmosProjectResidualRule.cs:142-143`, `:291`), which prints both readings alike, so the second takes the first's
 column. Keying a fragment by its text and its type is the likely fix; it may change plans, so it is a listed commit of
 its own. Line 9c (`EveryCaseTakesTheArmItsConditionChooses`) declares the default run's two predicates that meet it,
-each held to still fail so; the gate's thousand may meet more. A raise, never a wrong row.
+each held to still fail so; the gate's thousand may meet more. Line 9c's kill is *any*, so those two stand only once
+the owner accepts them by name. That the collision only ever raises is not measured: two numeric readings of one path
+(`RETURNING DOUBLE` and `RETURNING INTEGER`) print alike as well and might implement, the second reading the first's
+column, a wrong row; a probe planning and running that projection is owed before the fix is ranked.
 
 ### Recorded decisions worth revisiting
 
@@ -2959,6 +2962,27 @@ across documents* and *A join of a container to itself* is the record.
   reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
   not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
   rule's.
+- **Population D over places and pairs, and a semantic catch for a dropped `VARCHAR` column** — *owed before h15.* h10
+  asks population D for S over `Valued` atoms. Source C (`RenderingSourceCTests`) holds a fixed population of computed
+  places and pairs, `CASE` trees and guarded numbers to `IrEval` and `CosmosEval`, but population D draws no call and no
+  pair, so nothing drawn at random reaches them, and source B plans none until h15. h12 asks that a plant dropping a raw
+  column be caught: dropping `VARCHAR` is caught by the theory digest alone (`DESIGN.md`, *The raw columns' union is a
+  rule*), no answer moving. From h15 S reads places in production, so both land first, or the owner accepts the
+  digest-only catch by name.
+- **3A crosses its size checkpoint** — *note, Q13; the owner's at the pull request's opening.* Production (`Adapter`
+  `.cs`) against `origin/main` is +3,429 / −773, net +2,656 at the review answers, of which the census's branch-only
+  hooks are +76 / −3: +2,583 net to stay. The review's cuts (the ternary's evaluator, the critical points, the result
+  keys, one value-class mapping, `FunctionSubjects` and `Readable`) are in it. With h14b–h16 still to come (+70 to +140,
+  −160 to −360), 3A ends near +2.3k to +2.6k against §11's "take the cuts above +2.0k", so §11's named cuts (−0.37k to
+  −0.54k) are owed in 3B, or at h16 where they fit. Tests (`.cs`) are +5,684 / −201, net +5,483, of which the census's
+  branch-only +1.29k goes at h16: about +4.2k to stay beside the run records, over 3A's +3.5k ceiling before h14b.
+- **The arm licence has no production caller until h15** — *carried, h15.* `CosmosStatementScope.StratumFor` (the
+  conjunct overload), `OracleLicence.RenderArm` and `OracleQuestion.RenderArm`, about 25 lines, are reached from
+  `RenderingCaseTests` alone. h15's site W gives them a caller, or h16 deletes them.
+- **Every branch-only line goes at h16, checked by a grep** — *h16.* `CosmosRenderingCapture.Census` and its tee, the
+  `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
+  `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
+  h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
 - **Azure has no function rows; the bridge reads declared verdicts** — *bridge, h14b.* No run of the probe account has
   measured `Service.StringFunctionAnswersByBand`, so S writes no image for any place under `Production` or `Portable`, and
   the column bridge reads `CosmosFunctionSpellings.AzureVerdicts`, the bands `CosmosStringFunctions` asked of Azure
