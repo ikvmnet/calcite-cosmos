@@ -289,7 +289,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (unequal, truth) = (Ne(Text(LabelPath), "bikes"), Eq(Text(LabelPath), "true"));
             var generated = Generate(unequal, truth);
             generated.Weakening(unequal).Should().Be(generated.Best(unequal)!.Form!);
-            generated.Best(truth)!.Form.Should().Be(Any(Compare(Op.Equal, Label, Of("true")), Compare(Op.Equal, Label, Of(true))));
+            generated.Best(truth)!.Form!.Text.Should().Be(Any(Compare(Op.Equal, Label, Of("true")), Compare(Op.Equal, Label, Of(true))).Text, "its boolean carries the text's reader");
             generated.Implied(truth).Should().NotContain(generated.Best(truth)!.Form!);
             generated.Weakening(truth).Should().Be(Is(Op.IsDefined, Label));
         }

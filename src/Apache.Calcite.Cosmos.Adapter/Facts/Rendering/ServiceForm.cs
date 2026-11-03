@@ -12,16 +12,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <summary>
     /// A Cosmos SQL condition as a value, never a class, so no rule can merge two: a test, a comparison or a membership of
     /// one path, a path written bare, a constant, or a connective over others, its members as written. Its canonical text
-    /// is its equality, hash and order; the structural helpers take it apart and decide nothing (<c>DESIGN.md</c>).
+    /// is its equality, hash and order, with the reader each leaf was judged over where one carries one; the structural
+    /// helpers take it apart and decide nothing (<c>DESIGN.md</c>).
     /// </summary>
     internal sealed class ServiceForm : IEquatable<ServiceForm>, IComparable<ServiceForm>
     {
 
         static readonly ServiceForm[] Leaf = [];
 
-        ServiceForm(ServiceFormKind kind, CosmosServiceTest test, string? path, string? literal, ValueSet<string> literals, ValueSet<string> paths, ServiceForm[] members, string text)
+        ServiceForm(ServiceFormKind kind, CosmosServiceTest test, string? path, string? literal, ValueSet<string> literals, ValueSet<string> paths, ServiceForm[] members, string text,
+            string? reader = null)
         {
             Kind = kind;
+            Reader = reader;
+            var readers = members.Length == 0 ? reader ?? "" : string.Join(",", members.Select(m => m._readers));
+            (_readers, _key) = (readers, readers.Any(c => c != ',') ? text + " @" + readers : text);
             Test = test;
             Path = path;
             Literal = literal;
@@ -39,6 +44,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         public ServiceFormKind Kind { get; }
+
+        /// <summary>
+        /// The reader S judged a comparison or a membership over, where its literals hold no string (<see cref="Read"/>): what
+        /// the Rex builder writes it through. Never printed; <c>null</c> for every other form.
+        /// </summary>
+        public string? Reader { get; }
+
+        readonly string _readers, _key;
 
         /// <summary>What the service is asked: the test, the operator or the connective; an opaque form reads as bare.</summary>
         public CosmosServiceTest Test { get; }
@@ -154,6 +167,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Text the reader could not read, over the paths it names: the service's answer on it is not known.</summary>
         public static ServiceForm OpaqueOf(string text, ValueSet<string> paths) =>
             new(ServiceFormKind.Opaque, CosmosServiceTest.Bare, null, null, ValueSet<string>.Empty, paths, Leaf, "OPAQUE(" + SqlValue.Quote(text) + ")");
+
+        /// <summary>
+        /// A form whose every comparison and membership holding no string literal carries the reader it was judged over,
+        /// the one a template proposed it for: a value change, which no rule reads but the Rex grammar, so the builder writes
+        /// each member through the accessor it was proven over (spec §4.2 h09). A string is written over the raw value
+        /// whatever the reader, and a raw value's number has no accessor of its own, so neither carries one.
+        /// </summary>
+        public static ServiceForm Read(ServiceForm form, string reader) => form.Kind switch
+        {
+            _ when reader == PredicateAtom.RawReader => form,
+            ServiceFormKind.Compare or ServiceFormKind.In when form.Literals.Count > 0 && form.Literals.Any(JsonValues.IsString) == false =>
+                new(form.Kind, form.Test, form.Path, form.Literal, form.Literals, form.Paths, Leaf, form.Text, reader),
+            ServiceFormKind.Not or ServiceFormKind.And or ServiceFormKind.Or or ServiceFormKind.Choose =>
+                Compound(form.Kind, form.Test, [.. form.Members.Select(m => Read(m, reader))], form.Text),
+            _ => form,
+        };
 
         static ServiceForm Compound(ServiceFormKind kind, CosmosServiceTest test, ServiceForm[] members, string text) =>
             new(kind, test, null, null, members.Aggregate(ValueSet<string>.Empty, (s, m) => s.Union(m.Literals)), members.Aggregate(ValueSet<string>.Empty, (s, m) => s.Union(m.Paths)), members, text);
@@ -287,7 +316,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ServiceForm Negated(ServiceForm form) => form.Kind == ServiceFormKind.Constant ? ConstantOf(form.Literal == JsonValues.Of(false)) : Strip(form);
 
         /// <inheritdoc />
-        public bool Equals(ServiceForm? other) => other is not null && string.Equals(Text, other.Text, StringComparison.Ordinal);
+        public bool Equals(ServiceForm? other) => other is not null && string.Equals(_key, other._key, StringComparison.Ordinal);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => Equals(obj as ServiceForm);
@@ -296,7 +325,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Text);
 
         /// <inheritdoc />
-        public int CompareTo(ServiceForm? other) => other is null ? 1 : string.CompareOrdinal(Text, other.Text);
+        public int CompareTo(ServiceForm? other) => other is null ? 1 : string.CompareOrdinal(Text, other.Text) is var order and not 0 ? order : string.CompareOrdinal(_key, other._key);
 
         /// <inheritdoc />
         public override string ToString() => Text;

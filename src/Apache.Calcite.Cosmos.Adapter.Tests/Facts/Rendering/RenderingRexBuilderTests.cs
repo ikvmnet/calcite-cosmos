@@ -57,8 +57,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Func<CosmosParameterList, CosmosRexTranslator> translator, CosmosPredicateLoader.Loading loading, Claimer claim, Func<SqlPredicate, bool> own)
         {
             var (problems, owned, guarded, unwritten) = (new List<string>(), 0, 0, false);
-            if (build(form) is null)
+            if (build(form) is not { } rex)
                 return ([$"not built: {form}"], null, 0, 0);
+
+            // A CASE, which only S reads (spec h09): the loader's reading of the whole Rex, what Calcite computes, is held
+            // Equal to the form, what S writes to the service from h15, each arm beneath IS_NUMBER(p) reading p a number.
+            if (IsCased(form))
+            {
+                var read = loading.Read(rex);
+                if (read.Subterms.Any(t => t is SqlPredicate.Opaque))
+                    return ([$"{form} read as {read}"], null, 0, 0);
+
+                // Unproven with no form found is S declining the filter beneath, which h15's site asks before it pushes.
+                return claim(form, read, at, Verdict.Equal) switch
+                {
+                    { Kind: RenderingVerdictKind.Proven } => (problems, form, 0, 0),
+                    { Kind: RenderingVerdictKind.Unproven, Reason: null } => (problems, null, 0, 0),
+                    var answer => ([$"altered: {form} at {at} cased as {rex}, read {read}, not held Equal: {answer.Kind} {answer.Reason}"], null, 0, 0),
+                };
+            }
 
             // The translator's text of a part's Rex where it stands: beneath a NOT at Neg, which is then stripped.
             ServiceForm? Written(ServiceForm f, RenderPosition pos)
@@ -114,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                         if (mine == false)
                             Claimed(written, ir, pos, Verdict.Equal, "the translator's");
-                        if (written.Equals(f) == false)
+                        if (written.Text != f.Text)
                         {
                             guarded++;
                             if (f.Kind == ServiceFormKind.Compare && (f.Test == CosmosServiceTest.NotEqual) == (pos == RenderPosition.Neg))
@@ -153,8 +170,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Whether the builder writes a form with a <c>CASE</c>: a ternary, or a comparison a guarded pair holds over a reader
+        /// that parses a string (<see cref="RenderingRexGrammar.Guarded"/>), which the translator writes no text of.
+        /// </summary>
+        internal static bool IsCased(ServiceForm form) => form.Subforms.Any(f => f.Kind == ServiceFormKind.Choose
+            || f.Kind is ServiceFormKind.And or ServiceFormKind.Or && RenderingRexGrammar.GuardsOf(f) is var guards && f.Members.Any(m => m.Kind == ServiceFormKind.Compare
+                && guards.Contains(m.Path!) && m.Reader is { } r && RenderingRexGrammar.ClassOf(r) == r && RenderingRexGrammar.Written.IsGuarded(r, m.Literal!)));
+
+        /// <summary>A form's text with each junction's members in order of their own.</summary>
+        static string Unordered(ServiceForm form) => form.Kind switch
+        {
+            ServiceFormKind.And or ServiceFormKind.Or => form.Test + "(" + string.Join(", ", form.Members.Select(Unordered).Order(StringComparer.Ordinal)) + ")",
+            ServiceFormKind.Not => "NOT " + Unordered(form.Members[0]),
+            _ => form.Text,
+        };
+
+        /// <summary>
+        /// Whether S may decline a guarded pair at the filter beneath, where it holds the pair implied: past 2^53, where the
+        /// cut the service's doubles give leaves its arm's cells apart, and over <c>RETURNING DECIMAL</c>, which parses the
+        /// rendering. h15's site asks S of the filter beneath before it pushes, and pushes no such pair.
+        /// </summary>
+        internal static bool DeclinedByTheCut(ServiceForm form) => form.Subforms.Any(m => m.Reader == PredicateAtom.TypedReader("DECIMAL")
+            || m.Kind == ServiceFormKind.Compare && JsonValues.IsNumber(m.Literal!) && Math.Abs(JsonValues.NumberOf(m.Literal!)) >= 9007199254740992m);
+
+        static readonly PathValues Numbers = PathValues.OfKinds(ValueSet.Of(JsonValues.IntegerType, JsonValues.FractionType));
+
+        /// <summary>
         /// A form claimed for an IR at a position under a set, each path either side reads imported as given, or as
-        /// anything, its characters kept to those given; at <c>Neg</c>, the negation of each at <c>Pos</c>.
+        /// anything, its characters kept to those given; at <c>Neg</c>, the negation of each at <c>Pos</c>. An atom read
+        /// beneath an arm whose conditions hold <c>IS_NUMBER</c> of its path is stated there as a number, which is what the
+        /// facts graph reads of that condition exactly.
         /// </summary>
         internal static RenderingVerdict Claim(ServiceForm form, SqlPredicate ir, RenderPosition pos, Verdict verdict, RenderingSet set,
             IReadOnlyDictionary<string, RenderingMemo.Imported>? imports = null, ValueSet<string>? chars = null)
@@ -162,11 +207,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (claimed, root) = pos == RenderPosition.Pos ? (form, ir) : (ServiceForm.Negated(form), (SqlPredicate)new SqlPredicate.Not(ir));
             using var bundle = ProbeRows.ProbeTheory.Open(set);
             var term = bundle.Write(root);
+            var imported = new Dictionary<JsonDocumentPath, PathValues>();
             foreach (var path in root.Paths.Concat(form.Paths.Select(CosmosEval.PathOf)).Distinct())
                 if (imports?.GetValueOrDefault(SqlValue.Spell(path)) is { } import)
-                    bundle.Import(ProbeRows.Source, path, import.Values, chars is null ? import.Chars : ValueSet.From(import.Chars.Where(chars.Contains)));
+                    bundle.Import(ProbeRows.Source, path, imported[path] = import.Values, chars is null ? import.Chars : ValueSet.From(import.Chars.Where(chars.Contains)));
                 else
-                    bundle.Import(ProbeRows.Source, path, PathValues.Anything, chars ?? JsonValues.AllBands);
+                    bundle.Import(ProbeRows.Source, path, imported[path] = PathValues.Anything, chars ?? JsonValues.AllBands);
+
+            foreach (var beneath in bundle.Atoms.OfType<SqlPredicate.Beneath>().ToList())
+                if (beneath.Leaf.Paths.ToList() is [var leaf] && bundle.Strata[beneath.Stratum].Any(c => c is SqlPredicate.TypeTest { Test: "IS_NUMBER" } t && t.Paths.SequenceEqual([leaf])))
+                    bundle.Assume(ProbeRows.Source with { Stratum = beneath.Stratum }, beneath, PathValues.Meet(Numbers, imported[leaf]));
+
+            // A CASE is read by generate mode alone (spec h08): Equal where S's best exact form is the one claimed, a
+            // junction's members in any order.
+            if (verdict == Verdict.Equal && root.Subterms.Any(t => t is SqlPredicate.Case))
+            {
+                bundle.Generate(term);
+                bundle.RunGenerate(RenderingBundle.WidthOf([root]));
+                var answer = bundle.ReadBest(term);
+                return answer is { Kind: RenderingVerdictKind.Proven, Best: { } best } && Unordered(best) != Unordered(claimed)
+                    ? new(RenderingVerdictKind.Unproven, null, null, $"S's best exact form is {best}") : new(answer.Kind, answer.Proof, null, answer.Reason);
+            }
 
             bundle.Claim(term, claimed);
             bundle.Run(RenderingCheckRun.CheckLimit([claimed]));
@@ -182,20 +243,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         // ── Every shape the grammar writes ─────────────────────────────────────────────────────────────────────────────
 
-        static readonly JavaTypeFactoryImpl Types = new();
+        internal static readonly JavaTypeFactoryImpl Types = new();
 
-        static readonly RexBuilder Rex = new(Types);
+        internal static readonly RexBuilder Rex = new(Types);
 
         static readonly CosmosPath Document = CosmosPath.Root(CosmosImplementor.DefaultRootAlias);
 
         /// <summary>The document, and a column of each kind a view binds: <c>VARIANT</c>, text, an <c>INTEGER</c> and a raw string.</summary>
-        static readonly IReadOnlyList<CosmosPath?> Fields = [Document, Document.Property("v"), Document.Property("t"), Document.Property("i"), Document.Property("r")];
+        internal static readonly IReadOnlyList<CosmosPath?> Fields = [Document, Document.Property("v"), Document.Property("t"), Document.Property("i"), Document.Property("r")];
 
-        static readonly IReadOnlyList<CosmosReading> Readings = [CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Text, CosmosReading.Typed, CosmosReading.Typed];
+        internal static readonly IReadOnlyList<CosmosReading> Readings = [CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Text, CosmosReading.Typed, CosmosReading.Typed];
 
-        static org.apache.calcite.rel.type.RelDataType Nullable(SqlTypeName type) => Types.createTypeWithNullability(Types.createSqlType(type), true);
+        internal static org.apache.calcite.rel.type.RelDataType Nullable(SqlTypeName type) => Types.createTypeWithNullability(Types.createSqlType(type), true);
 
-        static RexNode JsonValue(string path, SqlTypeName type)
+        internal static RexNode JsonValue(string path, SqlTypeName type)
         {
             var operands = new java.util.ArrayList();
             operands.add(Rex.makeInputRef(Types.createSqlType(SqlTypeName.VARCHAR), 0));
@@ -221,7 +282,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A comparison with a literal of each class the inputs hold, over an accessor: text with every operator, and text
-        /// Calcite renders a boolean as with <c>=</c>, which alone a template reads apart (A5); a whole number with every
+        /// Calcite renders a boolean as with <c>=</c>, which alone a template reads apart (A5), and over text a numeral with
+        /// <c>=</c>, which a template reads as the string or the number (h09); a whole number with every
         /// operator, and over an accessor typed as a number, which alone the grammar compares with one, a fraction and one
         /// past 2^53 too; a boolean with <c>=</c> and <c>&lt;&gt;</c>, and over <c>RETURNING BOOLEAN</c> every operator.
         /// </summary>
@@ -235,6 +297,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 yield return Rex.makeCall(op, accessor, Rex.makeExactLiteral(new java.math.BigDecimal("30")));
                 if (op == SqlStdOperatorTable.EQUALS)
                     yield return Rex.makeCall(op, accessor, Rex.makeLiteral("true"));
+                if (op == SqlStdOperatorTable.EQUALS && accessor.getType().getSqlTypeName() == SqlTypeName.VARCHAR)
+                    yield return Rex.makeCall(op, accessor, Rex.makeLiteral("30"));
                 if (op == SqlStdOperatorTable.EQUALS || op == SqlStdOperatorTable.NOT_EQUALS || reader == RenderingRexGrammar.BooleanReader)
                     yield return Rex.makeCall(op, accessor, Rex.makeLiteral(true));
                 if (number)
@@ -274,16 +338,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         })!;
 
         /// <summary>
-        /// Every shape over every atom under each asserted set: each template's form at each position S proposes it, and
+        /// Every shape over every atom under each asserted set, in S defined with every template (<see cref="ProbeRows.Switched"/>)
+        /// unless given: each template's form at each position S proposes it, and
         /// each S holds implied, presence among them, over a path that may hold anything, its characters any but U+0000
         /// under <c>Emulator</c>, whose order parts from Calcite's there (<c>TODO.md</c>); an accessor's atoms in one bundle.
         /// A form outside the grammar builds nothing; every other builds; one S holds implied round trips, and is written as
         /// one its atom implies.
         /// </summary>
-        internal static (int Shapes, int Exact, int Refused, int Implied, int Own, List<string> Problems) Shapes(Func<Builder, Builder>? plant = null, bool first = false)
+        internal static (int Shapes, int Exact, int Refused, int Implied, int Own, int Cased, List<string> Declined, List<string> Problems) Shapes(Func<Builder, Builder>? plant = null, bool first = false,
+            RenderingTheory? theory = null)
         {
+            theory ??= ProbeRows.SwitchedTheory;
             var loading = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias);
-            var (shapes, exact, refused, implied, own, problems) = (0, 0, 0, 0, 0, new List<string>());
+            var (shapes, exact, refused, implied, own, cased, declined, problems) = (0, 0, 0, 0, 0, 0, new List<string>(), new List<string>());
 
             // A part many shapes of one atom share, their core or a test, is claimed once a set.
             var claims = new Dictionary<(string, string, RenderPosition, Verdict, RenderingSet), RenderingVerdict>();
@@ -294,7 +361,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var set in RenderingGenerateRun.AssertedSets)
                 {
                     var chars = Ordered(set);
-                    using var bundle = ProbeRows.ProbeTheory.Open(set);
+                    using var bundle = theory.Open(set);
                     var terms = atoms.Select(a => bundle.Write(a.Atom)).ToList();
                     foreach (var path in atoms.SelectMany(a => a.Atom.Paths).Distinct())
                         bundle.Import(ProbeRows.Source, path, PathValues.Anything, chars);
@@ -335,8 +402,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                             implied++;
                             var (found, written, mine, _) = RoundTrip(form, pos, build, p => new CosmosRexTranslator(Rex, Fields, p, JsonFactSet.Empty, null, null, Readings), loading,
                                 (f, ir, at, verdict) => Claimed(f, ir, at, verdict, set, chars), ir => ir.Digest == atom.Digest);
-                            (own, exact) = (own + mine, exact + (form.Equals(written) ? 1 : 0));
-                            if (written is not null && written.Equals(form) == false && Claim(written, atom, pos, Verdict.Implies, set, chars: chars) is { Kind: not RenderingVerdictKind.Proven } answer)
+                            (own, exact, cased) = (own + mine, exact + (form.Text == written?.Text ? 1 : 0), cased + (IsCased(form) ? 1 : 0));
+                            if (IsCased(form) && written is null && found.Count == 0)
+                                (DeclinedByTheCut(form) ? declined : found).Add(DeclinedByTheCut(form) ? shown : "declined beneath, short of the cut");
+                            if (written is not null && written.Text != form.Text && Claim(written, atom, pos, Verdict.Implies, set, chars: chars) is { Kind: not RenderingVerdictKind.Proven } answer)
                                 found.Add($"written {written}, which its atom does not imply: {answer.Kind} {answer.Reason}");
 
                             problems.AddRange(found.Select(p => $"{shown}: {p}"));
@@ -344,35 +413,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                 }
 
-            return (shapes, exact, refused, implied, own, problems);
+            return (shapes, exact, refused, implied, own, cased, declined, problems);
         }
 
         /// <summary>
         /// Exhaustive over the grammar, not the corpus: every shape a template proposes, or S holds implied, for every atom
-        /// the loader reads over every reader, literal class and position, and presence, under each asserted set.
+        /// the loader reads over every reader, literal class and position, and presence, under each asserted set; the
+        /// guarded comparison's among them (spec h09), each <c>CASE</c> read back by the loader and proven by S.
         /// </summary>
         [Fact]
         public void EveryWritableShapeRoundTrips()
         {
-            GC.KeepAlive(ProbeRows.ProbeTheory);
+            GC.KeepAlive(ProbeRows.SwitchedTheory);
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
-            var (shapes, exact, refused, implied, own, problems) = Shapes();
+            var (shapes, exact, refused, implied, own, cased, declined, problems) = Shapes();
             TestContext.Current.TestOutputHelper?.WriteLine($"{shapes} shapes: {refused} outside the grammar, built as nothing; {shapes - refused} written, {implied} of them S holds "
-                + $"implied, round tripped and written as one their atom implies: {exact} as themselves, the rest under the translator's guard; {own} comparisons the atom's own; "
-                + $"{System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:F1} s with S defined");
+                + $"implied, round tripped and written as one their atom implies: {exact} as themselves, {cased} with a CASE ({declined.Count} of them declined beneath), the rest "
+                + $"under the translator's guard; {own} comparisons the atom's own; {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:F1} s with S defined");
+            foreach (var shape in declined)
+                TestContext.Current.TestOutputHelper?.WriteLine($"declined beneath: {shape}");
             foreach (var problem in problems)
                 TestContext.Current.TestOutputHelper?.WriteLine(problem);
 
             (shapes - refused).Should().BeGreaterThan(500);
-            refused.Should().BeGreaterThan(0, "a number over a cast, RETURNING DECIMAL or a raw value is outside the grammar");
+            refused.Should().BeGreaterThan(0, "a number over a cast, RETURNING DECIMAL or a raw value is outside the grammar bare");
+            cased.Should().BeGreaterThan(declined.Count, "a number over a cast, RETURNING DECIMAL or the text is written as its guarded pair");
             problems.Should().BeEmpty();
         }
 
         // ── Every weakening the check run's pass would push ────────────────────────────────────────────────────────────
 
-        /// <summary>S's weakenings of the pull request's run under the asserted sets, once a statement, conjunct, form and set.</summary>
-        internal static IReadOnlyList<RenderingGenerateRun.Weakened> Weakenings() =>
-            [.. RenderingCheckRun.PerPullRequest.Value.Generated!.Weakenings.Where(w => w.Mine is not null && w.Source is not null && RenderingGenerateRun.AssertedSets.Contains(w.Set))
+        /// <summary>
+        /// S's weakenings of the pull request's run under the asserted sets, or of the run over <see cref="ProbeRows.Switched"/>,
+        /// once a statement, conjunct, form and set.
+        /// </summary>
+        internal static IReadOnlyList<RenderingGenerateRun.Weakened> Weakenings(bool switched = false) =>
+            [.. (switched ? RenderingCheckRun.Switched : RenderingCheckRun.PerPullRequest).Value.Generated!.Weakenings.Where(w => w.Mine is not null && w.Source is not null && RenderingGenerateRun.AssertedSets.Contains(w.Set))
                 .DistinctBy(w => (w.Source, w.Conjunct, w.Mine!.Text, w.Set))];
 
         /// <summary>
@@ -380,9 +456,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// held to the round trip under its set, at the import of the bundle it was read from, a string's characters as
         /// <see cref="Ordered"/> keeps them.
         /// </summary>
-        internal static (int Weakenings, int Exact, int Own, int Guarded, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null, bool first = false)
+        internal static (int Weakenings, int Exact, int Own, int Guarded, int Cased, List<string> Declined, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null, bool first = false,
+            bool switched = false)
         {
-            var (weakenings, exact, own, guarded, problems) = (Weakenings(), 0, 0, 0, new List<string>());
+            var (weakenings, exact, own, guarded, cased, declined, problems) = (Weakenings(switched), 0, 0, 0, 0, new List<string>(), new List<string>());
             foreach (var w in weakenings.TakeWhile(_ => first == false || problems.Count == 0))
             {
                 var statement = w.Source!;
@@ -393,49 +470,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (found, written, mine, guards) = RoundTrip(w.Mine!, RenderPosition.Pos, plant?.Invoke(built) ?? built, p => statement.TranslatorFor(w.Conjunct, p), loading,
                     (f, ir, pos, verdict) => Claim(f, ir, pos, verdict, w.Set, w.Claim?.Imports, Ordered(w.Set)), ir => atoms.Contains(ir.Digest));
                 (own, guarded) = (own + mine, guarded + guards);
-                exact += w.Mine!.Equals(written) ? 1 : 0;
+                (exact, cased) = (exact + (w.Mine!.Text == written?.Text ? 1 : 0), cased + (IsCased(w.Mine!) ? 1 : 0));
+                if (IsCased(w.Mine!) && written is null && found.Count == 0)
+                    (DeclinedByTheCut(w.Mine!) ? declined : found).Add(DeclinedByTheCut(w.Mine!) ? $"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct} {w.Mine}" : "declined beneath, short of the cut");
                 problems.AddRange(found.Select(p => $"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct} {w.Mine}: {p}"));
             }
 
-            return (weakenings.Count, exact, own, guarded, problems);
-        }
-
-        /// <summary>Every weakening S gives over the pull request's inputs round trips, riding the check run's pass.</summary>
-        [Fact]
-        public void EveryPushedWeakeningRoundTrips()
-        {
-            var (weakenings, exact, own, guarded, problems) = Pushed();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{weakenings} weakenings: {exact} written as themselves, the rest with {guarded} comparisons under the translator's guard; "
-                + $"{own} comparisons the conjunct's own");
-            foreach (var problem in problems)
-                TestContext.Current.TestOutputHelper?.WriteLine(problem);
-
-            weakenings.Should().BeGreaterThan(300);
-            problems.Should().BeEmpty();
+            return (weakenings.Count, exact, own, guarded, cased, declined, problems);
         }
 
         /// <summary>
-        /// A path read through typed accessors of two SQL types writes no comparison with a number or a boolean over either:
-        /// S proves such a member over one atom's reader, and over the other's Calcite reads another value (<c>RETURNING
-        /// INTEGER</c> raises where <c>BIGINT</c> reads 3000000000), so the weakening builds nothing rather than one the
-        /// builder chose a reader for. Its type tests and string comparisons are still written over its raw value, and a path
-        /// read through one type keeps that accessor.
+        /// Every weakening S gives over the pull request's inputs round trips, riding the check run's pass; and over the
+        /// same inputs in S defined with every template (spec h09), the guarded comparison's among them, each <c>CASE</c>
+        /// read back by the loader and proven by S.
         /// </summary>
         [Fact]
-        public void APathReadThroughTwoTypesWritesNoNumberOverEither()
+        public void EveryPushedWeakeningRoundTrips()
+        {
+            foreach (var switched in new[] { false, true })
+            {
+                var (weakenings, exact, own, guarded, cased, declined, problems) = Pushed(switched: switched);
+                TestContext.Current.TestOutputHelper?.WriteLine($"{(switched ? "every template" : "production")}: {weakenings} weakenings: {exact} written as themselves, {cased} with a CASE "
+                    + $"({declined.Count} of them declined beneath), the rest with {guarded} comparisons under the translator's guard; {own} comparisons the conjunct's own");
+                foreach (var weakening in declined)
+                    TestContext.Current.TestOutputHelper?.WriteLine($"declined beneath: {weakening}");
+                foreach (var problem in problems)
+                    TestContext.Current.TestOutputHelper?.WriteLine(problem);
+
+                weakenings.Should().BeGreaterThan(300);
+                problems.Should().BeEmpty();
+                if (switched)
+                    cased.Should().BeGreaterThan(declined.Count, "the corpus compares numbers through casts of the text and the text with numerals");
+                else
+                    cased.Should().Be(0, "production asks the guarded comparison's templates only from the switch");
+            }
+        }
+
+        /// <summary>
+        /// A path read through typed accessors of two SQL types writes each member over the reader S judged it over (spec
+        /// h09, the member carries its reader): <c>RETURNING INTEGER</c> raises where <c>BIGINT</c> reads 3000000000, so a
+        /// comparison is written through its own accessor, never one the builder chose; one judged over no reader writes
+        /// nothing. Its type tests and string comparisons are still written over its raw value.
+        /// </summary>
+        [Fact]
+        public void APathReadThroughTwoTypesWritesEachMemberOverItsOwn()
         {
             var loading = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias);
             var (integer, bigint, p) = (JsonValue("p", SqlTypeName.INTEGER), JsonValue("p", SqlTypeName.BIGINT), SqlValue.Spell(JsonDocumentPath.Root.Property("p")));
-            var one = Rex.makeCall(SqlStdOperatorTable.EQUALS, integer, Rex.makeExactLiteral(java.math.BigDecimal.ONE));
-            var two = Rex.makeCall(SqlStdOperatorTable.OR, one, Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, bigint, Rex.makeExactLiteral(new java.math.BigDecimal("3000000000"))));
-            var (once, twice) = (loading.AccessorsOf(one, Rex), loading.AccessorsOf(two, Rex));
-            var (compared, defined) = (ServiceForm.CompareOf(CosmosServiceTest.Greater, p, JsonValues.Of(3000000000m)), ServiceForm.TestOf(CosmosServiceTest.IsDefined, p));
+            var two = Rex.makeCall(SqlStdOperatorTable.OR, Rex.makeCall(SqlStdOperatorTable.EQUALS, integer, Rex.makeExactLiteral(java.math.BigDecimal.ONE)),
+                Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, bigint, Rex.makeExactLiteral(new java.math.BigDecimal("3000000000"))));
+            var accessors = loading.AccessorsOf(two, Rex);
+            var compared = ServiceForm.CompareOf(CosmosServiceTest.Greater, p, JsonValues.Of(3000000000m));
+            RexNode? Over(string? reader) => RenderingRexBuilder.Build(reader is null ? compared : ServiceForm.Read(compared, reader), Rex, accessors) is RexCall call ? (RexNode)call.getOperands().get(0) : null;
 
-            (once[p].Typed is null, twice[p].Typed is null, twice[p].Raw is null).Should().Be((false, true, false));
-            RenderingRexBuilder.Build(compared, Rex, twice).Should().BeNull("no reader of the two is the one S proved the member over");
-            RenderingRexBuilder.Build(ServiceForm.JunctionOf(CosmosServiceTest.Or, [compared, defined]), Rex, twice).Should().BeNull("a junction with one member unwritten is none");
-            RenderingRexBuilder.Build(defined, Rex, twice).Should().NotBeNull();
-            RenderingRexBuilder.Build(compared, Rex, once).Should().NotBeNull();
+            accessors[p].Readers.Keys.Should().BeEquivalentTo([PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("BIGINT")]);
+            accessors[p].Raw.Should().NotBeNull();
+            (Over(PredicateAtom.TypedReader("BIGINT"))?.Equals(bigint), Over(PredicateAtom.TypedReader("INTEGER"))?.Equals(integer)).Should().Be((true, true));
+            Over(null).Should().BeNull("a number judged over no reader is written over none");
+            RenderingRexBuilder.Build(ServiceForm.TestOf(CosmosServiceTest.IsDefined, p), Rex, accessors).Should().NotBeNull();
         }
 
         /// <summary>

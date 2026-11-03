@@ -47,7 +47,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var parameters = new CosmosParameterList();
                 var text = RenderingPrinter.Print(form, paths, Alias, parameters);
                 var read = CosmosSqlFormReader.Read(text, parameters.Parameters);
-                if (read.Form.Equals(form) == false || read.Written != text)
+                // The reader a member carries stays in process: the text is what is printed.
+                if (read.Form.Text != form.Text || read.Written != text)
                     return $"{form} printed {text}, read back as {read.Form} written {read.Written}";
 
                 var again = new CosmosParameterList();

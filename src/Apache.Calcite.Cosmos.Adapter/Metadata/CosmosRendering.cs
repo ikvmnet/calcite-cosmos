@@ -20,10 +20,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     internal static class CosmosRendering
     {
 
+        // The guarded comparison's templates are asked from the switch (spec §4.2 h15), a bridge: until site W asks whether
+        // S owns the filter beneath, the translator writes no CASE they are pushed as, and a weakening holding one is lost.
         static readonly System.Lazy<RenderingDefinition> Defined = new(() => RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All)) with
         {
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
+            Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
         });
 
         /// <summary>The registry's S, read on first use, the first build's thread in production: what every schema's generations, and the tests, are defined from.</summary>

@@ -8139,6 +8139,62 @@ own test, which answers what Calcite's body does (`Service.TypeTestBodiesMatchTh
 fire on what tests write. Two-valuedness is derived of every atom generate mode reaches, which costs its rule's matches
 alone. The digests are byte-equal.
 
+### The guarded comparison: casts, `RETURNING DECIMAL` and the text (h09)
+
+**Why a pair.** A cast of the text to `INTEGER`, `BIGINT` or `DOUBLE`, `RETURNING DECIMAL` and the text itself parse a
+string Calcite then compares, where the service compares no string with a number: `p > 50` written bare loses the rows
+holding `"51"`. Beside `IS_NUMBER(p)` it is asked only of numbers, where the reading and the service agree wherever S's
+cut says so. Three templates, rows alone (no rule; S still counts 68):
+
+| Template | At | Form | Fits |
+|---|---|---|---|
+| `KindRestrictedNumber` (C4n) | `Neg` | `IS_NUMBER(p) AND c` | `cast:{INTEGER,BIGINT,DOUBLE}:text`, `typed:DECIMAL`, a number |
+| `Window` (C2) | `Pos` | `IS_DEFINED(p) AND (NOT IS_NUMBER(p) OR c)` | the same |
+| `TextAlternatives` | `Pos` | `p = 's' OR (IS_NUMBER(p) AND p = n)` | `text`, `=`, a string spelling a number `n` |
+
+`TextAlternatives`' number is spelled as its pair, which keeps the same rows at `Pos` and lets the grammar write it; it
+fits the text reader alone, where the rendering of a number is what `= 's'` meets (loss 1).
+
+**The member carries its reader.** `RenderingTemplates.Spell` stamps every comparison and membership whose literals
+hold no string with the atom's reader (`ServiceForm.Read`); a form's equality is its text and its readers, its hash
+its text. `AccessorsOf` keys each path's accessors by reader, the cast node beneath a cast kept beside the text it
+converts and the `DECIMAL` node no longer dropped, and the builder writes a member through the accessor of its own
+reader: a path read through `RETURNING INTEGER` and `BIGINT` writes each comparison over the one S judged it over, and
+one judged over no reader writes nothing (`TODO.md`'s two-types entry closed).
+
+**The grammar.** A number over one of those readers is writable only as the guarded pair: beside `IS_NUMBER(p)` in an
+`AND`, or `NOT IS_NUMBER(p)` in an `OR` (`RenderingRexGrammar.GuardsOf`), and over `typed:DECIMAL`, typed
+`DECIMAL(19, 0)`, a whole number alone. The builder writes the pair as
+`CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE END` in an `AND`, `… ELSE TRUE END` in an `OR`, the guard left to
+the `CASE`, so Calcite parses no string and the Rex means the form on an absent path; the text's arm is its cast to
+`DOUBLE`. `Choose` is a `CASE`. No carrier operator. The non-legacy loader reads a numeric cast of a field bound to a
+rendering as the accessor's cast, so a text column's arm reads back; the legacy reading, which production's S holds
+until h15, is unchanged.
+
+**Proven at the filter beneath, or declined there.** Each held shape's Rex is read back by the loader as a `case` and
+generated in S, the atom beneath `[IS_NUMBER(p)]` stated a number (what F reads of that condition exactly): C4n by the
+absorbing rule, C2 by the opposite one over `IS_NUMBER`, two-valued. Claim mode reads no `case`, so the round trip
+asks generate mode and requires S's best exact form to be the form, a junction's members in any order. A literal at or
+past 2^53, or one no double holds, is Unproven there, the cut `Service.NumbersBeyondLongCompareAsDoubles` gives
+leaving the arm's cells apart; so is a `RETURNING DECIMAL` pair at `=`, `<=` and `>=`. The gate still holds some of
+those pairs implied at the atom, soundly, since implication needs no exact arm: 12 of the grammar's 104 cased shapes and
+20 of the corpus's 144 cased weakenings. h15's site asks S of the filter beneath before it pushes and pushes none of
+them; the round-trip tests accept a decline only past 2^53 or over `DECIMAL`, and any other is a failure. Asking S of
+the arm in the lift itself would take a rule, and h15's question already is that check.
+
+**A bridge until h15.** Production's definition leaves the three templates out (`RenderingTemplateRows.FromTheSwitch`):
+site W pushes a weakening only where the translator writes its Rex, the translator writes no `CASE`, and a weakening
+holding one would replace the presence it pushes today, so 110 plan lines lost a pushed filter when they were asked.
+Tests define S with every template (`ProbeRows.Switched`), and the check run's pass is run once more over it for the
+pushed round trip. The bridge ends when h15 asks S of the filter beneath.
+
+**`NulOrdering` is not built.** It is an `Emulator`-only recovery of an ordering over U+0000, which the owner's rule for
+the emulator forbids (the smallest sound rule wins: refuse), and it needs a `CONTAINS` form, its evaluation, printer
+and rows; a raw `CONTAINS(p, '\0')` matches nearly every string on the emulator (emu-nul §9), so it would be re-measured
+first. #246's refusals stand as they are, and nothing under `Production` would change.
+
+**Nothing in a plan moves.** The digests are byte-equal.
+
 ---
 
 ## Differential testing

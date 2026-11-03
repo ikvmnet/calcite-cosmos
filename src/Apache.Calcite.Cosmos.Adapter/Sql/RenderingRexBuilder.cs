@@ -19,9 +19,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <remarks>
     /// <para>
     /// Over the conjunct's own accessors (<see cref="Accessor"/>): a comparison with a string over the path's raw value,
-    /// and with a number or a boolean over its accessor typed as one, as it stands; a type test as its
+    /// and with a number or a boolean over the accessor of the reader it was judged over (<see cref="ServiceForm.Reader"/>),
+    /// as it stands; a number through a cast of the text, <c>RETURNING DECIMAL</c> or the text as its guarded pair,
+    /// <c>CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE END</c> in an <c>AND</c> beside <c>IS_NUMBER(p)</c> and
+    /// <c>… ELSE TRUE END</c> in an <c>OR</c> beside <c>NOT IS_NUMBER(p)</c>, the guard then left to the <c>CASE</c>, so
+    /// that Calcite parses no string and the Rex means the form on an absent path too; a type test as its
     /// <see cref="CosmosOperators"/> call over the raw value; a constant, <c>NOT</c>, <c>AND</c> and <c>OR</c> as Calcite's,
-    /// in the form's order; an <c>IN</c> as its points' equalities, the membership the loader reads back.
+    /// in the form's order, and the ternary as a <c>CASE</c>; an <c>IN</c> as its points' equalities, the membership the
+    /// loader reads back. No carrier operator: what reaches the service is the form S proves of the filter beneath.
     /// </para>
     /// <para>
     /// <b>Never a member left out.</b> Beneath an <c>OR</c> or an odd number of <c>NOT</c>s a member left out strengthens
@@ -36,11 +41,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     {
 
         /// <summary>
-        /// A path as a conjunct reads it: its raw value, which a string and a type test are written over; and an accessor
-        /// typed as a number or a boolean, which a literal of its type is compared through. Either is <c>null</c> where the
-        /// conjunct reads none, and the typed one where it reads the path through two SQL types.
+        /// A path as a conjunct reads it: its raw value, which a string and a type test are written over, <c>null</c> where
+        /// the conjunct reads none; and each node it reads the path through, by its reader (<c>typed:INTEGER</c>,
+        /// <c>cast:DOUBLE:text</c>, <c>text</c>), which a member judged over that reader is written through.
         /// </summary>
-        internal sealed record Accessor(RexNode? Raw, RexNode? Typed);
+        internal sealed record Accessor(RexNode? Raw, IReadOnlyDictionary<string, RexNode> Readers)
+        {
+
+            /// <summary>The accessor a type test is written over where no raw value is read: one typed as a number or a boolean.</summary>
+            public RexNode? Typed => Readers.Where(r => RenderingRexGrammar.TypeTests.ContainsKey(r.Key)).OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value).FirstOrDefault();
+
+        }
 
         /// <summary>Builds a weakening's Rex, or <c>null</c> where a node of it is outside the grammar.</summary>
         /// <param name="weakening">S's weakening of a residual conjunct.</param>
@@ -51,16 +62,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RexNode? Write(ServiceForm f) => f.Kind switch
             {
                 ServiceFormKind.Test => TestOf(f.Test) is { } test && Of(f.Path!) is { } a && (a.Raw ?? a.Typed) is { } value ? rexBuilder.makeCall(test, value) : null,
-                ServiceFormKind.Compare => Comparison(f.Test, f.Path!, f.Literal!),
-                ServiceFormKind.In => Junction(SqlStdOperatorTable.OR, [.. f.Literals.Select(point => Comparison(CosmosServiceTest.Equal, f.Path!, point))]),
+                ServiceFormKind.Compare => Comparison(f.Test, f.Path!, f.Literal!, f.Reader),
+                ServiceFormKind.In => Junction(SqlStdOperatorTable.OR, [.. f.Literals.Select(point => Comparison(CosmosServiceTest.Equal, f.Path!, point, f.Reader))]),
                 ServiceFormKind.Constant => rexBuilder.makeLiteral(f.Literal == JsonValues.Of(true)),
                 ServiceFormKind.Not => Write(f.Members[0]) is { } operand ? rexBuilder.makeCall(SqlStdOperatorTable.NOT, operand) : null,
-                ServiceFormKind.And => Junction(SqlStdOperatorTable.AND, [.. f.Members.Select(Write)]),
-                ServiceFormKind.Or => Junction(SqlStdOperatorTable.OR, [.. f.Members.Select(Write)]),
+                ServiceFormKind.And or ServiceFormKind.Or => Guarded(f),
+                ServiceFormKind.Choose => Junction(SqlStdOperatorTable.CASE, [.. f.Members.Select(Write)]),
                 _ => null,
             };
 
             Accessor? Of(string path) => accessors.TryGetValue(path, out var accessor) ? accessor : null;
+
+            // A junction's members, each comparison its guard decides written as the guarded CASE and the guard left out.
+            RexNode? Guarded(ServiceForm f)
+            {
+                var (guards, otherwise, cased) = (RenderingRexGrammar.GuardsOf(f), f.Kind == ServiceFormKind.Or, new HashSet<string>(System.StringComparer.Ordinal));
+                var written = new List<RexNode?>();
+                foreach (var m in f.Members)
+                {
+                    var guarded = m.Kind == ServiceFormKind.Compare && guards.Contains(m.Path!) && Comparison(m.Test, m.Path!, m.Literal!, m.Reader) is null;
+                    if (guarded)
+                        cased.Add(m.Path!);
+                    written.Add(guarded ? Case(m, otherwise) : Write(m));
+                }
+
+                return Junction(otherwise ? SqlStdOperatorTable.OR : SqlStdOperatorTable.AND, [.. written.Where((_, i) => IsGuard(f.Members[i], otherwise, cased) == false)]);
+            }
+
+            static bool IsGuard(ServiceForm member, bool otherwise, ISet<string> cased) => (otherwise ? member.Kind == ServiceFormKind.Not ? member.Members[0] : null : member) is
+                { Kind: ServiceFormKind.Test, Test: CosmosServiceTest.IsNumber, Path: var p } && cased.Contains(p!);
+
+            // CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE|TRUE END, over the reader the member was judged over.
+            RexNode? Case(ServiceForm member, bool otherwise)
+            {
+                if (ComparisonOf(member.Test) is not { } comparison || Of(member.Path!) is not { Raw: { } raw } accessor || member.Reader is not { } reader
+                    || RenderingRexGrammar.Written.IsGuarded(reader, member.Literal!) == false || accessor.Readers.GetValueOrDefault(reader) is not { } node)
+                    return null;
+
+                var number = reader == PredicateAtom.TextReader
+                    ? rexBuilder.makeCast(rexBuilder.getTypeFactory().createTypeWithNullability(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.DOUBLE), true), node)
+                    : node;
+                return rexBuilder.makeCall(SqlStdOperatorTable.CASE, rexBuilder.makeCall(CosmosOperators.IsNumber, raw),
+                    rexBuilder.makeCall(comparison, number, Number(rexBuilder, member.Literal!)), rexBuilder.makeLiteral(otherwise));
+            }
 
             // Every member written or none: a junction with one unwritten is no junction of the form's.
             RexNode? Junction(SqlOperator connective, IReadOnlyList<RexNode?> members)
@@ -71,17 +115,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return members.Count == 1 ? members[0] : rexBuilder.makeCall(connective, members.Select(m => m!).ToArray());
             }
 
-            RexNode? Comparison(CosmosServiceTest op, string path, string literal)
+            // A string over the raw value; a number or a boolean through the accessor of the reader judged, typed as one.
+            RexNode? Comparison(CosmosServiceTest op, string path, string literal, string? reader)
             {
                 if (ComparisonOf(op) is not { } comparison || Of(path) is not { } accessor)
                     return null;
 
-                var typed = accessor.Typed is { } t ? RenderingRexGrammar.ClassOf(PredicateAtom.TypedReader(t.getType()?.getSqlTypeName()?.getName() ?? "")) : null;
+                var typed = reader is not null && accessor.Readers.GetValueOrDefault(reader) is { } node ? (RenderingRexGrammar.ClassOf(reader), node) : (null, null);
                 return JsonValues.TypeOf(literal) switch
                 {
                     JsonValues.StringType when accessor.Raw is { } raw => rexBuilder.makeCall(comparison, raw, rexBuilder.makeLiteral(JsonValues.StringOf(literal))),
-                    JsonValues.IntegerType or JsonValues.FractionType when typed == RenderingRexGrammar.NumberReader => rexBuilder.makeCall(comparison, accessor.Typed, Number(rexBuilder, literal)),
-                    JsonValues.BooleanType when typed == RenderingRexGrammar.BooleanReader => rexBuilder.makeCall(comparison, accessor.Typed, rexBuilder.makeLiteral(literal == JsonValues.Of(true))),
+                    JsonValues.IntegerType or JsonValues.FractionType when typed.Item1 == RenderingRexGrammar.NumberReader => rexBuilder.makeCall(comparison, typed.node, Number(rexBuilder, literal)),
+                    JsonValues.BooleanType when typed.Item1 == RenderingRexGrammar.BooleanReader => rexBuilder.makeCall(comparison, typed.node, rexBuilder.makeLiteral(literal == JsonValues.Of(true))),
                     _ => null,
                 };
             }

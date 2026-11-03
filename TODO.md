@@ -2887,6 +2887,21 @@ across documents* and *A join of a container to itself* is the record.
   did not: the box has no place in the IR, and giving it one changes F's terms, so the cast stays opaque. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
   text-equality alternatives write, stay in O2's residue on their merits. Keeping a boxed literal's type in the IR would
   decide them, and changes F's terms.
+- **Production asks the guarded comparison's templates only from the switch** — *bridge, deleted at h15.* C4n, C2 and
+  `TextAlternatives` (h09) are left out of `CosmosRendering.Definition` (`RenderingTemplateRows.FromTheSwitch`): site W
+  pushes a weakening only where the translator writes its Rex, which writes no `CASE`, so a weakening holding the guarded
+  pair would replace the presence pushed today; asked in production they moved 110 plan lines. Tests define S with them
+  (`ProbeRows.Switched`, `RenderingCheckRun.Switched`). h15 asks S of the filter beneath and drops the bridge.
+- **S declines at the filter beneath some guarded pairs the gate holds implied** — *small; RU, never rows; triage at
+  h14.* Implication needs no exact arm, so the gate holds C2 implied past 2^53 and over `RETURNING DECIMAL` at `=`, `<=`
+  and `>=`, where the Rex's `case` is Unproven to S: 12 of the grammar's 104 cased shapes, 20 of the corpus's 144 cased
+  weakenings (h09). h15's site, asking S of the filter beneath, pushes none of them; the round-trip tests accept a decline
+  only there. The proper fix, should h14 list one: the lift asks S of the pair's arm beneath `IS_NUMBER(p)` before it
+  writes the pair (a rule). The `DECIMAL` asymmetry, `<`, `>` and `<>` proven where `=` is not, is read then too.
+- **`NulOrdering` is not built** — *an `Emulator`-only recovery; declined at h09.* The owner's rule for the emulator
+  (the smallest sound rule wins: refuse) stands against it, and it needs a `CONTAINS` form with its evaluation, printer
+  and rows; a raw `CONTAINS(p, '\0')` matches nearly every string on the emulator (emu-nul §9), so it is measured again
+  first. #246's refusals stand; nothing under `Production` would move.
 - **S reads the IR as it was before h07** — *bridge, deleted at h15.* A filter statement reads its conjuncts twice:
   `Statement` for F and `RenderingStatement`, every h07 shape opaque, for S, since S asks a weakening of every residual
   conjunct, owned or not, and would otherwise weaken shapes no check has held it to (DESIGN.md, *The IR's new shapes*).
@@ -3016,14 +3031,6 @@ across documents* and *A join of a container to itself* is the record.
   inputs meets it. Writing nothing there instead leaves 20 shapes S holds implied in the grammar unwritten, against
   "S holds only what the builder writes"; the reader is the same `typed:T` as a `RETURNING`, so the grammar cannot tell
   the two apart. The column's document accessor, where the binding holds one, would give it a raw value.
-- **A path read through typed accessors of two SQL types writes no number** — *small, a bridge until each member carries
-  its reader.* S proves a comparison over one atom's reader and the form keeps no reader, so where a conjunct reads one
-  path as `RETURNING INTEGER` and `BIGINT` (or `DOUBLE`, or `BOOLEAN`), `AccessorsOf` keeps no typed accessor and the
-  builder writes no member comparing it with a number or a boolean: that weakening is not pushed, RU, never rows. None of
-  the inputs' weakenings meets it (`APathReadThroughTwoTypesWritesNoNumberOverEither` holds the shape). The proper fix:
-  the lift writes each `implied` member with the reader `rex-writable` judged it over (a value change, no rule), and the
-  builder looks up the accessor by it; it lands with Stage 3's value positions, which need a reader each anyway, or
-  before, should the rehearsal list a weakening this refuses.
 - **A typed reading compared with a fraction keeps no presence** — *small, O7's loss 5 until Stage 3.* Calcite compares
   `RETURNING INTEGER >= 2.5` through a cast to `DECIMAL`, which the loader reads no reading of (it reads a numeric cast of
   text or a raw value alone), so the conjunct is one opaque term with no path, and S proves no weakening where J keeps
@@ -3309,13 +3316,13 @@ across documents* and *A join of a container to itself* is the record.
   runtime, which raises "Failed to compare two elements in the array" over the plant's U+0000 (culture comparison,
   the merge item's `JavaComparisons.Compare`); Calcite raises the same over the statement, so it is not judged.
 - **O7's losses at the switch** — *small each, Stage 3 unless named.* The translator's weakenings S does not reproduce,
-  each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1); a compound
+  each RU, never rows, the residual rechecked above: the text-equality alternatives, as presence (loss 1; `TextAlternatives` at h09, asked from h15); a compound
   compared with `TRUE` or `FALSE`, read as opaque, as nothing (loss 3); `LIKE`'s string branch, as presence (loss 4, with
   O3); presence the translator read through a term the IR holds opaque — a cast to `DATE`, `UUID` or a wrapping type, a
   cast Calcite widens around another to compare a literal past the target's range, a nested accessor, a typed reading
   compared with a fraction — as nothing (loss 5); an element path, as nothing or with its member gone (until the IR
   reads one); arithmetic, as presence; a number compared through a cast or `RETURNING DECIMAL`, as presence (the owner's
-  2026-10-24 decision, until the guarded spelling); and a parameter compared over a path not declared a string, as
+  2026-10-24 decision, until the guarded spelling: C4n and C2 at h09, asked from h15); and a parameter compared over a path not declared a string, as
   presence, where the translator sent an inequality's string branch (a parameter atom is presence and no candidate to S).
   Each the gate plans is held in the listing by its statement. The listing digests no statement with a parameter, so the
   last is held by `CosmosParameterPlanningTests` alone, and the cast of a cast by `CosmosPlannerTests`.

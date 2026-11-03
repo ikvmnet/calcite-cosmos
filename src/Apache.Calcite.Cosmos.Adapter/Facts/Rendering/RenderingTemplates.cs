@@ -23,8 +23,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A parameter atom's shape, which no <c>fits</c> row names: its value is unknown, so only strictness reads it.</summary>
         public const string ParameterShape = "parameter";
 
-        /// <summary>An operand's kinds, a shape's last part: a string, one Calcite renders a boolean as, a number, a boolean, an <c>IN</c>'s points, none.</summary>
-        public const string StringKind = "string", TruthKind = "truth", NumberKind = "number", BooleanKind = "boolean", PointsKind = "points", NoOperand = "none";
+        /// <summary>
+        /// An operand's kinds, a shape's last part: a string, one Calcite renders a boolean as, one spelling a number, a
+        /// number, a boolean, an <c>IN</c>'s points, none.
+        /// </summary>
+        public const string StringKind = "string", TruthKind = "truth", NumeralKind = "numeral", NumberKind = "number", BooleanKind = "boolean", PointsKind = "points", NoOperand = "none";
 
         static readonly ServiceForm Unspelled = ServiceForm.OpaqueOf("unspelled", ValueSet<string>.Empty);
 
@@ -33,19 +36,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static string KindOf(PredicateAtom atom) => atom.Test == PredicateAtom.InTest ? PointsKind : atom.Operand is { } literal ? KindOf(literal) : NoOperand;
 
-        /// <summary>A literal's kind: a string, one rendering a boolean, a number, or its own type.</summary>
-        public static string KindOf(string literal) => JsonValues.IsString(literal) ? JsonValues.StringOf(literal) is "true" or "false" ? TruthKind : StringKind
+        /// <summary>A literal's kind: a string, one rendering a boolean, one spelling a number, a number, or its own type.</summary>
+        public static string KindOf(string literal) => JsonValues.IsString(literal)
+            ? JsonValues.StringOf(literal) is "true" or "false" ? TruthKind : NumeralOf(literal) is not null ? NumeralKind : StringKind
             : JsonValues.IsNumber(literal) ? NumberKind : JsonValues.TypeOf(literal);
 
-        /// <summary>The form a template proposes for an atom at a position, over its path's spelling; the sentinel where it proposes none.</summary>
+        /// <summary>The number a string literal spells in digits, a sign and a point, as a number literal; <c>null</c> for any other.</summary>
+        static string? NumeralOf(string literal) => JsonValues.StringOf(literal) is { Length: > 0 } s && s.All(c => c is (>= '0' and <= '9') or '-' or '.')
+            && decimal.TryParse(s, System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var n)
+            ? JsonValues.Of(n) : null;
+
+        /// <summary>
+        /// The form a template proposes for an atom at a position, over its path's spelling, each member carrying the atom's
+        /// reader (<see cref="ServiceForm.Read"/>); the sentinel where it proposes none.
+        /// </summary>
         public static ServiceForm Spell(TemplateId id, RenderPosition pos, PredicateAtom atom, string path) =>
-            (atom.Parameter ? null : Write(id, pos == RenderPosition.Pos, atom, path)) ?? Unspelled;
+            (atom.Parameter ? null : Write(id, pos == RenderPosition.Pos, atom, path)) is { } form ? ServiceForm.Read(form, atom.Reader) : Unspelled;
 
         static ServiceForm? Write(TemplateId id, bool pos, PredicateAtom atom, string path)
         {
             // The core is the comparison with its literal, an IN as its equalities, the presence or type it tests; none for a null test.
             var (core, literal) = (Core(atom, path), atom.Operand);
-            var (defined, isNull) = (ServiceForm.TestOf(IsDefined, path), ServiceForm.TestOf(IsNull, path));
+            var (defined, isNull, number) = (ServiceForm.TestOf(IsDefined, path), ServiceForm.TestOf(IsNull, path), ServiceForm.TestOf(IsNumber, path));
             ServiceForm[] typed = RenderingRexGrammar.TypeTests.TryGetValue(atom.Reader, out var t) ? [ServiceForm.TestOf(t, path)] : [], untyped = [.. typed.Select(ServiceForm.NotOf)];
             ServiceForm Completed(IEnumerable<ServiceForm> cores) => Any([.. cores, isNull, ServiceForm.NotOf(defined), .. untyped])!;
             ServiceForm Restricted() => All([defined, ServiceForm.NotOf(isNull), .. typed])!;
@@ -64,6 +76,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 TemplateId.ByKindNumber => ByKind(IsNumber),
                 TemplateId.StringBranch => All([defined, Any([ServiceForm.NotOf(ServiceForm.TestOf(IsString, path)), core])!]),
                 TemplateId.KindRestricted => All([ServiceForm.TestOf(IsString, path), core]),
+                TemplateId.KindRestrictedNumber => All([number, core]),
+                TemplateId.Window => All([defined, Any([ServiceForm.NotOf(number), core])!]),
+                TemplateId.TextAlternatives when atom.Test == PredicateAtom.Equal && literal is not null && NumeralOf(literal) is { } n =>
+                    Any([core, All([number, ServiceForm.CompareOf(Equal, path, n)])!]),
                 _ => null,
             };
         }

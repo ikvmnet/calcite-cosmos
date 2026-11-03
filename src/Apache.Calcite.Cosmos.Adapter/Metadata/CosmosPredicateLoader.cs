@@ -536,37 +536,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Each path a conjunct reads, by its spelling (<see cref="SqlValue.Spell"/>), and how: the node its raw value
-            /// is and an accessor typed as a number or a boolean, which the Rex builder writes a weakening's members over.
+            /// is, and each node it reads the path through, by that reading's reader, which the Rex builder writes a member
+            /// judged over the reader through (the member carries its reader, spec §4.2 h09).
             /// </summary>
             /// <remarks>
             /// Each largest node read as a reading of a path, inside an opaque term too, and beneath a cast the reading it
-            /// converts, a cast being no accessor. The raw value is a raw reading itself, and a rendering or a typed
-            /// <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed otherwise
-            /// has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first raw value is
-            /// kept, each being the same value. A path read through typed accessors of two SQL types keeps none: S proves a
-            /// comparison over one atom's reader (<c>rex-writable</c>), and written over the other's it would mean another
-            /// value in Calcite, so the builder writes no such member, and that weakening is not pushed.
+            /// converts as well, a cast's reader being its own. The raw value is a raw reading itself, and a rendering or a
+            /// typed <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed
+            /// otherwise has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first
+            /// raw value, and the first node of each reader, is kept, each being the same value.
             /// </remarks>
             public IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(RexNode conjunct, RexBuilder rexBuilder)
             {
-                var accessors = new Dictionary<string, RenderingRexBuilder.Accessor>(StringComparer.Ordinal);
-                var ambiguous = new HashSet<string>(StringComparer.Ordinal);
+                var (raws, readers) = (new Dictionary<string, RexNode>(StringComparer.Ordinal), new Dictionary<string, Dictionary<string, RexNode>>(StringComparer.Ordinal));
 
                 void Walk(RexNode node)
                 {
                     node = CosmosRexShapes.StripRedundantTextCast(node);
                     var value = Value(node);
-                    if (value is { PathRead: JsonDocumentPath path } && value is not SqlValue.Cast)
+                    if (value is { PathRead: JsonDocumentPath path } && Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(value) is { } reader)
                     {
-                        var raw = value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null;
-                        var typed = value is SqlValue.Typed { Type: var type }
-                            && Cosmos.Facts.Rendering.RenderingRexGrammar.TypeTests.ContainsKey(Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type)) ? node : null;
-                        var (spelled, held) = (SqlValue.Spell(path), accessors.GetValueOrDefault(SqlValue.Spell(path)));
-                        if (held?.Typed is { } kept && typed is not null && Equals(kept.getType()?.getSqlTypeName(), typed.getType()?.getSqlTypeName()) == false)
-                            ambiguous.Add(spelled);
-
-                        accessors[spelled] = new(held?.Raw ?? raw, held?.Typed ?? typed);
-                        return;
+                        var spelled = SqlValue.Spell(path);
+                        (readers.TryGetValue(spelled, out var read) ? read : readers[spelled] = new(StringComparer.Ordinal)).TryAdd(reader, node);
+                        if (value is not SqlValue.Cast)
+                        {
+                            if ((value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null) is { } raw)
+                                raws.TryAdd(spelled, raw);
+                            return;
+                        }
                     }
 
                     if (node is RexCall call)
@@ -577,10 +574,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 lock (_lock)
                     Walk(Expand(conjunct));
 
-                foreach (var spelled in ambiguous)
-                    accessors[spelled] = accessors[spelled] with { Typed = null };
-
-                return accessors;
+                return readers.ToDictionary(r => r.Key, r => new RenderingRexBuilder.Accessor(raws.GetValueOrDefault(r.Key), r.Value), StringComparer.Ordinal);
             }
 
             /// <summary>
@@ -715,6 +709,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 if (target == SqlTypeName.ANY)
                     return Value(operand) is { PathRead: JsonDocumentPath { HasElement: false } raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
+
+                // A field bound to a rendering, cast to a number, parses it as the accessor's cast does: the guarded arm the
+                // Rex builder writes over a text column (spec h09), read so by S alone until h15.
+                if (_legacy == false && operand is RexInputRef && (target == SqlTypeName.INTEGER || target == SqlTypeName.BIGINT || target == SqlTypeName.DOUBLE)
+                    && Value(operand) is SqlValue.Text rendering)
+                    return new SqlValue.Cast(target!.getName(), rendering);
 
                 if (CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
                     return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;

@@ -113,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var other = sent.Where(c => c.Forms.Spelled.Equals(c.Forms.Read) == false).ToList();
             TestContext.Current.TestOutputHelper?.WriteLine($"{sent.Count} one-atom conjuncts sent, {other.Count} by another template than the translator's: " + string.Join("; ", other.Select(c => $"{c.Input} {c.Name} {c.Text}")));
             sent.Should().HaveCountGreaterThan(100);
-            other.Where(c => System.Enum.GetValues<TemplateId>().Any(id => Spelled(c.Ir, id, c.Ir is SqlPredicate.Not ? RenderPosition.Neg : RenderPosition.Pos).Equals(c.Forms.Read)) == false)
+            other.Where(c => System.Enum.GetValues<TemplateId>().Any(id => Spelled(c.Ir, id, c.Ir is SqlPredicate.Not ? RenderPosition.Neg : RenderPosition.Pos).Text == c.Forms.Read.Text) == false)
                 .Select(c => $"{c.Input} {c.Name}: {c.Text} read {c.Forms.Read}, no template's").Should().BeEmpty();
         }
 

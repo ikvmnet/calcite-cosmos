@@ -63,6 +63,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 generated: generated);
         });
 
+        /// <summary>
+        /// The pull request's run over S defined with every template (<see cref="ProbeRows.Switched"/>), the guarded
+        /// comparison's among them, which production asks from h15: its weakenings, once a process.
+        /// </summary>
+        public static readonly Lazy<RenderingCheckRun> Switched = new(() =>
+        {
+            var generated = new RenderingGenerateRun(new RenderingGraph(() => ProbeRows.Switched));
+            var reasoning = generated.Reasoning;
+            return Over(RenderingInputs.All(CosmosDifferentialTests.PartitionedPredicates, reasoning).Append(RenderingInputs.Parameterised(reasoning)).Append(RenderingInputs.CastOfTyped(reasoning)),
+                generated: generated);
+        });
+
         readonly Action<RenderingSet, TimeSpan>? Timed;
 
         /// <param name="memo">The memo, or one of its own.</param>

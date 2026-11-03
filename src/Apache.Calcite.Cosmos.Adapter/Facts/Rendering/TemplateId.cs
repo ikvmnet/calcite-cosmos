@@ -40,6 +40,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>C4, at <c>Neg</c>: a text comparison where the path holds a string.</summary>
         KindRestricted,
 
+        /// <summary>C4n, at <c>Neg</c>: a number compared through a cast of the text or <c>RETURNING DECIMAL</c>, where the path holds a number.</summary>
+        KindRestrictedNumber,
+
+        /// <summary>C2, at <c>Pos</c>: the same comparison where the path holds a number, anything else present admitted.</summary>
+        Window,
+
+        /// <summary>At <c>Pos</c>: text equal to a string spelling a number as the string, or the number it spells.</summary>
+        TextAlternatives,
+
     }
 
 }
