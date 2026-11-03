@@ -101,6 +101,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                             Write(f.Members[0]);
                         builder.Append(')');
                         break;
+                    case ServiceFormKind.Choose:
+                        builder.Append('(');
+                        Write(f.Members[0]);
+                        builder.Append(" ? ");
+                        Write(f.Members[1]);
+                        builder.Append(" : ");
+                        Write(f.Members[2]);
+                        builder.Append(')');
+                        break;
                     case ServiceFormKind.And or ServiceFormKind.Or:
                         var members = MembersOf(f);
                         builder.Append(bare ? "" : "(");

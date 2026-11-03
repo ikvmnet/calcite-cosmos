@@ -96,6 +96,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CallArg = Graph.DefineRelation<Val, Val>("callarg");
             Strict = Graph.DefineRelation<Val, JPath>("strict");
 
+            // S's alone: a leaf tagged with the arm stratum it is read beneath, a case with its else-arm rooted twice, and
+            // the constant else split by what it does at a position (spec h08). F writes neither term.
+            var term = new TableOptions { Extractable = false };
+            Beneath = Graph.DefineConstructor<long, Pred, Pred>("beneath", options: term);
+            Chosen = Graph.DefineConstructor<Pred, Pred, Pred, Pred, Pred>("chosen", options: term);
+            TwoValued = Graph.DefineRelation<Pred>("twovalued");
+            AbsorbingElse = Graph.DefineRelation<RenderPosition, string>("absorbingelse");
+            OppositeElse = Graph.DefineRelation<RenderPosition, string>("oppositeelse");
+
             var measure = Graph.DefineRuleset("measure");
             var allowed = Graph.DefineRuleset("allowed");
             var refutes = Graph.DefineRuleset("refutes");
@@ -105,6 +114,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var licence = Graph.DefineRuleset("licence");
             DefineTheory(measure, allowed, refutes, tabulate);
             DefineLicences(expected, matched, licence);
+
+            var tag = Graph.DefineRuleset("tag");
+            DefineTag(tag);
 
             var structure = Graph.DefineRuleset("structure");
             var descend = Graph.DefineRuleset("descend");
@@ -130,16 +142,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var strict = Graph.DefineRuleset("strict");
             var best = Graph.DefineRuleset("best");
             var weaken = Graph.DefineRuleset("weaken");
+            var twovalued = Graph.DefineRuleset("twovalued");
             DefineProposal(at, spell);
             DefineLifts(lift, strict);
             DefineChoice(best, weaken);
+            DefineCase(at, twovalued, best, weaken);
 
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
-            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
+            // Two-valuedness reads the gate's classes complete, beside the lift; the case's best reads it complete.
+            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, tag, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
-            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, at, spell), Schedule.Saturate(partition, need, parted),
-                Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict), Schedule.Saturate(best, conflict),
+            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, tag, structure, at, spell), Schedule.Saturate(partition, need, parted),
+                Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict, twovalued), Schedule.Saturate(best, conflict),
                 Schedule.Saturate(weaken));
 
             Graph.Root.Freeze();
@@ -268,6 +283,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A value Calcite reads as null where a path is absent.</summary>
         public Relation<Val, JPath> Strict { get; }
 
+        /// <summary>A leaf read beneath an arm's stratum, by the stratum's id: its own term, so its cells are that stratum's.</summary>
+        public Constructor<long, Pred, Pred> Beneath { get; }
+
+        /// <summary>
+        /// A case as S writes it: its condition, its then-arm beneath the condition, and its else-arm twice, narrow beneath
+        /// the condition's negation and wide where the case stands.
+        /// </summary>
+        public Constructor<Pred, Pred, Pred, Pred, Pred> Chosen { get; }
+
+        /// <summary>An atom Calcite answers TRUE or FALSE on every cell, so that where it is not TRUE it is FALSE.</summary>
+        public Relation<Pred> TwoValued { get; }
+
+        /// <summary>A position and a truth value an else-arm leaves the case's rows as its condition's own failing leaves them.</summary>
+        public Relation<RenderPosition, string> AbsorbingElse { get; }
+
+        /// <summary>A position and a truth value an else-arm makes the case's rows the opposite of what its failing condition would.</summary>
+        public Relation<RenderPosition, string> OppositeElse { get; }
+
         /// <summary>
         /// Builds S from a definition and loads its theory: one batch per axiom, then the host rows, settled and frozen.
         /// </summary>
@@ -312,6 +345,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<CutPoint>("cut point");
             values.Register<CellPartition>("cell partition");
             values.Register<OutcomeVector>("outcome vector");
+            values.Register<OutcomeTriple>("outcome triple");
             values.Register<CellOutcomes>("cell outcomes");
             values.Register<Witness>("witness");
             values.RegisterSet<CosmosAnswer>();
@@ -863,6 +897,158 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        // A tag changes which cells a leaf is read on, never what it reads: the tagged term is an atom of its leaf's path.
+        void DefineTag(Ruleset tag)
+        {
+            tag.DefineRule("a predicate beneath a stratum is an atom as its predicate is", r =>
+            {
+                var (e, x, s) = r.Vars<Pred, Pred, long>("e", "x", "s");
+                var (p, a) = r.Vars<JPath, PredicateAtom>("p", "a");
+                r.When(e.Is(Beneath.Of(s, x)), Ir.Atom.Of(x, p, a));
+                r.Then(Ir.Atom.Of(e, p, a));
+            });
+        }
+
+        // A case (DESIGN.md, "The rendering graph beyond the WHERE"): its condition stands at Pos, where it takes the
+        // then-arm, and at Neg, which the opposite else reads; its arms where it stands. Each best reads the condition's
+        // exact form and the arms' as complete, each a proof of its own cells; the else-arm's narrow copy only over a
+        // condition two-valued on its cells, the wide copy always.
+        void DefineCase(Ruleset at, Ruleset twovalued, Ruleset best, Ruleset weaken)
+        {
+            at.DefineRule("a case's condition stands at Pos and at Neg, wherever the case stands", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var pos = r.Var<RenderPosition>("pos");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)));
+                r.Then(At.Of(c, RenderPosition.Pos), BestExact.Of(c, RenderPosition.Pos).Is(Priced.None), Implied.Of(c, RenderPosition.Pos).Is(ValueSet<ServiceForm>.Empty),
+                    At.Of(c, RenderPosition.Neg), BestExact.Of(c, RenderPosition.Neg).Is(Priced.None), Implied.Of(c, RenderPosition.Neg).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            at.DefineRule("a case's arms stand where the case stands", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var pos = r.Var<RenderPosition>("pos");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)));
+                r.Then(At.Of(a, pos), BestExact.Of(a, pos).Is(Priced.None), Implied.Of(a, pos).Is(ValueSet<ServiceForm>.Empty),
+                    At.Of(bn, pos), BestExact.Of(bn, pos).Is(Priced.None), Implied.Of(bn, pos).Is(ValueSet<ServiceForm>.Empty),
+                    At.Of(bw, pos), BestExact.Of(bw, pos).Is(Priced.None), Implied.Of(bw, pos).Is(ValueSet<ServiceForm>.Empty));
+            });
+
+            // Every cell of an atom is paired by any candidate, so one candidate's classes are the atom's; complete here.
+            twovalued.DefineRule("an atom none of whose classes Calcite answers unknown on is two-valued", r =>
+            {
+                var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
+                var (o, z) = r.Vars<CellOutcomes, ValueSet<CellClass>>("o", "z");
+                r.When(Ir.Atom.Of(e, p, a), At.Of(e, RenderPosition.Pos), Candidate.Of(e, RenderPosition.Pos, f), o.Is(Outcomes.Of(e, f)), z.Is(Compute.Of(o, x => x.Classes)));
+                r.Where(RenderingPrimitives.NoCalciteUnknown.Of(z));
+                r.Then(TwoValued.Of(e));
+            });
+
+            // Where the condition is not TRUE its exact Pos form is not true either, so the junction leaves the row as the
+            // absorbing else does, whatever the service answers there: no two-valuedness is read.
+            best.DefineRule("a case whose else absorbs at its position is its condition joined with its then-arm", r =>
+            {
+                var (e, c, a, k) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "k");
+                var kw = r.Var<Pred>("kw");
+                var (pos, kv) = r.Vars<RenderPosition, string>("pos", "kv");
+                var (bc, ba) = r.Vars<Priced, Priced>("bc", "ba");
+                var (cf, af, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("cf", "af", "h");
+                var (pc, pa) = r.Vars<Proof, Proof>("pc", "pa");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, k, kw)), k.Is(Ir.Truth.Of(kv)), AbsorbingElse.Of(pos, kv), bc.Is(BestExact.Of(c, RenderPosition.Pos)), ba.Is(BestExact.Of(a, pos)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bc));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(ba));
+                r.When(cf.Is(Compute.Of(bc, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), pc.Is(Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)),
+                    pa.Is(Agrees.Of(a, pos, af, Verdict.Equal)), h.Is(Compute.Of(pos, cf, af, ServiceForm.AbsorbingElse)));
+                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or, CosmosServiceTest.Not));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(pc, pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            // Where a two-valued condition is not TRUE it is FALSE, which one form exact at both positions says alike.
+            best.DefineRule("a case whose else is the opposite constant, over a two-valued condition, is its condition's form joined with its then-arm", r =>
+            {
+                var (e, c, a, k) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "k");
+                var kw = r.Var<Pred>("kw");
+                var (pos, kv) = r.Vars<RenderPosition, string>("pos", "kv");
+                var (bp, bn, ba) = r.Vars<Priced, Priced, Priced>("bp", "bn", "ba");
+                var (cf, af, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("cf", "af", "h");
+                var (pc, pn, pa) = r.Vars<Proof, Proof, Proof>("pc", "pn", "pa");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, k, kw)), k.Is(Ir.Truth.Of(kv)), OppositeElse.Of(pos, kv), TwoValued.Of(c),
+                    bp.Is(BestExact.Of(c, RenderPosition.Pos)), bn.Is(BestExact.Of(c, RenderPosition.Neg)), ba.Is(BestExact.Of(a, pos)));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bp));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(ba));
+                r.Where(RenderingPrimitives.SameForm.Of(bp, bn));
+                r.When(cf.Is(Compute.Of(bp, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), pc.Is(Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)),
+                    pn.Is(Agrees.Of(c, RenderPosition.Neg, cf, Verdict.Equal)), pa.Is(Agrees.Of(a, pos, af, Verdict.Equal)), h.Is(Compute.Of(pos, cf, af, ServiceForm.OppositeElse)));
+                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or, CosmosServiceTest.Not));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, pn, Proof.Join), pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+
+            // One template, written twice: the narrow else joined with the condition's two-valuedness, the wide else alone,
+            // which is sound whatever came before; BestExact's lattice keeps the cheaper (spec h08).
+            Ternary(best, narrow: true);
+            Ternary(best, narrow: false);
+
+            // A truth value is no atom, and no cell is read for it: on both service targets a constant is its own truth
+            // wherever the set measured it so (Service.AConstantIsItsOwnTruth, the Constant licence).
+            best.DefineRule("a truth value is exact as the constant its position reads it as", r =>
+            {
+                var (e, pos, kv, h) = r.Vars<Pred, RenderPosition, string, ServiceForm>("e", "pos", "kv", "h");
+                var (sk, lk) = r.Vars<RenderingSet, ValueSet<CosmosServiceTest>>("sk", "lk");
+                r.When(At.Of(e, pos), e.Is(Ir.Truth.Of(kv)), Under.Of(sk), lk.Is(Licensed.Of(sk)), h.Is(Compute.Of(pos, kv, ServiceForm.TruthAt)));
+                r.Where(Primitives.Contains<CosmosServiceTest>().Of(lk, CosmosServiceTest.Constant));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(ConstantProof), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(h)));
+            });
+
+            // The wide else alone, which is sound beneath any condition.
+            weaken.DefineRule("a case weakens to its arms' weakenings under its condition's", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var pos = r.Var<RenderPosition>("pos");
+                var (wc, wa, wb) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wc", "wa", "wb");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), wc.Is(Weakening.Of(c, RenderPosition.Pos)), wa.Is(Weakening.Of(a, pos)), wb.Is(Weakening.Of(bw, pos)));
+                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
+                r.Then(Weakening.Of(e, pos).Is(Compute.Of(pos, wc, wa, wb, RenderingWeakening.OfCase)));
+            });
+        }
+
+        /// <summary>
+        /// The service ternary of the condition's exact Pos form and the arms' exact forms, where the set and Calcite both
+        /// license it: the then-arm is read beneath the condition, and the else-arm narrow over a two-valued condition or wide.
+        /// </summary>
+        void Ternary(Ruleset best, bool narrow)
+        {
+            best.DefineRule(narrow ? "a case's best is the service ternary of its condition's Pos best and its arms' bests, the narrow else over a two-valued condition"
+                : "a case's best is the service ternary of its condition's Pos best and its arms' bests, the wide else", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var pos = r.Var<RenderPosition>("pos");
+                var (bc, ba, bb) = r.Vars<Priced, Priced, Priced>("bc", "ba", "bb");
+                var (cf, af, bf, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("cf", "af", "bf", "h");
+                var (pc, px, py) = r.Vars<Proof, Proof, Proof>("pc", "px", "py");
+                var b = narrow ? bn : bw;
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), bc.Is(BestExact.Of(c, RenderPosition.Pos)), ba.Is(BestExact.Of(a, pos)), bb.Is(BestExact.Of(b, pos)));
+                if (narrow)
+                    r.When(TwoValued.Of(c));
+
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bc));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(ba));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(bb));
+                r.When(cf.Is(Compute.Of(bc, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), bf.Is(Compute.Of(bb, Priced.FormOf)),
+                    pc.Is(Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)), px.Is(Agrees.Of(a, pos, af, Verdict.Equal)), py.Is(Agrees.Of(b, pos, bf, Verdict.Equal)),
+                    h.Is(Compute.Of(cf, af, bf, ServiceForm.ChosenOf)));
+                Composes(r, CosmosServiceTest.Choose, null);
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, px, Proof.Join), py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+            });
+        }
+
+        /// <summary>What a truth value's constant rests on: the row that measured each constant its own truth, on no cell.</summary>
+        static readonly Proof ConstantProof = new(ValueSet.Of("Service.AConstantIsItsOwnTruth"), 0);
+
         /// <summary>
         /// Holds a step to a connective the set under which the bundle runs licenses and Calcite does, and a junction's
         /// form to a set that licenses whatever it needs.
@@ -954,6 +1140,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (pos, q) in KleeneTables.Opposite)
                     w.Assume(Opposite.Of(pos, q));
+
+                foreach (var (pos, truth) in KleeneTables.AbsorbingElse)
+                    w.Assume(AbsorbingElse.Of(pos, truth));
+
+                foreach (var (pos, truth) in KleeneTables.OppositeElse)
+                    w.Assume(OppositeElse.Of(pos, truth));
 
                 foreach (var (id, pos) in definition.Templates)
                     w.Assume(Template.Of(id, pos));

@@ -43,6 +43,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Which comparator a type's values are ordered by: the answer names it.</summary>
         Order,
 
+        /// <summary>
+        /// The ternary <c>c ? a : b</c>: keyed by the condition's outcome alone, the answer <see cref="CosmosAnswer.True"/>
+        /// where it takes the then-arm and <see cref="CosmosAnswer.False"/> where it takes the else-arm.
+        /// </summary>
+        Choose,
+
     }
 
 }

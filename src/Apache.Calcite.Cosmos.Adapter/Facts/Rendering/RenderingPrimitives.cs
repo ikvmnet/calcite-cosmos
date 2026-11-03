@@ -29,8 +29,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A form tests one path, and has no parts.</summary>
         public static Primitive<ServiceForm, bool> FormIsLeaf { get; } = Primitive.Create<ServiceForm, bool>("form-is-leaf", f => f.Members.Count == 0);
 
-        /// <summary>A form is a connective over parts.</summary>
-        public static Primitive<ServiceForm, bool> FormIsCompound { get; } = Primitive.Create<ServiceForm, bool>("form-is-compound", f => f.Members.Count > 0);
+        /// <summary>A form is a connective over parts: never a ternary, which S composes from its parts' agreements and never evaluates.</summary>
+        public static Primitive<ServiceForm, bool> FormIsCompound { get; } = Primitive.Create<ServiceForm, bool>("form-is-compound", f => f.Members.Count > 0 && f.Kind != ServiceFormKind.Choose);
+
+        /// <summary>Two prices name one form: one form exact at two positions.</summary>
+        public static Primitive<Priced, Priced, bool> SameForm { get; } = Primitive.Create<Priced, Priced, bool>("same-form", (a, b) => a.Form is { } f && f.Equals(b.Form));
+
+        /// <summary>No class of a set is one Calcite answers UNKNOWN on: the universal over an atom's cells, two-valuedness.</summary>
+        public static Primitive<ValueSet<CellClass>, bool> NoCalciteUnknown { get; } = Primitive.Create<ValueSet<CellClass>, bool>("no-calcite-unknown", s =>
+            s.AsEnumerable().All(k => (k.Calcite & Truths.Unknown) == Truths.None));
 
         /// <summary>
         /// The connective whose laws evaluating a form by its first part and its rest takes for granted: a junction's own

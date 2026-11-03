@@ -138,6 +138,16 @@ namespace Apache.Calcite.Cosmos.Facts
 
         }
 
+        /// <summary>
+        /// A leaf of an arm of a <c>CASE</c> S writes, tagged with the stratum its bundle opened for the arm: written by the
+        /// bundle alone, never by the loader nor to the facts graph, so that one leaf spelled alike in a sibling and in an
+        /// arm, or in two arms, is two terms and two atoms, each read beneath its own stratum.
+        /// </summary>
+        public sealed record Beneath(long Stratum, SqlPredicate Leaf) : SqlPredicate
+        {
+            protected override string Spell() => "beneath#" + Stratum + "(" + Leaf + ")";
+        }
+
         /// <summary>A conjunction of two or more arms, in digest order.</summary>
         public sealed record And(IReadOnlyList<SqlPredicate> Arms) : SqlPredicate
         {
@@ -221,6 +231,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     Or o => o.Arms,
                     Not n => new[] { n.Operand },
                     Case c => new[] { c.Condition, c.Then, c.Else },
+                    Beneath b => new[] { b.Leaf },
                     _ => Array.Empty<SqlPredicate>(),
                 };
 

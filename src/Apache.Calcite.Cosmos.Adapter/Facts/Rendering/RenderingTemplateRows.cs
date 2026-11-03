@@ -44,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 from reader in over from test in tests from kind in kinds select (id, reader + "/" + test + "/" + kind);
 
             return Fit(Bare, readers, comparisons, literals).Concat(Fit(Bare, readers, [PredicateAtom.InTest], [PointsKind]))
-                .Concat(Fit(Bare, readers, [PredicateAtom.DefinedTest], [NoOperand]))
+                .Concat(Fit(Bare, readers, [PredicateAtom.DefinedTest, .. PredicateAtom.TypeTests.Keys], [NoOperand]))
                 .Concat(Fit(Restricted, readers, [PredicateAtom.NotEqual], literals))
                 .Concat(Fit(Completed, readers, equalOrOrdering, literals)).Concat(Fit(Completed, readers, [PredicateAtom.InTest], [PointsKind]))
                 .Concat(Fit(NullTest, readers, [PredicateAtom.NullTest], [NoOperand]))

@@ -66,6 +66,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The ternary over its parts' three vectors, by the emulator's rows: the then-arm's outcomes where the condition is
+        /// true, the else-arm's where it is false or undefined; a failure of any part fails it; without the rows, anything.
+        /// </summary>
+        [Fact]
+        public void TheTernaryTakesTheArmItsConditionChooses()
+        {
+            var emulator = ServiceTable.Of(ProbeRows.ProbeTheory.Theory.Get(ProbeRows.ProbeTheory.Table.Of(RenderingSet.Emulator)));
+            static OutcomeVector All(ServiceOutcomes outcomes) => new(Cells, Cells.Cells.Select(_ => new CellOutcome(outcomes, CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);
+            var chosen = ServiceForm.ChosenOf(Leaf, ServiceForm.ConstantOf(true), ServiceForm.ConstantOf(false));
+            ServiceOutcomes On(ServiceOutcomes c, ServiceOutcomes a, ServiceOutcomes b, ServiceTable table) =>
+                ServiceCompound.On(chosen, OutcomeTriple.Of(All(c), All(a), All(b)), table).Outcomes.Select(o => o.Outcomes).Distinct().Single();
+
+            On(ServiceOutcomes.True, ServiceOutcomes.True, ServiceOutcomes.False, emulator).Should().Be(ServiceOutcomes.True);
+            On(ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.False, emulator).Should().Be(ServiceOutcomes.False);
+            On(ServiceOutcomes.Undefined, ServiceOutcomes.True, ServiceOutcomes.Undefined, emulator).Should().Be(ServiceOutcomes.Undefined);
+            On(ServiceOutcomes.True | ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.False, emulator).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False);
+            On(ServiceOutcomes.True, ServiceOutcomes.True, ServiceOutcomes.Fails, emulator).Should().Be(ServiceOutcomes.True | ServiceOutcomes.Fails, "an arm not taken may still fail where it is evaluated");
+            On(ServiceOutcomes.True, ServiceOutcomes.True, ServiceOutcomes.False, Empty).Should().Be(ServiceOutcomes.Widest);
+        }
+
+        /// <summary>
         /// A side that may fail the statement lets the compound fail it, through NOT, AND and OR alike, and never makes it:
         /// a side that only fails, beside one that decides the connective alone, may be skipped.
         /// </summary>

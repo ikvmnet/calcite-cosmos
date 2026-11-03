@@ -30,9 +30,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ValueSet<CellClass> Refutes(RenderPosition pos, Verdict v) => ProbeTheory.Theory.Get(ProbeTheory.Refutes.Of(pos, v));
 
-        /// <summary>Stage 2's line, check mode's 42 (design 2) and generate mode's 14, and h07's two atoms, the type test's and the affix's.</summary>
+        /// <summary>
+        /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
+        /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
+        /// truth value's constant beside it. Each family's count is held, so a rule that moves is seen.
+        /// </summary>
         [Fact]
-        public void TheTheoryHasAtMostFiftyEightRules() => ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(58);
+        public void TheTheoryHasAtMostEightyRules()
+        {
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(80);
+            ProbeTheory.Graph.Rulesets.Where(r => r.Rules.Count > 0).ToDictionary(r => r.Name, r => r.Rules.Count).Should().BeEquivalentTo(new Dictionary<string, int>
+            {
+                ["measure"] = 1, ["allowed"] = 2, ["refutes"] = 1, ["tabulate"] = 1, ["expected"] = 1, ["matched"] = 1, ["licence"] = 1,
+                ["analyse"] = 11, ["tag"] = 1, ["structure"] = 2, ["descend"] = 6, ["disjoint"] = 1,
+                ["partition"] = 1, ["need"] = 2, ["parted"] = 2, ["evaluate"] = 2, ["classes"] = 1, ["gate"] = 3, ["compose"] = 4, ["conflict"] = 1,
+                ["at"] = 4, ["spell"] = 1, ["lift"] = 2, ["strict"] = 3, ["twovalued"] = 1, ["best"] = 7, ["weaken"] = 5,
+            });
+        }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
         [Fact]

@@ -32,6 +32,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under</description></item>
+    /// <item><term><see cref="OracleQuestion.RenderArm"/></term><description>the conjunct's render stratum, and the conditions
+    /// an arm S writes is read under: never a sibling the render stratum does not hold (#117)</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
     /// other: a point read applies no predicate</description></item>
     /// <item><term><see cref="OracleQuestion.Applied"/></term><description>every admitted conjunct, and what lies beneath
@@ -125,6 +127,23 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             lock (_lock)
                 return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? RenderingFamily.ReadExactly);
+        }
+
+        /// <summary>
+        /// Returns the licence an arm of a <c>CASE</c> in a conjunct may be read beneath (spec §4.2 h08): the conjunct's
+        /// render stratum with the longest leading run of the arm's conditions the facts graph reads exactly
+        /// (<see cref="RenderingFamily.ReadExactly(SqlPredicate)"/>), each condition beneath those before it; or
+        /// <c>null</c> where not even the first is, and the arm is read at the enclosing node. Dropping a condition widens
+        /// the cells an arm is held to, which is stricter and sound.
+        /// </summary>
+        /// <param name="conjunct">The conjunct the arm is part of.</param>
+        /// <param name="conditions">The conditions the arm is read under, outermost first.</param>
+        /// <param name="readExactly">A plant's reading precision; none for the reading precision's rows.</param>
+        internal OracleLicence? StratumFor(int conjunct, IReadOnlyList<SqlPredicate> conditions, Func<SqlPredicate, bool>? readExactly)
+        {
+            var exact = readExactly ?? RenderingFamily.ReadExactly;
+            var kept = conditions.TakeWhile(exact).ToArray();
+            return kept.Length == 0 ? null : OracleLicence.RenderArm(Check(conjunct), kept);
         }
 
         /// <summary>Where the rounds stopped: the last round's node, or the child that stopped them; never the last stratum opened after.</summary>
@@ -341,9 +360,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
             return licence.Question switch
             {
-                OracleQuestion.RenderConjunct when StratumOf(licence.Conjunct) > 0 =>
+                OracleQuestion.RenderConjunct or OracleQuestion.RenderArm when StratumOf(licence.Conjunct) > 0 =>
                     admitted.Where(i => StratumOf(i) < StratumOf(licence.Conjunct)).ToArray(),
-                OracleQuestion.RenderConjunct =>
+                OracleQuestion.RenderConjunct or OracleQuestion.RenderArm =>
                     admitted.Where(i => Admitted.Chain.Count > StratumOf(i) && Admitted.Chain[StratumOf(i)].Complete).ToArray(),
                 OracleQuestion.DeleteConjunct =>
                     Beside(licence).ToArray(),
@@ -484,6 +503,9 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 case OracleQuestion.RenderConjunct:
                     return Admitted.Before[Check(licence.Conjunct)] ?? Admitted.Final;
+
+                case OracleQuestion.RenderArm:
+                    return _terms.Child(Admitted.Before[Check(licence.Conjunct)] ?? Admitted.Final, licence.Given ?? Array.Empty<SqlPredicate>());
 
                 case OracleQuestion.DeleteConjunct:
                     return _terms.Child(_terms.Root, Beside(licence).Select(j => conjuncts[j]));

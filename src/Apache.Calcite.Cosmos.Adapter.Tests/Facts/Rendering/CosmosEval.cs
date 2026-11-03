@@ -47,6 +47,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             ServiceFormKind.And => Kleene(Arms(form, document, target), ServiceOutcomes.False, ServiceOutcomes.True),
             ServiceFormKind.Or => Kleene(form.Members.Select(m => On(m, document, target)), ServiceOutcomes.True, ServiceOutcomes.False),
+
+            // Service.TernaryTakesThenOnTrueAlone, measured on the emulator alone: the then-arm where the condition is true,
+            // the else-arm over every other value, undefined and an absent path among them.
+            ServiceFormKind.Choose when target == RenderingTarget.Emulator => On(form.Members[0], document, target) switch
+            {
+                null => null,
+                ServiceOutcomes.True => On(form.Members[1], document, target),
+                _ => On(form.Members[2], document, target),
+            },
             _ => null,
         };
 
@@ -198,14 +207,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ServiceOutcomes Truth(bool value) => value ? ServiceOutcomes.True : ServiceOutcomes.False;
 
-        /// <summary>The value at a path as a form spells it (<c>$["a"]["b"]</c>), or <c>null</c> where it is absent.</summary>
+        /// <summary>
+        /// The value at a path as a form spells it (<c>$["a"][0]</c>), or <c>null</c> where it is absent: an index the element
+        /// of an array, and absent over every value that is no array and past the end (Service.IndexOverANonArrayIsUndefined).
+        /// </summary>
         public static J? At(J.Obj document, string path) => IrEval.At(document, PathOf(path));
 
-        /// <summary>A path as a form spells it, read back.</summary>
+        /// <summary>A path as a form spells it, read back: a quoted name a property, a bare number an element.</summary>
         public static JsonDocumentPath PathOf(string spelled) => Segment().Matches(spelled)
-            .Aggregate(JsonDocumentPath.Root, (path, m) => path.Property(JsonSerializer.Deserialize<string>(m.Groups[1].Value)!));
+            .Aggregate(JsonDocumentPath.Root, (path, m) => m.Groups[1].Success
+                ? path.Property(JsonSerializer.Deserialize<string>(m.Groups[1].Value)!)
+                : path.Element(long.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture)));
 
-        [GeneratedRegex("""\[("(?:[^"\\]|\\.)*")\]""")]
+        [GeneratedRegex("""\[(?:("(?:[^"\\]|\\.)*")|([0-9]+))\]""")]
         private static partial Regex Segment();
 
     }

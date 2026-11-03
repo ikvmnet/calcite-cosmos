@@ -2900,6 +2900,19 @@ across documents* and *A join of a container to itself* is the record.
   of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
   backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and
   learns nothing of the match.
+- **A compound condition of a `CASE` is never two-valued** — *small, h14's triage decides.* `twovalued` is derived of
+  atoms alone (h08), so a junction or negation as a condition reads its else-arm wide, which is sound and may cost a
+  cheaper narrow form. Two rules over junction sides and negation are the proper fix if the triage shows a loss; they
+  would take S to 80 as built at h31 plus two (line 31), so the line is the owner's call then.
+- **The ternary rule reads no failure of an arm off its stratum** — *small, before h10.* An arm's agreement is proved on
+  its own stratum's cells; every form S builds at h08 fails nowhere, but arithmetic does
+  (`Service.OutOfDomainArithmeticFailsTheStatement`). Before a computed place reaches an arm, the rule reads that the
+  arms fail nowhere, or a measured row says the service skips the arm it does not take (DESIGN.md, *A `CASE` in S*).
+- **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
+  is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
+  account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
+- **The rule count is two over the spec's** — *note, line 31.* The ternary is one template written twice and a truth
+  value's constant is a rule of its own (h08): 68 as built against the spec's 66, so the spec's 78 at h31 is 80.
 - **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms

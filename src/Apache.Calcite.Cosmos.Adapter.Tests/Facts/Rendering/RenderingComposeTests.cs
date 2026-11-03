@@ -132,8 +132,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var dropped = MeasuredKey.Of(Op.And, CosmosValueClass.True, CosmosValueClass.False);
             var theory = RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows.Where(row => row.Key != dropped || row.Target != RenderingTarget.Emulator)] });
-            ProbeTheory.Theory.Get(ProbeTheory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not, Op.Range });
-            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.Or, Op.Not, Op.Range });
+            ProbeTheory.Theory.Get(ProbeTheory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.And, Op.Or, Op.Not, Op.Range, Op.Constant, Op.Choose });
+            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEquivalentTo(new[] { Op.Or, Op.Not, Op.Range, Op.Constant, Op.Choose });
 
             var conjunct = And(Eq(Text(KindPath), "a"), Eq(Text(CategoryPath), "b"));
             var form = All(KindIsA, Compare(Op.Equal, Category, "b"));
@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Check(conjunct, form).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
             var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans] });
-            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().Equal([Op.Range], "no connective is licensed, and a range's rows are none of theirs");
+            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().Equal([Op.Constant, Op.Range, Op.Choose], "no connective is licensed, and the rows of a range, a constant and the ternary are none of theirs");
             Check(conjunct, form, theory).Equal.Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 

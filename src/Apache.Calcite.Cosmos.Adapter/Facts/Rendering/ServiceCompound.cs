@@ -49,6 +49,56 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
+        /// A ternary over its parts' three vectors, cell by cell: the arm each truth the condition may give takes, by the
+        /// <see cref="CosmosServiceTest.Choose"/> rows, each taken arm's outcomes; and a failure of any part.
+        /// </summary>
+        /// <remarks>
+        /// An arm the condition never takes may fail where the service evaluates it eagerly; no row says it does not, so a
+        /// part's failure fails the ternary as a junction's side's does. Two taken arms that are values of two classes are
+        /// no one value: the cell answers every outcome.
+        /// </remarks>
+        /// <param name="chosen">The ternary, of kind <see cref="ServiceFormKind.Choose"/>.</param>
+        /// <param name="parts">Its condition's vector and its arms'.</param>
+        /// <param name="table">The set's table, which holds the ternary's rows.</param>
+        public static OutcomeVector On(ServiceForm chosen, OutcomeTriple parts, ServiceTable table)
+        {
+            var (c, a, b) = (parts.Condition, parts.Then, parts.Otherwise);
+            if (chosen.Kind != ServiceFormKind.Choose || c.Cells.Equals(a.Cells) == false || c.Cells.Equals(b.Cells) == false)
+                throw new ArgumentException("A ternary is evaluated over its parts' vectors on one partition.", nameof(chosen));
+
+            var rows = new HashSet<string>(c.Rows.Union(a.Rows).Union(b.Rows), StringComparer.Ordinal);
+            var outcomes = new List<CellOutcome>(c.Outcomes.Count);
+            for (var i = 0; i < c.Outcomes.Count; i++)
+            {
+                var (x, y, z) = (c.Outcomes[i], a.Outcomes[i], b.Outcomes[i]);
+                var taken = ServiceOutcomes.None;
+                foreach (var operand in Operands(x))
+                    taken |= table.Outcomes(MeasuredKey.Of(CosmosServiceTest.Choose, CosmosValueClass.None, operand), rows);
+
+                var result = (x.Outcomes | y.Outcomes | z.Outcomes | taken) & ServiceOutcomes.Fails;
+                var value = CosmosValueClass.None;
+                var mixed = false;
+                foreach (var (arm, takes) in new[] { (y, ServiceOutcomes.True), (z, ServiceOutcomes.False) })
+                {
+                    if ((taken & takes) == 0)
+                        continue;
+
+                    result |= arm.Outcomes;
+                    mixed |= arm.NonBoolean != CosmosValueClass.None && value != CosmosValueClass.None && value != arm.NonBoolean;
+                    value = arm.NonBoolean == CosmosValueClass.None ? value : arm.NonBoolean;
+                }
+
+                // A row answering neither arm (undefined) leaves the ternary undefined.
+                if ((taken & ServiceOutcomes.Undefined) != 0)
+                    result |= ServiceOutcomes.Undefined;
+
+                outcomes.Add(mixed ? new CellOutcome(ServiceOutcomes.Widest, CosmosValueClass.None) : new CellOutcome(result, value));
+            }
+
+            return new OutcomeVector(c.Cells, outcomes, ValueSet.From(rows));
+        }
+
+        /// <summary>
         /// What a side is keyed by: the class of a value that is no boolean, or each truth it may give; and every truth
         /// where it may fail.
         /// </summary>

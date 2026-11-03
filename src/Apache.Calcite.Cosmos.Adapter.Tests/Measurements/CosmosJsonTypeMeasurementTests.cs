@@ -369,15 +369,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static async Task<string[]> Probe(string row, IReadOnlyList<string?> witnesses, params string[] expressions) =>
             [.. (await CosmosWitnessProbe.Ask(_container, _unavailable, row, witnesses, expressions)).Select(answers => string.Join(" ", answers))];
 
-        /// <summary>The ternary and <c>IIF</c> take the then-arm where the condition is true and the else-arm over every other value, an absent path included: never undefined for a defined arm.</summary>
+        /// <summary>
+        /// The ternary and <c>IIF</c> take the then-arm where the condition is true and the else-arm over every other value,
+        /// an absent path and an undefined condition included: never undefined for a defined arm. The row's outcomes are
+        /// <c>c ? true : false</c> by the condition's class, which S's ternary licence reads.
+        /// </summary>
         [Fact, CosmosPins("Service.TernaryTakesThenOnTrueAlone")]
         public async Task TheTernaryTakesThenOnTrueAlone()
         {
+            var row = CosmosAxioms.Get("Service.TernaryTakesThenOnTrueAlone").Outcomes!.Single(o => o.Test == CosmosServiceTest.Choose).Cells.ToDictionary(c => c.Cell, c => c.Answer);
+            CosmosValueClass[] classes = [CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null, CosmosValueClass.Absent, CosmosValueClass.Number, CosmosValueClass.Number,
+                CosmosValueClass.String, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array];
+            string Kept(CosmosValueClass cell) => row[cell] == CosmosAnswer.True ? "true/T" : "false/F";
             (await Probe("Service.TernaryTakesThenOnTrueAlone", Kinds, "(c.v ? \"t\" : \"e\")", "IIF(c.v, \"t\", \"e\")", "(c.v ? true : false)", "(c.v ? c.v : false)")).Should().Equal(
                 "\"t\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U",
                 "\"t\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U",
-                "true/T false/F false/F false/F false/F false/F false/F false/F false/F false/F",
+                string.Join(" ", classes.Select(Kept)),
                 "true/T false/F false/F false/F false/F false/F false/F false/F false/F false/F");
+
+            // An undefined condition: an ordering across types, over a number (CosmosOutcomeWitnesses.Side).
+            (await Probe("Service.TernaryTakesThenOnTrueAlone", ["1"], "((c.v > \"\") ? true : false)")).Should().Equal(Kept(CosmosValueClass.Undefined));
         }
 
         /// <summary>An index is an array's element from zero, and undefined over every other value, a string among them, and past the end.</summary>

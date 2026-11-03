@@ -43,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ServiceForm? Write(TemplateId id, bool pos, PredicateAtom atom, string path)
         {
-            // The core is the comparison with its literal, an IN as its equalities, or the presence it tests; none for a null test.
+            // The core is the comparison with its literal, an IN as its equalities, the presence or type it tests; none for a null test.
             var (core, literal) = (Core(atom, path), atom.Operand);
             var (defined, isNull) = (ServiceForm.TestOf(IsDefined, path), ServiceForm.TestOf(IsNull, path));
             ServiceForm[] typed = RenderingRexGrammar.TypeTests.TryGetValue(atom.Reader, out var t) ? [ServiceForm.TestOf(t, path)] : [], untyped = [.. typed.Select(ServiceForm.NotOf)];
@@ -73,6 +73,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             PredicateAtom.InTest => Any(Points(atom).Select(p => ServiceForm.CompareOf(Equal, path, p))),
             PredicateAtom.DefinedTest => ServiceForm.TestOf(IsDefined, path),
+            _ when TypeTestOf(atom.Test) is { } test => ServiceForm.TestOf(test, path),
             _ => Op(atom.Test) is { } op && atom.Operand is { } literal ? ServiceForm.CompareOf(op, path, literal) : null,
         };
 
@@ -81,6 +82,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>
         static ServiceForm[] Alternatives(ServiceForm core, string literal, string path) =>
             [core, ServiceForm.CompareOf(Equal, path, JsonValues.Of(JsonValues.StringOf(literal) == "true"))];
+
+        /// <summary>The service's own test of a type test's name: each answers what Calcite's body does (<c>Service.TypeTestBodiesMatchTheService</c>).</summary>
+        static CosmosServiceTest? TypeTestOf(string test) => test switch
+        {
+            "IS_NULL" => IsNull,
+            "IS_STRING" => IsString,
+            "IS_NUMBER" => IsNumber,
+            "IS_BOOL" => IsBool,
+            "IS_OBJECT" => IsObject,
+            "IS_ARRAY" => IsArray,
+            "IS_PRIMITIVE" => IsPrimitive,
+            _ => null,
+        };
 
         static CosmosServiceTest? Op(string test) => test switch
         {

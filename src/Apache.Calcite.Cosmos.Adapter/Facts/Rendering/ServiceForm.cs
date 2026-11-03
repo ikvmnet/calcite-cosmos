@@ -33,6 +33,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 ServiceFormKind.Not => 1 + members[0].Nodes,
                 ServiceFormKind.And or ServiceFormKind.Or => members.Sum(m => m.Nodes) + members.Length - 1,
+                ServiceFormKind.Choose => members.Sum(m => m.Nodes) + 2,
                 _ => 1,
             };
         }
@@ -125,6 +126,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var kind = connective == CosmosServiceTest.And ? ServiceFormKind.And : ServiceFormKind.Or;
             return Compound(kind, connective, written, "(" + string.Join(" " + kind.ToString().ToUpperInvariant() + " ", written.Select(m => m.Text)) + ")");
         }
+
+        /// <summary>The ternary <c>c ? a : b</c>: <paramref name="then"/> where the condition is true, <paramref name="otherwise"/> elsewhere.</summary>
+        public static ServiceForm ChosenOf(ServiceForm condition, ServiceForm then, ServiceForm otherwise) =>
+            Compound(ServiceFormKind.Choose, CosmosServiceTest.Choose, [condition, then, otherwise], "(" + condition.Text + " ? " + then.Text + " : " + otherwise.Text + ")");
+
+        /// <summary>
+        /// A case whose else absorbs at its position as its condition's form and its then-arm's: <c>c AND a</c> at
+        /// <c>Pos</c>, <c>NOT c OR a</c> at <c>Neg</c> (spec §5.1). Assembles; whether it holds is the rule's.
+        /// </summary>
+        public static ServiceForm AbsorbingElse(RenderPosition pos, ServiceForm condition, ServiceForm then) => pos == RenderPosition.Pos
+            ? Joined(CosmosServiceTest.And, condition, then) : Joined(CosmosServiceTest.Or, Negated(condition), then);
+
+        /// <summary>
+        /// A case whose else is the constant opposite its position's as its condition's form and its then-arm's:
+        /// <c>NOT c OR a</c> at <c>Pos</c>, <c>c AND a</c> at <c>Neg</c> (spec §5.1). Assembles; whether it holds is the rule's.
+        /// </summary>
+        public static ServiceForm OppositeElse(RenderPosition pos, ServiceForm condition, ServiceForm then) => pos == RenderPosition.Pos
+            ? Joined(CosmosServiceTest.Or, Negated(condition), then) : Joined(CosmosServiceTest.And, condition, then);
+
+        /// <summary>
+        /// The constant a truth value of the IR is sent as at a position: TRUE as <c>true</c> and FALSE as <c>false</c>
+        /// at either, and UNKNOWN as what keeps no row there, <c>false</c> at <c>Pos</c> and <c>true</c> at <c>Neg</c>.
+        /// </summary>
+        public static ServiceForm TruthAt(RenderPosition pos, string truth) => ConstantOf(truth == "true" || truth == "unknown" && pos == RenderPosition.Neg);
 
         /// <summary>Text the reader could not read, over the paths it names: the service's answer on it is not known.</summary>
         public static ServiceForm OpaqueOf(string text, ValueSet<string> paths) =>

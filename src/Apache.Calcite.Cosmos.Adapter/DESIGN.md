@@ -8058,6 +8058,87 @@ literal's box in the IR, which changes F's terms, so it stays opaque (*TODO.md*)
 `IS_DEFINED(c.dimensions)` beside `IS_OBJECT(c.dimensions)`, or `NOT IS_NULL(c.label)` and `IS_PRIMITIVE(c.label)` beside
 a text comparison that keeps neither a null nor a structure; the rows are the same. The listing classes every line.
 
+### A `CASE` in S: the tag, two-valuedness and each arm's strata (h08)
+
+**What S writes.** A `case(c, a, b)` reaches S's writer as the S-only `chosen(c, a, bNarrow, bWide)`; F keeps its
+three-place `case`. Every leaf of an arm is written `beneath(s, leaf)`, `s` the id of the stratum the bundle opened for
+the arm (`RenderingBundle.Strata`: its conditions, outermost first; 0 is the enclosing node, and is never written).
+The then-arm is beneath `[…, c]`; the else-arm twice, **narrow** beneath `[…, NOT c]` and **wide** where the case
+stands. A junction or negation in an arm keeps its shape, a constant is never tagged, and a case in an arm is written
+`beneath(s, case)` so that the writer knows its stratum. Narrow copies stop three conditions deep; below, an else is
+rooted wide alone. `case(c1, a1, case(c2, a2, e))` opens six strata: `[c1]`, `[NOT c1]`, `[NOT c1, c2]`,
+`[NOT c1, NOT c2]`, and, in the wide copy's own case, `[c2]` and `[NOT c2]`.
+
+**A tag changes the cells, never the reading.** One rule (`tag`) makes `beneath(s, x)` an atom of what `x` reads; the
+writer writes `leaf` and `over` for the tagged term as for its leaf, so the weaken and strict rules reach it, and `Run`
+writes its `assumed`. A tagged atom is its own key: one leaf spelled alike in a sibling and in an arm is two terms, two
+atoms, each read beneath its own stratum, and "stated beneath two strata" stays the tripwire. `Assume` takes an
+`ImportSource` naming an arm (`Stratum`) where its statement and round are the root's and the bundle opened that
+stratum, and reads it of the atoms tagged with it alone. The facts the host states there come from
+`OracleLicence.RenderArm(k, conditions)`, `RenderConjunct(k)`'s set with each condition holding; `StratumFor(k,
+conditions, …)` opens one only over the conditions, outermost first, the facts graph reads exactly, so a stratum is
+never narrower than what Calcite's own rows would keep. `Arm`, which assumes every sibling, is the rewrite's and would
+reopen #117 here.
+
+**Two-valuedness is derived, in Eggnog.** `twovalued(e)` holds of an atom none of whose cell classes carries Calcite's
+UNKNOWN, read off any candidate's classes once the gate's stratum is complete (every cell is paired by every candidate,
+so one candidate's classes are the atom's). A cell set aside reads as a raise, never UNKNOWN, so a narrowing that rules
+the nulls out makes an atom two-valued beneath it. A junction or negation as a condition is not marked: its else is
+read wide, which is sound; two rules over junction sides and negation are the proper fix if h14's triage shows a loss.
+
+**Which else the rules read.** A then-arm beneath `[c]` is evaluated on a superset of the rows the case takes it on, so
+it is sound whatever came before. The narrow else is sound only where "not TRUE" is "FALSE", which is two-valuedness:
+the rules read `bNarrow` only beside `twovalued(c)`, and `bWide` always. Neither reads an absence: the ternary rule is
+written twice, once with `twovalued(c)` and `bNarrow`, once with `bWide`, and `BestExact`'s `Min` keeps the cheaper.
+
+**The constant else, by what it does at the position.** Two relations, written at load (`KleeneTables`):
+
+| At | Absorbing (`absorbingelse`) | Opposite (`oppositeelse`) |
+|---|---|---|
+| `Pos` | `FALSE`, `UNKNOWN`: `c AND a` | `TRUE`: `NOT c OR a` |
+| `Neg` | `TRUE`, `UNKNOWN`: `NOT c OR a` | `FALSE`: `c AND a` |
+
+- **Absorbing** needs no two-valuedness: where `c` is not TRUE its exact `Pos` form is not `true` either, and the
+  junction keeps no row at `Pos` (and leaves `NOT` none at `Neg`), which is what the else does, whatever the service
+  answers there. `c`'s `Pos` form and `a`'s form beneath `[c]` are read.
+- **Opposite** needs `twovalued(c)` and one form exact for `c` at `Pos` and at `Neg` (`same-form`, beside both
+  agreements, each sound alone): where `c` is not TRUE it is FALSE, and `NOT c` keeps the row as the else does.
+  `NOT ((label = 'bikes') IS TRUE)` over a nullable label is the soundness critic's counterexample: the case keeps the
+  null rows, and `NOT (label = "bikes") OR false` would not. It stays Unproven; `NOT (IS_NUMBER(x) IS TRUE)` is Proven.
+- **The general case** is the service's ternary `(c ? a : b)` of `c`'s exact `Pos` form and the arms' exact forms,
+  where the set and Calcite both license `Choose`: Kleene's table holds the ternary as "then on TRUE alone, else on every
+  other operand", which `Service.TernaryTakesThenOnTrueAlone` measures on the emulator (an undefined condition among
+  the operands since h08) and `Calcite.CaseTakesTheFirstTrueArm` in process. Azure has measured no row, so
+  `Production` and `Portable` license no ternary, and a general case there is Unproven, with its weakening. If a release
+  took the then-arm on anything but `true`, the licence would lapse, as data. No `Cond` position is needed: a condition
+  takes the then-arm only where TRUE, which is `Pos`.
+
+The ternary is never evaluated in the graph (`form-is-compound` refuses it): S composes it from its parts' agreements.
+`ServiceCompound` evaluates one over an `OutcomeTriple` (three vectors packed as one value, four operands a
+computation) for its tests and for `CosmosEval`; an arm's failure fails it there, since no row says the service skips the
+arm it does not take. An arm's agreement is proved on its own stratum's cells, so the rule leans on the arm's form
+failing nowhere else: true of every form S builds today (tests, comparisons, memberships and constants over paths, no
+row of which fails), and not of arithmetic, which `Service.OutOfDomainArithmeticFailsTheStatement` makes fail. Before a
+computed place reaches an arm (h10) the ternary must read that its arms fail nowhere, or a row that the service skips
+the arm it does not take (*TODO.md*).
+
+**A truth value is exact as its constant.** `x IS TRUE` is `case(x, TRUE, FALSE)`, and a truth value is no atom, so no
+template proposes for it: one rule makes `TRUE` exact as `true`, `FALSE` as `false`, and `UNKNOWN` as `false` at `Pos`
+and `true` at `Neg` (what keeps no row there), where the set licenses `Constant`: Kleene's rows hold each constant its own
+truth over every kind of value, which `Service.AConstantIsItsOwnTruth` matches on both service targets. A truth value
+is a leaf with no value, so it weakens to its constant. This rule, and the ternary's second writing, are why S counts
+68 rules where the spec counts 66 (line 31: at most 80; the spec's 78 at h31 is 80 as built).
+
+**The weakening** reads the wide else alone, always sound: `(wc AND wa) OR wb` at `Pos`, `wa AND wb` at `Neg`
+(`RenderingWeakening.OfCase`), `wa` holding beneath `[c]`, which every row the case takes `a` on lies in.
+
+**A type test proposes itself.** The `Bare` template fits the seven type tests over any reader, its core the service's
+own test, which answers what Calcite's body does (`Service.TypeTestBodiesMatchTheService`); the gate decides.
+
+**Nothing in a plan moves.** S still reads the legacy IR (above) until h15, so no plan reaches a `chosen`: S's new rules
+fire on what tests write. Two-valuedness is derived of every atom generate mode reaches, which costs its rule's matches
+alone. The digests are byte-equal.
+
 ---
 
 ## Differential testing

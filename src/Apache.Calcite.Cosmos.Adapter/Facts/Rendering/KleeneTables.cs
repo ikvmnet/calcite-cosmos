@@ -28,7 +28,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Kleene's answer on each key, for each target that may be handed its operands.</summary>
         public static IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Rows { get; } =
             [.. Over(RenderingTarget.Emulator, Operands), .. Over(RenderingTarget.Azure, Operands), .. Over(RenderingTarget.Calcite, Booleans),
-             .. Pointwise(RenderingTarget.Emulator), .. Pointwise(RenderingTarget.Azure)];
+             .. Pointwise(RenderingTarget.Emulator), .. Pointwise(RenderingTarget.Azure),
+             .. Ternary(RenderingTarget.Emulator, Operands), .. Ternary(RenderingTarget.Azure, Operands), .. Ternary(RenderingTarget.Calcite, Booleans),
+             .. Constants(RenderingTarget.Emulator), .. Constants(RenderingTarget.Azure)];
+
+        /// <summary>
+        /// Each position and truth value an else-arm leaves its case's rows at as a condition that is not TRUE does under a
+        /// junction (spec §5.1): FALSE and UNKNOWN keep no row at <c>Pos</c>, TRUE and UNKNOWN none beneath a <c>NOT</c>.
+        /// </summary>
+        public static IReadOnlyList<(RenderPosition, string)> AbsorbingElse { get; } =
+            [(RenderPosition.Pos, "false"), (RenderPosition.Pos, "unknown"), (RenderPosition.Neg, "true"), (RenderPosition.Neg, "unknown")];
+
+        /// <summary>Each position and truth value an else-arm keeps every row at that a condition not TRUE leaves: TRUE at <c>Pos</c>, FALSE beneath a <c>NOT</c>.</summary>
+        public static IReadOnlyList<(RenderPosition, string)> OppositeElse { get; } = [(RenderPosition.Pos, "true"), (RenderPosition.Neg, "false")];
 
         /// <summary>The class of a cell on which a side leaves each junction to its sibling.</summary>
         public static IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity { get; } = new Dictionary<CosmosServiceTest, ValueSet<CellClass>>
@@ -53,6 +65,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             from cell in new[] { (Between, CosmosAnswer.True), (Outside, CosmosAnswer.False) }
                 .Concat(new[] { Absent, Null, True, False, Number, Object, CosmosValueClass.Array }.Select(kind => (kind, CosmosAnswer.Undefined)))
             select (target, MeasuredKey.Of(CosmosServiceTest.Range, bounds, cell.Item1), cell.Item2);
+
+        /// <summary>
+        /// A ternary takes its then-arm where its condition is TRUE and its else-arm over every other operand, as Calcite's
+        /// <c>CASE</c> does: the answer <c>true</c> where it takes the then-arm, <c>false</c> where the else-arm.
+        /// </summary>
+        static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Ternary(RenderingTarget target, CosmosValueClass[] operands) =>
+            operands.Select(x => (target, MeasuredKey.Of(Choose, None, x), x == True ? CosmosAnswer.True : CosmosAnswer.False));
+
+        /// <summary>A constant written as a condition is its own truth over every kind of value a path holds, and none.</summary>
+        static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Constants(RenderingTarget target) =>
+            from constant in new[] { True, False }
+            from cell in new[] { Absent, Null, True, False, Number, CosmosValueClass.String, Object, CosmosValueClass.Array }
+            select (target, MeasuredKey.Of(Constant, constant, cell), constant == True ? CosmosAnswer.True : CosmosAnswer.False);
 
         /// <summary>Kleene's connectives, an operand that is no truth read as unknown.</summary>
         static CosmosAnswer Answer(CosmosServiceTest connective, CosmosValueClass x, CosmosValueClass y)

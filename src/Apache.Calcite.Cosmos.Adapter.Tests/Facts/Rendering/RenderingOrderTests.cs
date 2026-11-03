@@ -44,16 +44,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
         static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg"];
 
-        static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
+        static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within", "no-calcite-unknown"];
 
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 
         /// <summary>
         /// The filters that hold of the value they are handed however it moves on: <c>priced-is-real</c>, since a price
-        /// only lowers and <c>None</c> is the top, and <c>form-is-join-of</c>, which judges the forms at hand and concludes
-        /// nothing of the value they were read from.
+        /// only lowers and <c>None</c> is the top, and <c>form-is-join-of</c> and <c>same-form</c>, which judge the forms at
+        /// hand and conclude nothing of the value they were read from: what <c>same-form</c> admits rests on the agreements
+        /// read beside it at both positions, each sound alone.
         /// </summary>
-        static readonly string[] Monotone = ["priced-is-real", "form-is-join-of"];
+        static readonly string[] Monotone = ["priced-is-real", "form-is-join-of", "same-form"];
 
         [Fact]
         public void TheScheduleReadsNoUniversalOverADomainThatMoves() => Violations(ProbeRows.ProbeTheory).Should().BeEmpty();

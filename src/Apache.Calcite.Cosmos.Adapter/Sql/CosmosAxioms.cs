@@ -385,7 +385,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             new("Calcite.CaseTakesTheFirstTrueArm",
                 "CASE takes the arm of the first condition that is TRUE, a condition FALSE or UNKNOWN passing to the next, and the ELSE where none is, NULL without one; an arm not taken is not evaluated, so one that raises off its condition raises nowhere.",
-                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.ACaseTakesTheFirstTrueArmAndEvaluatesNoOther"),
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.ACaseTakesTheFirstTrueArmAndEvaluatesNoOther",
+                [
+                    new(Test.Choose, Class.None, CosmosAxiomTarget.Calcite, "true=true false=false undefined=false"),
+                ]),
             new("Calcite.CaseWithAnArmThatRaisesIsKept",
                 "A CASE whose arm raises off its condition is kept a CASE through the planner a connection runs, in a WHERE and projected, through a simplifying RelBuilder and through Hep's reduction of a filter: none makes it the eager AND or OR that would raise, so a guard written as one still guards.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.ACaseWhoseArmRaisesIsKept"),
@@ -428,7 +431,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             new("Service.TernaryTakesThenOnTrueAlone",
                 "c ? a : b and IIF(c, a, b) take a where c is true and b over every other value, false, null, a number, a string, \"true\" among them, an object, an array and an absent path alike, never undefined for a defined arm: so c ? true : false is true where c is true and false elsewhere, in a SELECT and in a WHERE.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheTernaryTakesThenOnTrueAlone"),
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheTernaryTakesThenOnTrueAlone",
+                [
+                    new(Test.Choose, Class.None, CosmosAxiomTarget.Emulator, "true=true false=false undefined=false absent=false null=false number=false string=false object=false array=false"),
+                ]),
             new("Service.IndexOverANonArrayIsUndefined",
                 "An index is the element of an array, counted from zero, and undefined over every value that is no array, a string included, and past an array's end, an empty array's too: IS_DEFINED of it is false there, and a comparison with it undefined.",
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.AnIndexOverANonArrayIsUndefined"),

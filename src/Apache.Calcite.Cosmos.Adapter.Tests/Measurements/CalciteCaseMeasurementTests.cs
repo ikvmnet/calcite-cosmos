@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
 
@@ -55,6 +57,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             using var connection = MaterialisedTable.Open();
             Pairs().Ask(connection, $"CASE WHEN {A} THEN TRUE WHEN {B} THEN FALSE ELSE NULL END", $"CASE WHEN {A} THEN TRUE WHEN {B} THEN FALSE END",
                 $"CASE WHEN {A} THEN {B} ELSE NOT {B} END").Should().Equal("TTTFUUFUU", "TTTFUUFUU", "TFUFTUFTU");
+
+            // The row S's ternary licence reads: the then-arm where the condition is TRUE, the else-arm where FALSE or UNKNOWN.
+            var row = CosmosAxioms.Get("Calcite.CaseTakesTheFirstTrueArm").Outcomes!.Single(o => o.Test == CosmosServiceTest.Choose).Cells.ToDictionary(c => c.Cell, c => c.Answer.ToString()[0]);
+            Singles().Ask(connection, $"CASE WHEN {A} THEN TRUE ELSE FALSE END").Should().Equal(
+                string.Concat(new[] { CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Undefined }.Select(c => row[c])));
 
             // An arm off its condition raises nowhere, the condition FALSE or UNKNOWN as TRUE.
             MaterialisedTable.Of([Document(("a", "true"), ("r", "\"x\""))]).Ask(connection, $"CASE WHEN {A} THEN TRUE ELSE {Raising} END").Should().Equal("T");

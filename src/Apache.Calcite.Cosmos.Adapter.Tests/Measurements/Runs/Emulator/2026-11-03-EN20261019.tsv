@@ -748,6 +748,7 @@ EN20261019	Service.TernaryTakesThenOnTrueAlone	(c.v ? c.v : false)	"bikes"	false
 EN20261019	Service.TernaryTakesThenOnTrueAlone	(c.v ? c.v : false)	"true"	false/F
 EN20261019	Service.TernaryTakesThenOnTrueAlone	(c.v ? c.v : false)	{"x":1}	false/F
 EN20261019	Service.TernaryTakesThenOnTrueAlone	(c.v ? c.v : false)	[1]	false/F
+EN20261019	Service.TernaryTakesThenOnTrueAlone	((c.v > "") ? true : false)	1	false/F
 EN20261019	Service.InIsMembership	c.v IN ("bikes", 30)	true	false/F
 EN20261019	Service.InIsMembership	c.v IN ("bikes", 30)	false	false/F
 EN20261019	Service.InIsMembership	c.v IN ("bikes", 30)	null	false/F

@@ -50,6 +50,17 @@ namespace Apache.Calcite.Cosmos.Facts
         public static OracleLicence Arm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
             new(OracleQuestion.Arm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));
 
+        /// <summary>
+        /// What an arm of a <c>CASE</c> in a conjunct S writes may be read beneath: <see cref="RenderConjunct"/>'s stratum, and
+        /// the conditions it is read under.
+        /// </summary>
+        /// <remarks>
+        /// Not <see cref="Arm"/>: a pushed arm read beneath the siblings would let two conjuncts each be sent exactly beneath
+        /// the other's facts, and a document both drop be kept by both forms (#117).
+        /// </remarks>
+        public static OracleLicence RenderArm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
+            new(OracleQuestion.RenderArm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));
+
         /// <summary>What a point read keyed on these paths may rely on: the conjuncts that pin them, and no other.</summary>
         public static OracleLicence PointRead(IReadOnlyList<JsonDocumentPath> pins) => new(OracleQuestion.PointRead, -1, pins ?? throw new ArgumentNullException(nameof(pins)));
 

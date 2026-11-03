@@ -25,6 +25,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly RenderingTheory _theory;
         readonly Dictionary<JsonDocumentPath, PathValues> _imported = [];
         readonly Dictionary<SqlPredicate, PathValues?> _atoms = [];
+        readonly Dictionary<string, long> _strataByKey = new(StringComparer.Ordinal);
+        readonly Dictionary<long, IReadOnlyList<SqlPredicate>> _strata = [];
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -48,6 +50,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public int Iterations { get; private set; }
 
         /// <summary>
+        /// Every arm stratum a written case opened, by id: the conditions it is read beneath, outermost first, each a
+        /// condition or its negation. Zero, the enclosing node, is none of them.
+        /// </summary>
+        public IReadOnlyDictionary<long, IReadOnlyList<SqlPredicate>> Strata => _strata;
+
+        /// <summary>Every atom written, an arm's tagged with its stratum (<see cref="SqlPredicate.Beneath"/>): what <see cref="Assume"/> names.</summary>
+        public IReadOnlyCollection<SqlPredicate> Atoms => _atoms.Keys;
+
+        /// <summary>The narrow else of a case is rooted beneath its condition's negation to this many conditions deep; wide alone below.</summary>
+        internal const int NarrowDepth = 3;
+
+        /// <summary>
         /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads, and its syntax
         /// beside them: each leaf over the value it is, and each call's operands.
         /// </summary>
@@ -59,19 +73,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public Pred Write(SqlPredicate predicate, IReadOnlyDictionary<long, SqlValue>? opaques)
         {
-            foreach (var atom in predicate.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)))
-                _atoms.TryAdd(atom, null);
+            Collect(predicate);
 
             var theory = _theory;
             var facts = new List<Fact>();
-            var writer = new PredicateWriter(theory.Ir, path =>
+            PredicateWriter? writer = null;
+            writer = new PredicateWriter(theory.Ir, path =>
             {
                 var term = JsonFactEncoding.Path(path).ToTerm(theory.Paths);
                 facts.Add(theory.Spelling.Of(term).Is(SqlValue.Spell(path)));
                 return term;
             }, leaf: (term, values) => term is ConstructorTerm<Pred> leaf
                 ? values.Select(v => theory.Over.Of(leaf, v)).Prepend(theory.Leaf.Of(leaf))
-                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques);
+                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques,
+                beneath: (stratum, leaf) => theory.Beneath.Of(stratum, leaf),
+                @case: (stratum, chosen, bookkeeping) => Chosen(writer!, stratum, chosen, bookkeeping));
 
             var term = writer.Term(predicate, facts);
             return Guard(() =>
@@ -85,6 +101,78 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 return root;
             });
+        }
+
+        /// <summary>
+        /// A case beneath a stratum as S's <c>chosen</c>: the condition read where the case is, the then-arm beneath the
+        /// condition too, and the else-arm twice, narrow beneath its negation (to <see cref="NarrowDepth"/> conditions) and
+        /// wide where the case is. Each arm's atoms are collected as they are tagged.
+        /// </summary>
+        ConstructorTerm<Pred> Chosen(PredicateWriter writer, long stratum, SqlPredicate.Case chosen, List<Fact> bookkeeping)
+        {
+            var at = stratum == 0 ? Array.Empty<SqlPredicate>() : _strata[stratum];
+            var (condition, then, wide) = (Tagged(chosen.Condition, at), Tagged(chosen.Then, [.. at, chosen.Condition]), Tagged(chosen.Else, at));
+            var narrow = at.Count < NarrowDepth ? Tagged(chosen.Else, [.. at, new SqlPredicate.Not(chosen.Condition)]) : wide;
+            foreach (var part in new[] { condition, then, narrow, wide })
+                Collect(part);
+
+            return _theory.Chosen.Of(writer.Term(condition, bookkeeping), writer.Term(then, bookkeeping), writer.Term(narrow, bookkeeping), writer.Term(wide, bookkeeping));
+        }
+
+        /// <summary>
+        /// A predicate read beneath conditions: every leaf, and every case to be written there, beneath their stratum, its
+        /// junctions and negations kept and a constant untagged; itself beneath none.
+        /// </summary>
+        SqlPredicate Tagged(SqlPredicate predicate, IReadOnlyList<SqlPredicate> conditions)
+        {
+            if (conditions.Count == 0)
+                return predicate;
+
+            var key = string.Join("; ", conditions.Select(c => c.ToString()));
+            if (_strataByKey.TryGetValue(key, out var stratum) == false)
+            {
+                _strataByKey.Add(key, stratum = _strataByKey.Count + 1);
+                _strata.Add(stratum, conditions);
+            }
+
+            SqlPredicate Tag(SqlPredicate p) => p switch
+            {
+                SqlPredicate.And a => new SqlPredicate.And([.. a.Arms.Select(Tag)]),
+                SqlPredicate.Or o => new SqlPredicate.Or([.. o.Arms.Select(Tag)]),
+                SqlPredicate.Not n => new SqlPredicate.Not(Tag(n.Operand)),
+                SqlPredicate.Constant => p,
+                SqlPredicate.Beneath => throw new InvalidOperationException($"{p} is tagged already."),
+                _ => new SqlPredicate.Beneath(stratum, p),
+            };
+
+            return Tag(predicate);
+        }
+
+        /// <summary>
+        /// Notes every atom a predicate writes: each leaf as it is spelled, tagged or not; a case's are its arms', noted as
+        /// it is written.
+        /// </summary>
+        void Collect(SqlPredicate predicate)
+        {
+            switch (predicate)
+            {
+                case SqlPredicate.And a:
+                    foreach (var arm in a.Arms)
+                        Collect(arm);
+                    break;
+                case SqlPredicate.Or o:
+                    foreach (var arm in o.Arms)
+                        Collect(arm);
+                    break;
+                case SqlPredicate.Not n:
+                    Collect(n.Operand);
+                    break;
+                case SqlPredicate.Case or SqlPredicate.Beneath { Leaf: SqlPredicate.Case }:
+                    break;
+                default:
+                    _atoms.TryAdd(predicate, null);
+                    break;
+            }
         }
 
         /// <summary>
@@ -119,12 +207,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// States what an atom's path may hold where its conjunct was rendered: a later round of one of the statements the
-        /// import is the root of, which narrows the import and is read of nothing but that conjunct's atoms. Before the run
-        /// only; an atom no call names is read as anything there.
+        /// import is the root of, which narrows the import and is read of nothing but that conjunct's atoms; or an arm
+        /// stratum the bundle opened, of the root's own statement and round, read of nothing but the atoms tagged with it.
+        /// Before the run only; an atom no call names is read as anything there.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// The bundle has run; the stratum is no later round of the import's statements; the atom reads no imported path,
-        /// or was stated otherwise already.
+        /// The bundle has run; the stratum is no later round of the import's statements, nor an arm stratum the bundle
+        /// opened of its own round; the atom reads no imported path, is not tagged with the arm, or was stated otherwise
+        /// already.
         /// </exception>
         /// <exception cref="InvalidOperationException">The value admits what the import does not.</exception>
         public void Assume(ImportSource source, SqlPredicate atom, PathValues values)
@@ -132,7 +222,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_run is not null)
                 throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
 
-            if (_source is null || source.Round <= _source.Round || _source.Statement.Split('+').Contains(source.Statement) == false)
+            var statement = _source is not null && _source.Statement.Split('+').Contains(source.Statement);
+            if (source.Stratum is { } arm)
+            {
+                if (statement == false || source.Round != _source!.Round || _strata.ContainsKey(arm) == false || atom is not SqlPredicate.Beneath { Stratum: var tagged } || tagged != arm)
+                    throw new InvalidOperationException($"{source} is no arm stratum the bundle opened of the round {_source} is the root of, or {atom} is not read beneath it.");
+            }
+            else if (statement == false || source.Round <= _source!.Round)
                 throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
 
             if (atom.Paths.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)

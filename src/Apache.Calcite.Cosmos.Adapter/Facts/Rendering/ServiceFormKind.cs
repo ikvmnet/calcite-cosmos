@@ -29,6 +29,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Text the reader could not read into a shape.</summary>
         Opaque,
 
+        /// <summary>The ternary <c>c ? a : b</c>, its members the condition and the two arms.</summary>
+        Choose,
+
     }
 
 }
