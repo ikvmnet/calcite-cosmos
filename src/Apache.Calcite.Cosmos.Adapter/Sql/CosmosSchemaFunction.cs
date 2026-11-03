@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <returns>The message.</returns>
         internal static string Refusal(string name)
         {
-            return CosmosRexTranslator.BestFirstDescending(name) == true
+            return CosmosSearchFunctions.BestFirstDescending(name) == true
                 ? name + " has no value this adapter can produce. Cosmos computes a relevance score "
                     + "only while ordering and never returns one, so nothing may read it. A statement "
                     + "arrives here either by selecting the score, which the service rejects outright, "

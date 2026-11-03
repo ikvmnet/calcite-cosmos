@@ -214,7 +214,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // knowable per row, which is precisely the semi-structured shape VARIANT was added for;
                 // ANY is the top "type unknown" and erases that this is a document value at all. The
                 // pushdown machinery reads VARIANT as "the value the service holds" wherever it read ANY
-                // — see CosmosRexTranslator.IsRenderedDocumentValue — so filter and partition-key
+                // — see CosmosRexShapes.IsRenderedDocumentValue — so filter and partition-key
                 // point-read pushdown carry through unchanged. A sort keyed on the column is the one
                 // thing that does not: Calcite cannot order a VARIANT in process (VariantValue is not
                 // Comparable), so CosmosSort declines it and a caller orders by JSON_VALUE instead. #165.

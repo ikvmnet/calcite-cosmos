@@ -134,22 +134,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var root = CosmosPath.Root("c");
 
-            CosmosRexTranslator.TryExtendByJsonPath(root, "$", out var none).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(root, "$", out var none).Should().BeTrue();
             none.Should().BeSameAs(root);
-            CosmosRexTranslator.TryExtendByJsonPath(root, "$.a", out var dotted).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(root, "$.a", out var dotted).Should().BeTrue();
             dotted.Should().Be(root.Property("a"));
-            CosmosRexTranslator.TryExtendByJsonPath(root, "$['a b']", out var quoted).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(root, "$['a b']", out var quoted).Should().BeTrue();
             quoted.Should().Be(root.Property("a b"));
-            CosmosRexTranslator.TryExtendByJsonPath(root, "$[\"a b\"]", out var doubled).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(root, "$[\"a b\"]", out var doubled).Should().BeTrue();
             doubled.Should().Be(root.Property("a b"));
-            CosmosRexTranslator.TryExtendByJsonPath(root, "$[2]", out var indexed).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(root, "$[2]", out var indexed).Should().BeTrue();
             indexed.Should().Be(root.Index(2));
         }
 
         [Fact]
         public void AJsonPathRefusedPartwayGivesNoPath()
         {
-            CosmosRexTranslator.TryExtendByJsonPath(CosmosPath.Root("c"), "$.a['b'][0]..c", out var path).Should().BeFalse();
+            CosmosRexPaths.TryExtendByJsonPath(CosmosPath.Root("c"), "$.a['b'][0]..c", out var path).Should().BeFalse();
             path.Should().BeNull();
         }
 
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 }
             }
 
-            CosmosRexTranslator.TryExtendByJsonPath(CosmosPath.Root("c"), text.ToString(), out var path).Should().BeTrue();
+            CosmosRexPaths.TryExtendByJsonPath(CosmosPath.Root("c"), text.ToString(), out var path).Should().BeTrue();
             path!.Segments.Should().Equal(expected.Segments);
             path.Should().Be(expected);
         }

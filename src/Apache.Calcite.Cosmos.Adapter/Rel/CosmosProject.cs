@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // addressable from ORDER BY or WHERE. A rendered cast resolves to none for the same
                 // reason it is rendered: the column carries text and the path carries the raw value,
                 // so an operator written against the path would mean something else.
-                paths[i] = translator.TryResolvePath(node, out var path) ? path : null;
+                paths[i] = translator.Paths.TryResolvePath(node, out var path) ? path : null;
 
                 // Recorded where the rendering is not the path, so that a node above which rebuilds
                 // the select list emits what this decided rather than the path underneath. A guarded
@@ -174,9 +174,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 var candidate = paths[i];
 
                 if (candidate is null)
-                    candidate = OrderingCandidateOf(node, translator, implementor.RootAlias, out chain, out held);
+                    candidate = OrderingCandidateOf(node, translator.Paths, implementor.RootAlias, out chain, out held);
 
-                orderings[i] = new CosmosOrdering(candidate, IsSortableAtTheService(node), SortableOperandsOf(node, translator, implementor.RootAlias), chain, held);
+                orderings[i] = new CosmosOrdering(candidate, IsSortableAtTheService(node), SortableOperandsOf(node, translator.Paths, implementor.RootAlias), chain, held);
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -241,7 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
-        /// <param name="translator">Resolves an expression to the path it addresses.</param>
+        /// <param name="paths">Resolves an expression to the path it addresses.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="format">
         /// On return, the format a parse reads the path with, or <c>null</c> where the conversion
@@ -249,12 +249,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </param>
         /// <param name="held">On return, the halves of an instant the conversion's value holds.</param>
         /// <returns>The path, or <c>null</c>.</returns>
-        public static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexTranslator translator, string rootAlias, out string? format, out Metadata.CosmosTemporalParts held)
+        internal static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexPaths paths, string rootAlias, out string? format, out Metadata.CosmosTemporalParts held)
         {
             format = null;
             held = Metadata.CosmosTemporalParts.None;
 
-            if (node is not RexCall call || translator is null)
+            if (node is not RexCall call || paths is null)
                 return null;
 
             RexNode? converted;
@@ -278,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 return null;
             }
 
-            if (translator.TryResolvePath(converted, out var path) == false || path is null
+            if (paths.TryResolvePath(converted, out var path) == false || path is null
                 || string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
             {
                 format = null;
@@ -320,12 +320,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
-        /// <param name="translator">Resolves an expression to the path it addresses.</param>
+        /// <param name="resolver">Resolves an expression to the path it addresses.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The paths, empty where every operand is a literal or a parameter, or <c>null</c>.</returns>
-        public static IReadOnlyList<CosmosPath>? SortableOperandsOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
+        internal static IReadOnlyList<CosmosPath>? SortableOperandsOf(RexNode node, CosmosRexPaths resolver, string rootAlias)
         {
-            if (IsSortableAtTheService(node) == false || node is not RexCall call || translator is null)
+            if (IsSortableAtTheService(node) == false || node is not RexCall call || resolver is null)
                 return null;
 
             var paths = new List<CosmosPath>();
@@ -345,12 +345,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // the distance null or undefined in *every* row, so no key is placed against another
                 // and there is nothing for the two placements to disagree about -- the claim the
                 // stored operands carry is still the whole of it. See IsGeographyParameter.
-                if (Sql.CosmosRexTranslator.IsGeographyParameter(operand))
+                if (Sql.CosmosRexPaths.IsGeographyParameter(operand))
                     continue;
 
                 // A stored shape, reached through the constructor the same way every other geography
                 // operand is.
-                if (translator.TryResolveGeography(operand, out var path) == false
+                if (resolver.TryResolveGeography(operand, out var path) == false
                     || path is null
                     || string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                     return null;
@@ -373,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         static bool IsGeographyLiteral(RexNode node)
         {
             // The same constant after a connection's reduction has evaluated the constructor: a shape
-            // the plan holds, written as the GeoJSON object it is. See CosmosRexTranslator.GetLiteralValue.
+            // the plan holds, written as the GeoJSON object it is. See CosmosRexLiterals.GetLiteralValue.
             if (node is RexLiteral folded && folded.getTypeName() == org.apache.calcite.sql.type.SqlTypeName.GEOMETRY)
                 return folded.isNull() == false;
 

@@ -85,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         internal sealed class Loading
         {
 
-            readonly CosmosRexTranslator _paths;
+            readonly CosmosRexPaths _paths;
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
             readonly Dictionary<RexNode, long> _opaque = new();
@@ -94,9 +94,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
             {
-                // Resolution reuses the translator so the accepted path forms are the ones a statement would address.
-                // Parameters are discarded; only the shape matters.
-                _paths = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty, null, null, readings);
+                // The path readers a statement resolves through, so the accepted path forms are the ones it would address.
+                _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
                 _rootAlias = rootAlias;
             }
@@ -260,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
                     return Number(number);
 
-                return CosmosRexTranslator.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : null;
+                return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : null;
             }
 
             /// <summary>
@@ -344,10 +343,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// The literal of a number, as the translator would send it: past 2^53, the whole number it is, and none where
-            /// no value the service compares as the number exists (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>).
+            /// no value the service compares as the number exists (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>).
             /// </summary>
             static SqlValue? Number(java.math.BigDecimal number) =>
-                CosmosRexTranslator.TryGetExactNumberValue(number) is object value && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false
+                CosmosRexLiterals.TryGetExactNumberValue(number) is object value && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false
                     ? SqlValue.Of(scalar)
                     : null;
 
@@ -380,7 +379,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             SqlValue? Value(RexNode node)
             {
-                node = CosmosRexTranslator.StripRedundantTextCast(node);
+                node = CosmosRexShapes.StripRedundantTextCast(node);
 
                 switch (node)
                 {
@@ -394,9 +393,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         return Field(reference);
 
                     // RETURNING DECIMAL parses the rendering, and the translator reads it as the cast of the text it
-                    // converts (CosmosRexTranslator.IsParsingJsonValue); PredicateAtom's typed:DECIMAL is that parse.
-                    case RexCall call when CosmosRexTranslator.IsParsingJsonValue(call):
-                        return CosmosRexTranslator.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode rendered && Value(rendered) is SqlValue.Text text
+                    // converts (CosmosRexShapes.IsParsingJsonValue); PredicateAtom's typed:DECIMAL is that parse.
+                    case RexCall call when CosmosRexShapes.IsParsingJsonValue(call):
+                        return CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode rendered && Value(rendered) is SqlValue.Text text
                             ? new SqlValue.Typed(text.Path, "DECIMAL")
                             : null;
 
@@ -453,7 +452,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 void Walk(RexNode node)
                 {
-                    node = CosmosRexTranslator.StripRedundantTextCast(node);
+                    node = CosmosRexShapes.StripRedundantTextCast(node);
                     var value = Value(node);
                     if (value is { PathRead: JsonDocumentPath path } && value is not SqlValue.Cast)
                     {
@@ -556,7 +555,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (reading != CosmosReading.Typed)
                     return null;
 
-                if (CosmosRexTranslator.IsDocumentValueType(type) || IsCharacter(type))
+                if (CosmosRexShapes.IsDocumentValueType(type) || IsCharacter(type))
                     return new SqlValue.Raw(path);
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
@@ -568,7 +567,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             SqlValue? Accessor(RexCall call)
             {
-                if (CosmosRexTranslator.IsPlainJsonValue(call) == false || CosmosRexTranslator.IsArrayReturningJsonValue(call))
+                if (CosmosRexShapes.IsPlainJsonValue(call) == false || CosmosRexShapes.IsArrayReturningJsonValue(call))
                     return null;
 
                 if (Document(call) is not JsonDocumentPath path)
@@ -578,7 +577,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (IsCharacter(type))
                     return new SqlValue.Text(path);
 
-                if (CosmosRexTranslator.IsDocumentValueType(type))
+                if (CosmosRexShapes.IsDocumentValueType(type))
                     return new SqlValue.Raw(path);
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
@@ -589,7 +588,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// under a rendering, a numeric cast the translator recognises, and the cast to text over a raw value.
             /// </summary>
             /// <remarks>
-            /// A numeric cast is the translator's to recognise (<see cref="CosmosRexTranslator.TryNumericCastOperand(RexNode, RexBuilder)"/>),
+            /// A numeric cast is the shape readers' to recognise (<see cref="CosmosRexShapes.TryNumericCastOperand(RexNode, RexBuilder)"/>),
             /// and what it does to a number is <c>PredicateAtom</c>'s to say, in one place each: a cast to <c>DOUBLE</c>
             /// moving a stored integer by a unit from 2^52 among it. A number compared with one is read in
             /// <see cref="Comparand"/>.
@@ -610,10 +609,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (target == SqlTypeName.ANY)
                     return Value(operand) is { PathRead: JsonDocumentPath raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
 
-                if (CosmosRexTranslator.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
+                if (CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
                     return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;
 
-                if (CosmosRexTranslator.TryTextCastValue(call) is RexNode rendered)
+                if (CosmosRexShapes.TryTextCastValue(call) is RexNode rendered)
                     return Value(rendered) switch
                     {
                         SqlValue.Text text => text,
@@ -634,7 +633,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 try
                 {
-                    var value = CosmosRexTranslator.GetLiteralValue(literal);
+                    var value = CosmosRexLiterals.GetLiteralValue(literal);
                     if (value is double d && (d == 0 && double.IsNegative(d) || literal.getType()?.getSqlTypeName() == SqlTypeName.REAL && (float)d != d))
                         return null;
 
@@ -660,7 +659,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return CosmosDocumentPaths.From(path, _rootAlias) is JsonDocumentPath document && document.IsRoot == false ? document : null;
             }
 
-            static bool IsDocumentValue(RexCall call) => CosmosRexTranslator.IsDocumentValueType(call.getType()?.getSqlTypeName());
+            static bool IsDocumentValue(RexCall call) => CosmosRexShapes.IsDocumentValueType(call.getType()?.getSqlTypeName());
 
             static bool IsCharacter(SqlTypeName? type) => type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR;
 

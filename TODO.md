@@ -360,7 +360,7 @@ split holds; this answers the typed half and not the reference half.
 
 **Every pushdown resolves its path in one place.** A filter, a projection, a sort key, an aggregate
 argument, an unnest array, the partition key extractor, and the full text and vector legality gates
-all ask `CosmosRexTranslator.TryResolvePath` for a document path, and `WriteCall` renders the call as
+all ask `CosmosRexPaths.TryResolvePath` for a document path, and `WriteCall` renders the call as
 that path. Measured through a connection: projection, filter, sort, sort with fetch, `GROUP BY`,
 `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison, `IS NOT NULL`,
 `UNNEST` and the lookup join from either side all push, and a path assembled at run time is declined
@@ -459,7 +459,7 @@ statements, fourteen of which answered differently before. What that leaves:
 *Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
 literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
 bound loosened by one around 2^60 came back as 2^60 and `RETURNING BIGINT = 2^60 + 1` matched 2^60.
-`CosmosRexTranslator.TryGetExactNumberValue` now sends a whole number a double does not hold as a `long`,
+`CosmosRexLiterals.TryGetExactNumberValue` now sends a whole number a double does not hold as a `long`,
 and a cast to `DOUBLE` reads no window from 2^52, where a stored integer and the literal each round by
 half a unit. A literal cast down to a `DECIMAL` its whole digits do not fit raises in Calcite on every row,
 and no window is read from it, where one answered nothing and a declared maximum rewrote it to `FALSE`.
@@ -1411,6 +1411,15 @@ the distribution the gate is sized for.
     (`planted_text`) and the planted partition pass (`EveryPlantedPredicatePartitionsTheRows`) hold it. Azure's plans
     do not change. The differential corpus holds no U+0000 and no repetition near
     the limit, and the measurement tests that pin Azure's rows skip on the emulator's.
+    **What Stage 3 owes it.** The readers' move takes none of it: the order family keeps the refusals in C#, and its
+    one change there is a conversion's equality (*Order without equality licenses the last key only*, `DESIGN.md`).
+    S carries the rest as data when it takes the parameterised `WHERE`: `Compare`'s refusal under the emulator (a path
+    or computed text that may hold U+0000 against a parameter, a literal or another path), the compared positions sent
+    in the stored spelling, and `CosmosStringFunctions`' emulator rules, which move to the axiom rows' functions when
+    that class is deleted; `Compare`'s own code goes once S carries its rule. The predicate `NulOrdering` is measured
+    again first: a raw `CONTAINS(p, '\u0000')` matches nearly everything on the emulator, and `CONTAINS(p, U+FDD0 '0')`
+    is the exact test. The plant joins 3B's gate. Kill line 10's floors and TLP's `PushedPartitions` are per target,
+    the emulator's this fix's (§10, *What the emulator's fix hands Stage 3*), and 3R lowers none of them.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is
@@ -2746,7 +2755,7 @@ across documents* and *A join of a container to itself* is the record.
   wrong answer, and it touches plans.* Over a promoted path's `VARIANT` column Calcite casts every boolean and number to
   `NULL` and raises over a structure; an `ANY` renders them; a `VARCHAR` column reads a string alone
   (`Calcite.CastOfARawValueToText`). `PredicateAtom`'s coarse cast reading (`cast:VARCHAR:raw`, `Text` over structures)
-  answers a boolean or a number as its rendering, and so does the translator (`CosmosRexTranslator.IsDocumentValueType`:
+  answers a boolean or a number as its rendering, and so does the translator (`CosmosRexShapes.IsDocumentValueType`:
   "Calcite's cast over either is the value's own rendering"). Over a present boolean the facts graph decides `NOT
   (CAST(raw(flag) AS VARCHAR) = 'x')` `Always` and `CAST(raw(flag) AS VARCHAR) IS NULL` `Never`, where Calcite answers
   `UNKNOWN` and `TRUE`, and `WHERE NOT (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")`
@@ -3155,13 +3164,15 @@ across documents* and *A join of a container to itself* is the record.
   shadow's weakening rows for its statement; g16's labeller read a row's first token, an admission's, so 43 changed
   weakenings were labelled respellings and 11 looser ones tighter, until the switch's review relabelled them, the
   hashes untouched.
-- **The switch's listing retires after the switch merges** — *small, the pull request after it.* The test pins every
-  gate plan the listing does not name to pre-switch `main` by one hash, so once the switch is `main` any pull request
-  that rightly moves a plan fails it, and nothing regenerates it. It is line 21's evidence at this pull request's gates
-  alone: delete `TheSwitchChangesOnlyWhatTheShadowListed`, `Planning/Switch/switch-listing.tsv` and its embedded
-  resource once the gates are recorded in the measure report. Later plan changes are held by `WriteDigests` at a
-  change's parent and tip, as appendix E says. Where the shadow could not read the translator's weakening (58 statements), the two
-  were read side by side: an element path (21 dropped, 14 a member dropped), `LIKE` (19), arithmetic (4), each O7's.
+- **The switch's listing retires after the switch merges** — *done, at Stage 3's first pull request.* The test
+  pinned every gate plan the listing did not name to pre-switch `main` by one hash, so once the switch was `main` a
+  pull request that rightly moved a plan would have failed it, and nothing regenerated it. It was line 21's evidence at
+  the switch's gates alone, and those are recorded in the measure report, so `TheSwitchChangesOnlyWhatTheShadowListed`,
+  `Planning/Switch/switch-listing.tsv` and its embedded resource are deleted; the listing stands in the history
+  (`git show c0be288:src/Apache.Calcite.Cosmos.Adapter.Tests/Planning/Switch/switch-listing.tsv`). Later plan changes
+  are held by `WriteDigests` at a change's parent and tip, as appendix E says. Where the shadow could not read the
+  translator's weakening (58 statements), the two were read side by side: an element path (21 dropped, 14 a member
+  dropped), `LIKE` (19), arithmetic (4), each O7's.
 - **O2's residue at the switch** — *small each, the stage named.* What S declines inside its family, each RU, never rows,
   the conjunct kept in process with its weakening: a typed `BIGINT` compared past 2^53 (differential 348–351, 354, 452;
   D12's column reading); a raw value cast to text (partitions 1372, 1651; the raw reading's cast rows); a text ordering
@@ -3220,6 +3231,10 @@ across documents* and *A join of a container to itself* is the record.
   and its negation, partitions 12 and 13, which the default run asks too, so it reads 204; and `(c."id" || '!') NOT IN
   ('30', 'TRUE')` and its negation, 686 and 687 (D13), with differential 485's `||`, `REVERSE`, `REPLACE` and `REPEAT`
   over `strings.s` in process. Under Production all ten push.
+- **What the emulator's fix hands Stage 3** — *3B, recorded at §4.* S carries `Compare`'s emulator refusal, the
+  stored spelling of compared positions and the string functions' emulator rules as data, the plant joins 3B's gate,
+  and `NulOrdering` is measured again first; §4's *What Stage 3 owes it* holds the list. 3R took none of it but the
+  readers' guard on a member named with U+0000 or U+FDD0, which every reader built for a container keeps.
 - **A U+FDD0 class in the theory** — *an `Emulator`-only gain, for 3B or later; not soundness.* Under the emulator's
   set a string function asks its operands to hold no U+0000 and no unit from U+E000, the high band U+FDD0 is read in
   (`CosmosStringFunctions.RuleOf`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a

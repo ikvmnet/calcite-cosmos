@@ -635,6 +635,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// An array whose member's name holds U+0000 is traversed at the service only where the name is stored as it is
+        /// spelled: the emulator stores it escaped, so a <c>JOIN</c> over the spelled name would read nothing and lose
+        /// every row, and the traversal stays in process there (DESIGN.md, <i>What the emulator is sent is what it
+        /// stores</i>).
+        /// </summary>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, true)]
+        [InlineData(CosmosServiceTarget.Emulator, false)]
+        public void AnArrayNamedWithAnEscapeIsTraversedOnlyWhereItsNameIsStoredAsSpelled(CosmosServiceTarget target, bool traversed)
+        {
+            _table = new CosmosTable(Products.WithServiceTarget(target));
+
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", U&'$[\"m\\0000\"]'))) AS t"));
+
+            plan.Contains("CosmosUnnest").Should().Be(traversed, plan);
+        }
+
+        /// <summary>
         /// <c>StringToArray</c> over anything but an accessor is the service's own function and is
         /// rendered, not elided.
         /// </summary>
@@ -1887,7 +1905,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// <b>The case #125 was filed for.</b> A constant timestamp cannot be rendered — Cosmos has no
         /// temporal type and nothing declares which encoding a container uses, so
-        /// <c>CosmosRexTranslator.GetLiteralValue</c> refuses one rather than guessing. Before the
+        /// <c>CosmosRexLiterals.GetLiteralValue</c> refuses one rather than guessing. Before the
         /// split that refusal took the whole projection with it, and the statement became
         /// <c>SELECT VALUE c</c>: every document crossed the wire so that the client could compute a
         /// constant.

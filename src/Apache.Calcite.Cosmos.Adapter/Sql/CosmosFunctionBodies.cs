@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// get around the missing overload. Reading the kind off the parsed element costs one parse.
     /// </para>
     /// <para>
-    /// The path is parsed by <see cref="CosmosRexTranslator.TryExtendByJsonPath"/> and the document
+    /// The path is parsed by <see cref="CosmosRexPaths.TryExtendByJsonPath"/> and the document
     /// walked by <see cref="CosmosDocument.TryRead(JsonElement, CosmosPath, out JsonElement)"/> — the
     /// same grammar and the same walker the rendered statement is built from, so what is evaluated here
     /// and what the service would have evaluated cannot drift apart by being written twice.
@@ -122,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// and more than the document only past some fifty steps, or two hundred at 1 KB.
         /// </remarks>
         static CosmosPath? Resolve(string path) =>
-            CosmosRexTranslator.TryExtendByJsonPath(CosmosPath.Root(CosmosImplementor.DefaultRootAlias), path, out var resolved)
+            CosmosRexPaths.TryExtendByJsonPath(CosmosPath.Root(CosmosImplementor.DefaultRootAlias), path, out var resolved)
                 ? resolved
                 : null;
 

@@ -218,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             if (spelled)
                 for (var i = 0; i < paths.Length; i++)
-                    if (CosmosRexTranslator.NamesAnEscape(paths[i]))
+                    if (CosmosRexPaths.NamesAnEscape(paths[i]))
                         paths[i] = null;
 
             return paths;
@@ -500,7 +500,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     written |= CosmosClauses.Projection;
 
-                    var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList(), JsonFactSet.Empty);
+                    var resolver = new CosmosRexPaths(input, spelled: false);
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
@@ -509,7 +509,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     for (var i = 0; i < paths.Length; i++)
                     {
                         var expression = (RexNode)projects.get(i);
-                        paths[i] = translator.TryResolvePath(expression, out var path) ? path : null;
+                        paths[i] = resolver.TryResolvePath(expression, out var path) ? path : null;
 
                         // Derived here because here is where the walk is -- both halves of it are
                         // questions about which expression sits at this ordinal. Whether the container
@@ -519,12 +519,12 @@ namespace Apache.Calcite.Cosmos.Adapter
                         var candidate = paths[i];
 
                         if (candidate is null)
-                            candidate = CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias, out chain, out held);
+                            candidate = CosmosProject.OrderingCandidateOf(expression, resolver, DefaultRootAlias, out chain, out held);
 
                         candidates[i] = new CosmosOrdering(
                             candidate,
                             CosmosProject.IsSortableAtTheService(expression),
-                            CosmosProject.SortableOperandsOf(expression, translator, DefaultRootAlias),
+                            CosmosProject.SortableOperandsOf(expression, resolver, DefaultRootAlias),
                             chain,
                             held);
 
@@ -533,8 +533,8 @@ namespace Apache.Calcite.Cosmos.Adapter
                         // straight through keeps how it was read. Nothing else here is a rendering
                         // that also binds -- a dropped cast binds to nothing, so what it is read as
                         // can never be asked.
-                        reads[i] = paths[i] is not null && CosmosRexTranslator.IsTextJsonValue(expression) ? CosmosReading.Text
-                            : paths[i] is not null && CosmosRexTranslator.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
+                        reads[i] = paths[i] is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
+                            : paths[i] is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
                             : expression is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < inputReadings.Count ? inputReadings[reference.getIndex()]
                             : CosmosReading.Typed;
                     }
@@ -862,6 +862,15 @@ namespace Apache.Calcite.Cosmos.Adapter
             new(_rexBuilder, _fields, _parameters, FactsOf(carried), ownRow, _container, _readings);
 
         /// <summary>
+        /// Creates the path readers over the current field bindings, for a node that resolves a path and writes nothing
+        /// through a translator. What resolves here is what a translator from <see cref="CreateTranslator"/> resolves.
+        /// </summary>
+        /// <param name="ownRow">The correlation variable that stands for the row being bound, where one is in scope.</param>
+        /// <returns>The path readers.</returns>
+        internal CosmosRexPaths CreatePaths(org.apache.calcite.rel.core.CorrelationId? ownRow = null) =>
+            new(_fields, _container is not null && CosmosRendering.StoresSpelled(_container.ServiceTarget), _readings, ownRow);
+
+        /// <summary>
         /// Returns the facts a node renders under: those it carries, or for one built without, what the container
         /// declares of every document (L0).
         /// </summary>
@@ -886,14 +895,6 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             rel.Implement(this);
         }
-
-        /// <summary>
-        /// Translates an expression against the current field bindings.
-        /// </summary>
-        /// <param name="node">The expression to translate.</param>
-        /// <returns>The Cosmos SQL text.</returns>
-        /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node) => CreateTranslator(null).Translate(node);
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
@@ -931,7 +932,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Separate from <see cref="Translate(RexNode)"/> because the facts a node establishes are
+        /// Separate from a value's rendering because the facts a node establishes are
         /// only established by a predicate. The equality in <c>SELECT x = 'B'</c> asserts nothing
         /// about <c>x</c>; the same equality in a <c>WHERE</c> asserts it of every row that survives,
         /// and reading the first as the second would prove things the query never said.

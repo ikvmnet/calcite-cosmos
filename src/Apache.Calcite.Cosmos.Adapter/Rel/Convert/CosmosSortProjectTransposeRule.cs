@@ -73,7 +73,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 var key = (RexNode)projects.get(index);
-                if (PreservesOrder(key, last: i == collations.size() - 1) == false && IsStoredFormConversion(project, key, (RelFieldCollation)collations.get(i)) == false)
+                var last = i == collations.size() - 1;
+                if (PreservesOrder(key, last) == false && IsStoredFormConversion(project, key, (RelFieldCollation)collations.get(i), last) == false)
                     return false;
             }
 
@@ -84,7 +85,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether a projected key is a conversion of text into an instant or a UUID whose stored spelling the
         /// facts say orders as the converted value, under this key's direction and placement.
         /// </summary>
-        static bool IsStoredFormConversion(Project project, RexNode node, RelFieldCollation collation)
+        /// <remarks>
+        /// A leading key is asked as itself twice, which R4 drops after an exact key and keeps, before the last, after a
+        /// finer one: so only the last key may take a form that spells a value two ways.
+        /// </remarks>
+        static bool IsStoredFormConversion(Project project, RexNode node, RelFieldCollation collation, bool last)
         {
             if (node is not RexCall cast
                 || cast.getKind() != SqlKind.CAST && cast.getKind() != SqlKind.SAFE_CAST
@@ -104,7 +109,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
 
             var facts = CosmosRowFacts.Of(project.getInput(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.OrderBy);
-            return CosmosServiceOrder.OrderBy(facts, new[] { new CosmosOrderKey(CosmosOrderOperand.ForConversion(document, null, held), collation) }, CosmosRendering.SetFor(container?.ServiceTarget ?? CosmosServiceTarget.Azure)).IsProved;
+            var key = new CosmosOrderKey(CosmosOrderOperand.ForConversion(document, null, held), collation);
+            return CosmosServiceOrder.OrderBy(facts, last ? new[] { key } : new[] { key, key }, CosmosRendering.SetFor(container?.ServiceTarget ?? CosmosServiceTarget.Azure)).IsProved;
         }
 
         /// <summary>

@@ -224,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static bool ReferencesUnindexedPath(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
+            var paths = new CosmosRexPaths(fields, spelled: false);
             var unindexed = false;
 
             void Walk(RexNode node)
@@ -232,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (unindexed)
                     return;
 
-                if (translator.TryResolvePath(node, out var path) && path is not null)
+                if (paths.TryResolvePath(node, out var path) && path is not null)
                 {
                     // Only container-rooted paths correspond to index paths; an element-relative
                     // one is reached through its array, which is covered separately.
@@ -278,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> where a full text function reads an undeclared path.</returns>
         internal static bool ReferencesUndeclaredFullTextPath(RexNode node, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
+            var paths = new CosmosRexPaths(fields, spelled: false);
             var undeclared = false;
 
             void Walk(RexNode current)
@@ -286,9 +286,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (undeclared || current is not RexCall call)
                     return;
 
-                if (CosmosRexTranslator.IsFullTextFunction(call)
+                if (CosmosSearchFunctions.IsFullTextFunction(call)
                     && call.getOperands().size() > 0
-                    && translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path)
+                    && paths.TryResolvePath((RexNode)call.getOperands().get(0), out var path)
                     && path is not null
                     && container.IsPathFullTextSearchable(path.ToPolicyPath()) == false)
                 {
@@ -302,13 +302,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             Walk(node);
             return undeclared;
-        }
-
-        static class RexBuilderHolder
-        {
-
-            internal static readonly RexBuilder Value = new(new org.apache.calcite.jdbc.JavaTypeFactoryImpl());
-
         }
 
         /// <inheritdoc />

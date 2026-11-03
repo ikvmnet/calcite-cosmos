@@ -1,6 +1,7 @@
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -379,6 +380,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Of("""JSON_VALUE(c."DOC", '$.kind') IN ('k1', 'k2')""").Should().BeNull("neither kind's labels hold a surrogate");
             Of("""(JSON_VALUE(c."DOC", '$.kind') = 'k1' OR JSON_VALUE(c."DOC", '$.kind') = 'k2')""").Should().BeNull("per arm, as per kind");
             Of("""JSON_VALUE(c."DOC", '$.kind') IN ('k1', 'k3')""")!.Keys.Single().Anchor.Should().Be(CosmosOrderAnchor.Text, "k3's labels may hold any character");
+        }
+
+        /// <summary>
+        /// A container whose <c>u</c> holds a planted stored form and whose <c>k</c> a string below U+0080, both required,
+        /// with the composite index a sort by the two needs.
+        /// </summary>
+        static CosmosContainerMetadata Planted(CosmosRepresentation form)
+        {
+            var (u, k) = (JsonDocumentPath.Root.Property("u"), JsonDocumentPath.Root.Property("k"));
+            var index = new CosmosCompositeIndex(new[] { new CosmosCompositeIndexPath("/u", false), new CosmosCompositeIndexPath("/k", false) });
+            return TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/pk" }, new[] { index })).WithFacts(new[]
+            {
+                new JsonFact(u, new JsonClaim.Represents(form)), new JsonFact(u, new JsonClaim.Present()), new JsonFact(u, new JsonClaim.OfType(JsonType.String)),
+                new JsonFact(u, new JsonClaim.Characters(JsonCharacterBand.None)),
+                new JsonFact(k, new JsonClaim.Present()), new JsonFact(k, new JsonClaim.OfType(JsonType.String)), new JsonFact(k, new JsonClaim.Characters(JsonCharacterBand.None)),
+            }.Select(JsonFactRule.Unconditional));
+        }
+
+        /// <summary>
+        /// A sort keyed by a stored form's conversion moves beneath the projection that converts it, ordering the stored
+        /// text, on the last key where the form keeps the order and not equality, and before another only where it keeps
+        /// both: a form that spells one value two ways orders the two spellings apart, which Calcite ties for the next key
+        /// to order. The form is planted by its two flags; no registered one keeps the order without equality.
+        /// </summary>
+        [Fact]
+        public void AFormThatSpellsAValueTwoWaysIsSortedBeneathItsConversionOnTheLastKeyOnly()
+        {
+            var planted = Planted(new CosmosRepresentation("two-spellings-in-order", PreservesEquality: false, PreservesOrder: true));
+            var registered = Planted(CosmosUuidForms.CanonicalLowerSortable);
+            const string Last = """SELECT JSON_VALUE(c."DOC", '$.k') AS "k", CAST(JSON_VALUE(c."DOC", '$.u') AS UUID) AS "u" FROM items AS c ORDER BY 2 NULLS FIRST FETCH NEXT 2 ROWS ONLY""";
+            const string Leading = """SELECT JSON_VALUE(c."DOC", '$.k') AS "k", CAST(JSON_VALUE(c."DOC", '$.u') AS UUID) AS "u" FROM items AS c ORDER BY 2 NULLS FIRST, 1 NULLS FIRST FETCH NEXT 2 ROWS ONLY""";
+
+            Sent(Last, planted).Should().Contain("ORDER BY c.u ASC", "on the last key a finer order is one Calcite allows");
+            Sent(Leading, planted).Should().NotContain("ORDER BY", "two spellings of one value would be ordered apart before the next key orders them");
+            Sent(Leading, registered).Should().Contain("ORDER BY c.u ASC, c.k ASC", "one spelling a value ties both ways");
         }
 
     }

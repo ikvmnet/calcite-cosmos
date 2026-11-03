@@ -178,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (IsUuid(type) == false)
                 return false;
 
-            if (TryUuidPath(probe, ordinal, container, known, probe.getCluster().getRexBuilder(), CosmosPlanMembers.NewSeen()) is not (CosmosPath path, CosmosRepresentation representation))
+            if (TryUuidPath(probe, ordinal, CosmosRendering.StoresSpelled(container.ServiceTarget), known, CosmosPlanMembers.NewSeen()) is not (CosmosPath path, CosmosRepresentation representation))
                 return false;
 
             key = new ProbeKey(path, representation);
@@ -261,7 +261,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// element, which is no document path and so no key; it is seen through in either form, as the
         /// binding walk sees through it.
         /// </remarks>
-        static (CosmosPath, CosmosRepresentation)? TryUuidPath(RelNode node, int ordinal, CosmosContainerMetadata container, JsonFactSet facts, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(RelNode node, int ordinal, bool spelled, JsonFactSet facts, System.Collections.Generic.HashSet<RelNode> seen)
         {
             foreach (var member in CosmosPlanMembers.Of(node))
             {
@@ -270,10 +270,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 var found = member switch
                 {
-                    Filter filter => TryUuidPath(filter.getInput(), ordinal, container, facts, rexBuilder, seen),
-                    Project project => TryUuidPath(project, ordinal, container, facts, rexBuilder, seen),
+                    Filter filter => TryUuidPath(filter.getInput(), ordinal, spelled, facts, seen),
+                    Project project => TryUuidPath(project, ordinal, spelled, facts, seen),
                     _ when CosmosImplementor.TraversedInput(member) is RelNode traversed && ordinal < traversed.getRowType().getFieldCount()
-                        => TryUuidPath(traversed, ordinal, container, facts, rexBuilder, seen),
+                        => TryUuidPath(traversed, ordinal, spelled, facts, seen),
                     _ => null,
                 };
 
@@ -284,7 +284,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             return null;
         }
 
-        static (CosmosPath, CosmosRepresentation)? TryUuidPath(Project project, int ordinal, CosmosContainerMetadata container, JsonFactSet facts, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(Project project, int ordinal, bool spelled, JsonFactSet facts, System.Collections.Generic.HashSet<RelNode> seen)
         {
             if (ordinal >= project.getProjects().size())
                 return null;
@@ -292,20 +292,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var expression = (RexNode)project.getProjects().get(ordinal);
 
             if (expression is RexInputRef reference)
-                return TryUuidPath(project.getInput(), reference.getIndex(), container, facts, rexBuilder, seen);
+                return TryUuidPath(project.getInput(), reference.getIndex(), spelled, facts, seen);
 
             if (expression is not RexCall cast || cast.getKind() != SqlKind.CAST || cast.getOperands().size() != 1 || IsUuid(cast.getType()) == false)
                 return null;
 
-            var text = CosmosRexTranslator.StripRedundantTextCast((RexNode)cast.getOperands().get(0));
-            if (CosmosRexTranslator.IsTextJsonValue(text) == false)
+            var text = CosmosRexShapes.StripRedundantTextCast((RexNode)cast.getOperands().get(0));
+            if (CosmosRexShapes.IsTextJsonValue(text) == false)
                 return null;
 
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _) == false)
                 return null;
 
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), JsonFactSet.Empty, null, container);
-            if (translator.TryResolvePath(text, out var path) == false || path is null)
+            if (new CosmosRexPaths(fields, spelled).TryResolvePath(text, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath stored)

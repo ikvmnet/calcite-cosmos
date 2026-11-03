@@ -152,10 +152,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 var item = _t.Call(SqlStdOperatorTable.ITEM, _t.Ref(2, SqlTypeName.ANY), _t.Str("m\0"));
 
-                Translator(CosmosServiceTarget.Emulator).TryResolvePath(item, out _).Should().BeFalse();
+                Translator(CosmosServiceTarget.Emulator).Paths.TryResolvePath(item, out _).Should().BeFalse();
                 Translator(CosmosServiceTarget.Emulator).TryTranslateValue(item, out _).Should().BeFalse();
                 Translator(CosmosServiceTarget.Azure).TryTranslateValue(item, out _).Should().BeTrue();
-                Translator(CosmosServiceTarget.Emulator).TryResolvePath(_t.Call(SqlStdOperatorTable.ITEM, _t.Ref(2, SqlTypeName.ANY), _t.Str("m")), out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Emulator).Paths.TryResolvePath(_t.Call(SqlStdOperatorTable.ITEM, _t.Ref(2, SqlTypeName.ANY), _t.Str("m")), out _).Should().BeTrue();
 
                 var row = _t._types.builder().add("id", SqlTypeName.VARCHAR).add("m\uFDD0", SqlTypeName.VARCHAR).add("m\0", SqlTypeName.VARCHAR).build();
                 CosmosImplementor.BindFields(row, "c", spelled: true).Select(p => p?.ToString()).Should().Equal("c.id", null, null);
