@@ -90,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
         // ── Shapes ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-        static readonly HashSet<string> TypeTests = new(StringComparer.OrdinalIgnoreCase) { "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_PRIMITIVE", "IS_OBJECT", "IS_ARRAY", "IS_NULL" };
+        static readonly HashSet<string> TypeTests = new(StringComparer.OrdinalIgnoreCase) { "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_PRIMITIVE", "IS_OBJECT", "IS_ARRAY", "IS_NULL", "IS_DEFINED" };
 
         static readonly HashSet<string> Affixes = new(StringComparer.OrdinalIgnoreCase) { "STARTSWITH", "ENDSWITH", "CONTAINS" };
 
@@ -134,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         {
             public readonly HashSet<string> Names = new(StringComparer.OrdinalIgnoreCase);
             public bool Parameter, Correlated, Case, Truth, Like, LikeBracket, NumericCast, VariantCast, StoredCast, DecimalReading, Arithmetic, IntegerArithmetic,
-                Item, JsonIndex, PathPair;
+                Item, JsonIndex, PathPair, NullableNotTruth;
         }
 
         static Shape ShapeOf(RexNode node)
@@ -171,6 +171,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                         if (kind == SqlKind.IS_TRUE || kind == SqlKind.IS_NOT_TRUE || kind == SqlKind.IS_FALSE || kind == SqlKind.IS_NOT_FALSE
                             || (kind == SqlKind.IS_NULL || kind == SqlKind.IS_NOT_NULL) && Operand(call, 0).getType().getSqlTypeName() == SqlTypeName.BOOLEAN)
                             shape.Truth = true;
+
+                        if ((kind == SqlKind.IS_NOT_TRUE || kind == SqlKind.IS_NOT_FALSE) && Operand(call, 0).getType().isNullable())
+                            shape.NullableNotTruth = true;
 
                         if (kind == SqlKind.LIKE)
                         {
@@ -243,8 +246,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 classes.Add(("J3", "geography", "h39-h41 (3E)", names.Contains("ST_DISTANCE") ? ["Q4: ST_DISTANCE without bitwise rows"] : []));
             if (names.Any(TypeTests.Contains))
                 classes.Add(("type-tests", "type test", "h07", []));
-            if (s.Case || s.Truth)
-                classes.Add(("H", "CASE, COALESCE or a truth test", "h07, h08", written.Nodes.Any(n => n is Syntax.TernarySyntax or Syntax.CoalesceSyntax) ? ["Q2: a ternary while S1 is unmeasured"] : []));
+            // Q2 stands where the set has no S1 row (Service.TernaryTakesThenOnTrueAlone is the emulator's alone): a ternary
+            // the translator writes, whatever the Rex holds, and IS NOT TRUE or IS NOT FALSE over a nullable operand.
+            var q2 = set != nameof(Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Emulator)
+                && (written.Nodes.Any(n => n is Syntax.TernarySyntax or Syntax.CoalesceSyntax) || s.NullableNotTruth);
+            if (s.Case || s.Truth || q2)
+                classes.Add(("H", "CASE, COALESCE or a truth test", "h07, h08", q2 ? ["Q2: a ternary or IS NOT TRUE while S1 is unmeasured"] : []));
             if (s.Like || names.Any(Affixes.Contains))
                 classes.Add(("FG", "LIKE", "h07 (affixes)", s.LikeBracket ? ["N12: LIKE with a bracket"] : []));
             if (s.NumericCast || s.DecimalReading)
@@ -262,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (s.VariantCast)
                 classes.Add(("FG", "VARIANT box", "h07", []));
             if (s.StoredCast)
-                classes.Add(("FG", "stored form (UUID, instant)", "h24 (3C)", []));
+                classes.Add(("rewrite", "stored form (UUID, instant)", "h24 (3C)", []));
             if (s.PathPair)
                 classes.Add(("FG", "two readings", "h11", []));
             if (s.Correlated)
@@ -270,7 +277,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (names.Any(ArrayFunctions.Contains))
                 classes.Add(("FG", "array function", "none named in 3A", []));
             if (classes.Count == 0)
-                classes.Add(("FG", names.Contains("IS_DEFINED") ? "presence over a text accessor" : "other", "none named in 3A", []));
+                classes.Add(("FG", "other", "none named in 3A", []));
+
+            // A conjunct holding a parameter (3B), a stored form (3C) or geography (3E) is that row's, and no part of 3A's F/G.
+            if (classes.Any(c => c.Item1 is "C2" or "rewrite" or "J3"))
+                classes.RemoveAll(c => c.Item1 == "FG");
 
             return classes;
         }
@@ -585,9 +596,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 if (sink is null || _walking || TestClass.StartsWith("Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosRexTranslatorTests", StringComparison.Ordinal) == false)
                     return;
 
-                var set = nameof(Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production);
+                // A translator test's push is a value or a condition by its Rex's type, not by which call the test made, under
+                // the target its class names; it keeps its parameters and has no plan, so the report counts it apart (u).
+                var set = TestClass.Contains("UnderTheEmulator", StringComparison.Ordinal) ? nameof(Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Emulator)
+                    : nameof(Apache.Calcite.Cosmos.Facts.Rendering.RenderingSet.Production);
                 var syntax = Syntax.ReadSyntax(text);
-                var where = position is "conjunct" or "predicate";
+                var where = position is "conjunct" or "predicate" && node.getType().getSqlTypeName() == SqlTypeName.BOOLEAN;
                 var classes = where ? WhereClasses(ShapeOf(node), syntax, set) : ColumnClasses(node, ShapeOf(node), syntax, set);
                 Write([.. classes.Select(cls => Make("suite", set, Test, where ? "where" : "column", cls, classes.Select(c => c.Class), text, text, node))]);
             }
@@ -759,7 +773,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             foreach (var suite in suites)
                 foreach (var line in File.ReadLines(suite))
                     if (JsonSerializer.Deserialize<Push>(line) is { } push)
-                        pushes.Add(push with { Source = IsOrder(push.Origin) ? "d" : "b" });
+                        pushes.Add(push with { Source = IsOrder(push.Origin) ? "d" : IsUnit(push.Origin) ? "u" : "b" });
 
             File.WriteAllText(Path.Combine(output, "census.md"), Report(pushes, timings, suites));
             foreach (var (id, _, _) in Rows.Append(("bare", "", "")).Append(("failure", "", "")))
@@ -768,6 +782,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             TestContext.Current.TestOutputHelper?.WriteLine(string.Join("\n", timings));
             pushes.Should().Contain(p => p.Source == "a" && p.Row == "type-tests", "the digests' weakenings hand the translator type tests");
         }
+
+        /// <summary>Whether a push came from a translator unit test, which asks the translator alone: real, counted apart (u).</summary>
+        internal static bool IsUnit(string test) => test.Contains("CosmosRexTranslatorTests", StringComparison.Ordinal);
+
+        /// <summary>A text with its literals and parameters abstracted, so pushes that differ only in a value are one shape.</summary>
+        static string Abstracted(string text) =>
+            System.Text.RegularExpressions.Regex.Replace(text, @"""(?:[^""\\]|\\.)*""|'(?:[^']|'')*'|@p\d+|(?<![\w.])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", "?");
 
         /// <summary>Whether a test is the order inventory's or the yardstick's (source d).</summary>
         internal static bool IsOrder(string test) =>
@@ -788,7 +809,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             return text.ToString();
         }
 
-        static readonly string[] Real = ["a", "b", "d"];
+        static readonly string[] Real = ["a", "b", "d", "u"];
 
         static string Report(List<Push> pushes, List<string> timings, string[] suites)
         {
@@ -800,7 +821,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             text.Append("# Stage 3 census (h05)\n\n");
             text.Append("Branch-only (`Tests/Planning/Stage3/TranslatorCensus.cs`, deleted at h16). Every push the translator writes today, by row of the spec's §3.1.\n\n");
             text.Append("## Inputs\n\n");
-            foreach (var source in new[] { "a", "b", "c", "d" })
+            foreach (var source in new[] { "a", "b", "c", "d", "u" })
             {
                 var of = pushes.Where(p => p.Source == source).ToList();
                 text.Append($"- ({source}): {of.Select(p => p.Origin).Distinct().Count():N0} origins, {of.Count(p => p.Row is not "failure"):N0} pushes, {Distinct(of.Where(p => p.Row is not "failure")):N0} distinct; {of.Count(p => p.Row == "failure"):N0} failures.\n");
@@ -810,11 +831,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             text.Append($"- Suite captures read: {(suites.Length == 0 ? "none" : string.Join(", ", suites.Select(Path.GetFileName)))}.\n\n");
 
             text.Append("## Per row\n\n");
-            text.Append("Distinct pushes: one text at one position under one set. Real is sources (a), (b) and (d); generated is (c). A fix is a shape §3.1 names a correctness-fix decline for, a candidate until the triage. Reads: the grown reader reads it whole and prints it back.\n\n");
-            text.Append("| Row | PR | Real distinct (Production / Emulator) | (a) / (b) / (d) | (a) statements, Production | Generated distinct (new beyond real) | Real in a fix class (Production / Emulator) | Reads, real | Q14 |\n|---|---|---|---|---|---|---|---|---|\n");
-            foreach (var (id, name, pr) in Rows)
+            text.Append("Distinct pushes: one text at one position under one set. Real is sources (a), (b), (d) and (u), the translator's unit tests, which keep their parameters and have no plan; generated is (c). Shapes: distinct texts with literals and parameters abstracted. H and I are split by position, the WHERE half 3A's and the column half 3D's. Q14's floor reads real pushes without (u). A fix is a shape §3.1 names a correctness-fix decline for, a candidate until the triage. Reads: the grown reader reads every token and prints them back, which checks no structure.\n\n");
+            text.Append("| Row | PR | Real distinct (Production / Emulator) | of which (u) | Real shapes | (a) / (b) / (d) | (a) statements, Production | Generated distinct (new beyond real) | Real in a fix class (Production / Emulator) | Reads, real | Q14 |\n|---|---|---|---|---|---|---|---|---|---|---|\n");
+            foreach (var (id, name, pr, position) in Rows.SelectMany(r => r.Id is "H" or "I"
+                ? new[] { (r.Id, r.Name + ", in a WHERE", r.Pr, (string?)"where"), (r.Id, r.Name + ", in a column", r.Pr, (string?)"column") }
+                : [(r.Id, r.Name, r.Pr, (string?)null)]))
             {
-                var row = pushes.Where(p => p.Row == id).ToList();
+                var row = pushes.Where(p => p.Row == id && (position is null || p.Position == position)).ToList();
                 var real = row.Where(p => Real.Contains(p.Source)).ToList();
                 var generated = row.Where(p => p.Source == "c").ToList();
                 var realKeys = real.Select(p => p.Key).ToHashSet();
@@ -823,8 +846,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 var fixE = Distinct(real.Where(p => p.Fixes.Length > 0), E);
                 var reads = real.Where(p => p.Reads && p.RoundTrips).Select(p => p.Key).Distinct().Count();
                 var statements = real.Where(p => p.Source == "a" && p.Set == P).Select(p => p.Origin).Distinct().Count();
-                var floor = Math.Max(rp, re) >= 30 ? "judged on real" : $"**under 30**: judged on all {Math.Max(rp, re)} real; owner told";
-                text.Append($"| {name} | {pr} | {rp:N0} / {re:N0} | {Distinct(row.Where(p => p.Source == "a")):N0} / {Distinct(row.Where(p => p.Source == "b")):N0} / {Distinct(row.Where(p => p.Source == "d")):N0} | {statements:N0} | {Distinct(generated):N0} ({generated.Select(p => p.Key).Distinct().Count(k => realKeys.Contains(k) == false):N0}) | {Share(fixP, rp)} / {Share(fixE, re)} | {Share(reads, realKeys.Count)} | {floor} |\n");
+                var planned = real.Where(p => p.Source != "u").ToList();
+                var (pp, pe) = (Distinct(planned, P), Distinct(planned, E));
+                var floor = Math.Max(pp, pe) >= 30 ? "judged on real" : $"**under 30**: judged on all {Math.Max(pp, pe)} real without (u); owner told";
+                var shapes = $"{real.Where(p => p.Set == P).Select(p => Abstracted(p.Text)).Distinct().Count():N0} / {real.Where(p => p.Set == E).Select(p => Abstracted(p.Text)).Distinct().Count():N0}";
+                text.Append($"| {name} | {pr} | {rp:N0} / {re:N0} | {rp - pp:N0} / {re - pe:N0} | {shapes} | {Distinct(row.Where(p => p.Source == "a")):N0} / {Distinct(row.Where(p => p.Source == "b")):N0} / {Distinct(row.Where(p => p.Source == "d")):N0} | {statements:N0} | {Distinct(generated):N0} ({generated.Select(p => p.Key).Distinct().Count(k => realKeys.Contains(k) == false):N0}) | {Share(fixP, rp)} / {Share(fixE, re)} | {Share(reads, realKeys.Count)} | {floor} |\n");
             }
 
             text.Append("\n## Per row, by class, fix and piece\n\n");

@@ -111,6 +111,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             CosmosSqlFormReader.ReadSyntax("(c.a = 1").Opaque.Should().BeTrue();
         }
 
+        /// <summary>
+        /// Branch-only (h16): the tree the reader reads beside the ternary and <c>??</c>, which a round trip cannot show: the
+        /// ternary loosest, so <c>a OR b ? c : d</c> asks <c>a OR b</c>, and <c>??</c> beneath it and above <c>OR</c>.
+        /// </summary>
+        [Fact]
+        public void SyntaxReadsTheTernaryLoosestAndCoalesceBeneathIt()
+        {
+            var ternary = CosmosSqlFormReader.ReadSyntax("c.a OR c.b ? c.c : c.d").Should().BeOfType<CosmosSqlFormReader.TernarySyntax>().Subject;
+            ternary.Condition.Should().BeOfType<CosmosSqlFormReader.BinarySyntax>().Which.Operator.Should().Be("OR");
+            CosmosSqlFormReader.ReadSyntax("c.a ?? c.b ? c.c : c.d").Should().BeOfType<CosmosSqlFormReader.TernarySyntax>()
+                .Which.Condition.Should().BeOfType<CosmosSqlFormReader.CoalesceSyntax>();
+            CosmosSqlFormReader.ReadSyntax("c.a ?? c.b OR c.c").Should().BeOfType<CosmosSqlFormReader.CoalesceSyntax>()
+                .Which.Right.Should().BeOfType<CosmosSqlFormReader.BinarySyntax>().Which.Operator.Should().Be("OR");
+        }
+
         static string S(string name) => SqlValue.Spell(P(name));
 
         static ServiceForm D(string name) => ServiceForm.TestOf(CosmosServiceTest.IsDefined, S(name));

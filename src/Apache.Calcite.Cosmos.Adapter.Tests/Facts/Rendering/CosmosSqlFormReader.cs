@@ -108,8 +108,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Branch-only, the Stage 3 census's (deleted at h16): reads any text the translator writes, a condition or a value,
         /// into its syntax, beyond the forms <see cref="Read"/> reads: type tests over any operand, the ternary and
         /// <c>??</c>, <c>LIKE</c> and the functions it is spelled as, calls, arithmetic, <c>IN</c> and <c>[]</c>. The grammar
-        /// is <see cref="Read"/>'s, <c>NOT</c> tightest (<see cref="Row"/>), with the ternary loosest and <c>??</c> beneath it.
-        /// Text outside it reads as one <see cref="OpaqueSyntax"/>.
+        /// is <see cref="Read"/>'s, <c>NOT</c> tightest (<see cref="Row"/>), with the ternary loosest and <c>??</c> beneath it,
+        /// which no row measures: the translator parenthesises every binary form it writes, so no text it writes leans on
+        /// them. Text outside it reads as one <see cref="OpaqueSyntax"/>. A round trip through <see cref="Squeezed"/> checks
+        /// only that every token was read, not the tree: a tree read at the wrong precedence prints the same tokens.
         /// </summary>
         public static SqlSyntax ReadSyntax(string text)
         {
