@@ -8125,11 +8125,13 @@ computed place reaches an arm (h10) the ternary must read that its arms fail now
 the arm it does not take (*TODO.md*).
 
 **A truth value is exact as its constant.** `x IS TRUE` is `case(x, TRUE, FALSE)`, and a truth value is no atom, so no
-template proposes for it: one rule makes `TRUE` exact as `true`, `FALSE` as `false`, and `UNKNOWN` as `false` at `Pos`
-and `true` at `Neg` (what keeps no row there), where the set licenses `Constant`: Kleene's rows hold each constant its own
-truth over every kind of value, which `Service.AConstantIsItsOwnTruth` matches on both service targets. A truth value
-is a leaf with no value, so it weakens to its constant. This rule, and the ternary's second writing, are why S counts
-68 rules where the spec counts 66 (line 31: at most 80; the spec's 78 at h31 is 80 as built).
+template proposes for it: one rule makes `TRUE` exact as `true` and `FALSE` as `false`, where the set licenses
+`Constant`: Kleene's rows hold each constant its own truth over every kind of value, which
+`Service.AConstantIsItsOwnTruth` matches on both service targets. `UNKNOWN` is no constant that row measured, so the
+rule reads only the two it did; a missing else is the absorbing rule's, whose table holds `UNKNOWN` at both positions,
+and an `UNKNOWN` then-arm gives its ternary no best (a push it could make, were Kleene's rows cited for it). A truth
+value is a leaf with no value, so it weakens to its constant. This rule, and the ternary's second writing, are why S
+counts 68 rules where the spec counts 66 at h08.
 
 **The weakening** reads the wide else alone, always sound: `(wc AND wa) OR wb` at `Pos`, `wa AND wb` at `Neg`
 (`RenderingWeakening.OfCase`), `wa` holding beneath `[c]`, which every row the case takes `a` on lies in.

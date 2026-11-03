@@ -166,11 +166,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ServiceForm OppositeElse(RenderPosition pos, ServiceForm condition, ServiceForm then) => pos == RenderPosition.Pos
             ? Joined(CosmosServiceTest.Or, Negated(condition), then) : Joined(CosmosServiceTest.And, condition, then);
 
-        /// <summary>
-        /// The constant a truth value of the IR is sent as at a position: TRUE as <c>true</c> and FALSE as <c>false</c>
-        /// at either, and UNKNOWN as what keeps no row there, <c>false</c> at <c>Pos</c> and <c>true</c> at <c>Neg</c>.
-        /// </summary>
-        public static ServiceForm TruthAt(RenderPosition pos, string truth) => ConstantOf(truth == "true" || truth == "unknown" && pos == RenderPosition.Neg);
+        /// <summary>The constant a truth value of the IR is sent as: TRUE as <c>true</c>, FALSE as <c>false</c>; the rule asks no other.</summary>
+        public static ServiceForm TruthAt(RenderPosition pos, string truth) => ConstantOf(truth == "true");
 
         /// <summary>Text the reader could not read, over the paths it names: the service's answer on it is not known.</summary>
         public static ServiceForm OpaqueOf(string text, ValueSet<string> paths) =>

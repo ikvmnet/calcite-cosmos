@@ -1,4 +1,4 @@
-﻿# Outstanding work
+# Outstanding work
 
 What a complete adapter would have, sized and reasoned, so that the next session picks up an argument
 rather than a list.
@@ -2941,6 +2941,10 @@ across documents* and *A join of a container to itself* is the record.
   evaluates the ternary over its parts (its C# evaluator, unused by the graph, is gone). When a magnitude class licenses
   arithmetic, the rule reads that the arms fail nowhere, or a measured row says the service skips the arm it does not
   take (DESIGN.md, *A `CASE` in S*); an `evaluate` rule for the ternary is the other way, at one rule.
+- **An `UNKNOWN` arm is no constant S writes** — *small; h14's triage.* The truth-constant rule reads only `TRUE` and
+  `FALSE`, the two `Service.AConstantIsItsOwnTruth` measured. A missing else is read by the absorbing rule, but
+  `CASE WHEN c THEN NULL ELSE b END` gives its ternary no best. Citing Kleene's rows (`KleeneTables.AbsorbingElse`) for
+  `UNKNOWN` as the constant that keeps no row at a position would give it back, as data.
 - **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
   is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
   account's run adds the Azure rows, `undefined` among them, and the licence follows as data.

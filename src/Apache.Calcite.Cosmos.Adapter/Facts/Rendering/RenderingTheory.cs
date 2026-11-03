@@ -1174,6 +1174,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (sk, lk) = r.Vars<RenderingSet, ValueSet<CosmosServiceTest>>("sk", "lk");
                 r.When(At.Of(e, pos), e.Is(Ir.Truth.Of(kv)), Under.Of(sk), lk.Is(Licensed.Of(sk)), h.Is(Compute.Of(pos, kv, ServiceForm.TruthAt)));
                 r.Where(Primitives.Contains<CosmosServiceTest>().Of(lk, CosmosServiceTest.Constant));
+                r.Where(Primitives.Contains<string>().Of(MeasuredTruths, kv));
                 r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(ConstantProof), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
                     Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(h)));
             });
@@ -1224,6 +1225,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>What a truth value's constant rests on: the row that measured each constant its own truth, on no cell.</summary>
         static readonly Proof ConstantProof = new(ValueSet.Of("Service.AConstantIsItsOwnTruth"), 0);
+
+        /// <summary>
+        /// The truth values <c>Service.AConstantIsItsOwnTruth</c> measured: UNKNOWN is none, so a missing else is read by
+        /// the absorbing rule alone, whose table holds it at both positions.
+        /// </summary>
+        static readonly ValueSet<string> MeasuredTruths = ValueSet.Of("true", "false");
 
         /// <summary>
         /// Holds a step to a connective the set under which the bundle runs licenses and Calcite does, and a junction's

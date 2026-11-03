@@ -93,6 +93,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 generated.Answer.Kind.Should().Be(RenderingVerdictKind.Proven, root.ToString());
                 HasTernary(generated.Best!).Should().BeFalse(root.ToString());
             }
+
+            // UNKNOWN is no constant the rows measured: alone it has no exact form, which the absorbing rule never needs.
+            Generate(Unknown, RenderingSet.Emulator).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            Generate(False, RenderingSet.Emulator).Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
         }
 
         /// <summary>
