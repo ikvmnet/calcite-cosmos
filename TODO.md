@@ -2897,11 +2897,27 @@ across documents* and *A join of a container to itself* is the record.
   disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are measured on the
   emulator since h06: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6)
   and `LIKE` (N7) matched by code point, and how an integral number reads back (N11); Azure's are owed by run 1.
+- **S writes no affix** — *medium, Stage 3; Azure's rows at h14b.* No `ServiceFormKind` writes `STARTSWITH`, `ENDSWITH`,
+  `CONTAINS` or `LIKE`, so every affix the translator pushes is Unproven to S: at the gate 22 real pushes under
+  `Production` (F, G) and 4 more in J1, and under `Emulator` 15, 7 of them `LIKE` over a `VARCHAR` column, a raw reading
+  the loader reads no affix of. The form needs a cell partition by affix (a prefix is an interval of the code-unit order,
+  a suffix or an infix none), the service's rows N5–N7 by target, and the reader and printer to round-trip it.
+- **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, with h14b's rows.* Each is opaque to S, so
+  their 10 generated pushes are Unproven under both sets (none of the corpus's real ones). Each is a function row,
+  Calcite's measured here and the service's on each target.
+- **`SUBSTRING` from 0 is outside the rows' spellings** — *small.* The translator writes Calcite's start 0 as ternaries
+  over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` (and under
+  `Production` with every function row until h14b).
+- **The two-path row reads no absent or null pair** — *small, with h14b.* `ServiceLeaf.Paired` finds no key for an absent
+  or a null right side against the same on the left, though the measurement asks both, so the diagonal `c.k < c.k` is
+  Unproven under `Emulator`. Pinning that either side absent answers undefined, and a null against a null as the literal
+  null, reads them.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
   with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
   holding 30 the equality is TRUE or FALSE. h07 was to read a typed reading's `CAST(x AS VARIANT)` with its box and
-  did not: the box has no place in the IR, and giving it one changes F's terms, so the cast stays opaque. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
+  did not: the box has no place in the IR, and giving it one changes F's terms, so the cast stays opaque. A text's box
+  is read for S since h14 (equal to a boxed string as the text, null as the text), where it needs no box in the IR. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
   text-equality alternatives write, stay in O2's residue on their merits. Keeping a boxed literal's type in the IR would
   decide them, and changes F's terms.
 - **Production asks the guarded comparison's templates only from the switch** — *bridge, deleted at h15.* C4n, C2 and
@@ -2932,10 +2948,10 @@ across documents* and *A join of a container to itself* is the record.
   of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
   backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and
   learns nothing of the match.
-- **A compound condition of a `CASE` is never two-valued** — *small, h14's triage decides.* `twovalued` is derived of
-  atoms alone (h08), so a junction or negation as a condition reads its else-arm wide, which is sound and may cost a
-  cheaper narrow form. Two rules over junction sides and negation are the proper fix if the triage shows a loss; they
-  would take S to 80 as built at h31 plus two (line 31), so the line is the owner's call then.
+- **A compound condition of a `CASE` is never two-valued** — *small; h14's triage found no loss.* `twovalued` is derived
+  of atoms alone (h08), so a junction or negation as a condition reads its else-arm wide, which is sound and may cost a
+  cheaper narrow form. No push of the census is Unproven for it alone (DESIGN.md, *What the triage closed*), so the two
+  rules over junction sides and negation were not built. Should a push come to need them, they are two rules more (line 31).
 - **The ternary rule reads no failure of an arm off its stratum** — *small; held at h10 by the image rule, owed when a
   failing key is licensed.* An arm's agreement is proved on its own stratum's cells; arithmetic fails the statement
   (`Service.OutOfDomainArithmeticFailsTheStatement`). A computed place reaches an arm from h10, but it has an import only

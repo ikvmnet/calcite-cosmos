@@ -122,6 +122,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         [Fact]
+        public void ANumberComparedWithReturningDoubleIsItsConstantWhereSReads()
+        {
+            var price = Call(SqlStdOperatorTable.GREATER_THAN, JsonValue("price", SqlTypeName.DOUBLE),
+                _rex.makeAbstractCast(Sql(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal("10.0"))));
+            LoadPlaces(price).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(Typed(P("price"), "DOUBLE"), ">", Lit(10m)));
+            Load(price).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+        }
+
+        [Fact]
+        public void ANullTestOfJsonQueryAsksWhetherThePathHoldsAStructureWhereSReads()
+        {
+            var query = _rex.makeCall(Sql(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_QUERY, Nodes(Doc, Str("$.label")));
+            var structure = SqlPredicate.AnyOf([new SqlPredicate.TypeTest("IS_OBJECT", new SqlValue.Raw(Label)), new SqlPredicate.TypeTest("IS_ARRAY", new SqlValue.Raw(Label))]);
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NOT_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(structure);
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(structure));
+            Load(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+        }
+
+        [Fact]
+        public void ATextBoxedAsAVariantIsTheTextWhereSReads()
+        {
+            var boxed = _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), JsonValue("label"));
+            var equal = Call(SqlStdOperatorTable.EQUALS, boxed, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), Str("bikes")));
+            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Eq(Text(Label), "bikes"));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, boxed)).Conjuncts.Should().ContainSingle().Which.Should().Be(IsNull(Text(Label)));
+            LoadPlaces(Call(SqlStdOperatorTable.LESS_THAN, boxed, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), Str("bikes")))).Conjuncts.Should().ContainSingle()
+                .Which.Should().BeOfType<SqlPredicate.Opaque>("a VARIANT's order is not the text's");
+            Load(equal).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+        }
+
+        [Fact]
         public void ANumericCastIsACastOfTheReadingItConverts()
         {
             One(Call(SqlStdOperatorTable.GREATER_THAN, _rex.makeCast(Sql(SqlTypeName.INTEGER), JsonValue("n")), Num(500)))

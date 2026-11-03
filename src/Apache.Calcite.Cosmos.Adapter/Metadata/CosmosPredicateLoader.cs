@@ -104,7 +104,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </param>
             /// <param name="places">
             /// Reads, outside the legacy reading, a call the function rows name as a computed place (h10) and two readings
-            /// of one kind compared as a pair (h11). Only S's tests read them until its switch (h15), which lists the IR
+            /// of one kind compared as a pair (h11); a number compared with <c>RETURNING DOUBLE</c> and a null test of a plain
+            /// <c>JSON_QUERY</c>, and a text boxed as a <c>VARIANT</c> (h14). Only S's tests read them until its switch (h15), which lists the IR
             /// moves they make: F's terms and memo keys stay as they were, each such call and comparison opaque to F.
             /// </param>
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false, bool places = false)
@@ -187,6 +188,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.IS_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue tested && IsPlace(tested)
                             ? new SqlPredicate.IsNull(tested)
+                            : Structure((RexNode)operands.get(0)) is SqlPredicate structure
+                                ? new SqlPredicate.Not(structure)
+                            : Boxed((RexNode)operands.get(0)) is SqlValue boxed
+                                ? new SqlPredicate.IsNull(boxed)
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var unknown
                                 ? new SqlPredicate.Case(unknown, False, new SqlPredicate.Case(new SqlPredicate.Not(unknown), False, True))
                                 : Opaque(node);
@@ -195,6 +200,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.IS_NOT_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue present && IsPlace(present)
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
+                            : Structure((RexNode)operands.get(0)) is SqlPredicate held
+                                ? held
+                            : Boxed((RexNode)operands.get(0)) is SqlValue boxedPresent
+                                ? new SqlPredicate.Not(new SqlPredicate.IsNull(boxedPresent))
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var known
                                 ? new SqlPredicate.Case(known, True, new SqlPredicate.Case(new SqlPredicate.Not(known), True, False))
                                 : Opaque(node);
@@ -245,6 +254,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             static readonly SqlPredicate True = new SqlPredicate.Constant(true), False = new SqlPredicate.Constant(false);
+
+            /// <summary>
+            /// Reads a text reading cast to <c>VARIANT</c> as the text: a string box, null where the text is
+            /// (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), for an equality with a boxed string and a null test alone. Only
+            /// S's tests read it until its switch (h15), F's terms unchanged.
+            /// </summary>
+            SqlValue? Boxed(RexNode node) =>
+                _places && node is RexCall call && call.getKind().name() == nameof(SqlKind.__Enum.CAST) && call.getOperands().size() == 1
+                && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT && Value((RexNode)call.getOperands().get(0)) is SqlValue.Text text
+                    ? text
+                    : null;
+
+            /// <summary>A string literal cast to <c>VARIANT</c>, as the string.</summary>
+            SqlValue? BoxedString(RexNode node) =>
+                node is RexCall { } call && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT && CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal
+                && Literal(literal) is SqlValue.Literal { Kind: Cosmos.Facts.Saturation.JsonValues.StringType } text
+                    ? text
+                    : null;
+
+            /// <summary>
+            /// Reads a plain <c>JSON_QUERY</c> of a path, under a null test, as the path holding a structure: it answers
+            /// an object or an array and null for anything else (<c>Calcite.JsonQueryAnswersStructureOnly</c>). Only S's
+            /// tests read it until its switch (h15), F's terms unchanged.
+            /// </summary>
+            SqlPredicate? Structure(RexNode node) =>
+                _places && CosmosRexShapes.IsPlainJsonQuery(node) && Document(node) is JsonDocumentPath { HasElement: false } path
+                    ? SqlPredicate.AnyOf([new SqlPredicate.TypeTest(TypeTests[CosmosOperators.IsObject], new SqlValue.Raw(path)),
+                        new SqlPredicate.TypeTest(TypeTests[CosmosOperators.IsArray], new SqlValue.Raw(path))])
+                    : null;
 
             /// <summary>The service's type tests but <c>IS_DEFINED</c>, by operator, each read by its name.</summary>
             static readonly Dictionary<SqlOperator, string> TypeTests = new[] { CosmosOperators.IsNull, CosmosOperators.IsString, CosmosOperators.IsNumber,
@@ -340,6 +378,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second) && KindOf(first) is { } kind && KindOf(second) == kind)
                     return new SqlPredicate.Compare(op, first, second);
 
+                // A text boxed as a VARIANT equals a boxed string as the text does (Calcite.VariantEqualsOnlyItsOwnBox).
+                if (op is SqlPredicate.Compare.Equal or SqlPredicate.Compare.NotEqual)
+                {
+                    if (Boxed(a) is { } boxed && BoxedString(b) is { } literal)
+                        return new SqlPredicate.Compare(op, boxed, literal);
+                    if (Boxed(b) is { } mirroredBox && BoxedString(a) is { } mirroredLiteral)
+                        return new SqlPredicate.Compare(op, mirroredBox, mirroredLiteral);
+                }
+
                 return null;
             }
 
@@ -375,7 +422,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (node is RexDynamicParam)
                     return Value(node);
 
-                var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
+                // RETURNING DOUBLE is a conversion too; read only for S until its switch (h15), F's terms unchanged.
+                var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" } || _places && reading is SqlValue.Typed { Type: "DOUBLE" };
                 if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
                     return Number(number);
 

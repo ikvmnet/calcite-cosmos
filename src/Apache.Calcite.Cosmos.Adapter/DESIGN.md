@@ -8098,7 +8098,8 @@ reopen #117 here.
 UNKNOWN, read off any candidate's classes once the gate's stratum is complete (every cell is paired by every candidate,
 so one candidate's classes are the atom's). A cell set aside reads as a raise, never UNKNOWN, so a narrowing that rules
 the nulls out makes an atom two-valued beneath it. A junction or negation as a condition is not marked: its else is
-read wide, which is sound; two rules over junction sides and negation are the proper fix if h14's triage shows a loss.
+read wide, which is sound; two rules over junction sides and negation would be the proper fix, and h14's triage found
+no loss to fix (*What the triage closed*, below).
 
 **Which else the rules read.** A then-arm beneath `[c]` is evaluated on a superset of the rows the case takes it on, so
 it is sound whatever came before. The narrow else is sound only where "not TRUE" is "FALSE", which is two-valuedness:
@@ -8423,6 +8424,38 @@ disciplined with 247, 551, 1,057, 1,949 and 3,494 rows under `Emulator` (246 to 
 `RowLimit`'s 50,000.
 
 ---
+
+### What the triage closed, and what it left (h14)
+
+h14 asked S, in check mode, of every `WHERE` push the census holds, at `Pos` and `Neg`, under the plan's own set and
+under `Portable` beside. What S answered Unproven for want of a reading was read; what it answered Unproven for want of
+a row or a form was left, each with its reason in the triage.
+
+**Three readings, each S's alone until the switch.** Under `places`, as the computed places are (h10), so F's terms and
+the plans stay as they were:
+
+- **A number compared with `RETURNING DOUBLE`.** Calcite casts the literal to the clause's type,
+  `CAST(10.0:DECIMAL(3, 1)):DOUBLE`, as it does against a cast to `DOUBLE`, and `Comparand` reads it as that cast's
+  constant. A literal that is no double, `0.1`, is still Unproven: the service compares by the double it parses, and
+  `ServiceLeaf` places no cell against a literal its double is not, which is the sound refusal.
+- **A null test of a plain `JSON_QUERY`** as the path holding a structure, `IS_OBJECT OR IS_ARRAY`: it answers an object
+  or an array and null for everything else (`Calcite.JsonQueryAnswersStructureOnly`). A wrapper or behaviour clause
+  answers something else (`Calcite.JsonQueryClausesSubstitute`) and stays opaque.
+- **A text boxed as a `VARIANT`**, compared for equality with a boxed string or tested for null, as the text: a text cast
+  to `VARIANT` is a string box, equal to a boxed string where the text is that string, a trailing space kept, and null
+  where the text is null (`Calcite.VariantEqualsOnlyItsOwnBox`, measured for a text box at h14). A box's order is not
+  the text's and is not read; a typed reading's box is still lost (`TODO.md`).
+
+**Compound conditions cost nothing yet.** No push is Unproven for a junction or negation as a `CASE` condition alone:
+under `Emulator` S proves every such push but those whose arms overflow (Q3), and under `Production` they wait on the
+ternary's Azure row (Q2), which the emulator's answers say is all they wait on. So the two rules over junction sides and
+negation were not built, and S stays at 76.
+
+**What it left**, each Unproven for a piece S does not have, not a reading: an affix form (no `ServiceFormKind` writes
+`STARTSWITH` or `LIKE`; Azure's rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
+`SIGN`; `SUBSTRING` from 0; and the two-path row's absent and null cells on the emulator. Under `Emulator` one more is
+refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
+anything.
 
 ## Differential testing
 
