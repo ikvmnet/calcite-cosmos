@@ -85,22 +85,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Text equal to text over ASCII strings is Proven under <c>Production</c> and the emulator as the two paths'
-        /// comparison, which the printer writes with no literal bound; the pair's atom is assumed by the rule, as the
-        /// product, and its spelling is both places'.
+        /// Text equal to text over ASCII strings is Proven under the emulator, whose rows say two paths compare as a path
+        /// and a literal (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>), as the two paths' comparison, which the printer
+        /// writes with no literal bound; under <c>Production</c>, Azure having measured no two paths until run 1, it is
+        /// not. The pair's atom is assumed by the rule, as the product, and its spelling is both places'.
         /// </summary>
         [Fact]
         public void TextEqualToTextIsProvenAsTheTwoPathsComparison()
         {
             var equal = Pair(PredicateAtom.Equal, NamePath, OtherPath);
             var form = ServiceForm.ComparePathsOf(CosmosServiceTest.Equal, Spelled(NamePath), Spelled(OtherPath));
-            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator })
-            {
-                var (answer, run, rows, _) = Generate(equal, set, Strings, Ascii);
-                (answer.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Proven, RunStopReason.Completed), $"{set}: {answer.Reason}");
-                answer.Best.Should().Be(form);
-                rows.Should().BeLessThan(RenderingBundle.RowLimit);
-            }
+            var (answer, run, rows, _) = Generate(equal, RenderingSet.Emulator, Strings, Ascii);
+            (answer.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Proven, RunStopReason.Completed), answer.Reason);
+            answer.Best.Should().Be(form);
+            rows.Should().BeLessThan(RenderingBundle.RowLimit);
+            Generate(equal, RenderingSet.Production, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, "no Azure row measures two paths");
 
             var parameters = new CosmosParameterList();
             RenderingPrinter.Print(form, equal.Places.ToDictionary(Spelled), "c", parameters).Should().Be("(c.name = c.other)");
@@ -108,7 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Should().Be("(NOT (c.name < c.other))");
             parameters.Count.Should().Be(0, "no literal is bound");
 
-            using var bundle = ProbeTheory.Open(RenderingSet.Production);
+            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
             var term = bundle.Write(equal);
             foreach (var path in equal.Places)
                 bundle.Import(Source, path, Strings, Ascii);
@@ -131,12 +130,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var op in new[] { PredicateAtom.Less, PredicateAtom.GreaterOrEqual })
             {
                 var ordered = Pair(op, NamePath, OtherPath);
-                var (answer, _, rows, cells) = Generate(ordered, RenderingSet.Production, Strings, Ascii);
+                var (answer, _, rows, cells) = Generate(ordered, RenderingSet.Emulator, Strings, Ascii);
                 answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}: {answer.Reason}");
                 answer.Best!.Kind.Should().Be(ServiceFormKind.ComparePaths);
                 rows.Should().BeLessThan(RenderingBundle.RowLimit);
 
-                var (across, run, most, product) = Generate(ordered, RenderingSet.Production, Strings, AllBands);
+                var (across, run, most, product) = Generate(ordered, RenderingSet.Emulator, Strings, AllBands);
                 (across.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Unproven, RunStopReason.Completed), op);
                 most.Should().BeLessThan(RenderingBundle.RowLimit);
                 TestContext.Current.TestOutputHelper?.WriteLine($"{op}: rows a bundle {rows} over ASCII ({cells} cells), {most} over every band ({product} cells), of {RenderingBundle.RowLimit}");
@@ -151,28 +150,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TwoNumbersAndTwoAnythingsAreNotProven()
         {
             var numbers = new SqlPredicate.Compare(PredicateAtom.Less, new SqlValue.Typed(NamePath, "INTEGER"), new SqlValue.Typed(OtherPath, "INTEGER"));
-            Generate(numbers, RenderingSet.Production, PathValues.OfKinds(ValueSet.Of(IntegerType)), Ascii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
-            Generate(Pair(PredicateAtom.Equal, NamePath, OtherPath), RenderingSet.Production, PathValues.Anything, AllBands).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            Generate(numbers, RenderingSet.Emulator, PathValues.OfKinds(ValueSet.Of(IntegerType)), Ascii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            Generate(Pair(PredicateAtom.Equal, NamePath, OtherPath), RenderingSet.Emulator, PathValues.Anything, AllBands).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
         }
 
         /// <summary>
         /// A path against itself is the diagonal: <c>name &lt; name</c> is FALSE wherever it is a string and <c>name = name</c>
-        /// TRUE, the service's equal, so both are Proven over strings of every band.
+        /// TRUE, the service's equal, so both are Proven under the emulator over ASCII strings; over the bands its stored
+        /// order reads apart (U+0000, the high band) the order row leaves anything, which the emulator's rule keeps.
         /// </summary>
         [Fact]
         public void APathAgainstItselfIsTheDiagonal()
         {
             foreach (var op in new[] { PredicateAtom.Less, PredicateAtom.Equal })
             {
-                var (answer, _, _, _) = Generate(Pair(op, NamePath, NamePath), RenderingSet.Production, Strings, AllBands);
+                var (answer, _, _, _) = Generate(Pair(op, NamePath, NamePath), RenderingSet.Emulator, Strings, Ascii);
                 answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}: {answer.Reason}");
             }
         }
 
         /// <summary>
-        /// What S proves of a pair, each Proven form judged on documents by the two oracles: Calcite's truth on each is
-        /// TRUE exactly where the service keeps it. Over ASCII every comparison is Proven; over every band, whatever is
-        /// Proven is held to strings holding U+0000, a surrogate pair, a character above it and one between.
+        /// What S proves of a pair under the emulator, each Proven form judged on documents by the two oracles: Calcite's
+        /// truth on each is TRUE exactly where the service keeps it. Over ASCII every comparison is Proven; over every band,
+        /// whatever is Proven is held to strings holding U+0000, a surrogate pair, a character above it and one between.
+        /// Under <c>Production</c> nothing is, until Azure measures two paths.
         /// </summary>
         [Fact]
         public void EveryProvenPairKeepsWhatCalciteKeeps()
@@ -181,15 +182,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var op in Comparisons)
             {
                 var ir = Pair(op, NamePath, OtherPath);
-                foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator })
-                {
-                    var (answer, _, _, _) = Generate(ir, set, Strings, Ascii);
-                    answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op} under {set}: {answer.Reason}");
-                    Agrees(ir, answer.Best!, set, ascii);
+                var (answer, _, _, _) = Generate(ir, RenderingSet.Emulator, Strings, Ascii);
+                answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}: {answer.Reason}");
+                Agrees(ir, answer.Best!, RenderingSet.Emulator, ascii);
 
-                    if (Generate(ir, set, Strings, AllBands).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
-                        Agrees(ir, best, set, wide);
-                }
+                if (Generate(ir, RenderingSet.Emulator, Strings, AllBands).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
+                    Agrees(ir, best, RenderingSet.Emulator, wide);
+                Generate(ir, RenderingSet.Production, Strings, AllBands).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, op);
             }
 
             static void Agrees(SqlPredicate ir, ServiceForm form, RenderingSet set, string[] values)

@@ -89,15 +89,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// A comparison of two paths on a pair of cells, the right value read as a comparison with a literal reads its literal
-        /// (<c>Service.ComparisonWithinAType</c>, <c>Service.StringOrderIsCodePoint</c>, which compares a document's
-        /// strings): within a type by the side or sides the comparator places the left on, across types by the classes' row,
-        /// and against an absent right by the row mirrored, the left read as the literal.
+        /// A comparison of two paths on a pair of cells, where the set's rows say two paths compare as the left with the
+        /// right's value (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>): within a type by the side or sides the
+        /// comparator places the left on (<c>Service.ComparisonWithinAType</c>, <c>Service.StringOrderIsCodePoint</c>),
+        /// across types by the classes' row, and where the right is no literal a row keys (null, absent, a structure) by the
+        /// row mirrored, as that row measured both ways round. Without it, anything.
         /// </summary>
         static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, ISet<string> rows)
         {
             if (CosmosValueClasses.Of(pair.Left) is not CosmosValueClass left || CosmosValueClasses.Of(pair.Right) is not CosmosValueClass right)
                 return ServiceOutcomes.Widest;
+
+            var licence = MeasuredKey.Of(CosmosServiceTest.ComparePaths, CosmosValueClass.None, CosmosValueClass.None);
+            if (table.TryGet(licence, out var paired) == false || paired.Answers.Contains(CosmosAnswer.True) == false)
+            {
+                rows.Add("missing:" + licence);
+                return ServiceOutcomes.Widest;
+            }
+
+            rows.UnionWith(paired.Evidence);
 
             if (left == right && left is CosmosValueClass.String or CosmosValueClass.Number)
             {

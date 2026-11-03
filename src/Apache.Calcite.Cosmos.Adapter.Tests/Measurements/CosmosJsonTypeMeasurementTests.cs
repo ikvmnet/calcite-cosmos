@@ -391,6 +391,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (await Probe("Service.TernaryTakesThenOnTrueAlone", ["1"], "((c.v > \"\") ? true : false)")).Should().Equal(Kept(CosmosValueClass.Undefined));
         }
 
+        /// <summary>
+        /// Two paths compare as the left with the right's value written as a literal, and as the right with the left's
+        /// with the comparator mirrored: each value at <c>v</c> against each at <c>w</c>, an absent path on either side, a
+        /// string holding U+0000, U+FFFF or a surrogate pair among them. Within strings the stored order is the Order row's,
+        /// so the literal is asked where the two differ in kind, or over a number, a boolean or a null.
+        /// </summary>
+        [Fact, CosmosPins("Service.TwoPathsCompareAsAPathAndALiteral")]
+        public async Task TwoPathsCompareAsAPathAndALiteral()
+        {
+            const string Row = "Service.TwoPathsCompareAsAPathAndALiteral";
+            CosmosAxioms.Get(Row).Outcomes!.Single().Test.Should().Be(CosmosServiceTest.ComparePaths);
+            (string Op, string Mirror)[] ops = [("=", "="), ("!=", "!="), ("<", ">"), ("<=", ">="), (">", "<"), (">=", "<=")];
+            string?[] lefts = [.. Kinds, "2.5", "\"a\"", "\"\\u0000\"", "\"\\uFFFF\"", "\"\\uD83D\\uDE00\""];
+            string?[] rights = ["null", null, "30", "\"bikes\"", "\"\\uFFFF\"", "true", "[1]", "{\"x\":1}"];
+            static string Kind(string? json) => json switch { null => "absent", "true" or "false" => "bool", _ => json[0] switch { '"' => "string", '{' => "object", '[' => "array", 'n' => "null", _ => "number" } };
+            var asked = 0;
+            foreach (var right in rights)
+            {
+                var literal = right is not null && Kind(right) is not ("object" or "array");
+                var witnesses = lefts.Select(l => string.Join(",", new[] { l is null ? null : "\"v\":" + l, right is null ? null : "\"w\":" + right }.OfType<string>())).ToList();
+                var expressions = ops.SelectMany(o => new[] { $"(c.v {o.Op} c.w)", $"(c.w {o.Mirror} c.v)" }.Concat(literal ? [$"(c.v {o.Op} {right})"] : [])).ToArray();
+                var answers = await CosmosWitnessProbe.AskMembers(_container, _unavailable, Row, witnesses, expressions);
+                var width = literal ? 3 : 2;
+                for (var o = 0; o < ops.Length; o++)
+                    for (var i = 0; i < lefts.Length; i++, asked++)
+                    {
+                        var direct = answers[o * width][i];
+                        answers[o * width + 1][i].Should().Be(direct, $"{expressions[o * width + 1]} answers as {expressions[o * width]} over {witnesses[i]}");
+                        if (literal && (Kind(lefts[i]) != Kind(right) || Kind(right) != "string"))
+                            answers[o * width + 2][i].Should().Be(direct, $"{expressions[o * width + 2]} answers as {expressions[o * width]} over {witnesses[i]}");
+                    }
+            }
+
+            asked.Should().Be(rights.Length * ops.Length * lefts.Length);
+        }
+
         /// <summary>An index is an array's element from zero, and undefined over every other value, a string among them, and past the end.</summary>
         [Fact, CosmosPins("Service.IndexOverANonArrayIsUndefined")]
         public async Task AnIndexOverANonArrayIsUndefined()

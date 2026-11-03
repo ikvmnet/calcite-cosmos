@@ -8004,8 +8004,13 @@ key worse than the row, never one that answers better.
 S's licence reads every `Calcite` row. h12 moved the union over them into S and deleted the host table.
 
 **Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
-line with the release that answered (EN20261019, CI's); a row measured on the emulator since 2026-11-02 has lines
-there, and no function outcome claims Azure until a run record holds it.
+line with the release that answered (EN20261019, CI's, and EN20260907's three lines where it parts); a row measured on
+the emulator since 2026-11-02 has lines there, and no function outcome claims Azure until a run record holds it. CI
+reads the release off the container's log (`COSMOS_EMULATOR_RELEASE`) and the witness probe logs it in place of the
+endpoint; a release a record names must answer each line recorded for it as recorded, and one whose own record holds a
+row must log no line of it the record misses, so the record is what the pinning tests ask, and a new release that parts
+is named where it does. `CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary,
+element and two-path forms to the service (line 4b), as the reader's forms are held beside them.
 
 ### The IR's new shapes: F reads them, S not yet
 
@@ -8287,8 +8292,13 @@ themselves (text, not a raw value nor `CHAR`'s padding); otherwise TRUE or FALSE
 (`ServiceLeaf.Paired`): within one type the literal comparison's rows, the side read from the set's `Order` comparator,
 two string points compared directly, and every side where the comparator parts the cells' bands (U+0000 or a character
 above U+FFFF stored on the emulator, a surrogate against a character above U+DFFF by code point); across types the row
-of the left's class against the right's, or the mirrored test's row the other way round. That the service compares two
-paths as it compares a path with a literal is an assumption the rows do not measure; Azure confirms it at h14b.
+of the left's class against the right's, or, where the right is no literal a row keys (null, absent, a structure), the
+mirrored test's row the other way round. All of it rests on `Service.TwoPathsCompareAsAPathAndALiteral`, measured on the
+emulator over 15 values at `v` against 8 at `w` (an absent path, U+0000, U+FFFF and a surrogate pair among them), six
+comparators each way round, each also against the right's value as a literal where the two differ in kind or the right
+is no string: EN20261019 and EN20260907 answer its 1,890 lines alike. The leaf reads its one key (`ComparePaths`) before
+anything else, so where the set holds no such row (`Production` and `Portable`, Azure having measured no two paths
+until run 1) a pair is anything and proves nothing.
 
 **The form.** `ServiceFormKind.ComparePaths` reads two paths, so a pair's spelling is both places' as a JSON array
 (`PlaceSpellings`), which no path's or call's spelling begins with; the partition rule's guard reads that set, and the

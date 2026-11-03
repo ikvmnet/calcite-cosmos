@@ -78,6 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         static readonly DateOnly Cases = new(2026, 11, 2);
 
+        static readonly DateOnly Pairs = new(2026, 11, 3);
+
         // A connective's operands that are no truth, each measured over its own witnesses; declared before the rows read it.
         static readonly Class[] NoTruth = [Class.Undefined, Class.Absent, Class.Null, Class.Number, Class.String, Class.Object, Class.Array];
 
@@ -466,6 +468,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.IntegralNumbersReadBackAsHeld",
                 "A number reads back as the emulator holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point as a double, 9007199254740993.0 as 9007199254740992, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
+            new("Service.TwoPathsCompareAsAPathAndALiteral",
+                "c.v op c.w answers as c.v op the value at w written as a literal, for each of =, !=, <, <=, > and >=, over every kind of value on either side, an absent path included, and as c.w op' c.v with the comparator mirrored (< and >, <= and >=), so a right side no literal can be, null, an object, an array or an absent path, reads as the left compared with it the other way round.",
+                CosmosAxiomTarget.Emulator, Pairs, "Measurements.CosmosJsonTypeMeasurementTests.TwoPathsCompareAsAPathAndALiteral",
+                [new(Test.ComparePaths, Class.None, CosmosAxiomTarget.Emulator, "none=true")]),
 
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 

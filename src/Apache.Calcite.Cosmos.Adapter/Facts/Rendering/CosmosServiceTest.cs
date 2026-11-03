@@ -49,6 +49,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         Choose,
 
+        /// <summary>
+        /// A comparison of two paths: keyed by nothing, the answer <see cref="CosmosAnswer.True"/> where it is measured to
+        /// answer as the left compared with the right's value, and mirrored where only the mirror's key is a row.
+        /// </summary>
+        ComparePaths,
+
     }
 
 }

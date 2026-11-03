@@ -37,12 +37,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.Test => Truth(Test(form.Test, At(document, form.Path!))),
             ServiceFormKind.Compare => Compare(form.Test, At(document, form.Path!), form.Literal!, target),
 
-            // Two paths (h11) as the left against the right's value as a literal: what ServiceLeaf assumes of them, and
-            // no row says of a container on either side.
-            ServiceFormKind.ComparePaths => (At(document, form.Path!), At(document, form.Right!)) switch
+            // Service.TwoPathsCompareAsAPathAndALiteral, measured on the emulator alone: the left against the right's value
+            // as a literal, but two numbers each as the service holds it, the diagonal a value against itself; nothing of
+            // a container on either side.
+            ServiceFormKind.ComparePaths when target == RenderingTarget.Emulator => (At(document, form.Path!), At(document, form.Right!)) switch
             {
                 (null, _) or (_, null) => ServiceOutcomes.Undefined,
                 ({ IsScalar: false }, _) or (_, { IsScalar: false }) => null,
+                (J left and (J.Num or J.Huge), J.Num r) => Ordered(form.Test, Numeric(left, r.Value, Held(r.Value, target), target)),
                 var (left, right) => Compare(form.Test, left, right.Encoded, target),
             },
 
@@ -147,17 +149,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 null => null,
                 int.MinValue => equality ? Truth(op == CosmosServiceTest.NotEqual) : ServiceOutcomes.Undefined,
-                var o => Truth(op switch
-                {
-                    CosmosServiceTest.Equal => o == 0,
-                    CosmosServiceTest.NotEqual => o != 0,
-                    CosmosServiceTest.Less => o < 0,
-                    CosmosServiceTest.LessOrEqual => o <= 0,
-                    CosmosServiceTest.Greater => o > 0,
-                    _ => o >= 0,
-                }),
+                int o => Ordered(op, o),
             };
         }
+
+        /// <summary>What a comparator answers of two values that stand in an order.</summary>
+        static ServiceOutcomes Ordered(CosmosServiceTest op, int o) => Truth(op switch
+        {
+            CosmosServiceTest.Equal => o == 0,
+            CosmosServiceTest.NotEqual => o != 0,
+            CosmosServiceTest.Less => o < 0,
+            CosmosServiceTest.LessOrEqual => o <= 0,
+            CosmosServiceTest.Greater => o > 0,
+            _ => o >= 0,
+        });
+
+        /// <summary>Whether the service holds a document's number as an int64: one written whole, and on Azure one written with a point too.</summary>
+        static bool Held(decimal x, RenderingTarget target) => x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue && (target == RenderingTarget.Azure || x.Scale == 0);
 
         /// <summary>Strings by code point, a lone surrogate as U+FFFD.</summary>
         static int ByCodePoint(string a, string b)

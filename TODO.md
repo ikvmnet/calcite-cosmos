@@ -2978,12 +2978,12 @@ across documents* and *A join of a container to itself* is the record.
 - **An affix over a computed place stays opaque** — *small.* `LIKE` reads a text or `VARCHAR` cast subject alone, so the
   census's case-insensitive rewrites (`LIKE(UPPER(p), '%B%')`, 6 under the emulator) are listed, not proven. Reading a
   typed `VARCHAR` place as an affix's subject is the change, its rows the case mapping's and the affix's.
-- **Two paths compared are assumed to answer as a path and a literal** — *assumption, h14b.* `ServiceLeaf.Paired` reads
-  a comparison of two paths through the literal comparison's rows, within a type by the set's `Order` comparator and
-  across types by the left's class against the right's, mirrored where only the other way round is measured (h11). No
-  row measures two paths; the probe account's run at h14b measures them over the order witnesses and the cross-type
-  pairs, both images too, and a disagreement turns the leaf to the rows that run gives. Until then a pair proves
-  nothing in production: S reads the legacy loader, which keeps it opaque (h15).
+- **Two paths compared answer as a path and a literal on the emulator alone** — *small, h14b.* `ServiceLeaf.Paired`
+  reads a comparison of two paths through the literal comparison's rows, within a type by the set's `Order` comparator
+  and across types by the left's class against the right's, mirrored where the right is no literal a row keys, on the
+  authority of `Service.TwoPathsCompareAsAPathAndALiteral`, measured on EN20261019 and EN20260907 alike. Azure has no
+  such row, so under `Production` a pair proves nothing; the probe account's run at h14b measures the same witnesses,
+  and the row's Azure target follows as data.
 - **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,
   so a pair's form is exact or nothing, never implied, and the translator's Rex of it is not built. Writing it is the
   grammar's row and the builder's arm, at the switch, when S first owns a pair.
