@@ -77,6 +77,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Should().Contain(Pinned[0].Text).And.Contain(Pinned[4].Text);
         }
 
+        /// <summary>
+        /// Branch-only, the Stage 3 census's (deleted at h16): every shape the translator writes beyond the forms reads whole
+        /// and prints back to its text, type tests over a call, the ternary and <c>??</c>, <c>LIKE</c>'s spellings, calls,
+        /// arithmetic and <c>[]</c> among them; <c>NOT</c> binds tightest; and what is outside the grammar reads as one opaque
+        /// text.
+        /// </summary>
+        [Theory]
+        [InlineData("(IS_NUMBER(c.price) ? c.price : null)", typeof(CosmosSqlFormReader.GroupSyntax))]
+        [InlineData("IS_STRING(LOWER(c.name))", typeof(CosmosSqlFormReader.CallSyntax))]
+        [InlineData("STARTSWITH(c.name, @p0, true)", typeof(CosmosSqlFormReader.CallSyntax))]
+        [InlineData("(c.name LIKE @p0)", typeof(CosmosSqlFormReader.GroupSyntax))]
+        [InlineData("c.name NOT LIKE \"a%\"", typeof(CosmosSqlFormReader.LikeSyntax))]
+        [InlineData("c.tags[0] ?? c[\"$x\"].y", typeof(CosmosSqlFormReader.CoalesceSyntax))]
+        [InlineData("((c.price - 2) % 3) >= -1.5E2", typeof(CosmosSqlFormReader.BinarySyntax))]
+        [InlineData("c.a IN (1, \"b\", true) AND NOT IS_DEFINED(c.b) OR (c.k = 1 ? \"t\" : \"e\")", typeof(CosmosSqlFormReader.BinarySyntax))]
+        [InlineData("SUBSTRING(c.s, 0, 2)[1] || ARRAY_SLICE([1, 2], 1).x", typeof(CosmosSqlFormReader.BinarySyntax))]
+        public void EveryTranslatorShapeReadsAsSyntax(string text, System.Type root)
+        {
+            var read = CosmosSqlFormReader.ReadSyntax(text);
+            read.Should().BeOfType(root);
+            read.Opaque.Should().BeFalse(text);
+            CosmosSqlFormReader.Squeezed(read.Written).Should().Be(CosmosSqlFormReader.Squeezed(text));
+        }
+
+        /// <summary>Branch-only (h16): <c>NOT</c> binds tighter than a comparison, so <c>NOT c.a = 1</c> compares <c>NOT c.a</c>; a text outside the grammar is one opaque text.</summary>
+        [Fact]
+        public void SyntaxBindsNotTightestAndReadsTheRestAsOpaque()
+        {
+            CosmosSqlFormReader.ReadSyntax("NOT c.a = 1").Should().BeOfType<CosmosSqlFormReader.BinarySyntax>()
+                .Which.Left.Should().BeOfType<CosmosSqlFormReader.UnarySyntax>();
+            CosmosSqlFormReader.ReadSyntax("c.a = { \"k\": 1 }").Should().Be(new CosmosSqlFormReader.OpaqueSyntax("c.a = { \"k\": 1 }"));
+            CosmosSqlFormReader.ReadSyntax("(c.a = 1").Opaque.Should().BeTrue();
+        }
+
         static string S(string name) => SqlValue.Spell(P(name));
 
         static ServiceForm D(string name) => ServiceForm.TestOf(CosmosServiceTest.IsDefined, S(name));

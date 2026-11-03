@@ -102,6 +102,355 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             : decimal.TryParse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)
                 && Cosmos.Facts.Saturation.DoubleBound.Of(x) == d ? x : null;
 
+        // ── Branch-only, the Stage 3 census's (deleted at h16): the whole expression the translator writes ──────────────
+
+        /// <summary>
+        /// Branch-only, the Stage 3 census's (deleted at h16): reads any text the translator writes, a condition or a value,
+        /// into its syntax, beyond the forms <see cref="Read"/> reads: type tests over any operand, the ternary and
+        /// <c>??</c>, <c>LIKE</c> and the functions it is spelled as, calls, arithmetic, <c>IN</c> and <c>[]</c>. The grammar
+        /// is <see cref="Read"/>'s, <c>NOT</c> tightest (<see cref="Row"/>), with the ternary loosest and <c>??</c> beneath it.
+        /// Text outside it reads as one <see cref="OpaqueSyntax"/>.
+        /// </summary>
+        public static SqlSyntax ReadSyntax(string text)
+        {
+            var parser = new SyntaxParser(text);
+            try
+            {
+                var read = parser.Expression();
+                return parser.Done ? read : new OpaqueSyntax(text);
+            }
+            catch (FormatException)
+            {
+                return new OpaqueSyntax(text);
+            }
+        }
+
+        /// <summary>A text without the white space outside its quotes: what a syntax printed back is compared by.</summary>
+        public static string Squeezed(string text)
+        {
+            var squeezed = new StringBuilder(text.Length);
+            char? quote = null;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (quote is { } q)
+                {
+                    squeezed.Append(c);
+                    if (c == '\\' && i + 1 < text.Length)
+                        squeezed.Append(text[++i]);
+                    else if (c == q)
+                        quote = null;
+                }
+                else if (c is '"' or '\'')
+                {
+                    quote = c;
+                    squeezed.Append(c);
+                }
+                else if (char.IsWhiteSpace(c) == false)
+                    squeezed.Append(c);
+            }
+
+            return squeezed.ToString();
+        }
+
+        /// <summary>A text the translator wrote, read as syntax; <see cref="Written"/> prints it back.</summary>
+        internal abstract record SqlSyntax
+        {
+
+            public abstract string Written { get; }
+
+            public virtual IEnumerable<SqlSyntax> Operands => [];
+
+            /// <summary>Whether any of it was read as opaque.</summary>
+            public bool Opaque => this is OpaqueSyntax || Operands.Any(o => o.Opaque);
+
+            /// <summary>It and everything beneath it, depth first.</summary>
+            public IEnumerable<SqlSyntax> Nodes => Operands.SelectMany(o => o.Nodes).Prepend(this);
+
+            public sealed override string ToString() => Written;
+
+        }
+
+        /// <summary>A path from an alias: its steps as written, a name, a quoted name or an index.</summary>
+        internal sealed record PathSyntax(string Alias, IReadOnlyList<string> Steps) : SqlSyntax
+        {
+            public override string Written => Alias + string.Concat(Steps);
+            public bool Indexed => Steps.Any(s => s.Length > 1 && s[0] == '[' && s[1] != '"');
+        }
+
+        internal sealed record LiteralSyntax(string Text) : SqlSyntax
+        {
+            public override string Written => Text;
+        }
+
+        internal sealed record ParameterSyntax(string Name) : SqlSyntax
+        {
+            public override string Written => Name;
+        }
+
+        internal sealed record CallSyntax(string Name, IReadOnlyList<SqlSyntax> Arguments) : SqlSyntax
+        {
+            public override string Written => Name + "(" + string.Join(", ", Arguments.Select(a => a.Written)) + ")";
+            public override IEnumerable<SqlSyntax> Operands => Arguments;
+        }
+
+        internal sealed record TernarySyntax(SqlSyntax Condition, SqlSyntax Then, SqlSyntax Else) : SqlSyntax
+        {
+            public override string Written => Condition.Written + " ? " + Then.Written + " : " + Else.Written;
+            public override IEnumerable<SqlSyntax> Operands => [Condition, Then, Else];
+        }
+
+        internal sealed record CoalesceSyntax(SqlSyntax Left, SqlSyntax Right) : SqlSyntax
+        {
+            public override string Written => Left.Written + " ?? " + Right.Written;
+            public override IEnumerable<SqlSyntax> Operands => [Left, Right];
+        }
+
+        /// <summary>A comparison, a connective, arithmetic or <c>||</c>.</summary>
+        internal sealed record BinarySyntax(string Operator, SqlSyntax Left, SqlSyntax Right) : SqlSyntax
+        {
+            public override string Written => Left.Written + " " + Operator + " " + Right.Written;
+            public override IEnumerable<SqlSyntax> Operands => [Left, Right];
+        }
+
+        internal sealed record UnarySyntax(string Operator, SqlSyntax Operand) : SqlSyntax
+        {
+            public override string Written => Operator == "NOT" ? "NOT " + Operand.Written : Operator + Operand.Written;
+            public override IEnumerable<SqlSyntax> Operands => [Operand];
+        }
+
+        internal sealed record InSyntax(SqlSyntax Value, IReadOnlyList<SqlSyntax> Items, bool Not) : SqlSyntax
+        {
+            public override string Written => Value.Written + (Not ? " NOT IN (" : " IN (") + string.Join(", ", Items.Select(i => i.Written)) + ")";
+            public override IEnumerable<SqlSyntax> Operands => Items.Prepend(Value);
+        }
+
+        internal sealed record LikeSyntax(SqlSyntax Value, SqlSyntax Pattern, bool Not) : SqlSyntax
+        {
+            public override string Written => Value.Written + (Not ? " NOT LIKE " : " LIKE ") + Pattern.Written;
+            public override IEnumerable<SqlSyntax> Operands => [Value, Pattern];
+        }
+
+        /// <summary>An index of what is not a path: a call's, a parenthesised value's.</summary>
+        internal sealed record IndexSyntax(SqlSyntax Of, SqlSyntax Index) : SqlSyntax
+        {
+            public override string Written => Of.Written + "[" + Index.Written + "]";
+            public override IEnumerable<SqlSyntax> Operands => [Of, Index];
+        }
+
+        internal sealed record MemberSyntax(SqlSyntax Of, string Name) : SqlSyntax
+        {
+            public override string Written => Of.Written + "." + Name;
+            public override IEnumerable<SqlSyntax> Operands => [Of];
+        }
+
+        internal sealed record GroupSyntax(SqlSyntax Inner) : SqlSyntax
+        {
+            public override string Written => "(" + Inner.Written + ")";
+            public override IEnumerable<SqlSyntax> Operands => [Inner];
+        }
+
+        internal sealed record ArraySyntax(IReadOnlyList<SqlSyntax> Items) : SqlSyntax
+        {
+            public override string Written => "[" + string.Join(", ", Items.Select(i => i.Written)) + "]";
+            public override IEnumerable<SqlSyntax> Operands => Items;
+        }
+
+        internal sealed record OpaqueSyntax(string Text) : SqlSyntax
+        {
+            public override string Written => Text;
+        }
+
+        /// <summary>The descent <see cref="ReadSyntax"/> runs, one production a precedence level, over <see cref="Parser"/>'s tokens.</summary>
+        sealed class SyntaxParser(string text)
+        {
+
+            static readonly HashSet<string> Comparisons = new(StringComparer.Ordinal) { "=", "!=", "<>", "<", "<=", ">", ">=" };
+
+            readonly IReadOnlyList<(string Text, int Start, int End)> _tokens = new Parser(text, [], false).Tokens;
+            int _at;
+
+            public bool Done => _at == _tokens.Count;
+
+            string? Peek => _at < _tokens.Count ? _tokens[_at].Text : null;
+
+            string? PeekAt(int ahead) => _at + ahead < _tokens.Count ? _tokens[_at + ahead].Text : null;
+
+            bool Accept(string token)
+            {
+                if (Peek != token)
+                    return false;
+
+                _at++;
+                return true;
+            }
+
+            void Expect(string token)
+            {
+                if (Accept(token) == false)
+                    throw new FormatException(token);
+            }
+
+            public SqlSyntax Expression()
+            {
+                var condition = Coalesce();
+                if (Accept("?") == false)
+                    return condition;
+
+                var then = Expression();
+                Expect(":");
+                return new TernarySyntax(condition, then, Expression());
+            }
+
+            SqlSyntax Coalesce()
+            {
+                var left = Or();
+                return Accept("??") ? new CoalesceSyntax(left, Coalesce()) : left;
+            }
+
+            SqlSyntax Or() => Junction("OR", And);
+
+            SqlSyntax And() => Junction("AND", Comparison);
+
+            SqlSyntax Junction(string word, Func<SqlSyntax> member)
+            {
+                var left = member();
+                while (Accept(word))
+                    left = new BinarySyntax(word, left, member());
+
+                return left;
+            }
+
+            SqlSyntax Comparison()
+            {
+                var left = Additive();
+                if (Peek is { } op && Comparisons.Contains(op))
+                {
+                    _at++;
+                    return new BinarySyntax(op, left, Additive());
+                }
+
+                var not = Peek == "NOT" && PeekAt(1) is "IN" or "LIKE";
+                if (not)
+                    _at++;
+
+                if (Accept("IN"))
+                {
+                    Expect("(");
+                    return new InSyntax(left, List(")"), not);
+                }
+
+                if (Accept("LIKE"))
+                    return new LikeSyntax(left, Additive(), not);
+
+                return not ? throw new FormatException("NOT") : left;
+            }
+
+            SqlSyntax Additive()
+            {
+                var left = Multiplicative();
+                while (Peek is "+" or "-" or "||")
+                {
+                    var op = Peek!;
+                    _at++;
+                    left = new BinarySyntax(op, left, Multiplicative());
+                }
+
+                return left;
+            }
+
+            SqlSyntax Multiplicative()
+            {
+                var left = Unary();
+                while (Peek is "*" or "/" or "%")
+                {
+                    var op = Peek!;
+                    _at++;
+                    left = new BinarySyntax(op, left, Unary());
+                }
+
+                return left;
+            }
+
+            SqlSyntax Unary()
+            {
+                if (Accept("NOT"))
+                    return new UnarySyntax("NOT", Unary());
+
+                if (Accept("-"))
+                    return new UnarySyntax("-", Unary());
+
+                return Postfix();
+            }
+
+            SqlSyntax Postfix()
+            {
+                var read = Primary();
+                while (true)
+                {
+                    if (Peek == "." && PeekAt(1) is { } name && IsWord(name))
+                    {
+                        _at += 2;
+                        read = read is PathSyntax path ? path with { Steps = [.. path.Steps, "." + name] } : new MemberSyntax(read, name);
+                    }
+                    else if (Accept("["))
+                    {
+                        var index = Expression();
+                        Expect("]");
+                        read = read is PathSyntax path && index is LiteralSyntax step ? path with { Steps = [.. path.Steps, "[" + step.Text + "]"] } : new IndexSyntax(read, index);
+                    }
+                    else
+                        return read;
+                }
+            }
+
+            SqlSyntax Primary()
+            {
+                var token = Peek ?? throw new FormatException("end");
+                _at++;
+                if (token == "(")
+                {
+                    var inner = Expression();
+                    Expect(")");
+                    return new GroupSyntax(inner);
+                }
+
+                if (token == "[")
+                    return new ArraySyntax(List("]"));
+
+                if (token[0] == '@')
+                    return new ParameterSyntax(token);
+
+                if (token[0] is '"' or '\'' || char.IsAsciiDigit(token[0]))
+                    return new LiteralSyntax(token);
+
+                if (IsWord(token) == false || token is "AND" or "OR" or "NOT" or "IN" or "LIKE")
+                    throw new FormatException(token);
+
+                if (Accept("("))
+                    return new CallSyntax(token, List(")"));
+
+                return token is "true" or "false" or "null" or "undefined" ? new LiteralSyntax(token) : new PathSyntax(token, []);
+            }
+
+            List<SqlSyntax> List(string close)
+            {
+                var items = new List<SqlSyntax>();
+                if (Accept(close))
+                    return items;
+
+                do
+                    items.Add(Expression());
+                while (Accept(","));
+
+                Expect(close);
+                return items;
+            }
+
+            static bool IsWord(string token) => token is [(>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or '_', ..];
+
+        }
+
         /// <summary>
         /// A recursive descent over the text's tokens, each production answering its form and its text as written; a primary
         /// outside the grammar falls back to an opaque reading of the source it spans.
@@ -124,6 +473,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             string? Peek => _at < _tokens.Count ? _tokens[_at].Text : null;
+
+            /// <summary>Branch-only, the Stage 3 census's (deleted at h16): the text's tokens, which <see cref="SyntaxParser"/> reads.</summary>
+            internal IReadOnlyList<(string Text, int Start, int End)> Tokens => _tokens;
 
             public (ServiceForm, string) Whole()
             {
