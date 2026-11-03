@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return cell is PathCell.Pair pair ? Paired(leaf, pair, table, rows) : ServiceOutcomes.Widest;
 
             // A kind the theory does not know says nothing of the cell.
-            if (ClassOf(cell) is not CosmosValueClass kind)
+            if (CosmosValueClasses.Of(cell) is not CosmosValueClass kind)
                 return ServiceOutcomes.Widest;
 
             switch (leaf.Kind)
@@ -46,10 +46,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
 
                 case ServiceFormKind.Constant:
-                    return table.Outcomes(MeasuredKey.Of(leaf.Test, ClassOf(leaf.Literal!), kind), rows);
+                    return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClasses.Of(leaf.Literal!), kind), rows);
 
                 case ServiceFormKind.Compare:
-                    var operand = ClassOf(leaf.Literal!);
+                    var operand = CosmosValueClasses.Of(leaf.Literal!);
                     return operand == kind && operand is CosmosValueClass.String or CosmosValueClass.Number
                         ? Within(leaf, cell, operand, table, parted, rows)
                         : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
@@ -96,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, ISet<string> rows)
         {
-            if (ClassOf(pair.Left) is not CosmosValueClass left || ClassOf(pair.Right) is not CosmosValueClass right)
+            if (CosmosValueClasses.Of(pair.Left) is not CosmosValueClass left || CosmosValueClasses.Of(pair.Right) is not CosmosValueClass right)
                 return ServiceOutcomes.Widest;
 
             if (left == right && left is CosmosValueClass.String or CosmosValueClass.Number)
@@ -176,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         static CosmosValueClass NonBoolean(ServiceForm leaf, PathCell cell) =>
-            leaf.Kind == ServiceFormKind.Bare && ClassOf(cell) is CosmosValueClass kind and not (CosmosValueClass.True or CosmosValueClass.False) ? kind : CosmosValueClass.None;
+            leaf.Kind == ServiceFormKind.Bare && CosmosValueClasses.Of(cell) is CosmosValueClass kind and not (CosmosValueClass.True or CosmosValueClass.False) ? kind : CosmosValueClass.None;
 
         /// <summary>
         /// Where a cell's values lie against a literal under a comparator; <c>null</c> where the comparator does not order
@@ -258,25 +258,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         static CosmosValueClass[]? Numeric(PathCell cell, decimal c) => cell.SidesOf(c, byValue: true, byDouble: true) is not { } sides ? null
             : sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
-
-        static CosmosValueClass? ClassOf(PathCell cell) => cell switch
-        {
-            PathCell.Absent => CosmosValueClass.Absent,
-            PathCell.Null => CosmosValueClass.Null,
-            PathCell.Structure s => s.Type == ObjectType ? CosmosValueClass.Object : CosmosValueClass.Array,
-            PathCell.Strings => CosmosValueClass.String,
-            PathCell.Numbers => CosmosValueClass.Number,
-            PathCell.Point p => ClassOf(p.Value),
-            _ => null,
-        };
-
-        static CosmosValueClass ClassOf(string value) => TypeOf(value) switch
-        {
-            StringType => CosmosValueClass.String,
-            BooleanType => value == Of(true) ? CosmosValueClass.True : CosmosValueClass.False,
-            NullType => CosmosValueClass.Null,
-            _ => CosmosValueClass.Number,
-        };
 
     }
 

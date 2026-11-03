@@ -2792,8 +2792,8 @@ across documents* and *A join of a container to itself* is the record.
   number by kind alone, so every typed arithmetic operator answers `Differs` or `Fails` over a number, a sum that cannot
   wrap included, and no arithmetic place has an image: the census's 143 arithmetic pushes are listed Unproven
   (`reports/stage3-3A/h10/listing.tsv`). A magnitude class (within 2^31, within 2^53, within int64), its rows measured,
-  and `RenderingImage` cutting a range at `CutPoints.Critical` (data only at h10) would license the ranges where they
-  agree.
+  and `RenderingImage` cutting a range at the turning points those rows carry (0, ±1, 2^31, 2^53) would license the
+  ranges where they agree.
 - ~~**`POSITION` under the emulator counts a surrogate apart**~~ — *closed at h10.* The rows are the rule, so the
   emulator refuses `POSITION` over a subject that may hold a surrogate
   (`CosmosFunctionRowsGateTests.EveryBandTheEmulatorPartsOverIsRefusedThere`); no digest statement moved.
@@ -2937,8 +2937,10 @@ across documents* and *A join of a container to itself* is the record.
   failing key is licensed.* An arm's agreement is proved on its own stratum's cells; arithmetic fails the statement
   (`Service.OutOfDomainArithmeticFailsTheStatement`). A computed place reaches an arm from h10, but it has an import only
   where every key its cells fall under answers `Same` on every target, which a failing key does not, so no form over a
-  failing place agrees. When a magnitude class licenses arithmetic, the rule reads that the arms fail nowhere, or a
-  measured row says the service skips the arm it does not take (DESIGN.md, *A `CASE` in S*).
+  failing place agrees. Arm failures under the ternary are read from the arms' own agreements alone: nothing in S
+  evaluates the ternary over its parts (its C# evaluator, unused by the graph, is gone). When a magnitude class licenses
+  arithmetic, the rule reads that the arms fail nowhere, or a measured row says the service skips the arm it does not
+  take (DESIGN.md, *A `CASE` in S*); an `evaluate` rule for the ternary is the other way, at one rule.
 - **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
   is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
   account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
@@ -2961,8 +2963,8 @@ across documents* and *A join of a container to itself* is the record.
 - **`LENGTH` has no emulator row** — *small, emulator only.* Calcite's library `LENGTH` is keyed by its own name and the
   string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), where it pushed before; no digest statement moved.
   A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured, gives it back.
-- **A result key bounds nothing yet** — *small, h14b.* `RenderingImage.ResultKeys` is empty: no row holds a key of a
-  call's result, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
+- **A result key bounds nothing yet** — *small, h14b.* The image rule reads no key of a call's result, since no row
+  holds one, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
   spelling a `REPEAT` place only for a count of 0. Azure's rows decide whether a result key is measured or the bound
   stays legality.
 - **An affix over a computed place stays opaque** — *small.* `LIKE` reads a text or `VARCHAR` cast subject alone, so the

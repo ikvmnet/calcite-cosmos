@@ -49,12 +49,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// The keys a call's image falls under that its rows bound: none yet, no row holding a result key (a <c>REPEAT</c>'s
-        /// length bound waits for Azure's rows, h14b).
-        /// </summary>
-        public static ValueSet<FunctionKey> ResultKeys(string function, PathValues image) => ValueSet<FunctionKey>.Empty;
-
-        /// <summary>
         /// The call's image on its operands: the call evaluated where every operand is one value C# computes as Calcite does
         /// (ASCII, or no surrogate); elsewhere every value of the result's type, and absent (Calcite's null, the service's
         /// undefined) wherever an operand may be other than what the function reads. Never narrower than the call.
@@ -103,27 +97,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                             if (JsonValues.ClassMask(import.Chars).HasFlag(flag))
                                 yield return FunctionKey.Of(function, CosmosValueClass.String, flag);
                         break;
-                    case JsonValues.IntegerType or JsonValues.FractionType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.Number, JsonCharacterBand.None);
-                        break;
                     case JsonValues.BooleanType:
                         yield return FunctionKey.Of(function, CosmosValueClass.True, JsonCharacterBand.None);
                         yield return FunctionKey.Of(function, CosmosValueClass.False, JsonCharacterBand.None);
                         break;
-                    case JsonValues.NullType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.Null, JsonCharacterBand.None);
-                        break;
-                    case PathValues.AbsentKind:
-                        yield return FunctionKey.Of(function, CosmosValueClass.Absent, JsonCharacterBand.None);
-                        break;
-                    case JsonValues.ObjectType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.Object, JsonCharacterBand.None);
-                        break;
-                    case JsonValues.ArrayType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.Array, JsonCharacterBand.None);
-                        break;
                     default:
-                        yield return Malformed;
+                        yield return CosmosValueClasses.OfKind(kind) is var c and not CosmosValueClass.None ? FunctionKey.Of(function, c, JsonCharacterBand.None) : Malformed;
                         break;
                 }
         }

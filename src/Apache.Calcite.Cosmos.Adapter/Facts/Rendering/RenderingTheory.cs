@@ -430,7 +430,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<CutPoint>("cut point");
             values.Register<CellPartition>("cell partition");
             values.Register<OutcomeVector>("outcome vector");
-            values.Register<OutcomeTriple>("outcome triple");
             values.Register<CellOutcomes>("cell outcomes");
             values.Register<Witness>("witness");
             values.RegisterSet<CosmosAnswer>();
@@ -1030,16 +1029,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (s, m) = r.Vars<long, long>("s", "m");
                 var g = r.Var<ValueSet<PathImport>>("g");
                 var st = r.Var<RenderingSet>("st");
-                var (z, d, ks, rk) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>>("z", "d", "ks", "rk");
+                var (z, d, ks) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>>("z", "d", "ks");
                 var img = r.Var<PathValues>("img");
                 r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(Compute.Of(n, t, RenderingImage.KeyFunction)),
                     g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)), m.Is(Primitives.Count<PathImport>().Of(g)), Under.Of(st), z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)));
                 r.When(ks.Is(Compute.Of(kn, g, RenderingImage.Keys)));
                 r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
                 r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
-                r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)), rk.Is(Compute.Of(kn, img, RenderingImage.ResultKeys)));
-                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(rk, z));
-                r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(rk, d)));
+                r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)));
                 r.Then(ArmImport.Of(s, q).Is(img));
             });
 

@@ -30,15 +30,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static RawKey? On(string reader, PathCell cell, string test, string? literal)
         {
-            CosmosValueClass? kind = cell switch
-            {
-                PathCell.Absent or PathCell.Null => CosmosValueClass.Null,
-                PathCell.Point { Value: var v } when JsonValues.TypeOf(v) != NullType => ClassOf(v),
-                PathCell.Strings => CosmosValueClass.String,
-                PathCell.Numbers => CosmosValueClass.Number,
-                PathCell.Structure { Type: var t } => t == ArrayType ? CosmosValueClass.Array : CosmosValueClass.Object,
-                _ => null,
-            };
+            var kind = cell is PathCell.Point { Value: var v } && JsonValues.TypeOf(v) == NullType ? null
+                : CosmosValueClasses.Of(cell) is CosmosValueClass.Absent ? CosmosValueClass.Null : CosmosValueClasses.Of(cell);
             CosmosServiceTest? asked = test switch
             {
                 PredicateAtom.Equal => CosmosServiceTest.Equal,
@@ -49,19 +42,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 PredicateAtom.NullTest => CosmosServiceTest.IsNull,
                 _ => null,
             };
-            return kind is { } k && asked is { } a ? new(reader, k, a, literal is null ? CosmosValueClass.None : ClassOf(literal)) : null;
+            return kind is { } k && asked is { } a ? new(reader, k, a, literal is null ? CosmosValueClass.None : CosmosValueClasses.Of(literal)) : null;
         }
-
-        /// <summary>The class of a value in <see cref="JsonValues"/>' spelling.</summary>
-        static CosmosValueClass ClassOf(string value) => JsonValues.TypeOf(value) switch
-        {
-            StringType => CosmosValueClass.String,
-            IntegerType or FractionType => CosmosValueClass.Number,
-            BooleanType => value == JsonValues.Of(true) ? CosmosValueClass.True : CosmosValueClass.False,
-            ObjectType => CosmosValueClass.Object,
-            ArrayType => CosmosValueClass.Array,
-            _ => CosmosValueClass.Null,
-        };
 
         /// <inheritdoc />
         public int CompareTo(RawKey other) => string.CompareOrdinal(Reader, other.Reader) is var r and not 0 ? r

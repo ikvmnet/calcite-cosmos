@@ -52,8 +52,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The iterations its run took, against its limit; none before a run, or where the engine failed it.</summary>
         public int Iterations { get; private set; }
 
-        /// <summary>The rows its run left in its own scope, what <c>RowLimit</c> bounds; none before a run (h11, kill line 39).</summary>
-        public long Rows { get; private set; }
+        /// <summary>
+        /// The rows its run left in its own scope, what <c>RowLimit</c> bounds, counted when read; none before a run (h11,
+        /// kill line 39).
+        /// </summary>
+        public long Rows => _run?.StopReason is null ? 0 : _theory.Graph.Tables.Sum(table => Scope.CountRows(table) - _theory.Theory.CountRows(table));
 
         /// <summary>
         /// Every arm stratum a written case opened, by id: the conditions it is read beneath, outermost first, each a
@@ -436,7 +439,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = RowLimit });
             Iterations = report.Iterations;
-            Rows = _theory.Graph.Tables.Sum(table => Scope.CountRows(table) - _theory.Theory.CountRows(table));
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();

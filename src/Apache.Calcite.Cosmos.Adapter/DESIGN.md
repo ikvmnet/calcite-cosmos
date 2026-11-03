@@ -8116,10 +8116,9 @@ written twice, once with `twovalued(c)` and `bNarrow`, once with `bWide`, and `B
   took the then-arm on anything but `true`, the licence would lapse, as data. No `Cond` position is needed: a condition
   takes the then-arm only where TRUE, which is `Pos`.
 
-The ternary is never evaluated in the graph (`form-is-compound` refuses it): S composes it from its parts' agreements.
-`ServiceCompound` evaluates one over an `OutcomeTriple` (three vectors packed as one value, four operands a
-computation) for its tests and for `CosmosEval`; an arm's failure fails it there, since no row says the service skips the
-arm it does not take. An arm's agreement is proved on its own stratum's cells, so the rule leans on the arm's form
+The ternary is never evaluated in the graph (`form-is-compound` refuses it): S composes it from its parts' agreements,
+and an arm's failure is read from that arm's own agreement alone (`CosmosEval` evaluates the ternary, failing it on an
+arm's failure, since no row says the service skips the arm it does not take). An arm's agreement is proved on its own stratum's cells, so the rule leans on the arm's form
 failing nowhere else: true of every form S builds today (tests, comparisons, memberships and constants over paths, no
 row of which fails), and not of arithmetic, which `Service.OutOfDomainArithmeticFailsTheStatement` makes fail. Before a
 computed place reaches an arm (h10) the ternary must read that its arms fail nowhere, or a row that the service skips
@@ -8251,9 +8250,9 @@ function rows until the probe account's run 1, so for Azure it reads the declare
 owed). The bridge goes at h37, when S writes the column.
 
 **What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
-`Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. `CutPoints`
-holds each function's critical points (0, ±1, ±2^31, ±2^53, the decimal bounds, `REPEAT`'s 10,000) as data for the
-magnitude class that would use them; ranges are imaged coarsely meanwhile. Production's S reads the legacy loader
+`Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
+imaged coarsely; a function's turning points (0, ±1, ±2^31, ±2^53, `REPEAT`'s 10,000) belong in its rows when a
+magnitude class needs them, not in C#. Production's S reads the legacy loader
 until h15, which never types a call, and F's answers are unchanged: the digests are byte-equal.
 
 ### A comparison of two readings (h11)

@@ -87,7 +87,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingImage.Of("TRIM BOTH", "VARCHAR", Gathered(Literal(0, Of(" ")), Literal(1, Of(" a\t ")))).Should().Be(PathImport.CellOf(Of("a\t")));
             RenderingImage.Of("LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)));
             RenderingImage.Of("LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, PathValues.AbsentKind)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
-            RenderingImage.ResultKeys("REPEAT", PathValues.Anything).Should().BeEmpty("no row holds a result key yet");
         }
 
         /// <summary>A (D) function's image is every kind of its result type and undefined, never narrower.</summary>
@@ -97,15 +96,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingImage.Of("ToString", "VARCHAR", Gathered(Text(0, ValueSet.Of(IntegerType, FractionType)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
             RenderingImage.Of("+:INTEGER", "INTEGER", Gathered(PathImport.Of(0, PredicateAtom.TypedReader("INTEGER"), PathValues.OfKinds(ValueSet.Of(IntegerType)), NoBand), Literal(1, Of(1m))))
                 .Should().Be(PathValues.OfKinds(ValueSet.Of(IntegerType)));
-        }
-
-        /// <summary>An arithmetic operator's rows turn at 0, ±1, 2^31 and 2^53; a repetition's at the service's length bound.</summary>
-        [Fact]
-        public void TheCriticalPointsAreTheRowsTurns()
-        {
-            CutPoints.Critical("+:INTEGER").AsEnumerable().Select(c => c.Value).Should().Contain([Of(0m), Of(1m), Of(-1m), Of(2147483648m), Of(9007199254740992m)]);
-            CutPoints.Critical("REPEAT").AsEnumerable().Select(c => c.Value).Should().Contain(Of(10_000m));
-            CutPoints.Critical("LOWER").Should().BeEmpty();
         }
 
     }
