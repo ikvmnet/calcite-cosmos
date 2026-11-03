@@ -8431,7 +8431,7 @@ h14 asked S, in check mode, of every `WHERE` push the census holds, at `Pos` and
 under `Portable` beside. What S answered Unproven for want of a reading was read; what it answered Unproven for want of
 a row or a form was left, each with its reason in the triage.
 
-**Three readings, each S's alone until the switch.** Under `places`, as the computed places are (h10), so F's terms and
+**Four readings, each S's alone until the switch.** Under `places`, as the computed places are (h10), so F's terms and
 the plans stay as they were:
 
 - **A number compared with `RETURNING DOUBLE`.** Calcite casts the literal to the clause's type,
@@ -8445,6 +8445,8 @@ the plans stay as they were:
   to `VARIANT` is a string box, equal to a boxed string where the text is that string, a trailing space kept, and null
   where the text is null (`Calcite.VariantEqualsOnlyItsOwnBox`, measured for a text box at h14). A box's order is not
   the text's and is not read; a typed reading's box is still lost (`TODO.md`).
+- **A truth reading written as a whole condition**, `JSON_VALUE(… RETURNING BOOLEAN)` or a boolean column, as its
+  equality with `TRUE`, which Calcite defines it as (`Calcite.TruthTestsAreCases`).
 
 **Compound conditions cost nothing yet.** No push is Unproven for a junction or negation as a `CASE` condition alone:
 under `Emulator` S proves every such push but those whose arms overflow (Q3), and under `Production` they wait on the
@@ -8453,7 +8455,9 @@ negation were not built, and S stays at 76.
 
 **What it left**, each Unproven for a piece S does not have, not a reading: an affix form (no `ServiceFormKind` writes
 `STARTSWITH` or `LIKE`; Azure's rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
-`SIGN`; `SUBSTRING` from 0; and the two-path row's absent and null cells on the emulator. Under `Emulator` one more is
+`SIGN`; `SUBSTRING` from 0; a cast of the text to `BOOLEAN`, which no reader reads though
+`Calcite.CastToBooleanParses` states it; a column compared with a text reading, two readings of different kinds; and
+the two-path row's absent and null cells on the emulator. Under `Emulator` one more is
 refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
 anything.
 

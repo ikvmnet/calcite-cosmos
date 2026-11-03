@@ -2908,6 +2908,14 @@ across documents* and *A join of a container to itself* is the record.
 - **`SUBSTRING` from 0 is outside the rows' spellings** — *small.* The translator writes Calcite's start 0 as ternaries
   over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` (and under
   `Production` with every function row until h14b).
+- **No reader reads a cast of the text to `BOOLEAN`** — *small.* `CAST(JSON_VALUE(…) AS BOOLEAN)`, which a declared
+  boolean column writes, is opaque to S though `Calcite.CastToBooleanParses` states what it does (a string spelling a
+  boolean parses, trimmed and in any case; a number raises): 10 real pushes from the suite under `Production` (F, G and
+  H), 5 under `Emulator`. A `cast:BOOLEAN` reader in `PredicateAtom`, its cells from that row and an edges row, reads them;
+  where a declaration says the path holds booleans its string cells fall away.
+- **A column compared with a text reading is no pair** — *small.* The pair reads two readings of one kind; a raw column
+  against a text (`<=($1, JSON_VALUE($0, '$.e'))`, the order differential's) has none, and stays opaque: 3 real pushes
+  under `Emulator`.
 - **The two-path row reads no absent or null pair** — *small, with h14b.* `ServiceLeaf.Paired` finds no key for an absent
   or a null right side against the same on the left, though the measurement asks both, so the diagonal `c.k < c.k` is
   Unproven under `Emulator`. Pinning that either side absent answers undefined, and a null against a null as the literal

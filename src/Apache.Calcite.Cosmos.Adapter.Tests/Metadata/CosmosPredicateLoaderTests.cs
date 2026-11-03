@@ -153,6 +153,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         [Fact]
+        public void ATruthReadingAsAWholeConditionIsItsEqualityWithTrueWhereSReads()
+        {
+            var flag = JsonValue("flag", SqlTypeName.BOOLEAN);
+            LoadPlaces(flag).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(Typed(P("flag"), "BOOLEAN"), "=", Lit(true)));
+            LoadPlaces(Call(SqlStdOperatorTable.NOT, flag)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(Cmp(Typed(P("flag"), "BOOLEAN"), "=", Lit(true))));
+            Load(flag).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+        }
+
+        [Fact]
         public void ANumericCastIsACastOfTheReadingItConverts()
         {
             One(Call(SqlStdOperatorTable.GREATER_THAN, _rex.makeCast(Sql(SqlTypeName.INTEGER), JsonValue("n")), Num(500)))

@@ -105,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <param name="places">
             /// Reads, outside the legacy reading, a call the function rows name as a computed place (h10) and two readings
             /// of one kind compared as a pair (h11); a number compared with <c>RETURNING DOUBLE</c> and a null test of a plain
-            /// <c>JSON_QUERY</c>, and a text boxed as a <c>VARIANT</c> (h14). Only S's tests read them until its switch (h15), which lists the IR
+            /// <c>JSON_QUERY</c>, a text boxed as a <c>VARIANT</c>, and a truth reading as a whole condition (h14). Only S's tests read them until its switch (h15), which lists the IR
             /// moves they make: F's terms and memo keys stay as they were, each such call and comparison opaque to F.
             /// </param>
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false, bool places = false)
@@ -157,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return new SqlPredicate.Constant(truth.getValue() is java.lang.Boolean b ? b.booleanValue() : null);
 
                 if (node is not RexCall call)
-                    return Opaque(node);
+                    return Bare(node) ?? Opaque(node);
 
                 var operands = call.getOperands();
                 switch (call.getKind().name())
@@ -249,9 +249,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             : Opaque(node);
 
                     default:
-                        return Opaque(node);
+                        return Bare(node) ?? Opaque(node);
                 }
             }
+
+            /// <summary>
+            /// Reads a truth reading written as a whole condition as its equality with <c>TRUE</c>, which Calcite defines it
+            /// as (<c>Calcite.TruthTestsAreCases</c>). Only S's tests read it until its switch (h15), F's terms unchanged.
+            /// </summary>
+            SqlPredicate? Bare(RexNode node) =>
+                _places && Value(node) is { } truth && IsPlace(truth) && KindOf(truth) == "truth"
+                    ? new SqlPredicate.Compare(SqlPredicate.Compare.Equal, truth, Literal((RexLiteral)RexBuilderHolder.Value.makeLiteral(true))!)
+                    : null;
 
             static readonly SqlPredicate True = new SqlPredicate.Constant(true), False = new SqlPredicate.Constant(false);
 
