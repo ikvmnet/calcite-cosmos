@@ -542,7 +542,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || _paths.TryResolvePath(call, out _))
                 return;
 
-            if (CosmosFunctionSpellings.KeyOf(call) is string function && Apache.Calcite.Cosmos.Facts.Rendering.FunctionSubjects.Named(function))
+            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(function))
                 foreach (var target in Metadata.CosmosRendering.Definition.Serves[Set])
                 {
                     if (CosmosFunctionSpellings.Parting(function, target) is not JsonCharacterBand parting)

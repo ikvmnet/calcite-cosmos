@@ -11,6 +11,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal readonly record struct FunctionKey(string Function, CosmosValueClass Kind, JsonCharacterBand Band) : IComparable<FunctionKey>
     {
 
+        /// <summary>A function row's subject standing for every operand: a concatenation and an arithmetic operator read each.</summary>
+        public const long Every = -1;
+
         /// <summary>The key, as a rule computes one.</summary>
         public static FunctionKey Of(string function, CosmosValueClass kind, JsonCharacterBand band) => new(function, kind, band);
 

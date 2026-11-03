@@ -198,6 +198,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static readonly IReadOnlyDictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> Rows =
             CosmosAxiomRows.ReadFunctions(CosmosAxioms.All).ToDictionary(r => (r.Key, r.Target), r => r.Answer);
 
+        /// <summary>The operand each function's rows describe, by the loader's ordinals, as S reads it.</summary>
+        public static readonly IReadOnlyDictionary<string, long> Subjects =
+            CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All).ToDictionary(f => f.Function, f => f.Subject, StringComparer.Ordinal);
+
         /// <summary>The rows' names of the functions some target measured: what the loader reads as a computed place (h10).</summary>
         public static readonly IReadOnlySet<string> RowFunctions = Rows.Keys.Select(k => k.Key.Function).ToHashSet(StringComparer.Ordinal);
 
@@ -238,20 +242,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : call.getOperands().size() == 3 && call.getOperands().get(0) is RexLiteral { } flag && flag.getValue() is org.apache.calcite.sql.fun.SqlTrimFunction.Flag f ? "TRIM " + f.name()
             : null;
 
-        /// <summary>The Rex ordinals of a call the rows describe (<see cref="FunctionSubjects"/>): a trim's flag shifts them by one.</summary>
+        /// <summary>
+        /// The Rex ordinals of a call the rows describe (<see cref="Subjects"/>), a trim's flag shifting them by one; each
+        /// ordinal of a call no row describes, which the Azure bridge alone names.
+        /// </summary>
         public static IEnumerable<int> SubjectsOf(string function, RexCall call)
         {
             var shift = function.StartsWith("TRIM ", StringComparison.Ordinal) ? 1 : 0;
+            var subject = Subjects.TryGetValue(function, out var s) ? s : FunctionKey.Every;
             for (var i = shift; i < call.getOperands().size(); i++)
-                if (FunctionSubjects.Describes(function, i - shift))
+                if (subject == FunctionKey.Every || subject == i - shift)
                     yield return i;
         }
+
+        /// <summary>Whether the column gate holds a function to a verdict: rows name it, or the Azure bridge does.</summary>
+        public static bool Named(string function) => Subjects.ContainsKey(function) || AzureVerdicts.ContainsKey(function);
 
         /// <summary>
         /// Determines whether a string function written by name has a verdict: rows the column gate reads, or a result that
         /// is the service's own.
         /// </summary>
-        public static bool HasVerdict(string name) => FunctionSubjects.Named(name) || Declared.Contains(name);
+        public static bool HasVerdict(string name) => Named(name) || Declared.Contains(name);
 
         /// <summary>
         /// What a call's spelling asks of its operands' characters beyond the rows, under a set (<see cref="CosmosRendering.StoresSpelled"/>).

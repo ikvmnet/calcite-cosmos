@@ -18,7 +18,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <summary>
     /// Measures function rows: each function asked of the service over each key's witnesses at <c>c.v</c>
     /// (<see cref="CosmosWitnessProbe.Project"/>) and of Calcite in process over the same documents, then each key's
-    /// answer (<see cref="CosmosFunctionAnswer"/>), the worst over a function's spellings.
+    /// answer (<see cref="CosmosFunctionAnswer"/>), the worst over a function's spellings and the readers its row names
+    /// (<see cref="CosmosAxiom.Readers"/>), each a reading of <c>v</c> Calcite is asked through.
     /// </summary>
     /// <remarks>
     /// Two values are the same where their JSON is; a service number written as an integer where it is Calcite's number
@@ -47,20 +48,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var table = MaterialisedTable.Of(witnesses.Select(w => w is null ? "{}" : $"{{\"v\":{w}}}"));
             var measured = new SortedDictionary<string, CosmosFunctionAnswer>(StringComparer.Ordinal);
             for (var f = 0; f < functions.Count; f++)
-            {
-                var calcite = table.Values(connection, functions[f].Calcite.Replace("s", "JSON_VALUE(\"d\", '$.v')", StringComparison.Ordinal));
-                var w = 0;
-                foreach (var (kind, band, of) in keys)
+                foreach (var reader in CosmosAxioms.Get(row).Readers!)
                 {
-                    var answer = Answer(of.Select((_, i) => (service[f][w + i], calcite[w + i])));
-                    w += of.Length;
-                    var key = $"{functions[f].Function}/{kind}/{band}";
-                    measured[key] = measured.TryGetValue(key, out var other) ? Worse(other, answer) : answer;
+                    var calcite = table.Values(connection, functions[f].Calcite.Replace("s", Read(reader), StringComparison.Ordinal));
+                    var w = 0;
+                    foreach (var (kind, band, of) in keys)
+                    {
+                        var answer = Answer(of.Select((_, i) => (service[f][w + i], calcite[w + i])));
+                        w += of.Length;
+                        var key = $"{functions[f].Function}/{kind}/{band}";
+                        measured[key] = measured.TryGetValue(key, out var other) ? Worse(other, answer) : answer;
+                    }
                 }
-            }
 
             return measured;
         }
+
+        /// <summary>
+        /// Calcite's reading of <c>v</c> through a reader the row names: the text accessor, a typed one, or a cast of either.
+        /// </summary>
+        static string Read(string reader) => reader.Split(':', 3) switch
+        {
+            [Apache.Calcite.Cosmos.Facts.Saturation.PredicateAtom.TextReader] => "JSON_VALUE(\"d\", '$.v')",
+            ["typed", var type] => $"JSON_VALUE(\"d\", '$.v' RETURNING {type})",
+            ["cast", var type, var inner] => $"CAST({Read(inner)} AS {type})",
+            _ => throw new ArgumentException($"No reading of {reader}.", nameof(reader)),
+        };
 
         /// <summary>
         /// The keys a row records worse than measured, and those it records better: a release answering better than the

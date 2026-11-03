@@ -32,18 +32,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// The keys a call's operands' cells fall under: each kind the operand the rows describe may hold, a string by each
         /// band its characters may hold and by none; <see cref="Malformed"/> where the gathering is not one import an
-        /// ordinal through a reader the rows were measured over.
+        /// ordinal, each a literal or read through a reader the rows were measured over.
         /// </summary>
         /// <param name="function">The rows' name of the call (<see cref="KeyFunction"/>).</param>
         /// <param name="gathered">The call's gathered operands.</param>
-        public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered)
+        /// <param name="subject">The operand the rows describe, or <see cref="FunctionKey.Every"/>: the rows' own.</param>
+        /// <param name="readers">The readers the rows were measured through: the rows' own.</param>
+        public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, long subject, ValueSet<string> readers)
         {
             var imports = gathered.AsEnumerable().ToList();
-            if (Complete(imports) == false || imports.Any(i => Readable(function, i.Reader) == false))
+            if (Complete(imports) == false || imports.Any(i => i.Reader != PathImport.LiteralReader && readers.Contains(i.Reader) == false))
                 return ValueSet.Of(Malformed);
 
             return ValueSet.From(from i in imports
-                                 where IsArithmetic(function) || FunctionSubjects.Describes(function, i.Ordinal)
+                                 where subject == FunctionKey.Every || subject == i.Ordinal
                                  from key in KeysOf(function, i)
                                  select key);
         }
@@ -79,12 +81,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>One import an ordinal, from 0.</summary>
         static bool Complete(List<PathImport> imports) =>
             imports.Select(i => i.Ordinal).OrderBy(o => o).SequenceEqual(Enumerable.Range(0, imports.Count).Select(o => (long)o));
-
-        /// <summary>The readers the rows were measured through: Calcite's text accessor and what reads as it, a literal, and for arithmetic a number's.</summary>
-        static bool Readable(string function, string reader) =>
-            reader == PathImport.LiteralReader || (IsArithmetic(function)
-                ? reader.StartsWith("typed:", StringComparison.Ordinal) && reader is not ("typed:VARCHAR" or "typed:CHAR" or "typed:BOOLEAN")
-                : reader is PredicateAtom.TextReader or "typed:VARCHAR" or "typed:CHAR" || reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal));
 
         static IEnumerable<FunctionKey> KeysOf(string function, PathImport import)
         {

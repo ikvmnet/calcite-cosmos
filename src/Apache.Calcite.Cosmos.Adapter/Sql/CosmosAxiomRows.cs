@@ -44,6 +44,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
+        /// One row per function a row computes: the operand its keys are of and the readers its witnesses were read
+        /// through, which S reads as constant raw facts beside the keys. It merges nothing either.
+        /// </summary>
+        public static IReadOnlyList<(string Function, long Subject, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. from axiom in axioms
+               from outcome in axiom.FunctionOutcomes ?? []
+               group (outcome.Subject, Readers: axiom.Readers ?? []) by outcome.Function into function
+               select (function.Key, function.First().Subject, function.First().Readers),
+        ];
+
+        /// <summary>
         /// What each raw column a <c>Calcite</c> row states answers on each key, one row a column a key, whose union S's rule
         /// takes (h12): the raw reading's comparisons beside a literal of each class and its null test, and those of its cast
         /// to text, each its column's answer for the kind. A column comparing the value as its type answers TRUE or FALSE,

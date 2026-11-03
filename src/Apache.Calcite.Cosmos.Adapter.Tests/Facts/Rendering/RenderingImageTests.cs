@@ -30,11 +30,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ValueSet<PathImport> Gathered(params PathImport[] imports) => ValueSet.From(imports);
 
+        /// <summary>The keys of a call under the subject and readers its rows carry.</summary>
+        static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered)
+        {
+            var (_, subject, readers) = ProbeRows.Measured.FunctionReads.Single(f => f.Function == function);
+            return RenderingImage.Keys(function, gathered, subject, ValueSet.From(readers));
+        }
+
         /// <summary>A string falls under its kind with no band and with each band its characters may hold; every other kind under its class.</summary>
         [Fact]
         public void EachRowClassIsAKey()
         {
-            var keys = RenderingImage.Keys("LOWER", Gathered(Text(0, ValueSet.Of(StringType, IntegerType, BooleanType, NullType, PathValues.AbsentKind), JsonCharacterBand.NonAscii | JsonCharacterBand.Nul)));
+            var keys = Keys("LOWER", Gathered(Text(0, ValueSet.Of(StringType, IntegerType, BooleanType, NullType, PathValues.AbsentKind), JsonCharacterBand.NonAscii | JsonCharacterBand.Nul)));
             keys.AsEnumerable().Select(k => (k.Kind, k.Band)).Should().BeEquivalentTo(new[]
             {
                 (CosmosValueClass.String, JsonCharacterBand.None), (CosmosValueClass.String, JsonCharacterBand.NonAscii), (CosmosValueClass.String, JsonCharacterBand.Nul),
@@ -47,9 +54,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ATwoOperandCallIsKeyedByItsSubject()
         {
-            RenderingImage.Keys("REPLACE", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("a\u0000")), Literal(2, Of("b"))))
+            Keys("REPLACE", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("a\u0000")), Literal(2, Of("b"))))
                 .Should().BeEquivalentTo(ValueSet.Of(FunctionKey.Of("REPLACE", CosmosValueClass.String, JsonCharacterBand.None)));
-            RenderingImage.Keys("POSITION", Gathered(Literal(0, Of("é")), Text(1, ValueSet.Of(StringType))))
+            Keys("POSITION", Gathered(Literal(0, Of("é")), Text(1, ValueSet.Of(StringType))))
                 .Should().BeEquivalentTo(ValueSet.Of(FunctionKey.Of("POSITION", CosmosValueClass.String, JsonCharacterBand.None)));
         }
 
@@ -58,9 +65,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ARepeatedOperandIsOneImportAnOrdinal()
         {
             var x = ValueSet.Of(StringType);
-            RenderingImage.Keys("||", Gathered(Text(0, x), Text(1, x))).Should().NotContain(RenderingImage.Malformed);
-            RenderingImage.Keys("||", Gathered(Text(0, x), Text(2, x))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
-            RenderingImage.Keys("||", Gathered(Text(0, x), Text(0, ValueSet.Of(StringType, NullType)))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
+            Keys("||", Gathered(Text(0, x), Text(1, x))).Should().NotContain(RenderingImage.Malformed);
+            Keys("||", Gathered(Text(0, x), Text(2, x))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
+            Keys("||", Gathered(Text(0, x), Text(0, ValueSet.Of(StringType, NullType)))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
         }
 
         /// <summary>A nested place is read through its type's reader, a text place as text; a raw reading was measured by no row.</summary>
@@ -68,8 +75,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ANestedPlaceIsReadThroughItsType()
         {
             var inner = PathImport.Of(0, PredicateAtom.TypedReader("VARCHAR"), PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(JsonCharacterBand.None));
-            RenderingImage.Keys("LOWER", Gathered(inner)).Should().Equal(ValueSet.Of(FunctionKey.Of("LOWER", CosmosValueClass.String, JsonCharacterBand.None)));
-            RenderingImage.Keys("LOWER", Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
+            Keys("LOWER", Gathered(inner)).Should().Equal(ValueSet.Of(FunctionKey.Of("LOWER", CosmosValueClass.String, JsonCharacterBand.None)));
+            Keys("LOWER", Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
             RenderingImage.KeyFunction("+", "INTEGER").Should().Be("+:INTEGER");
             RenderingImage.KeyFunction("LOWER", "VARCHAR").Should().Be("LOWER");
         }

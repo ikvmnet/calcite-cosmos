@@ -91,14 +91,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// same over the rest of a string's, undefined over a number and a boolean, the same over a null, an absent path,
         /// an object and an array.
         /// </summary>
-        static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, JsonCharacterBand differs) =>
+        static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, long subject, JsonCharacterBand differs) =>
         [
             .. from band in new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii, JsonCharacterBand.Trimmed, JsonCharacterBand.Nul }
-               select new CosmosFunctionOutcome(function, Class.String, band, Emulator, band != JsonCharacterBand.None && differs.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, band != JsonCharacterBand.None && differs.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same),
             .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
         ];
 
         /// <summary>
@@ -107,11 +107,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, CosmosFunctionAnswer overNumbers) =>
         [
-            new(function, Class.Number, JsonCharacterBand.None, Emulator, overNumbers),
+            new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Emulator, overNumbers),
             .. from kind in new[] { Class.String, Class.True }
-               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
         ];
 
         /// <summary>The row of an id.</summary>
@@ -282,6 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.IntegerArithmeticIsExactWithinLong",
                 "+, - and * over integers are exact while the result fits int64, past 2^31 and past 2^53, 2^53 + 1 being 9007199254740993, and a double past it, 2^63 - 1 + 1 above 2^63 - 1 and never wrapped; / is a double; a result JSON cannot hold, an infinity, fails the statement projected and is undefined in a WHERE, 1e308 * 2 and any number / 0 alike; and each is undefined over a string, a boolean, a null and an absent path. So against Calcite's INTEGER, BIGINT, DECIMAL and DOUBLE each typed operator parts over a number, Calcite wrapping, truncating, raising over a fraction or rounding past 2^53 where the service does not, and * and / fail where Calcite answers an infinity or raises.",
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegerArithmeticIsExactWithinLong",
+                Readers: [.. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" } from reader in new[] { PredicateAtom.TypedReader(type), PredicateAtom.CastReader(type, PredicateAtom.TextReader) } select reader],
                 FunctionOutcomes:
                 [
                     .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }
@@ -564,25 +565,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.StringFunctionAnswersByBand",
                 "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one, LOWER over the first; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over none measured. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them.",
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
+                Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
                 FunctionOutcomes:
                 [
-                    .. StringFunction("CHAR_LENGTH", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("CHARACTER_LENGTH", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("SUBSTRING", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("LEFT", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("RIGHT", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("CHAR_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("CHARACTER_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("SUBSTRING", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("LEFT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("RIGHT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
                     // The emulator's INDEX_OF counts code points, so POSITION parts over a surrogate as well (Service.IndexOfCountsUnits).
-                    .. StringFunction("POSITION", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("UPPER", JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp),
-                    .. StringFunction("LOWER", JsonCharacterBand.NonAscii),
-                    .. StringFunction("REPLACE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("REVERSE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("TRIM BOTH", JsonCharacterBand.Trimmed),
-                    .. StringFunction("TRIM LEADING", JsonCharacterBand.Trimmed),
-                    .. StringFunction("TRIM TRAILING", JsonCharacterBand.Trimmed),
-                    .. StringFunction("||", JsonCharacterBand.None),
-                    .. StringFunction("CONCAT", JsonCharacterBand.None),
-                    .. StringFunction("REPEAT", JsonCharacterBand.None),
+                    .. StringFunction("POSITION", 1, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("UPPER", 0, JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp),
+                    .. StringFunction("LOWER", 0, JsonCharacterBand.NonAscii),
+                    .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("REVERSE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("TRIM BOTH", 1, JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM LEADING", 1, JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM TRAILING", 1, JsonCharacterBand.Trimmed),
+                    .. StringFunction("||", FunctionKey.Every, JsonCharacterBand.None),
+                    .. StringFunction("CONCAT", FunctionKey.Every, JsonCharacterBand.None),
+                    .. StringFunction("REPEAT", 0, JsonCharacterBand.None),
                 ]),
             new("Calcite.StringCountsAreInUnits",
                 "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",

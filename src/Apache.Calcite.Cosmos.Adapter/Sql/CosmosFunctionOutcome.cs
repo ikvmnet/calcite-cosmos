@@ -9,10 +9,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// Calcite's: one key of a function row (<see cref="FunctionKey"/>), read by <see cref="CosmosAxiomRows.ReadFunctions"/>.
     /// </summary>
     /// <param name="Function">The function, by the name the IR reads it by.</param>
+    /// <param name="Subject">The operand the key's kind and band are of, by the loader's ordinals (a trim's flag is no
+    /// operand), or <see cref="FunctionKey.Every"/> where the function reads each alike: what its witnesses varied, the
+    /// rest held to literals its spelling's legality judges.</param>
     /// <param name="Operand">The kind of the operand its characters are asked of.</param>
     /// <param name="Band">The band of the operand's characters, for a string; <see cref="JsonCharacterBand.None"/> otherwise.</param>
     /// <param name="On">The targets that ran this key's witnesses.</param>
     /// <param name="Answer">What they computed.</param>
-    internal sealed record CosmosFunctionOutcome(string Function, CosmosValueClass Operand, JsonCharacterBand Band, CosmosAxiomTarget On, CosmosFunctionAnswer Answer);
+    internal sealed record CosmosFunctionOutcome(string Function, long Subject, CosmosValueClass Operand, JsonCharacterBand Band, CosmosAxiomTarget On, CosmosFunctionAnswer Answer);
 
 }

@@ -27,6 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
             Functions = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All),
+            FunctionReads = CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All),
             Columns = CosmosAxiomRows.ReadColumns(CosmosAxioms.All),
             Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
         });

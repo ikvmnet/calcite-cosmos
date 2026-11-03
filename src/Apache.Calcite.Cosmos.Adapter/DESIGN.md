@@ -8250,9 +8250,19 @@ concatenation), and elsewhere every value of the result's type, with absent wher
 function's domain. Whether the keys agree is the rule's, over the rows (the owner's hybrid rule). A key it cannot read,
 or a gathering missing or doubling an ordinal, is `Malformed`, a key no row holds, so no image is written.
 
-**A two-operand call is keyed by its subject.** The rows were measured over one operand: a count's, a case mapping's,
-`REPLACE`'s first, `POSITION`'s second, a trim's string, every operand of a concatenation (`FunctionSubjects`). The other
-operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+**A two-operand call is keyed by its subject, through the readers its row was measured over.** The rows were measured
+over one operand: a count's, a case mapping's, `REPLACE`'s first, `POSITION`'s second, a trim's string, every operand of
+a concatenation or an arithmetic operator. Each function outcome carries that subject (`CosmosFunctionOutcome.Subject`,
+`FunctionKey.Every` for each operand alike), and the row names the readers its witnesses were read through on Calcite's
+side (`CosmosAxiom.Readers`): the text accessor, `RETURNING VARCHAR` and a cast of the text to `VARCHAR` for the string
+functions, and the typed and cast readings at `INTEGER`, `BIGINT`, `DECIMAL` and `DOUBLE` for the arithmetic, each of
+which `CosmosFunctionComparison` asks Calcite through, a key's answer the worst over them. `CosmosAxiomRows.ReadFunctionReads`
+reads both into S as constant raw facts, `functionsubject` and `measuredreaders`, which the image rule reads beside the
+keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
+read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
+`CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column gate reads the same subjects
+(`CosmosFunctionSpellings.Subjects`), and the Azure bridge's one function no row names, `LENGTH`, is gated on every
+operand. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
 measured, and the case mapping beyond ASCII under every set, since the rows' witnesses for the surrogate and high bands
 (an emoji, `ﬀ`) hold no cased letter while Java maps U+10428 and U+FF21. A refusal is never weakened to a row.

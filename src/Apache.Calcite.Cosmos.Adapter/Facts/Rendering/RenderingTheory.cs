@@ -118,6 +118,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Gathered = Graph.DefineFunction<long, Val, ValueSet<PathImport>>("gathered", ValueLattice.Union<PathImport>());
             FunctionAnswer = Graph.DefineFunction<FunctionKey, RenderingTarget, CosmosFunctionAnswer>("functionanswer");
             MeasuredKeys = Graph.DefineFunction<string, ValueSet<FunctionKey>>("measuredkeys", ValueLattice.Union<FunctionKey>());
+            FunctionSubject = Graph.DefineFunction<string, long>("functionsubject");
+            MeasuredReaders = Graph.DefineFunction<string, ValueSet<string>>("measuredreaders", ValueLattice.Union<string>());
             DisagreeingKeys = Graph.DefineFunction<RenderingSet, string, ValueSet<FunctionKey>>("disagreeingkeys", ValueLattice.Union<FunctionKey>());
 
             // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
@@ -259,6 +261,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The keys some target measured of a function, by its rows' name.</summary>
         public Function<string, ValueSet<FunctionKey>> MeasuredKeys { get; }
+
+        /// <summary>The operand a function's rows describe, by the loader's ordinals, or <see cref="FunctionKey.Every"/>: a constant raw fact.</summary>
+        public Function<string, long> FunctionSubject { get; }
+
+        /// <summary>The readers a function's rows were measured through: a constant raw fact.</summary>
+        public Function<string, ValueSet<string>> MeasuredReaders { get; }
 
         /// <summary>The keys of a function some target a set serves answers otherwise than Calcite, derived at the build.</summary>
         public Function<RenderingSet, string, ValueSet<FunctionKey>> DisagreeingKeys { get; }
@@ -1021,7 +1029,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var img = r.Var<PathValues>("img");
                 r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(Compute.Of(n, t, RenderingImage.KeyFunction)),
                     g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)), m.Is(Primitives.Count<PathImport>().Of(g)), Under.Of(st), z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)));
-                r.When(ks.Is(Compute.Of(kn, g, RenderingImage.Keys)));
+                r.When(ks.Is(Compute.Of(kn, g, FunctionSubject.Of(kn), MeasuredReaders.Of(kn), RenderingImage.Keys)));
                 r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
                 r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
                 r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)));
@@ -1351,6 +1359,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     w.Assume(MeasuredKeys.Of(key.Function).Is(ValueSet.Of(key)));
                     foreach (var target in Enum.GetValues<RenderingTarget>())
                         w.Assume(FunctionAnswer.Of(key, target).Is(answered.TryGetValue((key, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured));
+                }
+
+                foreach (var (function, subject, readers) in definition.FunctionReads)
+                {
+                    w.Assume(FunctionSubject.Of(function).Is(subject));
+                    w.Assume(MeasuredReaders.Of(function).Is(ValueSet.From(readers)));
                 }
 
                 foreach (var set in definition.Serves.Keys)
