@@ -250,9 +250,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var admitted in recorder.Admissions.GroupBy(a => a.Statement))
             {
                 Interlocked.Increment(ref _admissions);
-                var owned = admitted.Key.Statement.Conjuncts.Any(RenderingFamily.Owns);
+                var owned = admitted.Key.RenderingStatement.Conjuncts.Any(RenderingFamily.Owns);
                 if (admitted.Count() > 1 || owned && admitted.Any(a => a.Implementing))
-                    Readmitted.Enqueue((input.Input, input.Name, $"{admitted.Count()} admissions, {admitted.Count(a => a.Implementing)} implementing: {admitted.Key.Statement.Digest}"));
+                    Readmitted.Enqueue((input.Input, input.Name, $"{admitted.Count()} admissions, {admitted.Count(a => a.Implementing)} implementing: {admitted.Key.RenderingStatement.Digest}"));
                 else if (admitted.Any(a => a.Implementing))
                     Interlocked.Increment(ref _unownedAtImplementation);
             }
@@ -324,9 +324,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (entry, report, round) = ((RenderingMemo.Entry?)null, (ImportReport?)null, Enumerable.Range(0, statement.Conjuncts.Count).Max(statement.StratumOf) + 1);
             if (skip is null)
             {
-                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => RenderingFamily.ReadExactly(statement.Statement.Conjuncts[j]))
+                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => RenderingFamily.ReadExactly(statement.RenderingStatement.Conjuncts[j]))
                     ? statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(record.Conjunct)) : RootOf([statement.ScopeForCheck])!.Value;
-                var source = new ImportSource(statement.Statement.Digest, "weakening", round);
+                var source = new ImportSource(statement.RenderingStatement.Digest, "weakening", round);
                 (entry, report) = Check([ir], read.Form, [read.Form], Verdict.Implies,
                     bundle => RenderingImporter.Import(bundle, source, node.Context, node.Rules, statement.DeclarationForCheck, ir.Paths), rules: statement.DeclarationForCheck.Rules);
             }
@@ -363,7 +363,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 var conjuncts = held.Select((r, i) => skips[i] is null ? IrOf(r) : new SqlPredicate.Opaque(-1 - i)).ToList();
-                var source = new ImportSource(string.Join("+", held.Select(r => r.Statement.Statement.Digest).Distinct()), "declaration", 1);
+                var source = new ImportSource(string.Join("+", held.Select(r => r.Statement.RenderingStatement.Digest).Distinct()), "declaration", 1);
                 var beneath = Beneath(held, skips);
                 ImportReport Import(RenderingBundle? bundle) => RenderingImporter.Import(bundle, source, root.Context, root.Rules, held[0].Statement.DeclarationForCheck,
                     conjuncts.SelectMany(c => c.Paths), beneath.Select(b => (b.Atom, b.Source, b.Node, b.Rules)));
@@ -395,7 +395,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Outside.Enqueue((input.Input, input.Name, rest));
         }
 
-        static SqlPredicate IrOf(CaptureRecord record) => record.Statement.Statement.Conjuncts[record.Conjunct];
+        static SqlPredicate IrOf(CaptureRecord record) => record.Statement.RenderingStatement.Conjuncts[record.Conjunct];
 
         /// <summary>
         /// Each atom of a later round's conjunct, with the node the licence table rendered that conjunct from, where that
@@ -418,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     continue;
 
                 var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(conjunct));
-                var source = new ImportSource(statement.Statement.Digest, "render conjunct " + conjunct, statement.StratumOf(conjunct));
+                var source = new ImportSource(statement.RenderingStatement.Digest, "render conjunct " + conjunct, statement.StratumOf(conjunct));
                 beneath.AddRange(CosmosFilterRendering.AtomsOf(IrOf(held[i])).Distinct().Where(a => shared.Contains(a) == false).Select(a => (i, a, source, node.Context, node.Rules, assumes)));
             }
 

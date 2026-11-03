@@ -14,7 +14,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
     /// <summary>
     /// Random filters over a declaration's paths, in the typed IR, of the shapes the loader builds: each reading compared
-    /// with a literal of the kind it yields or with a parameter, a membership, a null test, and the connectives.
+    /// with a literal of the kind it yields or with a parameter, a membership, a null test, a type test, <c>LIKE</c>, a
+    /// <c>CASE</c> and the connectives.
     /// </summary>
     static class Statements
     {
@@ -58,6 +59,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             if (roll == 8)
                 return new SqlPredicate.Opaque(random.Next(3));
 
+            // F learns nothing of a CASE, which it must read as it reads an opaque term; its ELSE now and then a constant.
+            if (depth < 2 && roll == 9)
+                return new SqlPredicate.Case(Predicate(random, declaration, depth + 1, atoms), Predicate(random, declaration, depth + 1, atoms),
+                    random.Next(4) == 0 ? new SqlPredicate.Constant(random.Next(3) switch { 0 => true, 1 => false, _ => null }) : Predicate(random, declaration, depth + 1, atoms));
+
             if (atoms.Count > 0 && random.Next(3) == 0)
                 return atoms[random.Next(atoms.Count)];
 
@@ -81,10 +87,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 return new SqlPredicate.Compare(Op(random), reading, Parameter(random, reading));
             if (roll < 10)
                 return new SqlPredicate.In(reading, ValueSet.From(Enumerable.Range(0, 1 + random.Next(3)).Select(_ => Literal(random, declaration, path, reading).Value)));
+            if (roll == 17)
+                return new SqlPredicate.TypeTest(TypeTests[random.Next(TypeTests.Length)], new SqlValue.Raw(path));
+            if (roll == 18)
+                return Affix(random, declaration, path);
             if (roll == 19)
                 return new SqlPredicate.IsDefined(new SqlValue.Raw(path));
 
             return new SqlPredicate.Compare(Op(random), reading, Literal(random, declaration, path, reading));
+        }
+
+        static readonly string[] TypeTests = ["IS_NULL", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_OBJECT", "IS_ARRAY", "IS_PRIMITIVE"];
+
+        /// <summary>
+        /// <c>LIKE</c> of the text accessor or the cast to text of a raw value, against a pattern made of a string the path
+        /// may render as: itself, a prefix, a suffix or an infix, <c>%</c> alone, or one with <c>_</c>, which F does not
+        /// decide; never a bracket, which the loader leaves opaque.
+        /// </summary>
+        static SqlPredicate Affix(Random random, Declaration declaration, JsonDocumentPath path)
+        {
+            SqlValue reading = random.Next(4) == 0 ? new SqlValue.Cast("VARCHAR", new SqlValue.Raw(path)) : new SqlValue.Text(path);
+            var s = JsonValues.StringOf(Literal(random, declaration, path, reading).Value);
+            var pattern = random.Next(8) switch
+            {
+                0 => s,
+                1 => s + "%",
+                2 => "%" + s,
+                3 => "%" + (s.Length > 1 ? s[1..] : ""),
+                4 => (s.Length > 0 ? s[..1] : "") + "%",
+                5 => "%",
+                6 => "_" + (s.Length > 0 ? s[1..] : ""),
+                _ => "%" + (s.Length > 0 ? s[^1..] : "") + "%",
+            };
+
+            return new SqlPredicate.Affix(PredicateAtom.LikeTest, reading, pattern.Replace("[", "").Replace("]", ""));
         }
 
         /// <summary>

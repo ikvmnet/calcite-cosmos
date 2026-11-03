@@ -148,8 +148,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlPredicate.IsDefined d:
                     return At(document, d.Value.PathRead!.Value) is null ? F : T;
 
+                // The in-process bodies, by the kind at the path (Calcite.TypeTestsAreTheirBodies): never UNKNOWN.
+                case SqlPredicate.TypeTest t:
+                    return Kinds(t.Test, At(document, t.Value.PathRead!.Value)) ? T : F;
+
+                case SqlPredicate.Affix a:
+                    return Like(a, document, world, typed, raw);
+
+                // The first arm whose condition is TRUE, FALSE and UNKNOWN alike passing it by (Calcite.CaseTakesTheFirstTrueArm).
+                case SqlPredicate.Case c:
+                    return Truth(c.Condition, document, world, typed, raw) switch
+                    {
+                        T => Truth(c.Then, document, world, typed, raw),
+                        R => R,
+                        _ => Truth(c.Else, document, world, typed, raw),
+                    };
+
+                case SqlPredicate.Constant k:
+                    return k.Truth switch { true => T, false => F, null => U };
+
                 default:
                     throw new NotSupportedException(predicate.GetType().Name);
+            }
+        }
+
+        /// <summary>Whether a type test's body is TRUE of a stored value, <c>null</c> where the path is absent.</summary>
+        static bool Kinds(string test, J? stored) => (test, stored) switch
+        {
+            (_, null) => false,
+            ("IS_NULL", J.Null) or ("IS_STRING", J.Str) or ("IS_NUMBER", J.Num or J.Huge) or ("IS_BOOL", J.Bool) or ("IS_OBJECT", J.Obj) or ("IS_ARRAY", J.Arr) => true,
+            ("IS_PRIMITIVE", J.Null or J.Str or J.Num or J.Huge or J.Bool) => true,
+            ("IS_NULL" or "IS_STRING" or "IS_NUMBER" or "IS_BOOL" or "IS_OBJECT" or "IS_ARRAY" or "IS_PRIMITIVE", _) => false,
+            _ => throw new NotSupportedException(test),
+        };
+
+        /// <summary>
+        /// <c>LIKE</c> over text, as Calcite's runtime matches it: UNKNOWN over null. A cast to text of a raw value is read
+        /// through its column, or unnamed as either a <c>VARIANT</c> or an <c>ANY</c> reads it, and a cast of a rendering to
+        /// a character type, whose length the IR does not keep, is a coin where it is not null.
+        /// </summary>
+        static Truths Like(SqlPredicate.Affix affix, J.Obj document, World world, TypedAs typed, RawAs? raw)
+        {
+            Truths Of(SqlDatum? text) => text switch
+            {
+                null => T | F,
+                SqlDatum.NullDatum => U,
+                SqlDatum.Raised => R,
+                SqlDatum.Text t => new org.apache.calcite.runtime.SqlFunctions.LikeFunction().like(t.Value, affix.Pattern) ? T : F,
+                _ => throw new InvalidOperationException($"{affix} reads no text."),
+            };
+
+            var question = affix + " @ " + Documents.Json(document);
+            switch (affix.Value)
+            {
+                case SqlValue.Cast { Value: SqlValue.Raw r }:
+                    var stored = At(document, r.Path);
+                    return stored is null ? U : world.Choose(raw is RawAs one ? Of(CastText(stored, one)) : Of(CastText(stored, RawAs.Variant)) | Of(CastText(stored, RawAs.Any)), question);
+
+                case SqlValue.Cast { Value: SqlValue.Text text }:
+                    return Rendering(At(document, text.Path)) is null ? U : world.Choose(T | F, question);
+
+                default:
+                    return Of(Read(affix.Value, document, world, typed));
             }
         }
 
@@ -215,8 +275,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public static J? At(J document, JsonDocumentPath path)
         {
             J? current = document;
-            foreach (var name in path.Names)
-                current = current is J.Obj o && o.Properties.TryGetValue(name, out var child) ? child : null;
+            foreach (var segment in path.Segments)
+                current = segment switch
+                {
+                    string name => current is J.Obj o && o.Properties.TryGetValue(name, out var child) ? child : null,
+                    long index => current is J.Arr a && index < a.Elements.Count ? a.Elements[(int)index] : null,
+                    _ => null,
+                };
 
             return current;
         }
@@ -313,6 +378,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Call c:
                     return Call(c, document, world);
 
+                // The arm of the first condition that is TRUE, else the last.
+                case SqlValue.Case c:
+                {
+                    for (var i = 0; i < c.Conditions.Count; i++)
+                        switch (Truth(c.Conditions[i], document, world, typed))
+                        {
+                            case T:
+                                return Read(c.Arms[i], document, world, typed);
+                            case R:
+                                return SqlDatum.Raise;
+                        }
+
+                    return Read(c.Arms[^1], document, world, typed);
+                }
+
                 default:
                     throw new NotSupportedException(value.ToString());
             }
@@ -321,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// A string function of values, as Calcite computes it in process: by its runtime's own functions
         /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise. A
-        /// <c>CASE</c>, read as its arms, takes the arm a coin chooses, the conditions not being read.
+        /// <c>CASE</c> read as its arms alone, its conditions not read, takes the arm a coin chooses.
         /// </summary>
         static SqlDatum Call(SqlValue.Call call, J.Obj document, World world)
         {

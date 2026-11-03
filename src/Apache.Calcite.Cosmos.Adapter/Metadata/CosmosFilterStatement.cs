@@ -103,6 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Conjuncts = ConjunctsOf(condition);
             Statement = _loading.Statement(Conjuncts);
+            RenderingStatement = new CosmosPredicateLoader.Loading(fields, readings, rootAlias, legacy: true).Statement(Conjuncts);
         }
 
         /// <summary>
@@ -187,6 +188,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         public PredicateStatement Statement { get; }
 
+        /// <summary>
+        /// The conjuncts as S reads them until its switch (h15): what <see cref="Statement"/> reads that S owns no family of
+        /// left opaque, as it was, so that S neither owns nor weakens it.
+        /// </summary>
+        internal PredicateStatement RenderingStatement { get; }
+
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
 
         /// <summary>
@@ -253,7 +260,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (round is not { Number: 1, Again: false, Closing: false } || _container.Reasoning is { RenderingOff: true })
                     return [];
 
-                _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];
+                _owned ??= [.. RenderingStatement.Conjuncts.Select(RenderingFamily.Owns)];
                 // Only the statement's own set's declines are counted: what a host's plan pays.
                 var probe = _container.Reasoning?.Probe;
                 _renderings = [.. new[] { CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(probe?.Sets ?? []).Distinct()
@@ -275,11 +282,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>Whether S owns a conjunct: syntactic on the IR, never S's answer (<see cref="RenderingFamily.Owns"/>).</summary>
-        bool Owned(int conjunct) => (_owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)])[conjunct];
+        bool Owned(int conjunct) => (_owned ??= [.. RenderingStatement.Conjuncts.Select(RenderingFamily.Owns)])[conjunct];
 
         /// <summary>Prints a form S chose for a conjunct into a list, over the paths the conjunct reads.</summary>
         string Print(int conjunct, ServiceForm form, CosmosParameterList parameters) =>
-            RenderingPrinter.Print(form, Statement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters, CosmosRendering.StoresSpelled(_container.ServiceTarget));
+            RenderingPrinter.Print(form, RenderingStatement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters, CosmosRendering.StoresSpelled(_container.ServiceTarget));
 
         /// <summary>
         /// Whether the printer writes a form S chose for a conjunct: legality, read before S's admission stands, so that

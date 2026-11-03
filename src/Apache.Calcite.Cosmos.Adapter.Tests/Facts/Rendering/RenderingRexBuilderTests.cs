@@ -389,7 +389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var accessors = statement.AccessorsOf(w.Conjunct);
                 var loading = new CosmosPredicateLoader.Loading(statement.BindingForCheck.Fields, statement.BindingForCheck.Readings, CosmosImplementor.DefaultRootAlias);
                 Builder built = form => RenderingRexBuilder.Build(form, statement.RexBuilderForCheck, accessors);
-                var atoms = statement.Statement.Conjuncts[w.Conjunct].Subterms.Select(t => t.Digest).ToHashSet(StringComparer.Ordinal);
+                var atoms = statement.RenderingStatement.Conjuncts[w.Conjunct].Subterms.Select(t => t.Digest).ToHashSet(StringComparer.Ordinal);
                 var (found, written, mine, guards) = RoundTrip(w.Mine!, RenderPosition.Pos, plant?.Invoke(built) ?? built, p => statement.TranslatorFor(w.Conjunct, p), loading,
                     (f, ir, pos, verdict) => Claim(f, ir, pos, verdict, w.Set, w.Claim?.Imports, Ordered(w.Set)), ir => atoms.Contains(ir.Digest));
                 (own, guarded) = (own + mine, guarded + guards);

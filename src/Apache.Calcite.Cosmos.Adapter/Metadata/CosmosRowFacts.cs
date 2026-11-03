@@ -171,6 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             SqlPredicate.Opaque opaque => new SqlPredicate.Opaque(offset + opaque.Id),
             SqlPredicate.Not not => new SqlPredicate.Not(Apart(not.Operand, offset)),
+            SqlPredicate.Case c => new SqlPredicate.Case(Apart(c.Condition, offset), Apart(c.Then, offset), Apart(c.Else, offset)),
             SqlPredicate.And and => SqlPredicate.AllOf(and.Arms.Select(arm => Apart(arm, offset))),
             SqlPredicate.Or or => SqlPredicate.AnyOf(or.Arms.Select(arm => Apart(arm, offset))),
             _ => predicate,

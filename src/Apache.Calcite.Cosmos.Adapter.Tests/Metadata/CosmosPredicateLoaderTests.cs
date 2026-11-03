@@ -203,8 +203,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void WhatIsNotReadIsOpaqueAndNumberedByWhatItIs()
         {
-            var like = Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"));
-            var other = Call(SqlStdOperatorTable.LIKE, JsonValue("kind"), Str("b%"));
+            var like = Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[x]%"));
+            var other = Call(SqlStdOperatorTable.LIKE, JsonValue("kind"), Str("b[y]%"));
             var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, like, Call(SqlStdOperatorTable.OR, other, like)));
 
             statement.Conjuncts.Should().Equal(Opaque(0), Or(Opaque(1), Opaque(0)));
@@ -231,13 +231,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             // And two nodes that are one predicate are one term, however they were built: a weakening spelled as a
             // conjunct beneath is that conjunct.
             var again = Load(_rex.makeCall(SqlStdOperatorTable.AND,
-                Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%")), Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"))));
+                Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[x]%")), Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[x]%"))));
             again.Conjuncts.Should().Equal(Opaque(0), Opaque(0));
         }
 
         /// <summary>
         /// An opaque conjunct is read as a value beside its term (spec g04): its top call with every operand the loader
-        /// reads, at every depth; a predicate compared with a boolean as that comparison, whose strictness is the rows';
+        /// reads, at every depth; a predicate compared with a boolean that is no literal as that comparison, whose
+        /// strictness is the rows';
         /// an operand that is no value left out; and a reading that is the predicate as itself. Neither the conjuncts nor
         /// the digest move.
         /// </summary>
@@ -245,15 +246,104 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void AnOpaqueConjunctIsReadAsAValueBesideItsTerm()
         {
             var upper = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), Str("X"));
-            var compared = Call(SqlStdOperatorTable.NOT_EQUALS, upper, _rex.makeLiteral(false));
+            var compared = Call(SqlStdOperatorTable.NOT_EQUALS, upper, JsonValue("flag", SqlTypeName.BOOLEAN));
             var unread = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), _rex.makeNullLiteral(Sql(SqlTypeName.VARCHAR)));
             var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, upper, compared, unread, JsonValue("flag", SqlTypeName.BOOLEAN)));
 
             statement.Conjuncts.Should().Equal(Opaque(0), Opaque(1), Opaque(2), Opaque(3));
             var read = new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)]), Lit("X")]);
-            Enumerable.Range(0, 4).Select(i => statement.Opaques[i]).Should().Equal(read, new SqlValue.Call("<>", [read, Lit(false)]),
+            Enumerable.Range(0, 4).Select(i => statement.Opaques[i]).Should().Equal(read, new SqlValue.Call("<>", [read, Typed(P("flag"), "BOOLEAN")]),
                 new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)])]), Typed(P("flag"), "BOOLEAN"));
             statement.Digest.Should().Be(new PredicateStatement(statement.Conjuncts).Digest);
+        }
+
+        /// <summary>
+        /// The shapes the facts graph reads from h07: a boolean literal, the truth tests, <c>COALESCE(p, FALSE)</c>, the null
+        /// test of a predicate and a boolean <c>CASE</c> as cases of what they define (<c>Calcite.TruthTestsAreCases</c>,
+        /// <c>Calcite.CoalesceIsACase</c>), <c>LIKE</c> of text against a literal pattern, the type tests of a path alone,
+        /// a reading of an element, and a value <c>CASE</c> with its conditions.
+        /// </summary>
+        [Fact]
+        public void EachNewShapeIsRead()
+        {
+            var x = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), Str("x"));
+            var y = Call(SqlStdOperatorTable.EQUALS, JsonValue("kind"), Str("y"));
+            var (px, py) = (Eq(Text(Label), "x"), Eq(Text(Kind), "y"));
+            SqlPredicate T = new SqlPredicate.Constant(true), F = new SqlPredicate.Constant(false);
+
+            One(_rex.makeLiteral(true)).Should().Be(T);
+            One(Call(SqlStdOperatorTable.IS_TRUE, x)).Should().Be(new SqlPredicate.Case(px, T, F));
+            One(Call(SqlStdOperatorTable.IS_NOT_TRUE, x)).Should().Be(new SqlPredicate.Case(px, F, T));
+            One(Call(SqlStdOperatorTable.IS_FALSE, x)).Should().Be(new SqlPredicate.Case(Not(px), T, F));
+            One(Call(SqlStdOperatorTable.IS_NOT_FALSE, x)).Should().Be(new SqlPredicate.Case(Not(px), F, T));
+            One(Call(SqlStdOperatorTable.EQUALS, x, _rex.makeLiteral(true))).Should().Be(px);
+            One(Call(SqlStdOperatorTable.NOT_EQUALS, x, _rex.makeLiteral(false))).Should().Be(px);
+            One(Call(SqlStdOperatorTable.EQUALS, x, _rex.makeLiteral(false))).Should().Be(Not(px));
+            One(Call(SqlStdOperatorTable.COALESCE, x, _rex.makeLiteral(false))).Should().Be(new SqlPredicate.Case(px, T, F));
+            One(Call(SqlStdOperatorTable.IS_NULL, x)).Should().Be(new SqlPredicate.Case(px, F, new SqlPredicate.Case(Not(px), F, T)));
+            One(Call(SqlStdOperatorTable.IS_NOT_NULL, x)).Should().Be(new SqlPredicate.Case(px, T, new SqlPredicate.Case(Not(px), T, F)));
+            One(Call(SqlStdOperatorTable.CASE, x, y, _rex.makeLiteral(false))).Should().Be(new SqlPredicate.Case(px, py, F));
+
+            One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"))).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(Label), "a%"));
+            One(Call(SqlStdOperatorTable.NOT_LIKE, JsonValue("label"), Str("a%"))).Should().Be(Not(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(Label), "a%")));
+            One(Call(CosmosOperators.IsString, JsonValue("label"))).Should().Be(new SqlPredicate.TypeTest("IS_STRING", Raw(Label)));
+            One(Call(CosmosOperators.IsArray, Variant)).Should().Be(new SqlPredicate.TypeTest("IS_ARRAY", Raw(Category)));
+            One(Call(SqlStdOperatorTable.EQUALS, JsonValue("tags[0]"), Str("x"))).Should().Be(Eq(Text(P("tags").Element(0)), "x"));
+
+            var chosen = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.CASE, x, JsonValue("label"), JsonValue("kind")), Str("z"));
+            var statement = Load(chosen);
+            statement.Conjuncts.Should().Equal(Opaque(0));
+            statement.Opaques[0].Should().Be(new SqlValue.Call("=", [new SqlValue.Case([px], [Text(Label), Text(Kind)]), Lit("z")]));
+        }
+
+        /// <summary>
+        /// <c>LIKE</c> is read only as two operands over text against a literal holding no bracket: an <c>ESCAPE</c>, a
+        /// computed pattern, a bracket, which the service reads as a class and Calcite as itself, and a subject that is no
+        /// reading of a path stay opaque, and so does a type test over a call.
+        /// </summary>
+        [Fact]
+        public void EachRefusedLikeStaysOpaque()
+        {
+            One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"), Str("!"))).Should().Be(Opaque(0));
+            One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), JsonValue("kind"))).Should().Be(Opaque(0));
+            One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[b]%"))).Should().Be(Opaque(0));
+            One(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), Str("A%"))).Should().Be(Opaque(0));
+            One(Call(CosmosOperators.IsString, Call(SqlStdOperatorTable.UPPER, JsonValue("label")))).Should().Be(Opaque(0));
+        }
+
+        /// <summary>
+        /// The recall cases P8 and P18 of spec §3.1, opaque before h07: the null test of a comparison and <c>NOT COALESCE</c>
+        /// of one are read with nothing opaque in them.
+        /// </summary>
+        [Fact]
+        public void RecallP8AndP18AreRead()
+        {
+            var compared = Call(SqlStdOperatorTable.NOT_EQUALS, JsonValue("category"), Str("bikes"));
+            var p8 = One(Call(SqlStdOperatorTable.IS_NULL, compared));
+            var p18 = One(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.COALESCE, compared, _rex.makeLiteral(false))));
+
+            p8.Subterms.Should().NotContain(t => t is SqlPredicate.Opaque);
+            p18.Subterms.Should().NotContain(t => t is SqlPredicate.Opaque);
+            p18.Should().Be(Not(new SqlPredicate.Case(Cmp(Text(Category), "<>", Lit("bikes")), new SqlPredicate.Constant(true), new SqlPredicate.Constant(false))));
+        }
+
+        /// <summary>
+        /// The view S reads until its switch (h15) reads none of it: each new shape opaque, numbered as before.
+        /// </summary>
+        [Fact]
+        public void TheLegacyViewReadsNoNewShape()
+        {
+            var x = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), Str("x"));
+            var legacy = new CosmosPredicateLoader.Loading(_fields, _readings, "c", legacy: true);
+            var shapes = new[]
+            {
+                _rex.makeLiteral(true), Call(SqlStdOperatorTable.IS_TRUE, x), Call(SqlStdOperatorTable.EQUALS, x, _rex.makeLiteral(true)),
+                Call(SqlStdOperatorTable.COALESCE, x, _rex.makeLiteral(false)), Call(SqlStdOperatorTable.IS_NULL, x),
+                Call(SqlStdOperatorTable.CASE, x, x, _rex.makeLiteral(false)), Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%")),
+                Call(CosmosOperators.IsString, JsonValue("label")), Call(SqlStdOperatorTable.EQUALS, JsonValue("tags[0]"), Str("x")),
+            };
+
+            legacy.Statement(shapes).Conjuncts.Should().Equal(Enumerable.Range(0, shapes.Length).Select(i => Opaque(i)));
         }
 
         [Fact]

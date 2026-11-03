@@ -29,9 +29,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>What is read</b> is what a guard is written in: <c>=</c>, <c>&lt;&gt;</c>, the orderings, <c>IN</c> (a
     /// <c>SEARCH</c> expanded, read back as one membership), <c>IS [NOT] NULL</c>, <c>AND</c>, <c>OR</c> and <c>NOT</c>,
-    /// over a reading of a path on one side and a literal or a parameter on the other. Anything else is
+    /// over a reading of a path on one side and a literal or a parameter on the other; the service's type tests over a
+    /// reading of a path; <c>LIKE</c> with a literal pattern holding no bracket; and a boolean <c>CASE</c>, with the truth
+    /// tests, <c>COALESCE(p, FALSE)</c> and <c>IS NULL</c> over a predicate read as the cases Calcite defines them as
+    /// (<c>Calcite.TruthTestsAreCases</c>, <c>Calcite.CoalesceIsACase</c>). Anything else is
     /// <see cref="SqlPredicate.Opaque"/>, which proves nothing and decides nothing: loading less loses facts, and can only
-    /// lose a pushdown.
+    /// lose a pushdown. <c>LIKE</c> with <c>ESCAPE</c>, a computed pattern or a bracket stays opaque: the service reads a
+    /// bracket as a range (<c>Service.LikeReadsBracketsAsARange</c>), and nothing is read of what no form can say.
     /// </para>
     /// <para>
     /// <b>A literal is a JSON scalar</b>, converted once, as the translator would send it (<see cref="JsonScalar"/>), and a
@@ -88,12 +92,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosRexPaths _paths;
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
+            readonly bool _legacy;
             readonly Dictionary<RexNode, long> _opaque = new();
             readonly List<RexNode> _opaqueNodes = new();
             readonly object _lock = new();
 
-            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
+            /// <param name="legacy">
+            /// Reads only what was read before the families S does not yet own: no constant, truth test, <c>CASE</c>,
+            /// <c>LIKE</c>, type test or element, each opaque as before, for the rendering graph until its switch.
+            /// </param>
+            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false)
             {
+                _legacy = legacy;
                 // The path readers a statement resolves through, so the accepted path forms are the ones it would address.
                 _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
@@ -135,6 +145,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             SqlPredicate Predicate(RexNode node)
             {
+                if (_legacy == false && node is RexLiteral { } truth && truth.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN)
+                    return new SqlPredicate.Constant(truth.getValue() is java.lang.Boolean b ? b.booleanValue() : null);
+
                 if (node is not RexCall call)
                     return Opaque(node);
 
@@ -151,9 +164,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         return new SqlPredicate.Not(Predicate((RexNode)operands.get(0)));
 
                     case nameof(SqlKind.__Enum.EQUALS) when operands.size() == 2:
-                        return Comparison(call, SqlPredicate.Compare.Equal) ?? Opaque(node);
+                        return Comparison(call, SqlPredicate.Compare.Equal) ?? (_legacy ? null : Truth(call, equal: true)) ?? Opaque(node);
                     case nameof(SqlKind.__Enum.NOT_EQUALS) when operands.size() == 2:
-                        return Comparison(call, SqlPredicate.Compare.NotEqual) ?? Opaque(node);
+                        return Comparison(call, SqlPredicate.Compare.NotEqual) ?? (_legacy ? null : Truth(call, equal: false)) ?? Opaque(node);
                     case nameof(SqlKind.__Enum.LESS_THAN) when operands.size() == 2:
                         return Comparison(call, SqlPredicate.Compare.Less) ?? Opaque(node);
                     case nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL) when operands.size() == 2:
@@ -163,15 +176,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL) when operands.size() == 2:
                         return Comparison(call, SqlPredicate.Compare.GreaterOrEqual) ?? Opaque(node);
 
+                    // Over a predicate, TRUE where it is UNKNOWN: neither TRUE nor FALSE.
                     case nameof(SqlKind.__Enum.IS_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue tested && tested.PathRead is not null
                             ? new SqlPredicate.IsNull(tested)
-                            : Opaque(node);
+                            : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var unknown
+                                ? new SqlPredicate.Case(unknown, False, new SqlPredicate.Case(new SqlPredicate.Not(unknown), False, True))
+                                : Opaque(node);
 
                     // A value that is not null: the negation of a test that is never unknown.
                     case nameof(SqlKind.__Enum.IS_NOT_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue present && present.PathRead is not null
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
+                            : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var known
+                                ? new SqlPredicate.Case(known, True, new SqlPredicate.Case(new SqlPredicate.Not(known), True, False))
+                                : Opaque(node);
+
+                    case nameof(SqlKind.__Enum.IS_TRUE) when _legacy == false && operands.size() == 1:
+                        return new SqlPredicate.Case(Predicate((RexNode)operands.get(0)), True, False);
+                    case nameof(SqlKind.__Enum.IS_NOT_TRUE) when _legacy == false && operands.size() == 1:
+                        return new SqlPredicate.Case(Predicate((RexNode)operands.get(0)), False, True);
+                    case nameof(SqlKind.__Enum.IS_FALSE) when _legacy == false && operands.size() == 1:
+                        return new SqlPredicate.Case(new SqlPredicate.Not(Predicate((RexNode)operands.get(0))), True, False);
+                    case nameof(SqlKind.__Enum.IS_NOT_FALSE) when _legacy == false && operands.size() == 1:
+                        return new SqlPredicate.Case(new SqlPredicate.Not(Predicate((RexNode)operands.get(0))), False, True);
+
+                    case nameof(SqlKind.__Enum.COALESCE) when _legacy == false && operands.size() == 2 && operands.get(1) is RexLiteral otherwise
+                        && otherwise.getValue() is java.lang.Boolean { } fallback && fallback.booleanValue() == false:
+                        return new SqlPredicate.Case(Predicate((RexNode)operands.get(0)), True, False);
+
+                    // Read outermost first, each further arm the else of the one before.
+                    case nameof(SqlKind.__Enum.CASE) when _legacy == false && operands.size() % 2 == 1 && call.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN:
+                    {
+                        var chosen = Predicate((RexNode)operands.get(operands.size() - 1));
+                        for (var i = operands.size() - 3; i >= 0; i -= 2)
+                            chosen = new SqlPredicate.Case(Predicate((RexNode)operands.get(i)), Predicate((RexNode)operands.get(i + 1)), chosen);
+
+                        return chosen;
+                    }
+
+                    case nameof(SqlKind.__Enum.LIKE) when _legacy == false:
+                        return Like(call) ?? Opaque(node);
+
+                    // Over a reading of a path alone, as IS_DEFINED is read; over a call it asks of a computed value.
+                    case var _ when _legacy == false && TypeTests.TryGetValue(call.getOperator(), out var test) && operands.size() == 1:
+                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath typed } typedRead && typedRead is not SqlValue.Cast
+                            ? new SqlPredicate.TypeTest(test, new SqlValue.Raw(typed))
                             : Opaque(node);
 
                     // The service's test of the document, which a weakening writes and a caller may: what it asks is the
@@ -185,6 +235,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     default:
                         return Opaque(node);
                 }
+            }
+
+            static readonly SqlPredicate True = new SqlPredicate.Constant(true), False = new SqlPredicate.Constant(false);
+
+            /// <summary>The service's type tests but <c>IS_DEFINED</c>, by operator, each read by its name.</summary>
+            static readonly Dictionary<SqlOperator, string> TypeTests = new[] { CosmosOperators.IsNull, CosmosOperators.IsString, CosmosOperators.IsNumber,
+                CosmosOperators.IsBool, CosmosOperators.IsObject, CosmosOperators.IsArray, CosmosOperators.IsPrimitive }.ToDictionary(o => (SqlOperator)o, o => o.getName());
+
+            /// <summary>Whether a node is a predicate the loader reads as one rather than a value: a boolean call.</summary>
+            static bool IsPredicate(RexNode node) => node is RexCall && node.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN;
+
+            /// <summary>
+            /// Reads a predicate compared with a truth value, as Calcite defines it: <c>x = TRUE</c> and <c>x &lt;&gt; FALSE</c>
+            /// are <c>x</c>, and <c>x = FALSE</c> is <c>NOT x</c>; <c>null</c> for anything else.
+            /// </summary>
+            SqlPredicate? Truth(RexCall call, bool equal)
+            {
+                var (a, b) = ((RexNode)call.getOperands().get(0), (RexNode)call.getOperands().get(1));
+                var (predicate, literal) = IsPredicate(a) && b is RexLiteral right ? (a, right) : IsPredicate(b) && a is RexLiteral left ? (b, left) : (null, null);
+                if (predicate is null || literal!.getValue() is not java.lang.Boolean truth)
+                    return null;
+
+                return (equal, truth.booleanValue()) switch
+                {
+                    (true, true) or (false, false) => Predicate(predicate),
+                    (true, false) => new SqlPredicate.Not(Predicate(predicate)),
+                    _ => null,
+                };
+            }
+
+            /// <summary>
+            /// Reads <c>LIKE</c> of a reading of a path as text, against a literal pattern holding no bracket, and with no
+            /// <c>ESCAPE</c>; <c>NOT LIKE</c> as its negation; <c>null</c> for anything else.
+            /// </summary>
+            SqlPredicate? Like(RexCall call)
+            {
+                if (call.getOperands().size() != 2 || call.getOperator().getName() is not ("LIKE" or "NOT LIKE"))
+                    return null;
+
+                if (Value((RexNode)call.getOperands().get(0)) is not { PathRead: not null } subject || subject is not (SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" }))
+                    return null;
+
+                if (call.getOperands().get(1) is not RexLiteral literal || Literal(literal) is not SqlValue.Literal { Kind: Cosmos.Facts.Saturation.JsonValues.StringType } pattern)
+                    return null;
+
+                var text = Cosmos.Facts.Saturation.JsonValues.StringOf(pattern.Value);
+                if (text.IndexOfAny(['[', ']']) >= 0)
+                    return null;
+
+                SqlPredicate like = new SqlPredicate.Affix(Cosmos.Facts.Saturation.PredicateAtom.LikeTest, subject, text);
+                return call.getOperator().getName() == "NOT LIKE" ? new SqlPredicate.Not(like) : like;
             }
 
             /// <summary>
@@ -405,8 +506,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case RexCall call when Cast(call) is SqlValue cast:
                         return cast;
 
-                    // An item chain over a map addresses the value the service holds.
-                    case RexCall call when IsDocumentValue(call) && Document(call) is JsonDocumentPath item:
+                    // An item chain over a map addresses the value the service holds; one over an array's element is no
+                    // path's reading, an ANY's raising over a scalar and a VARIANT's element unboxed (Calcite.ItemIsNullWhereNoElementIs).
+                    case RexCall call when IsDocumentValue(call) && Document(call) is JsonDocumentPath { HasElement: false } item:
                         return new SqlValue.Raw(item);
 
                     case RexCall call:
@@ -486,13 +588,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// not read.
             /// </summary>
             /// <remarks>
-            /// Spelled as the operator is, so that what the theory knows of a function is what it knows of that name. Two
-            /// operators carry symbols beside their values, and the symbols are spelled into the name: a <c>TRIM</c>'s flag,
-            /// <c>TRIM BOTH</c>, and a <c>CASE</c>'s conditions, which choose an arm and are no part of its value, so that it
-            /// is read as its arms. A cast is read only from text to text, a conversion being a function of its own. Read
-            /// <paramref name="partial"/>ly, an operand that is no value is left out rather than the call.
+            /// Spelled as the operator is, so that what the theory knows of a function is what it knows of that name. A
+            /// <c>TRIM</c>'s flag is spelled into the name, <c>TRIM BOTH</c>; a <c>CASE</c> is read as its conditions and its
+            /// arms (<see cref="SqlValue.Case"/>), whose characters are its arms'. A cast is read only from text to text, a
+            /// conversion being a function of its own. Read <paramref name="partial"/>ly, an operand that is no value is left
+            /// out rather than the call, and a <c>CASE</c> missing one is the call of its arms read.
             /// </remarks>
-            SqlValue.Call? Computed(RexCall call, bool partial = false)
+            SqlValue? Computed(RexCall call, bool partial = false)
             {
                 var operands = Operands(call).ToList();
                 string function;
@@ -533,6 +635,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         return null;
                 }
 
+                if (_legacy == false && function == "CASE" && values.Count == (operands.Count + 1) / 2)
+                    return new SqlValue.Case([.. operands.Where((_, i) => i % 2 == 0 && i < operands.Count - 1).Select(Predicate)], values);
+
                 return new SqlValue.Call(function, values);
             }
 
@@ -542,7 +647,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             SqlValue? Field(RexInputRef reference)
             {
-                if (Document(reference) is not JsonDocumentPath path)
+                if (Document(reference) is not JsonDocumentPath { HasElement: false } path)
                     return null;
 
                 var index = reference.getIndex();
@@ -577,8 +682,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (IsCharacter(type))
                     return new SqlValue.Text(path);
 
+                // An element's rendering and RETURNING are as of a path holding it (Calcite.ReadingsOfAnIndexAreAsOfAPath);
+                // its raw value was not measured.
                 if (CosmosRexShapes.IsDocumentValueType(type))
-                    return new SqlValue.Raw(path);
+                    return path.HasElement ? null : new SqlValue.Raw(path);
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
             }
@@ -607,7 +714,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return target == SqlTypeName.VARIANT ? Literal(literal) : null;
 
                 if (target == SqlTypeName.ANY)
-                    return Value(operand) is { PathRead: JsonDocumentPath raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
+                    return Value(operand) is { PathRead: JsonDocumentPath { HasElement: false } raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
 
                 if (CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
                     return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;
@@ -656,7 +763,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 // A path rooted at a traversal alias addresses an element of an array, not the document; and the
                 // document itself is no path a filter compares.
-                return CosmosDocumentPaths.From(path, _rootAlias) is JsonDocumentPath document && document.IsRoot == false ? document : null;
+                return CosmosDocumentPaths.From(path, _rootAlias, elements: _legacy == false) is JsonDocumentPath document && document.IsRoot == false ? document : null;
             }
 
             static bool IsDocumentValue(RexCall call) => CosmosRexShapes.IsDocumentValueType(call.getType()?.getSqlTypeName());

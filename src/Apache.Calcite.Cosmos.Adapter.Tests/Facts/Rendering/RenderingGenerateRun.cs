@@ -107,14 +107,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         void ICosmosRenderingProbe.Opened(CosmosFilterStatement statement, CosmosFilterRendering.Question question, RenderingBundle bundle, IReadOnlyList<Pred> terms,
             ImportReport import, RenderingRun run, TimeSpan elapsed)
         {
-            var key = RenderingQuestionKey.Of(question.Roots, statement.Statement.Opaques, import, question.Set, RenderingAnswerMemo.DigestOf(bundle.Theory));
+            var key = RenderingQuestionKey.Of(question.Roots, statement.RenderingStatement.Opaques, import, question.Set, RenderingAnswerMemo.DigestOf(bundle.Theory));
             var id = Interlocked.Increment(ref _next);
             var nodes = question.Roots.SelectMany(r => r.Subterms).DistinctBy(n => n.Digest).ToList();
 
             // A node is its term again: made by get-or-add, the class the roots already hold.
-            var written = nodes.ToDictionary(n => n.Digest, n => bundle.Write(n, statement.Statement.Opaques));
+            var written = nodes.ToDictionary(n => n.Digest, n => bundle.Write(n, statement.RenderingStatement.Opaques));
             var answers = question.Roots.Select((r, i) => (r.Digest, Answer: bundle.ReadBest(terms[i]))).ToDictionary(a => a.Digest, a => a.Answer);
-            var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.Statement.Conjuncts[i]).ToList());
+            var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.RenderingStatement.Conjuncts[i]).ToList());
             var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom) is var b
                 ? new RenderingMemo.Beneath(indices.IndexOf(b.Conjunct), x.Atom, b.Source, x.Assumed, [.. b.Stratum.Assumes.Select(a => indices.IndexOf(a))]) : null!).ToList();
             var proposed = (Candidates: bundle.Failure is null ? (int)bundle.Scope.CountRows(bundle.Theory.Candidate) : 0,
@@ -166,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         public void Read(RenderingInputs.Statement input, int index, CosmosFilterStatement statement)
         {
-            var (scope, conjuncts) = (statement.ScopeForCheck, statement.Statement.Conjuncts);
+            var (scope, conjuncts) = (statement.ScopeForCheck, statement.RenderingStatement.Conjuncts);
             int[] rounds = [.. Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf)];
             bool[] owned = [.. conjuncts.Select(RenderingFamily.Owns)];
             foreach (var set in _sets)
@@ -202,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     Declines.Enqueue($"{input.Input} {input.Name}/{index} {set}: {declined} {answer.Roots.Values.FirstOrDefault()?.Reason}");
             }
 
-            var conjuncts = statement.Statement.Conjuncts;
+            var conjuncts = statement.RenderingStatement.Conjuncts;
             for (var i = 0; i < conjuncts.Count; i++)
                 Sends.Enqueue(new(input.Input, input.Name, index, i, set, conjuncts[i].Digest, owned[i], rounds[i], resolution.Forms.GetValueOrDefault(i), statement));
 
@@ -233,12 +233,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var lowered = Enumerable.Range(0, rewritten.Conjuncts.Count).Where(i => before.Contains(rewritten.Conjuncts[i]) == false).ToList();
             for (var k = 0; k < originals.Count; k++)
             {
-                var original = statement.Statement.Conjuncts[originals[k]];
-                var made = k < lowered.Count && originals.Count == lowered.Count ? rewritten.Statement.Conjuncts[lowered[k]] : null;
+                var original = statement.RenderingStatement.Conjuncts[originals[k]];
+                var made = k < lowered.Count && originals.Count == lowered.Count ? rewritten.RenderingStatement.Conjuncts[lowered[k]] : null;
                 var source = ((org.apache.calcite.rex.RexNode)statement.Statement.Sources[originals[k]]!, statement.BindingForCheck);
                 foreach (var set in _sets)
                     Rewrites.Enqueue(made is null ? new(input.Input, input.Name, index, set, original, null, null, null, source)
-                        : Pair(input, index, statement, root, set, original, made, rewritten.Statement.Opaques, source));
+                        : Pair(input, index, statement, root, set, original, made, rewritten.RenderingStatement.Opaques, source));
             }
 
             GC.KeepAlive(rewritten);
@@ -250,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             using var bundle = _graph.Open(set);
             var m = bundle.Write(made, opaques);
-            RenderingImporter.Import(bundle, new ImportSource(statement.Statement.Digest, "declaration", 1), root.Context, root.Rules, statement.DeclarationForCheck, made.Paths.Concat(original.Paths));
+            RenderingImporter.Import(bundle, new ImportSource(statement.RenderingStatement.Digest, "declaration", 1), root.Context, root.Rules, statement.DeclarationForCheck, made.Paths.Concat(original.Paths));
             bundle.Generate(m);
             bundle.RunGenerate(RenderingBundle.WidthOf([made]));
             var answer = bundle.ReadBest(m);

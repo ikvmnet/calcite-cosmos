@@ -41,8 +41,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// </para>
     /// </remarks>
     /// <param name="Reader">How the value is read: <c>text</c>, <c>raw</c>, <c>typed:T</c> or <c>cast:T:r</c>.</param>
-    /// <param name="Test">What is asked: a comparison operator, <c>in</c>, <c>is null</c>, or <c>is defined</c>.</param>
-    /// <param name="Operand">The literal compared with, in <see cref="JsonValues"/>' spelling; <c>null</c> for a parameter and a null test.</param>
+    /// <param name="Test">What is asked: a comparison operator, <c>in</c>, <c>is null</c>, <c>is defined</c>, a type test, or <c>LIKE</c>.</param>
+    /// <param name="Operand">The literal compared with, in <see cref="JsonValues"/>' spelling, <c>LIKE</c>'s pattern as a string; <c>null</c> for a parameter and a test.</param>
     /// <param name="Points">The literals of an <c>in</c>.</param>
     /// <param name="Parameter">Whether the value is compared with a parameter, whose value is not known.</param>
     internal sealed record PredicateAtom(string Reader, string Test, string? Operand, ValueSet<string>? Points, bool Parameter)
@@ -57,6 +57,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string InTest = "in";
         public const string NullTest = "is null";
         public const string DefinedTest = "is defined";
+
+        public const string LikeTest = "LIKE";
+
+        /// <summary>The kinds each type test is TRUE of, absence never (<c>Calcite.TypeTestsAreTheirBodies</c>), by its name.</summary>
+        public static readonly IReadOnlyDictionary<string, ValueSet<string>> TypeTests = new Dictionary<string, ValueSet<string>>(StringComparer.Ordinal)
+        {
+            ["IS_NULL"] = ValueSet.Of(NullType),
+            ["IS_STRING"] = ValueSet.Of(StringType),
+            ["IS_NUMBER"] = Numbers,
+            ["IS_BOOL"] = ValueSet.Of(BooleanType),
+            ["IS_OBJECT"] = ValueSet.Of(ObjectType),
+            ["IS_ARRAY"] = ValueSet.Of(ArrayType),
+            ["IS_PRIMITIVE"] = Scalars,
+        };
 
         public const string TextReader = "text";
         public const string RawReader = "raw";
@@ -94,6 +108,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// the reading (<c>Service.IsDefined</c>, and the in-process body reads the document too).
         /// </summary>
         public static PredicateAtom IsDefined(string reader) => new(reader, DefinedTest, null, null, false);
+
+        /// <summary>
+        /// A type test of the path the reader reads: what it asks is the document's kind, whatever the reading, as
+        /// <see cref="IsDefined"/>'s is.
+        /// </summary>
+        public static PredicateAtom TypeTest(string reader, string test) => new(reader, test, null, null, false);
+
+        /// <summary>
+        /// A match of the text read against a literal pattern: <c>LIKE</c>, TRUE or FALSE where the reading is not null and
+        /// UNKNOWN where it is, matched as Calcite's runtime matches.
+        /// </summary>
+        public static PredicateAtom Affix(string reader, string op, string pattern) => new(reader, op, Of(pattern), null, false);
 
         /// <summary>Whether a string names a comparison operator.</summary>
         public static bool IsComparison(string op) => op is Equal or NotEqual or Less or LessOrEqual or Greater or GreaterOrEqual;
@@ -139,8 +165,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Test == DefinedTest)
                 return truth ? PathValues.AnythingThere : PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind));
 
+            if (TypeTests.TryGetValue(Test, out var kinds))
+                return PathValues.OfKinds(truth ? kinds : ValueSet.From(PathValues.AllKinds.Except(kinds)));
+
             if (Reads is not Reading reading)
                 return PathValues.Anything;
+
+            // TRUE or FALSE only where the text read is not null.
+            if (Test == LikeTest)
+                return MatchesText ? reading.KeptNull(false) : PathValues.Anything;
 
             if (Parameter)
                 return reading.KeptParameter();
@@ -197,8 +230,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Test == DefinedTest)
                 return state is State.Absent ? Truths.False : state is State.Unknown ? Truths.True | Truths.False : Truths.True;
 
+            if (TypeTests.TryGetValue(Test, out var kinds))
+                return state switch
+                {
+                    State.Absent => Truths.False,
+                    State.Null => kinds.Contains(NullType) ? Truths.True : Truths.False,
+                    State.Scalar s => kinds.Contains(TypeOf(s.Value)) ? Truths.True : Truths.False,
+                    State.AnyString => kinds.Contains(StringType) ? Truths.True : Truths.False,
+                    State.AnyNumber n => kinds.Contains(n.Integral ? IntegerType : FractionType) ? Truths.True : Truths.False,
+                    State.Structure s => kinds.Contains(s.Type) ? Truths.True : Truths.False,
+                    _ => Truths.True | Truths.False,
+                };
+
             if (Reads is not Reading reading || state is State.Unknown)
                 return Truths.Any;
+
+            if (Test == LikeTest)
+                return MatchesText ? Matched(reading.Null(state), state is State.Scalar { Value: var v } && IsString(v) ? v : null) : Truths.Any;
 
             if (Parameter)
                 return reading.Parameter(state);
@@ -226,8 +274,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         internal Truths OnCell(PathCell cell)
         {
-            if (Test == DefinedTest || Reads is not Reading reading || cell is PathCell.Unknown)
+            if (Test == DefinedTest || TypeTests.ContainsKey(Test) || Reads is not Reading reading || cell is PathCell.Unknown)
                 return On(cell.Coarse);
+
+            if (Test == LikeTest)
+                return MatchesText ? Matched(reading.NullOn(cell), cell is PathCell.Point { Value: var v } && IsString(v) ? v : null) : Truths.Any;
 
             // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
             // anything where that read finds a value.
@@ -252,7 +303,51 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>The <c>Calcite.*</c> rows the reading's answers on a cell rest on.</summary>
-        internal ValueSet<string> Rests => Test != DefinedTest && Reads is Reading reading ? reading.Rests : ValueSet<string>.Empty;
+        internal ValueSet<string> Rests => TypeTests.ContainsKey(Test) ? ValueSet.Of("Calcite.TypeTestsAreTheirBodies")
+            : Test != DefinedTest && Reads is Reading reading ? reading.Rests : ValueSet<string>.Empty;
+
+        /// <summary>Whether <c>LIKE</c> is asked of a reading that is text: the accessor's rendering, or a cast to text.</summary>
+        bool MatchesText => Reader == TextReader || Reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal) || Reader.StartsWith("cast:CHAR:", StringComparison.Ordinal);
+
+        /// <summary>
+        /// <c>LIKE</c>'s truths from the null test's of the same value: UNKNOWN where the text is null, raising where reading
+        /// it raises, and where it is not, the match, decided only of the accessor's rendering of a known string.
+        /// </summary>
+        Truths Matched(Truths isNull, string? literal) =>
+            (isNull & Truths.Raises) | ((isNull & Truths.True) != 0 ? Truths.Unknown : 0)
+            | ((isNull & Truths.False) == 0 ? 0
+                : literal is not null && Reader == TextReader && Like(StringOf(literal), StringOf(Operand!)) is bool match ? match ? Truths.True : Truths.False
+                : Truths.True | Truths.False);
+
+        /// <summary>
+        /// Whether a pattern matches text, by ordinal comparison: <c>%</c> any run, which Calcite's runtime reads with every
+        /// character a run may hold; <c>null</c> for a pattern holding <c>_</c>, which it reads as one code point that is no
+        /// line terminator, or a backslash, which it may read as an escape: neither decided here.
+        /// </summary>
+        internal static bool? Like(string text, string pattern)
+        {
+            if (pattern.IndexOfAny(['_', '\\']) >= 0)
+                return null;
+
+            var parts = pattern.Split('%');
+            if (parts.Length == 1)
+                return string.Equals(text, pattern, StringComparison.Ordinal);
+
+            if (text.Length < parts[0].Length + parts[^1].Length || text.StartsWith(parts[0], StringComparison.Ordinal) == false || text.EndsWith(parts[^1], StringComparison.Ordinal) == false)
+                return false;
+
+            var (at, end) = (parts[0].Length, text.Length - parts[^1].Length);
+            foreach (var part in parts[1..^1])
+            {
+                var found = text.IndexOf(part, at, end - at, StringComparison.Ordinal);
+                if (found < 0)
+                    return false;
+
+                at = found + part.Length;
+            }
+
+            return true;
+        }
 
         /// <summary>The truth values of <c>NOT</c> over these.</summary>
         public static Truths Swap(Truths truths) =>

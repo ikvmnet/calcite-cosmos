@@ -58,10 +58,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var rules = PredicateRules.Of(new JsonContexts());
 
-            new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque }
+            new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(45);
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(47);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
         }
 

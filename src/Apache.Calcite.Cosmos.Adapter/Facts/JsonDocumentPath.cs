@@ -17,10 +17,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// and a lookup is a plain dictionary hit.
     /// </para>
     /// <para>
-    /// Property names only. A schema can describe array elements and one day the facts should reach
-    /// them, but nothing consults an element fact yet and a path model that admits indices would have
-    /// to answer what <c>$.tags[0]</c> means against a fact declared for <c>items</c>. See
-    /// <c>TODO.md</c> under <em>Facts about array elements</em>.
+    /// <b>Property names, and an element by its index.</b> An element (<see cref="Element"/>) is the loader's alone, read
+    /// through an accessor whose path names it (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>); the facts graph reads it
+    /// as its own index segment, and what a fact declared for <c>items</c> says of <c>$.tags[0]</c> is the theory's
+    /// rules over <c>Index</c>, never a lookup here. <see cref="Names"/> refuses a path holding one.
     /// </para>
     /// <para>
     /// <b>A value, and a struct for that reason.</b> Two paths naming the same properties are the same
@@ -47,17 +47,22 @@ namespace Apache.Calcite.Cosmos.Facts
         sealed class Node
         {
 
-            public Node(Node? parent, string name)
+            public Node(Node? parent, string? name, long index = -1)
             {
                 Parent = parent;
                 Name = name;
+                Index = index;
                 Depth = (parent?.Depth ?? 0) + 1;
-                Hash = HashCode.Combine(parent?.Hash ?? 0, StringComparer.Ordinal.GetHashCode(name));
+                Hash = name is null ? HashCode.Combine(parent?.Hash ?? 0, index) : HashCode.Combine(parent?.Hash ?? 0, StringComparer.Ordinal.GetHashCode(name));
             }
 
             public Node? Parent { get; }
 
-            public string Name { get; }
+            /// <summary>The property name, or <c>null</c> for an element.</summary>
+            public string? Name { get; }
+
+            /// <summary>An element's index, from zero; -1 for a property.</summary>
+            public long Index { get; }
 
             public int Depth { get; }
 
@@ -84,15 +89,46 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// Built when asked, the list being stored innermost first.
         /// </remarks>
+        /// <exception cref="InvalidOperationException">The path holds an element, which is no name.</exception>
         public IReadOnlyList<string> Names
         {
             get
             {
                 var names = new string[Depth];
                 for (var node = _last; node is not null; node = node.Parent)
-                    names[node.Depth - 1] = node.Name;
+                    names[node.Depth - 1] = node.Name ?? throw new InvalidOperationException($"{this} holds an element, which is no name.");
 
                 return names;
+            }
+        }
+
+        /// <summary>
+        /// Gets the steps, outermost first: a property's name as a <see cref="string"/>, an element's index as a <see cref="long"/>.
+        /// </summary>
+        public IReadOnlyList<object> Segments
+        {
+            get
+            {
+                var segments = new object[Depth];
+                for (var node = _last; node is not null; node = node.Parent)
+                    segments[node.Depth - 1] = node.Name ?? (object)node.Index;
+
+                return segments;
+            }
+        }
+
+        /// <summary>
+        /// Gets whether any step is an element.
+        /// </summary>
+        public bool HasElement
+        {
+            get
+            {
+                for (var node = _last; node is not null; node = node.Parent)
+                    if (node.Name is null)
+                        return true;
+
+                return false;
             }
         }
 
@@ -121,6 +157,13 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// Returns this path with an element of the array it holds appended, counted from zero.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
+        public JsonDocumentPath Element(long index) =>
+            index >= 0 ? new JsonDocumentPath(new Node(_last, null, index)) : throw new ArgumentOutOfRangeException(nameof(index));
+
+        /// <summary>
         /// Determines whether this path is <paramref name="ancestor"/> or lies beneath it.
         /// </summary>
         public bool IsWithin(JsonDocumentPath ancestor)
@@ -145,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     return true;
                 if (left is null || right is null)
                     return false;
-                if (left.Hash != right.Hash || left.Depth != right.Depth || string.Equals(left.Name, right.Name, StringComparison.Ordinal) == false)
+                if (left.Hash != right.Hash || left.Depth != right.Depth || left.Index != right.Index || string.Equals(left.Name, right.Name, StringComparison.Ordinal) == false)
                     return false;
 
                 left = left.Parent;
@@ -177,8 +220,8 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             var builder = new StringBuilder("$");
 
-            foreach (var name in Names)
-                builder.Append('.').Append(name);
+            foreach (var segment in Segments)
+                _ = segment is string name ? builder.Append('.').Append(name) : builder.Append('[').Append((long)segment).Append(']');
 
             return builder.ToString();
         }

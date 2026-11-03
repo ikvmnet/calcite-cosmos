@@ -17,7 +17,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// junction goes to the callback with the truth value its arms decide it at (TRUE for a disjunction, FALSE for a
     /// conjunction) and its arms, flattened over its right-nesting. The other callback, where one is given, hears every
     /// leaf — a predicate that is no junction or negation — with the value it is: a comparison, a membership or a test as
-    /// the call of its operator over its operands (<see cref="In"/>, <see cref="IsNull"/>, <see cref="IsDefined"/>), and
+    /// the call of its operator over its operands (<see cref="In"/>, <see cref="IsNull"/>, <see cref="IsDefined"/>, a type
+    /// test's name, <c>LIKE</c> over its value and its pattern), a <c>CASE</c> as its three predicates and a <c>CASE</c> of
+    /// values as the call of <c>CASE</c> over its arms, and
     /// an opaque predicate as the value the loader read it as, where one is given; and every call, with its operands. Which
     /// of those calls is null where an operand is, is rows', never the writer's. The facts graph passes neither, and the
     /// writer then builds what it always built.
@@ -74,6 +76,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     return _leaf is null ? r.IsNull.Of(Value(n.Value)) : Leaf(r.IsNull.Of(Value(n.Value)), new SqlValue.Call(IsNull, [n.Value]), bookkeeping);
                 case SqlPredicate.IsDefined d:
                     return _leaf is null ? r.IsDefined.Of(Value(d.Value)) : Leaf(r.IsDefined.Of(Value(d.Value)), new SqlValue.Call(IsDefined, [d.Value]), bookkeeping);
+                case SqlPredicate.TypeTest t:
+                    return _leaf is null ? r.TypeTest.Of(t.Test, Value(t.Value)) : Leaf(r.TypeTest.Of(t.Test, Value(t.Value)), new SqlValue.Call(t.Test, [t.Value]), bookkeeping);
+                case SqlPredicate.Affix a:
+                {
+                    var affix = r.Affix.Of(a.Op, Value(a.Value), a.Pattern);
+                    return _leaf is null ? affix : Leaf(affix, new SqlValue.Call(a.Op, [a.Value, new SqlValue.Literal(JsonValues.Of(a.Pattern))]), bookkeeping);
+                }
+                case SqlPredicate.Case c:
+                    return r.Case.Of(Term(c.Condition, bookkeeping), Term(c.Then, bookkeeping), Term(c.Else, bookkeeping));
+                case SqlPredicate.Constant k:
+                    return r.Truth.Of(k.Name);
                 case SqlPredicate.Not n:
                     return r.Not.Of(Term(n.Operand, bookkeeping));
                 case SqlPredicate.Opaque o:
@@ -134,6 +147,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 SqlValue.Literal l => r.Literal.Of(l.Value),
                 SqlValue.Parameter p => r.Parameter.Of(p.Ordinal, p.Type),
                 SqlValue.Call c => r.Call.Of(c.Function, Operands(c.Operands, 0)),
+                SqlValue.Case c => r.Call.Of("CASE", Operands(c.Arms, 0)),
                 _ => throw new NotSupportedException(value.GetType().Name),
             };
         }
@@ -153,9 +167,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             switch (value)
             {
-                case SqlValue.Call c:
-                    var operands = c.Operands.Select(operand => Read(operand, bookkeeping)).ToList();
-                    var call = _ir.Call.Of(c.Function, Operands(operands, 0));
+                case SqlValue.Call or SqlValue.Case:
+                    var (function, arms) = value is SqlValue.Call called ? (called.Function, called.Operands) : ("CASE", ((SqlValue.Case)value).Arms);
+                    var operands = arms.Select(operand => Read(operand, bookkeeping)).ToList();
+                    var call = _ir.Call.Of(function, Operands(operands, 0));
                     bookkeeping.AddRange(_leaf!(call, operands));
                     return call;
                 case SqlValue.Cast c:

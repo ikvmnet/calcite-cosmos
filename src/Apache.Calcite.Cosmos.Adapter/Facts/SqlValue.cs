@@ -71,8 +71,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// A function of values, as the loader reads one: the operator's name, and the operands that are values. A
-        /// <c>TRIM</c>'s flag is spelled in its name, and a <c>CASE</c> is read as its arms, the conditions that choose
-        /// one being no part of its value. What characters it holds the theory says, of the functions it knows
+        /// <c>TRIM</c>'s flag is spelled in its name. What characters it holds the theory says, of the functions it knows
         /// (<c>StringCalls</c>), and of no other.
         /// </summary>
         public sealed record Call(string Function, IReadOnlyList<SqlValue> Operands) : SqlValue
@@ -91,6 +90,31 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             public override string ToString() => Function + "(" + string.Join(", ", Operands) + ")";
+
+        }
+
+        /// <summary>
+        /// A <c>CASE</c> of values: each condition, and the arm it takes, the last arm the else's. The facts graph reads it as
+        /// its arms, a call of <c>CASE</c> (<c>PredicateWriter</c>), whose characters are any arm's; the conditions are kept
+        /// for what reads its value (<c>IrEval</c>), and what chooses an arm is no part of its characters.
+        /// </summary>
+        public sealed record Case(IReadOnlyList<SqlPredicate> Conditions, IReadOnlyList<SqlValue> Arms) : SqlValue
+        {
+
+            public bool Equals(Case? other) => other is not null && Conditions.SequenceEqual(other.Conditions) && Arms.SequenceEqual(other.Arms);
+
+            public override int GetHashCode()
+            {
+                var hash = new HashCode();
+                foreach (var condition in Conditions)
+                    hash.Add(condition);
+                foreach (var arm in Arms)
+                    hash.Add(arm);
+
+                return hash.ToHashCode();
+            }
+
+            public override string ToString() => "CASE(" + string.Join(", ", Conditions.Select((c, i) => "when " + c + " then " + Arms[i]).Append("else " + Arms[^1])) + ")";
 
         }
 
@@ -114,16 +138,22 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Gets every document path the value reads, a call's operands' among them.
         /// </summary>
-        public IEnumerable<JsonDocumentPath> PathsRead => this is Call call ? call.Operands.SelectMany(operand => operand.PathsRead) : PathRead is { } path ? [path] : [];
+        public IEnumerable<JsonDocumentPath> PathsRead => this switch
+        {
+            Call call => call.Operands.SelectMany(operand => operand.PathsRead),
+            Case value => value.Arms.SelectMany(arm => arm.PathsRead),
+            _ => PathRead is { } path ? [path] : [],
+        };
 
         /// <summary>
-        /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names.
+        /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names, and an element's index
+        /// bare, so it is no name.
         /// </summary>
         internal static string Spell(JsonDocumentPath path)
         {
             var builder = new StringBuilder("$");
-            foreach (var name in path.Names)
-                builder.Append('[').Append(Quote(name)).Append(']');
+            foreach (var segment in path.Segments)
+                builder.Append('[').Append(segment is string name ? Quote(name) : ((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
 
             return builder.ToString();
         }

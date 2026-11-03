@@ -43,7 +43,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = ReadingPrecision.Exact,
             [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = ReadingPrecision.Exact,
             [PredicateAtom.RawReader] = ReadingPrecision.ExactBesideNoNumber,
+            [TypeTest] = ReadingPrecision.Exact,
         };
+
+        /// <summary>The row of a type test, whatever reads its path: what it asks is the document's kind (<c>Calcite.TypeTestsAreTheirBodies</c>).</summary>
+        public const string TypeTest = "type test";
 
         /// <summary>How a reader is read: its row, or coarse.</summary>
         public static ReadingPrecision Of(string reader) => Rows.TryGetValue(reader, out var precision) ? precision : ReadingPrecision.Coarse;

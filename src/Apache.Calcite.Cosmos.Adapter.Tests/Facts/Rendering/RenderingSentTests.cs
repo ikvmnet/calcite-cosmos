@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             generated.Asked.Should().NotBeEmpty();
             foreach (var asked in generated.Asked)
             {
-                var (conjuncts, question) = (asked.Statement.Statement.Conjuncts, asked.Question);
+                var (conjuncts, question) = (asked.Statement.RenderingStatement.Conjuncts, asked.Question);
                 question.Site.Should().BeOneOf(Adapter.Metadata.CosmosFilterRendering.Admission, Adapter.Metadata.CosmosFilterRendering.Weakening);
                 question.Roots.Should().OnlyContain(r => conjuncts.Contains(r) || r is Cosmos.Facts.SqlPredicate.And && ((Cosmos.Facts.SqlPredicate.And)r).Arms.All(conjuncts.Contains),
                     "S is asked of a WHERE's conjuncts and their junctions alone");

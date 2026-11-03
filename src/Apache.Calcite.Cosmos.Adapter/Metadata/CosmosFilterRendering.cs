@@ -59,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>What S admitted in the rounds, by conjunct, before the composite is read: void where it is not proven.</summary>
         public IReadOnlyDictionary<int, Admitted> Admissions => _admitted;
 
-        IReadOnlyList<SqlPredicate> Conjuncts => _statement.Statement.Conjuncts;
+        IReadOnlyList<SqlPredicate> Conjuncts => _statement.RenderingStatement.Conjuncts;
 
         /// <summary>
         /// One round: S asked of the round's owned pending conjuncts, from the root, and those it proved admitted by it; on
@@ -197,11 +197,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var joined = junctions.Select(j => j is null ? null : Junction(j)).ToList();
             var roots = conjuncts.Select(i => Conjuncts[i]).Concat(joined.OfType<SqlPredicate>()).DistinctBy(r => r.Digest).ToList();
             var shared = SharedAtoms(conjuncts.Select(i => Conjuncts[i]));
-            var digest = _statement.Statement.Digest;
+            var digest = _statement.RenderingStatement.Digest;
             var (root, rules) = scope.ContextFor(OracleLicence.Declaration);
             var stated = conjuncts.Where(i => strata[i] is not null).SelectMany(i => AtomsOf(Conjuncts[i]).Distinct().Where(a => shared.Contains(a) == false)
                 .Select(a => new Stated(i, a, strata[i]!, new ImportSource(digest, "render round " + strata[i]!.Round, strata[i]!.Round)))).ToList();
-            _opaques ??= string.Join(";", _statement.Statement.Opaques.OrderBy(o => o.Key).Select(o => o.Key + "=" + o.Value));
+            _opaques ??= string.Join(";", _statement.RenderingStatement.Opaques.OrderBy(o => o.Key).Select(o => o.Key + "=" + o.Value));
             var signature = string.Join(",", conjuncts.Select(i => Conjuncts[i].Digest + "@" + strata[i]?.Key)) + "\n" + string.Join(",", joined.Select(j => j?.Digest ?? "-")) + "\n" + _opaques;
             return new(site, Set, conjuncts, roots, strata, stated, new ImportSource(digest, "declaration", 1), root, rules, signature);
         }
@@ -226,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (answered is not null && oracle.Digest is { } current && answered.TryGetValue((Set, current, signature), out var known))
                 return Counted(q, CosmosRendering.Reused(oracle, q.Roots, known, Stopwatch.GetElapsedTime(started)));
 
-            var answer = CosmosRendering.Ask(oracle, Set, q.Roots, _statement.Statement.Opaques, q.Source, q.Root, q.Rules,
+            var answer = CosmosRendering.Ask(oracle, Set, q.Roots, _statement.RenderingStatement.Opaques, q.Source, q.Root, q.Rules,
                 [.. q.Beneath.Select(b => (b.Atom, b.Source, b.Stratum.Node, q.Rules))],
                 _probe is { } probe ? (bundle, terms, import, run, elapsed) => probe.Opened(_statement, q, bundle, terms, import, run, elapsed) : null);
 

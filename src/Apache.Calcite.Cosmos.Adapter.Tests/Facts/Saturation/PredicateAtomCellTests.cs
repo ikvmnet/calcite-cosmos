@@ -263,9 +263,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// The grid's atoms the loader builds, each literal of the kind its reading is compared with; and beside the numeric
-        /// readings, the boundaries, which the coarse readings compare exactly where a double does not.
+        /// readings, the boundaries, which the coarse readings compare exactly where a double does not; and the type tests
+        /// of the raw value, and <c>LIKE</c> of the text and of the cast of the raw value to text.
         /// </summary>
         static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) => PredicateAtomTests.Grid(Readers)
+            .Concat(PredicateAtom.TypeTests.Keys.Select(test => PredicateAtom.TypeTest(PredicateAtom.RawReader, test)))
+            .Concat(from reader in new[] { PredicateAtom.TextReader, "cast:VARCHAR:raw" } from pattern in Patterns select PredicateAtom.Affix(reader, PredicateAtom.LikeTest, pattern))
             .Concat(boundaries ? from reader in Readers from literal in reader == "cast:VARCHAR:raw" ? Rendered : Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
             .Where(atom => Literals(atom).All(literal => atom.Reader switch
         {
@@ -274,6 +277,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             "typed:BOOLEAN" => TypeOf(literal) == BooleanType,
             _ => IsNumber(literal),
         }));
+
+        /// <summary><c>LIKE</c>'s patterns: whole, prefix, suffix, infix, every string, and two that F does not decide.</summary>
+        static readonly string[] Patterns = ["30", "3%", "%0", "%r%", "%", "", "_0", @"a\%"];
 
         static IEnumerable<string> Literals(PredicateAtom atom) => new[] { atom.Operand }.OfType<string>().Concat(atom.Points ?? ValueSet<string>.Empty);
 
@@ -337,6 +343,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var value = Reading(atom.Reader);
             return atom.Test switch
             {
+                _ when PredicateAtom.TypeTests.ContainsKey(atom.Test) => new SqlPredicate.TypeTest(atom.Test, value),
+                PredicateAtom.LikeTest => new SqlPredicate.Affix(atom.Test, value, StringOf(atom.Operand!)),
                 PredicateAtom.NullTest => new SqlPredicate.IsNull(value),
                 PredicateAtom.InTest => new SqlPredicate.In(value, atom.Points!),
                 _ when atom.Parameter => new SqlPredicate.Compare(atom.Test, value, new SqlValue.Parameter(0, atom.Reader.Split(':') is [_, var type, ..] ? type : "VARCHAR")),

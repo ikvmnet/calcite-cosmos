@@ -233,6 +233,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// An element's segment, which the predicate loader alone asks for, round-trips: the statement's subscript is the
+        /// document path's index, unequal to a property named by its digits, spelled bare and encoded as the spec's index.
+        /// </summary>
+        [Fact]
+        public void AnIndexSegmentRoundTrips()
+        {
+            var element = JsonDocumentPath.Root.Property("tags").Element(0).Property("x");
+
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0).Property("x"), "c", elements: true).Should().Be(element);
+            element.Segments.Should().Equal("tags", 0L, "x");
+            element.HasElement.Should().BeTrue();
+            JsonDocumentPath.Root.Property("tags").Property("0").Property("x").Should().NotBe(element, "an index is no property named by its digits");
+            SqlValue.Spell(element).Should().Be("$[\"tags\"][0][\"x\"]");
+            JsonFactEncoding.Path(element).Should().Be(Cosmos.Facts.Saturation.JsonPathSpec.Root["tags"][0L]["x"]);
+            FluentActions.Invoking(() => element.Names).Should().Throw<System.InvalidOperationException>("a path holding an element has no names alone");
+        }
+
+        /// <summary>
         /// An integer is a number: a whole value, a domain of them, and the narrower type all establish
         /// <c>number</c>, and none of them excludes it. #217.
         /// </summary>

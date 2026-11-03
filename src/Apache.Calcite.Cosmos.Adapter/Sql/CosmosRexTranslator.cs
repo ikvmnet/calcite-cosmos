@@ -585,6 +585,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 SqlValue.Literal => "the literal",
                 SqlValue.Parameter => "a parameter",
                 SqlValue.Call call => "the value of " + call.Function,
+                SqlValue.Case => "the value of CASE",
                 _ => "a computed value",
             };
         }

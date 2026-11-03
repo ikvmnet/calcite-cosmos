@@ -101,9 +101,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 admitted.Should().ContainSingle(sql);
                 var (statement, conjunct, parameters) = (admitted[0].Statement, admitted[0].Conjunct, new Adapter.Sql.CosmosParameterList());
                 statement.TranslatorFor(conjunct, parameters).TryTranslateConjunct(statement.Conjuncts[conjunct], out var text).Should().BeTrue(sql);
-                var (spelled, read) = Respelled(statement.Statement.Conjuncts[conjunct], text!, parameters.Parameters);
+                var (spelled, read) = Respelled(statement.RenderingStatement.Conjuncts[conjunct], text!, parameters.Parameters);
                 spelled.Should().Be(read, $"{sql} wrote {text}");
-                Template(statement.Statement.Conjuncts[conjunct]).Should().Be(template, sql);
+                Template(statement.RenderingStatement.Conjuncts[conjunct]).Should().Be(template, sql);
                 GC.KeepAlive(recorder);
             }
 

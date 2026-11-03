@@ -97,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var theirs = new CosmosParameterList();
                 if (c.Source.TranslatorFor(c.Conjunct, theirs).TryTranslateConjunct(c.Source.Conjuncts[c.Conjunct], out var written)
                     && CosmosSqlFormReader.Read(written!, theirs.Parameters) is var read && read.Written == written && read.Form.Equals(c.Form))
-                    same.Add((c, c.Source.Statement.Conjuncts[c.Conjunct], written!, theirs.Parameters));
+                    same.Add((c, c.Source.RenderingStatement.Conjuncts[c.Conjunct], written!, theirs.Parameters));
             }
 
             same = [.. same.DistinctBy(c => (c.Ir.Digest, c.Text))];

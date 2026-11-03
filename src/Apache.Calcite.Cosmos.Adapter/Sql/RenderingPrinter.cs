@@ -48,11 +48,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     throw new ArgumentException($"The form reads {spelled}, which the statement does not name.", nameof(paths));
 
                 builder.Append(rootAlias);
-                foreach (var name in path.Names)
-                    // A name is stored spelled too, so written as it is it reads nothing there.
-                    CosmosSql.WritePropertyAccess(builder, stored && EmulatorStoredText.Escapes(name)
-                        ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
-                        : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                foreach (var segment in path.Segments)
+                    if (segment is not string name)
+                        builder.Append('[').Append(((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                    else
+                        // A name is stored spelled too, so written as it is it reads nothing there.
+                        CosmosSql.WritePropertyAccess(builder, stored && EmulatorStoredText.Escapes(name)
+                            ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
+                            : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
             }
 
             void Compare(ServiceForm compare, bool parenthesised)

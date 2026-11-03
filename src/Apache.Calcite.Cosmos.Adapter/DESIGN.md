@@ -8004,6 +8004,60 @@ column and S's licence reads every `Calcite` row. The union over the columns sta
 line with the release that answered (EN20261019, CI's); a row measured on the emulator since 2026-11-02 has lines
 there, and no function outcome claims Azure until a run record holds it.
 
+### The IR's new shapes: F reads them, S not yet
+
+**What the loader reads (h07).** Shapes that were opaque are read into the IR, each by Calcite's own definition, so
+that the facts graph (F) learns from them:
+
+- the seven `IS_*` tests beside `IS_DEFINED`, over a reading of a path alone, as `TypeTest(test, raw(p))`: what one
+  asks is the document's kind, whatever reads the path (`Calcite.TypeTestsAreTheirBodies`), so the raw value stands for
+  it. Over a call, or a cast, a test stays opaque: no row says what the body makes of a computed value.
+- a boolean literal as `Constant`; `IS [NOT] TRUE`, `IS [NOT] FALSE`, `COALESCE(p, FALSE)`, the null test of a
+  predicate and a boolean `CASE` as `case(c, then, else)`, each the case of its definition (`Calcite.TruthTestsAreCases`,
+  `Calcite.CoalesceIsACase`), nested from the last arm; a missing `ELSE` is Calcite's `NULL`, read `Constant(null)`;
+  `p = TRUE` and `p <> FALSE` as `p`, `p = FALSE` as `NOT p`.
+- `LIKE` and `NOT LIKE` of two operands, over the text accessor or a cast to text of a path, against a literal pattern
+  holding no bracket, as `Affix("LIKE", v, pattern)`. An `ESCAPE`, a computed pattern and any other subject stay
+  opaque, and so does a bracket: Calcite reads it as itself and the service as a class (`Service.LikeReadsBracketsAsARange`).
+- a value `CASE` as `SqlValue.Case`, its conditions read as predicates; F's writer still writes its arms as the call it
+  was, so F's terms do not move, and `IrEval` takes the arm its conditions choose rather than a coin.
+- an element, `c.tags[0]`, as a path with an index segment (`JsonDocumentPath.Element`), read through the text
+  accessor and `RETURNING` alone, which answer as of a path holding the element (`Calcite.ReadingsOfAnIndexAreAsOfAPath`).
+  `ITEM` over a raw value is not read: over a scalar an `ANY`'s raises where a `VARIANT`'s is null, and a `VARIANT`'s
+  element is unboxed, so neither is a raw reading of a path. `CosmosDocumentPaths.From` reads a subscript only where
+  asked (`elements: true`), and only the loader asks; every other caller still refuses one.
+
+**What F learns.** Two shared rules make a type test and an affix an atom of what they read, which brings S to 58
+rules and F's to 47. A type test is TRUE of its kinds and never UNKNOWN; a FALSE one says the path holds another kind
+or none. `LIKE` is UNKNOWN where the text is null and TRUE or FALSE elsewhere, so a row it keeps renders; it is decided
+only of the text accessor over a known string and a pattern of literals and `%`, by UTF-16 unit as Calcite's regex
+matches, and left TRUE or FALSE where the pattern holds `_` (one code point) or a backslash (which the runtime
+may read as an escape), and over a cast to `CHAR`, which pads. F has no rule for `case` or a constant: it learns of them what it
+learns of an opaque term.
+
+**S reads the IR as it was, until its switch (h15).** `RenderingFamily.Owns` refuses the new kinds, but owning is not
+the only way S meets a conjunct: `CosmosFilterRendering` asks S for a weakening of every residual conjunct, owned or
+not, and a conjunct that was opaque is a term S can weaken once it is read. The first digest of h07 showed it: S
+weakened conjuncts over elements, which nothing has checked S reads soundly, and one plan (partitions 64) sent a looser
+`WHERE`. So a filter statement reads its conjuncts twice: `Statement`, the IR F admits, and `RenderingStatement`, read by
+a `Loading` with `legacy: true`, which reads every h07 shape as opaque and numbers its opaque terms as before. S's
+questions, ownership, printing paths and opaque readings come from the second. It is the **bridge** that keeps h08–h14
+byte-equal; h15 deletes it with `Owns`' refusing arm, once S's families answer for these shapes.
+`RenderingCaptureTests.EveryNewShapeIsTheTranslatorsUntilTheSwitch` holds it.
+
+**`ReadExactly` is total.** An affix is read by its reader's precision, as a comparison is, so one over a cast of a raw
+value to text opens no stratum; a type test is exact (its row in `ReadingPrecisionTable`); `case` and a constant are
+exact only where every term in them is; anything unnamed is not (G16b, its h07 half).
+
+**What the spec named and h07 does not do.** `STARTSWITH` and `ENDSWITH` have no Rex operator in the adapter: they are
+spellings the translator writes, never shapes a filter arrives in, so the loader has nothing to read; the printer
+writes them from forms (h15). `CAST(x AS VARIANT)` over a typed reading keeps no box: reading it soundly needs the
+literal's box in the IR, which changes F's terms, so it stays opaque (*TODO.md*).
+
+**Plans (listed).** What changes is F's learning alone: a conjunct a type test implies is deleted as redundant, such as
+`IS_DEFINED(c.dimensions)` beside `IS_OBJECT(c.dimensions)`, or `NOT IS_NULL(c.label)` and `IS_PRIMITIVE(c.label)` beside
+a text comparison that keeps neither a null nor a structure; the rows are the same. The listing classes every line.
+
 ---
 
 ## Differential testing

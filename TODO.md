@@ -2870,8 +2870,11 @@ across documents* and *A join of a container to itself* is the record.
   differential's 33 statements with parameters are not planned for the check. A relational gate claiming a form over
   every value a parameter's type admits, with parameter witnesses, is Stage 3's, and with it the parameterised
   weakenings the translator kept (O7).
-- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are measured on the emulator alone** —
-  *medium, Stage 3 (O3, deferred; the rows at h06, Azure at h14b).* The loader reads a pattern as opaque, so a conjunct holding one is the translator's when exact (P7, a
+- **`LIKE` is F's and not yet S's, and N4–N7 and N11 are measured on the emulator alone** —
+  *medium, Stage 3 (O3; F reads `LIKE` since h07, S at h15; Azure at h14b).* Since h07 the loader reads `LIKE` of text
+  against a literal pattern as an affix, which F learns from; S reads the IR as it was (`RenderingStatement`), so for S a
+  pattern is still opaque. `STARTSWITH` and `ENDSWITH` reach no filter as Rex operators, so there is nothing to read;
+  the printer writes them from forms at h15. Until then a conjunct holding one is the translator's when exact (P7, a
   declared string), skipped by the check, and weakened by S to the presence its accessor implies, where the translator
   pushed a string branch with `STARTSWITH` or `CONTAINS`: O7's loss 4, 18 such statements at the gate and one more whose
   disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are measured on the
@@ -2880,9 +2883,23 @@ across documents* and *A join of a container to itself* is the record.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
   with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
-  holding 30 the equality is TRUE or FALSE. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
+  holding 30 the equality is TRUE or FALSE. h07 was to read a typed reading's `CAST(x AS VARIANT)` with its box and
+  did not: the box has no place in the IR, and giving it one changes F's terms, so the cast stays opaque. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
   text-equality alternatives write, stay in O2's residue on their merits. Keeping a boxed literal's type in the IR would
   decide them, and changes F's terms.
+- **S reads the IR as it was before h07** — *bridge, deleted at h15.* A filter statement reads its conjuncts twice:
+  `Statement` for F and `RenderingStatement`, every h07 shape opaque, for S, since S asks a weakening of every residual
+  conjunct, owned or not, and would otherwise weaken shapes no check has held it to (DESIGN.md, *The IR's new shapes*).
+  h15 removes `Owns`' refusing arm and the second reading with it; `EveryNewShapeIsTheTranslatorsUntilTheSwitch` turns.
+- **An element is read only through the text accessor and `RETURNING`** — *small, Stage 4 or with `ITEM`'s family.*
+  `ITEM` over a raw value stays opaque: an `ANY`'s raises over a scalar and a `VARIANT`'s element is unboxed
+  (`Calcite.ItemIsNullWhereNoElementIs`), so neither is the raw reading of a path; a reading of its own would let F
+  learn from it. `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a declaration's facts about
+  elements, a partition key and an order still refuse one.
+- **`LIKE` with `_` or a backslash, and over a cast to `CHAR`, is never decided by F** — *small.* F decides a match only
+  of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
+  backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and
+  learns nothing of the match.
 - **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms

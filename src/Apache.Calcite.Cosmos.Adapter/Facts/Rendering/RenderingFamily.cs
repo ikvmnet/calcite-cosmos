@@ -17,11 +17,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Whether S owns a conjunct: it holds no opaque term and no parameter, every comparison is an atom, a reading
         /// against a literal, and every reading has an edges row. No list of shapes: within the family S's Unproven is the
-        /// answer (O2), and a parameter stays the translator's.
+        /// answer (O2), and a parameter stays the translator's. A type test, a <c>CASE</c>, an affix, a truth value and a
+        /// reading of an element the loader reads since h07 stay the translator's until the switch (spec §4.2 h15).
         /// </summary>
-        public static bool Owns(SqlPredicate conjunct) => conjunct.Subterms.All(term => term switch
+        public static bool Owns(SqlPredicate conjunct) => conjunct.Paths.Any(p => p.HasElement) == false && conjunct.Subterms.All(term => term switch
         {
             SqlPredicate.Opaque => false,
+            SqlPredicate.TypeTest or SqlPredicate.Case or SqlPredicate.Affix or SqlPredicate.Constant => false,
             SqlPredicate.Compare c => c.Right is SqlValue.Literal && HasEdges(c.Left),
             SqlPredicate.In i => HasEdges(i.Value),
             SqlPredicate.IsNull n => HasEdges(n.Value),
@@ -32,14 +34,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Whether the facts graph reads every atom of a conjunct as Calcite does on TRUE and FALSE, by the reading
         /// precision's rows, so that what a stratum that assumes it says of the documents is so. A presence test, and an
-        /// opaque term, from which the facts graph learns nothing, exclude nothing.
+        /// opaque term, from which the facts graph learns nothing, exclude nothing; nor do a junction, a negation, a
+        /// <c>CASE</c> and a truth value, of which no rule of its reads more than their atoms, each read here in its turn. A
+        /// kind not named is not read exactly.
         /// </summary>
         public static bool ReadExactly(SqlPredicate conjunct) => conjunct.Subterms.All(term => term switch
         {
             SqlPredicate.Compare c => ReadExactly(c.Left, c.Right is SqlValue.Literal { IsNumber: true }),
             SqlPredicate.In i => ReadExactly(i.Value, i.Points.Any(JsonValues.IsNumber)),
             SqlPredicate.IsNull n => ReadExactly(n.Value, false),
-            _ => true,
+            SqlPredicate.Affix a => ReadExactly(a.Value, false),
+            SqlPredicate.TypeTest => ReadingPrecisionTable.Of(ReadingPrecisionTable.TypeTest) == Exact,
+            SqlPredicate.IsDefined or SqlPredicate.Opaque or SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Case or SqlPredicate.Constant => true,
+            _ => false,
         });
 
         static bool ReadExactly(SqlValue reading, bool besideNumber) => (ReaderOf(reading) is { } reader ? ReadingPrecisionTable.Of(reader) : Coarse) switch

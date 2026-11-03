@@ -40,6 +40,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Or = graph.DefineConstructor<Pred, Pred, Pred>("or", options: term);
             Not = graph.DefineConstructor<Pred, Pred>("not", options: term);
             Opaque = graph.DefineConstructor<long, Pred>("opaque", options: term);
+            TypeTest = graph.DefineConstructor<string, Val, Pred>("type test", options: term);
+            Case = graph.DefineConstructor<Pred, Pred, Pred, Pred>("case", options: term);
+            Affix = graph.DefineConstructor<string, Val, string, Pred>("affix", options: term);
+            Truth = graph.DefineConstructor<string, Pred>("truth", options: term);
 
             Point = graph.DefineRelation<Pred, string>("point", analysis);
             Reads = graph.DefineRelation<Val, JPath, string>("reads", analysis);
@@ -99,6 +103,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>A predicate the loader does not read: it proves nothing and decides nothing.</summary>
         public Constructor<long, Pred> Opaque { get; }
+
+        /// <summary>An <c>IS_*</c> test but <c>IS_DEFINED</c>: its name, and the value it tests.</summary>
+        public Constructor<string, Val, Pred> TypeTest { get; }
+
+        /// <summary>
+        /// A <c>CASE</c> over predicates: its condition, then-arm and else-arm. No rule of the facts graph reads one, so it
+        /// learns of one what it learns of an opaque term.
+        /// </summary>
+        public Constructor<Pred, Pred, Pred, Pred> Case { get; }
+
+        /// <summary>A match of a value's text against a literal pattern: the operator, the value, the pattern.</summary>
+        public Constructor<string, Val, string, Pred> Affix { get; }
+
+        /// <summary>A truth value as a predicate: <c>true</c>, <c>false</c> or <c>unknown</c>.</summary>
+        public Constructor<string, Pred> Truth { get; }
 
         /// <summary>
         /// A literal an atom compares its value with: a comparison's, or each of a membership's. Stated by the writer beside
@@ -179,6 +198,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var k = r.Var<string>("k");
                 r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
+            });
+            Analyse.DefineRule("a type test is an atom of what it reads", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (t, k) = r.Vars<string, string>("t", "k");
+                r.When(e.Is(TypeTest.Of(t, v)), Reads.Of(v, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, t, PredicateAtom.TypeTest)));
+            });
+            Analyse.DefineRule("an affix test with a literal pattern is an atom of what it reads", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (op, c, k) = r.Vars<string, string, string>("op", "c", "k");
+                r.When(e.Is(Affix.Of(op, v, c)), Reads.Of(v, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Affix)));
             });
         }
 

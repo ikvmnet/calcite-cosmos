@@ -29,13 +29,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// <para>
         /// An array subscript answers <c>null</c> rather than being skipped, for the same reason:
-        /// silently conflating an element with its array would apply one's fact to the other.
+        /// silently conflating an element with its array would apply one's fact to the other. Asked
+        /// with <paramref name="elements"/>, which the predicate loader alone asks, it is the element's
+        /// own segment (<see cref="JsonDocumentPath.Element"/>), which no other caller reads yet.
         /// </para>
         /// </remarks>
         /// <param name="path">The statement's path.</param>
         /// <param name="rootAlias">The alias the statement binds the container to.</param>
+        /// <param name="elements">Whether an array subscript is read as an element rather than refused.</param>
         /// <returns>The document path, or <c>null</c>.</returns>
-        public static JsonDocumentPath? From(CosmosPath? path, string rootAlias)
+        public static JsonDocumentPath? From(CosmosPath? path, string rootAlias, bool elements = false)
         {
             if (path is null || string.Equals(path.Alias, rootAlias, System.StringComparison.Ordinal) == false)
                 return null;
@@ -44,10 +47,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             for (var i = 0; i < path.Segments.Count; i++)
             {
-                if (path.Segments[i].Name is not string name)
+                if (path.Segments[i].Name is string name)
+                    document = document.Property(name);
+                else if (elements)
+                    document = document.Element(path.Segments[i].ArrayIndex);
+                else
                     return null;
-
-                document = document.Property(name);
             }
 
             return document;

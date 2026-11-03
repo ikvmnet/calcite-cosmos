@@ -99,6 +99,45 @@ namespace Apache.Calcite.Cosmos.Facts
             protected override string Spell() => "(" + Value + " is defined)";
         }
 
+        /// <summary>
+        /// One of the service's <c>IS_*</c> tests but <c>IS_DEFINED</c>, of the path a value reads: what it asks is the
+        /// document's kind, true or false and never UNKNOWN (<c>Calcite.TypeTestsAreTheirBodies</c>), so the loader names
+        /// the raw value.
+        /// </summary>
+        public sealed record TypeTest(string Test, SqlValue Value) : SqlPredicate
+        {
+            protected override string Spell() => "(" + Test + " " + Value + ")";
+        }
+
+        /// <summary>
+        /// <c>CASE WHEN Condition THEN Then ELSE Else END</c> over predicates: TRUE, FALSE or UNKNOWN as the arm the first
+        /// TRUE condition takes, the else-arm where the condition is FALSE or UNKNOWN (<c>Calcite.CaseTakesTheFirstTrueArm</c>).
+        /// A <c>CASE</c> of more arms is one nested in its else-arm, and the truth tests and <c>COALESCE</c> are cases.
+        /// </summary>
+        public sealed record Case(SqlPredicate Condition, SqlPredicate Then, SqlPredicate Else) : SqlPredicate
+        {
+            protected override string Spell() => "case(" + Condition + ", " + Then + ", " + Else + ")";
+        }
+
+        /// <summary>
+        /// A match of the text a value reads against a literal pattern: <c>LIKE</c>, with no <c>ESCAPE</c> and no bracket.
+        /// </summary>
+        public sealed record Affix(string Op, SqlValue Value, string Pattern) : SqlPredicate
+        {
+            protected override string Spell() => "(" + Value + " " + Op + " " + SqlValue.Quote(Pattern) + ")";
+        }
+
+        /// <summary>A truth value: TRUE, FALSE, or UNKNOWN for <c>null</c>.</summary>
+        public sealed record Constant(bool? Truth) : SqlPredicate
+        {
+
+            /// <summary>The truth value's name, as the shared vocabulary's <c>truth</c> spells it.</summary>
+            public string Name => Truth switch { true => "true", false => "false", null => "unknown" };
+
+            protected override string Spell() => Name;
+
+        }
+
         /// <summary>A conjunction of two or more arms, in digest order.</summary>
         public sealed record And(IReadOnlyList<SqlPredicate> Arms) : SqlPredicate
         {
@@ -181,6 +220,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     And a => a.Arms,
                     Or o => o.Arms,
                     Not n => new[] { n.Operand },
+                    Case c => new[] { c.Condition, c.Then, c.Else },
                     _ => Array.Empty<SqlPredicate>(),
                 };
 
@@ -199,6 +239,8 @@ namespace Apache.Calcite.Cosmos.Facts
             In i => new[] { i.Value.PathRead },
             IsNull n => new[] { n.Value.PathRead },
             IsDefined d => new[] { d.Value.PathRead },
+            TypeTest t => new[] { t.Value.PathRead },
+            Affix a => new[] { a.Value.PathRead },
             _ => Array.Empty<JsonDocumentPath?>(),
         }).OfType<JsonDocumentPath>().Distinct();
 

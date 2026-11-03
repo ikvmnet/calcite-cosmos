@@ -38,8 +38,8 @@ namespace Apache.Calcite.Cosmos.Facts
         public static Saturation.JsonPathSpec Path(JsonDocumentPath path)
         {
             var spec = Saturation.JsonPathSpec.Root;
-            foreach (var name in path.Names)
-                spec = spec[name];
+            foreach (var segment in path.Segments)
+                spec = segment is string name ? spec[name] : spec[(long)segment];
 
             return spec;
         }

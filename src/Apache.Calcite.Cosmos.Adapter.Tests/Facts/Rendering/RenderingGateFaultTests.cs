@@ -341,7 +341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G9 over the answers a statement's terms keep, which hand a question asked before its answer with no key built: two
-        /// statements of one digest, each one opaque term — a <c>LIKE</c>, outside the IR — differing in its reading alone,
+        /// statements of one digest, each one opaque term — a <c>LIKE</c> with a bracket, outside the IR — differing in its reading alone,
         /// planned over one connection's containers, so that they share terms. As built each opens a bundle of its own; with
         /// the question's name planted without the opaque readings, the second is handed the first's answer and opens none.
         /// The strata's nodes and the junctions are named by content as the conjuncts are, so no two questions within one
@@ -350,7 +350,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G9_ATermsAnswersWithoutAnOpaquesReadingServeAnotherStatement()
         {
-            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a%'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b%'"];
+            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a[x]%'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b[x]%'"];
             var graph = new RenderingGraph(() => Measured);
             foreach (var planted in new[] { false, true })
             {
@@ -578,6 +578,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 All(ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(KindPath), JsonValues.Of("a")), ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, JsonValues.Of("30")))));
             Generate(failing).Should().Be(((ServiceForm?)null, (ServiceForm?)null));
             GC.KeepAlive(scope);
+        }
+
+        /// <summary>
+        /// G16b, its h07 half: an affix is read exactly by its reader's precision, as a comparison is, so one over the cast
+        /// to text of a raw value, a column's reading, opens no stratum; over the text accessor it does, and a type test
+        /// always, whatever reads its path. A <c>CASE</c> is exact only where every term in it is. The plant that S would
+        /// take a coarse affix's stratum from waits for S to own affixes (h13, h15).
+        /// </summary>
+        [Fact]
+        public void G16b_AnAffixOverACoarseReaderIsNotReadExactly()
+        {
+            var coarse = new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Cast("VARCHAR", Raw(LabelPath)), "a%");
+            var exact = new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), "a%");
+
+            RenderingFamily.ReadExactly(coarse).Should().BeFalse();
+            RenderingFamily.ReadExactly(new SqlPredicate.Not(coarse)).Should().BeFalse();
+            RenderingFamily.ReadExactly(new SqlPredicate.Case(exact, coarse, new SqlPredicate.Constant(false))).Should().BeFalse();
+            RenderingFamily.ReadExactly(exact).Should().BeTrue();
+            RenderingFamily.ReadExactly(new SqlPredicate.TypeTest("IS_STRING", Raw(LabelPath))).Should().BeTrue();
+            RenderingFamily.ReadExactly(new SqlPredicate.Case(exact, new SqlPredicate.Constant(true), new SqlPredicate.Constant(false))).Should().BeTrue();
         }
 
         /// <summary>G2's graph: a planted template proposing, beside each template's form, that form with its null guard dropped, over a definition given.</summary>

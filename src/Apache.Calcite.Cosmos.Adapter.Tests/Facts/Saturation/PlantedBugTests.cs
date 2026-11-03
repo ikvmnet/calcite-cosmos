@@ -310,6 +310,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             })), "possible");
 
         /// <summary>
+        /// The type test's rule with its atom read as <c>IS_DEFINED</c>'s beside its own: a type test taken for the path's
+        /// presence, so that one FALSE says the path is absent, which a document holding another kind there refutes.
+        /// </summary>
+        [Fact]
+        public void ATypeTestReadAsPresenceIsCaught() => Caught(Planted(rules =>
+            rules.Analyse.DefineRule("planted: a type test is the atom of its path's presence", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (t, k) = r.Vars<string, string>("t", "k");
+                r.When(e.Is(rules.Ir.TypeTest.Of(t, v)), rules.Ir.Reads.Of(v, p, k));
+                r.Then(rules.Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
+            })));
+
+        /// <summary>
+        /// The affix's rule with its pattern's leading <c>%</c> dropped beside its own: a suffix or an infix read as a
+        /// prefix, so that <c>'%ikes'</c> is FALSE of a path holding <c>bikes</c>.
+        /// </summary>
+        [Fact]
+        public void AnAffixReadWithoutItsLeadingWildcardIsCaught() => Caught(Planted(rules =>
+            rules.Analyse.DefineRule("planted: an affix's pattern starts at its first character that is no %", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (op, c, k) = r.Vars<string, string, string>("op", "c", "k");
+                r.When(e.Is(rules.Ir.Affix.Of(op, v, c)), rules.Ir.Reads.Of(v, p, k));
+                r.Where(c, pattern => pattern.StartsWith('%'));
+                r.Then(rules.Atom.Of(e, p, Compute.Of(k, op, c, (reader, test, pattern) => PredicateAtom.Affix(reader, test, pattern.TrimStart('%')))));
+            })));
+
+        /// <summary>
         /// The predicate rules of a graph of the test's own, planted.
         /// </summary>
         static Func<JsonFactTheory, CosmosOracle> Planted(Action<PredicateRules> plant)
