@@ -49,6 +49,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>At <c>Pos</c>: text equal to a string spelling a number as the string, or the number it spells.</summary>
         TextAlternatives,
 
+        /// <summary>At both: a comparison of two readings as the comparison of their two paths (h11).</summary>
+        ComparePaths,
+
     }
 
 }

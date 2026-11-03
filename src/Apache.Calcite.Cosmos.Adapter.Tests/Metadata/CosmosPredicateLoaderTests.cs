@@ -213,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Two predicates that print alike and are not alike are two terms: the text accessor and <c>RETURNING DECIMAL</c>
         /// both print <c>JSON_VALUE($0, '$.a')</c>, and a comparison of two of either is a different predicate, the one of
-        /// renderings and the other of the numbers they parse as.
+        /// renderings and the other of the numbers they parse as: since h11 each a comparison of two readings, of its own.
         /// </summary>
         [Fact]
         public void WhatIsNotReadIsNumberedByItsTypeAsWellAsItsSpelling()
@@ -224,7 +224,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, numbers, Call(SqlStdOperatorTable.NOT, texts)));
 
-            statement.Conjuncts.Should().Equal(Opaque(0), new SqlPredicate.Not(Opaque(1)));
+            var (label, n) = (JsonDocumentPath.Root.Property("label"), JsonDocumentPath.Root.Property("n"));
+            statement.Conjuncts.Should().Equal(new SqlPredicate.Compare(SqlPredicate.Compare.Equal, new SqlValue.Typed(label, "DECIMAL"), new SqlValue.Typed(n, "DECIMAL")),
+                new SqlPredicate.Not(new SqlPredicate.Compare(SqlPredicate.Compare.Equal, new SqlValue.Text(label), new SqlValue.Text(n))));
             Oracle(Theory()).Admit(statement).IsContradictory(OracleLicence.Kept).Should().BeFalse(
                 "a stored \" 2 \" and a stored 2 are one number and two texts");
 

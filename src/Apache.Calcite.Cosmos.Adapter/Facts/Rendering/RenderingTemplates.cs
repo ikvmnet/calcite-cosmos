@@ -29,12 +29,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public const string StringKind = "string", TruthKind = "truth", NumeralKind = "numeral", NumberKind = "number", BooleanKind = "boolean", PointsKind = "points", NoOperand = "none";
 
+        /// <summary>A comparison of two readings' last part: the right reading, after this.</summary>
+        public const string ReadingKind = "reading:";
+
         static readonly ServiceForm Unspelled = ServiceForm.OpaqueOf("unspelled", ValueSet<string>.Empty);
 
         /// <summary>An atom's shape, read off it: its reader, its test and its operand's kind; <see cref="ParameterShape"/> for a parameter.</summary>
         public static string ShapeOf(PredicateAtom atom) => atom.Parameter ? ParameterShape : atom.Reader + "/" + atom.Test + "/" + KindOf(atom);
 
-        static string KindOf(PredicateAtom atom) => atom.Test == PredicateAtom.InTest ? PointsKind : atom.Operand is { } literal ? KindOf(literal) : NoOperand;
+        static string KindOf(PredicateAtom atom) => atom.Against is { } right ? ReadingKind + right
+            : atom.Test == PredicateAtom.InTest ? PointsKind : atom.Operand is { } literal ? KindOf(literal) : NoOperand;
 
         /// <summary>A literal's kind: a string, one rendering a boolean, one spelling a number, a number, or its own type.</summary>
         public static string KindOf(string literal) => JsonValues.IsString(literal)
@@ -65,6 +69,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             return id switch
             {
+                // Over a pair's spelling, its two paths' (PlaceSpellings).
+                TemplateId.ComparePaths => atom.Against is not null && Op(atom.Test) is { } compared && PlaceSpellings.Sides(path) is (var left, var right)
+                    ? ServiceForm.ComparePathsOf(compared, left, right) : null,
+                _ when atom.Against is not null => null,
                 TemplateId.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
                 _ when core is null => null,
                 TemplateId.Bare => core,

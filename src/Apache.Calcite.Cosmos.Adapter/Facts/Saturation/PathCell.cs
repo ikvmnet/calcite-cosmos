@@ -83,6 +83,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A kind the theory does not know, of which nothing is said.</summary>
         public sealed record Unknown : PathCell;
 
+        /// <summary>
+        /// A cell of a pair's product (S's alone, h11): a cell of each place, and where both are strings or both numbers, how
+        /// the left value lies against the right, -1, 0 or 1, by UTF-16 unit or by value, which parts the product where
+        /// a comparison of the two turns. <c>null</c> where the two are not parted so.
+        /// </summary>
+        public sealed record Pair(PathCell Left, PathCell Right, int? Order = null) : PathCell;
+
         /// <summary>The state the cell lies in, which the coarse reading answers on.</summary>
         public PredicateAtom.State Coarse => this switch
         {
@@ -94,6 +101,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Numbers n => new PredicateAtom.State.AnyNumber(n.Integral, n.Lower, n.Upper),
             _ => new PredicateAtom.State.Unknown(),
         };
+
+        static readonly string[] OrderNames = ["below", "equal", "above"];
 
         /// <summary>The cell spelled one way, which it is ordered by.</summary>
         public string Text => this switch
@@ -108,6 +117,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 + (n.Upper is Bound h ? (h.Open ? " < " : " <= ") + Number(h.Value) : "")
                 + (n.DoubleLow is double dl ? " double >= " + dl.ToString("R", CultureInfo.InvariantCulture) : "")
                 + (n.DoubleHigh is double dh ? " double <= " + dh.ToString("R", CultureInfo.InvariantCulture) : "") + But(n.Except),
+            Pair p => "(" + p.Left.Text + ") x (" + p.Right.Text + ")" + (p.Order is int o ? " " + OrderNames[o + 1] : ""),
             _ => "unknown",
         };
 
@@ -187,9 +197,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (assumed == PathValues.Anything)
                 return cells;
 
+            static bool Holds(List<PathCell> inside, PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown : cell.Contains(c.Witness()));
+
+            // A pair's cell holds nothing of a product where a side of it holds nothing of that side's value.
+            if (assumed.Pair is { } narrower)
+            {
+                var (left, right) = (Split("", narrower.Left, narrower.LeftClasses, cuts).Cells.ToList(), Split("", narrower.Right, narrower.RightClasses, cuts).Cells.ToList());
+                return ValueSet.From(cells.Cells.Where(cell => cell is Pair p && (Holds(left, p.Left) == false || Holds(right, p.Right) == false))) is { Count: > 0 } apart
+                    ? cells with { Outside = apart } : cells;
+            }
+
             var inside = Split(cells.Path, assumed, classes, cuts).Cells.ToList();
-            bool Holds(PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown : cell.Contains(c.Witness()));
-            return ValueSet.From(cells.Cells.Where(cell => Holds(cell) == false)) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
+            return ValueSet.From(cells.Cells.Where(cell => Holds(inside, cell) == false)) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
         }
 
         /// <summary>
@@ -202,6 +221,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <param name="cuts">Where to cut it.</param>
         public static CellPartition Split(string path, PathValues x, ValueSet<string> classes, ValueSet<CutPoint> cuts)
         {
+            if (x.Pair is { } pair)
+                return Product(path, pair, cuts);
+
             bool Admits(string value) => x.Admits(value) && Within(value, x.Lower, x.Upper) && CharactersOf(value).IsSubsetOf(classes);
 
             var cells = new List<PathCell>();
@@ -274,6 +296,63 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             return new CellPartition(path, ValueSet.From(cells.Where(c => c is not (Strings or Numbers) || c.Witness() is not null)));
+        }
+
+        /// <summary>
+        /// A pair's product: each side cut as its own import is, and every two cells paired, two strings parted by how the
+        /// left lies against the right where that may be either way, and a place paired with itself on its diagonal alone,
+        /// where it equals itself. A pair is kept where an inhabitant may lie in it.
+        /// </summary>
+        static CellPartition Product(string path, PathPair pair, ValueSet<CutPoint> cuts)
+        {
+            var sides = PlaceSpellings.Sides(path);
+            var left = Split(sides?.Left ?? path, pair.Left, pair.LeftClasses, cuts).Cells;
+            if (sides is (var l, var r) && l == r)
+                return new CellPartition(path, ValueSet.From(left.Select(cell => (PathCell)new Pair(cell, cell, 0))));
+
+            var right = Split(sides?.Right ?? path, pair.Right, pair.RightClasses, cuts).Cells;
+            return new CellPartition(path, ValueSet.From(from a in left from b in right from order in Orders(a, b) select (PathCell)new Pair(a, b, order)));
+        }
+
+        /// <summary>
+        /// How two cells of strings may lie, by UTF-16 unit: one way for two strings, the ways an inhabitant may take for an
+        /// interval; and none of these for any other two, which are not parted.
+        /// </summary>
+        static IEnumerable<int?> Orders(PathCell a, PathCell b)
+        {
+            if (Least(a) is not { } x || Least(b) is not { } y)
+                return [null];
+
+            if (a is Point && b is Point)
+                return [Math.Sign(string.CompareOrdinal(x, y))];
+
+            var equal = a is Point { Value: var u } ? b.Contains(u) : b is Point { Value: var v } ? a.Contains(v)
+                : Meet((Strings)a, (Strings)b) is { } meet && meet.Witness() is not null;
+            return new int?[] { -1, 0, 1 }.Where(o => o == 0 ? equal : o < 0 ? Rises(b, x) : Rises(a, y));
+        }
+
+        /// <summary>A string cell's least string, or <c>null</c> for any other cell.</summary>
+        static string? Least(PathCell cell) => cell switch
+        {
+            Point { Value: var v } when IsString(v) => StringOf(v),
+            Strings s => LeastString(s) is { } least ? StringOf(least) : null,
+            _ => null,
+        };
+
+        /// <summary>Whether a string cell may hold a string above another: a point above it, or an interval reaching past it.</summary>
+        static bool Rises(PathCell cell, string least) => cell switch
+        {
+            Point { Value: var v } => string.CompareOrdinal(StringOf(v), least) > 0,
+            Strings s => s.High is not { } high || string.CompareOrdinal(least, StringOf(high)) < 0,
+            _ => false,
+        };
+
+        /// <summary>The strings two intervals both hold.</summary>
+        static Strings? Meet(Strings a, Strings b)
+        {
+            var low = a.Low is null ? b.Low : b.Low is null ? a.Low : string.CompareOrdinal(StringOf(a.Low), StringOf(b.Low)) >= 0 ? a.Low : b.Low;
+            var high = a.High is null ? b.High : b.High is null ? a.High : string.CompareOrdinal(StringOf(a.High), StringOf(b.High)) <= 0 ? a.High : b.High;
+            return new Strings(low, high, a.Except.Union(b.Except), a.Classes.Intersect(b.Classes));
         }
 
         /// <summary>

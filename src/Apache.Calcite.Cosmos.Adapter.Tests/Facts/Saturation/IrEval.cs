@@ -117,7 +117,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     return RawCompare(c.Op, c.Left, c.Right, document, world, raw);
 
                 case SqlPredicate.Compare c:
-                    return Compare(c.Op, Read(c.Left, document, world, typed), Operand(c.Left, Read(c.Right, document, world, typed)));
+                    return Compare(c.Op, Read(c.Left, document, world, typed), c.Right is SqlValue.Literal or SqlValue.Parameter
+                        ? Operand(c.Left, Read(c.Right, document, world, typed)) : Read(c.Right, document, world, typed));
 
                 case SqlPredicate.In i when IsRaw(i.Value):
                     return Any(i.Points.Select(point => RawCompare(PredicateAtom.Equal, i.Value, new SqlValue.Literal(point), document, world, raw)).ToArray());

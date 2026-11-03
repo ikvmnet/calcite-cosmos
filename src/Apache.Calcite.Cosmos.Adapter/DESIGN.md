@@ -8256,6 +8256,48 @@ holds each function's critical points (0, ±1, ±2^31, ±2^53, the decimal bound
 magnitude class that would use them; ranges are imaged coarsely meanwhile. Production's S reads the legacy loader
 until h15, which never types a call, and F's answers are unchanged: the digests are byte-equal.
 
+### A comparison of two readings (h11)
+
+**What a pair is.** A comparison whose both sides read a place, `name < other` or `LOWER(name) = other`, is an atom of
+`Paired(p, q)`, a term made in the rule's head over the two places, read by `PredicateAtom.CompareReadings` (reader,
+test, and the right side's reader as `Against`). The non-legacy loader reads one where both sides are of one kind (text,
+a number, a truth), so Calcite compares them as written; two raw readings stay opaque. F gets the comparison too and
+makes no atom of it, so it learns from it what it learned from the opaque term; `ReadExactly` says so.
+
+**Its import is the product, parted by order.** Beneath each stratum the pair's import is `PathValues.Product` of its
+places' imports there, each with its strings' classes (`PathPair`); at the root that is its `Imported`, by the root rule
+`image` now runs over any place, a path's written equal to the host's. A product of cells loses how the two values
+relate, so `PathCell.Split` parts each pair of string cells by the order Calcite gives them, by UTF-16 unit: below, equal
+or above, each kept only where some two values of the cells can stand so (a point against a point gives one; equal only
+where the cells meet). A path against itself is the diagonal, each cell paired with itself as equal (`Paired(p, p)`, what
+h32's grouping keys read). Anything but two strings is paired with no order.
+
+**What each side answers.** Calcite's: raises where either reading raises, UNKNOWN where either reads null, and where
+both read a value the comparison of the order, but only on the diagonal or where both readings read strings as
+themselves (text, not a raw value nor `CHAR`'s padding); otherwise TRUE or FALSE, which proves nothing. The service's
+(`ServiceLeaf.Paired`): within one type the literal comparison's rows, the side read from the set's `Order` comparator,
+two string points compared directly, and every side where the comparator parts the cells' bands (U+0000 or a character
+above U+FFFF stored on the emulator, a surrogate against a character above U+DFFF by code point); across types the row
+of the left's class against the right's, or the mirrored test's row the other way round. That the service compares two
+paths as it compares a path with a literal is an assumption the rows do not measure; Azure confirms it at h14b.
+
+**The form.** `ServiceFormKind.ComparePaths` reads two paths, so a pair's spelling is both places' as a JSON array
+(`PlaceSpellings`), which no path's or call's spelling begins with; the partition rule's guard reads that set, and the
+spell rule proposes `(left op right)` through one template asked at both positions, fitting every reader against every
+reader. The printer writes the right side as a path, binding no literal. The Rex builder writes no `ComparePaths`, so it
+is never implied, only exact.
+
+**Rows.** The bundle writes the pair's spelling, its characters (both places') and an empty parted set, and the arm
+imports of every path once any atom reads a pair. A partition is one row, so the product grows a row's value, not the
+rows: a two-path ordering's bundle leaves 52 to 57 rows of its own against `RowLimit`'s 50,000, its partition three cells
+over strings of any band. The check run records the most rows any bundle leaves (line 39): 660 at h11, where none of
+its bundles holds a pair yet.
+
+**What does not move.** Production's S reads the legacy loader until h15, which keeps two readings opaque, and no
+production conjunct holds a pair S owns (`Owns` reads a literal on the right): plans and sent SQL are byte-equal, the IR
+column moving where an opaque term is now spelled as the comparison. Numbers off the diagonal are not parted by order,
+so a comparison of two numbers is Unproven.
+
 ---
 
 ## Differential testing

@@ -111,6 +111,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // reads terms and analyses alone); the bundle and the load write them as raw facts of the term.
             var analysed = new TableOptions { Role = TableRole.Analysis };
             Valued = Graph.DefineConstructor<Val, JPath>("valued", options: term);
+            Paired = Graph.DefineConstructor<JPath, JPath, JPath>("paired", options: term);
             SqlType = Graph.DefineFunction<Val, string>("sqltype", options: analysed);
             Arity = Graph.DefineFunction<Val, long>("arity");
             CallArgAt = Graph.DefineRelation<Val, long, Val>("callargat");
@@ -170,15 +171,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var image = Graph.DefineRuleset("image");
             var assume = Graph.DefineRuleset("assume");
             DefineValued(valued, disagree, place, image, assume);
+            var pair = Graph.DefineRuleset("pair");
+            DefinePair(pair, place);
             // A nested call is gathered once its inner place is written: each nesting level is one outer pass.
             var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
 
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
             // Two-valuedness reads the gate's classes complete, beside the lift; the case's best reads it complete.
-            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
+            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, pair, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
-            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, tag, structure, at, spell), places, Schedule.Saturate(partition, need, parted),
+            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, pair, tag, structure, at, spell), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict, twovalued), Schedule.Saturate(best, conflict),
                 Schedule.Saturate(weaken));
 
@@ -218,6 +221,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A computed value's place: S reads a call the function rows name as a path of its own (h10).</summary>
         public Constructor<Val, JPath> Valued { get; }
+
+        /// <summary>Two places one comparison reads, left and right: a place of their own whose import is the product (h11).</summary>
+        public Constructor<JPath, JPath, JPath> Paired { get; }
 
         /// <summary>A call's SQL type, written by the bundle for a call the loader typed.</summary>
         public Function<Val, string> SqlType { get; }
@@ -609,7 +615,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
                 r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(e)), n.Is(Spelling.Of(p)),
                     rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
-                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Primitives.Singleton<string>().Of(n)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Compute.Of(n, PlaceSpellings.Set)));
                 var cuts = Compute.Of(a, f, g, definition.Cut);
                 r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, cuts, definition.Split), y, k, cuts, definition.SetAside)));
             });
@@ -1015,12 +1021,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(ArmImport.Of(s, q).Is(img));
             });
 
-            image.DefineRule("a computed place's import is its image at the root", r =>
+            // A path's is the host's import already, written again equal; a computed place's and a pair's are this rule's.
+            image.DefineRule("a place's import is its import beneath the root", r =>
             {
-                var v = r.Var<Val>("v");
                 var q = r.Var<JPath>("q");
                 var x = r.Var<PathValues>("x");
-                r.When(x.Is(ArmImport.Of(0L, q)), q.Is(Valued.Of(v)));
+                r.When(x.Is(ArmImport.Of(0L, q)));
                 r.Then(Imported.Of(q).Is(x));
             });
 
@@ -1033,6 +1039,31 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var x = r.Var<PathValues>("x");
                 r.When(Ir.Atom.Of(e, q, a), s.Is(StratumId.Of(e)), x.Is(ArmImport.Of(s, q)));
                 r.Then(Assumed.Of(e).Is(x));
+            });
+        }
+
+        // Two readings compared (DESIGN.md, "A comparison of two readings"): an atom of their pair, whose import beneath a
+        // stratum is the product of its places' there, each with its strings' classes. The bundle writes the pair's
+        // spelling and characters; PathCell parts the product's cells by order.
+        void DefinePair(Ruleset pair, Ruleset place)
+        {
+            pair.DefineRule("a comparison of two readings is an atom of their pair", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var (op, k, l) = r.Vars<string, string, string>("op", "k", "l");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), Ir.Reads.Of(v, p, k), Ir.Reads.Of(w, q, l));
+                r.Then(Ir.Atom.Of(e, Paired.Of(p, q), Compute.Of(k, op, l, PredicateAtom.CompareReadings)));
+            });
+
+            place.DefineRule("a pair's import beneath a stratum is the product of its places' imports there", r =>
+            {
+                var (n, p, q) = r.Vars<JPath, JPath, JPath>("n", "p", "q");
+                var s = r.Var<long>("s");
+                var (x, y) = r.Vars<PathValues, PathValues>("x", "y");
+                var (kp, kq) = r.Vars<ValueSet<string>, ValueSet<string>>("kp", "kq");
+                r.When(n.Is(Paired.Of(p, q)), x.Is(ArmImport.Of(s, p)), y.Is(ArmImport.Of(s, q)), kp.Is(ImportedChars.Of(p)), kq.Is(ImportedChars.Of(q)));
+                r.Then(ArmImport.Of(s, n).Is(Compute.Of(x, kp, y, kq, PathValues.Product)));
             });
         }
 

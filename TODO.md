@@ -2931,7 +2931,7 @@ across documents* and *A join of a container to itself* is the record.
   account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
 - **The rule count is two over the spec's** — *note, line 31.* The ternary is one template written twice and a truth
   value's constant is a rule of its own (h08): 68 as built against the spec's 66, so the spec's 78 at h31 is 80. h10
-  adds the spec's six: 74 against its 72.
+  adds the spec's six: 74 against its 72; h11 its two: 76 against its 74.
 - **The string functions' column bridge** — *bridge, deleted at h37.* `CosmosRexTranslator.RequireStringFunctionsAgree`
   reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
   not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
@@ -2955,6 +2955,19 @@ across documents* and *A join of a container to itself* is the record.
 - **An affix over a computed place stays opaque** — *small.* `LIKE` reads a text or `VARCHAR` cast subject alone, so the
   census's case-insensitive rewrites (`LIKE(UPPER(p), '%B%')`, 6 under the emulator) are listed, not proven. Reading a
   typed `VARCHAR` place as an affix's subject is the change, its rows the case mapping's and the affix's.
+- **Two paths compared are assumed to answer as a path and a literal** — *assumption, h14b.* `ServiceLeaf.Paired` reads
+  a comparison of two paths through the literal comparison's rows, within a type by the set's `Order` comparator and
+  across types by the left's class against the right's, mirrored where only the other way round is measured (h11). No
+  row measures two paths; the probe account's run at h14b measures them over the order witnesses and the cross-type
+  pairs, both images too, and a disagreement turns the leaf to the rows that run gives. Until then a pair proves
+  nothing in production: S reads the legacy loader, which keeps it opaque (h15).
+- **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,
+  so a pair's form is exact or nothing, never implied, and the translator's Rex of it is not built. Writing it is the
+  grammar's row and the builder's arm, at the switch, when S first owns a pair.
+- **Two numbers are not parted by order** — *small.* `PathCell.Split` parts a pair of string cells by their order, but a
+  pair of number cells is paired with no order, so `n < m` and `n = m` over numbers are Unproven off the diagonal. Parting
+  number cells by `DoubleBound` order, as the string cells are by unit, is the change, with the service's int64 and
+  double holdings read as `Numeric` reads them.
 - **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms

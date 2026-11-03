@@ -113,7 +113,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>How many statements were admitted, and how many of those first while implementing, owning nothing.</summary>
         public (long Statements, long UnownedAtImplementation) Admissions => (Interlocked.Read(ref _admissions), Interlocked.Read(ref _unownedAtImplementation));
 
-        long _admissions, _unownedAtImplementation;
+        long _admissions, _unownedAtImplementation, _rows;
+
+        /// <summary>The most rows any bundle's run left in its own scope, against <see cref="RenderingBundle.RowLimit"/> (line 39).</summary>
+        public long MostRows => Interlocked.Read(ref _rows);
 
         /// <summary>A statement that failed to plan or to implement, or a check whose statements share no root.</summary>
         public ConcurrentQueue<(string Input, string Name, string Failure)> Failures { get; } = new();
@@ -165,6 +168,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 // A count limit, never time: descent and evaluation peel a junction a member at a time, so it grows with the form.
                 var run = bundle.Run(CheckLimit([form]));
+                for (var most = Interlocked.Read(ref _rows); bundle.Rows > most && Interlocked.CompareExchange(ref _rows, bundle.Rows, most) != most; most = Interlocked.Read(ref _rows))
+                {
+                }
+
                 // No exact join (spec §5.1), read from S's rows: a conjunct its own written member was never offered to.
                 var verdict = bundle.Read(root, form, claim);
                 if (verdict is { Kind: RenderingVerdictKind.Unproven, Reason: null } && bundle.Failure is null

@@ -317,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads a comparison between a reading of a path and a literal or a parameter, either way round, with the
-            /// reading on the left.
+            /// reading on the left; and, outside the legacy reading, two readings of one kind compared (h11).
             /// </summary>
             SqlPredicate? Comparison(RexCall call, string op)
             {
@@ -330,8 +330,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
+                if (_legacy == false && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second) && KindOf(first) is { } kind && KindOf(second) == kind)
+                    return new SqlPredicate.Compare(op, first, second);
+
                 return null;
             }
+
+            /// <summary>What two readings compare as: text, a number or a truth; a raw reading as nothing, which is not paired.</summary>
+            static string? KindOf(SqlValue reading) => reading switch
+            {
+                SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" } or SqlValue.Call { Type: "VARCHAR" or "CHAR" } => "text",
+                SqlValue.Typed { Type: "BOOLEAN" } or SqlValue.Call { Type: "BOOLEAN" } => "truth",
+                SqlValue.Typed or SqlValue.Cast or SqlValue.Call { Type: not null } => "number",
+                _ => null,
+            };
 
             /// <summary>
             /// Reads what a reading is compared with: a parameter, a literal, and against a conversion to a number the

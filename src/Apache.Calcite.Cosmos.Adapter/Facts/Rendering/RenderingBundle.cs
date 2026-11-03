@@ -29,6 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Dictionary<long, IReadOnlyList<SqlPredicate>> _strata = [];
         readonly Dictionary<SqlValue.Call, ConstructorTerm<Val>> _computed = [];
         readonly Dictionary<(long Stratum, JsonDocumentPath Path), PathValues> _arms = [];
+        readonly Dictionary<string, ValueSet<string>> _chars = new(StringComparer.Ordinal);
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -50,6 +51,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The iterations its run took, against its limit; none before a run, or where the engine failed it.</summary>
         public int Iterations { get; private set; }
+
+        /// <summary>The rows its run left in its own scope, what <c>RowLimit</c> bounds; none before a run (h11, kill line 39).</summary>
+        public long Rows { get; private set; }
 
         /// <summary>
         /// Every arm stratum a written case opened, by id: the conditions it is read beneath, outermost first, each a
@@ -143,6 +147,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_computed.TryGetValue(call, out var term) == false)
                 return;
 
+            _chars.TryAdd(call.Spelled!, classes);
             var place = _theory.Valued.Of(term);
             try
             {
@@ -155,11 +160,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
         }
 
-        /// <summary>Whether an atom compares a computed place: its <c>Assumed</c> is the assume rule's, not the bundle's.</summary>
+        /// <summary>
+        /// Whether an atom compares a computed place, or two readings (h11): its <c>Assumed</c> is the assume rule's, not
+        /// the bundle's.
+        /// </summary>
         internal static bool IsComputed(SqlPredicate atom) => atom switch
         {
             SqlPredicate.Beneath b => IsComputed(b.Leaf),
-            SqlPredicate.Compare c => IsPlace(c.Left) || IsPlace(c.Right),
+            SqlPredicate.Compare c => IsPlace(c.Left) || IsPlace(c.Right) || IsPair(c),
             SqlPredicate.In i => IsPlace(i.Value),
             SqlPredicate.IsNull n => IsPlace(n.Value),
             SqlPredicate.IsDefined d => IsPlace(d.Value),
@@ -169,6 +177,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         static bool IsPlace(SqlValue value) => value is SqlValue.Call { Type: not null };
+
+        /// <summary>Whether a comparison reads a place on each side, a pair's atom: a path read or a computed place.</summary>
+        static bool IsPair(SqlPredicate.Compare compare) => IsReading(compare.Left) && IsReading(compare.Right);
+
+        static bool IsReading(SqlValue value) => value.PathRead is not null || IsPlace(value);
+
+        /// <summary>A reading's place and spelling: a path's, or a computed place's the bundle wrote; none otherwise.</summary>
+        (Term<JPath> Term, string Spelling)? PlaceOf(SqlValue value) => value.PathRead is { } path
+            ? (JsonFactEncoding.Path(path).ToTerm(_theory.Paths), SqlValue.Spell(path))
+            : value is SqlValue.Call { Spelled: { } spelled } call && _computed.TryGetValue(call, out var term) ? (_theory.Valued.Of(term), spelled) : null;
 
         ConstructorTerm<Pred> Chosen(PredicateWriter writer, long stratum, SqlPredicate.Case chosen, List<Fact> bookkeeping)
         {
@@ -253,6 +271,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             _source = source;
             _imported.TryAdd(path, values);
+            _chars.TryAdd(SqlValue.Spell(path), classes);
             var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
 
             // A differing second import is the importer's fault, not the engine's, and throws.
@@ -350,6 +369,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The iterations a generate run of a width is allowed.</summary>
         internal static int GenerateLimit(int width) => 80 + 8 * width + PlaceIterations;
 
+        /// <summary>The most rows a run may leave in its scope before it stops Incomplete.</summary>
+        internal const int RowLimit = 50_000;
+
         /// <summary>What the nested gathering of computed places may take: 16 an outer pass, four levels deep (h10, R7).</summary>
         internal const int PlaceIterations = 16 * 4;
 
@@ -364,10 +386,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// What the host writes for the computed places at the run (h10): each atom's stratum, each imported path's import
         /// beneath every stratum (the arm's where F read one, else the root's, a superset), and each literal operand as its
-        /// own single cell.
+        /// own single cell; and of each pair (h11), its spelling and its places' characters, once both are known.
         /// </summary>
         IEnumerable<Fact> Places()
         {
+            foreach (var compare in _atoms.Keys.Select(a => a is SqlPredicate.Beneath b ? b.Leaf : a).OfType<SqlPredicate.Compare>().Where(IsPair).Distinct())
+                if (PlaceOf(compare.Left) is (var left, var ls) && PlaceOf(compare.Right) is (var right, var rs) && _chars.TryGetValue(ls, out var lc) && _chars.TryGetValue(rs, out var rc))
+                {
+                    var pair = _theory.Paired.Of(left, right);
+                    yield return _theory.Spelling.Of(pair).Is(PlaceSpellings.Of(ls, rs));
+                    yield return _theory.ImportedChars.Of(pair).Is(lc.Union(rc));
+                    yield return _theory.PartedLiterals.Of(pair).Is(ValueSet<string>.Empty);
+                }
+
             var strata = _strata.Keys.Prepend(0L).ToList();
             foreach (var atom in _atoms.Keys.Where(IsComputed))
                 yield return _theory.StratumId.Of(Write(atom)).Is(atom is SqlPredicate.Beneath b ? b.Stratum : 0L);
@@ -392,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         RenderingRun Run(Schedule schedule, int iterationLimit)
         {
             var assumed = _atoms.ToList().Where(a => IsComputed(a.Key) == false).Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
-            if (_computed.Count > 0)
+            if (_computed.Count > 0 || _atoms.Keys.Any(IsComputed))
                 assumed.AddRange(Places());
             return _run = Guard(() =>
             {
@@ -403,8 +434,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         RenderingRun Ran(Schedule schedule, int iterationLimit)
         {
-            var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });
+            var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = RowLimit });
             Iterations = report.Iterations;
+            Rows = _theory.Graph.Tables.Sum(table => Scope.CountRows(table) - _theory.Theory.CountRows(table));
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.
             var terms = _theory.Graph.Tables.Where(table => table.Kind == TableKind.Constructor).SelectMany(Scope.Rows).ToList();

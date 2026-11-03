@@ -37,6 +37,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.Test => Truth(Test(form.Test, At(document, form.Path!))),
             ServiceFormKind.Compare => Compare(form.Test, At(document, form.Path!), form.Literal!, target),
 
+            // Two paths (h11) as the left against the right's value as a literal: what ServiceLeaf assumes of them, and
+            // no row says of a container on either side.
+            ServiceFormKind.ComparePaths => (At(document, form.Path!), At(document, form.Right!)) switch
+            {
+                (null, _) or (_, null) => ServiceOutcomes.Undefined,
+                ({ IsScalar: false }, _) or (_, { IsScalar: false }) => null,
+                var (left, right) => Compare(form.Test, left, right.Encoded, target),
+            },
+
             // Service.NotOverUndefinedIsUndefined.
             ServiceFormKind.Not => On(form.Members[0], document, target) switch
             {

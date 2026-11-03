@@ -97,6 +97,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A comparison with a parameter.</summary>
         public static PredicateAtom CompareParameter(string reader, string op) => new(reader, op, null, null, true);
 
+        /// <summary>
+        /// A comparison of two readings, over S's pair of their places (h11): the left read by <see cref="Reader"/>, the right
+        /// by <paramref name="against"/>. F never makes one.
+        /// </summary>
+        public static PredicateAtom CompareReadings(string reader, string op, string against) => new(reader, op, null, null, false) { Against = against };
+
+        /// <summary>The right reading of a comparison of two readings; <c>null</c> for every other atom.</summary>
+        public string? Against { get; init; }
+
         /// <summary>A membership in a set of literals.</summary>
         public static PredicateAtom In(string reader, ValueSet<string> points) => new(reader, InTest, null, points, false);
 
@@ -151,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Reading?> Parsed = new(StringComparer.Ordinal);
 
-        Reading? Reads => Parsed.GetOrAdd(Reader, Reading.Parse);
+        Reading? Reads => Against is null ? Parsed.GetOrAdd(Reader, Reading.Parse) : null;
 
         /// <summary>
         /// Returns what a path holds in every document on which the atom takes the given truth value: the documents a
@@ -274,6 +283,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         internal Truths OnCell(PathCell cell)
         {
+            if (Against is not null)
+                return cell is PathCell.Pair pair ? OnPair(pair) : Truths.Any;
+
             if (Test == DefinedTest || TypeTests.ContainsKey(Test) || Reads is not Reading reading || cell is PathCell.Unknown)
                 return On(cell.Coarse);
 
@@ -302,8 +314,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
         }
 
-        /// <summary>The <c>Calcite.*</c> rows the reading's answers on a cell rest on.</summary>
+        /// <summary>
+        /// A comparison of two readings on a cell of their pair: raising where either read raises, UNKNOWN where either reads
+        /// null, and where both read a value, the order the cell parts them by where both readings read their strings as
+        /// themselves, or where one place is read alike on its diagonal; TRUE or FALSE otherwise.
+        /// </summary>
+        Truths OnPair(PathCell.Pair pair)
+        {
+            if (Parsed.GetOrAdd(Reader, Reading.Parse) is not Reading left || Parsed.GetOrAdd(Against!, Reading.Parse) is not Reading right || pair.Left is PathCell.Unknown || pair.Right is PathCell.Unknown)
+                return Truths.Any;
+
+            var (l, r) = (left.NullOn(pair.Left), right.NullOn(pair.Right));
+            var truths = ((l | r) & Truths.Raises) | (((l | r) & Truths.True) != 0 ? Truths.Unknown : 0);
+            if ((l & Truths.False) == 0 || (r & Truths.False) == 0)
+                return truths;
+
+            var placed = pair.Order is int order && (Reader == Against && order == 0 || left.ReadsStrings(pair.Left) && right.ReadsStrings(pair.Right));
+            return truths | (placed ? Ordered(Test, pair.Order!.Value) : Truths.True | Truths.False);
+        }
+
+        static Truths Ordered(string op, int order) => (op switch
+        {
+            Equal => order == 0,
+            NotEqual => order != 0,
+            Less => order < 0,
+            LessOrEqual => order <= 0,
+            Greater => order > 0,
+            _ => order >= 0,
+        }) ? Truths.True : Truths.False;
+
+        /// <summary>The <c>Calcite.*</c> rows the reading's answers on a cell rest on: a comparison of two readings, both's.</summary>
         internal ValueSet<string> Rests => TypeTests.ContainsKey(Test) ? ValueSet.Of("Calcite.TypeTestsAreTheirBodies")
+            : Against is not null ? (Parsed.GetOrAdd(Reader, Reading.Parse)?.Rests ?? ValueSet<string>.Empty).Union(Parsed.GetOrAdd(Against, Reading.Parse)?.Rests ?? ValueSet<string>.Empty)
             : Test != DefinedTest && Reads is Reading reading ? reading.Rests : ValueSet<string>.Empty;
 
         /// <summary>Whether <c>LIKE</c> is asked of a reading that is text: the accessor's rendering, or a cast to text.</summary>
@@ -538,6 +580,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>The rows the cell methods rest on.</summary>
             public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
 
+            /// <summary>Whether the reading reads a cell's strings as themselves, which order by UTF-16 unit: none but the text's.</summary>
+            public virtual bool ReadsStrings(PathCell cell) => false;
+
             // A reading's answers on a cell: by default, its answers on the state the cell lies in.
             public virtual Truths EqualOn(PathCell cell, string literal) => Equal(cell.Coarse, literal);
 
@@ -714,6 +759,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.JsonValueReadsStructureAsNull", "Calcite.TextOrderIsByCodeUnit");
 
                 public override ValueSet<string> Rests => Rows;
+
+                /// <summary>
+                /// The accessor's rendering of a string is itself (<c>Calcite.JsonValueRendersScalarsAsText</c>), which text orders
+                /// by UTF-16 unit; a cast of a raw value is read by its columns, not so.
+                /// </summary>
+                public override bool ReadsStrings(PathCell cell) => _structures == false && (cell is PathCell.Strings || cell is PathCell.Point { Value: var v } && IsString(v));
 
                 /// <summary>An interval of strings holds the literal or not; anything else answers as its state.</summary>
                 public override Truths EqualOn(PathCell cell, string literal) =>

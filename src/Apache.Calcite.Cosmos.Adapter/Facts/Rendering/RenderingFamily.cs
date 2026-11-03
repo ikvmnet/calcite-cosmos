@@ -34,12 +34,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Whether the facts graph reads every atom of a conjunct as Calcite does on TRUE and FALSE, by the reading
         /// precision's rows, so that what a stratum that assumes it says of the documents is so. A presence test, and an
-        /// opaque term, from which the facts graph learns nothing, exclude nothing; nor do a junction, a negation, a
+        /// opaque term and two readings compared, from which the facts graph learns nothing, exclude nothing; nor do a junction, a negation, a
         /// <c>CASE</c> and a truth value, of which no rule of its reads more than their atoms, each read here in its turn. A
         /// kind not named is not read exactly.
         /// </summary>
         public static bool ReadExactly(SqlPredicate conjunct) => conjunct.Subterms.All(term => term switch
         {
+            // Two readings compared (h11) are no atom of the facts graph's, which learns nothing from them.
+            SqlPredicate.Compare { Right: not (SqlValue.Literal or SqlValue.Parameter) } => true,
             SqlPredicate.Compare c => ReadExactly(c.Left, c.Right is SqlValue.Literal { IsNumber: true }),
             SqlPredicate.In i => ReadExactly(i.Value, i.Points.Any(JsonValues.IsNumber)),
             SqlPredicate.IsNull n => ReadExactly(n.Value, false),

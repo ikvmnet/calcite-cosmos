@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             if (leaf.Members.Count > 0)
                 throw new ArgumentException("A leaf tests one path; a connective is evaluated from its parts.", nameof(leaf));
-            if (leaf.Path is { } own && own != cells.Path)
+            if ((leaf.Kind == ServiceFormKind.ComparePaths ? PlaceSpellings.Of(leaf.Path!, leaf.Right!) : leaf.Path) is { } own && own != cells.Path)
                 throw new ArgumentException("A leaf is evaluated on its own path's cells, and the partition rule hands no other.", nameof(cells));
 
             var rows = new HashSet<string>(StringComparer.Ordinal);
@@ -33,6 +33,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
         {
+            if (leaf.Kind == ServiceFormKind.ComparePaths)
+                return cell is PathCell.Pair pair ? Paired(leaf, pair, table, rows) : ServiceOutcomes.Widest;
+
             // A kind the theory does not know says nothing of the cell.
             if (ClassOf(cell) is not CosmosValueClass kind)
                 return ServiceOutcomes.Widest;
@@ -84,6 +87,93 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             return outcomes;
         }
+
+        /// <summary>
+        /// A comparison of two paths on a pair of cells, the right value read as a comparison with a literal reads its literal
+        /// (<c>Service.ComparisonWithinAType</c>, <c>Service.StringOrderIsCodePoint</c>, which compares a document's
+        /// strings): within a type by the side or sides the comparator places the left on, across types by the classes' row,
+        /// and against an absent right by the row mirrored, the left read as the literal.
+        /// </summary>
+        static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, ISet<string> rows)
+        {
+            if (ClassOf(pair.Left) is not CosmosValueClass left || ClassOf(pair.Right) is not CosmosValueClass right)
+                return ServiceOutcomes.Widest;
+
+            if (left == right && left is CosmosValueClass.String or CosmosValueClass.Number)
+            {
+                var order = MeasuredKey.Of(CosmosServiceTest.Order, left, CosmosValueClass.None);
+                if (table.TryGet(order, out var comparators) == false)
+                {
+                    rows.Add("missing:" + order);
+                    return ServiceOutcomes.Widest;
+                }
+
+                rows.UnionWith(comparators.Evidence);
+                var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric or CosmosAnswer.StoredCodePoint).ToList();
+                if (placing.Count == 0)
+                    return ServiceOutcomes.Widest;
+
+                var outcomes = comparators.Outcomes;
+                foreach (var side in placing.SelectMany(comparator => Sides(pair, comparator)).Distinct())
+                    outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, left, side), rows);
+
+                return outcomes;
+            }
+
+            var direct = MeasuredKey.Of(leaf.Test, right, left);
+            var mirrored = MeasuredKey.Of(Mirror(leaf.Test), left, right);
+            return table.TryGet(direct, out _) || table.TryGet(mirrored, out _) == false ? table.Outcomes(direct, rows) : table.Outcomes(mirrored, rows);
+        }
+
+        static CosmosServiceTest Mirror(CosmosServiceTest op) => op switch
+        {
+            CosmosServiceTest.Less => CosmosServiceTest.Greater,
+            CosmosServiceTest.LessOrEqual => CosmosServiceTest.GreaterOrEqual,
+            CosmosServiceTest.Greater => CosmosServiceTest.Less,
+            CosmosServiceTest.GreaterOrEqual => CosmosServiceTest.LessOrEqual,
+            _ => op,
+        };
+
+        /// <summary>
+        /// Where the left of a pair lies against the right under a comparator: two points as they compare; a cell parted
+        /// by UTF-16 unit as it is parted where the comparator orders as that does or the pair is equal, but either way
+        /// where code point order may rank them apart (a surrogate against the high band), and anywhere under the
+        /// emulator's stored order where either may hold U+0000 or the high band; two numbers equal on a place's diagonal,
+        /// a number against a point by its value; anywhere otherwise.
+        /// </summary>
+        static IEnumerable<CosmosValueClass> Sides(PathCell.Pair pair, CosmosAnswer comparator)
+        {
+            CosmosValueClass[] anywhere = [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above];
+            switch (comparator, pair.Left, pair.Right)
+            {
+                case (CosmosAnswer.Numeric, _, _) when pair.Order == 0:
+                    return [CosmosValueClass.Equal];
+                case (CosmosAnswer.Numeric, PathCell.Point or PathCell.Numbers, PathCell.Point { Value: var v }) when TryNumberOf(v, out var c):
+                    return Numeric(pair.Left, c) ?? anywhere;
+                case (CosmosAnswer.Numeric, _, _):
+                    return anywhere;
+                case (_, PathCell.Point { Value: var a }, PathCell.Point { Value: var b }) when IsString(a) && IsString(b)
+                    && (comparator != CosmosAnswer.StoredCodePoint || Bands(pair.Left).Contains(NulClass) == false && Bands(pair.Right).Contains(NulClass) == false):
+                    return [Side(Compare(comparator, StringOf(a), StringOf(b)))];
+                case (_, _, _) when pair.Order is null:
+                    return anywhere;
+                case (CosmosAnswer.StoredCodePoint, _, _) when new[] { Bands(pair.Left), Bands(pair.Right) }.Any(b => b.Contains(NulClass) || b.Contains(HighBand)):
+                    return anywhere;
+                case (CosmosAnswer.CodePoint or CosmosAnswer.StoredCodePoint, _, _) when pair.Order != 0 && (Bands(pair.Left).Contains(SurrogateBand) && Bands(pair.Right).Contains(HighBand)
+                    || Bands(pair.Left).Contains(HighBand) && Bands(pair.Right).Contains(SurrogateBand)):
+                    return [CosmosValueClass.Below, CosmosValueClass.Above];
+                default:
+                    return [Side(pair.Order!.Value)];
+            }
+        }
+
+        /// <summary>The bands a string cell's characters may be in.</summary>
+        static ValueSet<string> Bands(PathCell cell) => cell switch
+        {
+            PathCell.Strings s => s.Classes,
+            PathCell.Point { Value: var v } when IsString(v) => CharactersOf(v),
+            _ => ValueSet<string>.Empty,
+        };
 
         static CosmosValueClass NonBoolean(ServiceForm leaf, PathCell cell) =>
             leaf.Kind == ServiceFormKind.Bare && ClassOf(cell) is CosmosValueClass kind and not (CosmosValueClass.True or CosmosValueClass.False) ? kind : CosmosValueClass.None;

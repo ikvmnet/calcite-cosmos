@@ -33,7 +33,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Every input planned and implemented; every bundle the run opened, under the asserted set and the set beside it,
         /// completed within its count limits, still held one node per class, derived no contradiction and
         /// declined on no engine failure: so no verdict is <c>Incomplete</c> or a <c>Conflict</c>, and none is an Unproven
-        /// that S did not answer. The reports are written, and coverage is summarised.
+        /// that S did not answer; and the most rows any left in its scope are under <see cref="RenderingBundle.RowLimit"/>, recorded
+        /// (line 39). The reports are written, and coverage is summarised.
         /// </summary>
         [Fact]
         public void EveryBundleCompletesWithNoMergeAndNoConflict()
@@ -42,11 +43,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var folder = RenderingReports.Write(run);
             var sent = run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null).ToList();
             var unproven = sent.Count(c => c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven);
-            TestContext.Current.TestOutputHelper?.WriteLine($"reports in {folder}; {run.Memo.Entries.Count} checks; coverage {unproven} unproven of {sent.Count} sent conjuncts checked");
+            TestContext.Current.TestOutputHelper?.WriteLine($"reports in {folder}; {run.Memo.Entries.Count} checks; coverage {unproven} unproven of {sent.Count} sent conjuncts checked; "
+                + $"most rows a bundle {run.MostRows} of {RenderingBundle.RowLimit}");
 
             var disciplined = new RenderingRun(RunStopReason.Completed, true, false);
             run.Failures.Should().BeEmpty();
             run.Memo.Entries.Should().NotBeEmpty();
+            run.MostRows.Should().BePositive().And.BeLessThan(RenderingBundle.RowLimit);
             run.Memo.Entries.Where(e => e.AssertedRun != disciplined || e.BesideRun != disciplined || e.Failure is not null
                 || new[] { e.Asserted, e.Beside }.Concat(e.Alone).Any(v => v?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict))
                 .Select(e => $"entry {e.Id}, {e.Key.Form}: {e.AssertedRun} {e.Asserted.Reason}; {e.BesideRun} {e.Beside.Reason}; {e.Failure?.Message}").Should().BeEmpty();

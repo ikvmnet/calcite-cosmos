@@ -33,8 +33,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
         /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
-        /// truth value's constant beside it; h10's computed places, six. Each family's count is held, so a rule that moves
-        /// is seen.
+        /// truth value's constant beside it; h10's computed places, six; h11's pair, two, 76 in all. Each family's count is
+        /// held, so a rule that moves is seen.
         /// </summary>
         [Fact]
         public void TheTheoryHasAtMostEightyRules()
@@ -46,8 +46,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["analyse"] = 11, ["tag"] = 1, ["structure"] = 2, ["descend"] = 6, ["disjoint"] = 1,
                 ["partition"] = 1, ["need"] = 2, ["parted"] = 2, ["evaluate"] = 2, ["classes"] = 1, ["gate"] = 3, ["compose"] = 4, ["conflict"] = 1,
                 ["at"] = 4, ["spell"] = 1, ["lift"] = 2, ["strict"] = 3, ["twovalued"] = 1, ["best"] = 7, ["weaken"] = 5,
-                ["valued"] = 1, ["disagree"] = 1, ["place"] = 1, ["image"] = 2, ["assume"] = 1,
+                ["valued"] = 1, ["disagree"] = 1, ["place"] = 2, ["image"] = 2, ["assume"] = 1, ["pair"] = 1,
             });
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(76);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>

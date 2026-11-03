@@ -104,6 +104,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public ValueSet<string> Types => Kinds.Remove(AbsentKind);
 
         /// <summary>
+        /// The two places a comparison of two readings reads, where this is their product (S's alone, h11): the cells are
+        /// pairs of theirs, and nothing else here is read. <c>null</c> for one path's values, which is all F ever holds.
+        /// </summary>
+        public PathPair? Pair { get; init; }
+
+        /// <summary>
+        /// The product of two places' values beneath one stratum, each with its strings' classes: what a pair reads.
+        /// Assembles; it decides nothing.
+        /// </summary>
+        public static PathValues Product(PathValues left, ValueSet<string> leftClasses, PathValues right, ValueSet<string> rightClasses) =>
+            Anything with { Pair = new PathPair(left, leftClasses, right, rightClasses) };
+
+        /// <summary>
         /// Gets whether the path is there wherever the context admits a document.
         /// </summary>
         public bool IsPresent => Kinds.Contains(AbsentKind) == false;
@@ -189,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             a is Bound x ? b is Bound y ? stricter(x, y) : x : b;
 
         /// <inheritdoc />
-        public override string ToString() =>
+        public override string ToString() => Pair is { } pair ? $"({pair.Left}) x ({pair.Right})" :
             $"[{string.Join(", ", Kinds)}]" + (Values is null ? "" : $" in {Values}") + (Excluded.Count == 0 ? "" : $" not {Excluded}")
                 + (Lower is Bound lo ? $" >{(lo.Open ? "" : "=")} {lo.Value}" : "") + (Upper is Bound hi ? $" <{(hi.Open ? "" : "=")} {hi.Value}" : "");
 

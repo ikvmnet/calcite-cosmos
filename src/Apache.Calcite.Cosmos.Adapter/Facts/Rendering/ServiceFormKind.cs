@@ -32,6 +32,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The ternary <c>c ? a : b</c>, its members the condition and the two arms.</summary>
         Choose,
 
+        /// <summary>A path compared with another path (h11): <see cref="ServiceForm.Path"/> against <see cref="ServiceForm.Right"/>.</summary>
+        ComparePaths,
+
     }
 
 }

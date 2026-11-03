@@ -105,6 +105,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     case ServiceFormKind.Compare:
                         Compare(f, parenthesised: true);
                         break;
+                    case ServiceFormKind.ComparePaths:
+                        // Two readings (h11): the right side a path as the left is, no literal bound.
+                        builder.Append('(');
+                        Path(f.Path!);
+                        builder.Append(' ').Append(ServiceForm.OperatorOf(f.Test)).Append(' ');
+                        Path(f.Right!);
+                        builder.Append(')');
+                        break;
                     case ServiceFormKind.In:
                         builder.Append('(');
                         Path(f.Path!);

@@ -29,6 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             (ByKindBoolean, RenderPosition.Pos), (ByKindBoolean, RenderPosition.Neg), (ByKindNumber, RenderPosition.Pos), (ByKindNumber, RenderPosition.Neg),
             (StringBranch, RenderPosition.Pos), (KindRestricted, RenderPosition.Neg),
             (KindRestrictedNumber, RenderPosition.Neg), (Window, RenderPosition.Pos), (TextAlternatives, RenderPosition.Pos),
+            (ComparePaths, RenderPosition.Pos), (ComparePaths, RenderPosition.Neg),
         ];
 
         /// <summary>
@@ -61,7 +62,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Concat(Fit(StringBranch, textual, [PredicateAtom.NotEqual, .. orderings], strings))
                 .Concat(Fit(KindRestricted, textual, comparisons, strings))
                 .Concat(Fit(KindRestrictedNumber, parsed, comparisons, [NumberKind])).Concat(Fit(Window, parsed, comparisons, [NumberKind]))
-                .Concat(Fit(TextAlternatives, text, [PredicateAtom.Equal], [NumeralKind]));
+                .Concat(Fit(TextAlternatives, text, [PredicateAtom.Equal], [NumeralKind]))
+                .Concat(Fit(ComparePaths, readers, comparisons, readers.Select(r => ReadingKind + r)));
         }
 
     }

@@ -21,10 +21,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static readonly ServiceForm[] Leaf = [];
 
         ServiceForm(ServiceFormKind kind, CosmosServiceTest test, string? path, string? literal, ValueSet<string> literals, ValueSet<string> paths, ServiceForm[] members, string text,
-            string? reader = null)
+            string? reader = null, string? right = null)
         {
             Kind = kind;
             Reader = reader;
+            Right = right;
             var readers = members.Length == 0 ? reader ?? "" : string.Join(",", members.Select(m => m._readers));
             (_readers, _key) = (readers, readers.Any(c => c != ',') ? text + " @" + readers : text);
             Test = test;
@@ -59,6 +60,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The path a leaf reads; <c>null</c> for a constant, an opaque form and a compound.</summary>
         public string? Path { get; }
 
+        /// <summary>The path a comparison of two paths compares <see cref="Path"/> with; <c>null</c> for every other form.</summary>
+        public string? Right { get; }
+
         /// <summary>What a comparison compares with, or a constant's value.</summary>
         public string? Literal { get; }
 
@@ -92,6 +96,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         public static ServiceForm CompareOf(CosmosServiceTest op, string path, string literal) =>
             new(ServiceFormKind.Compare, op, path, literal, ValueSet.Of(literal), ValueSet.Of(path), Leaf, "(" + path + " " + OperatorOf(op) + " " + SqlValue.Quote(literal) + ")");
+
+        /// <summary>A path compared with another, read as the service reads each (h11).</summary>
+        public static ServiceForm ComparePathsOf(CosmosServiceTest op, string left, string right) =>
+            new(ServiceFormKind.ComparePaths, op, left, null, ValueSet<string>.Empty, ValueSet.Of(left, right), Leaf, "(" + left + " " + OperatorOf(op) + " " + right + ")", right: right);
 
         /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
         public static string NameOf(CosmosServiceTest test) => test switch
