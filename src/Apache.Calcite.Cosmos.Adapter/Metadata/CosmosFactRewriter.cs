@@ -106,7 +106,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
 
             var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
-            return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
+            var rewritten = Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
+
+            // Branch-only, the Stage 3 census's (deleted at h16).
+            if (CosmosRenderingCapture.Armed && ReferenceEquals(rewritten, condition) == false)
+                CosmosRenderingCapture.Observer?.Rewritten(condition, rewritten);
+
+            return rewritten;
         }
 
         /// <summary>

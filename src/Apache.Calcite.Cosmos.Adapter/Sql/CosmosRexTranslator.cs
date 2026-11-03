@@ -390,6 +390,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (_compared?.Count > 0)
                     _parameters.Recheck(Recheck(expanded) ?? throw new CosmosTranslationException("A comparison whose parameter decides its exactness sits where the reader cannot recheck its conjunct."));
 
+                // Branch-only, the Stage 3 census's (deleted at h16).
+                if (Metadata.CosmosRenderingCapture.Armed)
+                    Metadata.CosmosRenderingCapture.Observer?.Translated(conjunct ? "conjunct" : value ? "value" : "predicate", node, builder.ToString());
+
                 return builder.ToString();
             }
             finally
@@ -2038,6 +2042,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (reading == CosmosReading.Typed && Client.CosmosJson.CanRead(node.getType()) == false)
                 throw new CosmosTranslationException(
                     $"A projection typed '{node.getType()}' has no Cosmos JSON reading, so pushing it would render a column that cannot be read back.");
+
+            // Branch-only, the Stage 3 census's (deleted at h16).
+            if (Metadata.CosmosRenderingCapture.Armed)
+                Metadata.CosmosRenderingCapture.Observer?.Translated("column", node, expression);
 
             return expression;
         }

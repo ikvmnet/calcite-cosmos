@@ -1,6 +1,9 @@
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 
+using org.apache.calcite.rel;
+using org.apache.calcite.rex;
+
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
@@ -28,6 +31,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// generate mode's run reads, and how often a statement admits.
         /// </summary>
         void Read(CosmosFilterStatement statement, AdmissionRound round);
+
+        /// <summary>
+        /// Branch-only, the Stage 3 census's (deleted at h16): a Cosmos subtree an implementor is about to implement, its
+        /// root, which the census walks for what the translator pushes beside the <c>WHERE</c>.
+        /// </summary>
+        void Planned(RelNode root, CosmosContainerMetadata container) { }
+
+        /// <summary>
+        /// Branch-only, the Stage 3 census's (deleted at h16): an expression a translator wrote, as a conjunct, a predicate,
+        /// a value or a column, which a test calling the translator alone is read by.
+        /// </summary>
+        void Translated(string position, RexNode node, string text) { }
+
+        /// <summary>
+        /// Branch-only, the Stage 3 census's (deleted at h16): a condition the declared-fact rewrite lowered, and what it
+        /// lowered it to.
+        /// </summary>
+        void Rewritten(RexNode condition, RexNode rewritten) { }
 
     }
 
