@@ -93,6 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
             readonly bool _legacy;
+            readonly bool _places;
             readonly Dictionary<RexNode, long> _opaque = new();
             readonly List<RexNode> _opaqueNodes = new();
             readonly object _lock = new();
@@ -101,9 +102,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Reads only what was read before the families S does not yet own: no constant, truth test, <c>CASE</c>,
             /// <c>LIKE</c>, type test or element, each opaque as before, for the rendering graph until its switch.
             /// </param>
-            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false)
+            /// <param name="places">
+            /// Reads, outside the legacy reading, a call the function rows name as a computed place (h10) and two readings
+            /// of one kind compared as a pair (h11). Only S's tests read them until its switch (h15), which lists the IR
+            /// moves they make: F's terms and memo keys stay as they were, each such call and comparison opaque to F.
+            /// </param>
+            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false, bool places = false)
             {
                 _legacy = legacy;
+                _places = places && legacy == false;
                 // The path readers a statement resolves through, so the accepted path forms are the ones it would address.
                 _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
@@ -317,7 +324,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads a comparison between a reading of a path and a literal or a parameter, either way round, with the
-            /// reading on the left; and, outside the legacy reading, two readings of one kind compared (h11).
+            /// reading on the left; and, where places are read, two readings of one kind compared (h11).
             /// </summary>
             SqlPredicate? Comparison(RexCall call, string op)
             {
@@ -330,7 +337,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
-                if (_legacy == false && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second) && KindOf(first) is { } kind && KindOf(second) == kind)
+                if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second) && KindOf(first) is { } kind && KindOf(second) == kind)
                     return new SqlPredicate.Compare(op, first, second);
 
                 return null;
@@ -660,8 +667,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var computed = new SqlValue.Call(function, values);
 
                 // A call the function rows name, read whole, is a place of its own in S (h10): its type and its spelling
-                // ride on it, no part of its identity. Through h15's switch S reads the legacy way, which never types one.
-                if (_legacy || partial || call.getType()?.getSqlTypeName()?.getName() is not string type
+                // ride on it, no part of its identity. Until h15's switch only a loading that reads places types one.
+                if (_places == false || partial || call.getType()?.getSqlTypeName()?.getName() is not string type
                     || Sql.CosmosFunctionSpellings.RowFunctions.Contains(Cosmos.Facts.Rendering.RenderingImage.KeyFunction(function, type)) == false
                     || Sql.CosmosFunctionSpellings.Spell(computed, PlaceSpelling) is not string spelled || Depth(computed) > PlaceDepth)
                     return computed;

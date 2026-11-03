@@ -79,6 +79,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         PredicateStatement Load(RexNode condition) =>
             new CosmosPredicateLoader.Loading(_fields, _readings, "c").Statement(CosmosFilterStatement.ConjunctsOf(condition));
 
+        /// <summary>As <see cref="Load"/>, reading the computed places and pairs only S's tests read until h15.</summary>
+        PredicateStatement LoadPlaces(RexNode condition) =>
+            new CosmosPredicateLoader.Loading(_fields, _readings, "c", places: true).Statement(CosmosFilterStatement.ConjunctsOf(condition));
+
         SqlPredicate One(RexNode condition) => Load(condition).Conjuncts.Should().ContainSingle().Subject;
 
         [Fact]
@@ -224,8 +228,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, numbers, Call(SqlStdOperatorTable.NOT, texts)));
 
+            statement.Conjuncts.Should().Equal(Opaque(0), new SqlPredicate.Not(Opaque(1)));
             var (label, n) = (JsonDocumentPath.Root.Property("label"), JsonDocumentPath.Root.Property("n"));
-            statement.Conjuncts.Should().Equal(new SqlPredicate.Compare(SqlPredicate.Compare.Equal, new SqlValue.Typed(label, "DECIMAL"), new SqlValue.Typed(n, "DECIMAL")),
+            LoadPlaces(_rex.makeCall(SqlStdOperatorTable.AND, numbers, Call(SqlStdOperatorTable.NOT, texts))).Conjuncts.Should().Equal(
+                new SqlPredicate.Compare(SqlPredicate.Compare.Equal, new SqlValue.Typed(label, "DECIMAL"), new SqlValue.Typed(n, "DECIMAL")),
                 new SqlPredicate.Not(new SqlPredicate.Compare(SqlPredicate.Compare.Equal, new SqlValue.Text(label), new SqlValue.Text(n))));
             Oracle(Theory()).Admit(statement).IsContradictory(OracleLicence.Kept).Should().BeFalse(
                 "a stored \" 2 \" and a stored 2 are one number and two texts");
@@ -250,12 +256,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var upper = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), Str("X"));
             var compared = Call(SqlStdOperatorTable.NOT_EQUALS, upper, JsonValue("flag", SqlTypeName.BOOLEAN));
             var unread = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), _rex.makeNullLiteral(Sql(SqlTypeName.VARCHAR)));
-            // The legacy reading: the non-legacy one reads UPPER(label) = 'X' as an atom over a computed place (h10).
+            // The legacy reading: one that reads places reads UPPER(label) = 'X' as an atom over a computed place (h10).
             var statement = new CosmosPredicateLoader.Loading(_fields, _readings, "c", legacy: true)
                 .Statement(CosmosFilterStatement.ConjunctsOf(_rex.makeCall(SqlStdOperatorTable.AND, upper, compared, unread, JsonValue("flag", SqlTypeName.BOOLEAN))));
 
             statement.Conjuncts.Should().Equal(Opaque(0), Opaque(1), Opaque(2), Opaque(3));
-            Load(upper).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Compare>();
+            LoadPlaces(upper).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Compare>();
+            Load(upper).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F reads no computed place until h15");
             var read = new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)]), Lit("X")]);
             Enumerable.Range(0, 4).Select(i => statement.Opaques[i]).Should().Equal(read, new SqlValue.Call("<>", [read, Typed(P("flag"), "BOOLEAN")]),
                 new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)])]), Typed(P("flag"), "BOOLEAN"));

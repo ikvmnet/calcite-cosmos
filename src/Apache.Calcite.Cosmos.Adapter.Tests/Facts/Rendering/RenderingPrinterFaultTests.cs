@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Rex.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.SUBSTRING, JsonValue("name", org.apache.calcite.sql.type.SqlTypeName.VARCHAR),
                     Rex.makeExactLiteral(new java.math.BigDecimal(2)), Rex.makeExactLiteral(new java.math.BigDecimal(3))),
                 Rex.makeLiteral("abc"));
-            var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias).Read(window);
+            var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true).Read(window);
             var place = read.Computed.Last();
             string Print() => RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, JsonValues.Of("abc")), read.Places.ToDictionary(SqlValue.Spell), "c",
                 new CosmosParameterList(), computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place });

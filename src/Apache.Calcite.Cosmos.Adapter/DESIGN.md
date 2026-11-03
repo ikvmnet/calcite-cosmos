@@ -8206,8 +8206,8 @@ first. #246's refusals stand as they are, and nothing under `Production` would c
 
 ### A computed value is a place (h10)
 
-**What a place is.** A call the function rows name, read whole by the non-legacy loader at a known SQL type, is a path
-of its own in S: `Valued(v)`, a term over the call, read through its type's reader (`typed:VARCHAR`, `typed:INTEGER`).
+**What a place is.** A call the function rows name, read whole at a known SQL type by a loading that reads places, is a
+path of its own in S: `Valued(v)`, a term over the call, read through its type's reader (`typed:VARCHAR`, `typed:INTEGER`).
 The loader stamps the call with `Type` and `Spelled`, the service's call over its operands' spellings
 (`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a window starting before 1,
 a `REPEAT` of any count but 0, a call nested past depth 4, gets no place and stays what it was. An atom may then read a
@@ -8278,15 +8278,20 @@ owed). The bridge goes at h37, when S writes the column.
 `Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
 imaged coarsely; a function's turning points (0, ±1, ±2^31, ±2^53, `REPEAT`'s 10,000) belong in its rows when a
 magnitude class needs them, not in C#. Production's S reads the legacy loader
-until h15, which never types a call, and F's answers are unchanged: the digests are byte-equal.
+until h15, which never types a call, and F's loading reads no places either (`CosmosPredicateLoader.Loading`'s
+`places`, which only S's tests set until h15): each such call stays opaque to F, so F's terms and memo keys do not move
+and the digests are byte-equal. As first built, the non-legacy loader typed the call for F as well, and the IR column
+moved on 56 Production and 46 Emulator lines while plans and sent SQL held; the option took that back, and h15 lists
+those moves with the switch.
 
 ### A comparison of two readings (h11)
 
 **What a pair is.** A comparison whose both sides read a place, `name < other` or `LOWER(name) = other`, is an atom of
 `Paired(p, q)`, a term made in the rule's head over the two places, read by `PredicateAtom.CompareReadings` (reader,
-test, and the right side's reader as `Against`). The non-legacy loader reads one where both sides are of one kind (text,
-a number, a truth), so Calcite compares them as written; two raw readings stay opaque. F gets the comparison too and
-makes no atom of it, so it learns from it what it learned from the opaque term; `ReadExactly` says so.
+test, and the right side's reader as `Against`). A loading that reads places reads one where both sides are of one kind (text,
+a number, a truth), so Calcite compares them as written; two raw readings stay opaque. F gets the comparison only
+through such a loading, from h15, and makes no atom of it then, so it learns from it what it learned from the opaque
+term; `ReadExactly` says so.
 
 **Its import is the product, parted by order.** Beneath each stratum the pair's import is `PathValues.Product` of its
 places' imports there, each with its strings' classes (`PathPair`); at the root that is its `Imported`, by the root rule
@@ -8322,9 +8327,10 @@ rows: a two-path ordering's bundle leaves 52 to 57 rows of its own against `RowL
 over strings of any band. The check run records the most rows any bundle leaves (line 39): 660 at h11, where none of
 its bundles holds a pair yet.
 
-**What does not move.** Production's S reads the legacy loader until h15, which keeps two readings opaque, and no
-production conjunct holds a pair S owns (`Owns` reads a literal on the right): plans and sent SQL are byte-equal, the IR
-column moving where an opaque term is now spelled as the comparison. Numbers off the diagonal are not parted by order,
+**What does not move.** Production's S reads the legacy loader until h15, which keeps two readings opaque, F's loading
+reads no pair either (`places`, as h10's calls), and no production conjunct holds a pair S owns (`Owns` reads a literal
+on the right): the digests are byte-equal, the IR column with them, where as first built it moved on the one diagonal
+F then read as the comparison. Numbers off the diagonal are not parted by order,
 so a comparison of two numbers is Unproven.
 
 ### The raw columns' union is a rule (h12)

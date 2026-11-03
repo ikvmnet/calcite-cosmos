@@ -32,10 +32,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void CaptureChangesNoPlanOverTwenty() => Unchanged(reasoning => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, reasoning).Where((_, i) => i % 59 == 0).Take(20));
 
         /// <summary>
-        /// Every shape the facts graph reads from h07 is the translator's until S's switch (h15): S reads each as it did,
+        /// Every shape the loader reads from h07 to h11 is the translator's until S's switch (h15): S reads each as it did,
         /// opaque, so that it owns none and weakens none otherwise than before, and the plan is <c>main</c>'s (line 21,
         /// spec F3). Each statement holds one: <c>LIKE</c>, a truth test, <c>COALESCE</c>, a boolean <c>CASE</c>, a
-        /// predicate's null test and an element, and the corpus's type tests.
+        /// predicate's null test and an element, and the corpus's type tests, which the facts graph reads; and a call the
+        /// function rows name compared (h10) and two readings compared (h11), which only a loading that reads places reads,
+        /// so neither graph does. h09's number cast of a bound text is the <c>SqlValue.Cast</c> over a text S read before
+        /// h07, no new term.
         /// </summary>
         [Fact]
         public void EveryNewShapeIsTheTranslatorsUntilTheSwitch()
@@ -49,6 +52,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Where + "CASE WHEN JSON_VALUE(c.\"DOC\", '$.category') = 'bikes' THEN JSON_VALUE(c.\"DOC\", '$.name') = 'Kickstand' ELSE JSON_VALUE(c.\"DOC\", '$.name') <> 'Lace' END",
                 Where + "(JSON_VALUE(c.\"DOC\", '$.category') <> 'bikes') IS NULL",
                 Where + "JSON_VALUE(c.\"DOC\", '$.tags[0]') = 'outdoor' AND JSON_VALUE(c.\"DOC\", '$.category') = 'bikes'",
+                Where + "UPPER(JSON_VALUE(c.\"DOC\", '$.name')) = 'KICKSTAND'",
+                Where + "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) < JSON_VALUE(c.\"DOC\", '$.stock' RETURNING INTEGER)",
             ];
 
             var recorder = new RenderingRecorder();
@@ -63,7 +68,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var kind in new[] { typeof(SqlPredicate.TypeTest), typeof(SqlPredicate.Affix), typeof(SqlPredicate.Case) })
                 read.Should().Contain(c => c.F.Subterms.Any(t => t.GetType() == kind), kind.Name);
             read.Should().Contain(c => c.F.Paths.Any(p => p.HasElement), "an element");
+
+            read.Should().OnlyContain(c => Placed(c.F) == false && Placed(c.S) == false, "neither graph reads a computed place or a pair until h15");
+            var places = recorder.Read.SelectMany(s => s.Conjuncts.Select(rex => new CosmosPredicateLoader.Loading(s.BindingForCheck.Fields, s.BindingForCheck.Readings, "c", places: true).Read(rex))).ToList();
+            places.Where(p => p is SqlPredicate.Compare { Left: SqlValue.Call { Type: not null } }).Should().NotBeEmpty("a call the rows name");
+            places.Where(p => p is SqlPredicate.Compare { Left.PathRead: not null, Right.PathRead: not null }).Should().NotBeEmpty("two readings");
         }
+
+        /// <summary>Whether a conjunct holds a shape read from h10 or h11: a typed call, or a comparison of two readings.</summary>
+        static bool Placed(SqlPredicate conjunct) =>
+            conjunct.Subterms.Any(t => t is SqlPredicate.Compare { Left: SqlValue.Call { Type: not null } } or SqlPredicate.Compare { Left.PathRead: not null, Right.PathRead: not null });
 
         /// <summary>Whether a conjunct holds a shape read from h07: a type test, a case, an affix, a constant or an element.</summary>
         static bool New(SqlPredicate conjunct) => conjunct.Paths.Any(p => p.HasElement)
