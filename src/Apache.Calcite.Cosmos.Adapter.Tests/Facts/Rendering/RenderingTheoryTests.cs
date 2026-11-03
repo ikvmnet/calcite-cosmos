@@ -33,22 +33,194 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
         /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
-        /// truth value's constant beside it; h10's computed places, six; h11's pair, two; h12's raw columns' union, one, 77 in
-        /// all. Each family's count is held, so a rule that moves is seen.
+        /// truth value's constant beside it; h10's computed places, five (a call's reading of its place is the bundle's);
+        /// h11's pair, two; h12's raw columns' union, one, 76 in all. Each family's rules are held by name, so a rule that
+        /// moves, goes or is swapped is seen.
         /// </summary>
         [Fact]
         public void TheTheoryHasAtMostEightyRules()
         {
             ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(80);
-            ProbeTheory.Graph.Rulesets.Where(r => r.Rules.Count > 0).ToDictionary(r => r.Name, r => r.Rules.Count).Should().BeEquivalentTo(new Dictionary<string, int>
+            ProbeTheory.Graph.Rulesets.Where(r => r.Rules.Count > 0).ToDictionary(r => r.Name, r => r.Rules.Select(x => x.Name).ToList())
+                .Should().BeEquivalentTo(new Dictionary<string, List<string>>
             {
-                ["measure"] = 1, ["allowed"] = 2, ["refutes"] = 1, ["tabulate"] = 1, ["expected"] = 1, ["matched"] = 1, ["licence"] = 1,
-                ["analyse"] = 11, ["tag"] = 1, ["structure"] = 2, ["descend"] = 6, ["disjoint"] = 1,
-                ["partition"] = 1, ["need"] = 2, ["parted"] = 2, ["evaluate"] = 2, ["classes"] = 1, ["gate"] = 3, ["compose"] = 4, ["conflict"] = 1,
-                ["at"] = 4, ["spell"] = 1, ["lift"] = 2, ["strict"] = 3, ["twovalued"] = 1, ["best"] = 7, ["weaken"] = 5,
-                ["valued"] = 1, ["disagree"] = 1, ["place"] = 2, ["image"] = 2, ["assume"] = 1, ["pair"] = 1, ["raw"] = 1,
+                ["analyse"] =
+                [
+                    "text reads its path",
+                    "a raw value reads its path",
+                    "a returning reads its path as its type",
+                    "a cast reads what it converts",
+                    "a comparison with a literal is an atom of what it reads",
+                    "a comparison with a parameter is an atom of what it reads",
+                    "a membership is an atom of what it reads",
+                    "a null test is an atom of what it reads",
+                    "a definedness test is an atom of what it reads",
+                    "a type test is an atom of what it reads",
+                    "an affix test with a literal pattern is an atom of what it reads",
+                ],
+                ["measure"] =
+                [
+                    "a measured answer is one a set's service may give",
+                ],
+                ["allowed"] =
+                [
+                    "a class within an allowing box is allowed",
+                    "a class whose every truth of Calcite's the policy sets aside is one Calcite raises on alone",
+                ],
+                ["refutes"] =
+                [
+                    "a class within a refuting box is a definite counterexample",
+                ],
+                ["tabulate"] =
+                [
+                    "a settled key is an entry of its set's table",
+                ],
+                ["expected"] =
+                [
+                    "every Kleene cell of a connective is expected of a set that serves a target it is Kleene's for",
+                ],
+                ["matched"] =
+                [
+                    "a settled answer that is Kleene's matches",
+                ],
+                ["licence"] =
+                [
+                    "a connective every expected cell of which matched composes in the set",
+                ],
+                ["disagree"] =
+                [
+                    "a function key a target of the set answers otherwise than Same disagrees there",
+                ],
+                ["raw"] =
+                [
+                    "a raw reading's truths on a key are the union of its columns'",
+                ],
+                ["tag"] =
+                [
+                    "a predicate beneath a stratum is an atom as its predicate is",
+                ],
+                ["structure"] =
+                [
+                    "a conjunction's arms are its junction's sides",
+                    "a disjunction's arms are its junction's sides",
+                ],
+                ["descend"] =
+                [
+                    "a junction lies within each form of its own connective it is a candidate for",
+                    "an arm of a junction that is a junction of its connective lies within what the junction lies within",
+                    "each arm of a junction takes each part of a form it lies within",
+                    "an atom of a junction takes the part of a form it lies within that reads its path alone",
+                    "a negation's operand is a candidate for the form's operand at the opposite position",
+                    "a member of a member of a junction's own connective is a member of the junction",
+                ],
+                ["disjoint"] =
+                [
+                    "two properties of one parent with different names are disjoint locations",
+                ],
+                ["partition"] =
+                [
+                    "an atom's import is cut into cells, at its literals, the form's and the edges its reader names, where the form reads that path alone",
+                ],
+                ["need"] =
+                [
+                    "a candidate of an atom is evaluated on the atom's cells",
+                    "a compound that is evaluated is evaluated through its parts",
+                ],
+                ["parted"] =
+                [
+                    "a string literal parts the orders over a path whose strings may hold the other band",
+                    "two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range",
+                ],
+                ["evaluate"] =
+                [
+                    "a test is evaluated on every cell by the rows",
+                    "a compound is evaluated from its parts by its connective's rows",
+                ],
+                ["classes"] =
+                [
+                    "Calcite's atom and the form are paired on every cell",
+                ],
+                ["gate"] =
+                [
+                    "a candidate agrees where every class of its cells is allowed at its position",
+                    "a candidate is refuted where a class of its cells is a definite counterexample",
+                    "an atom is a connective's identity on some cell",
+                ],
+                ["compose"] =
+                [
+                    "a junction agrees where both sides agree on one verdict, as the part of a form it lies within that they make",
+                    "a negation agrees where its operand agrees at the opposite position",
+                    "a junction is refuted where one side is refuted and the other is its identity on another location, as the part of a form it lies within that they make",
+                    "a negation is refuted where its operand is refuted at the opposite position",
+                ],
+                ["conflict"] =
+                [
+                    "an agreement and a refutation of one candidate are a contradiction",
+                ],
+                ["at"] =
+                [
+                    "a junction's arms stand where it stands",
+                    "a negation's operand stands at the opposite position",
+                    "a case's condition stands at Pos and at Neg, wherever the case stands",
+                    "a case's arms stand where the case stands",
+                ],
+                ["spell"] =
+                [
+                    "a template that fits an atom proposes its form at the atom's position",
+                ],
+                ["lift"] =
+                [
+                    "an exact agreement that rests on something and may be sent is a best candidate",
+                    "an implied agreement that rests on something, may be sent and can be written as a Rex is implied",
+                ],
+                ["strict"] =
+                [
+                    "a reading Calcite answers null over an absent path is strict in its path",
+                    "a call whose operator answers null for a null operand is strict in what an operand is strict in",
+                    "a predicate over a strict value implies its path present",
+                ],
+                ["best"] =
+                [
+                    "a junction's best is the join of its arms' bests",
+                    "a negation's best is its operand's best at the opposite position, negated",
+                    "a case whose else absorbs at its position is its condition joined with its then-arm",
+                    "a case whose else is the opposite constant, over a two-valued condition, is its condition's form joined with its then-arm",
+                    "a case's best is the service ternary of its condition's Pos best and its arms' bests, the narrow else over a two-valued condition",
+                    "a case's best is the service ternary of its condition's Pos best and its arms' bests, the wide else",
+                    "a truth value is exact as the constant its position reads it as",
+                ],
+                ["weaken"] =
+                [
+                    "a leaf whose exact form can be written as a Rex weakens to it",
+                    "any other leaf weakens to what its implied forms make together",
+                    "a junction's weakening joins its arms' weakenings",
+                    "a negation's weakening is its operand's at the opposite position, negated",
+                    "a case weakens to its arms' weakenings under its condition's",
+                ],
+                ["twovalued"] =
+                [
+                    "an atom none of whose classes Calcite answers unknown on is two-valued",
+                ],
+                ["place"] =
+                [
+                    "a call's operands' imports are gathered beneath each stratum, one an ordinal",
+                    "a pair's import beneath a stratum is the product of its places' imports there",
+                ],
+                ["image"] =
+                [
+                    "a place's import beneath a stratum is its call's image, once every operand is in and every key agrees",
+                    "a place's import is its import beneath the root",
+                ],
+                ["assume"] =
+                [
+                    "an atom over a computed place is assumed as its place's image beneath the atom's stratum",
+                ],
+                ["pair"] =
+                [
+                    "a comparison of two readings is an atom of their pair",
+                ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(77);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(76);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>

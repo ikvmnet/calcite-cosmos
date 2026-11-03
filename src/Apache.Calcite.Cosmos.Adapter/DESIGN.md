@@ -8208,8 +8208,8 @@ place where it read a path: a comparison with a literal, `IN`, `IS NULL`, so the
 weakening run on it unchanged. F is handed the same atoms and reads them as it read any atom over a value it has no
 reader for, the paths it imports (`SqlPredicate.Paths`) unchanged; S imports `Places`, which add the operands' paths.
 
-**Its import is its image, once every key agrees.** The bundle writes each call's `SqlType`, `Arity` and one `CallArgAt`
-an ordinal, `ArmImport(s, p)` for every operand path beneath every stratum it opened (the arm's own import, else the
+**Its import is its image, once every key agrees.** The bundle writes each call's `SqlType`, its reading of its place
+(`reads(v, Valued(v), typed:T)`), `Arity` and one `CallArgAt` an ordinal, `ArmImport(s, p)` for every operand path beneath every stratum it opened (the arm's own import, else the
 root's, a superset), a literal operand's own single cell, and the place's characters from F's `ValueChars` for the call
 at the root. Four rulesets then run after the first stratum, as one fixpoint, so a nested call is gathered once its
 inner place is written: `place` gathers the operands' imports beneath each stratum, one a `PathImport` an ordinal;
@@ -8220,6 +8220,14 @@ set serves answers otherwise than `Same` (`DisagreeingKeys`, derived at the buil
 total by writing `Unmeasured` for each pair no row holds); at stratum 0 that is the place's `Imported`; `assume` assumes
 an atom over a place as the place's image beneath the atom's stratum, so an arm over a computed value sets its off-arm
 cells aside as an arm over a path does. A place with no image has no import, and S proves nothing over it.
+
+**The reading is the bundle's, not a rule's.** The spec's first rule derived the reading from `SqlType` and
+`MeasuredKeys`; Eggnog 1.1.1 lets a rule that writes `reads`, an analysis, read only terms and analyses, and passing it
+meant labelling two raw tables analyses, which also exempts them from the licence check. The bundle writes the reading
+with the call's type instead, an input it reads as it reads the spelling: the loader types only a call whose key the rows
+name, and the image rule reads `MeasuredKeys` beside every key the operands fall under, so a definition that names no
+row for the call leaves its place without an import (`RenderingValuedTests.APlaceNoRowOfTheDefinitionNamesHasNoImport`).
+`SqlType` and `MeasuredKeys` are plain facts again; S has 76 rules.
 
 **What the order test is told.** `image` reads `Gathered`, which `place` grows in the same fixpoint, so the order test
 would refuse its universal; it reads it whole by the count guard (invariant 3): the rule states `set-length` of the

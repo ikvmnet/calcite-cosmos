@@ -47,9 +47,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static RexNode Int(int value) => Rex.makeExactLiteral(new java.math.BigDecimal(value));
 
         /// <summary>What S generates for a read predicate under a set, each path imported as these values and characters, each place's characters these.</summary>
-        static (RenderingAnswer Answer, RenderingRun Run) Generate(SqlPredicate root, RenderingSet set, PathValues values, JsonCharacterBand chars)
+        static (RenderingAnswer Answer, RenderingRun Run) Generate(SqlPredicate root, RenderingSet set, PathValues values, JsonCharacterBand chars, RenderingTheory? theory = null)
         {
-            var theory = ProbeTheory;
+            theory ??= ProbeTheory;
             using var bundle = theory.Open(set);
             var term = bundle.Write(root);
             foreach (var path in root.Places)
@@ -143,6 +143,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var sum = Loading.Read(Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Rex.makeCall(SqlStdOperatorTable.PLUS, JsonValue("n", SqlTypeName.INTEGER), Int(1)), Int(5)));
             PlaceOf(sum).Type.Should().Be("INTEGER");
             Generate(sum, RenderingSet.Emulator, PathValues.OfKinds(ValueSet.Of(IntegerType)), JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+        }
+
+        /// <summary>
+        /// A typed call reads its place whatever the definition holds, but a definition that holds no row for it gives the
+        /// place no import: the image rule reads the measured keys, so what the registry proves (<see
+        /// cref="ACaseMappingOverAsciiRoundTrips"/>) is not proven.
+        /// </summary>
+        [Fact]
+        public void APlaceNoRowOfTheDefinitionNamesHasNoImport()
+        {
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            var bare = RenderingTheory.Define(Measured with { Functions = [] });
+            GC.KeepAlive(bare);
+            Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, bare).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            bare.Graph.Rulesets.Should().NotContain(r => r.Name == "valued", "the bundle writes a typed call's reading");
         }
 
         /// <summary>

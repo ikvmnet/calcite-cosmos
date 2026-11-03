@@ -118,8 +118,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// wide where the case is. Each arm's atoms are collected as they are tagged.
         /// </summary>
         /// <summary>
-        /// What the host writes of a call the loader read as a computed place (h10): its type, arity, operands by ordinal
-        /// and its place's spelling. A call with no spelling has no place.
+        /// What the host writes of a call the loader read as a computed place (h10): its type, arity, operands by ordinal,
+        /// its place's spelling, and that it reads that place through its type's reader. The loader types only a call the
+        /// function rows name; whether its place has an import is the image rule's. A call with no spelling has no place.
         /// </summary>
         IEnumerable<Fact> Computed(SqlValue.Call call, ConstructorTerm<Val> term, IReadOnlyList<ConstructorTerm<Val>> operands)
         {
@@ -130,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             return
             [
                 _theory.SqlType.Of(term).Is(call.Type!), _theory.Arity.Of(term).Is((long)operands.Count),
-                _theory.Spelling.Of(_theory.Valued.Of(term)).Is(spelled),
+                _theory.Spelling.Of(_theory.Valued.Of(term)).Is(spelled), _theory.Ir.Reads.Of(term, _theory.Valued.Of(term), PredicateAtom.TypedReader(call.Type!)),
                 .. operands.Select((operand, i) => _theory.CallArgAt.Of(term, (long)i, operand)),
             ];
         }

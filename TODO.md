@@ -2944,9 +2944,13 @@ across documents* and *A join of a container to itself* is the record.
 - **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
   is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
   account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
-- **The rule count is two over the spec's** — *note, line 31.* The ternary is one template written twice and a truth
-  value's constant is a rule of its own (h08): 68 as built against the spec's 66, so the spec's 78 at h31 is 80. h10
-  adds the spec's six: 74 against its 72; h11 its two: 76 against its 74.
+- **The rule count is one over the spec's** — *note, line 31; the owner's at h14.* The ternary is one template written
+  twice and a truth value's constant is a rule of its own (h08): 68 as built against the spec's 66. h10 adds five of the
+  spec's six, a call's reading of its place being the bundle's: 73 against its 72; h11 its two, 75 against 74; h12 its
+  one, 76 against 75. The spec's 78 at h31 is 79 as built, one under line 31's 80. The rules still asked for would cross
+  it: the two compound two-valuedness rules (above), h09's lift asking S of the pair's arm (above), an `evaluate` rule
+  for the ternary if an untaken arm's failure must fail it. h14 lists them against that headroom of one, so the line is
+  decided before the triage closes any of them.
 - **The string functions' column bridge** — *bridge, deleted at h37.* `CosmosRexTranslator.RequireStringFunctionsAgree`
   reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
   not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
