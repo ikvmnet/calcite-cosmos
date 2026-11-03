@@ -2898,12 +2898,12 @@ across documents* and *A join of a container to itself* is the record.
   emulator since h06: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6)
   and `LIKE` (N7) matched by code point, and how an integral number reads back (N11); Azure's are owed by run 1.
 - **S writes no affix** — *medium, Stage 3; Azure's rows at h14b.* No `ServiceFormKind` writes `STARTSWITH`, `ENDSWITH`,
-  `CONTAINS` or `LIKE`, so every affix the translator pushes is Unproven to S: at the gate 22 real pushes under
-  `Production` (F, G) and 4 more in J1, and under `Emulator` 15, 7 of them `LIKE` over a `VARCHAR` column, a raw reading
+  `CONTAINS` or `LIKE`, so every affix the translator pushes is Unproven to S: at the gate 26 real pushes under
+  `Production` (F, G) and 5 more in J1, and under `Emulator` 43, 9 of them `LIKE` over a `VARCHAR` column, a raw reading
   the loader reads no affix of. The form needs a cell partition by affix (a prefix is an interval of the code-unit order,
   a suffix or an infix none), the service's rows N5–N7 by target, and the reader and printer to round-trip it.
 - **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, with h14b's rows.* Each is opaque to S, so
-  their 10 generated pushes are Unproven under both sets (none of the corpus's real ones). Each is a function row,
+  their 10 generated pushes are Unproven under both sets, and one real push of the suite's under `Emulator`. Each is a function row,
   Calcite's measured here and the service's on each target.
 - **`SUBSTRING` from 0 is outside the rows' spellings** — *small.* The translator writes Calcite's start 0 as ternaries
   over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` (and under
@@ -2917,8 +2917,8 @@ across documents* and *A join of a container to itself* is the record.
   against a text (`<=($1, JSON_VALUE($0, '$.e'))`, the order differential's) has none, and stays opaque: 3 real pushes
   under `Emulator`.
 - **The two-path row reads no absent or null pair** — *small, with h14b.* `ServiceLeaf.Paired` finds no key for an absent
-  or a null right side against the same on the left, though the measurement asks both, so the diagonal `c.k < c.k` is
-  Unproven under `Emulator`. Pinning that either side absent answers undefined, and a null against a null as the literal
+  or a null right side against the same on the left, though the measurement asks both, so every pair is Unproven under
+  `Emulator`: 5 real pushes, the diagonal `c.k < c.k` among them. Pinning that either side absent answers undefined, and a null against a null as the literal
   null, reads them.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
