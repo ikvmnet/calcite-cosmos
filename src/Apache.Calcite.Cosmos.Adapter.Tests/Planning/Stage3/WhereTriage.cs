@@ -147,6 +147,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                     return Waits("a function no row names (MOD, ABS, CEIL, FLOOR, SIGN): new function rows", "a function no row names: new function rows, Azure's half not measured");
                 if (Rexes("SUBSTRING("))
                     return Waits("SUBSTRING from 0: outside the rows' spellings", "function rows not on Azure (h14b)");
+                if (Matches(@"CAST\(JSON_VALUE\([^)]*\)\):BOOLEAN"))
+                    return (Closable, "a cast of the text to BOOLEAN: no reader of it (Calcite.CastToBooleanParses)");
+                if (Matches(@"^(NOT\()?IS_DEFINED\("))
+                    return (Declined, "an IS_DEFINED a schema function registers: another operator, read by reference alone (no piece)");
+                if (Matches(@"^[<>=]+\((\$\d+, JSON_VALUE|JSON_VALUE\([^)]*\), \$\d+\))"))
+                    return (Closable, "a column compared with a text reading: two readings of different kinds, no pair");
                 return (Closable, "outside the IR: other");
             }
 
