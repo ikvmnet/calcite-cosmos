@@ -2765,9 +2765,24 @@ across documents* and *A join of a container to itself* is the record.
   renders a fraction as Java spells its double, so a stored `0.10000000000000001` reads `'0.1'` (measured in process),
   which `Renderings.MayRenderAs` says no number of another value renders as; the text reading's cells inherit it. A
   service that holds numbers as doubles returns no such spelling. The cast's cells (g09) read a number's double.
-- **The probe account's run of 2026-10-19 has no record** — *small.* The Azure targets of the string functions' and the
-  stored values' rows rest on it, and neither record under `Tests/Measurements/Runs/`, 2026-10-16's or 2026-10-21's,
-  ran their witnesses, so an outcome on one of those rows cannot claim Azure until a run of its witnesses is recorded.
+- **The probe account's run of 2026-10-19 has no record** — *small, Stage 3 run 1 (h14b).* The Azure targets of the
+  string functions' and the stored values' rows rest on it, and neither record under `Tests/Measurements/Runs/`,
+  2026-10-16's or 2026-10-21's, ran their witnesses, so an outcome on one of those rows cannot claim Azure until a run of
+  its witnesses is recorded. `Service.StringFunctionAnswersByBand` (h06) is the measurement that record is owed by: its
+  keys run on the emulator alone (`Runs/Emulator/2026-11-03-EN20261019.tsv`), and run 1 gives them Azure's.
+- **The emulator rows of h06 claim no Azure** — *small, Stage 3 run 1 (h14b).* S1, M2, M3, M4, N4–N7, N11 and N12 are
+  measured on EN20261019 alone. Their tests compare a function row against its `Emulator` outcomes whatever endpoint
+  answers, so run 1 adds `Azure` outcomes beside them and the test reads the target it runs on. The spec's M3,
+  `IntegerArithmeticIsInDoubles`, is false on the emulator; the row is `Service.IntegerArithmeticIsExactWithinLong`.
+- **A number's function key has no magnitude** — *small, h10.* `FunctionKey` keys a number by kind alone, so every typed
+  arithmetic operator answers `Differs` or `Fails` over a number, a sum that cannot wrap included. A magnitude class
+  (within 2^31, within 2^53, within int64) would let the rows license the ranges where they agree.
+- **`POSITION` under the emulator counts a surrogate apart** — *small, emulator only.* The emulator's `INDEX_OF` counts
+  code points, so `POSITION` over a string holding a surrogate parts from Calcite's there, measured
+  (`Service.StringFunctionAnswersByBand`), and `RuleOf(call, Emulator)` pushes it, as recorded since
+  `Service.IndexOfCountsUnits`. Refusing the surrogates for the subject under the emulator is the smallest sound rule;
+  it changes the emulator's plans, so it is a commit of its own, and
+  `CosmosStringFunctionsTests.EveryBandTheEmulatorPartsOverIsRefusedThereButOne` turns when it lands.
 - **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
   unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
   constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
@@ -2855,13 +2870,13 @@ across documents* and *A join of a container to itself* is the record.
   differential's 33 statements with parameters are not planned for the check. A relational gate claiming a form over
   every value a parameter's type admits, with parameter witnesses, is Stage 3's, and with it the parameterised
   weakenings the translator kept (O7).
-- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are unmeasured** — *medium, Stage 3 (O3,
-  deferred).* The loader reads a pattern as opaque, so a conjunct holding one is the translator's when exact (P7, a
+- **`LIKE`, `STARTSWITH` and `ENDSWITH` are outside the IR, and N4–N7 and N11 are measured on the emulator alone** —
+  *medium, Stage 3 (O3, deferred; the rows at h06, Azure at h14b).* The loader reads a pattern as opaque, so a conjunct holding one is the translator's when exact (P7, a
   declared string), skipped by the check, and weakened by S to the presence its accessor implies, where the translator
   pushed a string branch with `STARTSWITH` or `CONTAINS`: O7's loss 4, 18 such statements at the gate and one more whose
-  disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are owed with it:
-  `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6) and `LIKE` (N7)
-  matched by code point, and how an integral number reads back (N11).
+  disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are measured on the
+  emulator since h06: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6)
+  and `LIKE` (N7) matched by code point, and how an integral number reads back (N11); Azure's are owed by run 1.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
   with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
@@ -2877,7 +2892,9 @@ across documents* and *A join of a container to itself* is the record.
   and cast cells look it up and union the columns themselves, and the `Calcite.*` rows carry no outcomes S reads. The
   Eggnog home: the table as `Calcite`-target rows read through `CosmosAxiomRows.Read`, a column row per reader, and one
   rule taking the union under a `Truths` lattice, C# keeping only the primitives that read a literal (`MayRender`,
-  `SidesOf`, the ordinal placement). S is at the rule line, so it waits for Stage 3.
+  `SidesOf`, the ordinal placement). S is at the rule line, so it waits for Stage 3. Since h06 the table is
+  `Calcite.RawNullIsSqlNull`'s `Columns`, read by `CosmosAxiomRows.ReadColumns`; that the host table and the row are
+  one list is a bridge until h12 takes the union into S and the host table goes.
 - **Two atoms of one path refute no junction** — *small.* A refutation composes across a junction only where the sibling's
   path lies apart from the refuted one (`disjoint`), so an atom refuted beside another of its path leaves the check
   unproven. Partitions 1,428's `NOT (category < 'bikes')`, a second round's beside `category IN ('bikes!', 'shoes')`,

@@ -121,12 +121,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claims.Should().OnlyHaveUniqueItems();
         }
 
-        /// <summary>A row read as data, by its outcomes or its subjects, names a test that says it pins the row.</summary>
+        /// <summary>A row read as data, by its outcomes, its subjects, its function outcomes or its columns, names a test that says it pins the row.</summary>
         [Fact]
         public void EveryRowReadAsDataNamesAPinningTestThatCarriesItsId()
         {
-            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null))
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
+        }
+
+        /// <summary>
+        /// A function row names each key once per target, within its row's targets, and reads back one row per key per
+        /// target, each key's function, kind and band as written and in the order the key compares by.
+        /// </summary>
+        [Fact]
+        public void TheFunctionRowsReadBackKeyByKey()
+        {
+            var outcomes = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] select (axiom, o)).ToList();
+            outcomes.Should().NotBeEmpty();
+            foreach (var (axiom, o) in outcomes)
+                (o.On != 0 && (o.On & ~axiom.MeasuredOn) == 0).Should().BeTrue($"{axiom.Id}'s {o.Function}/{o.Operand}/{o.Band} names {o.On}, within {axiom.MeasuredOn}");
+
+            var rows = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All);
+            rows.Should().HaveCount(outcomes.Sum(x => System.Numerics.BitOperations.PopCount((uint)x.o.On)));
+            rows.Select(r => (r.Key, r.Target)).Should().OnlyHaveUniqueItems();
+            rows.Should().Contain((FunctionKey.Of("POSITION", Class.String, JsonCharacterBand.Surrogates), RenderingTarget.Emulator, CosmosFunctionAnswer.Differs));
+            rows.Select(r => r.Key).Order().Select(FunctionKey.FunctionOf).Should().BeInAscendingOrder(StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// The raw columns S will take the union of are a <c>Calcite</c> row's, read through the registry: until S reads
+        /// them (h12) the host table is the row's, one list.
+        /// </summary>
+        [Fact]
+        public void TheRawColumnsAreACalciteRows()
+        {
+            CosmosAxiomRows.ReadColumns(CosmosAxioms.All).Should().Equal(RawColumnsTable.Rows.Select(c => ("Calcite.RawNullIsSqlNull", c)));
         }
 
         /// <summary>
@@ -322,6 +351,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claimable.Where(line => claims.Any(c => (c.Item1, c.Item2, c.Cell) == (line.Row, line.Key, line.Cell)
                 && (c.Answer == line.Answer || AnswerMeanings.Measured.Of(c.Answer) is var meant and not ServiceOutcomes.None
                     && (meant & ~AnswerMeanings.Measured.Of(line.Answer)) == ServiceOutcomes.None)) == false).Should().BeEmpty("no evidence a run read so is dropped");
+        }
+
+        /// <summary>
+        /// A function outcome claims Azure only with a run record of its keys, and none exists before the probe account's
+        /// run 1 (h14b): so none claims it yet.
+        /// </summary>
+        [Fact]
+        public void NoFunctionOutcomeClaimsAzureWithoutARecordedRun()
+        {
+            (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] where o.On.HasFlag(CosmosAxiomTarget.Azure) select $"{axiom.Id} {o.Function}/{o.Operand}/{o.Band}")
+                .Should().BeEmpty("a function key claims Azure only where a committed run holds its answer");
+        }
+
+        /// <summary>
+        /// A row measured on the emulator since the run records began (2026-11-02) names its release in a committed
+        /// emulator record (<c>Measurements/Runs/Emulator</c>): every line its pinning test logged, with the release that
+        /// answered, so a later release that answers otherwise is read against what this one did.
+        /// </summary>
+        [Fact]
+        public void EveryEmulatorRowSinceTheRecordsBeganHasARecordedRelease()
+        {
+            var lines = EmulatorRecords().ToList();
+            lines.Should().NotBeEmpty();
+            lines.Select(l => l.Row).Should().BeSubsetOf(CosmosAxioms.All.Select(a => a.Id));
+            lines.Should().OnlyContain(l => Regex.IsMatch(l.Release, "^EN[0-9]{8}$"), "each line names the emulator release that answered it");
+
+            var recorded = lines.Select(l => l.Row).ToHashSet();
+            CosmosAxioms.All.Where(a => a.MeasuredOn.HasFlag(CosmosAxiomTarget.Emulator) && a.Measured >= new DateOnly(2026, 11, 2) && a.Id.StartsWith("Service.", StringComparison.Ordinal))
+                .Select(a => a.Id).Where(id => recorded.Contains(id) == false).Should().BeEmpty("an emulator row measured since 2026-11-02 has its release's record");
+        }
+
+        /// <summary>The lines of every emulator record: the release, the row, the expression, the witness and the answer.</summary>
+        static IEnumerable<(string Record, string Release, string Row, string Expression, string Witness, string Answer)> EmulatorRecords()
+        {
+            var assembly = typeof(CosmosAxiomsTests).Assembly;
+            foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("EmulatorRuns/", StringComparison.Ordinal)))
+            {
+                using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+                foreach (var line in reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').Skip(1))
+                {
+                    var f = line.Split('\t');
+                    f.Should().HaveCount(5, $"{name}: {line}");
+                    yield return (name, f[0], f[1], f[2], f[3], f[4]);
+                }
+            }
         }
 
         /// <summary>

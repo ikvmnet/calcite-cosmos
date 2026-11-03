@@ -295,6 +295,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<Truths>();
             values.RegisterEnum<ServiceOutcomes>();
             values.RegisterEnum<TemplateId>();
+            values.RegisterEnum<CosmosFunctionAnswer>();
             values.Register<ServiceForm>("service form");
             values.Register<Priced>("priced");
             values.Register<RenderingRexGrammar.Value>("rex grammar");
@@ -303,6 +304,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<Proof>("proof");
             values.Register<Refutation>("refutation");
             values.Register<MeasuredKey>("measured key");
+            values.Register<FunctionKey>("function key");
             values.Register<MeasuredEntry>("measured entry");
             values.Register<AnswerMeanings>("answer meanings");
             values.Register<ServiceTable>("service table");
@@ -318,6 +320,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<MeasuredEntry>();
             values.RegisterSet<CutPoint>();
             values.RegisterSet<MeasuredKey>();
+            values.RegisterSet<FunctionKey>();
             values.RegisterSet<CosmosServiceTest>();
             values.RegisterSet<ServiceForm>();
         }

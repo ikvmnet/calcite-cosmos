@@ -9,8 +9,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 using Apache.Calcite.Data;
 
@@ -864,6 +866,121 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 chain.Add(e);
 
             chain.Should().Contain(e => e is EncoderFallbackException, "the encoder refuses the unpaired unit before anything is sent");
+        }
+
+        // ── Affixes, LIKE and the functions by band, on the emulator (Azure at probe run 1) ──────────
+
+        /// <summary>Asks expressions over witnesses for a row, each answer spelled as <see cref="CosmosWitnessProbe"/> spells it, the witnesses' joined by spaces.</summary>
+        static async Task<string[]> Probe(string row, IReadOnlyList<string?> witnesses, params string[] expressions) =>
+            [.. (await CosmosWitnessProbe.Ask(Strings_(), _unavailable, row, witnesses, expressions)).Select(answers => string.Join(" ", answers))];
+
+        /// <summary>The affixes match code points as written, with no normalisation, a true third operand folding ASCII case.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.AffixesMatchByCodePoint")]
+        public async Task TheAffixesMatchByCodePoint()
+        {
+            string?[] witnesses = ["\"a\ud83d\ude00b\"", "\"\u00e9x\"", "\"e\u0301x\"", "\"ABC\"", "\"abc\"", "\"\ue000x\"", "\"\""];
+            (await Probe("Service.AffixesMatchByCodePoint", witnesses, "STARTSWITH(c.v, \"a\ud83d\ude00\")", "ENDSWITH(c.v, \"\ud83d\ude00b\")", "CONTAINS(c.v, \"\ud83d\ude00\")",
+                "STARTSWITH(c.v, \"\u00e9\")", "STARTSWITH(c.v, \"e\")", "STARTSWITH(c.v, \"a\")", "STARTSWITH(c.v, \"a\", false)", "STARTSWITH(c.v, \"a\", true)", "ENDSWITH(c.v, \"\")", "STARTSWITH(c.v, \"\ue000\")")).Should().Equal(
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "false/F true/T false/F false/F false/F false/F false/F",
+                "false/F false/F true/T false/F false/F false/F false/F",
+                "true/T false/F false/F false/F true/T false/F false/F",
+                "true/T false/F false/F false/F true/T false/F false/F",
+                "true/T false/F false/F true/T true/T false/F false/F",
+                "true/T true/T true/T true/T true/T true/T true/T",
+                "false/F false/F false/F false/F false/F true/T false/F");
+        }
+
+        /// <summary><c>LIKE</c>'s <c>_</c> matches one code point and <c>%</c> any run, case sensitive.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeMatchesByCodePoint")]
+        public async Task LikeMatchesByCodePoint()
+        {
+            string?[] witnesses = ["\"a\ud83d\ude00b\"", "\"axb\"", "\"axxb\"", "\"ab\"", "\"AXB\"", "\"a\u00e9b\"", "\"a\ue000b\""];
+            (await Probe("Service.LikeMatchesByCodePoint", witnesses, "c.v LIKE \"a_b\"", "c.v LIKE \"a__b\"", "c.v LIKE \"a%b\"", "c.v LIKE \"a%\"", "c.v LIKE \"%b\"", "c.v LIKE \"%x%\"", "c.v LIKE \"axb\"")).Should().Equal(
+                "true/T true/T false/F false/F false/F true/T true/T",
+                "false/F false/F true/T false/F false/F false/F false/F",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "false/F true/T true/T false/F false/F false/F false/F",
+                "false/F true/T false/F false/F false/F false/F false/F");
+        }
+
+        /// <summary><c>LIKE</c> reads a bracket as a range or its complement, <c>[[]</c> as a literal, an unclosed bracket as matching nothing; <c>ESCAPE</c> makes the next character literal.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeReadsBracketsAsARange")]
+        public async Task LikeReadsBracketsAsARange()
+        {
+            string?[] witnesses = ["\"bikes\"", "\"[a-c]x\"", "\"dog\"", "\"[x\"", "\"a%\"", "\"ab\""];
+            (await Probe("Service.LikeReadsBracketsAsARange", witnesses, "c.v LIKE \"[a-c]%\"", "c.v LIKE \"[^a-c]%\"", "c.v LIKE \"[[]%\"", "c.v LIKE \"a!%\" ESCAPE \"!\"", "c.v LIKE \"[x\"")).Should().Equal(
+                "true/T false/F false/F false/F true/T true/T",
+                "false/F true/T true/T true/T false/F false/F",
+                "false/F true/T false/F true/T false/F false/F",
+                "false/F false/F false/F false/F true/T false/F",
+                "false/F false/F false/F false/F false/F false/F");
+        }
+
+        /// <summary>
+        /// Each function by the name its rule reads it by, as Calcite and as the service write it over <c>s</c>, the one
+        /// lower-case <c>s</c> in either; the other operands are adversarial on the emulator, a <c>0</c> or a <c>1</c> its
+        /// escapes' second units hold, and a function spelled twice answers the worse of the two.
+        /// </summary>
+        internal static readonly (string Function, string Calcite, string Service)[] Functions =
+        [
+            ("CHAR_LENGTH", "CHAR_LENGTH(s)", "LENGTH(s)"),
+            ("CHARACTER_LENGTH", "CHARACTER_LENGTH(s)", "LENGTH(s)"),
+            ("SUBSTRING", "SUBSTRING(s FROM 2 FOR 2)", "SUBSTRING(s, 1, 2)"),
+            ("LEFT", "LEFT(s, 2)", "LEFT(s, 2)"),
+            ("RIGHT", "RIGHT(s, 2)", "RIGHT(s, 2)"),
+            ("UPPER", "UPPER(s)", "UPPER(s)"),
+            ("LOWER", "LOWER(s)", "LOWER(s)"),
+            ("REPLACE", "REPLACE(s, '0', 'x')", "REPLACE(s, \"0\", \"x\")"),
+            ("REPLACE", "REPLACE(s, '1', 'x')", "REPLACE(s, \"1\", \"x\")"),
+            ("POSITION", "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1"),
+            ("POSITION", "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1"),
+            ("REVERSE", "REVERSE(s)", "REVERSE(s)"),
+            ("||", "s || 'z'", "CONCAT(s, \"z\")"),
+            ("CONCAT", "CONCAT(s, 'z')", "CONCAT(s, \"z\")"),
+            ("REPEAT", "REPEAT(s, 2)", "REPLICATE(s, 2)"),
+            ("TRIM", "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
+            ("TRIM LEADING", "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
+            ("TRIM TRAILING", "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
+        ];
+
+        /// <summary>
+        /// The witnesses of each key: three strings of each band, holding that band's characters and ASCII alone, at either
+        /// end and inside, beside a <c>0</c> or a <c>1</c>; and a value of each other kind.
+        /// </summary>
+        internal static readonly (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] FunctionWitnesses =
+        [
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.None, [Json("a0b1c"), Json("b"), Json("")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b0\U0001F600"), Json("\U0001F600"), Json("\U0001F600x1")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("ab0ﬀ"), Json("﷐b1﷐"), Json("ﬀ")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("aéb0ß"), Json("İb1"), Json("ß")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Trimmed, [Json("\tab0\u000B"), Json("\u000Cb1\r"), Json("\n")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Nul, [Json("a\u0000b0\u0000"), Json("\u0000"), Json("\u00001")]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Number, JsonCharacterBand.None, ["30", "0.5"]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.True, JsonCharacterBand.None, ["true"]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.False, JsonCharacterBand.None, ["false"]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Null, JsonCharacterBand.None, ["null"]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Absent, JsonCharacterBand.None, [null]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Object, JsonCharacterBand.None, ["{\"x\":\"a\"}"]),
+            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Array, JsonCharacterBand.None, ["[\"a\"]"]),
+        ];
+
+        static string Json(string text) => Newtonsoft.Json.JsonConvert.ToString(text);
+
+        /// <summary>
+        /// Each string function over each band of a string's characters and each other kind of value answers against
+        /// Calcite's as <c>Service.StringFunctionAnswersByBand</c> records, or better (<see cref="CosmosFunctionComparison"/>):
+        /// Calcite's side reads the value as the text accessor does, in process.
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.StringFunctionAnswersByBand")]
+        public async Task EachStringFunctionAnswersItsRowByBand()
+        {
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.StringFunctionAnswersByBand", Functions, FunctionWitnesses);
+            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!, CosmosAxiomTarget.Emulator).Should().BeEmpty();
         }
 
         static string Spell(string text) => string.Concat(text.EnumerateRunes().Select(r => r.Value is >= 0x21 and <= 0x7E ? ((char)r.Value).ToString() : $"<U+{r.Value:X4}>"));

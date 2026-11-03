@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -72,6 +73,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             (SqlLibraryOperators.LEFT, [Str(), Int(2)]),
             (SqlLibraryOperators.RIGHT, [Str(), Int(2)]),
         ];
+
+        /// <summary>The call each string key of <c>Service.StringFunctionAnswersByBand</c> was measured by, over <c>c.s</c>.</summary>
+        RexNode[] Measured(string function) => function switch
+        {
+            "CHAR_LENGTH" => [Call(SqlStdOperatorTable.CHAR_LENGTH, Str())],
+            "CHARACTER_LENGTH" => [Call(SqlStdOperatorTable.CHARACTER_LENGTH, Str())],
+            "SUBSTRING" => [Call(SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(2))],
+            "LEFT" => [Call(SqlLibraryOperators.LEFT, Str(), Int(2))],
+            "RIGHT" => [Call(SqlLibraryOperators.RIGHT, Str(), Int(2))],
+            "UPPER" => [Call(SqlStdOperatorTable.UPPER, Str())],
+            "LOWER" => [Call(SqlStdOperatorTable.LOWER, Str())],
+            "REPLACE" => [Call(SqlStdOperatorTable.REPLACE, Str(), Lit("0"), Lit("x")), Call(SqlStdOperatorTable.REPLACE, Str(), Lit("1"), Lit("x"))],
+            "POSITION" => [Call(SqlStdOperatorTable.POSITION, Lit("0"), Str()), Call(SqlStdOperatorTable.POSITION, Lit("1"), Str())],
+            "REVERSE" => [Call(SqlLibraryOperators.REVERSE, Str())],
+            "||" => [Call(SqlStdOperatorTable.CONCAT, Str(), Lit("z"))],
+            "CONCAT" => [Call(SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("z"))],
+            "REPEAT" => [Call(SqlLibraryOperators.REPEAT, Str(), Int(2))],
+            "TRIM" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.BOTH), Lit(" "), Str())],
+            "TRIM LEADING" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str())],
+            "TRIM TRAILING" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.TRAILING), Lit(" "), Str())],
+            _ => throw new System.ArgumentException(function),
+        };
+
+        /// <summary>
+        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>) is one
+        /// the function's rule under the emulator refuses, but one: <c>POSITION</c> over a surrogate, which the emulator's
+        /// <c>INDEX_OF</c> counts as one code point where Calcite counts two units, recorded (<c>Service.IndexOfCountsUnits</c>)
+        /// and pushed; it is asserted pushed, so that refusing it shows here.
+        /// </summary>
+        [Fact]
+        public void EveryBandTheEmulatorPartsOverIsRefusedThereButOne()
+        {
+            var parted = from o in CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
+                         where o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
+                         select (o.Function, o.Band);
+            parted.Should().NotBeEmpty();
+            foreach (var (function, band) in parted)
+                foreach (var call in Measured(function))
+                {
+                    var pushed = Translator(Emulator, band).TryTranslate(call, out _);
+                    pushed.Should().Be((function, band) == ("POSITION", JsonCharacterBand.Surrogates), $"{function} over {band} under the emulator");
+                }
+        }
 
         /// <summary>
         /// D8: the emulator counts and cuts the units it stores, two for U+0000 and two for U+FDD0, so a count asks its

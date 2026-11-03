@@ -7947,6 +7947,63 @@ so the filter's cost no longer keeps a `RexBuilder` of its own.
 **Recorded where its family lives.** 3R's order fix is *Order without equality licenses the last key only*, beside the
 stored forms, and the switch listing's retirement is under *What changed is listed*.
 
+### The rows the next families read, and function rows
+
+**What was measured (h06).** The rows the IR's `CASE`, type tests, affixes, `ITEM` and arithmetic will rest on, before
+any of them is read (`Sql/CosmosAxioms.cs`, the sections *What Calcite answers of a CASE…* and *What the emulator
+answers of a ternary…*):
+
+- **In process,** each a `Calcite.` row with its test: `CASE` takes the first TRUE arm and evaluates no other; a `CASE`
+  whose arm raises off its condition stays a `CASE` through the planner, a simplifying `RelBuilder` and Hep's
+  `FILTER_REDUCE_EXPRESSIONS`, so a guard written as one still guards; the truth tests and `COALESCE` are the cases of
+  their definitions; the `IS_*` tests are their bodies, now with `Calcite`-target outcomes beside the service's;
+  `ITEM` and a reading of an element; a `VARIANT` equals only its own box; `INTEGER` and `BIGINT` wrap and `DECIMAL`
+  is exact.
+- **On the emulator,** each a `Service.` row measured there alone, Azure at the probe account's run 1 (h14b): the
+  ternary takes its then-arm on true alone (S1); an index over a non-array is undefined (M4); `IN`, the affixes and
+  `LIKE` over non-strings and by code point, and how an integral number reads back (N4–N7, N11); `LIKE` reads a
+  bracket as a range (N12); the string functions by band (M2); and integer arithmetic (M3).
+
+**Two measured facts later steps must design around.** Over a scalar, `ITEM` on an `ANY` raises
+(`IllegalStateException`, the value read as a struct) where a `VARIANT`'s is null; and an element of a `VARIANT` array
+is the unboxed value, unequal to every boxed literal, its cast raising. A rule reading `ITEM` over a raw cell keeps
+both, or the raise is lost.
+
+**M3 is not what the spec named.** The spec expected `Service.IntegerArithmeticIsInDoubles`; the emulator adds,
+subtracts and multiplies integers exactly while the result fits int64, 2^53 + 1 being 9007199254740993, and in doubles
+past it, never wrapping; `/` is a double; and a result JSON cannot hold, an infinity, fails the statement projected and
+is undefined in a `WHERE`. The row is named for what holds, `Service.IntegerArithmeticIsExactWithinLong`. The two
+releases part at 2^63 - 1: EN20260907 takes `%` of the double, EN20261019 of the integer, and each prints a double
+otherwise, which the run record keeps.
+
+**Function rows.** What a function computes against Calcite is a row of its own kind: `CosmosFunctionOutcome`, keyed
+`FunctionKey(Function, Kind, Band)` and answering `Same`, `Differs`, `Fails`, `Refuses` or `Undefined`, read by
+`CosmosAxiomRows.ReadFunctions` into one row per key per target. `FunctionKey` and the answer are registered values of
+S, as `MeasuredKey` is; nothing reads the rows yet (h10). The measurement asks the service each function over the
+key's witnesses (`CosmosWitnessProbe.Project`) and Calcite the same function in process over the same documents
+(`MaterialisedTable.Values`), and a key answers the worst over its witnesses and spellings. A service integer is
+compared exactly and a number with a point or an exponent as its double, so a release that prints a double
+differently answers alike. A row records the worst any release measured, and its test fails a release that answers a
+key worse than the row, never one that answers better.
+
+- **The answer enum lives in `Facts/Rendering`,** where `FunctionKey` is: S registers it, and nothing under `Facts/`
+  may reference `Sql/`.
+- **Arithmetic keys are typed by name,** `+:BIGINT`, since Calcite's answer depends on the operands' type. A number's
+  key has no magnitude class, so every typed operator answers `Differs` or `Fails` over a number, a range that does
+  not wrap included: a magnitude class is h10's to add if the rows are to license any.
+- **Where the emulator parts from the rule.** Every band the string row measures apart is one
+  `CosmosStringFunctions.RuleOf(call, Emulator)` refuses, but one: `POSITION` over a surrogate, which the emulator's
+  `INDEX_OF` counts as one code point. That was recorded and pushed before (`Service.IndexOfCountsUnits`); a test now
+  asserts it is pushed, so refusing it shows.
+
+**The raw columns are a `Calcite` row's.** `RawColumnsTable.Rows` is carried by `Calcite.RawNullIsSqlNull` and read
+through `CosmosAxiomRows.ReadColumns`, beside the measured rows rather than among them, since a measured key has no
+column and S's licence reads every `Calcite` row. The union over the columns stays in C# until h12 moves it into S.
+
+**Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
+line with the release that answered (EN20261019, CI's); a row measured on the emulator since 2026-11-02 has lines
+there, and no function outcome claims Azure until a run record holds it.
+
 ---
 
 ## Differential testing

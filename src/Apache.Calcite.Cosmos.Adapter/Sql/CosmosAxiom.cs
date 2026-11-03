@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
@@ -17,7 +19,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// (<see cref="CosmosAxiomRows"/>); each names the targets that ran it, within <paramref name="MeasuredOn"/>.</param>
     /// <param name="Subjects">What the statement holds of, by the names a reader takes as data: the functions or the
     /// readings of a strictness row (<c>Metadata.CosmosStrictness</c>), each one its pinning test measures.</param>
+    /// <param name="FunctionOutcomes">What a function computed, key by key, against Calcite (<see cref="CosmosAxiomRows.ReadFunctions"/>).</param>
+    /// <param name="Columns">What each raw column makes of each kind of value, a <c>Calcite</c> row's
+    /// (<see cref="CosmosAxiomRows.ReadColumns"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
-        IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null);
+        IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
+        IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<RawColumnsTable.Column>? Columns = null);
 
 }

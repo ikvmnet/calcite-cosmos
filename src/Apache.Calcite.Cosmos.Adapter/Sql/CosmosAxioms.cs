@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
@@ -53,7 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// pinning test as it stands (D7), so each outcome claims both targets but where they answered
     /// apart; of its run of 2026-10-16, what it projected, wrote inline or only ordered backs no
     /// claim, since its filter has answered apart from its projection. The Azure targets of the
-    /// string functions and the stored values rest on a run of 2026-10-19, which has no record.
+    /// string functions and the stored values rest on a run of 2026-10-19, which has no record. A function row's keys
+    /// (<see cref="CosmosFunctionOutcome"/>) claim Azure the same way, and none does yet; a row measured on the emulator
+    /// since 2026-11-02 names the release that answered it in <c>Measurements/Runs/Emulator</c>.
     /// </para>
     /// </remarks>
     internal static class CosmosAxioms
@@ -71,11 +75,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         static readonly DateOnly Spelling = new(2026, 10, 31);
 
+        static readonly DateOnly Cases = new(2026, 11, 2);
+
         // A connective's operands that are no truth, each measured over its own witnesses; declared before the rows read it.
         static readonly Class[] NoTruth = [Class.Undefined, Class.Absent, Class.Null, Class.Number, Class.String, Class.Object, Class.Array];
 
         // An outcome's targets, those that ran its own witnesses: one alone where the two answered apart.
         const CosmosAxiomTarget Both = CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Emulator = CosmosAxiomTarget.Emulator, Azure = CosmosAxiomTarget.Azure;
+
+        /// <summary>
+        /// A string function's keys on the emulator: <see cref="CosmosFunctionAnswer.Differs"/> over the bands named and the
+        /// same over the rest of a string's, undefined over a number and a boolean, the same over a null, an absent path,
+        /// an object and an array.
+        /// </summary>
+        static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, JsonCharacterBand differs) =>
+        [
+            .. from band in new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii, JsonCharacterBand.Trimmed, JsonCharacterBand.Nul }
+               select new CosmosFunctionOutcome(function, Class.String, band, Emulator, band != JsonCharacterBand.None && differs.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same),
+            .. from kind in new[] { Class.Number, Class.True, Class.False }
+               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+            .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
+               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+        ];
+
+        /// <summary>
+        /// A typed arithmetic operator's keys on the emulator: what it answers over a number, undefined over a string and a
+        /// boolean, the same over a null, an absent path, an object and an array.
+        /// </summary>
+        static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, CosmosFunctionAnswer overNumbers) =>
+        [
+            new(function, Class.Number, JsonCharacterBand.None, Emulator, overNumbers),
+            .. from kind in new[] { Class.String, Class.True }
+               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+            .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
+               select new CosmosFunctionOutcome(function, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+        ];
 
         /// <summary>The row of an id.</summary>
         public static CosmosAxiom Get(string id) => All.Single(a => a.Id == id);
@@ -242,6 +276,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.IntegerDivisionTruncates",
                 "Calcite's / over two integers is integer division, truncating toward zero: 7 / 2 is 3, -7 / 2 is -3, and an accessor RETURNING INTEGER divides the same way.",
                 CosmosAxiomTarget.Calcite, Today, "Measurements.CalciteArithmeticMeasurementTests.IntegerDivisionTruncatesTowardZero"),
+            new("Service.IntegerArithmeticIsExactWithinLong",
+                "+, - and * over integers are exact while the result fits int64, past 2^31 and past 2^53, 2^53 + 1 being 9007199254740993, and a double past it, 2^63 - 1 + 1 above 2^63 - 1 and never wrapped; / is a double; a result JSON cannot hold, an infinity, fails the statement projected and is undefined in a WHERE, 1e308 * 2 and any number / 0 alike; and each is undefined over a string, a boolean, a null and an absent path. So against Calcite's INTEGER, BIGINT, DECIMAL and DOUBLE each typed operator parts over a number, Calcite wrapping, truncating, raising over a fraction or rounding past 2^53 where the service does not, and * and / fail where Calcite answers an infinity or raises.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegerArithmeticIsExactWithinLong",
+                FunctionOutcomes:
+                [
+                    .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }
+                       from op in new[] { ("+", CosmosFunctionAnswer.Differs), ("-", CosmosFunctionAnswer.Differs), ("*", CosmosFunctionAnswer.Fails), ("/", CosmosFunctionAnswer.Fails), ("%", CosmosFunctionAnswer.Differs) }
+                       from outcome in Arithmetic(op.Item1 + ":" + type, op.Item2)
+                       select outcome,
+                ]),
             new("Service.OutOfDomainArithmeticFailsTheStatement",
                 "ASIN(2), ACOS(2), SQRT(-1) and LOG(0) fail the whole statement rather than answering undefined for the row, where Calcite answers NaN.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 8, 8), "Client.CosmosQueryExecutorTests.OutOfDomainArithmeticFailsTheQuery"),
@@ -304,7 +348,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawValueIsEqualToTheStringOfItsUnitsAlone"),
             new("Calcite.RawNullIsSqlNull",
                 "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone. Within a type ANY orders as the type, a string by its UTF-16 units as a VARCHAR column does and false before true, and compares a number in the box the reader built: a long by its value, and any other number by its double's exact value, so 2^53 + 1 written with a point is 2^53 and a stored 0.1 lies above 0.1; two doubles compare by Double.compareTo, so a stored -0.0 lies below a double 0 and is unequal to it, where a long 0 equals both.",
-                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal"),
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal",
+                Columns: RawColumnsTable.Rows),
             new("Calcite.CastOfARawValueToText",
                 "A cast to VARCHAR of a raw value is its column's own. A string is itself and a null or an absent path null in each; a VARIANT casts a number and a boolean to null and raises over an object or an array; an ANY renders each value as Java renders the reader's box: a boolean as true or false, an integer within a long in its digits and any other number as Java spells its double, 42.0 as 42.0 and 99999999999999999999 as 1.0E20, an object as {a=1} and an array as [1]; and a VARCHAR column reads a string alone.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 24), "Measurements.CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn"),
@@ -335,6 +380,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Or, Class.Undefined, CosmosAxiomTarget.Calcite, "true=true false=undefined undefined=undefined"),
                     new(Test.Not, Class.None, CosmosAxiomTarget.Calcite, "true=false false=true undefined=undefined"),
                 ]),
+
+            // ── What Calcite answers of a CASE, a type test, an element and arithmetic ───────
+
+            new("Calcite.CaseTakesTheFirstTrueArm",
+                "CASE takes the arm of the first condition that is TRUE, a condition FALSE or UNKNOWN passing to the next, and the ELSE where none is, NULL without one; an arm not taken is not evaluated, so one that raises off its condition raises nowhere.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.ACaseTakesTheFirstTrueArmAndEvaluatesNoOther"),
+            new("Calcite.CaseWithAnArmThatRaisesIsKept",
+                "A CASE whose arm raises off its condition is kept a CASE through the planner a connection runs, in a WHERE and projected, through a simplifying RelBuilder and through Hep's reduction of a filter: none makes it the eager AND or OR that would raise, so a guard written as one still guards.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.ACaseWhoseArmRaisesIsKept"),
+            new("Calcite.TruthTestsAreCases",
+                "x IS TRUE is TRUE where x is and FALSE elsewhere, IS NOT TRUE its negation, IS FALSE and IS NOT FALSE alike for FALSE, and IS NULL and IS UNKNOWN over a predicate TRUE where it is UNKNOWN, each the CASE of its definition; x = TRUE and x <> FALSE are x, and x = FALSE is NOT x.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.TheTruthTestsAreCases"),
+            new("Calcite.CoalesceIsACase",
+                "COALESCE is the CASE of its first operand that is not null: COALESCE(p, FALSE) is TRUE where p is and FALSE elsewhere, and an operand after one that is not null is not evaluated.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.CoalesceIsACase"),
+            new("Calcite.TypeTestsAreTheirBodies",
+                "In process the IS_* tests are their bodies (CosmosFunctionBodies), which answer over each kind of value at a path, and over an absent one, what the service answers (Service.TypeTestBodiesMatchTheService): a real boolean, never null.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess",
+                [
+                    new(Test.IsDefined, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=true true=true false=true number=true string=true object=true array=true"),
+                    new(Test.IsNull, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=true true=false false=false number=false string=false object=false array=false"),
+                    new(Test.IsPrimitive, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=true true=true false=true number=true string=true object=false array=false"),
+                    new(Test.IsString, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=true object=false array=false"),
+                    new(Test.IsNumber, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=true string=false object=false array=false"),
+                    new(Test.IsBool, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=true false=true number=false string=false object=false array=false"),
+                    new(Test.IsObject, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=true array=false"),
+                    new(Test.IsArray, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=false array=true"),
+                ]),
+            new("Calcite.ItemIsNullWhereNoElementIs",
+                "ITEM over a raw value is its element, counted from one, and null wherever there is no element: past the end, at zero, over an object, a null and an absent path. Over a scalar a VARIANT's is null too and an ANY's raises. An ANY's element is the value the reader built, and a VARIANT's is no box: unequal to every boxed value, and a cast of it raises.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AnItemIsNullWhereNoElementIs"),
+            new("Calcite.ReadingsOfAnIndexAreAsOfAPath",
+                "A reading of an element, the text accessor, a RETURNING, JSON_QUERY and JSON_EXISTS alike, answers what the same reading of a path holding the element answers, and where there is no element, past the end or over a value that is no array, what it answers over an absent path.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath"),
+            new("Calcite.VariantEqualsOnlyItsOwnBox",
+                "A VARIANT equals a value cast to VARIANT only in its own box: a stored integer, boxed BIGINT, the integer cast to BIGINT and nothing else, a fraction, boxed DOUBLE, a DOUBLE, and a string a string; so an IN of a number and its spelling keeps each in its own box alone.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteVariantMeasurementTests.AVariantEqualsOnlyItsOwnBox"),
+            new("Calcite.IntegerArithmeticWraps",
+                "+, - and * over two INTEGERs or two BIGINTs wrap at the type's bounds as Java's do, 2147483647 + 1 being -2147483648 and 9223372036854775807 + 1 -9223372036854775808, and are exact within them, past 2^53 too.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteArithmeticMeasurementTests.IntegerArithmeticWraps"),
+            new("Calcite.DecimalArithmeticIsExact",
+                "+, - and * over DECIMAL are exact: 0.1 + 0.2 is 0.3 and 9007199254740993 + 0 is itself, where a double holds neither.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteArithmeticMeasurementTests.DecimalArithmeticIsExact"),
+
+            // ── What the emulator answers of a ternary, an index, IN, the affixes and LIKE, and a number read back (Azure at h14b) ──
+
+            new("Service.TernaryTakesThenOnTrueAlone",
+                "c ? a : b and IIF(c, a, b) take a where c is true and b over every other value, false, null, a number, a string, \"true\" among them, an object, an array and an absent path alike, never undefined for a defined arm: so c ? true : false is true where c is true and false elsewhere, in a SELECT and in a WHERE.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheTernaryTakesThenOnTrueAlone"),
+            new("Service.IndexOverANonArrayIsUndefined",
+                "An index is the element of an array, counted from zero, and undefined over every value that is no array, a string included, and past an array's end, an empty array's too: IS_DEFINED of it is false there, and a comparison with it undefined.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.AnIndexOverANonArrayIsUndefined"),
+            new("Service.InIsMembership",
+                "IN is true where the value equals a member, a value of another kind never equal, 30 no \"30\" and true no \"true\", null IN (null) true, and false elsewhere, an object and an array included; over an absent path it is undefined.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.InIsMembership"),
+            new("Service.StringPredicatesOverNonStringsAreUndefined",
+                "STARTSWITH, ENDSWITH, CONTAINS and LIKE are undefined over a number, a boolean, a null, an object, an array and an absent path, a number matched by no pattern of its digits; over a string each is true or false.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheStringPredicatesOverNonStringsAreUndefined"),
+            new("Service.AffixesMatchByCodePoint",
+                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint"),
+            new("Service.LikeMatchesByCodePoint",
+                "LIKE matches by code point, case sensitive: _ matches one code point, U+1F600, U+00E9 and U+E000 alike, and % any run of them, the empty one too.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint"),
+            new("Service.LikeReadsBracketsAsARange",
+                "LIKE reads [a-c] as one character of the range and [^a-c] as one outside it, [[] as a literal [, and a pattern holding a [ it never closes matches nothing, the string it spells included; ESCAPE makes the character after it literal.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange"),
+            new("Service.IntegralNumbersReadBackAsHeld",
+                "A number reads back as the emulator holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point as a double, 9007199254740993.0 as 9007199254740992, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
 
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 
@@ -424,6 +539,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.ReplicateStopsAtTenThousandCodePoints",
                 "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
+            new("Service.StringFunctionAnswersByBand",
+                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one, LOWER over the first; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over none measured. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them.",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
+                FunctionOutcomes:
+                [
+                    .. StringFunction("CHAR_LENGTH", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("CHARACTER_LENGTH", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("SUBSTRING", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("LEFT", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("RIGHT", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    // The emulator's INDEX_OF counts code points, so POSITION parts over a surrogate as well (Service.IndexOfCountsUnits).
+                    .. StringFunction("POSITION", JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("UPPER", JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp),
+                    .. StringFunction("LOWER", JsonCharacterBand.NonAscii),
+                    .. StringFunction("REPLACE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("REVERSE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("TRIM", JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM LEADING", JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM TRAILING", JsonCharacterBand.Trimmed),
+                    .. StringFunction("||", JsonCharacterBand.None),
+                    .. StringFunction("CONCAT", JsonCharacterBand.None),
+                    .. StringFunction("REPEAT", JsonCharacterBand.None),
+                ]),
             new("Calcite.StringCountsAreInUnits",
                 "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",
                 CosmosAxiomTarget.Calcite, Strings, "Measurements.CalciteStringFunctionMeasurementTests.TheCountsAreInUnits"),

@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 
             ("Adapter.Sql.CosmosAxiomRows", ["Owed", "Targets"], StaticFact, "the registry's rows owed a target, and the targets"),
-            ("Adapter.Sql.CosmosAxioms", ["All", "Family", "NoTruth", "Orders", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
+            ("Adapter.Sql.CosmosAxioms", ["All", "Cases", "Family", "NoTruth", "Orders", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
             ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
             ("Adapter.Sql.CosmosRexTranslator", ["ArrayReading", "DirectFunctions", "FragmentReading", "GeographyFunctions", "ScalarReading"], StaticFact, "the functions the translator writes as they are"),
             ("Adapter.Sql.CosmosSchemaFunctions", ["Instance"], StaticFact, "the functions a schema offers"),

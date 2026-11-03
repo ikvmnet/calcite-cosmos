@@ -1,0 +1,18 @@
+using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
+namespace Apache.Calcite.Cosmos.Adapter.Sql
+{
+
+    /// <summary>
+    /// What the targets in <see cref="On"/> computed for one function over an operand of one kind and band, against
+    /// Calcite's: one key of a function row (<see cref="FunctionKey"/>), read by <see cref="CosmosAxiomRows.ReadFunctions"/>.
+    /// </summary>
+    /// <param name="Function">The function, by the name the IR reads it by.</param>
+    /// <param name="Operand">The kind of the operand its characters are asked of.</param>
+    /// <param name="Band">The band of the operand's characters, for a string; <see cref="JsonCharacterBand.None"/> otherwise.</param>
+    /// <param name="On">The targets that ran this key's witnesses.</param>
+    /// <param name="Answer">What they computed.</param>
+    internal sealed record CosmosFunctionOutcome(string Function, CosmosValueClass Operand, JsonCharacterBand Band, CosmosAxiomTarget On, CosmosFunctionAnswer Answer);
+
+}

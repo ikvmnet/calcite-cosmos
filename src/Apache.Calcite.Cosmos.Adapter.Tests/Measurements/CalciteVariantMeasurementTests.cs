@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -84,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// takes no bare number or boolean beside a <c>VARIANT</c>. Boxed, <c>42</c> is an <c>INTEGER</c>, equal to
         /// nothing a document holds.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.RawNullIsSqlNull")]
         public void ARawNullIsSqlNullAndAnotherTypeIsUnequal()
         {
             using var connection = MaterialisedTable.Open();
@@ -157,6 +158,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Column("VARIANT").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Null, RawColumnsTable.Answer.Raises));
             Column("ANY").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Itself));
             Column("VARCHAR").AsText.Should().Equal(Kinds(RawColumnsTable.Answer.Itself, RawColumnsTable.Answer.Raises));
+        }
+
+        /// <summary>
+        /// A <c>VARIANT</c> equals a value cast to <c>VARIANT</c> only in its own box: a stored integer, boxed <c>BIGINT</c>,
+        /// the integer cast to <c>BIGINT</c> first and nothing else, a fraction, boxed <c>DOUBLE</c>, a <c>DOUBLE</c>, and a
+        /// string a string; so an <c>IN</c> of a number and its spelling keeps each in its own box alone.
+        /// </summary>
+        [Fact, CosmosPins("Calcite.VariantEqualsOnlyItsOwnBox")]
+        public void AVariantEqualsOnlyItsOwnBox()
+        {
+            using var connection = MaterialisedTable.Open();
+            var variant = MaterialisedTable.Of(SqlTypeName.VARIANT, ["42", "\"42\"", "42.0", "true", "null", null]);
+            variant.Ask(connection, "\"v\" = CAST(CAST(42 AS BIGINT) AS VARIANT)", "\"v\" = CAST(42 AS VARIANT)", "\"v\" = CAST(CAST(42 AS DOUBLE) AS VARIANT)",
+                "\"v\" = CAST(CAST(42 AS DECIMAL(3, 1)) AS VARIANT)", "\"v\" = CAST('42' AS VARIANT)",
+                "\"v\" IN (CAST(CAST(42 AS BIGINT) AS VARIANT), CAST('42' AS VARIANT))").Should().Equal(
+                "TFFFUU", "FFFFUU", "FFTFUU", "FFFFUU", "FTFFUU", "TTFFUU");
         }
 
         /// <summary>
