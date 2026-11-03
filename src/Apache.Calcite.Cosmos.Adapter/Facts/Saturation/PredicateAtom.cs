@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
@@ -281,34 +283,34 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// The truth values the atom may take on one cell of a path's import: <see cref="On"/>'s, through the reading's cell
         /// methods. The rendering check's Calcite side, which the facts graph never reads (<c>DESIGN.md</c>).
         /// </summary>
-        internal Truths OnCell(PathCell cell)
+        internal Truths OnCell(PathCell cell, RawTruths columns)
         {
             if (Against is not null)
-                return cell is PathCell.Pair pair ? OnPair(pair) : Truths.Any;
+                return cell is PathCell.Pair pair ? OnPair(pair, columns) : Truths.Any;
 
             if (Test == DefinedTest || TypeTests.ContainsKey(Test) || Reads is not Reading reading || cell is PathCell.Unknown)
                 return On(cell.Coarse);
 
             if (Test == LikeTest)
-                return MatchesText ? Matched(reading.NullOn(cell), cell is PathCell.Point { Value: var v } && IsString(v) ? v : null) : Truths.Any;
+                return MatchesText ? Matched(reading.NullOn(cell, columns), cell is PathCell.Point { Value: var v } && IsString(v) ? v : null) : Truths.Any;
 
             // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
             // anything where that read finds a value.
             if (Parameter)
-                return reading.Parameter(cell.Coarse) | (reading.NullOn(cell) & Truths.Raises) | ((reading.NullOn(cell) & Truths.False) != 0 ? Truths.True | Truths.False | Truths.Unknown : 0);
+                return reading.Parameter(cell.Coarse) | (reading.NullOn(cell, columns) & Truths.Raises) | ((reading.NullOn(cell, columns) & Truths.False) != 0 ? Truths.True | Truths.False | Truths.Unknown : 0);
 
             switch (Test)
             {
                 case Equal:
-                    return reading.EqualOn(cell, Operand!);
+                    return reading.EqualOn(cell, Operand!, columns);
                 case NotEqual:
-                    return Swap(reading.EqualOn(cell, Operand!));
+                    return Swap(reading.EqualOn(cell, Operand!, columns));
                 case Less or LessOrEqual or Greater or GreaterOrEqual:
-                    return reading.OrderOn(cell, Test, Operand!);
+                    return reading.OrderOn(cell, Test, Operand!, columns);
                 case InTest when Points is { Count: > 0 }:
-                    return Points.Select(point => reading.EqualOn(cell, point)).Aggregate(Or);
+                    return Points.Select(point => reading.EqualOn(cell, point, columns)).Aggregate(Or);
                 case NullTest:
-                    return reading.NullOn(cell);
+                    return reading.NullOn(cell, columns);
                 default:
                     return On(cell.Coarse);
             }
@@ -319,12 +321,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// null, and where both read a value, the order the cell parts them by where both readings read their strings as
         /// themselves, or where one place is read alike on its diagonal; TRUE or FALSE otherwise.
         /// </summary>
-        Truths OnPair(PathCell.Pair pair)
+        Truths OnPair(PathCell.Pair pair, RawTruths columns)
         {
             if (Parsed.GetOrAdd(Reader, Reading.Parse) is not Reading left || Parsed.GetOrAdd(Against!, Reading.Parse) is not Reading right || pair.Left is PathCell.Unknown || pair.Right is PathCell.Unknown)
                 return Truths.Any;
 
-            var (l, r) = (left.NullOn(pair.Left), right.NullOn(pair.Right));
+            var (l, r) = (left.NullOn(pair.Left, columns), right.NullOn(pair.Right, columns));
             var truths = ((l | r) & Truths.Raises) | (((l | r) & Truths.True) != 0 ? Truths.Unknown : 0);
             if ((l & Truths.False) == 0 || (r & Truths.False) == 0)
                 return truths;
@@ -590,6 +592,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             public virtual Truths NullOn(PathCell cell) => Null(cell.Coarse);
 
+            // Beside the raw columns' truths, S's union (h12), which a raw reading alone reads.
+            public virtual Truths EqualOn(PathCell cell, string literal, RawTruths columns) => EqualOn(cell, literal);
+
+            public virtual Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => OrderOn(cell, op, literal);
+
+            public virtual Truths NullOn(PathCell cell, RawTruths columns) => NullOn(cell);
+
             /// <summary>Whether a comparison holds of a value that compares with the literal as the sign says.</summary>
             static bool Ordered(string op, int sign) => op switch
             {
@@ -804,30 +813,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             /// <summary>
-            /// The cast to text of a raw value on a cell: the union of its three columns, each as
-            /// <see cref="RawColumnsTable"/> says (<c>Calcite.CastOfARawValueToText</c>). The facts graph reads the rendering
-            /// alone (<c>TODO.md</c>).
+            /// The cast to text of a raw value on a cell: its columns' union (<c>Calcite.CastOfARawValueToText</c>), S's. The
+            /// facts graph reads the rendering alone (<c>TODO.md</c>).
             /// </summary>
             sealed class RawText() : Text(structures: true)
             {
 
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.CastOfARawValueToText", "Calcite.TextOrderIsByCodeUnit");
 
+                /// <summary>The reading's spelling, which keys its columns' truths.</summary>
+                const string CastOfRaw = "cast:VARCHAR:" + RawReader;
+
                 public override ValueSet<string> Rests => Rows;
 
                 /// <summary>
-                /// The cast on a cell through each column: over a null, a null's answer; over a value, the rendering where the
-                /// column casts the value itself, a null's answer where it casts it to null, and its raise; none for a cell of
-                /// no one kind.
+                /// A comparison on a cell through the union: where a column casts the value itself, the rendering compared; its
+                /// null and its raise as the union says. None for a cell of no one kind.
                 /// </summary>
-                static Truths? AsText(PathCell cell, Truths rendered, Truths nulled) => cell is PathCell.Absent or PathCell.Null ? nulled
-                    : RawColumnsTable.KindOf(cell) is not { } kind ? null
-                    : RawColumnsTable.Rows.Aggregate(Truths.None, (truths, column) => truths | column.AsText[kind] switch
-                    {
-                        RawColumnsTable.Answer.Itself => rendered,
-                        RawColumnsTable.Answer.Null => nulled,
-                        _ => R,
-                    });
+                static Truths? AsText(PathCell cell, string op, string literal, RawTruths columns, Truths rendered) =>
+                    RawKey.On(CastOfRaw, cell, op, literal) is { } key ? columns[key] & (rendered | U | R) : null;
 
                 /// <summary>
                 /// Whether a number of the cell may render as the text through an <c>ANY</c>: a long as its digits, which hold no
@@ -854,13 +858,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     };
                 }
 
-                public override Truths EqualOn(PathCell cell, string literal) => IsString(literal) == false ? Equal(cell.Coarse, literal)
-                    : AsText(cell, Numeric(cell) ? MayRender(cell, StringOf(literal)) ? T | F : F : base.EqualOn(cell, literal), U) ?? base.EqualOn(cell, literal);
+                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) => IsString(literal) == false ? Equal(cell.Coarse, literal)
+                    : AsText(cell, PredicateAtom.Equal, literal, columns, Numeric(cell) ? MayRender(cell, StringOf(literal)) ? T | F : F : base.EqualOn(cell, literal)) ?? base.EqualOn(cell, literal);
 
-                public override Truths OrderOn(PathCell cell, string op, string literal) => IsString(literal) == false ? Order(cell.Coarse, op, literal)
-                    : AsText(cell, base.OrderOn(cell, op, literal), U) ?? base.OrderOn(cell, op, literal);
+                public override Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => IsString(literal) == false ? Order(cell.Coarse, op, literal)
+                    : AsText(cell, op, literal, columns, base.OrderOn(cell, op, literal)) ?? base.OrderOn(cell, op, literal);
 
-                public override Truths NullOn(PathCell cell) => AsText(cell, F, T) ?? Null(cell.Coarse);
+                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(CastOfRaw, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
 
             }
 
@@ -917,21 +921,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override ValueSet<string> Rests => Rows;
 
                 /// <summary>
-                /// A comparison on a cell through each column beside the literal (<see cref="RawColumnsTable"/>): SQL null over a
-                /// null; a raise where the column reads no value of the kind or orders none; and otherwise the value compared as
-                /// its type where it is the literal's, <paramref name="alike"/>, and across types <paramref name="across"/>. None
-                /// for a cell of no one kind.
+                /// A comparison on a cell through the raw columns' union, S's: where a column compares the value as its type, the
+                /// comparison on the cell, <paramref name="alike"/>, which only a literal of the value's type asks; its null, its
+                /// answer across types and its raise as the union says. None for a cell of no one kind.
                 /// </summary>
-                static Truths? Through(PathCell cell, string literal, bool ordering, Func<Truths> alike, Truths across)
-                {
-                    var kind = RawColumnsTable.KindOf(cell);
-                    if (kind is null && cell is not (PathCell.Absent or PathCell.Null))
-                        return null;
-
-                    var answer = kind == RawColumnsTable.KindOf(literal) ? alike() : across;
-                    return RawColumnsTable.Rows.Where(column => column.BesideStringsAlone == false || IsString(literal)).Aggregate(Truths.None, (truths, column) => truths
-                        | (ordering && column.Orders == false ? R : kind is null ? U : column.Read[kind] == RawColumnsTable.Answer.Raises ? R : answer));
-                }
+                static Truths? Through(PathCell cell, string op, string literal, RawTruths columns, Func<Truths> alike) =>
+                    RawKey.On(RawReader, cell, op, literal) is { } key ? columns[key] & ((key.Across ? Truths.Any : alike()) | U | R) : null;
 
                 /// <summary>
                 /// A string is equal to the one with its units alone (<c>Calcite.RawStringEqualityIsOrdinal</c>), and a number
@@ -939,19 +934,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// which the theory spells alike written with a point, so both; and a <c>VARIANT</c>'s only where the literal's
                 /// box, which the IR does not keep, is its own. So TRUE or FALSE where any reading of the box is equal.
                 /// </summary>
-                public override Truths EqualOn(PathCell cell, string literal) => TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : Through(cell, literal, false, () => cell switch
+                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) => TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : Through(cell, PredicateAtom.Equal, literal, columns, () => cell switch
                 {
                     _ when IsNumber(literal) => TryNumberOf(literal, out var c) && cell.SidesOf(c, byValue: true, byDouble: true) is { } sides && sides.All(s => s is int side && side != 0) ? F : T | F,
                     PathCell.Point { Value: var v } => v == literal ? T : F,
                     _ => cell.Contains(literal) ? T | F : F,
-                }, F) ?? Equal(cell.Coarse, literal);
+                }) ?? Equal(cell.Coarse, literal);
 
                 /// <summary>
                 /// Ordered as the type: a string by its UTF-16 units, a boolean false first, a number through its box, where two
                 /// doubles compare by <c>Double.compareTo</c>, which puts a stored -0.0 below a double 0 the IR spells as 0
                 /// (<c>Calcite.RawNullIsSqlNull</c>).
                 /// </summary>
-                public override Truths OrderOn(PathCell cell, string op, string literal) => Through(cell, literal, true, () => cell switch
+                public override Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => Through(cell, op, literal, columns, () => cell switch
                 {
                     _ when IsNumber(literal) => TryNumberOf(literal, out var c) && cell.SidesOf(c, byValue: true, byDouble: true) is { } sides
                         ? Placed(op, c == 0 && sides.Contains(0) ? [.. sides, null] : sides, Truths.None) : T | F,
@@ -959,11 +954,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     PathCell.Strings { High: string high } when string.CompareOrdinal(high, literal) <= 0 => Ordered(op, -1) ? T : F,
                     PathCell.Strings { Low: string low } when string.CompareOrdinal(low, literal) >= 0 => Ordered(op, 1) ? T : F,
                     _ => T | F,
-                }, R) ?? Order(cell.Coarse, op, literal) | R;
+                }) ?? Order(cell.Coarse, op, literal) | R;
 
-                /// <summary>True of a null alone, and a raise where a column reads no value of the kind.</summary>
-                public override Truths NullOn(PathCell cell) => cell is PathCell.Absent or PathCell.Null ? T : RawColumnsTable.KindOf(cell) is { } kind
-                    ? RawColumnsTable.Rows.Aggregate(Truths.None, (truths, column) => truths | (column.Read[kind] == RawColumnsTable.Answer.Raises ? R : F)) : Null(cell.Coarse);
+                /// <summary>As the union says: true of a null alone, and a raise where a column reads no value of the kind.</summary>
+                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(RawReader, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
 
             }
 

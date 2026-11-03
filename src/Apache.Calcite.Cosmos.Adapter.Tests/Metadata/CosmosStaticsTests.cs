@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.CosmosLookupJoin", ["JoinAsyncMethod", "JoinMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 
-            ("Adapter.Sql.CosmosAxiomRows", ["Owed", "Targets"], StaticFact, "the registry's rows owed a target, and the targets"),
+            ("Adapter.Sql.CosmosAxiomRows", ["Comparisons", "Kinds", "Owed", "Targets"], StaticFact, "the registry's rows owed a target, the targets, and the raw columns' keys"),
             ("Adapter.Sql.CosmosAxioms", ["All", "Cases", "Family", "NoTruth", "Orders", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
             ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
             ("Adapter.Sql.CosmosFunctionSpellings", ["AzureVerdicts", "Bands", "ConcatenatedStored", "Declared", "DirectFunctions", "Mapped", "PatternedStored", "RepeatedStored", "ReplacedStored", "RowFunctions", "Rows", "Searched", "SearchedFor"], StaticFact, "the functions spelled as they are, the rows read once from the registry, the verdicts Azure is held to until its rows, and the legality the rows do not carry"),
@@ -170,6 +170,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.FunctionSubjects", ["Subject"], StaticFact, "the operand each function's rows describe"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "Identity", "Operands", "Opposite", "OppositeElse", "Rows"], StaticFact, "Kleene logic as rows"),
             ("Facts.Rendering.Priced", ["None", "Unpriced"], StaticFact, "sentinels"),
+            ("Facts.Rendering.RawTruths", ["Empty", "TruthsUnion", "Union"], StaticFact, "the raw union's lattices and its bottom"),
             ("Facts.Rendering.ReaderEdgesTable", ["Rows"], StaticFact, "each reader's edges"),
             ("Facts.Rendering.ReadingPrecisionTable", ["Rows"], StaticFact, "each reading's precision"),
             ("Facts.Rendering.RenderingAnswerMemo", ["Digests"], PlanScoped, "keyed weakly on a generation: its rows' hash, a function of the definition"),
@@ -202,7 +203,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.Reading.Typed", ["Rows"], StaticFact, "a reader's rows"),
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
-            ("Facts.Saturation.RawColumnsTable", ["Rows"], StaticFact, "the raw columns"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
             ("Facts.Saturation.StringCalls", ["Every", "First", "Functions"], StaticFact, "how each string function draws its operands' characters"),
         ];

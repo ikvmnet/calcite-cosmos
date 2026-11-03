@@ -149,13 +149,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// The raw columns S will take the union of are a <c>Calcite</c> row's, read through the registry: until S reads
-        /// them (h12) the host table is the row's, one list.
+        /// The raw columns S takes the union of are a <c>Calcite</c> row's, read through the registry one row a column a key
+        /// (h12): every key the raw reading and its cast ask, a column raw beside strings alone only beside a string, and each
+        /// answer as the row states it.
         /// </summary>
         [Fact]
-        public void TheRawColumnsAreACalciteRows()
+        public void TheRawColumnsAreACalciteRowsReadOneRowAColumnAKey()
         {
-            CosmosAxiomRows.ReadColumns(CosmosAxioms.All).Should().Equal(RawColumnsTable.Rows.Select(c => ("Calcite.RawNullIsSqlNull", c)));
+            const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
+            var rows = CosmosAxiomRows.ReadColumns(CosmosAxioms.All);
+            rows.Select(r => (r.Key, r.Column)).Should().OnlyHaveUniqueItems();
+            rows.GroupBy(r => r.Column).ToDictionary(g => g.Key, g => g.Count()).Should().Equal(new Dictionary<string, int> { ["VARIANT"] = 294, ["ANY"] = 294, ["VARCHAR"] = 84 });
+
+            var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
+            Truths At(string reader, Class kind, Test test, Class operand, string column) =>
+                rows.Single(r => r.Key == RawKey.Of(reader, kind, test, operand) && r.Column == column).Truths;
+
+            (At("raw", Class.Number, Test.Equal, Class.String, "VARIANT"), At("raw", Class.Number, Test.Equal, Class.String, "VARCHAR")).Should().Be((F, R));
+            (At("raw", Class.Number, Test.Less, Class.Number, "VARIANT"), At("raw", Class.Number, Test.Less, Class.Number, "ANY")).Should().Be((R, T | F));
+            (At("raw", Class.True, Test.Equal, Class.False, "ANY"), At("raw", Class.Object, Test.Greater, Class.String, "ANY")).Should().Be((T | F, R));
+            (At("raw", Class.Null, Test.Equal, Class.String, "ANY"), At("raw", Class.Null, Test.IsNull, Class.None, "VARCHAR")).Should().Be((U, T));
+            (At(cast, Class.Number, Test.Equal, Class.String, "VARIANT"), At(cast, Class.Number, Test.Equal, Class.String, "ANY"), At(cast, Class.Object, Test.IsNull, Class.None, "VARIANT"))
+                .Should().Be((U, T | F, R));
+            rows.Should().NotContain(r => r.Column == "VARCHAR" && r.Key.Reader == "raw" && r.Key.Test != Test.IsNull && r.Key.Operand != Class.String);
         }
 
         /// <summary>

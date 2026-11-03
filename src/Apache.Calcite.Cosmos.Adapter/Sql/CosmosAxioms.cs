@@ -7,6 +7,7 @@ using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
+using Column = Apache.Calcite.Cosmos.Adapter.Sql.CosmosRawColumn.Answer;
 using Test = Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest;
 
 namespace Apache.Calcite.Cosmos.Adapter.Sql
@@ -349,7 +350,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.RawNullIsSqlNull",
                 "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone. Within a type ANY orders as the type, a string by its UTF-16 units as a VARCHAR column does and false before true, and compares a number in the box the reader built: a long by its value, and any other number by its double's exact value, so 2^53 + 1 written with a point is 2^53 and a stored 0.1 lies above 0.1; two doubles compare by Double.compareTo, so a stored -0.0 lies below a double 0 and is unequal to it, where a long 0 equals both.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal",
-                Columns: RawColumnsTable.Rows),
+                Columns:
+                [
+                    // No ordering, the statement failing to compile; a number equal to one boxed with its own type alone; cast to
+                    // text, a number or a boolean is null and a structure raises.
+                    new("VARIANT", false, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself), false, CosmosRawColumn.Kinds(Column.Itself, Column.Null, Column.Null, Column.Raises)),
+                    // Ordered as the type, a number in its box; cast to text, each value as Java renders the box.
+                    new("ANY", false, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself), true, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself)),
+                    // A string alone, the statement failing over anything else.
+                    new("VARCHAR", true, CosmosRawColumn.Kinds(Column.Itself, Column.Raises, Column.Raises, Column.Raises), true, CosmosRawColumn.Kinds(Column.Itself, Column.Raises, Column.Raises, Column.Raises)),
+                ]),
             new("Calcite.CastOfARawValueToText",
                 "A cast to VARCHAR of a raw value is its column's own. A string is itself and a null or an absent path null in each; a VARIANT casts a number and a boolean to null and raises over an object or an array; an ANY renders each value as Java renders the reader's box: a boolean as true or false, an integer within a long in its digits and any other number as Java spells its double, 42.0 as 42.0 and 99999999999999999999 as 1.0E20, an object as {a=1} and an array as [1]; and a VARCHAR column reads a string alone.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 24), "Measurements.CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn"),

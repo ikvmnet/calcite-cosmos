@@ -7275,9 +7275,9 @@ built, a long by its value and any other number by its double's exact value, and
 with its own type alone, which the IR does not keep. The row now says so, measured on 2^53 + 1 written with a point and
 a stored `0.1`.
 
-**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns, each as `RawColumnsTable` states it:
-whether it reads a value of each kind, whether it orders, what its cast to text makes of each kind. The table is the
-rows' facts as data, asserted beside their measurement, and the cells only look it up. An ordering places a value of
+**What S reads.** `PredicateAtom.OnCell` reads the union of the three columns, each as the row states it: whether it
+reads a value of each kind, whether it orders, what its cast to text makes of each kind. Since h12 the union is S's rule
+over the row's columns (*The raw columns' union is a rule*), and the cells read it. An ordering places a value of
 the literal's type — a string by its units, a boolean false first, a number by `PathCell.SidesOf` — beside the
 `VARIANT`'s raise, and across types is the raise alone, which under decision 2 any answer but a failure refines.
 `SidesOf` places a number as a box holds it, a whole number within a long by its value, its double or both as its
@@ -7999,9 +7999,9 @@ key worse than the row, never one that answers better.
   `CosmosStringFunctions.RuleOf(call, Emulator)` refused, but one: `POSITION` over a surrogate, which the emulator's
   `INDEX_OF` counts as one code point (`Service.IndexOfCountsUnits`). Since h10 the rows are the rule, and it is refused.
 
-**The raw columns are a `Calcite` row's.** `RawColumnsTable.Rows` is carried by `Calcite.RawNullIsSqlNull` and read
-through `CosmosAxiomRows.ReadColumns`, beside the measured rows rather than among them, since a measured key has no
-column and S's licence reads every `Calcite` row. The union over the columns stays in C# until h12 moves it into S.
+**The raw columns are a `Calcite` row's.** The columns are carried by `Calcite.RawNullIsSqlNull` and read through
+`CosmosAxiomRows.ReadColumns`, beside the measured rows rather than among them, since a measured key has no column and
+S's licence reads every `Calcite` row. h12 moved the union over them into S and deleted the host table.
 
 **Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
 line with the release that answered (EN20261019, CI's); a row measured on the emulator since 2026-11-02 has lines
@@ -8297,6 +8297,40 @@ its bundles holds a pair yet.
 production conjunct holds a pair S owns (`Owns` reads a literal on the right): plans and sent SQL are byte-equal, the IR
 column moving where an opaque term is now spelled as the comparison. Numbers off the diagonal are not parted by order,
 so a comparison of two numbers is Unproven.
+
+### The raw columns' union is a rule (h12)
+
+**What moved.** The raw reading and its cast to text read three columns at once (the IR does not say which), and the
+cells took their union in C#, each column's answer looked up in a host table. The table is gone: its three columns are
+`Calcite.RawNullIsSqlNull`'s, `CosmosAxiomRows.ReadColumns` reads them into S as one `rawcolumn` row a column a key, and
+one rule, *a raw reading's truths on a key are the union of its columns'*, joins them into `rawunion` (77 rules).
+
+**The key carries the literal's class.** `RawKey(Reader, Kind, Test, Operand)`: the reading (`raw` or
+`cast:VARCHAR:raw`), the cell's kind, the test, and the literal's class (none for the null test). The spec's key held
+whether the literal is across the cell's type, but a `VARCHAR` column is raw beside a string alone, so a number cell
+beside a string and beside a boolean, both across, answer apart; the class says both, and `RawKey.Across` reads the
+type off it, a boolean one type and a structure one. Each row is what the column answers over a value of the kind: a
+column comparing the value as its type TRUE or FALSE, across types an equality FALSE and an ordering a raise, a column
+with no ordering a raise on any, a null UNKNOWN (TRUE to the null test), and the cast the rendering compared, null or
+a raise as the column casts.
+
+**One value, joined key by key.** `rawunion` is one value, `RawTruths`, a key's truths per key, under a lattice that
+joins two key by key with `TruthsUnion` (`a | b`), both laws-checked. A rule's primitive reads only what the rule binds,
+and a raw atom's cells ask a key each, by the cell's kind; a function keyed by `RawKey`, as the spec has it, would need
+a lookup per kind and a second rule to gather them, so the union is the table's single value and the gate's pairing rule
+binds it beside the atom (four operands a `Compute`, so the atom and the union go as one pair). It starts empty, so a
+definition naming no column still pairs every atom: a key no column answers reads anything and a raise.
+
+**What the cell decides.** Only what one comparison on concrete values answers: where the union holds TRUE or FALSE
+and the literal is of the value's type, the comparison on the cell (a string by its units, a number through
+`SidesOf`, the cast's rendering through `MayRender`), met with the union; the null, the raise and across types are the
+union's. So the answers are those of the C# union figure for figure: digests byte-equal, population D unchanged.
+
+**The plant.** A definition with a column's rows dropped is caught by source A: without `ANY` a number cast to text is
+never the text it renders as, and S sends `c.category = "30"`, losing the stored 30 an `ANY` keeps; without `VARIANT` a
+boolean cast to text is never null, and S's null test loses the stored `true` a `VARIANT` casts to null. A `VARCHAR`
+column adds only raises, which the agreement sets aside, so its drop sends what S sends unplanted; the theory's digest
+still parts the two.
 
 ---
 

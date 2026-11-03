@@ -46,6 +46,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>S defined from <see cref="Switched"/>, once a run.</summary>
         public static RenderingTheory SwitchedTheory => SwitchedProbe.Value;
 
+        /// <summary>The raw columns' truths S's rule joins from the registry's row (h12), which a raw reading's cells read.</summary>
+        public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
+
         /// <summary>The table S settles for the set CI asserts under.</summary>
         public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)));
 

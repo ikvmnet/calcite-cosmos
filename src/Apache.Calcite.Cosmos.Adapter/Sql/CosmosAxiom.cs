@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 
-using Apache.Calcite.Cosmos.Facts.Saturation;
-
 namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
@@ -24,6 +22,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// (<see cref="CosmosAxiomRows.ReadColumns"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
-        IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<RawColumnsTable.Column>? Columns = null);
+        IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null);
 
 }

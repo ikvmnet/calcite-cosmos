@@ -44,11 +44,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
-        /// Every raw column a <c>Calcite</c> row states, citing its axiom: one row a column, for the raw cells' union in S (TODO.md). Not
-        /// measured outcomes, whose key has no column and whose <c>Calcite</c> rows S's licence reads.
+        /// What each raw column a <c>Calcite</c> row states answers on each key, one row a column a key, whose union S's rule
+        /// takes (h12): the raw reading's comparisons beside a literal of each class and its null test, and those of its cast
+        /// to text, each its column's answer for the kind. A column comparing the value as its type answers TRUE or FALSE,
+        /// which the cell decides; across types an equality is unequal and an ordering raises; a column with no ordering
+        /// raises on every one; a null is SQL null (<c>Calcite.RawNullIsSqlNull</c>, <c>Calcite.CastOfARawValueToText</c>).
         /// </summary>
-        public static IReadOnlyList<(string AxiomId, RawColumnsTable.Column Column)> ReadColumns(IEnumerable<CosmosAxiom> axioms) =>
-            [.. from axiom in axioms where axiom.MeasuredOn == CosmosAxiomTarget.Calcite from column in axiom.Columns ?? [] select (axiom.Id, column)];
+        public static IReadOnlyList<(RawKey Key, string Column, Truths Truths)> ReadColumns(IEnumerable<CosmosAxiom> axioms) =>
+            [.. from axiom in axioms where axiom.MeasuredOn == CosmosAxiomTarget.Calcite from column in axiom.Columns ?? [] from row in Rows(column) select (row.Key, column.Name, row.Truths)];
+
+        static readonly CosmosValueClass[] Kinds = [CosmosValueClass.String, CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False,
+            CosmosValueClass.Object, CosmosValueClass.Array, CosmosValueClass.Null];
+
+        static readonly CosmosServiceTest[] Comparisons = [CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater,
+            CosmosServiceTest.GreaterOrEqual];
+
+        static IEnumerable<(RawKey Key, Truths Truths)> Rows(CosmosRawColumn column)
+        {
+            const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
+            var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
+            foreach (var kind in Kinds)
+            {
+                var (read, text) = KindOf(kind) is { } k ? (column.Read[k], column.AsText[k]) : (CosmosRawColumn.Answer.Null, CosmosRawColumn.Answer.Null);
+                yield return (RawKey.Of(PredicateAtom.RawReader, kind, CosmosServiceTest.IsNull, CosmosValueClass.None), Answered(read, F, T));
+                yield return (RawKey.Of(cast, kind, CosmosServiceTest.IsNull, CosmosValueClass.None), Answered(text, F, T));
+                foreach (var test in Comparisons)
+                {
+                    foreach (var operand in Kinds.Where(o => column.BesideStringsAlone == false || o == CosmosValueClass.String))
+                    {
+                        var key = RawKey.Of(PredicateAtom.RawReader, kind, test, operand);
+                        yield return (key, test != CosmosServiceTest.Equal && column.Orders == false ? R : Answered(read, key.Across ? test == CosmosServiceTest.Equal ? F : R : T | F, U));
+                    }
+
+                    yield return (RawKey.Of(cast, kind, test, CosmosValueClass.String), Answered(text, T | F, U));
+                }
+            }
+        }
+
+        static Truths Answered(CosmosRawColumn.Answer answer, Truths itself, Truths nulled) =>
+            answer switch { CosmosRawColumn.Answer.Itself => itself, CosmosRawColumn.Answer.Null => nulled, _ => Truths.Raises };
+
+        /// <summary>The column's kind of a class; a null's none.</summary>
+        static string? KindOf(CosmosValueClass kind) => kind switch
+        {
+            CosmosValueClass.String => CosmosRawColumn.String,
+            CosmosValueClass.Number => CosmosRawColumn.Number,
+            CosmosValueClass.True or CosmosValueClass.False => CosmosRawColumn.Boolean,
+            CosmosValueClass.Object or CosmosValueClass.Array => CosmosRawColumn.Structure,
+            _ => null,
+        };
 
         /// <summary>
         /// The cells of a key some outcome answers for a target that no outcome covers for it: unmeasured there, so no

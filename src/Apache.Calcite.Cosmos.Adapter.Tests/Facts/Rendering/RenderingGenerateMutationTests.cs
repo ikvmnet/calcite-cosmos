@@ -94,6 +94,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void M11IsCaughtBySourceAsImplies() => Caught(Run("M11"));
 
+        /// <summary>The raw cast's triggers of h12's plant, over a key path read as a raw value.</summary>
+        static readonly string[] RawCasts = [.. new[] { "= '30'", "= 'true'", "IS NULL", "<> 'bikes'" }.Select(t => $"SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) {t}")];
+
+        /// <summary>The registry's definition with one raw column's rows dropped, which S's union then lacks.</summary>
+        static Plant Dropped(string column, params (string Sql, string? Caught)[] triggers) =>
+            new("drop " + column, true, d => d with { Columns = [.. d.Columns.Where(c => c.Column != column)] }, _ => { }, triggers);
+
+        /// <summary>
+        /// h12's plant (line 34): the raw columns' union with a column dropped from the row. Without <c>ANY</c> a number or a
+        /// boolean cast to text is never the text it renders as, so S sends the string's equality alone, and source A finds
+        /// the stored 30 and true Calcite keeps through an <c>ANY</c>; without <c>VARIANT</c> a boolean cast to text is
+        /// never null, so S sends a null test, and source A finds the stored true a <c>VARIANT</c> casts to null.
+        /// </summary>
+        [Fact]
+        public void ARawColumnDroppedFromTheUnionIsCaughtBySourceA()
+        {
+            Caught(Planned(Dropped("ANY", (RawCasts[0], "$[\"category\"]=number"), (RawCasts[1], "$[\"category\"]=boolean|true"))));
+            Caught(Planned(Dropped("VARIANT", (RawCasts[1], "$[\"category\"]=boolean|true"), (RawCasts[2], "$[\"category\"]=boolean|true"),
+                (RawCasts[3], "$[\"category\"]=boolean|true or boolean|false"))));
+        }
+
+        /// <summary>
+        /// A <c>VARCHAR</c> column adds only raises to the union, which the agreement sets aside (<c>Tolerated</c>): dropped, S
+        /// sends and implies what it does unplanted, and the theory is another, so it keeps answers of its own.
+        /// </summary>
+        [Fact]
+        public void AVarcharColumnDroppedRaisesNothingSourceASees()
+        {
+            var triggers = RawCasts.Select(t => (t, (string?)null)).ToArray();
+            var (tip, dropped) = (Planned(new Plant("raw tip", true, d => d, _ => { }, triggers)), Planned(Dropped("VARCHAR", triggers)));
+            dropped.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty();
+            Sent(dropped).Should().BeEquivalentTo(Sent(tip));
+            var theory = Graph(d => d with { Columns = [.. d.Columns.Where(c => c.Column != "VARCHAR")] }, _ => { }).Current();
+            RenderingAnswerMemo.DigestOf(theory).Should().NotBe(RenderingAnswerMemo.DigestOf(ProbeRows.ProbeTheory));
+        }
+
         /// <summary>
         /// Unplanted, S sends nothing wrong over every trigger, and what each trusted plant sends or implies is not what the
         /// tip does somewhere among its triggers: the fault fired.
@@ -292,14 +328,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>M6: text equal to <c>'true'</c> read as FALSE of the boolean true, which Calcite renders so.</summary>
-        static Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair) =>
-            (atom, vector, means, tolerated) => pair(atom, vector, means, tolerated) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
+        static Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair) =>
+            (atom, columns, vector, means, tolerated) => pair(atom, columns, vector, means, tolerated) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
                 ? Reclassed(outcomes, cell => cell is PathCell.Point { Value: var v } && v == JsonValues.Of(true), k => k with { Calcite = Truths.False })
                 : outcomes;
 
         /// <summary>M7 and M10: a reading Calcite's own (the text accessor's rendering, a <c>RETURNING DECIMAL</c>) read as the raw value.</summary>
-        static Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> ReadAsRaw(Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair, string reader) =>
-            (atom, vector, means, tolerated) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, vector, means, tolerated);
+        static Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> ReadAsRaw(Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair, string reader) =>
+            (atom, columns, vector, means, tolerated) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, columns, vector, means, tolerated);
 
         /// <summary>M8 and M9: the service's comparison of a boolean with a string, for the operators given, answered by the boolean's rendering.</summary>
         static Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> leaf, Op[] ops) =>

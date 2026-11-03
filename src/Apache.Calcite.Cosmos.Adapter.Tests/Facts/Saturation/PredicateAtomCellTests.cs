@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var predicate = Predicate(atom);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
                 {
-                    var answers = atom.OnCell(cell);
+                    var answers = atom.OnCell(cell, Rendering.ProbeRows.Columns);
                     foreach (var value in Inside(cell))
                         foreach (var (typed, raw) in Modes(atom))
                         {
@@ -111,9 +111,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void TypedCellsKeepTheValueBesideTheRaise()
         {
-            Unkept((atom, cell) => atom.OnCell(cell)).Should().BeEmpty();
+            Unkept((atom, cell) => atom.OnCell(cell, Rendering.ProbeRows.Columns)).Should().BeEmpty();
             Unkept((atom, cell) => atom.Reader == Bigint && cell is PathCell.Point { Value: var v } && TryNumberOf(v, out var x) && x >= int.MinValue && x <= int.MaxValue
-                    ? Truths.Raises : atom.OnCell(cell))
+                    ? Truths.Raises : atom.OnCell(cell, Rendering.ProbeRows.Columns))
                 .Should().NotBeEmpty("the plant answers a raise alone where the column reads an int-sized BIGINT");
         }
 
@@ -132,8 +132,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var leftOut = atom.Reader == PredicateAtom.RawReader || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
-                        wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
+                        wider.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns)} on {cell}, and {atom.On(cell.Coarse)} on its state");
             }
 
             wider.Should().BeEmpty();
@@ -156,8 +156,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 readers.Add(atom.Reader);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
                 {
-                    if ((atom.OnCell(cell) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
-                        inexact.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
+                        inexact.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns)} on {cell}, and {atom.On(cell.Coarse)} on its state");
 
                     foreach (var value in Inside(cell))
                         foreach (var (typed, raw) in Modes(atom))
@@ -206,9 +206,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of(30m)));
 
             new[] { new PathCell.Point(Of("a")), new PathCell.Strings(Of("b"), null, ValueSet<string>.Empty, AllBands), new PathCell.Point(Of(7m)), (PathCell)new PathCell.Null() }
-                .Select(below.OnCell).Should().Equal(T | R, F | R, R, U | R);
-            new[] { new PathCell.Point(Of(9007199254740992m)), new PathCell.Point(Of(9007199254740993m)), new PathCell.Point(Of(true)) }.Select(around.OnCell).Should().Equal(T | R, T | F | R, R);
-            new[] { new PathCell.Point(Of("30")), new PathCell.Point(Of(30m)), new PathCell.Point(Of(31m)), (PathCell)new PathCell.Null() }.Select(thirty.OnCell).Should().Equal(F, T | F, F, U);
+                .Select(c => below.OnCell(c, Rendering.ProbeRows.Columns)).Should().Equal(T | R, F | R, R, U | R);
+            new[] { new PathCell.Point(Of(9007199254740992m)), new PathCell.Point(Of(9007199254740993m)), new PathCell.Point(Of(true)) }.Select(c => around.OnCell(c, Rendering.ProbeRows.Columns)).Should().Equal(T | R, T | F | R, R);
+            new[] { new PathCell.Point(Of("30")), new PathCell.Point(Of(30m)), new PathCell.Point(Of(31m)), (PathCell)new PathCell.Null() }.Select(c => thirty.OnCell(c, Rendering.ProbeRows.Columns)).Should().Equal(F, T | F, F, U);
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public void ADecimalReturningReadsATextExactlyPastADecimal()
         {
             const Truths T = Truths.True, F = Truths.False, R = Truths.Raises;
-            Truths On(string op, decimal literal, string text) => PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), op, Of(literal)).OnCell(new PathCell.Point(Of(text)));
+            Truths On(string op, decimal literal, string text) => PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), op, Of(literal)).OnCell(new PathCell.Point(Of(text)), Rendering.ProbeRows.Columns);
 
             new[] { "1e-50", "-0.0e5", "0E99999999999" }.Select(t => On("=", 0m, t)).Should().Equal(F | R, T | R, R);
             new[] { "2.00000000000000000000000000001", "2.000000000000000000000000000000000", "200e-2" }.Select(t => On("=", 2m, t)).Should().Equal(F | R, T | R, T | R);
@@ -244,8 +244,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     foreach (var cell in fine.Cells)
                     {
                         var within = coarse.Cells.Single(c => c.Contains(cell.Witness()));
-                        if ((atom.OnCell(cell) & ~atom.OnCell(within)) != 0)
-                            wider.Add($"{atom} answers {atom.OnCell(cell)} on {cell}, within {within}, which answers {atom.OnCell(within)}");
+                        if ((atom.OnCell(cell, Rendering.ProbeRows.Columns) & ~atom.OnCell(within, Rendering.ProbeRows.Columns)) != 0)
+                            wider.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns)} on {cell}, within {within}, which answers {atom.OnCell(within, Rendering.ProbeRows.Columns)}");
                     }
 
             wider.Should().BeEmpty();

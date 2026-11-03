@@ -122,6 +122,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             MeasuredKeys = Graph.DefineFunction<string, ValueSet<FunctionKey>>("measuredkeys", ValueLattice.Union<FunctionKey>(), analysed);
             DisagreeingKeys = Graph.DefineFunction<RenderingSet, string, ValueSet<FunctionKey>>("disagreeingkeys", ValueLattice.Union<FunctionKey>());
 
+            // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
+            RawColumn = Graph.DefineFunction<RawKey, string, Truths>("rawcolumn");
+            RawUnion = Graph.DefineFunction<RawTruths>("rawunion", RawTruths.Union);
+
             var measure = Graph.DefineRuleset("measure");
             var allowed = Graph.DefineRuleset("allowed");
             var refutes = Graph.DefineRuleset("refutes");
@@ -130,8 +134,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var matched = Graph.DefineRuleset("matched");
             var licence = Graph.DefineRuleset("licence");
             var disagree = Graph.DefineRuleset("disagree");
+            var raw = Graph.DefineRuleset("raw");
             DefineTheory(measure, allowed, refutes, tabulate);
             DefineLicences(expected, matched, licence);
+            raw.DefineRule("a raw reading's truths on a key are the union of its columns'", r =>
+            {
+                var (k, c, t) = r.Vars<RawKey, string, Truths>("k", "c", "t");
+                r.When(t.Is(RawColumn.Of(k, c)));
+                r.Then(RawUnion.Of().Is(Compute.Of(k, t, RawTruths.Of)));
+            });
 
             var tag = Graph.DefineRuleset("tag");
             DefineTag(tag);
@@ -176,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // A nested call is gathered once its inner place is written: each nesting level is one outer pass.
             var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
 
-            Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
+            Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree, raw), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
             // Two-valuedness reads the gate's classes complete, beside the lift; the case's best reads it complete.
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, pair, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
@@ -254,6 +265,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The keys of a function some target a set serves answers otherwise than Calcite, derived at the build.</summary>
         public Function<RenderingSet, string, ValueSet<FunctionKey>> DisagreeingKeys { get; }
+
+        /// <summary>What one raw column answers on a key (<c>CosmosAxiomRows.ReadColumns</c>), each row raw.</summary>
+        public Function<RawKey, string, Truths> RawColumn { get; }
+
+        /// <summary>The raw columns' truths, joined key by key from every column's: what a raw reading's cells read.</summary>
+        public Function<RawTruths> RawUnion { get; }
         public Function<MeasuredKey, RenderingTarget, ValueSet<string>> Cites { get; }
         public Function<RenderingSet, ValueSet<RenderingTarget>> Serves { get; }
         public Function<AnswerMeanings> Means { get; }
@@ -402,6 +419,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<Refutation>("refutation");
             values.Register<MeasuredKey>("measured key");
             values.Register<FunctionKey>("function key");
+            values.Register<RawKey>("raw key");
+            values.Register<RawTruths>("raw truths");
+            values.Register<(PredicateAtom, RawTruths)>("atom and raw truths");
             values.Register<PathImport>("path import");
             values.Register<MeasuredEntry>("measured entry");
             values.Register<AnswerMeanings>("answer meanings");
@@ -708,9 +728,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, z, v) = r.Vars<RenderPosition, CellPartition, OutcomeVector>("pos", "z", "v");
-                var (mn, tol) = r.Vars<AnswerMeanings, Truths>("mn", "tol");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()), tol.Is(Tolerated.Of()));
-                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, tol, definition.Pair)));
+                var (mn, tol, u) = r.Vars<AnswerMeanings, Truths, RawTruths>("mn", "tol", "u");
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()), tol.Is(Tolerated.Of()),
+                    u.Is(RawUnion.Of()));
+                // Compute takes four operands: the atom goes beside the columns its raw cells read.
+                r.Then(Outcomes.Of(e, f).Is(Compute.Of(Compute.Of(a, u, (x, y) => (x, y)), v, mn, tol, (au, w, m, t) => definition.Pair(au.Item1, au.Item2, w, m, t))));
             });
 
             // The universal over cells: the cells' classes are complete (lattice-free), and the allowed ones the theory's.
@@ -1342,6 +1364,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var set in definition.Serves.Keys)
                     foreach (var function in keys.Select(k => k.Function).Distinct())
                         w.Assume(DisagreeingKeys.Of(set, function).Is(ValueSet<FunctionKey>.Empty));
+
+                // The union starts empty, so an atom is paired on its cells where no column is named.
+                foreach (var (key, column, truths) in definition.Columns)
+                    w.Assume(RawColumn.Of(key, column).Is(truths));
+
+                w.Assume(RawUnion.Of().Is(RawTruths.Empty));
 
                 w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
                     PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));

@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
+        Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
         IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
@@ -40,6 +40,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// (<c>CosmosAxiomRows.ReadFunctions</c>). None in a definition that names none.
         /// </summary>
         public IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> Functions { get; init; } = [];
+
+        /// <summary>
+        /// What each raw column answers on each key (<c>CosmosAxiomRows.ReadColumns</c>), whose union S's rule takes (h12).
+        /// None in a definition that names none, where a raw reading's cells read anything and a raise.
+        /// </summary>
+        public IReadOnlyList<(RawKey Key, string Column, Truths Truths)> Columns { get; init; } = [];
 
         public ValueSet<string> PartingBands => ValueSet.From(Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
 
