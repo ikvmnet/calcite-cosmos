@@ -36,7 +36,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// naming a member holding either escape is refused.</param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
-        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false)
+        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false,
+            IReadOnlyDictionary<string, SqlValue.Call>? computed = null)
         {
             object? Bound(string literal) => stored && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
 
@@ -44,6 +45,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             void Path(string spelled)
             {
+                // A computed place (h10) is its service call over its operands, each literal bound by the slot rule.
+                if (computed is not null && computed.TryGetValue(spelled, out var call))
+                {
+                    builder.Append(Place(call) ?? throw new ArgumentException($"The form reads {spelled}, which has no service spelling.", nameof(computed)));
+                    return;
+                }
+
                 if (paths.TryGetValue(spelled, out var path) == false)
                     throw new ArgumentException($"The form reads {spelled}, which the statement does not name.", nameof(paths));
 
@@ -57,6 +65,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                             ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
                             : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
             }
+
+            string? Place(SqlValue.Call call) => CosmosFunctionSpellings.Spell(call, operand =>
+            {
+                switch (operand)
+                {
+                    case SqlValue.Call { Spelled: { } inner } nested when computed!.ContainsKey(inner):
+                        return Place(nested);
+                    case SqlValue.Literal literal:
+                        return parameters.Add(Bound(literal.Value));
+                    case var _ when operand.PathRead is JsonDocumentPath read && paths.ContainsKey(SqlValue.Spell(read)):
+                        var at = builder.Length;
+                        Path(SqlValue.Spell(read));
+                        var text = builder.ToString(at, builder.Length - at);
+                        builder.Length = at;
+                        return text;
+                    default:
+                        return null;
+                }
+            });
 
             void Compare(ServiceForm compare, bool parenthesised)
             {

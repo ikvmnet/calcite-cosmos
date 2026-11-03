@@ -35,6 +35,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     {
 
         /// <summary>The parting bands as one set, which <c>sendable</c> reads.</summary>
+        /// <summary>
+        /// The function rows S reads at a computed place (h10): each key's answer on each target that measured it
+        /// (<c>CosmosAxiomRows.ReadFunctions</c>). None in a definition that names none.
+        /// </summary>
+        public IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> Functions { get; init; } = [];
+
         public ValueSet<string> PartingBands => ValueSet.From(Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
 
         /// <summary>

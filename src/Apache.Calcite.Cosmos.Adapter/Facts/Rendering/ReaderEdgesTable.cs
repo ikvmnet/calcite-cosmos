@@ -35,6 +35,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.RawReader] = Row(CutKind.Double),
             [PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)] = Row(),
             [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
+            // A computed text place's (h10), read as text.
+            [PredicateAtom.TypedReader("VARCHAR")] = Row(),
+            [PredicateAtom.TypedReader("CHAR")] = Row(),
             [PredicateAtom.TypedReader("TINYINT")] = Limits("TINYINT", CutKind.Double),
             [PredicateAtom.TypedReader("SMALLINT")] = Limits("SMALLINT", CutKind.Double),
             [PredicateAtom.TypedReader("INTEGER")] = Limits("INTEGER", CutKind.Double),

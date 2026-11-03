@@ -513,7 +513,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.ValidityIsDefinedness",
                 "ST_ISVALID is true for exactly the documents ST_DISTANCE is defined over.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.ValidityAgreesWithDefinedness"),
-            // ── What a string function computes (CosmosStringFunctions) ─────────────────────
+            // ── What a string function computes (CosmosFunctionSpellings) ─────────────────────
 
             new("Service.LengthCountsCodePoints",
                 "LENGTH counts code points: a, U+1F600, b is 3, where Calcite's CHAR_LENGTH counts 4 UTF-16 units. On Azure the two counts are one without a surrogate; the emulator counts the code points of what it stores (EmulatorStoredText), U+0000 and U+FDD0 two each, so there they are one only without a surrogate, U+0000 or U+FDD0 (Service.EmulatorCountsTheStringItStores).",
@@ -561,7 +561,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. StringFunction("LOWER", JsonCharacterBand.NonAscii),
                     .. StringFunction("REPLACE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
                     .. StringFunction("REVERSE", JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("TRIM", JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM BOTH", JsonCharacterBand.Trimmed),
                     .. StringFunction("TRIM LEADING", JsonCharacterBand.Trimmed),
                     .. StringFunction("TRIM TRAILING", JsonCharacterBand.Trimmed),
                     .. StringFunction("||", JsonCharacterBand.None),

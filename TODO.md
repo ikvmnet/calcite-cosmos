@@ -1345,8 +1345,8 @@ the distribution the gate is sized for.
   case-insensitive `LIKE` rewrites and the trims were pushed exactly over any declared string, and were wrong
   where a string held a character beyond U+FFFF, ß or the Kelvin sign, or white space at an end
   (`reports/verify-strings.md`). Each now pushes only where the facts prove the classes of character it needs
-  absent, and is computed in process otherwise (`Sql/CosmosStringFunctions.cs`; `DESIGN.md`, *What a string
-  function computes, asked of its characters*). What is left:
+  absent, and is computed in process otherwise (since h10 the function rows, read by `Sql/CosmosFunctionSpellings.cs`;
+  `DESIGN.md`, *What a string function computes, asked of its characters* and *A computed value is a place*). What is left:
   - **A weakening that would push them anyway** — *not built.* A filter could be sent as `(<pushed>) OR
     RegexMatch(c.s, "[\\x{10000}-\\x{10FFFF}]")` for a count, `"[^\\x00-\\x7F]"` for a case mapping, a test of
     the trimmed class at either end for a trim, with Calcite's filter kept above: the rows without the class are
@@ -1404,7 +1404,7 @@ the distribution the gate is sized for.
     `MAX`, and an ordering against a parameter, outright, or against a literal or another path over text that may
     hold U+0000, the order the emulator runs being E's, which puts U+0000 above every unit from U+0001 to U+FDCF; the
     planted differential's D4–D7 rows hold it both ways. A string function over a stored escape stays in process:
-    under the emulator's set `CosmosStringFunctions.RuleOf(call, set)` asks U+0000 and the high band U+FDD0 lies in of
+    under the emulator's set its rows and `CosmosFunctionSpellings.Refusals(call, set)` (h10) ask U+0000 and the high band U+FDD0 lies in of
     the operands its function works on — a count's, a reversal's, `POSITION`'s subject, each of `REPLACE`'s, every
     operand of a `CONCAT` and a `REPEAT`'s subject, a path among them, and a `LIKE`'s subject where its pattern holds
     `_`, `0` or `1` beyond a prefix, the fold's `ENDSWITH` and `CONTAINS` among them — and the planted differential's D8–D13 rows
@@ -1415,8 +1415,9 @@ the distribution the gate is sized for.
     one change there is a conversion's equality (*Order without equality licenses the last key only*, `DESIGN.md`).
     S carries the rest as data when it takes the parameterised `WHERE`: `Compare`'s refusal under the emulator (a path
     or computed text that may hold U+0000 against a parameter, a literal or another path), the compared positions sent
-    in the stored spelling, and `CosmosStringFunctions`' emulator rules, which move to the axiom rows' functions when
-    that class is deleted; `Compare`'s own code goes once S carries its rule. The predicate `NulOrdering` is measured
+    in the stored spelling, and the string functions' emulator rules: since h10 the counts, `REVERSE` and `POSITION` are
+    the axiom rows' functions and the class is deleted, while `REPLACE`'s, `CONCAT`'s, `REPEAT`'s and the `LIKE` patterns'
+    stored rules, which no row measured, stay legality in `CosmosFunctionSpellings.Refusals`; `Compare`'s own code goes once S carries its rule. The predicate `NulOrdering` is measured
     again first: a raw `CONTAINS(p, '\u0000')` matches nearly everything on the emulator, and `CONTAINS(p, U+FDD0 '0')`
     is the exact test. The plant joins 3B's gate. Kill line 10's floors and TLP's `PushedPartitions` are per target,
     the emulator's this fix's (§10, *What the emulator's fix hands Stage 3*), and 3R lowers none of them.
@@ -2774,15 +2775,15 @@ across documents* and *A join of a container to itself* is the record.
   measured on EN20261019 alone. Their tests compare a function row against its `Emulator` outcomes whatever endpoint
   answers, so run 1 adds `Azure` outcomes beside them and the test reads the target it runs on. The spec's M3,
   `IntegerArithmeticIsInDoubles`, is false on the emulator; the row is `Service.IntegerArithmeticIsExactWithinLong`.
-- **A number's function key has no magnitude** — *small, h10.* `FunctionKey` keys a number by kind alone, so every typed
-  arithmetic operator answers `Differs` or `Fails` over a number, a sum that cannot wrap included. A magnitude class
-  (within 2^31, within 2^53, within int64) would let the rows license the ranges where they agree.
-- **`POSITION` under the emulator counts a surrogate apart** — *small, emulator only.* The emulator's `INDEX_OF` counts
-  code points, so `POSITION` over a string holding a surrogate parts from Calcite's there, measured
-  (`Service.StringFunctionAnswersByBand`), and `RuleOf(call, Emulator)` pushes it, as recorded since
-  `Service.IndexOfCountsUnits`. Refusing the surrogates for the subject under the emulator is the smallest sound rule;
-  it changes the emulator's plans, so it is a commit of its own, and
-  `CosmosStringFunctionsTests.EveryBandTheEmulatorPartsOverIsRefusedThereButOne` turns when it lands.
+- **A number's function key has no magnitude** — *small; h10 did not add it, h14's triage decides.* `FunctionKey` keys a
+  number by kind alone, so every typed arithmetic operator answers `Differs` or `Fails` over a number, a sum that cannot
+  wrap included, and no arithmetic place has an image: the census's 143 arithmetic pushes are listed Unproven
+  (`reports/stage3-3A/h10/listing.tsv`). A magnitude class (within 2^31, within 2^53, within int64), its rows measured,
+  and `RenderingImage` cutting a range at `CutPoints.Critical` (data only at h10) would license the ranges where they
+  agree.
+- ~~**`POSITION` under the emulator counts a surrogate apart**~~ — *closed at h10.* The rows are the rule, so the
+  emulator refuses `POSITION` over a subject that may hold a surrogate
+  (`CosmosFunctionRowsGateTests.EveryBandTheEmulatorPartsOverIsRefusedThere`); no digest statement moved.
 - **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
   unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
   constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
@@ -2919,15 +2920,41 @@ across documents* and *A join of a container to itself* is the record.
   atoms alone (h08), so a junction or negation as a condition reads its else-arm wide, which is sound and may cost a
   cheaper narrow form. Two rules over junction sides and negation are the proper fix if the triage shows a loss; they
   would take S to 80 as built at h31 plus two (line 31), so the line is the owner's call then.
-- **The ternary rule reads no failure of an arm off its stratum** — *small, before h10.* An arm's agreement is proved on
-  its own stratum's cells; every form S builds at h08 fails nowhere, but arithmetic does
-  (`Service.OutOfDomainArithmeticFailsTheStatement`). Before a computed place reaches an arm, the rule reads that the
-  arms fail nowhere, or a measured row says the service skips the arm it does not take (DESIGN.md, *A `CASE` in S*).
+- **The ternary rule reads no failure of an arm off its stratum** — *small; held at h10 by the image rule, owed when a
+  failing key is licensed.* An arm's agreement is proved on its own stratum's cells; arithmetic fails the statement
+  (`Service.OutOfDomainArithmeticFailsTheStatement`). A computed place reaches an arm from h10, but it has an import only
+  where every key its cells fall under answers `Same` on every target, which a failing key does not, so no form over a
+  failing place agrees. When a magnitude class licenses arithmetic, the rule reads that the arms fail nowhere, or a
+  measured row says the service skips the arm it does not take (DESIGN.md, *A `CASE` in S*).
 - **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
   is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
   account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
 - **The rule count is two over the spec's** — *note, line 31.* The ternary is one template written twice and a truth
-  value's constant is a rule of its own (h08): 68 as built against the spec's 66, so the spec's 78 at h31 is 80.
+  value's constant is a rule of its own (h08): 68 as built against the spec's 66, so the spec's 78 at h31 is 80. h10
+  adds the spec's six: 74 against its 72.
+- **The string functions' column bridge** — *bridge, deleted at h37.* `CosmosRexTranslator.RequireStringFunctionsAgree`
+  reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
+  not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
+  rule's.
+- **Azure has no function rows; the bridge reads declared verdicts** — *bridge, h14b.* No run of the probe account has
+  measured `Service.StringFunctionAnswersByBand`, so S writes no image for any place under `Production` or `Portable`, and
+  the column bridge reads `CosmosFunctionSpellings.AzureVerdicts`, the bands `CosmosStringFunctions` asked of Azure
+  (declared 2026-10-19 from `reports/verify-strings.md`, no run record). Run 1 adds the Azure rows; the verdicts go then,
+  and `NoFunctionOutcomeClaimsAzureWithoutARecordedRun` turns.
+- **The case mapping asks ASCII under every set** — *legality, until a cased witness is measured.* The rows' witnesses for
+  the surrogate and high bands (an emoji, `ﬀ`) hold no cased letter, while Java maps U+10428 and U+FF21, so a `Same`
+  there proves nothing of a cased one; `CosmosFunctionSpellings.Mapped` keeps `UPPER` and `LOWER` to ASCII on every
+  target. Witnesses holding cased letters in each band, measured, would let the rows decide it.
+- **`LENGTH` has no emulator row** — *small, emulator only.* Calcite's library `LENGTH` is keyed by its own name and the
+  string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), where it pushed before; no digest statement moved.
+  A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured, gives it back.
+- **A result key bounds nothing yet** — *small, h14b.* `RenderingImage.ResultKeys` is empty: no row holds a key of a
+  call's result, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
+  spelling a `REPEAT` place only for a count of 0. Azure's rows decide whether a result key is measured or the bound
+  stays legality.
+- **An affix over a computed place stays opaque** — *small.* `LIKE` reads a text or `VARCHAR` cast subject alone, so the
+  census's case-insensitive rewrites (`LIKE(UPPER(p), '%B%')`, 6 under the emulator) are listed, not proven. Reading a
+  typed `VARCHAR` place as an affix's subject is the change, its rows the case mapping's and the affix's.
 - **The column reader has no reading of its own in the IR** — *medium, and it touches plans; decision D12.* `typed:T` is
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
@@ -3291,7 +3318,7 @@ across documents* and *A join of a container to itself* is the record.
   readers' guard on a member named with U+0000 or U+FDD0, which every reader built for a container keeps.
 - **A U+FDD0 class in the theory** — *an `Emulator`-only gain, for 3B or later; not soundness.* Under the emulator's
   set a string function asks its operands to hold no U+0000 and no unit from U+E000, the high band U+FDD0 is read in
-  (`CosmosStringFunctions.RuleOf`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a
+  (the rows and `CosmosFunctionSpellings.Refusals`), so a path whose pattern admits U+E000 or U+FFFD but not U+FDD0 loses a count, a
   reversal, a `POSITION`, a `REPLACE` or a `LIKE` it could keep. A class of its own in `chars`, reached as Z is, would
   give them back; Azure asks neither and gains nothing.
 - **The probe account's next run checks Azure's order over the U+FDD0 witnesses** — *unrun.* The yardstick's plant

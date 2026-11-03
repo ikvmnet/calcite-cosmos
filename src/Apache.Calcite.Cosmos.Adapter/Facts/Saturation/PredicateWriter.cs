@@ -40,6 +40,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         readonly IReadOnlyDictionary<long, SqlValue>? _opaques;
         readonly Func<long, ConstructorTerm<Pred>, ConstructorTerm<Pred>>? _beneath;
         readonly Func<long, SqlPredicate.Case, List<Fact>, ConstructorTerm<Pred>>? _case;
+        readonly Func<SqlValue.Call, ConstructorTerm<Val>, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? _computed;
 
         /// <summary>The names a membership, a null test and a presence test are read by as calls: Calcite's operators'.</summary>
         public const string In = "IN", IsNull = "IS NULL", IsDefined = "IS_DEFINED";
@@ -47,12 +48,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public PredicateWriter(PredicateVocabulary ir, Func<JsonDocumentPath, Term<JPath>> path,
             Func<ConstructorTerm<Pred>, bool, IReadOnlyList<ConstructorTerm<Pred>>, IEnumerable<Fact>>? junction = null,
             Func<Term, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? leaf = null, IReadOnlyDictionary<long, SqlValue>? opaques = null,
-            Func<long, ConstructorTerm<Pred>, ConstructorTerm<Pred>>? beneath = null, Func<long, SqlPredicate.Case, List<Fact>, ConstructorTerm<Pred>>? @case = null)
+            Func<long, ConstructorTerm<Pred>, ConstructorTerm<Pred>>? beneath = null, Func<long, SqlPredicate.Case, List<Fact>, ConstructorTerm<Pred>>? @case = null,
+            Func<SqlValue.Call, ConstructorTerm<Val>, IReadOnlyList<ConstructorTerm<Val>>, IEnumerable<Fact>>? computed = null)
         {
             _ir = ir;
             _path = path;
             _junction = junction;
             _leaf = leaf;
+            _computed = computed;
             _opaques = opaques;
             _beneath = beneath;
             _case = @case;
@@ -200,6 +203,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     var operands = arms.Select(operand => Read(operand, bookkeeping)).ToList();
                     var call = _ir.Call.Of(function, Operands(operands, 0));
                     bookkeeping.AddRange(_leaf!(call, operands));
+                    if (value is SqlValue.Call { Type: not null } typed && _computed is not null)
+                        bookkeeping.AddRange(_computed(typed, call, operands));
                     return call;
                 case SqlValue.Cast c:
                     return _ir.Cast.Of(c.Target, Read(c.Value, bookkeeping));

@@ -121,7 +121,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var rex = new RexBuilder(types);
             var doc = rex.makeInputRef(types.createSqlType(SqlTypeName.VARCHAR), 0);
             RexNode Read(string path) => rex.makeCall(types.createSqlType(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_VALUE, java.util.Arrays.asList(doc, rex.makeLiteral("$." + path)));
-            PredicateStatement Loaded(RexNode conjunct) => new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement([conjunct]);
+            // The legacy reading, production S's until h15: the non-legacy one reads UPPER(name) = 'X' as a computed place's (h10).
+            PredicateStatement Loaded(RexNode conjunct) => new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c", legacy: true).Statement([conjunct]);
             var upper = Loaded(rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")));
             var unlisted = Loaded(rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlLibraryOperators.CONCAT_WS, rex.makeLiteral("-"), Read("name"), Read("sku")), rex.makeLiteral("x")));
             upper.Conjuncts.Single().Should().Be(unlisted.Conjuncts.Single(), "both are the loading's first opaque term");

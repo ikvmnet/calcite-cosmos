@@ -46,6 +46,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within", "no-calcite-unknown"];
 
+        /// <summary>
+        /// The host's tables a computed place's rules write too (h10), for keys the host never writes: <c>imported</c> of a
+        /// <c>Valued</c> place, which no import names, and <c>assumed</c> of an atom over one, which <c>Run</c> skips. Each
+        /// is then read as any rule-written table is, complete only in the strata after its writer's.
+        /// </summary>
+        static readonly (string Ruleset, string Table)[] PlaceWrites = [("image", "imported"), ("assume", "assumed")];
+
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 
         /// <summary>
@@ -114,6 +121,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The count guard excuses only the rule that states it: a gathering read by a universal with no
+        /// <c>set-length</c> of it equal to the call's arity may fire before the last operand is in (h10).
+        /// </summary>
+        [Fact]
+        public void AGatheringReadWithoutItsCountIsRefused()
+        {
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var whole = theory.Graph.DefineRelation<Val, long>("whole");
+            theory.Graph.Rulesets.Single(r => r.Name == "image").DefineRule("planted: a gathering inside the call's keys", r =>
+            {
+                var (v, s) = r.Vars<Val, long>("v", "s");
+                var g = r.Var<ValueSet<PathImport>>("g");
+                r.When(g.Is(theory.Gathered.Of(s, v)));
+                r.Where(Primitives.IsSubsetOf<PathImport>().Of(g, g));
+                r.Then(whole.Of(v, s));
+            });
+
+            Violations(theory).Should().Equal("image/planted: a gathering inside the call's keys: set-subset reads gathered, which grows in its stratum");
+        }
+
+        /// <summary>
         /// A stratum narrows a set of character classes and reads it as the superset of <c>set-subset</c>, so the universal
         /// may hold of a set that later loses a member.
         /// </summary>
@@ -174,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var (stratum, name, read) in rules)
                 {
                     ValueLattice? Lattice(string table) => (tables[table] as FunctionHandle)?.Lattice;
-                    bool Grows(string table) => Lattice(table) is not null && writers[table].Any(w => w >= stratum);
+                    bool Grows(string table) => Lattice(table) is not null && writers[table].Any(w => w >= stratum) && read.Counted.Contains(table) == false;
                     bool Narrows(string table) => Narrowing.Contains(Lattice(table)?.Name) && writers[table].Any(w => w >= stratum);
                     void Refuse(string what, Node value, Func<string, bool> moves, string how) =>
                         violations.AddRange(read.Sources(value).Where(moves).Select(table => $"{name}: {what} reads {table}, which {how} in its stratum"));
@@ -208,7 +236,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     if (read.Writes.Contains("contradiction") && read.Ruleset != "conflict")
                         violations.Add($"{name}: derives the contradiction");
                     if (bundle)
-                        violations.AddRange(read.Writes.Intersect(owned).Select(table => $"{name}: writes {table}, which the host or the theory owns"));
+                        violations.AddRange(read.Writes.Intersect(owned).Where(table => PlaceWrites.Contains((read.Ruleset, table)) == false)
+                            .Select(table => $"{name}: writes {table}, which the host or the theory owns"));
                 }
             }
 
@@ -292,6 +321,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             readonly Dictionary<string, HashSet<string>> _sources = [];
 
+            readonly HashSet<string> _counted = [];
+
             public Reading(Node rule, IReadOnlyDictionary<string, TableHandle> tables)
             {
                 var (body, head) = (rule.Items![1].Items!, rule.Items[2].Items!);
@@ -318,6 +349,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                 }
 
+                // The count guard (h10, invariant 3): a set whose length equals a lattice-free value, one element an ordinal
+                // below it (RenderingImage.Keys refuses any other gathering), is whole, so this rule reads it complete.
+                var direct = body.Where(f => f.Head == "=" && f.Items![1].Token is not null && f.Items[2].Head is { } t && tables.TryGetValue(t, out var handle) && handle is FunctionHandle { Lattice: null })
+                    .Select(f => f.Items![1].Token!).ToHashSet();
+                foreach (var (variable, value) in lets)
+                    if (value.Head == "set-length" && direct.Contains(variable) && value.Items![1].Token is { } counted)
+                        _counted.Add(counted);
+
                 // A let's value comes from its inputs' sources, which may be bound by a later let.
                 for (var changed = true; changed;)
                 {
@@ -327,6 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 Calls.AddRange(lets.SelectMany(l => Applications(l.Value)));
+                Counted = [.. _counted.SelectMany(v => _sources.TryGetValue(v, out var from) && from.Count == 1 ? from : [])];
                 foreach (var item in head)
                 {
                     if (item.Head == "union")
@@ -347,6 +387,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             public string Ruleset { get; }
+
+            /// <summary>The tables a count guard makes whole in this rule.</summary>
+            public HashSet<string> Counted { get; } = [];
 
             public List<(string Primitive, List<Node> Arguments)> Calls { get; } = [];
 

@@ -178,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     // Over a predicate, TRUE where it is UNKNOWN: neither TRUE nor FALSE.
                     case nameof(SqlKind.__Enum.IS_NULL) when operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is SqlValue tested && tested.PathRead is not null
+                        return Value((RexNode)operands.get(0)) is SqlValue tested && IsPlace(tested)
                             ? new SqlPredicate.IsNull(tested)
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var unknown
                                 ? new SqlPredicate.Case(unknown, False, new SqlPredicate.Case(new SqlPredicate.Not(unknown), False, True))
@@ -186,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     // A value that is not null: the negation of a test that is never unknown.
                     case nameof(SqlKind.__Enum.IS_NOT_NULL) when operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is SqlValue present && present.PathRead is not null
+                        return Value((RexNode)operands.get(0)) is SqlValue present && IsPlace(present)
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var known
                                 ? new SqlPredicate.Case(known, True, new SqlPredicate.Case(new SqlPredicate.Not(known), True, False))
@@ -324,10 +324,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var a = (RexNode)call.getOperands().get(0);
                 var b = (RexNode)call.getOperands().get(1);
 
-                if (Value(a) is { PathRead: not null } left && Comparand(b, left) is SqlValue right && Compares(left, right))
+                if (Value(a) is { } left && IsPlace(left) && Comparand(b, left) is SqlValue right && Compares(left, right))
                     return new SqlPredicate.Compare(op, left, right);
 
-                if (Value(b) is { PathRead: not null } mirrored && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
+                if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
                 return null;
@@ -451,6 +451,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     ? SqlValue.Of(scalar)
                     : null;
 
+            /// <summary>What an atom reads: a reading of a path, or a computed place (h10), which only the non-legacy reading types.</summary>
+            static bool IsPlace(SqlValue value) => value.PathRead is not null || value is SqlValue.Call { Type: not null };
+
             /// <summary>
             /// Determines whether a reading is compared with an operand of this kind: a parameter of any, and a literal of
             /// the kind the reading yields.
@@ -471,6 +474,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     SqlValue.Typed => literal.IsNumber,
                     SqlValue.Cast { Target: "VARCHAR" or "CHAR" } => literal.Kind == "string",
                     SqlValue.Cast => literal.IsNumber,
+                    SqlValue.Call { Type: "VARCHAR" or "CHAR" } => literal.Kind == "string",
+                    SqlValue.Call { Type: "BOOLEAN" } => literal.Kind == "boolean",
+                    SqlValue.Call { Type: not null } => literal.IsNumber,
                     _ => false,
                 };
             }
@@ -554,6 +560,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 {
                     node = CosmosRexShapes.StripRedundantTextCast(node);
                     var value = Value(node);
+
+                    // A computed place (h10): the call is its own raw value and its type's reading, keyed by its spelling.
+                    if (value is SqlValue.Call { Spelled: { } place, Type: { } type })
+                    {
+                        (readers.TryGetValue(place, out var held) ? held : readers[place] = new(StringComparer.Ordinal)).TryAdd(Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type), node);
+                        raws.TryAdd(place, node);
+                    }
                     if (value is { PathRead: JsonDocumentPath path } && Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(value) is { } reader)
                     {
                         var spelled = SqlValue.Spell(path);
@@ -632,8 +645,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (_legacy == false && function == "CASE" && values.Count == (operands.Count + 1) / 2)
                     return new SqlValue.Case([.. operands.Where((_, i) => i % 2 == 0 && i < operands.Count - 1).Select(Predicate)], values);
 
-                return new SqlValue.Call(function, values);
+                var computed = new SqlValue.Call(function, values);
+
+                // A call the function rows name, read whole, is a place of its own in S (h10): its type and its spelling
+                // ride on it, no part of its identity. Through h15's switch S reads the legacy way, which never types one.
+                if (_legacy || partial || call.getType()?.getSqlTypeName()?.getName() is not string type
+                    || Sql.CosmosFunctionSpellings.RowFunctions.Contains(Cosmos.Facts.Rendering.RenderingImage.KeyFunction(function, type)) == false
+                    || Sql.CosmosFunctionSpellings.Spell(computed, PlaceSpelling) is not string spelled || Depth(computed) > PlaceDepth)
+                    return computed;
+
+                return computed with { Type = type, Spelled = spelled };
             }
+
+            /// <summary>The deepest nesting of computed places S gathers, one outer pass a level (h10, R7): a deeper call has no place.</summary>
+            const int PlaceDepth = 4;
+
+            static int Depth(SqlValue value) => value is SqlValue.Call call ? 1 + call.Operands.Select(o => o is SqlValue.Call { Type: not null } ? Depth(o) : 0).DefaultIfEmpty(0).Max() : 0;
+
+            /// <summary>An operand's spelling in a computed place's: a path's, a literal's own, a nested place's; none for the rest.</summary>
+            static string? PlaceSpelling(SqlValue operand) => operand switch
+            {
+                SqlValue.Call call => call.Spelled,
+                SqlValue.Literal literal => literal.Value,
+                _ when operand.PathRead is JsonDocumentPath path => SqlValue.Spell(path),
+                _ => null,
+            };
 
             /// <summary>
             /// Reads a field of the input: a rendering where the binding says it is read as text, the value the service

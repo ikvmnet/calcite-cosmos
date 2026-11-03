@@ -248,9 +248,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var upper = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), Str("X"));
             var compared = Call(SqlStdOperatorTable.NOT_EQUALS, upper, JsonValue("flag", SqlTypeName.BOOLEAN));
             var unread = Call(SqlStdOperatorTable.EQUALS, Call(SqlStdOperatorTable.UPPER, JsonValue("label")), _rex.makeNullLiteral(Sql(SqlTypeName.VARCHAR)));
-            var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, upper, compared, unread, JsonValue("flag", SqlTypeName.BOOLEAN)));
+            // The legacy reading: the non-legacy one reads UPPER(label) = 'X' as an atom over a computed place (h10).
+            var statement = new CosmosPredicateLoader.Loading(_fields, _readings, "c", legacy: true)
+                .Statement(CosmosFilterStatement.ConjunctsOf(_rex.makeCall(SqlStdOperatorTable.AND, upper, compared, unread, JsonValue("flag", SqlTypeName.BOOLEAN))));
 
             statement.Conjuncts.Should().Equal(Opaque(0), Opaque(1), Opaque(2), Opaque(3));
+            Load(upper).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Compare>();
             var read = new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)]), Lit("X")]);
             Enumerable.Range(0, 4).Select(i => statement.Opaques[i]).Should().Equal(read, new SqlValue.Call("<>", [read, Typed(P("flag"), "BOOLEAN")]),
                 new SqlValue.Call("=", [new SqlValue.Call("UPPER", [Text(Label)])]), Typed(P("flag"), "BOOLEAN"));

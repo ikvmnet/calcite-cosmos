@@ -255,6 +255,35 @@ namespace Apache.Calcite.Cosmos.Facts
             _ => Array.Empty<JsonDocumentPath?>(),
         }).OfType<JsonDocumentPath>().Distinct();
 
+        /// <summary>
+        /// Gets every document path S imports for the predicate: <see cref="Paths"/>, and every path a computed place's
+        /// call reads (h10). F reads <see cref="Paths"/> alone.
+        /// </summary>
+        public IEnumerable<JsonDocumentPath> Places => Subterms.SelectMany(term => term switch
+        {
+            Compare c => c.Left.PlacesRead.Concat(c.Right.PlacesRead),
+            In i => i.Value.PlacesRead,
+            IsNull n => n.Value.PlacesRead,
+            IsDefined d => d.Value.PlacesRead,
+            TypeTest t => t.Value.PlacesRead,
+            Affix a => a.Value.PlacesRead,
+            _ => [],
+        }).Distinct();
+
+        /// <summary>
+        /// Gets every call the predicate reads as a computed place (<see cref="SqlValue.Call.Type"/>, h10), nested ones too.
+        /// </summary>
+        public IEnumerable<SqlValue.Call> Computed => Subterms.SelectMany(term => term switch
+        {
+            Compare c => new[] { c.Left, c.Right },
+            In i => [i.Value],
+            IsNull n => [n.Value],
+            IsDefined d => [d.Value],
+            TypeTest t => [t.Value],
+            Affix a => [a.Value],
+            _ => Array.Empty<SqlValue>(),
+        }).SelectMany(SqlValue.ComputedWithin).Distinct();
+
     }
 
 }

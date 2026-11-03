@@ -943,7 +943,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             ("||", "s || 'z'", "CONCAT(s, \"z\")"),
             ("CONCAT", "CONCAT(s, 'z')", "CONCAT(s, \"z\")"),
             ("REPEAT", "REPEAT(s, 2)", "REPLICATE(s, 2)"),
-            ("TRIM", "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
+            ("TRIM BOTH", "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
             ("TRIM LEADING", "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
             ("TRIM TRAILING", "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
         ];

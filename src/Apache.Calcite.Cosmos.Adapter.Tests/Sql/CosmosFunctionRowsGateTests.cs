@@ -19,19 +19,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
     /// <summary>
-    /// What a string function asks of its operands' characters under each set (<see cref="CosmosStringFunctions"/>): under
-    /// the emulator, which stores U+0000 as U+FDD0 <c>0</c> and U+FDD0 as U+FDD0 <c>1</c> and works on those units, each
-    /// function that counts, cuts, reverses, searches or joins them asks that the operand it works on hold neither, U+FDD0
-    /// read as the high band; under Azure each asks what it asked before (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
+    /// The translator's column gate over a string function, the bridge reading the function rows S reads until h37
+    /// (<see cref="CosmosFunctionSpellings.Parting"/>, <see cref="CosmosFunctionSpellings.Refusals"/>): under the emulator
+    /// each band its rows part over is refused, and what the rows do not carry (#246's stored escapes, a case mapping
+    /// outside ASCII) is legality; under Azure, which has no rows until run 1, each asks what it asked before
+    /// (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
     /// </summary>
-    public class CosmosStringFunctionsTests
+    public class CosmosFunctionRowsGateTests
     {
 
         readonly JavaTypeFactoryImpl _types = new();
         readonly RexBuilder _rex;
         readonly List<CosmosPath> _fields;
 
-        public CosmosStringFunctionsTests()
+        public CosmosFunctionRowsGateTests()
         {
             _rex = new RexBuilder(_types);
             _fields =
@@ -90,20 +91,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             "||" => [Call(SqlStdOperatorTable.CONCAT, Str(), Lit("z"))],
             "CONCAT" => [Call(SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("z"))],
             "REPEAT" => [Call(SqlLibraryOperators.REPEAT, Str(), Int(2))],
-            "TRIM" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.BOTH), Lit(" "), Str())],
+            "TRIM BOTH" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.BOTH), Lit(" "), Str())],
             "TRIM LEADING" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str())],
             "TRIM TRAILING" => [Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.TRAILING), Lit(" "), Str())],
             _ => throw new System.ArgumentException(function),
         };
 
         /// <summary>
-        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>) is one
-        /// the function's rule under the emulator refuses, but one: <c>POSITION</c> over a surrogate, which the emulator's
-        /// <c>INDEX_OF</c> counts as one code point where Calcite counts two units, recorded (<c>Service.IndexOfCountsUnits</c>)
-        /// and pushed; it is asserted pushed, so that refusing it shows here.
+        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>) is
+        /// refused there, read off the rows: <c>POSITION</c> over a surrogate among them, which the emulator's
+        /// <c>INDEX_OF</c> counts as one code point where Calcite counts two units, pushed before h10.
         /// </summary>
         [Fact]
-        public void EveryBandTheEmulatorPartsOverIsRefusedThereButOne()
+        public void EveryBandTheEmulatorPartsOverIsRefusedThere()
         {
             var parted = from o in CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
                          where o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
@@ -113,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 foreach (var call in Measured(function))
                 {
                     var pushed = Translator(Emulator, band).TryTranslate(call, out _);
-                    pushed.Should().Be((function, band) == ("POSITION", JsonCharacterBand.Surrogates), $"{function} over {band} under the emulator");
+                    pushed.Should().BeFalse($"{function} over {band} under the emulator");
                 }
         }
 
@@ -233,6 +233,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Pushes(Emulator, Z, SqlStdOperatorTable.UPPER, Str()).Should().BeTrue();
             Pushes(Emulator, Z, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
             Pushes(Emulator, Z | H | N, SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.BOTH), Lit(" "), Str()).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A function some target's rows name and the emulator's do not is unmeasured there and refused whatever it holds:
+        /// <c>LENGTH</c>, whose emulator row is owed. Azure, with no rows until run 1, is held to its verdict (h10).
+        /// </summary>
+        [Fact]
+        public void AFunctionTheEmulatorsRowsDoNotNameIsRefusedThere()
+        {
+            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Emulator).Should().BeNull();
+            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().Be(JsonCharacterBand.Surrogates);
+            var length = SqlLibraryOperators.LENGTH;
+            Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
+            Pushes(Azure, JsonCharacterBand.None, length, Str()).Should().BeTrue();
+            Pushes(Azure, JsonCharacterBand.Surrogates, length, Str()).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A case mapping asks ASCII under every set though the emulator's rows say it agrees over a surrogate, and LOWER over
+        /// the high band: their witnesses hold no cased letter there, and Java maps U+10428 and U+FF21. No emulator refusal
+        /// is lost (h10).
+        /// </summary>
+        [Fact]
+        public void ACaseMappingAsksAsciiWhereItsRowsAreUnwitnessed()
+        {
+            Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse();
+            Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse();
+            Pushes(Emulator, H, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse();
+            Pushes(Azure, Z, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
+        }
+
+        /// <summary>The rows key a trim by its flag as the loader names it, and describe its subject, not its character.</summary>
+        [Fact]
+        public void ATrimIsKeyedByItsFlagAndAskedOfItsSubject()
+        {
+            var trim = (RexCall)Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str());
+            CosmosFunctionSpellings.KeyOf(trim).Should().Be("TRIM LEADING");
+            CosmosFunctionSpellings.SubjectsOf("TRIM LEADING", trim).Should().Equal(2);
+            Pushes(Emulator, W, SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str()).Should().BeFalse();
         }
 
     }

@@ -23,6 +23,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Undefined on some operand, where Calcite may answer a value: what the service defines alone, too.</summary>
         Undefined,
 
+        /// <summary>
+        /// Never measured on the target, where another target measured the key: S reads it as anything, written by S's
+        /// load so that the rows are total over the targets and one rule reads a key no target of a set may answer
+        /// otherwise (h10). No row of <c>CosmosAxioms</c> states it.
+        /// </summary>
+        Unmeasured,
+
     }
 
 }

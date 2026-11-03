@@ -27,6 +27,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Dictionary<SqlPredicate, PathValues?> _atoms = [];
         readonly Dictionary<string, long> _strataByKey = new(StringComparer.Ordinal);
         readonly Dictionary<long, IReadOnlyList<SqlPredicate>> _strata = [];
+        readonly Dictionary<SqlValue.Call, ConstructorTerm<Val>> _computed = [];
+        readonly Dictionary<(long Stratum, JsonDocumentPath Path), PathValues> _arms = [];
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -87,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 ? values.Select(v => theory.Over.Of(leaf, v)).Prepend(theory.Leaf.Of(leaf))
                 : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques,
                 beneath: (stratum, leaf) => theory.Beneath.Of(stratum, leaf),
-                @case: (stratum, chosen, bookkeeping) => Chosen(writer!, stratum, chosen, bookkeeping));
+                @case: (stratum, chosen, bookkeeping) => Chosen(writer!, stratum, chosen, bookkeeping), computed: Computed);
 
             var term = writer.Term(predicate, facts);
             return Guard(() =>
@@ -108,6 +110,66 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// condition too, and the else-arm twice, narrow beneath its negation (to <see cref="NarrowDepth"/> conditions) and
         /// wide where the case is. Each arm's atoms are collected as they are tagged.
         /// </summary>
+        /// <summary>
+        /// What the host writes of a call the loader read as a computed place (h10): its type, arity, operands by ordinal
+        /// and its place's spelling. A call with no spelling has no place.
+        /// </summary>
+        IEnumerable<Fact> Computed(SqlValue.Call call, ConstructorTerm<Val> term, IReadOnlyList<ConstructorTerm<Val>> operands)
+        {
+            if (call.Spelled is not { } spelled)
+                return [];
+
+            _computed.TryAdd(call, term);
+            return
+            [
+                _theory.SqlType.Of(term).Is(call.Type!), _theory.Arity.Of(term).Is((long)operands.Count),
+                _theory.Spelling.Of(_theory.Valued.Of(term)).Is(spelled),
+                .. operands.Select((operand, i) => _theory.CallArgAt.Of(term, (long)i, operand)),
+            ];
+        }
+
+        /// <summary>The calls written as computed places.</summary>
+        public IReadOnlyCollection<SqlValue.Call> ComputedCalls => _computed.Keys;
+
+        /// <summary>
+        /// Imports a computed place's characters: F's for the call at the root (<c>ValueChars</c>), a superset beneath any
+        /// stratum. A call the bundle wrote no place for is ignored.
+        /// </summary>
+        public void ImportComputed(SqlValue.Call call, ValueSet<string> classes)
+        {
+            if (_run is not null)
+                throw new InvalidOperationException("An import after the run would be read by nothing the run derived.");
+
+            if (_computed.TryGetValue(call, out var term) == false)
+                return;
+
+            var place = _theory.Valued.Of(term);
+            try
+            {
+                if (Failure is null)
+                    Scope.Write(w => w.Assume(_theory.ImportedChars.Of(place).Is(classes), _theory.PartedLiterals.Of(place).Is(ValueSet<string>.Empty)));
+            }
+            catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
+            {
+                Decline(e);
+            }
+        }
+
+        /// <summary>Whether an atom compares a computed place: its <c>Assumed</c> is the assume rule's, not the bundle's.</summary>
+        internal static bool IsComputed(SqlPredicate atom) => atom switch
+        {
+            SqlPredicate.Beneath b => IsComputed(b.Leaf),
+            SqlPredicate.Compare c => IsPlace(c.Left) || IsPlace(c.Right),
+            SqlPredicate.In i => IsPlace(i.Value),
+            SqlPredicate.IsNull n => IsPlace(n.Value),
+            SqlPredicate.IsDefined d => IsPlace(d.Value),
+            SqlPredicate.TypeTest t => IsPlace(t.Value),
+            SqlPredicate.Affix a => IsPlace(a.Value),
+            _ => false,
+        };
+
+        static bool IsPlace(SqlValue value) => value is SqlValue.Call { Type: not null };
+
         ConstructorTerm<Pred> Chosen(PredicateWriter writer, long stratum, SqlPredicate.Case chosen, List<Fact> bookkeeping)
         {
             var at = stratum == 0 ? Array.Empty<SqlPredicate>() : _strata[stratum];
@@ -231,11 +293,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             else if (statement == false || source.Round <= _source!.Round)
                 throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
 
-            if (atom.Paths.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)
+            if (atom.Places.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)
                 throw new InvalidOperationException($"{atom} reads no one path the bundle imported.");
 
             if (PathValues.Meet(values, imported) != values)
                 throw new InvalidOperationException($"{atom}'s stratum says {values}, which the import {imported} does not admit.");
+
+            // The path's import beneath the arm, which a computed place's operand there reads (h10); an atom over a
+            // computed place is assumed by the assume rule, not as its operand's values.
+            if (source.Stratum is { } beneath)
+                _arms.TryAdd((beneath, path), values);
+
+            if (IsComputed(atom))
+                return;
 
             if (_atoms.TryGetValue(atom, out var stated) && stated is not null && stated != values)
                 throw new InvalidOperationException($"{atom} is stated beneath two strata.");
@@ -265,7 +335,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Runs the check within count limits, never time, and the tripwire after it. A run the engine failed has no stop
         /// reason.
         /// </summary>
-        public RenderingRun Run(int iterationLimit = 64) => Run(_theory.Check, iterationLimit);
+        public RenderingRun Run(int iterationLimit = 64 + PlaceIterations) => Run(_theory.Check, iterationLimit);
 
         /// <summary>
         /// Runs generate mode as <see cref="Run(int)"/> runs the check, within 80 iterations and 8 more for each unit of
@@ -278,7 +348,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         internal RenderingRun RunGenerateWithin(int iterationLimit) => Run(_theory.Generate, iterationLimit);
 
         /// <summary>The iterations a generate run of a width is allowed.</summary>
-        internal static int GenerateLimit(int width) => 80 + 8 * width;
+        internal static int GenerateLimit(int width) => 80 + 8 * width + PlaceIterations;
+
+        /// <summary>What the nested gathering of computed places may take: 16 an outer pass, four levels deep (h10, R7).</summary>
+        internal const int PlaceIterations = 16 * 4;
 
         /// <summary>A generate run's width: the roots' atoms, every <c>IN</c>'s points, and the arms of each root that is a junction.</summary>
         public static int WidthOf(IEnumerable<SqlPredicate> roots)
@@ -288,9 +361,39 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             return atoms.Count + atoms.OfType<SqlPredicate.In>().Sum(i => i.Points.Count) + all.Sum(r => r switch { SqlPredicate.And a => a.Arms.Count, SqlPredicate.Or o => o.Arms.Count, _ => 0 });
         }
 
+        /// <summary>
+        /// What the host writes for the computed places at the run (h10): each atom's stratum, each imported path's import
+        /// beneath every stratum (the arm's where F read one, else the root's, a superset), and each literal operand as its
+        /// own single cell.
+        /// </summary>
+        IEnumerable<Fact> Places()
+        {
+            var strata = _strata.Keys.Prepend(0L).ToList();
+            foreach (var atom in _atoms.Keys.Where(IsComputed))
+                yield return _theory.StratumId.Of(Write(atom)).Is(atom is SqlPredicate.Beneath b ? b.Stratum : 0L);
+
+            foreach (var (path, values) in _imported)
+            {
+                var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
+                foreach (var stratum in strata)
+                    yield return _theory.ArmImport.Of(stratum, term).Is(stratum == 0 ? values : _arms.GetValueOrDefault((stratum, path), values));
+            }
+
+            foreach (var (call, term) in _computed)
+                for (var i = 0; i < call.Operands.Count; i++)
+                    if (call.Operands[i] is SqlValue.Literal literal)
+                    {
+                        var cell = PathImport.Literal(i, literal.Value);
+                        foreach (var stratum in strata)
+                            yield return _theory.Gathered.Of(stratum, term).Is(ValueSet.Of(cell));
+                    }
+        }
+
         RenderingRun Run(Schedule schedule, int iterationLimit)
         {
-            var assumed = _atoms.ToList().Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
+            var assumed = _atoms.ToList().Where(a => IsComputed(a.Key) == false).Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
+            if (_computed.Count > 0)
+                assumed.AddRange(Places());
             return _run = Guard(() =>
             {
                 Scope.Assume([.. assumed]);

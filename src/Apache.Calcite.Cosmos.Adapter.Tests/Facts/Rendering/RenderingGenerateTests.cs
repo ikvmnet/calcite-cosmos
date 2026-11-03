@@ -267,8 +267,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, concat, rex.makeLiteral("x")),
                 rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlStdOperatorTable.CONCAT, concat, rex.makeCall(SqlStdOperatorTable.UPPER, Read("label"))), rex.makeLiteral("x")),
             ];
-            var statement = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement(conjuncts);
+            // The legacy reading, production S's until h15: the non-legacy one reads UPPER(name) = 'X' as a computed place's (h10).
+            var statement = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c", legacy: true).Statement(conjuncts);
             statement.Conjuncts.Should().AllBeOfType<SqlPredicate.Opaque>();
+            new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement(conjuncts).Conjuncts[0].Should().BeOfType<SqlPredicate.Compare>();
 
             var (upper, unlisted, sibling) = (statement.Conjuncts[0], statement.Conjuncts[1], statement.Conjuncts[2]);
             var generated = Generate([upper, Not(upper), unlisted, sibling], opaques: statement.Opaques);

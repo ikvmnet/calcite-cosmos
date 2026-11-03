@@ -16,6 +16,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal static class RenderingPrimitives
     {
 
+        /// <summary>Whether a function key's answer on a target is other than Calcite's (h10): what disagrees in a set serving it.</summary>
+        public static Primitive<CosmosFunctionAnswer, bool> IsNotSame { get; } = Primitive.Create<CosmosFunctionAnswer, bool>("is-not-same", a => a != CosmosFunctionAnswer.Same);
+
         /// <summary>Every truth of the first set is in the second.</summary>
         public static Primitive<Truths, Truths, bool> TruthsWithin { get; } = Primitive.Create<Truths, Truths, bool>("truths-within", (a, b) => (a & ~b) == Truths.None);
 

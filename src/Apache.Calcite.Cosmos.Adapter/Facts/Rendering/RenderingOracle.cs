@@ -122,14 +122,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Action<RenderingBundle, IReadOnlyList<Pred>, ImportReport, RenderingRun, TimeSpan>? opened = null)
         {
             var started = Stopwatch.GetTimestamp();
-            var paths = roots.SelectMany(r => r.Paths).ToList();
+            var paths = roots.SelectMany(r => r.Places).ToList();
             RenderingBundleAnswer? answer = null;
             var hit = false;
             ImportReport? import = null;
             try
             {
                 // The import is spelled from the node alone: the declaration's mentions only count its defaults.
-                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath, Readings);
+                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath, Readings, roots.SelectMany(r => r.Computed));
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
@@ -187,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 using var bundle = theory.Open(set);
                 var asked = roots.DistinctBy(r => r.Digest).ToList();
                 var terms = asked.Select(r => bundle.Write(r, opaques)).ToList();
-                var import = RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath, Readings);
+                var import = RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath, Readings, roots.SelectMany(r => r.Computed));
                 foreach (var term in terms)
                     bundle.Generate(term);
 

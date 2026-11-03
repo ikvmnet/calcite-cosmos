@@ -77,6 +77,18 @@ namespace Apache.Calcite.Cosmos.Facts
         public sealed record Call(string Function, IReadOnlyList<SqlValue> Operands) : SqlValue
         {
 
+            /// <summary>
+            /// The call's SQL type where the loader reads it as a computed place S reads (h10), and <c>null</c> elsewhere;
+            /// no part of its identity, which is its function and operands.
+            /// </summary>
+            public string? Type { get; init; }
+
+            /// <summary>
+            /// The place's spelling in S, the service's call over its operands' spellings (<c>CosmosFunctionSpellings</c>),
+            /// where <see cref="Type"/> is set; no part of its identity.
+            /// </summary>
+            public string? Spelled { get; init; }
+
             public bool Equals(Call? other) => other is not null && Function == other.Function && Operands.SequenceEqual(other.Operands);
 
             public override int GetHashCode()
@@ -133,6 +145,20 @@ namespace Apache.Calcite.Cosmos.Facts
             Typed t => t.Path,
             Cast c => c.Value.PathRead,
             _ => null,
+        };
+
+        /// <summary>
+        /// Gets the paths an atom over the value reads: the path a reading reads, or every path a computed place's call
+        /// reads (h10); none for anything else.
+        /// </summary>
+        public IEnumerable<JsonDocumentPath> PlacesRead => PathRead is { } path ? [path] : this is Call { Type: not null } ? PathsRead : [];
+
+        /// <summary>Every call within a value read as a computed place, the value itself among them.</summary>
+        public static IEnumerable<Call> ComputedWithin(SqlValue value) => value switch
+        {
+            Call call => call.Operands.SelectMany(ComputedWithin).Concat(call.Type is null ? [] : [call]),
+            Cast cast => ComputedWithin(cast.Value),
+            _ => [],
         };
 
         /// <summary>

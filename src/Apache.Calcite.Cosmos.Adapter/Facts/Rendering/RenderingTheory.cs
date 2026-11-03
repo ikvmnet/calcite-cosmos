@@ -105,6 +105,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             AbsorbingElse = Graph.DefineRelation<RenderPosition, string>("absorbingelse");
             OppositeElse = Graph.DefineRelation<RenderPosition, string>("oppositeelse");
 
+            // A computed value's place (h10), S's alone and made in a rule head; the tables the writer and the bundle fill
+            // for it; and the function rows, raw at the frozen root.
+            // The type and the measured keys are analyses, the reads they license being one (Eggnog: an analysis's writer
+            // reads terms and analyses alone); the bundle and the load write them as raw facts of the term.
+            var analysed = new TableOptions { Role = TableRole.Analysis };
+            Valued = Graph.DefineConstructor<Val, JPath>("valued", options: term);
+            SqlType = Graph.DefineFunction<Val, string>("sqltype", options: analysed);
+            Arity = Graph.DefineFunction<Val, long>("arity");
+            CallArgAt = Graph.DefineRelation<Val, long, Val>("callargat");
+            ArmImport = Graph.DefineFunction<long, JPath, PathValues>("armimport");
+            StratumId = Graph.DefineFunction<Pred, long>("stratumid");
+            Gathered = Graph.DefineFunction<long, Val, ValueSet<PathImport>>("gathered", ValueLattice.Union<PathImport>());
+            FunctionAnswer = Graph.DefineFunction<FunctionKey, RenderingTarget, CosmosFunctionAnswer>("functionanswer");
+            MeasuredKeys = Graph.DefineFunction<string, ValueSet<FunctionKey>>("measuredkeys", ValueLattice.Union<FunctionKey>(), analysed);
+            DisagreeingKeys = Graph.DefineFunction<RenderingSet, string, ValueSet<FunctionKey>>("disagreeingkeys", ValueLattice.Union<FunctionKey>());
+
             var measure = Graph.DefineRuleset("measure");
             var allowed = Graph.DefineRuleset("allowed");
             var refutes = Graph.DefineRuleset("refutes");
@@ -112,6 +128,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var expected = Graph.DefineRuleset("expected");
             var matched = Graph.DefineRuleset("matched");
             var licence = Graph.DefineRuleset("licence");
+            var disagree = Graph.DefineRuleset("disagree");
             DefineTheory(measure, allowed, refutes, tabulate);
             DefineLicences(expected, matched, licence);
 
@@ -148,12 +165,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineChoice(best, weaken);
             DefineCase(at, twovalued, best, weaken);
 
-            Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
+            var valued = Graph.DefineRuleset("valued");
+            var place = Graph.DefineRuleset("place");
+            var image = Graph.DefineRuleset("image");
+            var assume = Graph.DefineRuleset("assume");
+            DefineValued(valued, disagree, place, image, assume);
+            // A nested call is gathered once its inner place is written: each nesting level is one outer pass.
+            var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
+
+            Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
             // Two-valuedness reads the gate's classes complete, beside the lift; the case's best reads it complete.
-            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, tag, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
+            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
-            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, tag, structure, at, spell), Schedule.Saturate(partition, need, parted),
+            Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, valued, tag, structure, at, spell), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(lift, strict, twovalued), Schedule.Saturate(best, conflict),
                 Schedule.Saturate(weaken));
 
@@ -190,6 +215,39 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // The theory's tables: the rows as measured and as settled per set, and the agreement. `final` and `table` hold a
         // key once every target its set serves has measured it.
         public Function<MeasuredKey, RenderingTarget, CosmosAnswer> Outcome { get; }
+
+        /// <summary>A computed value's place: S reads a call the function rows name as a path of its own (h10).</summary>
+        public Constructor<Val, JPath> Valued { get; }
+
+        /// <summary>A call's SQL type, written by the bundle for a call the loader typed.</summary>
+        public Function<Val, string> SqlType { get; }
+
+        /// <summary>A call's operand count, written by the bundle.</summary>
+        public Function<Val, long> Arity { get; }
+
+        /// <summary>
+        /// A call's operand at an ordinal, one row an ordinal, so <c>x * x</c> has two: a relation, Eggnog's functions
+        /// outputting values alone.
+        /// </summary>
+        public Relation<Val, long, Val> CallArgAt { get; }
+
+        /// <summary>A place's import beneath a stratum, 0 the root's: the host's for a path, the image rule's for a computed place.</summary>
+        public Function<long, JPath, PathValues> ArmImport { get; }
+
+        /// <summary>The stratum an atom over a computed place is read beneath, 0 at the root; written by the bundle.</summary>
+        public Function<Pred, long> StratumId { get; }
+
+        /// <summary>A call's operands' imports beneath a stratum, one an ordinal once complete.</summary>
+        public Function<long, Val, ValueSet<PathImport>> Gathered { get; }
+
+        /// <summary>A function key's answer on a target, total over the targets (<see cref="CosmosFunctionAnswer.Unmeasured"/>).</summary>
+        public Function<FunctionKey, RenderingTarget, CosmosFunctionAnswer> FunctionAnswer { get; }
+
+        /// <summary>The keys some target measured of a function, by its rows' name.</summary>
+        public Function<string, ValueSet<FunctionKey>> MeasuredKeys { get; }
+
+        /// <summary>The keys of a function some target a set serves answers otherwise than Calcite, derived at the build.</summary>
+        public Function<RenderingSet, string, ValueSet<FunctionKey>> DisagreeingKeys { get; }
         public Function<MeasuredKey, RenderingTarget, ValueSet<string>> Cites { get; }
         public Function<RenderingSet, ValueSet<RenderingTarget>> Serves { get; }
         public Function<AnswerMeanings> Means { get; }
@@ -338,6 +396,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<Refutation>("refutation");
             values.Register<MeasuredKey>("measured key");
             values.Register<FunctionKey>("function key");
+            values.Register<PathImport>("path import");
             values.Register<MeasuredEntry>("measured entry");
             values.Register<AnswerMeanings>("answer meanings");
             values.Register<ServiceTable>("service table");
@@ -355,6 +414,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<CutPoint>();
             values.RegisterSet<MeasuredKey>();
             values.RegisterSet<FunctionKey>();
+            values.RegisterSet<PathImport>();
             values.RegisterSet<CosmosServiceTest>();
             values.RegisterSet<ServiceForm>();
         }
@@ -898,6 +958,84 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         // A tag changes which cells a leaf is read on, never what it reads: the tagged term is an atom of its leaf's path.
+        // A computed value as a place (DESIGN.md, "A computed value is a place"): a call the rows name reads its own place;
+        // beneath each stratum its operands' imports are gathered, and once every one is in and every key they fall under
+        // agrees on every target the set serves, the place's import there is the call's image, and an atom over it is
+        // assumed as that. RenderingImage reads keys and evaluates; it decides nothing.
+        void DefineValued(Ruleset valued, Ruleset disagree, Ruleset place, Ruleset image, Ruleset assume)
+        {
+            valued.DefineRule("a call the function rows name reads its place by its type's reader", r =>
+            {
+                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var (n, t) = r.Vars<string, string>("n", "t");
+                var z = r.Var<ValueSet<FunctionKey>>("z");
+                r.When(v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), z.Is(MeasuredKeys.Of(Compute.Of(n, t, RenderingImage.KeyFunction))));
+                r.Then(Ir.Reads.Of(v, Valued.Of(v), Compute.Of(t, PredicateAtom.TypedReader)));
+            });
+
+            disagree.DefineRule("a function key a target of the set answers otherwise than Same disagrees there", r =>
+            {
+                var (key, x, st) = r.Vars<FunctionKey, RenderingTarget, RenderingSet>("key", "x", "st");
+                var (ans, d) = r.Vars<CosmosFunctionAnswer, ValueSet<RenderingTarget>>("ans", "d");
+                r.When(ans.Is(FunctionAnswer.Of(key, x)), d.Is(Serves.Of(st)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
+                r.Where(RenderingPrimitives.IsNotSame.Of(ans));
+                r.Then(DisagreeingKeys.Of(st, Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(key)));
+            });
+
+            place.DefineRule("a call's operands' imports are gathered beneath each stratum, one an ordinal", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (q, p) = r.Vars<JPath, JPath>("q", "p");
+                var (kq, k) = r.Vars<string, string>("kq", "k");
+                var (i, s) = r.Vars<long, long>("i", "s");
+                var (x, ch) = r.Vars<PathValues, ValueSet<string>>("x", "ch");
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), x.Is(ArmImport.Of(s, p)), ch.Is(ImportedChars.Of(p)));
+                r.Then(Gathered.Of(s, v).Is(Primitives.Singleton<PathImport>().Of(Compute.Of(i, k, x, ch, PathImport.Of))));
+            });
+
+            image.DefineRule("a place's import beneath a stratum is its call's image, once every operand is in and every key agrees", r =>
+            {
+                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var q = r.Var<JPath>("q");
+                var (kq, n, t, kn) = r.Vars<string, string, string, string>("kq", "n", "t", "kn");
+                var (s, m) = r.Vars<long, long>("s", "m");
+                var g = r.Var<ValueSet<PathImport>>("g");
+                var st = r.Var<RenderingSet>("st");
+                var (z, d, ks, rk) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>>("z", "d", "ks", "rk");
+                var img = r.Var<PathValues>("img");
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(Compute.Of(n, t, RenderingImage.KeyFunction)),
+                    g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)), m.Is(Primitives.Count<PathImport>().Of(g)), Under.Of(st), z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)));
+                r.When(ks.Is(Compute.Of(kn, g, RenderingImage.Keys)));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
+                r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
+                r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)), rk.Is(Compute.Of(kn, img, RenderingImage.ResultKeys)));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(rk, z));
+                r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(rk, d)));
+                r.Then(ArmImport.Of(s, q).Is(img));
+            });
+
+            image.DefineRule("a computed place's import is its image at the root", r =>
+            {
+                var v = r.Var<Val>("v");
+                var q = r.Var<JPath>("q");
+                var x = r.Var<PathValues>("x");
+                r.When(x.Is(ArmImport.Of(0L, q)), q.Is(Valued.Of(v)));
+                r.Then(Imported.Of(q).Is(x));
+            });
+
+            assume.DefineRule("an atom over a computed place is assumed as its place's image beneath the atom's stratum", r =>
+            {
+                var e = r.Var<Pred>("e");
+                var q = r.Var<JPath>("q");
+                var a = r.Var<PredicateAtom>("a");
+                var s = r.Var<long>("s");
+                var x = r.Var<PathValues>("x");
+                r.When(Ir.Atom.Of(e, q, a), s.Is(StratumId.Of(e)), x.Is(ArmImport.Of(s, q)));
+                r.Then(Assumed.Of(e).Is(x));
+            });
+        }
+
         void DefineTag(Ruleset tag)
         {
             tag.DefineRule("a predicate beneath a stratum is an atom as its predicate is", r =>
@@ -1158,6 +1296,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var reader in definition.StrictReaders)
                     w.Assume(StrictReader.Of(reader));
+
+                // The function rows, total over the targets: a key one target measured is unmeasured on the rest, and read as
+                // anything there. Each set's disagreeing keys start empty, so the image rule reads a function none disagrees on.
+                var keys = definition.Functions.Select(f => f.Key).Distinct().ToList();
+                var answered = definition.Functions.ToDictionary(f => (f.Key, f.Target), f => f.Answer);
+                foreach (var key in keys)
+                {
+                    w.Assume(MeasuredKeys.Of(key.Function).Is(ValueSet.Of(key)));
+                    foreach (var target in Enum.GetValues<RenderingTarget>())
+                        w.Assume(FunctionAnswer.Of(key, target).Is(answered.TryGetValue((key, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured));
+                }
+
+                foreach (var set in definition.Serves.Keys)
+                    foreach (var function in keys.Select(k => k.Function).Distinct())
+                        w.Assume(DisagreeingKeys.Of(set, function).Is(ValueSet<FunctionKey>.Empty));
 
                 w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
                     PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));

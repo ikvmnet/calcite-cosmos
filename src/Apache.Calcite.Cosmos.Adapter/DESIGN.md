@@ -3633,7 +3633,9 @@ read off its grammar. Each class is named once, its flag beside its member (`Jso
 other spelling of a set of them is read off that table. A conjunction narrows them and a case join widens them. No C#
 derives or combines one. R1 reads S and H alone (`JsonCharacterBand.FromD800`), so no order moved.
 
-**Each function asks one question of its arguments, in one place.** `Sql/CosmosStringFunctions` says what each
+**Each function asks one question of its arguments, in one place.** (Since h10 the function rows say it, read by
+`Sql/CosmosFunctionSpellings` and S: *A computed value is a place*. What follows is what the class asked before them.)
+`Sql/CosmosStringFunctions` said what each
 needs: a count — `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT` — that no string it counts hold S; a case mapping that it
 hold none of S, H and N; a trim that it hold no W; `REPLACE` that its subject and its search hold no Z, and a `LIKE` of
 the containment shape that its subject and its pattern hold none; everything else nothing of the characters. Every
@@ -3653,7 +3655,8 @@ functions work on those units: `LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` count t
 counts them, a `LIKE` `_` matches one and a `0` or `1` matches an escape's second, the fold's `ENDSWITH` and `CONTAINS`
 likewise, and a U+0000 the service makes itself — a `CONCAT` of a sent and a stored one, a `REPLACE` — is a 500, while
 `REPLACE` reads stored units. So where the rendering set stores spelled (`CosmosRendering.StoresSpelled`),
-`CosmosStringFunctions.RuleOf(call, set)` asks Z and H — U+FDD0 has no class of its own, and is read as the high band it
+the emulator's function rows (since h10; a count, a reversal, `POSITION`) and `CosmosFunctionSpellings.Refusals(call, set)`
+(the rest) ask Z and H — U+FDD0 has no class of its own, and is read as the high band it
 lies in, a gain for the theory to take (`TODO.md`) — of the operands those work on: a count's, beside S; a reversal's;
 `POSITION`'s subject, its second operand; each of `REPLACE`'s three; every operand of a `CONCAT` and a `REPEAT`'s subject,
 a path among them, the exemption of a stored operand cut (owner, 2026-11-01: "Cut it"); and a `LIKE`'s subject where its
@@ -7979,9 +7982,10 @@ otherwise, which the run record keeps.
 **Function rows.** What a function computes against Calcite is a row of its own kind: `CosmosFunctionOutcome`, keyed
 `FunctionKey(Function, Kind, Band)` and answering `Same`, `Differs`, `Fails`, `Refuses` or `Undefined`, read by
 `CosmosAxiomRows.ReadFunctions` into one row per key per target. `FunctionKey` and the answer are registered values of
-S, as `MeasuredKey` is; nothing reads the rows yet (h10). The measurement asks the service each function over the
-key's witnesses (`CosmosWitnessProbe.Project`) and Calcite the same function in process over the same documents
-(`MaterialisedTable.Values`), and a key answers the worst over its witnesses and spellings. A service integer is
+S, as `MeasuredKey` is, and S's image rule and the translator's column bridge read them (h10, *A computed value is a
+place*). The measurement asks the service each function over the key's witnesses (`CosmosWitnessProbe.Project`) and
+Calcite the same function in process over the same documents (`MaterialisedTable.Values`), and a key answers the worst
+over its witnesses and spellings. A service integer is
 compared exactly and a number with a point or an exponent as its double, so a release that prints a double
 differently answers alike. A row records the worst any release measured, and its test fails a release that answers a
 key worse than the row, never one that answers better.
@@ -7990,11 +7994,10 @@ key worse than the row, never one that answers better.
   may reference `Sql/`.
 - **Arithmetic keys are typed by name,** `+:BIGINT`, since Calcite's answer depends on the operands' type. A number's
   key has no magnitude class, so every typed operator answers `Differs` or `Fails` over a number, a range that does
-  not wrap included: a magnitude class is h10's to add if the rows are to license any.
-- **Where the emulator parts from the rule.** Every band the string row measures apart is one
-  `CosmosStringFunctions.RuleOf(call, Emulator)` refuses, but one: `POSITION` over a surrogate, which the emulator's
-  `INDEX_OF` counts as one code point. That was recorded and pushed before (`Service.IndexOfCountsUnits`); a test now
-  asserts it is pushed, so refusing it shows.
+  not wrap included: a magnitude class is still to add if the rows are to license any (h10 left it out; `TODO.md`).
+- **Where the emulator parted from the rule.** Every band the string row measures apart was one
+  `CosmosStringFunctions.RuleOf(call, Emulator)` refused, but one: `POSITION` over a surrogate, which the emulator's
+  `INDEX_OF` counts as one code point (`Service.IndexOfCountsUnits`). Since h10 the rows are the rule, and it is refused.
 
 **The raw columns are a `Calcite` row's.** `RawColumnsTable.Rows` is carried by `Calcite.RawNullIsSqlNull` and read
 through `CosmosAxiomRows.ReadColumns`, beside the measured rows rather than among them, since a measured key has no
@@ -8194,6 +8197,64 @@ and rows; a raw `CONTAINS(p, '\0')` matches nearly every string on the emulator 
 first. #246's refusals stand as they are, and nothing under `Production` would change.
 
 **Nothing in a plan moves.** The digests are byte-equal.
+
+### A computed value is a place (h10)
+
+**What a place is.** A call the function rows name, read whole by the non-legacy loader at a known SQL type, is a path
+of its own in S: `Valued(v)`, a term over the call, read through its type's reader (`typed:VARCHAR`, `typed:INTEGER`).
+The loader stamps the call with `Type` and `Spelled`, the service's call over its operands' spellings
+(`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a window starting before 1,
+a `REPEAT` of any count but 0, a call nested past depth 4, gets no place and stays what it was. An atom may then read a
+place where it read a path: a comparison with a literal, `IN`, `IS NULL`, so the gate, templates, strictness and
+weakening run on it unchanged. F is handed the same atoms and reads them as it read any atom over a value it has no
+reader for, the paths it imports (`SqlPredicate.Paths`) unchanged; S imports `Places`, which add the operands' paths.
+
+**Its import is its image, once every key agrees.** The bundle writes each call's `SqlType`, `Arity` and one `CallArgAt`
+an ordinal, `ArmImport(s, p)` for every operand path beneath every stratum it opened (the arm's own import, else the
+root's, a superset), a literal operand's own single cell, and the place's characters from F's `ValueChars` for the call
+at the root. Four rulesets then run after the first stratum, as one fixpoint, so a nested call is gathered once its
+inner place is written: `place` gathers the operands' imports beneath each stratum, one a `PathImport` an ordinal;
+`image` reads the keys those fall under (`RenderingImage.Keys`: each kind the operand the rows describe may hold, a
+string by each band its characters may hold and by none), and writes the place's import, the call's image, only where
+the gathering is complete (the count guard), every key is one some target measured, and none is a key some target the
+set serves answers otherwise than `Same` (`DisagreeingKeys`, derived at the build from the rows, which S's load makes
+total by writing `Unmeasured` for each pair no row holds); at stratum 0 that is the place's `Imported`; `assume` assumes
+an atom over a place as the place's image beneath the atom's stratum, so an arm over a computed value sets its off-arm
+cells aside as an arm over a path does. A place with no image has no import, and S proves nothing over it.
+
+**What the order test is told.** `image` reads `Gathered`, which `place` grows in the same fixpoint, so the order test
+would refuse its universal; it reads it whole by the count guard (invariant 3): the rule states `set-length` of the
+gathering equal to the call's `Arity`, a host-written value, and each operand gives one import (one reader a `Val`, one
+`ArmImport` a stratum, no head merging classes), any other gathering falling under `Malformed`. The test excuses a set
+only in a rule that states its count; a plant without one is refused. `image` and `assume` write `Imported` and
+`Assumed`, which the host owns, for keys the host never writes (a `Valued` place, an atom over one), and the test reads
+those two writes as any rule's, complete only after the `places` stratum.
+
+**`RenderingImage` decides nothing.** It reads cells and evaluates: the call on single values where C#'s answer is
+Calcite's (an ASCII case mapping, a count of UTF-16 units, a trim of spaces, a reversal with no surrogate, a
+concatenation), and elsewhere every value of the result's type, with absent wherever an operand may be other than the
+function's domain. Whether the keys agree is the rule's, over the rows (the owner's hybrid rule). A key it cannot read,
+or a gathering missing or doubling an ordinal, is `Malformed`, a key no row holds, so no image is written.
+
+**A two-operand call is keyed by its subject.** The rows were measured over one operand: a count's, a case mapping's,
+`REPLACE`'s first, `POSITION`'s second, a trim's string, every operand of a concatenation (`FunctionSubjects`). The other
+operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+(`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
+measured, and the case mapping beyond ASCII under every set, since the rows' witnesses for the surrogate and high bands
+(an emoji, `ﬀ`) hold no cased letter while Java maps U+10428 and U+FF21. A refusal is never weakened to a row.
+
+**The column bridge.** `RequireStringFunctionsAgree` asks, for every target the set serves, the bands the function's
+rows part over, and refuses a subject not proved free of them; a function no row names is refused there. Azure has no
+function rows until the probe account's run 1, so for Azure it reads the declared verdicts
+(`CosmosFunctionSpellings.AzureVerdicts`, what `CosmosStringFunctions` asked) until h14b. Under the emulator this refuses
+`POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` (Calcite's library operator, whose rows are
+owed). The bridge goes at h37, when S writes the column.
+
+**What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
+`Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. `CutPoints`
+holds each function's critical points (0, ±1, ±2^31, ±2^53, the decimal bounds, `REPEAT`'s 10,000) as data for the
+magnitude class that would use them; ranges are imaged coarsely meanwhile. Production's S reads the legacy loader
+until h15, which never types a call, and F's answers are unchanged: the digests are byte-equal.
 
 ---
 

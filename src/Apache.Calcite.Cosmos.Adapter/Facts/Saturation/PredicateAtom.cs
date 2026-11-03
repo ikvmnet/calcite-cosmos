@@ -479,6 +479,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         return new Raw();
                 }
 
+                // A computed text place (S's Valued) is read as the text it holds: its image holds strings alone, or none.
+                if (reader is "typed:VARCHAR" or "typed:CHAR")
+                    return new Text(structures: false);
+
                 if (reader.StartsWith("typed:", StringComparison.Ordinal))
                     return Typed.For(reader.Substring("typed:".Length));
 
