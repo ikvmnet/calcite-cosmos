@@ -401,8 +401,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A string function of values, as Calcite computes it in process: by its runtime's own functions
-        /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise. A
-        /// <c>CASE</c> read as its arms alone, its conditions not read, takes the arm a coin chooses.
+        /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise; a
+        /// count in UTF-16 units and a position from 1, as exact numbers; and a typed arithmetic operator at the call's
+        /// type (<see cref="Arithmetic"/>). A <c>CASE</c> read as its arms alone, its conditions not read, takes the arm a
+        /// coin chooses.
         /// </summary>
         static SqlDatum Call(SqlValue.Call call, J.Obj document, World world)
         {
@@ -419,8 +421,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             string Text(int i) => operands[i] is SqlDatum.Text t ? t.Value : throw new InvalidOperationException($"{call} reads no text at {i}: the generator built a call the loader never does.");
             int Count(int i) => operands[i] is SqlDatum.Exact e ? (int)e.Value : throw new InvalidOperationException($"{call} reads no count at {i}.");
 
+            if (call.Function is "+" or "-" or "*" or "/" or "%" or "MOD")
+                return Arithmetic(call.Function, call.Type ?? throw new InvalidOperationException($"{call} has no type: the loader types every arithmetic place."), operands[0], operands[1]);
+
             try
             {
+                if (call.Function is "CHAR_LENGTH" or "CHARACTER_LENGTH" or "LENGTH")
+                    return new SqlDatum.Exact(org.apache.calcite.runtime.SqlFunctions.charLength(Text(0)));
+
+                if (call.Function == "POSITION")
+                    return new SqlDatum.Exact(org.apache.calcite.runtime.SqlFunctions.position(Text(0), Text(1)));
+
                 return new SqlDatum.Text(call.Function switch
                 {
                     "||" or "CONCAT" => string.Concat(Enumerable.Range(0, operands.Length).Select(Text)),
@@ -441,6 +452,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             catch (java.lang.RuntimeException)
             {
                 return SqlDatum.Raise;
+            }
+        }
+
+        /// <summary>
+        /// A typed arithmetic operator over two numbers as Calcite computes it at the call's type: an integer type wraps
+        /// at its width and divides truncating toward zero (<c>Calcite.IntegerArithmeticWraps</c>), raising over a zero
+        /// divisor; a <c>DECIMAL</c> is exact (<c>Calcite.DecimalArithmeticIsExact</c>), raising past what a decimal
+        /// holds and over a zero divisor; a double is IEEE's, an infinity over a zero divisor. A <c>DECIMAL</c> quotient
+        /// takes a scale this model does not, so it is not modelled.
+        /// </summary>
+        static SqlDatum Arithmetic(string op, string type, SqlDatum left, SqlDatum right)
+        {
+            static double Real(SqlDatum d) => d switch
+            {
+                SqlDatum.Exact e => (double)e.Value,
+                SqlDatum.Double x => x.Value,
+                SqlDatum.Decimal s => Renderings.ParseDouble(s.Spelled) ?? throw new InvalidOperationException($"{s} is no number."),
+                _ => throw new InvalidOperationException($"{d} is no number."),
+            };
+
+            static decimal Whole(SqlDatum d) => d is SqlDatum.Exact e ? e.Value : throw new NotSupportedException($"{d} is no exact number this model holds.");
+
+            switch (type)
+            {
+                case "DOUBLE" or "FLOAT" or "REAL":
+                {
+                    var (a, b) = (Real(left), Real(right));
+                    return new SqlDatum.Double(op switch { "+" => a + b, "-" => a - b, "*" => a * b, "/" => a / b, _ => a % b });
+                }
+
+                case "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT":
+                {
+                    var (a, b) = ((long)Whole(left), (long)Whole(right));
+                    if (op is "/" or "%" or "MOD" && b == 0)
+                        return SqlDatum.Raise;
+
+                    // Java wraps the one quotient C# refuses: the least long over -1 is itself, its remainder 0.
+                    var wide = a == long.MinValue && b == -1 ? (op == "/" ? a : 0)
+                        : unchecked(op switch { "+" => a + b, "-" => a - b, "*" => a * b, "/" => a / b, _ => a % b });
+                    return new SqlDatum.Exact(type switch { "TINYINT" => unchecked((sbyte)wide), "SMALLINT" => unchecked((short)wide), "INTEGER" => unchecked((int)wide), _ => wide });
+                }
+
+                case "DECIMAL" when op != "/":
+                {
+                    var (a, b) = (Whole(left), Whole(right));
+                    if (op is "%" or "MOD" && b == 0)
+                        return SqlDatum.Raise;
+
+                    try
+                    {
+                        return new SqlDatum.Exact(op switch { "+" => a + b, "-" => a - b, "*" => a * b, _ => a % b });
+                    }
+                    catch (OverflowException)
+                    {
+                        return SqlDatum.Raise;
+                    }
+                }
+
+                default:
+                    throw new NotSupportedException($"{op} at {type}");
             }
         }
 

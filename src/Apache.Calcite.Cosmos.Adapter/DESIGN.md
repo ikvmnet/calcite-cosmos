@@ -6781,7 +6781,13 @@ those conjuncts hold. **Source B** plans population D's conjuncts, printed as on
 trial's declaration describes, and judges every proof on the trial's declared documents, whose conditional rules hold
 together, as no sampled document's need: 30 trials a pull request, 5,000 explicit. A raw value is a column only at a key
 path, so the container's hierarchical key is three of the declaration's paths, and a parameter, `IS_DEFINED` and a
-literal with a control character are not printed.
+literal with a control character are not printed. Source B prints only a negation, a conjunction, a disjunction, a
+comparison with a literal, `IN` and a null test, so the `CASE`s, type tests, affixes and constants population D draws
+since h07, a pair and a computed place are dropped there until S reads that IR at h15. **Source C**
+(`RenderingSourceCTests`) holds them now: it writes each root straight to a bundle, imports its places and judges best
+and weakening as source A does, over `CASE` trees, a number compared under its `IS_NUMBER` guard through every numeric
+reader, and pairs and computed places, the counts and an arithmetic operator among them, which `IrEval` evaluates as
+Calcite's runtime does.
 
 **The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is
 refused at load on either target; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
