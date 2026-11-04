@@ -402,7 +402,9 @@ service adds to each.
 renderable expressions are sent and the rest computed in process from what comes back. Inside a single
 expression, the largest renderable sub-expressions are sent: for
 `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE)`, the service extracts `c.n` and only the cast runs in
-process — the document is not shipped to supply one value.
+process — the document is not shipped to supply one value. Each reading of a path is its own
+sub-expression: `JSON_VALUE(c."DOC", '$.price')` and `JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER)`
+in one select list are sent as two columns, each read as its own type.
 
 **Some projections are read rather than rendered.** A cast to text over a document value, a
 `JSON_QUERY`, a declared UUID or a stored geography is sent as the plain property and converted as it

@@ -2015,9 +2015,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The same sub-expression written twice is one column.
         /// </summary>
         /// <remarks>
-        /// Keyed by the node's digest, which is what Calcite compares nodes by. Worth a test because
-        /// the alternative is silent: two identical columns cost a little and read the same, so nothing
-        /// would ever fail.
+        /// Keyed by Calcite's equality, which is the node's operator, operands and type. Worth a test
+        /// because the alternative is silent: two identical columns cost a little and read the same, so
+        /// nothing would ever fail.
         /// </remarks>
         [Fact]
         public void ASubExpressionWrittenTwiceIsOneColumn()
@@ -2030,6 +2030,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             sql.Should().Be("SELECT VALUE { \"$f0\": (IS_PRIMITIVE(c.n) ? c.n : null) } FROM products c",
                 "one accessor, one column, read twice above: " + sql);
+        }
+
+        /// <summary>
+        /// Two readings of one path are two sub-expressions, and two columns.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The digest prints no type, so the text accessor, <c>RETURNING INTEGER</c> and
+        /// <c>RETURNING DECIMAL</c> over <c>$.price</c> all print <c>JSON_VALUE($0, '$.price')</c>. Keyed
+        /// by it, the second reading found was the first's column: the text beside the integer failed to
+        /// implement, the integer column handed to an expression typed for text, and the decimal beside
+        /// the integer read the integer's, so 25 halved answered 12 where Calcite answers 12.5.
+        /// </para>
+        /// <para>
+        /// The decimal reading does not render as a projection, so the document travels for it, as it
+        /// does with nothing beside it; what the test holds is that it is not the integer's column. The
+        /// double beside the integer never collided — its division renders whole, so it is no fragment —
+        /// and is held to keep its two columns. Calcite raises on that statement in process, so there is
+        /// no answer to compare it with.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void TwoReadingsOfOnePathAreTwoColumns()
+        {
+            var text = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') || '!', JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 FROM products AS c");
+
+            Render(FindCosmos(text)).Should().Be(
+                "SELECT VALUE { \"$f0\": c.id, \"$f1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c",
+                "the text and the integer are read once each: " + Plan(text));
+
+            var @decimal = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) / 2, JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 FROM products AS c");
+
+            Plan(@decimal).Should().Contain("EXPR$1=[/(JSON_VALUE($2, '$.price'), 2)], EXPR$2=[/($1, 2)]",
+                "the decimal is read above from the document, and the integer from its column: " + Plan(@decimal));
+
+            var @double = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) / 2, JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 FROM products AS c");
+
+            Render(FindCosmos(@double)).Should().Be(
+                "SELECT VALUE { \"$f0\": c.id, \"$f1\": ((IS_NUMBER(c.price) ? c.price : null) / @p0), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c",
+                "the double's division and the integer are a column each: " + Plan(@double));
+        }
+
+        /// <summary>
+        /// A path a residual filter reads as one type is not the column a projection reads it as another.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosProjectResidualRule"/>'s half of <see cref="TwoReadingsOfOnePathAreTwoColumns"/>: the filter's
+        /// <c>RETURNING INTEGER</c> was matched by its digest to the text accessor the projection pushes whole, and the
+        /// division above read the text column as an integer, which failed to implement.
+        /// </remarks>
+        [Fact]
+        public void AResidualFilterReadsItsOwnReadingOfAProjectedPath()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12");
+
+            Render(FindCosmos(best)).Should().Be(
+                "SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c WHERE IS_DEFINED(c.price)",
+                "the filter's integer is carried beside the projected text: " + Plan(best));
+
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/($2, 2), 12)])", "and the filter reads it: " + Plan(best));
         }
 
         /// <summary>

@@ -2935,6 +2935,20 @@ down as its own column, the compact JSON arrives as Calcite would have computed 
 above over exactly that. The split does not weaken that refusal; it supplies the one thing the refusal
 said was missing.
 
+**A fragment is one by Calcite's equality, not by its digest.** The same sub-expression written twice
+is one column, and what decides "the same" is the node's operator, operands and type. It was the
+digest, `ToString`, which prints no type: the text accessor, `RETURNING INTEGER` and
+`RETURNING DECIMAL` over one path all print `JSON_VALUE($0, '$.price')`, so the second reading the walk
+found was rebased onto the first one's column. `JSON_VALUE(DOC, '$.price' RETURNING DECIMAL) / 2`
+beside the same path `RETURNING INTEGER` answered 12 for a price of 25, where Calcite answers 12.5,
+with no error; the text accessor beside the integer one failed to implement, its column handed to an
+expression typed for the other. `CosmosProjectResidualRule` shares the index and the rebase, and
+matched a residual filter's path to a projected column the same way. Both now key a fragment by the
+node itself, as the predicate loader numbers its opaque terms and the filter split counts what it has
+applied — IKVM maps Java's `equals` and `hashCode` onto the dictionary's — and a reading of a path as
+another type is a column of its own (`CosmosPlannerTests.TwoReadingsOfOnePathAreTwoColumns`,
+`CosmosDifferentialTests.TwoReadingsOfOnePathAnswerWhatCalciteAnswers`).
+
 **Two things fell out of it that are worth recording.** A residual cast no longer pins the document, so
 a projected cast over a path now costs the scalar rather than the row — the case #125 restored
 correctness for and left the bytes of. And because the pushed half is now a `CosmosProject` binding a
