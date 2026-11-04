@@ -220,18 +220,35 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public const string NulClass = "nul";
 
+        /// <summary>The class of U+FFFD, within the high band: see <see cref="JsonCharacterBand.Replacement"/>.</summary>
+        public const string ReplacementClass = "replacement";
+
+        /// <summary>The class of U+FDD0, within the high band: see <see cref="JsonCharacterBand.Escape"/>.</summary>
+        public const string EscapeClass = "escape";
+
+        /// <summary>The class of a surrogate no other completes, within the surrogates: see <see cref="JsonCharacterBand.Unpaired"/>.</summary>
+        public const string UnpairedClass = "unpaired";
+
+        /// <summary>The class of Java's line terminators, within the trimmed class: see <see cref="JsonCharacterBand.LineTerminator"/>.</summary>
+        public const string LineTerminatorClass = "lineterm";
+
         /// <summary>
-        /// The classes, each once: the adapter's flag for it and the theory's member. Every other spelling of a class — a
-        /// set of members, a mask of flags, the classes a pattern leaves out — is read off this table, so that a class is
-        /// added here and nowhere else.
+        /// The classes, each once: the adapter's flag for it, the theory's member, and the class of the first five it lies
+        /// within (itself for those five). Every other spelling of a class — a set of members, a mask of flags, the classes a
+        /// pattern leaves out, the band a function row keys it under — is read off this table, so that a class is added
+        /// here and nowhere else.
         /// </summary>
-        public static readonly IReadOnlyList<(JsonCharacterBand Flag, string Member)> CharacterClasses =
+        public static readonly IReadOnlyList<(JsonCharacterBand Flag, string Member, JsonCharacterBand Within)> CharacterClasses =
         [
-            (JsonCharacterBand.Surrogates, SurrogateBand),
-            (JsonCharacterBand.HighBmp, HighBand),
-            (JsonCharacterBand.NonAscii, NonAsciiBand),
-            (JsonCharacterBand.Trimmed, TrimmedClass),
-            (JsonCharacterBand.Nul, NulClass),
+            (JsonCharacterBand.Surrogates, SurrogateBand, JsonCharacterBand.Surrogates),
+            (JsonCharacterBand.HighBmp, HighBand, JsonCharacterBand.HighBmp),
+            (JsonCharacterBand.NonAscii, NonAsciiBand, JsonCharacterBand.NonAscii),
+            (JsonCharacterBand.Trimmed, TrimmedClass, JsonCharacterBand.Trimmed),
+            (JsonCharacterBand.Nul, NulClass, JsonCharacterBand.Nul),
+            (JsonCharacterBand.Replacement, ReplacementClass, JsonCharacterBand.HighBmp),
+            (JsonCharacterBand.Escape, EscapeClass, JsonCharacterBand.HighBmp),
+            (JsonCharacterBand.Unpaired, UnpairedClass, JsonCharacterBand.Surrogates),
+            (JsonCharacterBand.LineTerminator, LineTerminatorClass, JsonCharacterBand.Trimmed),
         ];
 
         /// <summary>
@@ -261,11 +278,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static JsonCharacterBand ClassMask(ValueSet<string> members)
         {
             var mask = JsonCharacterBand.None;
-            foreach (var (flag, member) in CharacterClasses)
+            foreach (var (flag, member, _) in CharacterClasses)
                 if (members.Contains(member))
                     mask |= flag;
 
             return mask;
+        }
+
+        /// <summary>
+        /// Returns the classes of the first five that a set of classes lies within: the bands a function row keys them
+        /// under. The value reader emits a refinement with the class it lies within, so over its sets this is their first five.
+        /// </summary>
+        public static JsonCharacterBand Within(JsonCharacterBand classes)
+        {
+            var bands = JsonCharacterBand.None;
+            foreach (var (flag, _, within) in CharacterClasses)
+                if ((classes & flag) != JsonCharacterBand.None)
+                    bands |= within;
+
+            return bands;
+        }
+
+        /// <summary>
+        /// Returns a stated set of classes with every refinement of each class it names: what a set a person or a grammar
+        /// states, which names classes and not the value reader's refinements of them, may hold.
+        /// </summary>
+        public static JsonCharacterBand Closed(JsonCharacterBand classes)
+        {
+            foreach (var (flag, _, within) in CharacterClasses)
+                if ((classes & within) != JsonCharacterBand.None)
+                    classes |= flag;
+
+            return classes;
         }
 
         /// <summary>
@@ -284,7 +328,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// Returns the classes one UTF-16 code unit is in, as a mask: its band — none for an ASCII unit — the trimmed
-        /// class where the service trims it, and the class of U+0000.
+        /// class where the service trims it, the class of U+0000, and the refinements one unit decides (U+FFFD, U+FDD0, a
+        /// line terminator); never <see cref="JsonCharacterBand.Unpaired"/>, which a whole string decides.
         /// </summary>
         /// <remarks>
         /// The one place a unit's classes are decided: a value's characters, a pattern's ranges, a parameter's at run time
@@ -294,11 +339,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static JsonCharacterBand MaskOf(char unit) =>
             (unit < '\u0080' ? JsonCharacterBand.None : unit < '\uD800' ? JsonCharacterBand.NonAscii : unit <= '\uDFFF' ? JsonCharacterBand.Surrogates : JsonCharacterBand.HighBmp)
             | (IsTrimmed(unit) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None)
-            | (unit == '\0' ? JsonCharacterBand.Nul : JsonCharacterBand.None);
+            | (unit == '\0' ? JsonCharacterBand.Nul : JsonCharacterBand.None)
+            | (unit == '\uFFFD' ? JsonCharacterBand.Replacement : unit == '\uFDD0' ? JsonCharacterBand.Escape : JsonCharacterBand.None)
+            | (IsLineTerminator(unit) ? JsonCharacterBand.LineTerminator : JsonCharacterBand.None);
 
         /// <summary>
         /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point, as a mask:
-        /// a code point past U+FFFF is written in surrogates.
+        /// a code point past U+FFFF is written in surrogates, and a range holding U+D800 to U+DFFF themselves may hold an
+        /// unpaired one.
         /// </summary>
         /// <param name="lo">The first character.</param>
         /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
@@ -307,20 +355,36 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             | (lo <= 0xFFFF && hi >= 0xE000 ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
             | (lo <= 0xD7FF && hi >= 0x0080 ? JsonCharacterBand.NonAscii : JsonCharacterBand.None)
             | (TrimmedWithin(lo, hi) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None)
-            | (lo <= 0 && hi >= 0 ? JsonCharacterBand.Nul : JsonCharacterBand.None);
+            | (lo <= 0 && hi >= 0 ? JsonCharacterBand.Nul : JsonCharacterBand.None)
+            | (lo <= 0xFFFD && hi >= 0xFFFD ? JsonCharacterBand.Replacement : JsonCharacterBand.None)
+            | (lo <= 0xFDD0 && hi >= 0xFDD0 ? JsonCharacterBand.Escape : JsonCharacterBand.None)
+            | (lo <= 0xDFFF && hi >= 0xD800 ? JsonCharacterBand.Unpaired : JsonCharacterBand.None)
+            | (Array.Exists(LineTerminators, t => lo <= t && hi >= t) ? JsonCharacterBand.LineTerminator : JsonCharacterBand.None);
 
         /// <summary>
         /// Returns the classes a text's units are in, as a mask: <see cref="JsonCharacterBand.None"/> where every one is
-        /// ASCII and none is trimmed.
+        /// ASCII and none is trimmed; <see cref="JsonCharacterBand.Unpaired"/> beside the surrogates where one is not half
+        /// of a pair, read unit by unit as <see cref="IsEncodable"/> reads it.
         /// </summary>
         public static JsonCharacterBand MaskOf(string text)
         {
             var mask = JsonCharacterBand.None;
-            foreach (var unit in text)
-                mask |= MaskOf(unit);
+            for (var i = 0; i < text.Length; i++)
+            {
+                mask |= MaskOf(text[i]);
+                if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                    mask |= MaskOf(text[++i]);
+                else if (char.IsSurrogate(text[i]))
+                    mask |= JsonCharacterBand.Unpaired;
+            }
 
             return mask;
         }
+
+        /// <summary>The line terminators Java's pattern reads, which its <c>.</c>, and so Calcite's <c>LIKE</c>'s <c>_</c>, does not match.</summary>
+        static readonly int[] LineTerminators = [0x000A, 0x000D, 0x0085, 0x2028, 0x2029];
+
+        static bool IsLineTerminator(int point) => Array.IndexOf(LineTerminators, point) >= 0;
 
         /// <summary>
         /// Determines whether the service's <c>TRIM</c> removes a character that Calcite's keeps: one of the measured
@@ -354,8 +418,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Returns the classes a string written in some classes may hold once it is stored: the same, and the high band
-        /// too where it was written with a surrogate, which may have been a lone one.
+        /// Returns the classes a string written in some classes may hold once it is stored: the same, and the high band and
+        /// U+FFFD's class within it too where it was written with a surrogate, which may have been a lone one.
         /// </summary>
         /// <remarks>
         /// The service's measured behaviour, read as data by one rule of the theory: a lone surrogate written as a JSON
@@ -364,13 +428,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// trim removes it.
         /// </remarks>
         public static ValueSet<string> Stored(ValueSet<string> written) =>
-            written.Contains(SurrogateBand) && written.Contains(HighBand) == false ? ValueSet.From(written.Append(HighBand)) : written;
+            written.Contains(SurrogateBand) && (written.Contains(HighBand) == false || written.Contains(ReplacementClass) == false)
+                ? written.Union(ValueSet.Of(HighBand, ReplacementClass)) : written;
 
         /// <summary>
         /// Determines whether a text holds no unpaired surrogate, which the SDK's encoder refuses to send
         /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>), read unit by unit as it is: the one test, which
         /// <c>Client.CosmosEncodable</c> asks of every string a statement carries, and the rendering graph's <c>sendable</c>
-        /// of every literal. No character class holds it, since a pair's units are surrogates too.
+        /// of every literal. The class <see cref="UnpairedClass"/> is this test read as a class (<see cref="MaskOf(string)"/>).
         /// </summary>
         public static bool IsEncodable(string text)
         {

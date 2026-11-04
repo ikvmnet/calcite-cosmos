@@ -180,9 +180,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static readonly IReadOnlyDictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> Rows =
             CosmosAxiomRows.ReadFunctions(CosmosAxioms.All).ToDictionary(r => (r.Key, r.Target), r => r.Answer);
 
-        /// <summary>The operand each function's rows describe, by the loader's ordinals, as S reads it.</summary>
-        public static readonly IReadOnlyDictionary<string, long> Subjects =
-            CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All).ToDictionary(f => f.Function, f => f.Subject, StringComparer.Ordinal);
+        /// <summary>The operands each function's rows name, by the loader's ordinals, as S reads them.</summary>
+        public static readonly IReadOnlyDictionary<string, IReadOnlySet<long>> Subjects =
+            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).GroupBy(f => f.Function, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => (IReadOnlySet<long>)g.Select(f => f.Subject).ToHashSet(), StringComparer.Ordinal);
 
         /// <summary>The rows' names of the functions some target measured: what the loader reads as a computed place (h10).</summary>
         public static readonly IReadOnlySet<string> RowFunctions = Rows.Keys.Select(k => k.Key.Function).ToHashSet(StringComparer.Ordinal);
@@ -209,8 +210,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return parting;
         }
 
+        // The bridge reads a function of one operand only; one whose rows name more is unmeasured to it.
         static CosmosFunctionAnswer? Answer(string function, RenderingTarget target, JsonCharacterBand band) =>
-            Rows.TryGetValue((FunctionKey.Of(function, CosmosValueClass.String, band), target), out var answer) ? answer : null;
+            Subjects.TryGetValue(function, out var subjects) && subjects.Count == 1
+            && Rows.TryGetValue((FunctionKey.Of(function, subjects.Single(), CosmosValueClass.String, band), target), out var answer) ? answer : null;
 
         /// <summary>
         /// The rows' name of a call: its operator's, a trim with its flag as the loader names it, or <c>null</c> for a
@@ -228,9 +231,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IEnumerable<int> SubjectsOf(string function, RexCall call)
         {
             var shift = function.StartsWith("TRIM ", StringComparison.Ordinal) ? 1 : 0;
-            var subject = Subjects.TryGetValue(function, out var s) ? s : FunctionKey.Every;
+            var subjects = Subjects.TryGetValue(function, out var s) ? s : new HashSet<long> { FunctionKey.Every };
             for (var i = shift; i < call.getOperands().size(); i++)
-                if (subject == FunctionKey.Every || subject == i - shift)
+                if (subjects.Contains(FunctionKey.Every) || subjects.Contains(i - shift))
                     yield return i;
         }
 

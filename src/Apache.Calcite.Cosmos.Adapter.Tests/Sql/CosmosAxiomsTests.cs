@@ -146,7 +146,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var rows = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All);
             rows.Should().HaveCount(outcomes.Sum(x => System.Numerics.BitOperations.PopCount((uint)x.o.On)));
             rows.Select(r => (r.Key, r.Target)).Should().OnlyHaveUniqueItems();
-            rows.Should().Contain((FunctionKey.Of("POSITION", Class.String, JsonCharacterBand.Surrogates), RenderingTarget.Emulator, CosmosFunctionAnswer.Differs));
+            rows.Should().Contain((FunctionKey.Of("POSITION", 1, Class.String, JsonCharacterBand.Surrogates), RenderingTarget.Emulator, CosmosFunctionAnswer.Differs));
+            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).Should().Contain(("POSITION", 1L)).And.Contain(("CONCAT", FunctionKey.Every)).And.OnlyHaveUniqueItems();
+
+            // A row's band and class of value are read into its key (F1, F2).
+            var banded = CosmosAxioms.All.First(a => a.Outcomes is not null) with
+            {
+                Outcomes = [new CosmosOutcome(CosmosServiceTest.Contains, Class.String, CosmosAxiomTarget.Azure, "string=true", Band: JsonCharacterBand.Nul)],
+                FunctionOutcomes = [new CosmosFunctionOutcome("REPLACE", 1, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Undefined, FunctionValueClass.Empty)],
+            };
+            CosmosAxiomRows.Read([banded]).Select(r => r.Key).Should().Equal(MeasuredKey.Of(CosmosServiceTest.Contains, Class.String, Class.String, JsonCharacterBand.Nul));
+            CosmosAxiomRows.ReadFunctions([banded]).Select(r => r.Key).Should().Equal(FunctionKey.Of("REPLACE", 1, Class.String, JsonCharacterBand.None, FunctionValueClass.Empty));
             rows.Select(r => r.Key).Order().Select(FunctionKey.FunctionOf).Should().BeInAscendingOrder(StringComparer.Ordinal);
         }
 

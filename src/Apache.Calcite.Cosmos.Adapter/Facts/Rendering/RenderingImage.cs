@@ -21,7 +21,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static readonly HashSet<string> Typed = new(StringComparer.Ordinal) { "+", "-", "*", "/", "%", "MOD" };
 
         /// <summary>A key no row holds: what a gathering that is not one import an ordinal falls under, so no image is written.</summary>
-        public static readonly FunctionKey Malformed = FunctionKey.Of("", CosmosValueClass.None, JsonCharacterBand.None);
+        public static readonly FunctionKey Malformed = FunctionKey.Of("", FunctionKey.Every, CosmosValueClass.None, JsonCharacterBand.None);
 
         /// <summary>The rows' name of a call of a function at a SQL type.</summary>
         public static string KeyFunction(string function, string type) => Typed.Contains(function) ? function + ":" + type : function;
@@ -30,25 +30,69 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static bool IsArithmetic(string key) => key.Contains(':');
 
         /// <summary>
-        /// The keys a call's operands' cells fall under: each kind the operand the rows describe may hold, a string by each
-        /// band its characters may hold and by none; <see cref="Malformed"/> where the gathering is not one import an
+        /// The keys a call's operands' cells fall under (F2): for every operand the rows name — by its ordinal, and by
+        /// <see cref="FunctionKey.Every"/> where they name each alike — each kind it may hold, a string by the band each class
+        /// its characters may hold lies within and by none; <see cref="Malformed"/> where the gathering is not one import an
         /// ordinal, each a literal or read through a reader the rows were measured over.
         /// </summary>
         /// <param name="function">The rows' name of the call (<see cref="KeyFunction"/>).</param>
         /// <param name="gathered">The call's gathered operands.</param>
-        /// <param name="subject">The operand the rows describe, or <see cref="FunctionKey.Every"/>: the rows' own.</param>
+        /// <param name="subjects">The operands the rows name, <see cref="FunctionKey.Every"/> among them where they read each alike: the rows' own.</param>
         /// <param name="readers">The readers the rows were measured through: the rows' own.</param>
-        public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, long subject, ValueSet<string> readers)
+        public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, ValueSet<long> subjects, ValueSet<string> readers)
         {
             var imports = gathered.AsEnumerable().ToList();
             if (Complete(imports) == false || imports.Any(i => i.Reader != PathImport.LiteralReader && readers.Contains(i.Reader) == false))
                 return ValueSet.Of(Malformed);
 
             return ValueSet.From(from i in imports
-                                 where subject == FunctionKey.Every || subject == i.Ordinal
-                                 from key in KeysOf(function, i)
+                                 from ordinal in new[] { FunctionKey.Every, i.Ordinal }
+                                 where subjects.Contains(ordinal)
+                                 from key in KeysOf(function, ordinal, i)
                                  select key);
         }
+
+        /// <summary>
+        /// The keys split by the class of value the rows split each by (F2): a key naming no class, of an operand whose rows
+        /// of its kind and band name classes, becomes one key a class its cells may hold a value of, and stays beside them
+        /// where they may hold one of no class the rows name. Elsewhere the keys as they are.
+        /// </summary>
+        /// <param name="keys">The keys (<see cref="Keys"/>).</param>
+        /// <param name="gathered">The call's gathered operands.</param>
+        /// <param name="measured">The keys the rows hold: the rows' own.</param>
+        public static ValueSet<FunctionKey> Classed(ValueSet<FunctionKey> keys, ValueSet<PathImport> gathered, ValueSet<FunctionKey> measured)
+        {
+            var split = keys.AsEnumerable().Where(k => k.Value == FunctionValueClass.Any)
+                .Select(k => (Key: k, Classes: measured.AsEnumerable().Where(m => m.Value != FunctionValueClass.Any && m with { Value = FunctionValueClass.Any } == k).Select(m => m.Value).ToList()))
+                .Where(s => s.Classes.Count > 0)
+                .ToList();
+            if (split.Count == 0)
+                return keys;
+
+            var classed = keys.AsEnumerable().ToHashSet();
+            foreach (var (key, classes) in split)
+            {
+                classed.Remove(key);
+                var cells = gathered.AsEnumerable().Where(i => key.Ordinal == FunctionKey.Every || i.Ordinal == key.Ordinal).ToList();
+                foreach (var @class in classes)
+                    if (Held(cells, key.Kind, @class))
+                        classed.Add(key with { Value = @class });
+
+                if (Unclassed(cells, key.Kind, classes))
+                    classed.Add(key);
+            }
+
+            return ValueSet.From(classed);
+        }
+
+        /// <summary>Whether an operand's cells may hold a value of a kind in a class: each value of a domain tested, any where none is known.</summary>
+        static bool Held(List<PathImport> cells, CosmosValueClass kind, FunctionValueClass @class) =>
+            cells.Any(i => i.Values.Values is not { } values || values.AsEnumerable().Any(v => CosmosValueClasses.Of(v) == kind && FunctionValueClasses.Holds(@class, v)));
+
+        /// <summary>Whether an operand's cells may hold a value of a kind in none of some classes: none where they hold a whole family.</summary>
+        static bool Unclassed(List<PathImport> cells, CosmosValueClass kind, List<FunctionValueClass> classes) =>
+            FunctionValueClasses.Families.Any(f => f.All(classes.Contains)) == false
+            && cells.Any(i => i.Values.Values is not { } values || values.AsEnumerable().Any(v => CosmosValueClasses.Of(v) == kind && classes.All(c => FunctionValueClasses.Holds(c, v) == false)));
 
         /// <summary>
         /// The call's image on its operands: the call evaluated where every operand is one value C# computes as Calcite does
@@ -82,23 +126,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static bool Complete(List<PathImport> imports) =>
             imports.Select(i => i.Ordinal).OrderBy(o => o).SequenceEqual(Enumerable.Range(0, imports.Count).Select(o => (long)o));
 
-        static IEnumerable<FunctionKey> KeysOf(string function, PathImport import)
+        // A function row's band is a class that lies within itself; a refinement keys under the band it lies within.
+        static IEnumerable<FunctionKey> KeysOf(string function, long ordinal, PathImport import)
         {
             foreach (var kind in import.Values.Kinds.AsEnumerable())
                 switch (kind)
                 {
                     case JsonValues.StringType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.String, JsonCharacterBand.None);
-                        foreach (var (flag, _) in JsonValues.CharacterClasses)
-                            if (JsonValues.ClassMask(import.Chars).HasFlag(flag))
-                                yield return FunctionKey.Of(function, CosmosValueClass.String, flag);
+                        yield return FunctionKey.Of(function, ordinal, CosmosValueClass.String, JsonCharacterBand.None);
+                        var bands = JsonValues.Within(JsonValues.ClassMask(import.Chars));
+                        foreach (var (flag, _, within) in JsonValues.CharacterClasses)
+                            if (flag == within && bands.HasFlag(flag))
+                                yield return FunctionKey.Of(function, ordinal, CosmosValueClass.String, flag);
                         break;
                     case JsonValues.BooleanType:
-                        yield return FunctionKey.Of(function, CosmosValueClass.True, JsonCharacterBand.None);
-                        yield return FunctionKey.Of(function, CosmosValueClass.False, JsonCharacterBand.None);
+                        yield return FunctionKey.Of(function, ordinal, CosmosValueClass.True, JsonCharacterBand.None);
+                        yield return FunctionKey.Of(function, ordinal, CosmosValueClass.False, JsonCharacterBand.None);
                         break;
                     default:
-                        yield return CosmosValueClasses.OfKind(kind) is var c and not CosmosValueClass.None ? FunctionKey.Of(function, c, JsonCharacterBand.None) : Malformed;
+                        yield return CosmosValueClasses.OfKind(kind) is var c and not CosmosValueClass.None ? FunctionKey.Of(function, ordinal, c, JsonCharacterBand.None) : Malformed;
                         break;
                 }
         }

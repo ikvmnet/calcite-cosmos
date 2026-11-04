@@ -167,6 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.AgreementRows", ["Allowing", "Classes", "Refuting"], StaticFact, "S's agreement boxes"),
             ("Facts.Rendering.AnswerMeanings", ["Measured"], StaticFact, "what each answer was measured to mean"),
             ("Facts.Rendering.CellOutcomes", ["WholeCondition"], StaticFact, "a sentinel"),
+            ("Facts.Rendering.FunctionValueClasses", ["Families"], StaticFact, "the classes of value a function row may be keyed by"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "Identity", "Operands", "Opposite", "OppositeElse", "Rows"], StaticFact, "Kleene logic as rows"),
             ("Facts.Rendering.Priced", ["None", "Unpriced"], StaticFact, "sentinels"),
             ("Facts.Rendering.RawTruths", ["Empty", "TruthsUnion", "Union"], StaticFact, "the raw union's lattices and its bottom"),
@@ -189,9 +190,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             ("Facts.Saturation.JsonContexts", ["Armed", "Reporting"], TestArm, "the reports a measurement asks for its flow"),
             ("Facts.Saturation.JsonPathSpec", ["Every", "Root"], StaticFact, "the root and the every-element step"),
-            ("Facts.Saturation.JsonValues", ["AllBands", "AllTypes", "CharacterClasses", "ClassSets", "NoBand", "Numbers", "Scalars", "Trimmed"], StaticFact, "JSON's types and character bands"),
+            ("Facts.Saturation.JsonValues", ["AllBands", "AllTypes", "CharacterClasses", "ClassSets", "LineTerminators", "NoBand", "Numbers", "Scalars", "Trimmed"], StaticFact, "JSON's types and character classes"),
             ("Facts.Saturation.PathCell", ["OrderNames"], StaticFact, "the names of a pair's three orders"),
-            ("Facts.Saturation.PathCell", ["Units"], StaticFact, "the units each class set allows: at most 32 keys over five fixed bands, each value a function of its key"),
+            ("Facts.Saturation.PathCell", ["Units"], StaticFact, "the units each class set allows: at most 512 keys over nine fixed classes, each value a function of its key"),
             ("Facts.Saturation.PathValues", ["AllKinds", "Anything", "AnythingThere", "Lattice", "Rendered"], StaticFact, "the lattice and its tops"),
             ("Facts.Saturation.PredicateAtom", ["Parsed"], StaticFact, "each reader spelling's parse: keys from a finite grammar, values stateless"),
             ("Facts.Saturation.PredicateAtom", ["TypeTests"], StaticFact, "the kinds each type test is TRUE of"),
@@ -205,7 +206,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
-            ("Facts.Saturation.StringCalls", ["Every", "First", "Functions"], StaticFact, "how each string function draws its operands' characters"),
+            ("Facts.Saturation.StringCalls", ["Every", "First", "Functions", "Window"], StaticFact, "how each string function draws its operands' characters"),
         ];
 
         /// <summary>

@@ -73,15 +73,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A window, a reversal and a trim keep characters of the classes they were given and no others: a window that
-        /// splits a surrogate pair keeps a lone one, which is still a surrogate, and a reversal keeps a pair whole.
+        /// splits a surrogate pair keeps a lone one, which is still a surrogate and unpaired now, as a replacement whose
+        /// search is half a pair does, and a reversal keeps a pair whole.
         /// </summary>
         [Fact]
         public void WhatKeepsCharactersKeepsTheirClasses()
         {
             const string Pair = "a😀b";
 
-            JsonValues.MaskOf(org.apache.calcite.runtime.SqlFunctions.substring(Pair, 2, 1)).Should().Be(JsonCharacterBand.Surrogates);
+            JsonValues.MaskOf(org.apache.calcite.runtime.SqlFunctions.substring(Pair, 2, 1)).Should().Be(JsonCharacterBand.Surrogates | JsonCharacterBand.Unpaired);
+            org.apache.calcite.runtime.SqlFunctions.replace(Pair, "\uDE00", "", true).Should().Be(Pair, "a search is matched by code point, never inside a pair");
             org.apache.calcite.runtime.SqlFunctions.reverse(Pair).Should().Be("b😀a");
+            foreach (var function in new[] { "SUBSTRING", "LEFT", "RIGHT" })
+                StringCalls.Image(function, JsonCharacterBand.Surrogates).Should().Be(JsonCharacterBand.Surrogates | JsonCharacterBand.Unpaired, function);
+
+            foreach (var function in new[] { "REVERSE", "REPLACE" })
+                StringCalls.Image(function, JsonCharacterBand.Surrogates).Should().Be(JsonCharacterBand.Surrogates, function);
             JsonValues.MaskOf(org.apache.calcite.runtime.SqlFunctions.trim(true, true, " ", "  a ")).Should().Be(JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed);
 
             foreach (var function in new[] { "SUBSTRING", "LEFT", "RIGHT", "REVERSE", "REPEAT", "CAST", "LOWER", "TRIM BOTH", "||", "CASE" })

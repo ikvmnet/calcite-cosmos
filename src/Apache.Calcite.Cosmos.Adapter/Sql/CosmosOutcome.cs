@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
 namespace Apache.Calcite.Cosmos.Adapter.Sql
@@ -19,7 +20,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// ran and another did not, is an outcome of its own.</param>
     /// <param name="Formula">A composite's Cosmos SQL over <c>c.v</c>, whose answers are a check of composition through
     /// the atomic rows, never rows S loads.</param>
-    internal sealed record CosmosOutcome(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAxiomTarget On, string Answers, string? Formula = null)
+    /// <param name="Band">The band of characters the outcome's strings were drawn from (F1), a cell such as
+    /// <c>Contains/String/nul</c>; <see cref="JsonCharacterBand.None"/> for one that names none.</param>
+    internal sealed record CosmosOutcome(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAxiomTarget On, string Answers, string? Formula = null, JsonCharacterBand Band = JsonCharacterBand.None)
     {
 
         string answers = Answers;

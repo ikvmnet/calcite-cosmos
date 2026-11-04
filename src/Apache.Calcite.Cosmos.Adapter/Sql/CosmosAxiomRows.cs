@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                from target in Targets
                where outcome.On.HasFlag(target.Flag)
                from cell in outcome.Cells
-               select new MeasuredOutcome(axiom.Id, MeasuredKey.Of(outcome.Test, outcome.Operand, cell.Cell), target.Target, cell.Answer),
+               select new MeasuredOutcome(axiom.Id, MeasuredKey.Of(outcome.Test, outcome.Operand, cell.Cell, outcome.Band), target.Target, cell.Answer),
         ];
 
         /// <summary>
@@ -40,12 +40,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                from outcome in axiom.FunctionOutcomes ?? []
                from target in Targets
                where outcome.On.HasFlag(target.Flag)
-               select (FunctionKey.Of(outcome.Function, outcome.Operand, outcome.Band), target.Target, outcome.Answer),
+               select (FunctionKey.Of(outcome.Function, outcome.Subject, outcome.Operand, outcome.Band, outcome.Value), target.Target, outcome.Answer),
         ];
 
         /// <summary>
-        /// One row per function a row computes: the operand its keys are of and the readers its witnesses were read
-        /// through, which S reads as constant raw facts beside the keys. It merges nothing either.
+        /// One row per operand a function outcome is of, each as its row names it (F2): S's union gathers a function's, so
+        /// no reader picks one. It merges nothing either.
+        /// </summary>
+        public static IReadOnlyList<(string Function, long Subject)> ReadFunctionSubjects(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. (from axiom in axioms
+                from outcome in axiom.FunctionOutcomes ?? []
+                select (outcome.Function, outcome.Subject)).Distinct(),
+        ];
+
+        /// <summary>
+        /// One row per function a row computes: the readers its witnesses were read through, which S reads as constant raw
+        /// facts beside the keys.
         /// </summary>
         /// <remarks>
         /// Beside the text, each raw column that reads a string as itself and raises over every other kind that is no null
@@ -53,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// function what the text hands it (<c>Calcite.JsonValueRendersScalarsAsText</c>), and a null as the text does,
         /// and over anything else Calcite raises, which any answer refines.
         /// </remarks>
-        public static IReadOnlyList<(string Function, long Subject, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms)
+        public static IReadOnlyList<(string Function, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms)
         {
             var all = axioms.ToList();
             var asText = (from axiom in all
@@ -65,9 +76,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             [
                 .. from axiom in all
                    from outcome in axiom.FunctionOutcomes ?? []
-                   group (outcome.Subject, Readers: axiom.Readers ?? []) by outcome.Function into function
-                   let readers = function.First().Readers
-                   select (function.Key, function.First().Subject, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
+                   group axiom.Readers ?? [] by outcome.Function into function
+                   let readers = function.First()
+                   select (function.Key, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
             ];
         }
 

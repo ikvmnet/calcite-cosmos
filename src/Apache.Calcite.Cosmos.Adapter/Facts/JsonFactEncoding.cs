@@ -225,10 +225,11 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns the theory's members for a set of classes, by the theory's one table of them
-        /// (<see cref="Saturation.JsonValues.CharacterClasses"/>).
+        /// Returns the theory's members for a stated set of classes, by the theory's one table of them
+        /// (<see cref="Saturation.JsonValues.CharacterClasses"/>), with every refinement of each class it names
+        /// (<see cref="Saturation.JsonValues.Closed"/>): a claim names classes, and the value reader's refinements lie within them.
         /// </summary>
-        public static ValueSet<string> Members(JsonCharacterBand bands) => ClassSet(bands);
+        public static ValueSet<string> Members(JsonCharacterBand bands) => ClassSet(Closed(bands));
 
         /// <summary>
         /// Reads the theory's members back as a set of classes.
@@ -243,7 +244,7 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             get
             {
-                foreach (var (flag, _) in CharacterClasses)
+                foreach (var (flag, _, _) in CharacterClasses)
                     yield return flag;
             }
         }

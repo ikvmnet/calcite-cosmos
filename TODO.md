@@ -3033,14 +3033,26 @@ across documents* and *A join of a container to itself* is the record.
   decimals read untruncated (G8, the comparand's casts as terms); the PostgreSQL and Oracle `CONCAT` loaded as `CONCAT`
   (G6, a name and rows of their own); `REPLACE` of a search holding U+0000, hidden today by `Spell`'s literal refusal
   (F2, operand keys); `REPLACE` of a replacement that is no string, measured on the emulator alone (F2). A fix strikes
-  its name from `Held`.
+  its name from `Held`. F2's key shape landed at f12; the `REPLACE` cases strike once rows name its search (ordinal 1,
+  `nul` and empty or not) and replacement (ordinal 2, each kind), measured on both targets.
+- **No row names a refinement, a band of a service outcome or a class of value** — *small, the rows' half of F1 and F2.*
+  f12 gave the keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`,
+  `escape`, `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`. Each needs a measured cell before it moves an
+  image: `Contains/String/nul` under Azure, `REPLACE` and `CONCAT` over U+FFFD and U+FDD0 apart from the high band, a
+  window over an unpaired surrogate, `SUBSTRING`'s start below or at least 1 and its length below 0, a count's sign.
+  Run 2's findings land as these cells.
+- **A claim carries the five classes, not their refinements** — *small.* The pattern reader computes which refinements
+  a pattern excludes, but a claim states only the five, read closed (`JsonValues.Closed`), so a pattern holding high
+  characters but not U+FFFD is stated as holding U+FFFD. A claim carrying refinements gives it back once a row reads one.
+- **The column bridge reads one operand a function** — *until h37.* `CosmosFunctionSpellings.Answer` asks the key of
+  the one operand the rows name, and reads a function whose rows name two as unmeasured, so refuses it; it goes at h37.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
   on every target rather than passed unasked. It pushed under `Production` before; no digest statement moved at either
   step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
 - **A result key bounds nothing yet** — *small, legality until a row holds one.* The image rule reads no key of a call's result, since no row
-  holds one, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
+  holds one (f12's `FunctionValueClass` classes operands only; a result within or past 10,000 code points is a class still to add), so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
   spelling a `REPEAT` place only for a count of 0. Run 1 measured Azure's rows as they stood, with no result key, so
   the bound stays legality.
 - **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,

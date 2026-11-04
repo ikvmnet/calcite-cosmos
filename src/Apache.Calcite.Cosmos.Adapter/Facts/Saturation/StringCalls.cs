@@ -19,7 +19,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <b>Calcite's functions, as its runtime computes them.</b> A concatenation, a repetition, a reversal, a replacement's
     /// subject and replacement, a conditional's arms and a cast from text to text are made of their operands' characters
     /// and nothing else. A window and a trim keep some of them: a window splitting a surrogate pair keeps a lone one,
-    /// which is still a surrogate. A case mapping maps each character, and Java's full mapping, which Calcite's
+    /// which is still a surrogate, and unpaired now (F1); a reversal keeps a pair whole, and a replacement matches its
+    /// search by code point, never inside a pair. A case mapping maps each character, and Java's full mapping, which Calcite's
     /// <c>UPPER</c> and <c>LOWER</c> are, keeps every class but one where it was: over every code point, read by the
     /// theory's own reader of a unit, only <c>UPPER</c> takes a character from U+E000 to one below U+D800 — U+FB13 to
     /// U+0544 U+0546 — and no mapping makes a surrogate, a character the service trims or U+0000 of anything else
@@ -42,6 +43,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         static JsonCharacterBand Kept(JsonCharacterBand classes) => classes;
 
+        /// <summary>Every class kept, and a pair's units cut apart: a surrogate may be left unpaired.</summary>
+        static JsonCharacterBand Cut(JsonCharacterBand classes) =>
+            (classes & JsonCharacterBand.Surrogates) != JsonCharacterBand.None ? classes | JsonCharacterBand.Unpaired : classes;
+
         /// <summary>
         /// Java's full upper-case mapping: every class kept, and a character from U+E000 mapped to letters below U+D800,
         /// as the ligatures U+FB13 to U+FB17 are to Armenian.
@@ -53,6 +58,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         static readonly Draw First = new(operand => operand == 0, Kept);
 
+        static readonly Draw Window = new(operand => operand == 0, Cut);
+
         /// <summary>The functions, by the name the loader spells a call of each with.</summary>
         static readonly Dictionary<string, Draw> Functions = new(StringComparer.Ordinal)
         {
@@ -61,9 +68,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ["CASE"] = Every,
             ["UPPER"] = new(operand => operand == 0, Upper),
             ["LOWER"] = First,
-            ["SUBSTRING"] = First,
-            ["LEFT"] = First,
-            ["RIGHT"] = First,
+            ["SUBSTRING"] = Window,
+            ["LEFT"] = Window,
+            ["RIGHT"] = Window,
             ["REVERSE"] = First,
             ["REPEAT"] = First,
             ["CAST"] = First,

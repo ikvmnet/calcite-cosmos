@@ -281,10 +281,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static (bool Known, J? Value) Place(SqlValue.Call call, J.Obj document, RenderingTarget target)
         {
             var function = RenderingImage.KeyFunction(call.Function, call.Type!);
-            if (CosmosFunctionSpellings.Subjects.TryGetValue(function, out var subject) == false)
+            if (CosmosFunctionSpellings.Subjects.TryGetValue(function, out var subjects) == false)
                 return (false, null);
 
-            int[] keyed = subject == FunctionKey.Every ? [.. Enumerable.Range(0, call.Operands.Count)] : [(int)subject];
+            var each = subjects.Contains(FunctionKey.Every);
+            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => each || subjects.Contains(i))];
             if (call.Operands.Where((_, i) => keyed.Contains(i) == false).Any(o => o is not SqlValue.Literal))
                 return (false, null);
 
@@ -307,12 +308,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     J.Null => (CosmosValueClass.Null, JsonCharacterBand.None),
                     J.Bool b => (b.Value ? CosmosValueClass.True : CosmosValueClass.False, JsonCharacterBand.None),
                     J.Num or J.Huge => (CosmosValueClass.Number, JsonCharacterBand.None),
-                    J.Str s => (CosmosValueClass.String, MaskOf(s.Value)),
+                    J.Str s => (CosmosValueClass.String, Within(MaskOf(s.Value))),
                     J.Obj => (CosmosValueClass.Object, JsonCharacterBand.None),
                     _ => (CosmosValueClass.Array, JsonCharacterBand.None),
                 };
                 foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
-                    switch (CosmosFunctionSpellings.Rows.TryGetValue((FunctionKey.Of(function, kind, band), target), out var answer) ? answer : (CosmosFunctionAnswer?)null)
+                    switch (CosmosFunctionSpellings.Rows.TryGetValue((FunctionKey.Of(function, each ? FunctionKey.Every : i, kind, band), target), out var answer) ? answer : (CosmosFunctionAnswer?)null)
                     {
                         case CosmosFunctionAnswer.Undefined:
                             undefined = true;

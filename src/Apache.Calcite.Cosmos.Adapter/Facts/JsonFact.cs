@@ -84,19 +84,19 @@ namespace Apache.Calcite.Cosmos.Facts
                 // stored form one the characters it is written in satisfy. The theory derives the same of one path by its
                 // rules; these say it of a union's branches, which the meet reads before the theory sees them, as the
                 // bounds' rows do, and go with the meet (TODO.md, *The schema reader emits splits rather than a meet*).
-                (JsonClaim.Characters a, JsonClaim.Characters b) => (a.Bands & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.Characters a, JsonClaim.Characters b) => (Saturation.JsonValues.Closed(a.Bands) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
                 (JsonClaim.OfType a, JsonClaim.Characters) => a.Type != JsonType.String,
-                (JsonClaim.EqualTo a, JsonClaim.Characters b) => (JsonFactEncoding.Characters(a.Value) & ~b.Bands) == JsonCharacterBand.None,
-                (JsonClaim.OneOf a, JsonClaim.Characters b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~b.Bands) == JsonCharacterBand.None),
-                (JsonClaim.Represents a, JsonClaim.Characters b) => (a.Form.Characters & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.EqualTo a, JsonClaim.Characters b) => (JsonFactEncoding.Characters(a.Value) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
+                (JsonClaim.OneOf a, JsonClaim.Characters b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None),
+                (JsonClaim.Represents a, JsonClaim.Characters b) => (a.Form.Characters & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
 
                 // And what a string was written in, which a pattern says, by the same rows: a value or a form is written as
                 // it is stored, none of them holding a lone surrogate.
-                (JsonClaim.Written a, JsonClaim.Written b) => (a.Bands & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.Written a, JsonClaim.Written b) => (Saturation.JsonValues.Closed(a.Bands) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
                 (JsonClaim.OfType a, JsonClaim.Written) => a.Type != JsonType.String,
-                (JsonClaim.EqualTo a, JsonClaim.Written b) => (JsonFactEncoding.Characters(a.Value) & ~b.Bands) == JsonCharacterBand.None,
-                (JsonClaim.OneOf a, JsonClaim.Written b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~b.Bands) == JsonCharacterBand.None),
-                (JsonClaim.Represents a, JsonClaim.Written b) => (a.Form.Characters & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.EqualTo a, JsonClaim.Written b) => (JsonFactEncoding.Characters(a.Value) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
+                (JsonClaim.OneOf a, JsonClaim.Written b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None),
+                (JsonClaim.Represents a, JsonClaim.Written b) => (a.Form.Characters & ~Saturation.JsonValues.Closed(b.Bands)) == JsonCharacterBand.None,
 
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how

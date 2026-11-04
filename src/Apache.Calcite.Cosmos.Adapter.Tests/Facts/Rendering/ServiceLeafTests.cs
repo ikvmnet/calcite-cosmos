@@ -214,10 +214,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var table = Less(CosmosAnswer.StoredCodePoint, CosmosAnswer.True);
             var (fdd0, above) = (Of("﷐"), Of("﷐\u0001"));
-            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(JsonCharacterBand.HighBmp), ValueSet.Of(new CutPoint(fdd0, CutKind.Literal), new CutPoint(above, CutKind.Literal)));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(Closed(JsonCharacterBand.HighBmp)), ValueSet.Of(new CutPoint(fdd0, CutKind.Literal), new CutPoint(above, CutKind.Literal)));
             var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, above), cells, table, ValueSet<string>.Empty);
             At(less, fdd0).Should().Be(ServiceOutcomes.True);
-            At(less, new PathCell.Strings(null, fdd0, ValueSet<string>.Empty, ClassSet(JsonCharacterBand.HighBmp)).Text).Should().Be(ServiceOutcomes.True);
+            At(less, new PathCell.Strings(null, fdd0, ValueSet<string>.Empty, ClassSet(Closed(JsonCharacterBand.HighBmp))).Text).Should().Be(ServiceOutcomes.True);
         }
 
         /// <summary>An entry of two answers means both; an order of two comparators places a cell by each.</summary>

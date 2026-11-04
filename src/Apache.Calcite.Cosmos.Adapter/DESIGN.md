@@ -3648,7 +3648,8 @@ classes a character is in, W read off the measured table as data (`Service.TrimR
 read, a stored form's alphabet gives its own — every registered form is ASCII with no W and no Z — and `_etag`'s are
 read off its grammar. Each class is named once, its flag beside its member (`JsonValues.CharacterClasses`), and every
 other spelling of a set of them is read off that table. A conjunction narrows them and a case join widens them. No C#
-derives or combines one. R1 reads S and H alone (`JsonCharacterBand.FromD800`), so no order moved.
+derives or combines one. R1 reads S and H alone (`JsonCharacterBand.FromD800`), so no order moved. Four refinements sit
+beside the classes since f12 (*The foundation's rows: refinements and operand keys*).
 
 **Each function asks one question of its arguments, in one place.** (Since h10 the function rows say it, read by
 `Sql/CosmosFunctionSpellings` and S: *A computed value is a place*. What follows is what the class asked before them.)
@@ -8033,7 +8034,7 @@ releases part at 2^63 - 1: EN20260907 takes `%` of the double, EN20261019 of the
 otherwise, which the run record keeps.
 
 **Function rows.** What a function computes against Calcite is a row of its own kind: `CosmosFunctionOutcome`, keyed
-`FunctionKey(Function, Kind, Band)` and answering `Same`, `Differs`, `Fails`, `Refuses` or `Undefined`, read by
+`FunctionKey(Function, Kind, Band)` (since f12 also by operand and class of value) and answering `Same`, `Differs`, `Fails`, `Refuses` or `Undefined`, read by
 `CosmosAxiomRows.ReadFunctions` into one row per key per target. `FunctionKey` and the answer are registered values of
 S, as `MeasuredKey` is, and S's image rule and the translator's column bridge read them (h10, *A computed value is a
 place*). The measurement asks the service each function over the key's witnesses (`CosmosWitnessProbe.Project`) and
@@ -8323,8 +8324,8 @@ a concatenation or an arithmetic operator. Each function outcome carries that su
 side (`CosmosAxiom.Readers`): the text accessor, `RETURNING VARCHAR` and a cast of the text to `VARCHAR` for the string
 functions, and the typed and cast readings at `INTEGER`, `BIGINT`, `DECIMAL` and `DOUBLE` for the arithmetic, each of
 which `CosmosFunctionComparison` asks Calcite through, a key's answer the worst over them. `CosmosAxiomRows.ReadFunctionReads`
-reads both into S as constant raw facts, `functionsubject` and `measuredreaders`, which the image rule reads beside the
-keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
+reads both into S as constant raw facts, `functionsubject` and `measuredreaders` (since f12 `functionsubjects`, every
+operand the rows name), which the image rule reads beside the keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
 read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
 `CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column gate reads the same subjects
 (`CosmosFunctionSpellings.Subjects`), and the one function it gates that no row names, `LENGTH`, is refused on every
@@ -8817,6 +8818,45 @@ and is not lowered), and Calcite raises over a stored `"100000"`; `TINYINT` over
 refinement order lets a pushdown answer where the engine raises (*Differential testing*), and `AgreementRows` lets any
 answer but a failure refine a raise. That `TryNumericCastOperand` refuses the same raise for `DECIMAL` is a stricter
 choice the order permits; two lists deciding one claim is G9's, at h24.
+
+### The foundation's rows: refinements and operand keys (F1, F2)
+
+The audit's plan gives the rows the shape the later families read before any of them moves (§3, the foundation). f12
+lands the first two as data and readers: no rule is added, no row yet names what they add, and the digests are
+byte-equal.
+
+**Four refinements beside the five classes (F1).** `replacement` (U+FFFD) and `escape` (U+FDD0) lie within the high
+band, `unpaired` (a lone surrogate) within the surrogates and `lineterm` (U+000A, U+000D, U+0085, U+2028, U+2029,
+each one the service trims) within W. Each sits in `JsonValues.CharacterClasses` beside the class it lies within, and
+only the value reader emits one: `MaskOf` of a unit names U+FFFD, U+FDD0 and a line terminator, of a range each one it
+spans, and of a whole string an unpaired surrogate, which one unit never decides. A refinement always comes with its
+class, so every class test that asked before answers as before.
+
+- **A stated set is read closed.** A claim or an encoding names classes, and `JsonValues.Closed` reads each with its
+  refinements, so a set the pattern reader states as high holds U+FFFD and U+FDD0 rather than excluding them; a claim
+  carries the five, and what the pattern reader knows of a refinement is not stated yet.
+- **What a function or a write does to one is the table's.** A window cuts a pair (`StringCalls.Window`), so
+  `SUBSTRING`, `LEFT` and `RIGHT` may leave a surrogate unpaired; a reversal keeps a pair and a replacement matches by
+  code point, which `StringCallsTests` holds to Calcite. A lone surrogate written is stored as U+FFFD, so the stored
+  set gains `replacement` with the high band (`JsonValues.Stored`).
+- **`MeasuredKey` gains a band,** `None` by default, read off `CosmosOutcome.Band`, so a service outcome can be keyed
+  `Contains/String/nul`; no outcome names one yet.
+
+**Operand-keyed function rows (F2).** `FunctionKey(Function, Ordinal, Kind, Band, Value)`: the operand by its ordinal
+(`FunctionKey.Every` for each alike), and a class of value (`FunctionValueClass`: a sign, below or at least 1, a string
+empty or not), `Any` by default. `functionsubject` became `functionsubjects`, a `Union` over every operand the rows
+name (`CosmosAxiomRows.ReadFunctionSubjects`), and `RenderingImage.Keys` keys each of them. A refinement keys under
+the band it lies within, never a key of its own, until a row names it. `RenderingImage.Classed` then splits a key
+whose rows name classes into the classes its cells may hold a value of, a literal by its own and a path of unknown
+values by each, and keeps the unsplit key where a value may lie in none of them, which no row holds. It is a second
+`Compute` of the image rule, since `Compute.Of` takes four operands and the keys already take them; it is a primitive
+of kind (d), and inert while no row names a class.
+
+- **What does not move yet.** The rows still name one operand of each function, so the keys are the ones they were;
+  the defects F2 fixes (`REPLACE`'s search and replacement) strike when rows name those operands. A result's class
+  (`REPEAT` within or past 10,000 code points) is no operand's, and waits for a result key (`TODO.md`).
+- **The column bridge reads a function of one operand.** `CosmosFunctionSpellings.Answer` asks the key of the one
+  operand the rows name; it goes at h37.
 
 ## Differential testing
 

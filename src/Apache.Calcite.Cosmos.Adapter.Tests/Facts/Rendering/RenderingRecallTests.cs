@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], Array + "(U,t)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
             ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], "$[\"category\"]=string|a; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "6", "7", "8", "9"], ["2", "3", "6", "7", "8", "9"]),
-            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], "$[\"category\"]=strings < \"b\" in [high,nonascii,nul,surrogate,trimmed]; " + Array + "(U,t)",
+            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], "$[\"category\"]=strings < \"b\" in [escape,high,lineterm,nonascii,nul,replacement,surrogate,trimmed,unpaired]; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
         };
 

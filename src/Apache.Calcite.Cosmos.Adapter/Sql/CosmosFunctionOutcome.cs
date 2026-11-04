@@ -16,6 +16,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Band">The band of the operand's characters, for a string; <see cref="JsonCharacterBand.None"/> otherwise.</param>
     /// <param name="On">The targets that ran this key's witnesses.</param>
     /// <param name="Answer">What they computed.</param>
-    internal sealed record CosmosFunctionOutcome(string Function, long Subject, CosmosValueClass Operand, JsonCharacterBand Band, CosmosAxiomTarget On, CosmosFunctionAnswer Answer);
+    /// <param name="Value">The class of the operand's value the witnesses were drawn from (F2); <see cref="FunctionValueClass.Any"/>
+    /// where they varied it over every value of the kind and band.</param>
+    internal sealed record CosmosFunctionOutcome(string Function, long Subject, CosmosValueClass Operand, JsonCharacterBand Band, CosmosAxiomTarget On, CosmosFunctionAnswer Answer,
+        FunctionValueClass Value = FunctionValueClass.Any);
 
 }

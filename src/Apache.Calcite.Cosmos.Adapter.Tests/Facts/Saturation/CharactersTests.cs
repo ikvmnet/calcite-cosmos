@@ -2,6 +2,7 @@ using System.Linq;
 
 using Eggnog;
 
+using JsonCharacterBand = Apache.Calcite.Cosmos.Facts.JsonCharacterBand;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -85,6 +86,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Chars("$.s", Is("$.s", "a\0b")).Should().Equal(ValueSet.Of(NulClass));
             Chars("$.s", Is("$.s", "a\0b", "\u00A0")).Should().Equal(ValueSet.Of(NonAsciiBand, TrimmedClass, NulClass));
             Chars("$.s", Is("$.s", "a0b")).Should().Equal(NoBand);
+        }
+
+        /// <summary>
+        /// The refinements (F1) are the value reader's alone, each beside the class it lies within: U+FFFD and U+FDD0
+        /// within the high band, a line terminator within the trimmed class, and an unpaired surrogate within the
+        /// surrogates, which a whole string decides and one unit never does. A stated set is read with the refinements of
+        /// each class it names, and a refinement keys under the class it lies within.
+        /// </summary>
+        [Fact]
+        public void TheRefinementsAreReadOffAValueAlone()
+        {
+            CharactersOf(Of("a\uFFFD")).Should().Equal(ValueSet.Of(HighBand, ReplacementClass));
+            CharactersOf(Of("a\uFDD0")).Should().Equal(ValueSet.Of(HighBand, EscapeClass));
+            CharactersOf(Of("a\nb")).Should().Equal(ValueSet.Of(TrimmedClass, LineTerminatorClass));
+            CharactersOf(Of("a\u2028b")).Should().Equal(ValueSet.Of(NonAsciiBand, TrimmedClass, LineTerminatorClass));
+            CharactersOf(Of("a\tb")).Should().Equal(Trimmed, "a tab is trimmed, and no line terminator");
+            CharactersOf(Of(Emoji)).Should().Equal(Surrogate, "a pair is no unpaired surrogate");
+            CharactersOf(Of("a\uD83D")).Should().Equal(ValueSet.Of(SurrogateBand, UnpairedClass));
+            CharactersOf(Of("\uDE00\uD83D")).Should().Equal(ValueSet.Of(SurrogateBand, UnpairedClass), "a low unit before a high one pairs neither");
+            MaskOf('\uD83D').Should().Be(JsonCharacterBand.Surrogates, "one unit alone never decides it is unpaired");
+            Chars("$.s", Is("$.s", "a\uFFFD", "\n")).Should().Equal(ValueSet.Of(HighBand, TrimmedClass, ReplacementClass, LineTerminatorClass));
+
+            Within(JsonCharacterBand.Replacement | JsonCharacterBand.Unpaired | JsonCharacterBand.LineTerminator)
+                .Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Surrogates | JsonCharacterBand.Trimmed);
+            Closed(JsonCharacterBand.HighBmp).Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Replacement | JsonCharacterBand.Escape);
+            Closed(JsonCharacterBand.NonAscii).Should().Be(JsonCharacterBand.NonAscii);
+            Stored(ValueSet.Of(SurrogateBand, HighBand)).Should().Equal(ValueSet.Of(SurrogateBand, HighBand, ReplacementClass), "a lone surrogate written is stored as U+FFFD");
         }
 
         [Fact]

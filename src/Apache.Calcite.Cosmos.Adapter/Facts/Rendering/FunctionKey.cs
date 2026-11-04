@@ -4,28 +4,37 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The key of a function row: a function by the name the IR reads it by, over an operand of one kind and, for a
-    /// string, one band of characters (<see cref="JsonCharacterBand.None"/> for ASCII and for any other kind). A result
-    /// key is the same struct, with the result's kind and band.
+    /// The key of a function row (F2): a function by the name the IR reads it by, the operand the row is of by the loader's
+    /// ordinals (<see cref="Every"/> where the function reads each alike), that operand's kind, for a string one band of its
+    /// characters (<see cref="JsonCharacterBand.None"/> for every string and for any other kind), and the class of its
+    /// value the row was measured over (<see cref="FunctionValueClass.Any"/> where the row names none). A result key is
+    /// the same struct, with the result's kind and band.
     /// </summary>
-    internal readonly record struct FunctionKey(string Function, CosmosValueClass Kind, JsonCharacterBand Band) : IComparable<FunctionKey>
+    internal readonly record struct FunctionKey(string Function, long Ordinal, CosmosValueClass Kind, JsonCharacterBand Band, FunctionValueClass Value) : IComparable<FunctionKey>
     {
 
-        /// <summary>A function row's subject standing for every operand: a concatenation and an arithmetic operator read each.</summary>
+        /// <summary>A function row's operand standing for every operand: a concatenation and an arithmetic operator read each.</summary>
         public const long Every = -1;
 
         /// <summary>The key, as a rule computes one.</summary>
-        public static FunctionKey Of(string function, CosmosValueClass kind, JsonCharacterBand band) => new(function, kind, band);
+        public static FunctionKey Of(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value = FunctionValueClass.Any) =>
+            new(function, ordinal, kind, band, value);
 
         /// <summary>The key's function, as a rule reads it.</summary>
         public static string FunctionOf(FunctionKey key) => key.Function;
 
-        /// <inheritdoc />
+        /// <summary>By function, kind and band as before the operand was keyed, then by operand and class of value.</summary>
         public int CompareTo(FunctionKey other) =>
-            string.CompareOrdinal(Function, other.Function) is var f and not 0 ? f : Kind != other.Kind ? Kind.CompareTo(other.Kind) : Band.CompareTo(other.Band);
+            string.CompareOrdinal(Function, other.Function) is var f and not 0 ? f
+            : Kind != other.Kind ? Kind.CompareTo(other.Kind)
+            : Band != other.Band ? Band.CompareTo(other.Band)
+            : Ordinal != other.Ordinal ? Ordinal.CompareTo(other.Ordinal)
+            : Value.CompareTo(other.Value);
 
-        /// <summary>The key spelled <c>function/kind/band</c>, as a run record names it.</summary>
-        public override string ToString() => Function + "/" + Kind + "/" + Band;
+        /// <summary>The key spelled <c>function/operand/kind/band</c>, and <c>/class</c> where it names one, as a run record names it.</summary>
+        public override string ToString() =>
+            Function + "/" + (Ordinal == Every ? "each" : Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture)) + "/" + Kind + "/" + Band
+            + (Value == FunctionValueClass.Any ? "" : "/" + Value);
 
     }
 

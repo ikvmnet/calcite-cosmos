@@ -42,10 +42,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> Functions { get; init; } = [];
 
         /// <summary>
-        /// Each function's subject and the readers its rows were measured through (<c>CosmosAxiomRows.ReadFunctionReads</c>):
-        /// which operand a key is of, and through what a gathered operand may be read for the key to hold of it.
+        /// The readers each function's rows were measured through (<c>CosmosAxiomRows.ReadFunctionReads</c>): through what a
+        /// gathered operand may be read for a key to hold of it.
         /// </summary>
-        public IReadOnlyList<(string Function, long Subject, IReadOnlyList<string> Readers)> FunctionReads { get; init; } = [];
+        public IReadOnlyList<(string Function, IReadOnlyList<string> Readers)> FunctionReads { get; init; } = [];
+
+        /// <summary>
+        /// Each operand a function row is of (<c>CosmosAxiomRows.ReadFunctionSubjects</c>), one a row, which S's union gathers
+        /// per function (F2): which operands a call's keys are read off.
+        /// </summary>
+        public IReadOnlyList<(string Function, long Subject)> FunctionSubjects { get; init; } = [];
 
         /// <summary>
         /// What each raw column answers on each key (<c>CosmosAxiomRows.ReadColumns</c>), whose union S's rule takes (h12).

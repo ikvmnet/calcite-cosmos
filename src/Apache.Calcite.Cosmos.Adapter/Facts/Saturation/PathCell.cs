@@ -470,8 +470,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         static IEnumerable<List<string>> Orderings(List<string> items) => items.Count <= 1 ? [items]
             : items.SelectMany((item, i) => Orderings([.. items.Take(i), .. items.Skip(i + 1)]).Select(rest => (List<string>)[item, .. rest]));
 
+        // A unit's own classes: a lone surrogate's unpaired class is a whole string's, which Contains asks of a candidate.
         static bool[] Allowed(ValueSet<string> classes) =>
-            Units.GetOrAdd(classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => BandsOfText(((char)u).ToString()).IsSubsetOf(k)).ToArray());
+            Units.GetOrAdd(classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => ClassSet(MaskOf((char)u)).IsSubsetOf(k)).ToArray());
 
         /// <summary>Which UTF-16 units each set of classes allows, read once a set.</summary>
         static readonly ConcurrentDictionary<ValueSet<string>, bool[]> Units = new();
