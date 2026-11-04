@@ -8473,6 +8473,17 @@ the two-path row's absent and null cells on the emulator. Under `Emulator` one m
 refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
 anything.
 
+**What the owner decided, by name (2026-11-03).** Line 6 passes a push only where it is Proven or the owner decided it
+by name, and the triage reads each decision by the push's set and text, for the reason it was taken for alone. Q3's
+declines are **accepted** as correctness fixes: 43 pushes under `Production` and 50 under `Emulator`, each an `INTEGER`
+column with a small integer added, subtracted or multiplied and then compared or null-tested, which Calcite computes in
+the column's type and wraps where the service never does, and nothing bounds the column; and the one generated push
+outside its function's domain. Each is computed in process: RU, never rows. A value `CASE` compared and an unnest element
+are **overridden** for 3A, their translator code kept until h31's `Yield` and 3D or 3E; a column compared with a text
+reading and `MOD`, whose pushes are the emulator's alone, are overridden under the emulator rule, as are its own two
+refusals (the case mapping beyond ASCII and #246's stored order). A push no name lists, or one read again for another
+reason, stays open.
+
 ## Differential testing
 
 Every pushdown is checked against an oracle rather than an expected string: the same SQL is planned

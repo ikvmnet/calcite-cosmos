@@ -2915,7 +2915,23 @@ across documents* and *A join of a container to itself* is the record.
   where a declaration says the path holds booleans its string cells fall away.
 - **A column compared with a text reading is no pair** — *small.* The pair reads two readings of one kind; a raw column
   against a text (`<=($1, JSON_VALUE($0, '$.e'))`, the order differential's) has none, and stays opaque: 3 real pushes
-  under `Emulator`.
+  under `Emulator`. The owner overrode the 3, and `MOD`'s one (`c.k % 3`), by name under the emulator rule (2026-11-03):
+  a *stopgap* that ends when a `Production` push of either shape appears, which then needs the pair of two kinds or the
+  function row.
+- **Q3's declines are accepted by name; a magnitude class would recover them** — *medium, after 3A.* The owner accepted
+  (2026-11-03) the 43 `Production` and 50 `Emulator` pushes S declines for integer overflow, an `INTEGER` column with a
+  small integer added, subtracted or multiplied, then compared or null-tested, a ternary's arm among them, and the one
+  generated out-of-domain push (`LOG(c.price) > 50`); the branch's triage lists each by its text (line 6). Calcite
+  computes in the column's type and wraps past 2,147,483,647, the service never does
+  (`Service.IntegerArithmeticIsExactWithinLong`), and nothing bounds the column, so each comparison is computed in
+  process: RU, never rows. A function key carrying a magnitude, read at the literal's critical points, would prove
+  `c.price + n` wherever a declared range bounds the column; no column in the corpus declares one, and it needs function
+  rows and an Azure measurement.
+- **Two declines are overridden for 3A, their translator code kept** — *Stage 3, 3D and 3E.* The owner overrode by name
+  (2026-11-03) a value `CASE` compared (1 real push under `Production`, 2 under `Emulator`), which S reads at h31's
+  `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
+  places are rooted at the container until 3D or 3E. The translator's code for both stays until then; the triage lists
+  each by its text.
 - **The two-path row reads no absent or null pair** — *small, with h14b.* `ServiceLeaf.Paired` finds no key for an absent
   or a null right side against the same on the left, though the measurement asks both, so every pair is Unproven under
   `Emulator`: 5 real pushes, the diagonal `c.k < c.k` among them. Pinning that either side absent answers undefined, and a null against a null as the literal
