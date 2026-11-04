@@ -2861,9 +2861,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Contain("NOT IS_STRING(c.name)");
             sql.Should().Contain("c.name > @p0");
 
-            // The absent path is the one document the escape hatch need not admit: the accessor
-            // answers null there and no comparison keeps a null.
-            sql.Should().Contain("IS_DEFINED(c.name)");
+            // The escape hatch admits only what can render past the literal (h07, listed, tighter): `true`
+            // sorts after 'steel' and no number's rendering does, and the accessor answers null where the
+            // path is absent or null, which no comparison keeps.
+            sql.Should().Contain("IS_BOOL(c.name)");
+            sql.Should().NotContain("IS_DEFINED(c.name)");
         }
 
         /// <summary>

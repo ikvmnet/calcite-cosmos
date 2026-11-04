@@ -261,10 +261,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A type test is liftable, because <c>CosmosFunctionBodies</c> answers it in process and
         /// answers what the service answers — see <c>CosmosFunctionBodiesTests</c>. So the
         /// soft-delete shape issue #92 was really about, which asks <c>IS_NULL</c> rather than SQL's
-        /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query.
+        /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query. The test is of a
+        /// path the pinned half says nothing of, so it is a residual: one the pinned half implies leaves none (below).
         /// </remarks>
         [Fact]
         public void ATypeTestResidualIsLiftedBecauseItHasABody()
+        {
+            Use(SmallDocuments());
+
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(JSON_VALUE(c.\"DOC\", '$.name'))");
+
+            var query = Query(Find<CosmosFilter>(plan)!);
+
+            query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
+            query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
+            Text(plan).Should().Contain("ClrCursorFilter", "and finishes in process");
+        }
+
+        /// <remarks>
+        /// A type test the pinned half implies is no residual (h07, listed): a <c>VARIANT</c> equal to a boxed string is a
+        /// string, so the facts graph deletes <c>IS_STRING</c> as redundant, the read is the whole predicate, and nothing
+        /// is left to finish in process. The same rows.
+        /// </remarks>
+        [Fact]
+        public void ATypeTestThePinnedHalfImpliesLeavesNoResidual()
         {
             Use(SmallDocuments());
 
@@ -272,9 +292,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             var query = Query(Find<CosmosFilter>(plan)!);
 
-            query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
-            query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
-            Text(plan).Should().Contain("ClrCursorFilter", "and finishes in process");
+            query.PointReadId.Should().Be("x");
+            query.Sql.Should().NotContain("IS_STRING", "the test is redundant, and so neither sent nor held back");
+            Text(plan).Should().NotContain("ClrCursorFilter", "nothing is left to finish in process");
         }
 
         /// <remarks>

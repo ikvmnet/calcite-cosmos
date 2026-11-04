@@ -8070,7 +8070,12 @@ literal's box in the IR, which changes F's terms, so it stays opaque (*TODO.md*)
 
 **Plans (listed).** What changes is F's learning alone: a conjunct a type test implies is deleted as redundant, such as
 `IS_DEFINED(c.dimensions)` beside `IS_OBJECT(c.dimensions)`, or `NOT IS_NULL(c.label)` and `IS_PRIMITIVE(c.label)` beside
-a text comparison that keeps neither a null nor a structure; the rows are the same. The listing classes every line.
+a text comparison that keeps neither a null nor a structure; the rows are the same. The listing classes every line, and
+two suite plans outside the digests' population beside them: a point read's `IS_STRING(c."$.category")` beside
+`c."$.category" = 'bikes'` is deleted, a `VARIANT` equal to a boxed string being a string, so the read is the whole
+predicate and no residual is left to lift (respelled); and `JSON_VALUE(c."DOC", '$.name') > 'steel'` is weakened to
+`(c.name > 'steel' OR IS_BOOL(c.name)) AND (NOT IS_STRING(c.name) OR c.name > 'steel')` in place of admitting every
+defined value that is no string, since `true` renders past the literal and no number does (tighter).
 
 ### A `CASE` in S: the tag, two-valuedness and each arm's strata (h08)
 
