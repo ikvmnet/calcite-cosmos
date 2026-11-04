@@ -802,7 +802,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         static string Coverage(IEnumerable<Push> pushes)
         {
             var text = new StringBuilder("set\tposition\ttext\tsources\toccurrences\tfirst origin\tclass\tclasses\tfixes\tpiece\treads\tround trips\tform\trex"
-                + "\ttriage\treason\tpos\tneg\tbest\tbest form\tportable pos\tportable best\trefutation\tir\tclaimed\n");
+                + "\ttriage\treason\tpos\tneg\tbest\tbest form\tportable pos\tportable best\trefutation\tir\tclaimed\towner\n");
             foreach (var group in pushes.GroupBy(p => p.Key).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 var first = group.First();
@@ -813,7 +813,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 var (cls, reason) = WhereTriage.Class(triaged);
                 var (own, portable) = (triaged.Own, triaged.Portable);
                 text.Append(string.Join("\t", cls, reason, own?.Pos, own?.Neg, own?.Best, PlanDigest.Escape(own?.BestForm ?? ""), portable?.Pos, portable?.Best,
-                    PlanDigest.Escape(own?.Refutation ?? ""), PlanDigest.Escape(own?.Ir ?? ""), PlanDigest.Escape(own?.Claimed ?? ""))).Append('\n');
+                    PlanDigest.Escape(own?.Refutation ?? ""), PlanDigest.Escape(own?.Ir ?? ""), PlanDigest.Escape(own?.Claimed ?? ""), WhereTriage.Decision(triaged, (cls, reason)))).Append('\n');
             }
 
             return text.ToString();

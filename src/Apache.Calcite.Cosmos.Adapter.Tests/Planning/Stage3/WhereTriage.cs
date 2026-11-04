@@ -95,24 +95,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                     var count = classed.Count;
                     int Of(string cls) => classed.Count(c => c.Class.Class == cls);
                     var declined = classed.Where(c => c.Class.Class == "Unproven declined").ToList();
-                    var fixes = declined.Count(c => KindOf(c.Class.Reason).StartsWith("correctness", StringComparison.Ordinal));
-                    var open = count - Of("Proven") - fixes;
+                    int Decided(string kind) => classed.Count(c => Decision(c.Push, c.Class) == kind);
+                    var (accepted, overridden, ruled) = (Decided(OwnerDecisions.Accepted), Decided(OwnerDecisions.Overridden), Decided(OwnerDecisions.EmulatorRule));
+                    var open = count - Of("Proven") - accepted - overridden - ruled;
                     var floor = count >= 30 ? $"{count} real: judged on them" : $"**under 30**: judged on all {count} real; generated {generated.Count} beside";
-                    var line6 = open == 0 ? "passes once the owner accepts the correctness-fix declines by name" : $"**fails**: {open} real pushes neither Proven nor a correctness-fix decline";
+                    var line6 = (open == 0 ? "passes" : $"**fails**: {open} real pushes neither Proven nor decided by name")
+                        + $" (Proven {Of("Proven"):N0}, {OwnerDecisions.Accepted} {accepted:N0}, {OwnerDecisions.Overridden} {overridden:N0}, {OwnerDecisions.EmulatorRule} {ruled:N0})";
                     var line7 = Of("false refutation") == 0 ? "passes: 0 false refutations" : $"{Of("false refutation")} false refutations";
                     var portable = distinct.Count(p => p.Portable?.Best == nameof(RenderingVerdictKind.Proven));
                     text.Append($"**{set}**: real distinct {count:N0} (translator tests apart, untriaged: {units:N0}); generated beyond real {generated.Count:N0}, of which Proven {generated.Count(p => Class(p).Class == "Proven"):N0}.\n\n");
                     text.Append($"| Proven | shown wrong | false refutation | refuted, not yet reproduced | Unproven closable | Unproven declined | failure | Portable Proven (beside) |\n|---|---|---|---|---|---|---|---|\n");
                     text.Append($"| {Of("Proven"):N0} | {Of("shown wrong"):N0} | {Of("false refutation"):N0} | {Of("refuted"):N0} | {Of("Unproven closable"):N0} | {declined.Count:N0} | {Of("failure"):N0} | {portable:N0} |\n\n");
                     text.Append($"- Floor (Q14): {floor}.\n- Line 6: {line6}.\n- Line 7: {line7}.\n");
-                    foreach (var reason in classed.Where(c => c.Class.Class is not "Proven").GroupBy(c => (c.Class.Class, c.Class.Reason)).OrderBy(g => g.Key.Class).ThenByDescending(g => g.Count()))
-                        text.Append($"- {reason.Key.Class}{(reason.Key.Class == "Unproven declined" ? " (" + KindOf(reason.Key.Reason) + ")" : "")}: {reason.Count():N0}, {reason.Key.Reason}; e.g. `{reason.First().Push.Text.Replace("`", "'")}`\n");
+                    foreach (var reason in classed.Where(c => c.Class.Class is not "Proven").GroupBy(c => (c.Class.Class, c.Class.Reason, Decided: Decision(c.Push, c.Class)))
+                        .OrderBy(g => g.Key.Class).ThenByDescending(g => g.Count()))
+                        text.Append($"- {reason.Key.Class}{(reason.Key.Class == "Unproven declined" ? " (" + KindOf(reason.Key.Reason) + ")" : "")}{(reason.Key.Decided is { } d ? ", **" + d + "**" : "")}: "
+                            + $"{reason.Count():N0}, {reason.Key.Reason}; e.g. `{reason.First().Push.Text.Replace("`", "'")}`\n");
                     text.Append('\n');
                 }
             }
 
+            // A name no push answers to is stale: the push is gone, Proven, or read for another reason, and decides nothing.
+            var answered = pushes.Where(p => p.Position == "where").Select(p => (p.Set, p.Text, Class(p).Reason)).ToHashSet();
+            var stale = OwnerDecisions.Named.Where(d => answered.Contains((d.Set, d.Text, d.Reason)) == false).ToList();
+            text.Append($"## The owner's decisions by name (2026-11-03)\n\n{OwnerDecisions.Named.Count:N0} named: "
+                + string.Join(", ", OwnerDecisions.Named.GroupBy(d => (d.Kind, d.Set)).Select(g => $"{g.Key.Kind} under {g.Key.Set} {g.Count():N0}")) + $". Answered by no push: {stale.Count:N0}.\n");
+            foreach (var d in stale)
+                text.Append($"- {d.Kind} under {d.Set}, {d.Reason}: `{d.Text.Replace("`", "'")}`\n");
+
             return text.ToString();
         }
+
+        /// <summary>The owner's decision of a push, where the triage left it Unproven for the reason the decision names.</summary>
+        internal static string? Decision(TranslatorCensus.Push push, (string Class, string Reason) classed) =>
+            classed.Class is "Unproven declined" or "Unproven closable" ? OwnerDecisions.Of(push, classed.Reason)?.Kind : null;
 
         static (string Class, string Reason) Unproven(TranslatorCensus.Push push, Verdicts own)
         {
@@ -137,7 +153,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                     return (Declined, "Q4: an approximate function without bitwise rows");
                 if (Rexes("CASE("))
                     return (Declined, "a value CASE compared: 3D's Yield (no 3A piece)");
-                if (Matches(@"CAST\(\$\d+\):VARCHAR") || Rexes("$cor"))
+                // An unnest element is a column the text names by its alias (t0); a declared column cast to text is not one.
+                if (Matches(@"CAST\(\$\d+\):VARCHAR") && Regex.IsMatch(push.Text, @"(?<![\w.])t\d+\b") || Rexes("$cor"))
                     return (Declined, "an unnest element: S's places are rooted at the container (no piece)");
                 if (Matches(@"LIKE\((UPPER|LOWER|\|\||CONCAT|SUBSTRING|TRIM)\("))
                     return Waits("an affix over a computed place: no affix form", "affix rows N5-N7 not on Azure (h14b); no affix form");
