@@ -466,7 +466,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             /// <summary>
             /// Judges a form claimed at a position against Calcite's truths on a document, on each target: at <c>Pos</c> the
             /// service's true held to Calcite's TRUE, at <c>Neg</c> its false to Calcite's FALSE, alike for <c>Equal</c> and
-            /// at least Calcite's for <c>Implies</c>, a failure never. Off its stratum (<paramref name="exact"/> false) a form
+            /// at least Calcite's for <c>Implies</c>, a failure never; a computed place the form reads is the call the IR's
+            /// spells it (<see cref="CosmosEval.On"/>). Off its stratum (<paramref name="exact"/> false) a form
             /// is held to no failure alone, which measures nothing. Returns whether the document was measured.
             /// </summary>
             public bool Judge(List<Truths>? calcite, SqlPredicate ir, ServiceForm form, Verdict claim, RenderPosition pos, J.Obj document, IEnumerable<RenderingTarget> targets,
@@ -485,9 +486,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 var (kept, keeps) = pos == RenderPosition.Pos ? (Truths.True, ServiceOutcomes.True) : (Truths.False, ServiceOutcomes.False);
+                var places = ir.Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
                 foreach (var target in targets)
                 {
-                    if (CosmosEval.On(form, document, target) is not { } service)
+                    if (CosmosEval.On(form, document, target, places) is not { } service)
                     {
                         Unmeasured++;
                         return false;

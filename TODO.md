@@ -3015,13 +3015,6 @@ across documents* and *A join of a container to itself* is the record.
   reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
   not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
   rule's.
-- **Population D over places and pairs, and a semantic catch for a dropped `VARCHAR` column** — *owed before h15.* h10
-  asks population D for S over `Valued` atoms. Source C (`RenderingSourceCTests`) holds a fixed population of computed
-  places and pairs, `CASE` trees and guarded numbers to `IrEval` and `CosmosEval`, but population D draws no call and no
-  pair, so nothing drawn at random reaches them, and source B plans none until h15. h12 asks that a plant dropping a raw
-  column be caught: dropping `VARCHAR` is caught by the theory digest alone (`DESIGN.md`, *The raw columns' union is a
-  rule*), no answer moving. From h15 S reads places in production, so both land first, or the owner accepts the
-  digest-only catch by name.
 - **3A crosses its size checkpoint** — *note, Q13; the owner's at the pull request's opening.* Production (`Adapter`
   `.cs`) against `origin/main` is +3,429 / −773, net +2,656 at the review answers, of which the census's branch-only
   hooks are +76 / −3: +2,583 net to stay. The review's cuts (the ternary's evaluator, the critical points, the result
@@ -3069,10 +3062,6 @@ across documents* and *A join of a container to itself* is the record.
   `RETURNING` and a column the reader types at once, and the cells read the union, which is sound for both and costs two
   verdicts above: a bound one off under an int, and X2's structure. Giving the column its own reading changes F's terms
   and the oracle's memo keys, which Stage 1 promised not to touch.
-- **No source sees a raw column's raises** — *small, Stage 3 (h12).* h12's plant drops a column from S's union; without
-  `ANY` or `VARIANT` source A finds the row S then loses, but a `VARCHAR` column adds only raises, which the agreement
-  sets aside (`Tolerated`) and source A skips, so its drop sends what S sends unplanted and is caught by nothing but the
-  theory's digest. A check that a form S proves keeps no row on which Calcite raises would see it.
 - **G16b's S half shows the licence alone** — *small, h15.* Planted to read every condition exactly, `StratumFor`
   licenses a `CASE`'s arm beneath a coarse affix, and as built it licenses none (`G16b_ACoarseAffixLicensesNoArmUnlessPlanted`);
   but no production site asks an arm's stratum before the switch, so no statement reaches the plant and no witness can be

@@ -6787,7 +6787,19 @@ since h07, a pair and a computed place are dropped there until S reads that IR a
 (`RenderingSourceCTests`) holds them now: it writes each root straight to a bundle, imports its places and judges best
 and weakening as source A does, over `CASE` trees, a number compared under its `IS_NUMBER` guard through every numeric
 reader, and pairs and computed places, the counts and an arithmetic operator among them, which `IrEval` evaluates as
-Calcite's runtime does.
+Calcite's runtime does. **Population D in S** (`RenderingPopulationDTests`) draws them at random: each of 30 trials (seeds
+20261015 on, as population D's) draws its declaration and documents, and from a stream of its own (`Statements.Placed`)
+seven atoms over its paths, two computed places (a case mapping, a reversal, a trim, a window, a count, a `POSITION`, an
+integer operator over a typed reading) against a literal of the place's type, two pairs of text or of one numeric type,
+and three raw readings against a string, a number, a boolean, a null test or a cast to text, each bare, negated, under a
+`CASE` or beside a sibling. Each root is written, imported with its places, generated under the probe's definition and
+the switch's for every set, and its best and weakening judged on the declared documents as source A judges, places
+evaluated on the service's side from the function rows (`CosmosEval`'s `Place`: undefined where a row says so, nothing
+where a row reads Calcite's null as the service's absence, otherwise Calcite's value or unknown). Beside the forms it
+holds every cell S answers to Calcite: each declared document is read into the cell holding its value (a pair's both
+values and their order), and the truth `IrEval` gives the atom there, through each reader the atom names, raises among
+them, is to be among the truths S holds for the cell. That is the check source A's agreement cannot make, since a raise
+is tolerated by any form and the forms never see one.
 
 **The gate faults are each in a graph of their own.** G1, a row contradicting another for one key and target, is
 refused at load on either target; G5, a union, by a rule's head or the bundle's scope, is refused by the order test and
@@ -6942,7 +6954,7 @@ answer.
 3. *Lifts and strictness.* An exact agreement that is not vacuous and is `sendable` becomes a price under `Min`. An
    implied one that is not vacuous, `sendable` and `rex-writable` joins `Implied` under `Union`; every Equal box lies
    within an Implies box, so a writable exact form is a member too. Three rules state presence. A reading the
-   `strictreader` rows name is strict in its path. A call whose name a `strictop` row holds is strict in what an
+   `strictreader` rows name is strict in its path, where the path is `nullwhereabsent`. A call whose name a `strictop` row holds is strict in what an
    operand is strict in, through `callarg`. A predicate `over` a strict value is null where the path is absent, so
    neither TRUE nor FALSE there: it implies `IS_DEFINED(p)` at `Pos` and `NOT IS_DEFINED(p)` at `Neg`, which a `NOT`
    above turns back into presence.
@@ -6960,7 +6972,9 @@ The writer states what the strictness rules read beside the terms, as it states 
 is, and `callarg` for each operand of every call. A comparison is the call of its operator over both operands; a
 membership, `IN` over its value; a null or presence test, `IS NULL` or `IS_DEFINED` over its value; an opaque term, the
 value the loader read it as. So which predicate is null where its operand is, is the `strictop` rows' and never a case
-the writer picks. The facts graph passes no such callback and builds what it always built, allocating nothing new.
+the writer picks. The bundle's path callback states `nullwhereabsent` of each path beside its spelling (*A place is
+strict only where it is imaged*). The facts graph passes no such callback and builds what it always built, allocating
+nothing new.
 Which operators and readings are strict are host rows, from the definition's `StrictOperators` and `StrictReaders`,
 read from the registry (*Strictness from rows*, below). A definition that names none implies no presence, which loses
 rows from no weakening.
@@ -8303,6 +8317,18 @@ and the digests are byte-equal. As first built, the non-legacy loader typed the 
 moved on 56 Production and 46 Emulator lines while plans and sent SQL held; the option took that back, and h15 lists
 those moves with the switch.
 
+**A place is strict only where it is imaged.** A place is absent where the service is undefined, and that is Calcite's
+null only where every key agrees `Same`: over a key the rows answer `Undefined`, Calcite reads a value where the service
+reads nothing (`CHAR_LENGTH(text(n))` over a stored `true` is 4; the service's `LENGTH(true)` is undefined). The
+strictness rule read a place's `Valued` reading as strict in it whatever the image, so `NOT (CHAR_LENGTH(text(n)) > 30)`
+was weakened to `IS_DEFINED(n) AND IS_DEFINED(LENGTH(n))`, losing every row whose `n` is a boolean; population D in S
+found it under `Emulator` and `Portable`. The rule now asks `nullwhereabsent` of the path: the writer states it of every
+path it meets, beside the path's spelling, and the root image rule of a place beside its import, in the `places`
+stratum, which runs before `strict`. Asking `Imported` instead, as first built, moved 495 lines of the Production plan
+digest, since a path read only inside an opaque term (`JSON_VALUE(c."DOC", '$.label') LIKE 'bi%'`) has no import and
+lost the `IS_DEFINED` its weakening sends; the relation leaves every path as it was, digests byte-equal, and the rule
+count at 76. The order test reads it as it reads `imported`, the host's for paths and the image rule's for places.
+
 ### A comparison of two readings (h11)
 
 **What a pair is.** A comparison whose both sides read a place, `name < other` or `LOWER(name) = other`, is an atom of
@@ -8383,8 +8409,11 @@ union's. So the answers are those of the C# union figure for figure: digests byt
 **The plant.** A definition with a column's rows dropped is caught by source A: without `ANY` a number cast to text is
 never the text it renders as, and S sends `c.category = "30"`, losing the stored 30 an `ANY` keeps; without `VARIANT` a
 boolean cast to text is never null, and S's null test loses the stored `true` a `VARIANT` casts to null. A `VARCHAR`
-column adds only raises, which the agreement sets aside, so its drop sends what S sends unplanted; the theory's digest
-still parts the two.
+column adds only raises, which the agreement sets aside, so its drop sends what S sends unplanted and no form can be
+a witness. The cells see it: population D in S reads each raw atom's cell through `VARCHAR` beside a string literal, and
+the planted definition holds `raw($["n"]) IN ('abc', 'true')` FALSE over a stored number, where Calcite's
+`VARCHAR` column raises (`RenderingPopulationDTests.ARawColumnDroppedFromTheUnionIsCaught`, each of the three columns
+dropped; 3,912 cells under the deletion in `CosmosAxioms`, and none with the row back).
 
 ### Faults, recall, gains and TLP over `CASE` (h13)
 

@@ -95,6 +95,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Over = Graph.DefineRelation<Pred, Val>("over");
             CallArg = Graph.DefineRelation<Val, Val>("callarg");
             Strict = Graph.DefineRelation<Val, JPath>("strict");
+            NullWhereAbsent = Graph.DefineRelation<JPath>("nullwhereabsent");
 
             // S's alone: a leaf tagged with the arm stratum it is read beneath, a case with its else-arm rooted twice, and
             // the constant else split by what it does at a position (spec h08). F writes neither term.
@@ -368,6 +369,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A value Calcite reads as null where a path is absent.</summary>
         public Relation<Val, JPath> Strict { get; }
+
+        /// <summary>
+        /// A place Calcite reads as null wherever the service holds it absent: every path the writer meets, and a computed
+        /// place only beside its image at the root, the one place every key agrees <c>Same</c>.
+        /// </summary>
+        public Relation<JPath> NullWhereAbsent { get; }
 
         /// <summary>A leaf read beneath an arm's stratum, by the stratum's id: its own term, so its cells are that stratum's.</summary>
         public Constructor<long, Pred, Pred> Beneath { get; }
@@ -890,10 +897,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(f)));
             });
 
+            // A computed place is absent where the service is undefined, which is Calcite's null only where its image holds:
+            // over a key answered Undefined Calcite reads a value (LENGTH(true) against CHAR_LENGTH('true')), and no image.
             strict.DefineRule("a reading Calcite answers null over an absent path is strict in its path", r =>
             {
                 var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
-                r.When(Ir.Reads.Of(v, p, k), StrictReader.Of(k));
+                r.When(Ir.Reads.Of(v, p, k), StrictReader.Of(k), NullWhereAbsent.Of(p));
                 r.Then(Strict.Of(v, p));
             });
 
@@ -1036,13 +1045,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(ArmImport.Of(s, q).Is(img));
             });
 
-            // A path's is the host's import already, written again equal; a computed place's and a pair's are this rule's.
+            // A path's is the host's import already, written again equal; a computed place's and a pair's are this rule's, and
+            // with it the absence the service holds where Calcite reads null, which a place has only where every key agrees.
             image.DefineRule("a place's import is its import beneath the root", r =>
             {
                 var q = r.Var<JPath>("q");
                 var x = r.Var<PathValues>("x");
                 r.When(x.Is(ArmImport.Of(0L, q)));
-                r.Then(Imported.Of(q).Is(x));
+                r.Then(Imported.Of(q).Is(x), NullWhereAbsent.Of(q));
             });
 
             assume.DefineRule("an atom over a computed place is assumed as its place's image beneath the atom's stratum", r =>

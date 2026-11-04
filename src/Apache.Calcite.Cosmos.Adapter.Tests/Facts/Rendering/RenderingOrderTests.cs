@@ -42,16 +42,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
-        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg"];
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg", "nullwhereabsent"];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within", "no-calcite-unknown"];
 
         /// <summary>
         /// The host's tables a computed place's rules write too (h10), for keys the host never writes: <c>imported</c> of a
-        /// <c>Valued</c> place, which no import names, and <c>assumed</c> of an atom over one, which <c>Run</c> skips. Each
-        /// is then read as any rule-written table is, complete only in the strata after its writer's.
+        /// <c>Valued</c> place, which no import names, <c>nullwhereabsent</c> of one beside it, which the writer states of
+        /// paths alone, and <c>assumed</c> of an atom over one, which <c>Run</c> skips. Each is then read as any
+        /// rule-written table is, complete only in the strata after its writer's.
         /// </summary>
-        static readonly (string Ruleset, string Table)[] PlaceWrites = [("image", "imported"), ("assume", "assumed")];
+        static readonly (string Ruleset, string Table)[] PlaceWrites = [("image", "imported"), ("image", "nullwhereabsent"), ("assume", "assumed")];
 
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 

@@ -211,6 +211,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 .ToArray();
         }
 
+        /// <summary>
+        /// Draws, from a stream of its own, what S reads beyond a path's reading against a literal (h10 to h12): a computed
+        /// place against a literal of its type, typed as the loader types one; two readings compared; and a raw value
+        /// beside a literal of each class, its null test and its cast to text. Each bare, negated, beneath a guard, as a
+        /// condition, or beside a sibling; never an opaque term or a parameter, since the roots are written straight to a
+        /// bundle (<c>RenderingPopulationDTests</c>).
+        /// </summary>
+        public static IReadOnlyList<SqlPredicate> Placed(Random random, Declaration declaration)
+        {
+            var paths = new[] { Declaration.Kind, Declaration.A, Declaration.B, Declaration.N, Declaration.N, Declaration.V };
+            JsonDocumentPath Path() => paths[random.Next(paths.Length)];
+            string Ordering() => random.Next(3) == 0 ? (random.Next(2) == 0 ? PredicateAtom.Equal : PredicateAtom.NotEqual) : Orderings[random.Next(Orderings.Length)];
+            SqlValue.Literal Text(JsonDocumentPath path) => Literal(random, declaration, path, new SqlValue.Text(path));
+            SqlValue.Literal Number() => SqlValue.Of(Numbers[random.Next(Numbers.Length)]);
+
+            SqlPredicate Against(SqlValue value, Func<SqlValue.Literal> literal) => random.Next(8) switch
+            {
+                0 => new SqlPredicate.IsNull(value),
+                1 => new SqlPredicate.In(value, ValueSet.From(Enumerable.Range(0, 2).Select(_ => literal().Value))),
+                _ => new SqlPredicate.Compare(Ordering(), value, literal()),
+            };
+
+            SqlPredicate Place()
+            {
+                var path = Path();
+                SqlValue text = new SqlValue.Text(path);
+                var (call, type) = random.Next(10) switch
+                {
+                    0 => (new SqlValue.Call("UPPER", [text]), "VARCHAR"),
+                    1 => (new SqlValue.Call("LOWER", [text]), "VARCHAR"),
+                    2 => (new SqlValue.Call("REVERSE", [text]), "VARCHAR"),
+                    3 => (new SqlValue.Call("TRIM BOTH", [SqlValue.Of(" "), text]), "VARCHAR"),
+                    4 => (new SqlValue.Call("SUBSTRING", [text, SqlValue.Of((decimal)random.Next(1, 3)), SqlValue.Of((decimal)random.Next(1, 3))]), "VARCHAR"),
+                    5 => (new SqlValue.Call("CHAR_LENGTH", [text]), "INTEGER"),
+                    6 => (new SqlValue.Call("POSITION", [SqlValue.Of(random.Next(2) == 0 ? "3" : "x"), text]), "INTEGER"),
+                    _ => (new SqlValue.Call(new[] { "+", "-", "*" }[random.Next(3)], [new SqlValue.Typed(path, "INTEGER"), SqlValue.Of((decimal)random.Next(0, 3))]), "INTEGER"),
+                };
+
+                var place = Typed(call, type) ?? Typed(new SqlValue.Call("UPPER", [text]), "VARCHAR")!;
+                return Against(place, type == "VARCHAR" ? () => Text(path) : Number);
+            }
+
+            SqlPredicate Pair()
+            {
+                var (p, q) = (Path(), Path());
+                if (random.Next(3) > 0)
+                    return new SqlPredicate.Compare(Ordering(), new SqlValue.Text(p), new SqlValue.Text(q));
+
+                var type = new[] { "BIGINT", "INTEGER", "DOUBLE" }[random.Next(3)];
+                return new SqlPredicate.Compare(Ordering(), new SqlValue.Typed(p, type), new SqlValue.Typed(q, type));
+            }
+
+            // A literal of each class beside a raw value: a VARCHAR column is raw beside a string alone, and raises over any
+            // other kind there, which the agreement tolerates and only a cell's answer says.
+            SqlPredicate Raw()
+            {
+                var path = Path();
+                if (random.Next(4) == 0)
+                    return Against(new SqlValue.Cast("VARCHAR", new SqlValue.Raw(path)), () => Text(path));
+
+                Func<SqlValue.Literal> literal = random.Next(4) switch
+                {
+                    0 => () => SqlValue.Of(Texts[random.Next(Texts.Length)]),
+                    1 => () => SqlValue.Of(random.Next(2) == 0),
+                    2 => Number,
+                    _ => () => Literal(random, declaration, path, new SqlValue.Raw(path)),
+                };
+                return Against(new SqlValue.Raw(path), literal);
+            }
+
+            var atoms = new[] { Place(), Place(), Pair(), Pair(), Raw(), Raw(), Raw() };
+            return [.. atoms.Select(atom => random.Next(5) switch
+            {
+                0 => atom,
+                1 => new SqlPredicate.Not(atom),
+                2 => new SqlPredicate.Case(new SqlPredicate.IsDefined(new SqlValue.Raw(Path())), atom, new SqlPredicate.Constant(false)),
+                3 => new SqlPredicate.Case(atom, new SqlPredicate.Constant(true), atoms[random.Next(atoms.Length)]),
+                _ => SqlPredicate.AllOf([atom, atoms[random.Next(atoms.Length)]]),
+            }).Distinct()];
+        }
+
+        /// <summary>
+        /// A call typed as the loader types one under <c>places</c>: a function the rows name at the type, spelled, its
+        /// operands a path's reading, a literal or a place; <c>null</c> where the loader would leave it untyped.
+        /// </summary>
+        static SqlValue.Call? Typed(SqlValue.Call call, string type)
+        {
+            static string? Spelling(SqlValue operand) => operand switch
+            {
+                SqlValue.Call c => c.Spelled,
+                SqlValue.Literal l => l.Value,
+                _ when operand.PathRead is JsonDocumentPath path => SqlValue.Spell(path),
+                _ => null,
+            };
+
+            return Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.RowFunctions.Contains(Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.KeyFunction(call.Function, type))
+                && Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Spell(call, Spelling) is string spelled ? call with { Type = type, Spelled = spelled } : null;
+        }
+
         static string Op(Random random) => random.Next(10) switch
         {
             < 4 => PredicateAtom.Equal,

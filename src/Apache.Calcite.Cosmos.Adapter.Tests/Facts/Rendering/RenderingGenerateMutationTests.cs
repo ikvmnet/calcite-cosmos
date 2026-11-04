@@ -153,7 +153,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A <c>VARCHAR</c> column adds only raises to the union, which the agreement sets aside (<c>Tolerated</c>): dropped, S
-        /// sends and implies what it does unplanted, and the theory is another, so it keeps answers of its own.
+        /// sends and implies what it does unplanted, and the theory is another, so it keeps answers of its own. The cells see
+        /// it: <see cref="RenderingPopulationDTests.ARawColumnDroppedFromTheUnionIsCaught"/>.
         /// </summary>
         [Fact]
         public void AVarcharColumnDroppedRaisesNothingSourceASees()

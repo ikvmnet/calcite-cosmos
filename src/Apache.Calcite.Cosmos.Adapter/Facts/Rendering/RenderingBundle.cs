@@ -91,6 +91,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var term = JsonFactEncoding.Path(path).ToTerm(theory.Paths);
                 facts.Add(theory.Spelling.Of(term).Is(SqlValue.Spell(path)));
+                facts.Add(theory.NullWhereAbsent.Of(term));
                 return term;
             }, leaf: (term, values) => term is ConstructorTerm<Pred> leaf
                 ? values.Select(v => theory.Over.Of(leaf, v)).Prepend(theory.Leaf.Of(leaf))
