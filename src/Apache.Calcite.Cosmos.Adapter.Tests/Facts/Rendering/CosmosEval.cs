@@ -36,6 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.Bare => At(document, form.Path!) is J.Bool b ? Truth(b.Value) : ServiceOutcomes.Undefined,
             ServiceFormKind.Test => Truth(Test(form.Test, At(document, form.Path!))),
             ServiceFormKind.Compare => Compare(form.Test, At(document, form.Path!), form.Literal!, target),
+            ServiceFormKind.Affix => Affix(form, At(document, form.Path!), target),
 
             // Service.TwoPathsCompareAsAPathAndALiteral, measured on the emulator alone: the left against the right's value
             // as a literal, but two numbers each as the service holds it, the diagonal a value against itself; nothing of
@@ -101,6 +102,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return members.Where(m => m != lower && m != upper).Select(m => On(m, document, target)).Append(range);
 
             static bool Ordering(ServiceForm m) => m.Kind == ServiceFormKind.Compare && m.Test is not (CosmosServiceTest.Equal or CosmosServiceTest.NotEqual) && IsString(m.Literal!);
+        }
+
+        /// <summary>
+        /// An affix or <c>LIKE</c>: undefined over anything but a string (Service.StringPredicatesOverNonStringsAreUndefined);
+        /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), on the emulator an affix
+        /// matching the stored string against the argument as sent in that spelling (Service.EmulatorComparesTheSpellingItIsSent).
+        /// None for an argument no pattern of runs says, for the emulator's LIKE where either holds an escape, unmeasured, and
+        /// on Azure where either holds U+0000, which ends what CONTAINS reads (Service.NulEndsWhatReplaceAndContainsRead).
+        /// </summary>
+        static ServiceOutcomes? Affix(ServiceForm form, J? value, RenderingTarget target)
+        {
+            if (value is not J.Str s)
+                return ServiceOutcomes.Undefined;
+
+            if (form.Pattern is not { } pattern)
+                return null;
+
+            return target switch
+            {
+                RenderingTarget.Emulator when form.Test == CosmosServiceTest.Like =>
+                    EmulatorStoredText.Escapes(s.Value) || EmulatorStoredText.Escapes(pattern) ? null : Truth(AffixPattern.Matches(s.Value, pattern)),
+                RenderingTarget.Emulator => Truth(AffixPattern.Matches(EmulatorStoredText.Of(s.Value), EmulatorStoredText.Of(pattern))),
+                _ => s.Value.Contains('\0') || pattern.Contains('\0') ? null : Truth(AffixPattern.Matches(s.Value, pattern)),
+            };
         }
 
         /// <summary>Service.IsDefined, Service.IsNull, Service.IsPrimitive, Service.KindTests: never undefined.</summary>

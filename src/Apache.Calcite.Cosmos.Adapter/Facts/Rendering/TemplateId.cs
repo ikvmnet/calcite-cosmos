@@ -51,6 +51,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>At both: a comparison of two readings as the comparison of their two paths (h11).</summary>
         ComparePaths,
+        /// <summary>At both: <c>LIKE</c> as the narrowest affix that says its pattern, an equality where it holds no <c>%</c> (h07).</summary>
+        Affix,
+        /// <summary>At <c>Neg</c>: <c>LIKE</c> of a rendering as its affix where the path holds neither a number nor a boolean, which it misses (h07).</summary>
+        AffixRendered,
 
     }
 

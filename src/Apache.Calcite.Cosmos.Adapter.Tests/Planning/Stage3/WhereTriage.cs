@@ -9,6 +9,7 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 {
@@ -130,6 +131,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         internal static string? Decision(TranslatorCensus.Push push, (string Class, string Reason) classed) =>
             classed.Class is "Unproven declined" or "Unproven closable" ? OwnerDecisions.Of(push, classed.Reason)?.Kind : null;
 
+        /// <summary>
+        /// Why an affix S reads stays Unproven under <c>Emulator</c>, by its pattern: a <c>_</c>, which no row measures the
+        /// service's of over a line terminator; runs between and around <c>%</c>, a <c>LIKE</c> the emulator's matcher reads
+        /// over a stored escape, owed; a pattern a number's rendering may match, which the service reads as no string.
+        /// </summary>
+        static string Affix(string rex)
+        {
+            if (Regex.Match(rex, @"LIKE\(.*, '((?:[^']|'')*)'\)") is not { Success: true } like)
+                return "an affix whose pattern the triage reads not";
+
+            var pattern = like.Groups[1].Value.Replace("''", "'", StringComparison.Ordinal);
+            if (pattern.Contains('_'))
+                return "LIKE's _: one code point that is no line terminator, which no row measures the service at";
+            if (AffixPattern.Canonical(pattern) is { } canonical && AffixPattern.Written(canonical) is { Test: CosmosServiceTest.Like })
+                return "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed";
+            if (pattern.All(c => c == '%' || Renderings.MayBeNumberUnit(c)))
+                return "a pattern a number's rendering may match, over a path that may hold one: the service reads no number as a string (sound refusal)";
+            return "an affix: Unproven otherwise";
+        }
+
         static (string Class, string Reason) Unproven(TranslatorCensus.Push push, Verdicts own)
         {
             const string Declined = "Unproven declined", Closable = "Unproven closable";
@@ -156,10 +177,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 // An unnest element is a column the text names by its alias (t0); a declared column cast to text is not one.
                 if (Matches(@"CAST\(\$\d+\):VARCHAR") && Regex.IsMatch(push.Text, @"(?<![\w.])t\d+\b") || Rexes("$cor"))
                     return (Declined, "an unnest element: S's places are rooted at the container (no piece)");
+                // The affix step reads LIKE over a computed text place and a VARCHAR column; what stays opaque is over a call no row types.
                 if (Matches(@"LIKE\((UPPER|LOWER|\|\||CONCAT|SUBSTRING|TRIM)\("))
-                    return Waits("an affix over a computed place: no affix form", "affix rows N5-N7 not on Azure (h14b); no affix form");
+                    return Waits("an affix over a call the loader types no place of", "affix rows N5-N7 not on Azure (h14b)");
                 if (Matches(@"LIKE\(\$\d+,"))
-                    return Waits("LIKE over a VARCHAR column: the loader reads no affix of a raw reading, and no affix form", "affix rows N5-N7 not on Azure (h14b); no affix form");
+                    return Waits("LIKE over a column the loader reads no affix of", "affix rows N5-N7 not on Azure (h14b)");
                 if (Matches(@"(MOD|ABS|CEIL|FLOOR|SIGN)\("))
                     return Waits("a function no row names (MOD, ABS, CEIL, FLOOR, SIGN): new function rows", "a function no row names: new function rows, Azure's half not measured");
                 if (Rexes("SUBSTRING("))
@@ -185,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (Has("place:") && emulator == false)
                 return (Declined, "function rows not on Azure (h14b)");
             if (Has("affix"))
-                return Waits("an affix: no affix form", "affix rows N5-N7 not on Azure (h14b); no affix form");
+                return emulator ? (Closable, Affix(rex)) : (Declined, "affix rows N5-N7 not on Azure (h14b)");
             if (Has("pair"))
                 return Waits("a pair: the two-path row's absent and null cells unread", "the two-path row not on Azure (h14b)");
             if (Has("string order") && emulator)

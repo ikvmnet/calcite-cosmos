@@ -73,6 +73,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 TemplateId.ComparePaths => atom.Against is not null && Op(atom.Test) is { } compared && PlaceSpellings.Sides(path) is (var left, var right)
                     ? ServiceForm.ComparePathsOf(compared, left, right) : null,
                 _ when atom.Against is not null => null,
+                TemplateId.Affix when atom.Test == PredicateAtom.LikeTest => Affix(atom, path),
+                TemplateId.AffixRendered when atom.Test == PredicateAtom.LikeTest && Affix(atom, path) is { } matched =>
+                    All([ServiceForm.NotOf(number), ServiceForm.NotOf(ServiceForm.TestOf(IsBool, path)), matched]),
                 TemplateId.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
                 _ when core is null => null,
                 TemplateId.Bare => core,
@@ -102,6 +105,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         static ValueSet<string> Points(PredicateAtom atom) => atom.Points ?? ValueSet<string>.Empty;
+
+        /// <summary>A <c>LIKE</c>'s pattern as the narrowest affix that says it (<see cref="AffixPattern.Written"/>); none for one no pattern of runs says.</summary>
+        static ServiceForm? Affix(PredicateAtom atom, string path) => atom.Operand is { } operand && AffixPattern.Canonical(JsonValues.StringOf(operand)) is { } pattern
+            ? AffixPattern.Written(pattern) is var (test, argument) ? ServiceForm.AffixOf(test, path, argument) : ServiceForm.CompareOf(Equal, path, JsonValues.Of(pattern))
+            : null;
 
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>
         static ServiceForm[] Alternatives(ServiceForm core, string literal, string path) =>

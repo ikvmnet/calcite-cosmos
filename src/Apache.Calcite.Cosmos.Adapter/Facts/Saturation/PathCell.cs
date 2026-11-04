@@ -33,14 +33,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public sealed record Point(string Value) : PathCell;
 
         /// <summary>
-        /// The strings strictly between two, either of which may be missing, whose characters are of the classes, but these.
+        /// The strings strictly between two, either of which may be missing, whose characters are of the classes, but these;
+        /// and where an affix cut them (S's, spec §4.2 h07), those each pattern of <paramref name="Like"/> matches and none of
+        /// <paramref name="NotLike"/> does (<see cref="AffixPattern"/>).
         /// </summary>
-        public sealed record Strings(string? Low, string? High, ValueSet<string> Except, ValueSet<string> Classes) : PathCell
+        public sealed record Strings(string? Low, string? High, ValueSet<string> Except, ValueSet<string> Classes, ValueSet<string>? Like = null, ValueSet<string>? NotLike = null) : PathCell
         {
 
             internal bool Holds(string text) =>
                 (Low is null || string.CompareOrdinal(text, StringOf(Low)) > 0) && (High is null || string.CompareOrdinal(text, StringOf(High)) < 0)
-                && BandsOfText(text).IsSubsetOf(Classes);
+                && BandsOfText(text).IsSubsetOf(Classes)
+                && (Like is null || Like.All(p => AffixPattern.Matches(text, p))) && (NotLike is null || NotLike.All(p => AffixPattern.Matches(text, p) == false));
+
+            /// <summary>Whether an affix cut the cell.</summary>
+            internal bool Affixed => Like is not null || NotLike is not null;
 
         }
 
@@ -112,7 +118,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Structure s => s.Type,
             Point p => p.Value,
             Strings s => "strings" + (s.Low is null ? "" : " > " + SqlValue.Quote(StringOf(s.Low))) + (s.High is null ? "" : " < " + SqlValue.Quote(StringOf(s.High)))
-                + " in [" + string.Join(",", s.Classes.AsEnumerable()) + "]" + But(s.Except),
+                + " in [" + string.Join(",", s.Classes.AsEnumerable()) + "]" + But(s.Except)
+                + (s.Like is null ? "" : " like " + string.Join(", ", s.Like.Select(SqlValue.Quote))) + (s.NotLike is null ? "" : " not like " + string.Join(", ", s.NotLike.Select(SqlValue.Quote))),
             Numbers n => (n.Integral ? "integers" : "fractions") + (n.Lower is Bound l ? (l.Open ? " > " : " >= ") + Number(l.Value) : "")
                 + (n.Upper is Bound h ? (h.Open ? " < " : " <= ") + Number(h.Value) : "")
                 + (n.DoubleLow is double dl ? " double >= " + dl.ToString("R", CultureInfo.InvariantCulture) : "")
@@ -175,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Null => NullValue,
             Structure s => s.Type + "|",
             Point p => p.Value,
-            Strings s => LeastString(s),
+            Strings s => s.Affixed ? Matching(s) : LeastString(s),
             Numbers n when (n.DoubleLow ?? n.DoubleHigh) is not null => Rounded(n),
             Numbers { Integral: true } n => LeastInteger(n),
             Numbers n => SomeFraction(n),
@@ -197,7 +204,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (assumed == PathValues.Anything)
                 return cells;
 
-            static bool Holds(List<PathCell> inside, PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown : cell.Contains(c.Witness()));
+            // A cell an affix cut may be cut otherwise inside, where a witness was not found, so it holds what any string cell may.
+            static bool Holds(List<PathCell> inside, PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown
+                : cell.Contains(c.Witness()) || c is Strings a && cell is Strings b && (a.Affixed || b.Affixed));
 
             // A pair's cell holds nothing of a product where a side of it holds nothing of that side's value.
             if (assumed.Pair is { } narrower)
@@ -257,15 +266,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     case StringType:
                     {
                         string? low = null;
-                        foreach (var high in cuts.Select(c => c.Value).Where(IsString).Distinct().OrderBy(v => v, StringComparer.Ordinal).Append<string?>(null))
+                        var strings = new List<PathCell>();
+                        foreach (var high in cuts.Where(c => c.Kind != CutKind.Affix).Select(c => c.Value).Where(IsString).Distinct().OrderBy(v => v, StringComparer.Ordinal).Append<string?>(null))
                         {
                             var between = new Strings(low, high, ValueSet<string>.Empty, classes);
-                            cells.Add(between with { Except = x.Excluded.Where(between.Contains) });
+                            strings.Add(between with { Except = x.Excluded.Where(between.Contains) });
                             if (high is not null && Admits(high))
-                                cells.Add(new Point(high));
+                                strings.Add(new Point(high));
                             low = high;
                         }
 
+                        cells.AddRange(ByAffix(strings, cuts.Where(c => c.Kind == CutKind.Affix).Select(c => StringOf(c.Value))));
                         break;
                     }
 
@@ -273,7 +284,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     {
                         var doubles = cuts.Where(c => c.Kind == CutKind.Double && IsExactNumber(c.Value)).Select(c => DoubleBound.Of(c.Value)).Distinct().Order().ToList();
                         var lower = x.Lower;
-                        foreach (var cut in cuts.Select(c => c.Value).Where(IsExactNumber).Select(NumberOf).Distinct().OrderBy(n => n).Select(n => (decimal?)n).Append(null))
+                        foreach (var cut in cuts.Where(c => c.Kind != CutKind.Affix).Select(c => c.Value).Where(IsExactNumber).Select(NumberOf).Distinct().OrderBy(n => n).Select(n => (decimal?)n).Append(null))
                         {
                             var upper = cut is decimal below ? (x.Upper is Bound u ? Bound.StricterUpper(Bound.Below(below), u) : Bound.Below(below)) : x.Upper;
                             foreach (var between in Slots(new Numbers(kind == IntegerType, lower, upper, ValueSet<string>.Empty), doubles))
@@ -320,7 +331,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         static IEnumerable<int?> Orders(PathCell a, PathCell b)
         {
-            if (Least(a) is not { } x || Least(b) is not { } y)
+            // An affix's cell has no least string the interval's is.
+            if (a is Strings { Affixed: true } || b is Strings { Affixed: true } || Least(a) is not { } x || Least(b) is not { } y)
                 return [null];
 
             if (a is Point && b is Point)
@@ -389,6 +401,78 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 && (upper is not Bound hi || (hi.Open ? d < (double)hi.Value : d <= (double)hi.Value));
         }
 
+        /// <summary>
+        /// Interval cells cut by each affix's pattern into the strings it matches and those it misses (spec §4.2 h07), a cell
+        /// cut only where each half holds a witness found or is shown empty: one neither is left whole, which says less and
+        /// nothing false, since a search that misses shows nothing empty.
+        /// </summary>
+        static IEnumerable<PathCell> ByAffix(List<PathCell> cells, IEnumerable<string> patterns)
+        {
+            foreach (var pattern in patterns.Where(p => AffixPattern.Universal(p) == false))
+                cells = [.. cells.SelectMany(cell => cell is Strings s ? Parted(s, pattern) : [cell])];
+
+            return cells;
+        }
+
+        /// <summary>A cell as the strings a pattern matches and those it misses, a half a unit its classes forbid empty.</summary>
+        static IEnumerable<PathCell> Parted(Strings s, string pattern)
+        {
+            if (s.Like?.Contains(pattern) == true || s.NotLike?.Contains(pattern) == true)
+                return [s];
+
+            var matching = s with { Like = (s.Like ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
+            var missing = s with { NotLike = (s.NotLike ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
+            var allowed = Allowed(s.Classes);
+            var empty = pattern.Any(unit => unit != '%' && allowed[unit] == false);
+            return (empty ? false : matching.Witness() is not null ? true : (bool?)null, missing.Witness() is not null) switch
+            {
+                (true, true) => [matching, missing],
+                (false, true) => [missing],
+                _ => [s],
+            };
+        }
+
+        /// <summary>
+        /// A string of an affix's cell, searched for: the patterns it must match, their runs joined in each order, between
+        /// fillers of a unit or none, after the interval's least string where it has a low end. Every candidate is checked
+        /// against the cell whole; <c>null</c> where none holds, which shows nothing empty.
+        /// </summary>
+        static string? Matching(Strings s)
+        {
+            var allowed = Allowed(s.Classes);
+            var like = s.Like?.AsEnumerable().ToList() ?? [];
+            var seeds = new List<string>();
+            foreach (var order in like.Count <= 3 ? Orderings(like) : [like])
+                seeds.Add(string.Concat(order.Select(p => p.Replace("%", "", StringComparison.Ordinal))));
+            seeds.AddRange(like.Select(p => p.Replace("%", "", StringComparison.Ordinal)));
+            if (seeds.Count == 0)
+                seeds.Add("");
+
+            var fillers = new List<string> { "" };
+            fillers.AddRange(new[] { 'x', 'a', '0', ' ' }.Where(u => allowed[u]).Select(u => u.ToString()));
+            if (Array.IndexOf(allowed, true) is var least and >= 0 && fillers.Contains(((char)least).ToString()) == false)
+                fillers.Add(((char)least).ToString());
+
+            var bases = new List<string> { "" };
+            if (s.Low is not null && LeastString(new Strings(s.Low, s.High, ValueSet<string>.Empty, s.Classes)) is { } above)
+                bases.Add(StringOf(above));
+
+            foreach (var start in bases)
+                foreach (var seed in seeds.Distinct())
+                    foreach (var before in fillers)
+                        foreach (var after in fillers)
+                            if (Of(start + before + seed + after) is var candidate && s.Contains(candidate))
+                                return candidate;
+
+            return null;
+        }
+
+        static IEnumerable<List<string>> Orderings(List<string> items) => items.Count <= 1 ? [items]
+            : items.SelectMany((item, i) => Orderings([.. items.Take(i), .. items.Skip(i + 1)]).Select(rest => (List<string>)[item, .. rest]));
+
+        static bool[] Allowed(ValueSet<string> classes) =>
+            Units.GetOrAdd(classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => BandsOfText(((char)u).ToString()).IsSubsetOf(k)).ToArray());
+
         /// <summary>Which UTF-16 units each set of classes allows, read once a set.</summary>
         static readonly ConcurrentDictionary<ValueSet<string>, bool[]> Units = new();
 
@@ -399,7 +483,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         static string? LeastString(Strings s)
         {
-            var allowed = Units.GetOrAdd(s.Classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => BandsOfText(((char)u).ToString()).IsSubsetOf(k)).ToArray());
+            var allowed = Allowed(s.Classes);
             var least = Array.IndexOf(allowed, true);
             for (var text = s.Low is null ? "" : Above(StringOf(s.Low), allowed, least); text is not null; text = least < 0 ? null : text + (char)least)
             {

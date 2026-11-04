@@ -456,13 +456,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.InIsMembership"),
             new("Service.StringPredicatesOverNonStringsAreUndefined",
                 "STARTSWITH, ENDSWITH, CONTAINS and LIKE are undefined over a number, a boolean, a null, an object, an array and an absent path, a number matched by no pattern of its digits; over a string each is true or false.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheStringPredicatesOverNonStringsAreUndefined"),
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheStringPredicatesOverNonStringsAreUndefined",
+                [
+                    // S's affix form (h07) reads a value that is no string by its kind.
+                    new(Test.StartsWith, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.EndsWith, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.Contains, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.Like, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                ]),
             new("Service.AffixesMatchByCodePoint",
-                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint"),
+                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too. The emulator matches the string as it stores it against the argument as sent, so a statement sends it in that spelling (Service.EmulatorComparesTheSpellingItIsSent).",
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint",
+                [
+                    // S's affix form (h07): a string by whether the argument matches it, under the matcher the cell's none names.
+                    new(Test.StartsWith, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
+                    new(Test.EndsWith, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
+                    new(Test.Contains, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
+                ]),
             new("Service.LikeMatchesByCodePoint",
                 "LIKE matches by code point, case sensitive: _ matches one code point, U+1F600, U+00E9 and U+E000 alike, and % any run of them, the empty one too.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint"),
+                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint",
+                [
+                    // No matcher: what the emulator's LIKE makes of a stored escape is unmeasured (CosmosAxiomRows.Owed), so S's LIKE form answers anything.
+                    new(Test.Like, Class.String, Emulator, "matching=true missing=false"),
+                ]),
             new("Service.LikeReadsBracketsAsARange",
                 "LIKE reads [a-c] as one character of the range and [^a-c] as one outside it, [[] as a literal [, and a pattern holding a [ it never closes matches nothing, the string it spells included; ESCAPE makes the character after it literal.",
                 CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange"),

@@ -122,13 +122,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// The cells a key is read at on a target: a connective's, a range's and the ternary's, Kleene's expectations there; an order
-        /// and two paths compared, whole; a comparison with a string or a number, a value of its type by its side; the rest, by kind.
+        /// and two paths compared, whole; an affix over a string by its matcher and match, over the rest by kind; a comparison with a string or a number, a value of its type by its side; the rest, by kind.
         /// </summary>
         public static IEnumerable<CosmosValueClass> Cells(CosmosServiceTest test, CosmosValueClass operand, RenderingTarget target) => test switch
         {
             CosmosServiceTest.Not or CosmosServiceTest.And or CosmosServiceTest.Or or CosmosServiceTest.Range or CosmosServiceTest.Choose =>
                 KleeneTables.Rows.Where(k => k.Item1 == target && k.Item2.Test == test && k.Item2.Operand == operand).Select(k => k.Item2.Cell),
             CosmosServiceTest.Order or CosmosServiceTest.ComparePaths => [None],
+            // An affix over a string by the matcher and whether it matches; over anything else by kind.
+            CosmosServiceTest.StartsWith or CosmosServiceTest.EndsWith or CosmosServiceTest.Contains or CosmosServiceTest.Like =>
+                operand == String ? [None, Matching, Missing] : [.. Kinds.Keys.Where(kind => kind != String)],
             _ when operand is String or Number => [.. Kinds.Keys.Where(kind => kind != operand), Below, Equal, Above],
             _ => Kinds.Keys,
         };

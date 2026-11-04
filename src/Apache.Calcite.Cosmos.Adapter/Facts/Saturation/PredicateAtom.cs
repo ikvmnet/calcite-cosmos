@@ -292,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 return On(cell.Coarse);
 
             if (Test == LikeTest)
-                return MatchesText ? Matched(reading.NullOn(cell, columns), cell is PathCell.Point { Value: var v } && IsString(v) ? v : null) : Truths.Any;
+                return MatchesText || Reader is RawReader or "typed:VARCHAR" ? LikeOn(cell, reading.NullOn(cell, columns)) : Truths.Any;
 
             // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
             // anything where that read finds a value.
@@ -362,6 +362,36 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             | ((isNull & Truths.False) == 0 ? 0
                 : literal is not null && Reader == TextReader && Like(StringOf(literal), StringOf(Operand!)) is bool match ? match ? Truths.True : Truths.False
                 : Truths.True | Truths.False);
+
+        /// <summary>
+        /// <c>LIKE</c> on a cell, S's (h07): UNKNOWN where the null test finds null, raising where it raises, and where it
+        /// finds a value, the match. A string is read as itself by the accessor's rendering, a cast of it or of a raw value to
+        /// text, a raw value and a computed text place; a cell an affix cut by the pattern matches as cut, and every string
+        /// <c>%</c>. A boolean renders as <c>true</c> or <c>false</c> and a number in its grammar's units
+        /// (<see cref="Renderings.MayBeNumberUnit"/>) through the rendering and the cast of a raw value, so a pattern holding
+        /// another unit misses every number. Anything else is either.
+        /// </summary>
+        Truths LikeOn(PathCell cell, Truths isNull)
+        {
+            var truths = (isNull & Truths.Raises) | ((isNull & Truths.True) != 0 ? Truths.Unknown : 0);
+            if ((isNull & Truths.False) == 0)
+                return truths;
+
+            var pattern = StringOf(Operand!);
+            var canonical = AffixPattern.Canonical(pattern);
+            var renders = Reader is TextReader || Reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal);
+            var reads = renders || Reader is RawReader or "typed:VARCHAR";
+            static Truths Of(bool? match) => match is bool m ? m ? Truths.True : Truths.False : Truths.True | Truths.False;
+            return truths | cell switch
+            {
+                PathCell.Point { Value: var v } when reads && IsString(v) => Of(Like(StringOf(v), pattern)),
+                PathCell.Strings s when reads && canonical is not null => Of(AffixPattern.Universal(canonical) || s.Like?.Contains(canonical) == true ? true : s.NotLike?.Contains(canonical) == true ? false : null),
+                PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(Like(Renderings.BooleanText(v), pattern)),
+                PathCell.Point { Value: var v } when renders && IsNumber(v) && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
+                PathCell.Numbers when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
+                _ => Truths.True | Truths.False,
+            };
+        }
 
         /// <summary>
         /// Whether a pattern matches text, by ordinal comparison: <c>%</c> any run, which Calcite's runtime reads with every

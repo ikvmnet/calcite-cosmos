@@ -29,14 +29,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             (ByKindBoolean, RenderPosition.Pos), (ByKindBoolean, RenderPosition.Neg), (ByKindNumber, RenderPosition.Pos), (ByKindNumber, RenderPosition.Neg),
             (StringBranch, RenderPosition.Pos), (KindRestricted, RenderPosition.Neg),
             (KindRestrictedNumber, RenderPosition.Neg), (Window, RenderPosition.Pos), (TextAlternatives, RenderPosition.Pos),
-            (ComparePaths, RenderPosition.Pos), (ComparePaths, RenderPosition.Neg),
+            (ComparePaths, RenderPosition.Pos), (ComparePaths, RenderPosition.Neg), (Affix, RenderPosition.Pos), (Affix, RenderPosition.Neg), (AffixRendered, RenderPosition.Neg),
         ];
 
         /// <summary>
         /// The guarded comparison's templates, which production asks only from the switch (spec §4.2 h15): a bridge, since
         /// the Rex they are pushed as is a <c>CASE</c> only S reads, and site W asks the translator to write it until then.
+        /// The affix's, since S owns no affix until the switch and the translator writes one till then (h07).
         /// </summary>
-        public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId> { KindRestrictedNumber, Window, TextAlternatives };
+        public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId> { KindRestrictedNumber, Window, TextAlternatives, Affix, AffixRendered };
 
         /// <summary>Each template and the shapes it fits.</summary>
         public static IReadOnlyList<(TemplateId, string Shape)> Fits { get; } = [.. Rows().Distinct()];
@@ -63,7 +64,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Concat(Fit(KindRestricted, textual, comparisons, strings))
                 .Concat(Fit(KindRestrictedNumber, parsed, comparisons, [NumberKind])).Concat(Fit(Window, parsed, comparisons, [NumberKind]))
                 .Concat(Fit(TextAlternatives, text, [PredicateAtom.Equal], [NumeralKind]))
-                .Concat(Fit(ComparePaths, readers, comparisons, readers.Select(r => ReadingKind + r)));
+                .Concat(Fit(ComparePaths, readers, comparisons, readers.Select(r => ReadingKind + r)))
+                .Concat(Fit(Affix, [.. textual, PredicateAtom.RawReader, PredicateAtom.TypedReader("VARCHAR")], [PredicateAtom.LikeTest], strings))
+                .Concat(Fit(AffixRendered, textual, [PredicateAtom.LikeTest], strings));
         }
 
     }

@@ -101,6 +101,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ServiceForm ComparePathsOf(CosmosServiceTest op, string left, string right) =>
             new(ServiceFormKind.ComparePaths, op, left, null, ValueSet<string>.Empty, ValueSet.Of(left, right), Leaf, "(" + left + " " + OperatorOf(op) + " " + right + ")", right: right);
 
+        /// <summary>
+        /// A path matched against a string (h07): <c>STARTSWITH</c>, <c>ENDSWITH</c> or <c>CONTAINS</c> of the argument, case
+        /// sensitive, or <c>LIKE</c> of a pattern, as asked; whether it says what an atom asks is the gate's.
+        /// </summary>
+        public static ServiceForm AffixOf(CosmosServiceTest test, string path, string argument) => test is CosmosServiceTest.StartsWith or CosmosServiceTest.EndsWith or CosmosServiceTest.Contains or CosmosServiceTest.Like
+            ? new(ServiceFormKind.Affix, test, path, JsonValues.Of(argument), ValueSet.Of(JsonValues.Of(argument)), ValueSet.Of(path), Leaf,
+                test == CosmosServiceTest.Like ? "(" + path + " LIKE " + SqlValue.Quote(JsonValues.Of(argument)) + ")" : NameOf(test) + "(" + path + ", " + SqlValue.Quote(JsonValues.Of(argument)) + ")")
+            : throw new ArgumentOutOfRangeException(nameof(test), test, null);
+
+        /// <summary>An affix's pattern of runs and <c>%</c> (<see cref="AffixPattern.Of"/>); <c>null</c> for any other form, and for an argument no pattern says.</summary>
+        public string? Pattern => Kind == ServiceFormKind.Affix ? AffixPattern.Of(Test, JsonValues.StringOf(Literal!)) : null;
+
         /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
         public static string NameOf(CosmosServiceTest test) => test switch
         {
@@ -112,6 +124,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosServiceTest.IsBool => "IS_BOOL",
             CosmosServiceTest.IsObject => "IS_OBJECT",
             CosmosServiceTest.IsArray => "IS_ARRAY",
+            CosmosServiceTest.StartsWith => "STARTSWITH",
+            CosmosServiceTest.EndsWith => "ENDSWITH",
+            CosmosServiceTest.Contains => "CONTAINS",
             _ => throw new ArgumentOutOfRangeException(nameof(test), test, null),
         };
 

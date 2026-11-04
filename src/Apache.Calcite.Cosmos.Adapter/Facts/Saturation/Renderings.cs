@@ -41,6 +41,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </remarks>
         public const long DoubleUnitFrom = 1L << 52;
 
+        /// <summary>Whether a unit may be in a stored number's rendering: a digit, a point, an exponent's letter, a sign (<see cref="MayBeNumberText"/>).</summary>
+        public static bool MayBeNumberUnit(char unit) => unit is (>= '0' and <= '9') or '.' or 'e' or 'E' or '+' or '-';
+
         /// <summary>
         /// Determines whether text is in the grammar a stored number renders in: digits, a point, an exponent, a sign.
         /// </summary>

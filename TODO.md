@@ -2889,19 +2889,32 @@ across documents* and *A join of a container to itself* is the record.
   weakenings the translator kept (O7).
 - **`LIKE` is F's and not yet S's, and N4–N7 and N11 are measured on the emulator alone** —
   *medium, Stage 3 (O3; F reads `LIKE` since h07, S at h15; Azure at h14b).* Since h07 the loader reads `LIKE` of text
-  against a literal pattern as an affix, which F learns from; S reads the IR as it was (`RenderingStatement`), so for S a
-  pattern is still opaque. `STARTSWITH` and `ENDSWITH` reach no filter as Rex operators, so there is nothing to read;
+  against a literal pattern as an affix, which F learns from; production's S reads the IR as it was
+  (`RenderingStatement`), so for it a pattern is still opaque, while the switch's S reads it with the affix form (the
+  affix step). `STARTSWITH` and `ENDSWITH` reach no filter as Rex operators, so there is nothing to read;
   the printer writes them from forms at h15. Until then a conjunct holding one is the translator's when exact (P7, a
   declared string), skipped by the check, and weakened by S to the presence its accessor implies, where the translator
   pushed a string branch with `STARTSWITH` or `CONTAINS`: O7's loss 4, 18 such statements at the gate and one more whose
   disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are measured on the
   emulator since h06: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6)
   and `LIKE` (N7) matched by code point, and how an integral number reads back (N11); Azure's are owed by run 1.
-- **S writes no affix** — *medium, Stage 3; Azure's rows at h14b.* No `ServiceFormKind` writes `STARTSWITH`, `ENDSWITH`,
-  `CONTAINS` or `LIKE`, so every affix the translator pushes is Unproven to S: at the gate 26 real pushes under
-  `Production` (F, G) and 5 more in J1, and under `Emulator` 43, 9 of them `LIKE` over a `VARCHAR` column, a raw reading
-  the loader reads no affix of. The form needs a cell partition by affix (a prefix is an interval of the code-unit order,
-  a suffix or an infix none), the service's rows N5–N7 by target, and the reader and printer to round-trip it.
+- **S's affix form waits on Azure's N5–N7 for `Production`** — *medium, h14b.* Since the affix step S has an affix form
+  (`ServiceFormKind.Affix`, `DESIGN.md`, *The affix form*), proven under `Emulator` from the emulator's rows; Azure has
+  measured none of `(test, None, kind)`, `(test, String, None)` or `(test, String, Matching|Missing)`, so under
+  `Production` every affix is Unproven. Run 1's N5–N7 give Azure's outcomes, its matcher `codepoint` for the three
+  affixes and for `LIKE`, beside `Service.NulEndsWhatReplaceAndContainsRead`: Azure's `CONTAINS` and a `'%x%'` `LIKE` read
+  only up to a string's first U+0000, so its matcher for those is not `codepoint` over a string that may hold one, and the
+  rows must say how (a matcher of its own, or `Fails`-like anything over the nul class).
+- **The emulator's `LIKE` over a stored escape is owed** — *small, a measurement.* `(Like, String, None)` on the emulator is
+  declared owed (`CosmosAxiomRows.Owed`): no statement has measured what its `LIKE` makes of U+0000 or U+FDD0 stored
+  escaped, so S writes a pattern of two runs or more as `LIKE` and proves it nowhere. A witness set like
+  `TheEmulatorComparesWhatItIsSentWithWhatItStores`'s, over `LIKE` with runs beginning `0` and `1`, decides it.
+- **`LIKE`'s `_` is unmeasured over a line terminator** — *small, a measurement.* Calcite reads `_` as one code point that
+  is no line terminator; the service's `_` over U+000A and the rest is unmeasured, so no pattern holding `_` is written and
+  such a `LIKE` stays the translator's.
+- **The Rex builder writes no affix** — *small, h15.* `RenderingRexBuilder` has no Rex for an affix form, so a weakening
+  holding one is not pushed; the switch writes `LIKE` over the reading the atom was judged over, or a call of
+  `CosmosOperators`, whichever the loader reads back.
 - **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, with h14b's rows.* Each is opaque to S, so
   their 10 generated pushes are Unproven under both sets, and one real push of the suite's under `Emulator`. Each is a function row,
   Calcite's measured here and the service's on each target.
@@ -3039,9 +3052,6 @@ across documents* and *A join of a container to itself* is the record.
   holds one, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
   spelling a `REPEAT` place only for a count of 0. Azure's rows decide whether a result key is measured or the bound
   stays legality.
-- **An affix over a computed place stays opaque** — *small.* `LIKE` reads a text or `VARCHAR` cast subject alone, so the
-  census's case-insensitive rewrites (`LIKE(UPPER(p), '%B%')`, 6 under the emulator) are listed, not proven. Reading a
-  typed `VARCHAR` place as an affix's subject is the change, its rows the case mapping's and the affix's.
 - **Two paths compared answer as a path and a literal on the emulator alone** — *small, h14b.* `ServiceLeaf.Paired`
   reads a comparison of two paths through the literal comparison's rows, within a type by the set's `Order` comparator
   and across types by the left's class against the right's, mirrored where the right is no literal a row keys, on the

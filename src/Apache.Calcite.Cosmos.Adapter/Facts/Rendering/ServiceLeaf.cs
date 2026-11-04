@@ -54,9 +54,71 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                         ? Within(leaf, cell, operand, table, parted, rows)
                         : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
 
+                case ServiceFormKind.Affix:
+                    return Affix(leaf, cell, kind, table, rows);
+
                 default:
                     return ServiceOutcomes.Widest;
             }
+        }
+
+        /// <summary>
+        /// An affix or a <c>LIKE</c> (h07): over a value that is no string by its kind
+        /// (<c>Service.StringPredicatesOverNonStringsAreUndefined</c>); over a string by whether it matches under the matcher
+        /// or matchers the test's own entry names, as an order names a comparator (<c>Service.AffixesMatchByCodePoint</c>,
+        /// <c>Service.LikeMatchesByCodePoint</c>). An argument no pattern says, and an entry naming no matcher, answer anything.
+        /// </summary>
+        static ServiceOutcomes Affix(ServiceForm leaf, PathCell cell, CosmosValueClass kind, ServiceTable table, ISet<string> rows)
+        {
+            if (kind != CosmosValueClass.String)
+                return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
+
+            if (leaf.Pattern is not { } pattern)
+                return ServiceOutcomes.Widest;
+
+            var key = MeasuredKey.Of(leaf.Test, CosmosValueClass.String, CosmosValueClass.None);
+            if (table.TryGet(key, out var matchers) == false)
+            {
+                rows.Add("missing:" + key);
+                return ServiceOutcomes.Widest;
+            }
+
+            rows.UnionWith(matchers.Evidence);
+            var placing = matchers.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.StoredCodePoint).ToList();
+            if (placing.Count == 0 || matchers.Answers.Any(a => a is CosmosAnswer.Utf16 or CosmosAnswer.Numeric))
+                return ServiceOutcomes.Widest;
+
+            var outcomes = matchers.Outcomes;
+            foreach (var matcher in placing)
+                foreach (var side in Matched(cell, pattern, matcher))
+                    outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, side), rows);
+
+            return outcomes;
+        }
+
+        /// <summary>
+        /// Whether a string cell's values match a pattern under a matcher: by code point, a string as it matches by UTF-16
+        /// unit, which a pattern of runs does alike over well-formed text, and a cell an affix cut by its own pattern; under the
+        /// emulator's, a string's stored spelling against the pattern's (<c>Service.EmulatorComparesTheSpellingItIsSent</c>),
+        /// and a cell where that changes nothing (<see cref="AffixPattern.StoredAlike"/>). Either, where a lone surrogate the
+        /// service stores as U+FFFD may meet a pattern holding one, or the cell is not told.
+        /// </summary>
+        static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher)
+        {
+            CosmosValueClass[] either = [CosmosValueClass.Matching, CosmosValueClass.Missing];
+            CosmosValueClass[] Side(bool match) => match ? [CosmosValueClass.Matching] : [CosmosValueClass.Missing];
+            var replaced = pattern.Any(u => char.IsSurrogate(u) || u == '\uFFFD');
+            return cell switch
+            {
+                PathCell.Point { Value: var v } when replaced && JsonValues.IsEncodable(StringOf(v)) == false => either,
+                PathCell.Point { Value: var v } when matcher == CosmosAnswer.StoredCodePoint => Side(AffixPattern.Matches(EmulatorStoredText.Of(StringOf(v)), EmulatorStoredText.Of(pattern))),
+                PathCell.Point { Value: var v } => Side(AffixPattern.Matches(StringOf(v), pattern)),
+                PathCell.Strings s when replaced && s.Classes.Contains(SurrogateBand) => either,
+                PathCell.Strings s when matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern) == false && (s.Classes.Contains(NulClass) || s.Classes.Contains(HighBand)) => either,
+                PathCell.Strings s when s.Like?.Contains(pattern) == true => [CosmosValueClass.Matching],
+                PathCell.Strings s when s.NotLike?.Contains(pattern) == true => [CosmosValueClass.Missing],
+                _ => either,
+            };
         }
 
         /// <summary>A comparison with a literal of the cell's type: by the side or sides each comparator places the cell on.</summary>

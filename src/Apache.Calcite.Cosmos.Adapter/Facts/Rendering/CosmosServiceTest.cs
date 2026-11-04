@@ -55,6 +55,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         ComparePaths,
 
+        /// <summary>
+        /// The affixes and <c>LIKE</c> (S's affix form): over a value that is no string keyed by its class; over a string by
+        /// whether it matches (<see cref="CosmosValueClass.Matching"/>) or not, and keyed by nothing, the answer naming the
+        /// matcher, as <see cref="Order"/> names a comparator.
+        /// </summary>
+        StartsWith,
+        EndsWith,
+        Contains,
+        Like,
+
     }
 
 }

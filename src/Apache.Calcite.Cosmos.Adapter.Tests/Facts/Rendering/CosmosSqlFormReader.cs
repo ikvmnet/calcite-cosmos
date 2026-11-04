@@ -52,6 +52,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ["IS_OBJECT"] = CosmosServiceTest.IsObject, ["IS_ARRAY"] = CosmosServiceTest.IsArray,
         };
 
+        /// <summary>The affixes the printer writes (h07), each of a path and a parameter, case sensitive with no third operand.</summary>
+        static readonly Dictionary<string, CosmosServiceTest> Affixes = new(StringComparer.Ordinal)
+        {
+            ["STARTSWITH"] = CosmosServiceTest.StartsWith, ["ENDSWITH"] = CosmosServiceTest.EndsWith, ["CONTAINS"] = CosmosServiceTest.Contains,
+        };
+
         static readonly Dictionary<string, CosmosServiceTest> Operators = new(StringComparer.Ordinal)
         {
             ["="] = CosmosServiceTest.Equal, ["!="] = CosmosServiceTest.NotEqual, ["<"] = CosmosServiceTest.Less,
@@ -541,6 +547,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         : null;
                 }
 
+                if (Peek is { } name && Affixes.TryGetValue(name, out var affix))
+                {
+                    _at++;
+                    if (Accept("(") == false || TryPath() is not { } matched || Accept(",") == false || TryParameter() is not { } argument || Accept(")") == false)
+                        return null;
+
+                    var call = name + "(" + matched.Written + ", " + argument.Name + ")";
+                    return (matched.Spelled is { } spelled && Literal(argument.Value) is { } text && JsonValues.IsString(text) ? ServiceForm.AffixOf(affix, spelled, JsonValues.StringOf(text)) : Opaque(call), call);
+                }
+
+                var at = _at;
+                if (TryPath() is { } subject && Accept("LIKE"))
+                {
+                    if (TryParameter() is not { } pattern)
+                        return null;
+
+                    var like = subject.Written + " LIKE " + pattern.Name;
+                    return (subject.Spelled is { } spelled && Literal(pattern.Value) is { } text && JsonValues.IsString(text) ? ServiceForm.AffixOf(CosmosServiceTest.Like, spelled, JsonValues.StringOf(text)) : Opaque(like), like);
+                }
+
+                _at = at;
                 if (TryPath() is not { } path || Peek is not { } op || Operators.TryGetValue(op, out var compare) == false)
                     return null;
 
@@ -555,7 +582,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             /// <summary>A path from the root alias, spelled as the IR spells it where every step is a name.</summary>
             (string? Spelled, string Written)? TryPath()
             {
-                if (Peek is not { } alias || IsWord(alias) == false || Tests.ContainsKey(alias) || alias is "NOT" or "AND" or "OR")
+                if (Peek is not { } alias || IsWord(alias) == false || Tests.ContainsKey(alias) || Affixes.ContainsKey(alias) || alias is "NOT" or "AND" or "OR" or "LIKE")
                     return null;
 
                 _at++;

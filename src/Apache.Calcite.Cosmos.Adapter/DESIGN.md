@@ -8465,8 +8465,8 @@ under `Emulator` S proves every such push but those whose arms overflow (Q3), an
 ternary's Azure row (Q2), which the emulator's answers say is all they wait on. So the two rules over junction sides and
 negation were not built, and S stays at 76.
 
-**What it left**, each Unproven for a piece S does not have, not a reading: an affix form (no `ServiceFormKind` writes
-`STARTSWITH` or `LIKE`; Azure's rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
+**What it left**, each Unproven for a piece S does not have, not a reading: an affix form (built since, below; Azure's
+rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
 `SIGN`; `SUBSTRING` from 0; a column compared with a text reading, two readings of different kinds; and the two-path
 row's absent and null cells on the emulator. (A cast of the text to `BOOLEAN` was among them until the readers below.) Under `Emulator` one more is
 refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
@@ -8510,6 +8510,56 @@ tests 1 / 2, every schema `IS_DEFINED`, so line 6 passes for type tests under bo
 push is Unproven for either reading and nothing was refuted. For the bare path, its negation, and a truth test under
 `Production`, what S proves is its own form (`c.flag = true`), and the translator's text stays Unproven beside it. That
 is enough for line 6, and it is the form S writes from h15.
+
+**The affix form the owner ordered built (2026-11-03)**, S's alone until the switch: the loader reads the new subjects
+under `places` only, and the templates are among those production asks from the switch, so F's terms and the plans stay
+as they were.
+
+- **One form kind, `Affix`**, whose test is `STARTSWITH`, `ENDSWITH`, `CONTAINS` or `LIKE`, over a path or a computed
+  place and an argument. What each asks is one pattern of literal runs and `%` (`AffixPattern`): `STARTSWITH(p, a)` is
+  `a%`, `ENDSWITH` `%a`, `CONTAINS` `%a%`, `LIKE` its own pattern with every run of `%` one. A pattern holding `_`, a
+  backslash, a bracket or a lone surrogate is none, so a `LIKE` of one is never written: Calcite reads `_` as one code
+  point that is no line terminator, which no row measures the service at; a backslash may be an escape to either; the
+  service reads a bracket as a range (`Service.LikeReadsBracketsAsARange`); and no statement sends a lone surrogate. A
+  `LIKE` is written as the narrowest test that says its pattern, an equality where it holds no `%`, and the printer and
+  the check reader write and read each as the translator does, the argument a parameter.
+- **Matched by code point, which is matched by unit.** Over well-formed text a pattern of runs matches by UTF-16 unit
+  exactly where it matches by code point: a run's surrogate pair can only meet a pair. So Calcite's `LIKE`, the cells and
+  the service's rows (`Service.AffixesMatchByCodePoint`, `Service.LikeMatchesByCodePoint`) share one matcher, and only a
+  lone surrogate the service stores as U+FFFD can part them, from a pattern holding U+FFFD or a surrogate. There the
+  leaf answers either.
+- **A cell cut by what a pattern matches.** An affix is no interval of the code-unit order, so `CutPoints` hands its
+  pattern as a cut of its own (`CutKind.Affix`), and `PathCell.Split` parts each interval of strings into those the
+  pattern matches and those it misses (`Strings.Like`, `Strings.NotLike`). A half is kept where a witness search finds
+  a string of it, or shown empty where the pattern holds a unit the classes forbid; where neither, the interval is left
+  whole, which says less and nothing false. The search joins the patterns' runs in each order between fillers and checks
+  every candidate against the cell whole. `SetAside` holds that any cell an affix cut may meet any cell of strings, and
+  a pair is not ordered across one, since neither knows an affix's least string.
+- **The leaf, as an order names a comparator.** A value that is no string answers by its kind's row (`(test, None,
+  kind)`, N5). A string answers by the matcher its test's entry names, `(test, String, None)`, and then whether it
+  matches, `(test, String, Matching)` or `Missing`. The emulator's matcher for the three affixes is `storedcodepoint`:
+  the string as it stores it against the argument as sent in that spelling, which
+  `Service.EmulatorComparesTheSpellingItIsSent` measures, so a point is matched in the stored spelling, and an interval
+  where a pattern holds neither escape and no run but the first begins with `0` or `1` (`AffixPattern.StoredAlike`) or
+  its classes hold neither U+0000 nor the high band. Its `LIKE` names no matcher: what the emulator's `LIKE` makes of a
+  stored escape is unmeasured, so that key is declared owed (`CosmosAxiomRows.Owed`) and a `LIKE` of two runs or more
+  is anything to S there. Azure's rows are run 1's N5–N7, so under `Production` every key is missing and the form is
+  never Proven, as it must not be until then.
+- **Calcite's side** (`PredicateAtom.OnCell`, F's `On` unchanged): a string read as itself by the rendering, a cast to
+  text, a `VARCHAR` column's raw value or a computed text place matches by the pattern, an interval as an affix cut it
+  and every string `%`; a boolean renders `true` or `false`; a number renders in its grammar's units
+  (`Renderings.MayBeNumberUnit`), so a pattern holding another misses every number, and where none, a number may match,
+  which the service reads as no string: the sound refusal.
+- **Templates `Affix`** (both positions, the narrowest test) and **`AffixRendered`** (at `Neg`, the affix where the path
+  holds neither a number nor a boolean, so a rendering's miss is the service's false), asked of `LIKE` over the text, a
+  cast of a raw value, a raw value and a computed text place. No rule was added: S stays at 76.
+- **The loader**, under `places`, reads `LIKE` of a `VARCHAR` column's raw value and of a computed `VARCHAR` place.
+- **The Rex builder writes no affix.** A weakening holding one is not pushed until the switch builds it (`TODO.md`).
+- **What it moved**, over a fresh suite capture (EN20261019): under `Emulator` F, G went from 17 Proven of 116 real
+  pushes to 42, and line 6 from 42 open to 17 (seven affixes over a cast of a raw value, unexplained yet; five pairs;
+  three holding `_`; one a number's rendering may match; one Q3); J1 from 6 Proven of 15 to 12, one open (`SUBSTRING`
+  from 0). Under `Production` nothing moved, as it must not: F, G stay 18 of 98 with 33 open, J1 0 of 22, every affix
+  waiting on N5–N7. No row lost a proof, no refutation is false, and the plans and digests are unchanged.
 
 ## Differential testing
 

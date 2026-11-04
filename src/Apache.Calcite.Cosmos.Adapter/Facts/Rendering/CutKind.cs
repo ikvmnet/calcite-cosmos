@@ -25,6 +25,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A limit of the reader's type, beyond which it raises or saturates.</summary>
         Boundary,
 
+        /// <summary>A pattern an affix or a <c>LIKE</c> matches by (<see cref="AffixPattern"/>), which parts strings by whether it matches them.</summary>
+        Affix,
+
     }
 
 }

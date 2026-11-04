@@ -324,14 +324,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads <c>LIKE</c> of a reading of a path as text, against a literal pattern holding no bracket, and with no
-            /// <c>ESCAPE</c>; <c>NOT LIKE</c> as its negation; <c>null</c> for anything else.
+            /// <c>ESCAPE</c>; <c>NOT LIKE</c> as its negation; <c>null</c> for anything else. A loading that reads places reads
+            /// it of a <c>VARCHAR</c> column's raw value and of a computed text place too (h07), S's alone until h15.
             /// </summary>
             SqlPredicate? Like(RexCall call)
             {
                 if (call.getOperands().size() != 2 || call.getOperator().getName() is not ("LIKE" or "NOT LIKE"))
                     return null;
 
-                if (Value((RexNode)call.getOperands().get(0)) is not { PathRead: not null } subject || subject is not (SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" }))
+                var operand = (RexNode)call.getOperands().get(0);
+                if (Value(operand) is not { } subject || (subject is { PathRead: not null } and (SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" })
+                    || _places && (subject is SqlValue.Raw { PathRead: not null } && IsCharacter(operand.getType()?.getSqlTypeName()) || subject is SqlValue.Call { Type: "VARCHAR", Spelled: not null })) == false)
                     return null;
 
                 if (call.getOperands().get(1) is not RexLiteral literal || Literal(literal) is not SqlValue.Literal { Kind: Cosmos.Facts.Saturation.JsonValues.StringType } pattern)

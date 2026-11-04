@@ -109,9 +109,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// The cells of a key some outcome answers for a target that no outcome covers for it: unmeasured there, so no
         /// row, and S reads the service as answering anything. Declared, so that a cell is owed on purpose and one
-        /// dropped from a vector is caught. None is: the probe account has run every witness the emulator runs (D7).
+        /// dropped from a vector is caught. The probe account has run every witness the emulator runs (D7); what is owed is
+        /// the emulator's matcher for LIKE, whose reading of a stored escape no statement has measured, so S's LIKE form
+        /// answers anything over a string there (h07, <c>TODO.md</c>).
         /// </summary>
-        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } = [];
+        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } =
+            [(MeasuredKey.Of(CosmosServiceTest.Like, CosmosValueClass.String, CosmosValueClass.None), RenderingTarget.Emulator)];
 
     }
 

@@ -118,6 +118,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                         Path(f.Path!);
                         builder.Append(" IN (").Append(string.Join(", ", Rotated([.. f.Literals]).Select(l => parameters.Add(Bound(l))))).Append("))");
                         break;
+                    case ServiceFormKind.Affix when f.Test == CosmosServiceTest.Like:
+                        // LIKE as the translator writes it, the pattern a parameter.
+                        builder.Append('(');
+                        Path(f.Path!);
+                        builder.Append(" LIKE ").Append(parameters.Add(Bound(f.Literal!))).Append(')');
+                        break;
+                    case ServiceFormKind.Affix:
+                        // An affix, case sensitive, with no third operand, as the translator writes one (h07).
+                        builder.Append(ServiceForm.NameOf(f.Test)).Append('(');
+                        Path(f.Path!);
+                        builder.Append(", ").Append(parameters.Add(Bound(f.Literal!))).Append(')');
+                        break;
                     case ServiceFormKind.Bare:
                         Path(f.Path!);
                         break;

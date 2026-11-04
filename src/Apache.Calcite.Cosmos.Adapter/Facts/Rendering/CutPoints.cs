@@ -19,8 +19,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         public static ValueSet<CutPoint> Of(PredicateAtom atom, ServiceForm form, ReaderEdges edges)
         {
-            var literals = new[] { atom.Operand }.OfType<string>().Concat(atom.Points ?? ValueSet<string>.Empty).Concat(form.Literals).Distinct().ToList();
+            // A pattern is no literal: a LIKE's cuts where it matches (h07), one of no % at the string it is, and so does an affix's.
+            var like = atom.Test == PredicateAtom.LikeTest && atom.Operand is { } operand ? AffixPattern.Canonical(StringOf(operand)) : null;
+            var patterns = form.Subforms.Where(f => f.Kind == ServiceFormKind.Affix).Select(f => f.Pattern).Append(like).OfType<string>().Distinct().ToList();
+            var literals = new[] { atom.Test == PredicateAtom.LikeTest ? null : atom.Operand }.OfType<string>().Concat(atom.Points ?? ValueSet<string>.Empty)
+                .Concat(form.Subforms.Where(f => f.Kind != ServiceFormKind.Affix && f.Members.Count == 0).SelectMany(f => f.Literals))
+                .Concat(patterns.Where(p => p.Contains('%') == false).Select(p => JsonValues.Of(p))).Distinct().ToList();
             return ValueSet.From(literals.Select(l => new CutPoint(l, CutKind.Literal)).Concat(edges.Boundaries.Select(b => new CutPoint(b, CutKind.Boundary)))
+                .Concat(patterns.Where(p => p.Contains('%')).Select(p => new CutPoint(JsonValues.Of(p), CutKind.Affix)))
                 .Concat(from c in literals.Where(IsExactNumber).Select(NumberOf) from edge in edges.Edges select Edge(c, edge)).OfType<CutPoint>());
         }
 
