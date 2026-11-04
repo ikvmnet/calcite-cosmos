@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -127,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var inner = new java.util.ArrayList();
             var ordinalOfPushable = new Dictionary<int, int>();
-            var ordinalOfFragment = new Dictionary<string, int>(StringComparer.Ordinal);
+            var ordinalOfFragment = new Dictionary<RexNode, int>();
             var ordinalOfInput = new Dictionary<int, int>();
 
             foreach (var i in split.Pushable)
@@ -138,17 +137,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             foreach (var fragment in split.Fragments)
             {
-                // A fragment the projection already pushes whole is that column, not a second one.
-                var digest = fragment.ToString();
-                var whole = split.Pushable.FindIndex(i => ((RexNode)projects.get(i)).ToString() == digest);
+                // A fragment the projection already pushes whole is that column, not a second one: the
+                // same expression by Calcite's equality, so a reading of the path as another type is not.
+                var whole = split.Pushable.FindIndex(i => fragment.Equals(projects.get(i)));
 
                 if (whole >= 0)
                 {
-                    ordinalOfFragment[digest] = ordinalOfPushable[split.Pushable[whole]];
+                    ordinalOfFragment[fragment] = ordinalOfPushable[split.Pushable[whole]];
                     continue;
                 }
 
-                ordinalOfFragment[digest] = inner.size();
+                ordinalOfFragment[fragment] = inner.size();
                 inner.add(fragment);
             }
 
@@ -288,13 +287,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 && translator.Paths.TryResolvePath(node, out var path) && path is not null
                 && translator.TryTranslateProjection(node, out _, out _))
             {
-                var digest = node.ToString();
-
-                if (split.Index.ContainsKey(digest) == false)
-                {
-                    split.Index[digest] = split.Fragments.Count;
+                if (split.Index.TryAdd(node, split.Fragments.Count))
                     split.Fragments.Add(node);
-                }
 
                 return;
             }

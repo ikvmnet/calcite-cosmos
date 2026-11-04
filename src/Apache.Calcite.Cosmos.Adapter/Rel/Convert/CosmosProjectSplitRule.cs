@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -136,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // past those.
             var inner = new java.util.ArrayList();
             var ordinalOfPushable = new Dictionary<int, int>();
-            var ordinalOfFragment = new Dictionary<string, int>(StringComparer.Ordinal);
+            var ordinalOfFragment = new Dictionary<RexNode, int>();
             var ordinalOfInput = new Dictionary<int, int>();
 
             foreach (var i in split.Pushable)
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             foreach (var fragment in split.Fragments)
             {
-                ordinalOfFragment[fragment.ToString()] = inner.size();
+                ordinalOfFragment[fragment] = inner.size();
                 inner.add(fragment);
             }
 
@@ -318,13 +317,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (translator.TryTranslateProjection(node, out _, out _))
             {
-                var digest = node.ToString();
-
-                if (split.Index.ContainsKey(digest) == false)
-                {
-                    split.Index[digest] = split.Fragments.Count;
+                if (split.Index.TryAdd(node, split.Fragments.Count))
                     split.Fragments.Add(node);
-                }
 
                 split.Nontrivial = true;
                 return;
@@ -364,14 +358,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             public List<RexNode> Fragments { get; } = new();
 
             /// <summary>
-            /// Each fragment's digest, so that the same sub-expression written twice becomes one column.
+            /// Each fragment's position, so that the same sub-expression written twice becomes one column.
             /// </summary>
             /// <remarks>
-            /// Keyed by <c>ToString</c> rather than by the node, because a <see cref="RexNode"/>'s
-            /// equality is Java's and the dictionary's is not — and the digest is what Calcite itself
-            /// compares nodes by.
+            /// By Calcite's equality, which compares a call's type at every level, and not by its digest,
+            /// which prints none: <c>JSON_VALUE(DOC, '$.price' RETURNING DECIMAL)</c> and its
+            /// <c>RETURNING INTEGER</c> reading both print <c>JSON_VALUE($0, '$.price')</c>, so keyed by
+            /// <c>ToString</c> the second was the first's column — 25 halved answered 12 where Calcite
+            /// answers 12.5, and the text reading beside an integer one failed to implement.
             /// </remarks>
-            public Dictionary<string, int> Index { get; } = new(StringComparer.Ordinal);
+            public Dictionary<RexNode, int> Index { get; } = new();
 
             /// <summary>The input ordinals the residual reads outside every fragment.</summary>
             public SortedSet<int> Inputs { get; } = new();
@@ -410,9 +406,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             readonly RexBuilder _rexBuilder;
             readonly Dictionary<int, int> _ordinals;
-            readonly Dictionary<string, int> _fragments;
+            readonly Dictionary<RexNode, int> _fragments;
 
-            public Rebase(RexBuilder rexBuilder, Dictionary<int, int> ordinals, Dictionary<string, int> fragments)
+            public Rebase(RexBuilder rexBuilder, Dictionary<int, int> ordinals, Dictionary<RexNode, int> fragments)
             {
                 _rexBuilder = rexBuilder;
                 _ordinals = ordinals;
@@ -421,7 +417,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             public override RexNode visitCall(RexCall call)
             {
-                return _fragments.TryGetValue(call.ToString(), out var ordinal)
+                return _fragments.TryGetValue(call, out var ordinal)
                     ? _rexBuilder.makeInputRef(call.getType(), ordinal)
                     : base.visitCall(call);
             }
