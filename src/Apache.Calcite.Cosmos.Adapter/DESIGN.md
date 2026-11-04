@@ -8195,7 +8195,14 @@ until h15, is unchanged.
 **Proven at the filter beneath, or declined there.** Each held shape's Rex is read back by the loader as a `case` and
 generated in S, the atom beneath `[IS_NUMBER(p)]` stated a number (what F reads of that condition exactly): C4n by the
 absorbing rule, C2 by the opposite one over `IS_NUMBER`, two-valued. Claim mode reads no `case`, so the round trip
-asks generate mode and requires S's best exact form to be the form, a junction's members in any order. A literal at or
+asks generate mode and requires S's best exact form to be the form up to absorption, a junction's members in any order.
+Absorption is the one step allowed, because neither side is minimal: a weakening may carry a member its siblings
+absorb, and S's best may nest that member beneath siblings it already has (partitions 1967 at the gate,
+`big != '9' AND (NOT IS_STRING(big) OR big != '9')` against `… AND ((IS_DEFINED(big) AND NOT IS_NULL(big) AND
+big != '9') OR NOT IS_STRING(big))`). Asking S's extraction for the minimal form would not mend it, since the weakening
+itself is not; dropping a member an arm of which is a sibling, or joins siblings alone, is an identity of any
+distributive lattice, which the service's three-valued connectives are, so two forms equal up to it are one form, and a
+member altered in any other way still parts them (line 13). A literal at or
 past 2^53, or one no double holds, is Unproven there, the cut `Service.NumbersBeyondLongCompareAsDoubles` gives
 leaving the arm's cells apart; so is a `RETURNING DECIMAL` pair at `=`, `<=` and `>=`. The gate still holds some of
 those pairs implied at the atom, soundly, since implication needs no exact arm: 12 of the grammar's 104 cased shapes and

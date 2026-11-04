@@ -177,13 +177,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             || f.Kind is ServiceFormKind.And or ServiceFormKind.Or && RenderingRexGrammar.GuardsOf(f) is var guards && f.Members.Any(m => m.Kind == ServiceFormKind.Compare
                 && guards.Contains(m.Path!) && m.Reader is { } r && RenderingRexGrammar.ClassOf(r) == r && RenderingRexGrammar.Written.IsGuarded(r, m.Literal!)));
 
-        /// <summary>A form's text with each junction's members in order of their own.</summary>
-        static string Unordered(ServiceForm form) => form.Kind switch
+        /// <summary>A form up to absorption: its text as <see cref="Absorbed(ServiceForm)"/> keys it, and a junction's members.</summary>
+        internal sealed record Absorption(string Key, ServiceFormKind Kind, IReadOnlyList<Absorption> Members);
+
+        /// <summary>
+        /// A form's text up to absorption, each junction's members in order of their own: a junction flattened into its own
+        /// connective, a member it repeats dropped, and a member taken out where one of its arms is a sibling or a junction of
+        /// siblings alone (<c>x AND (x OR y)</c> is <c>x</c>, and dually). Each step is an identity of a distributive lattice,
+        /// which the service's three-valued connectives are, so equal keys are equal forms; a member any other step alters
+        /// keeps its own key and parts them (line 13). Anything else is its text.
+        /// </summary>
+        internal static Absorption Absorbed(ServiceForm form)
         {
-            ServiceFormKind.And or ServiceFormKind.Or => form.Test + "(" + string.Join(", ", form.Members.Select(Unordered).Order(StringComparer.Ordinal)) + ")",
-            ServiceFormKind.Not => "NOT " + Unordered(form.Members[0]),
-            _ => form.Text,
-        };
+            switch (form.Kind)
+            {
+                case ServiceFormKind.Not:
+                    var operand = Absorbed(form.Members[0]);
+                    return new("NOT " + operand.Key, form.Kind, [operand]);
+
+                case ServiceFormKind.And or ServiceFormKind.Or:
+                    var members = form.Members.Select(Absorbed).SelectMany(m => m.Kind == form.Kind ? m.Members : [m]).DistinctBy(m => m.Key).ToList();
+                    while (members.FirstOrDefault(m => members.Where(o => ReferenceEquals(o, m) == false).Select(o => o.Key).ToHashSet() is var others
+                        && m.Kind is ServiceFormKind.And or ServiceFormKind.Or && m.Kind != form.Kind
+                        && m.Members.Any(a => others.Contains(a.Key) || a.Kind == form.Kind && a.Members.All(b => others.Contains(b.Key)))) is { } absorbed)
+                        members.Remove(absorbed);
+
+                    return members is [var one] ? one : new(form.Test + "(" + string.Join(", ", members.Select(m => m.Key).Order(StringComparer.Ordinal)) + ")", form.Kind, members);
+
+                default:
+                    return new(form.Text, form.Kind, []);
+            }
+        }
 
         /// <summary>
         /// Whether S may decline a guarded pair at the filter beneath, where it holds the pair implied: past 2^53, where the
@@ -218,14 +242,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (beneath.Leaf.Paths.ToList() is [var leaf] && bundle.Strata[beneath.Stratum].Any(c => c is SqlPredicate.TypeTest { Test: "IS_NUMBER" } t && t.Paths.SequenceEqual([leaf])))
                     bundle.Assume(ProbeRows.Source with { Stratum = beneath.Stratum }, beneath, PathValues.Meet(Numbers, imported[leaf]));
 
-            // A CASE is read by generate mode alone (spec h08): Equal where S's best exact form is the one claimed, a
-            // junction's members in any order.
+            // A CASE is read by generate mode alone (spec h08): Equal where S's best exact form is the one claimed up to
+            // absorption, a junction's members in any order. A weakening may carry a member its siblings absorb, and S's
+            // best one nested otherwise (partitions 1967); neither is a minimal form, and both are the same form.
             if (verdict == Verdict.Equal && root.Subterms.Any(t => t is SqlPredicate.Case))
             {
                 bundle.Generate(term);
                 bundle.RunGenerate(RenderingBundle.WidthOf([root]));
                 var answer = bundle.ReadBest(term);
-                return answer is { Kind: RenderingVerdictKind.Proven, Best: { } best } && Unordered(best) != Unordered(claimed)
+                return answer is { Kind: RenderingVerdictKind.Proven, Best: { } best } && Absorbed(best).Key != Absorbed(claimed).Key
                     ? new(RenderingVerdictKind.Unproven, null, null, $"S's best exact form is {best}") : new(answer.Kind, answer.Proof, null, answer.Reason);
             }
 
@@ -504,6 +529,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 else
                     cased.Should().Be(0, "production asks the guarded comparison's templates only from the switch");
             }
+        }
+
+        /// <summary>
+        /// A <c>CASE</c>'s round trip holds S's best form to the one claimed up to absorption, and no further: partitions
+        /// 1967's weakening, whose <c>NOT IS_STRING(big) OR big != '9'</c> its sibling <c>big != '9'</c> absorbs, is the best
+        /// form that nests the member beneath <c>IS_DEFINED</c> and <c>NOT IS_NULL</c>; altered in one literal, or with
+        /// the absorbing sibling gone, it is another form.
+        /// </summary>
+        [Fact]
+        public void ACaseRoundTripIsHeldUpToAbsorptionAlone()
+        {
+            var (big, price) = (SqlValue.Spell(JsonDocumentPath.Root.Property("big")), SqlValue.Spell(JsonDocumentPath.Root.Property("price")));
+            ServiceForm And(params ServiceForm[] m) => ServiceForm.JunctionOf(CosmosServiceTest.And, m);
+            ServiceForm Or(params ServiceForm[] m) => ServiceForm.JunctionOf(CosmosServiceTest.Or, m);
+            ServiceForm Test(CosmosServiceTest test) => ServiceForm.TestOf(test, big);
+            ServiceForm Other(string literal) => ServiceForm.CompareOf(CosmosServiceTest.NotEqual, big, JsonValues.Of(literal));
+            var (defined, notNull, primitive, notString) = (Test(CosmosServiceTest.IsDefined), ServiceForm.NotOf(Test(CosmosServiceTest.IsNull)), Test(CosmosServiceTest.IsPrimitive),
+                ServiceForm.NotOf(Test(CosmosServiceTest.IsString)));
+            var priced = And(ServiceForm.TestOf(CosmosServiceTest.IsDefined, price),
+                Or(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNumber, price)), ServiceForm.CompareOf(CosmosServiceTest.Less, price, JsonValues.Of(30m))));
+
+            var claimed = Or(priced, And(Other("9"), defined, Or(notString, Other("9")), notNull, primitive, Other("b")));
+            var best = Or(And(primitive, defined, notNull, Other("9"), Other("b"), Or(And(defined, notNull, Other("9")), notString)), priced);
+
+            Absorbed(best).Key.Should().Be(Absorbed(claimed).Key);
+            Absorbed(claimed).Key.Should().Be(Absorbed(Or(priced, And(Other("9"), defined, notNull, primitive, Other("b")))).Key, "the absorbed member is the only one dropped");
+            Absorbed(best).Key.Should().NotBe(Absorbed(Or(And(primitive, defined, notNull, Other("9"), Other("b"), Or(And(defined, notNull, Other("8")), notString)), priced)).Key,
+                "an arm altered in a literal absorbs nothing");
+            Absorbed(best).Key.Should().NotBe(Absorbed(Or(And(primitive, defined, notNull, Other("b"), Or(And(defined, notNull, Other("9")), notString)), priced)).Key,
+                "nor one whose sibling is gone: over a number, big != '9' is undefined where NOT IS_STRING(big) is true");
         }
 
         /// <summary>
