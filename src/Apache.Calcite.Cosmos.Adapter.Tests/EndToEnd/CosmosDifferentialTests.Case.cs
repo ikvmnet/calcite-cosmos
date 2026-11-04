@@ -67,33 +67,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var sent = new List<string>();
                 var pushed = await Attempt(sql, pushdown: true, sent);
                 var failure = Refines(sql, false, new Outcome(expected, null), pushed);
-
-                // A listed predicate must still fail as listed, so that its fix shows here as a list to shorten.
-                if (UnimplementedProjections.Contains(predicate.Sql))
-                    failure = pushed.Raised?.Message.Contains("Unable to implement", StringComparison.Ordinal) == true ? null
-                        : $"{predicate.Sql} is listed as a projection the pushed plan cannot implement, and was implemented";
                 results[i] = (failure is not null ? $"over {v.Table}: {failure}\n  sent: {string.Join(" || ", sent)}" : null, true, sent.Any(s => s.Contains(" ? ", StringComparison.Ordinal)));
             });
 
             var summary = $"{predicates.Count} distinct predicates, {results.Count(r => r.Judged == false)} not judged because Calcite raised, "
-                + $"{results.Count(r => r.Ternary)} sending the ternary, {UnimplementedProjections.Length} listed unimplemented, {results.Count(r => r.Failure is not null)} failing";
+                + $"{results.Count(r => r.Ternary)} sending the ternary, {results.Count(r => r.Failure is not null)} failing";
             TestContext.Current.TestOutputHelper?.WriteLine(summary);
             Log("## EveryCaseTakesTheArmItsConditionChooses: " + summary);
             results.Select(r => r.Failure).OfType<string>().Should().BeEmpty($"each row takes the arm Calcite's condition chooses ({summary})");
         }
-
-        /// <summary>
-        /// The default run's predicates whose projection, pushed, fails to implement where Calcite answers: a defect of the
-        /// projection's pushdown, not of the CASE, which the predicate alone projected shows too (<c>TODO.md</c>, <em>A text
-        /// reading and a RETURNING reading of one path in one projection</em>). The pushed project reads <c>JSON_VALUE(price)</c>
-        /// once and the calculation above it compares that text with the <c>RETURNING INTEGER</c> reading's 0. Declared,
-        /// never matched: each must still fail so.
-        /// </summary>
-        static readonly string[] UnimplementedProjections =
-        [
-            "((JSON_VALUE(c.\"DOC\", '$.price') + 1) > 2 OR JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) <> 0)",
-            "(CASE WHEN c.\"$.category\" IN ('Road Runner', 'outdoor') THEN (CASE WHEN ((JSON_VALUE(c.\"DOC\", '$.price') + 1) - 2) IS NOT NULL THEN c.\"$.category\" <> '1' ELSE c.\"$.category\" IS NOT NULL END) ELSE ((JSON_VALUE(c.\"DOC\", '$.price') || '!') IS NOT NULL OR (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 1) = 120) END)",
-        ];
 
         /// <summary>
         /// The documents of <c>planted_text</c> whose <c>t</c>, ASCII without U+0000 and so pushed under either set (D8), has

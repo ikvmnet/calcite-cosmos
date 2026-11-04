@@ -1689,21 +1689,6 @@ left, measured offline through the host's prepare (`CosmosPlanningTests`):
 - **The translator runs in rule matching.** `CosmosFilterSplitRule` and `CosmosProjectSplitRule` translate
   every candidate to decide it, about a sixth of what remains.
 
-### A text reading and a RETURNING reading of one path in one projection — *small, found by line 9c (h13)*
-
-`SELECT c."id", ((JSON_VALUE(c."DOC", '$.price') + 1) > 2 OR JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) <> 0) FROM
-products AS c` answers in process and, pushed, fails with *Unable to implement*: the pushed project reads
-`JSON_VALUE($0, '$.price')` once, and the calculation above it casts that column to an integer for the sum and compares
-the same column with the `RETURNING INTEGER` reading's 0. A `RETURNING` lives in the call's type, not its operands, and
-the split rules key a pushed fragment by `RexNode.ToString()` (`CosmosProjectSplitRule.cs:150`, `:321`, `:424`;
-`CosmosProjectResidualRule.cs:142-143`, `:291`), which prints both readings alike, so the second takes the first's
-column. Keying a fragment by its text and its type is the likely fix; it may change plans, so it is a listed commit of
-its own. Line 9c (`EveryCaseTakesTheArmItsConditionChooses`) declares the default run's two predicates that meet it,
-each held to still fail so; the gate's thousand may meet more. Line 9c's kill is *any*, so those two stand only once
-the owner accepts them by name. That the collision only ever raises is not measured: two numeric readings of one path
-(`RETURNING DOUBLE` and `RETURNING INTEGER`) print alike as well and might implement, the second reading the first's
-column, a wrong row; a probe planning and running that projection is owed before the fix is ranked.
-
 ### Recorded decisions worth revisiting
 
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,
@@ -3041,7 +3026,14 @@ across documents* and *A join of a container to itself* is the record.
 - **The case mapping asks ASCII under every set** — *legality, until a cased witness is measured.* The rows' witnesses for
   the surrogate and high bands (an emoji, `ﬀ`) hold no cased letter, while Java maps U+10428 and U+FF21, so a `Same`
   there proves nothing of a cased one; `CosmosFunctionSpellings.Mapped` keeps `UPPER` and `LOWER` to ASCII on every
-  target. Witnesses holding cased letters in each band, measured, would let the rows decide it.
+  target. Witnesses holding cased letters in each band, measured, would let the rows decide it. Both emulator images
+  map U+10428/U+10400 and U+FF21/U+FF41 as Java does (2026-11-04, the defects step); Azure's is run 2's.
+- **Four wrong answers held before h15** — *before h15, each by its group's proper fix.* `RenderingDefectTests` holds each
+  to still answer wrong (DESIGN.md, *The defects held before h15*): `RETURNING DOUBLE` against a literal cast to fewer
+  decimals read untruncated (G8, the comparand's casts as terms); the PostgreSQL and Oracle `CONCAT` loaded as `CONCAT`
+  (G6, a name and rows of their own); `REPLACE` of a search holding U+0000, hidden today by `Spell`'s literal refusal
+  (F2, operand keys); `REPLACE` of a replacement that is no string, measured on the emulator alone (F2). A fix strikes
+  its name from `Held`.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused

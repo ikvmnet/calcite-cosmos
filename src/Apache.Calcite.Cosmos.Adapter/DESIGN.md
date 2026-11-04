@@ -8506,10 +8506,10 @@ reconstructed; on a service each keeps the rows 4b65754's pushdown kept. The lin
 
 **TLP over `CASE` (line 9c).** For each partition predicate φ, `CASE WHEN φ THEN 'T' WHEN NOT φ THEN 'F' ELSE 'U' END`
 projected and pushed labels each row as Calcite's φ is true, false or unknown. Of the default run's 199 distinct
-predicates the ternary is sent for 184 and every label agrees; two fail to implement, a defect of the projection's
-pushdown and not of the `CASE`: a text reading and a `RETURNING INTEGER` reading of one path share a pushed column,
-the split rules keying a fragment by a text that omits the type. They are declared, each held to still fail so
-(`TODO.md`).
+predicates the ternary is sent for 184 and every label agrees. Two failed to implement until #249 keyed a pushed
+fragment by Calcite's equality, which compares types, where a text reading and a `RETURNING INTEGER` reading of one
+path had shared a column; with nothing declared, the gate's 973 distinct predicates all implement, 902 send the
+ternary, and every label agrees (EN20261019, the defects step).
 
 **Rows a bundle (line 39).** A chain of `CASE`s writes an else-arm narrow beneath its negated conditions to
 `NarrowDepth` and wide past it; a chain of depth 1 to 5 over paths of its own, all imported as anything, completes
@@ -8772,6 +8772,51 @@ to 1 / 0, `c.flag = true` beside a guard in `CosmosBooleanPlanningTests.AGuarded
 post1's capture too and now the census's example of the push, reading no raw value; F, G 13 / 8 to 7 / 3, six and three
 `LIKE`'s `_` and one case-folded `ENDSWITH`; I 0 / 0; J1 14 / 0 to 5 / 0, the case mapping. Every push named above
 is Proven under each set it ran in, partitions 1792 is accepted, and no refutation, false or not yet reproduced.
+
+### The defects held before h15
+
+The 3A audit read seven wrong answers off the code without running one (its plan, §1). Each is now run through S's own
+judgement: S generates over what the loader reads, and its best is held on documents to Calcite in process (or IrEval,
+where the reading is Calcite's) against `CosmosEval`, or against the service as measured where `CosmosEval` does not
+model the operand. Four answer wrong and are held to, `RenderingDefectTests`, each until its fix strikes it from `Held`:
+
+- **`RETURNING DOUBLE` against a literal cast to fewer decimals** (item 2). `Comparand`'s `truncates: reading is
+  SqlValue.Typed` holds for `RETURNING DOUBLE` too, so `= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` is read as `= 2.5`:
+  `c.n = 2.5`, proven under every set, drops `2.0`, which Calcite keeps (the literal truncates to 2), and keeps `2.5`.
+  The fix is G8's: the comparand's casts as terms.
+- **The PostgreSQL and Oracle `CONCAT`** (item 3), `CONCAT_FUNCTION_WITH_NULL` and `CONCAT2`, which read a null as empty,
+  are loaded as `CONCAT`, whose rows answer `Same` over a null: `CONCAT(c.s, '!') = '!'` drops an absent or null `s`
+  Calcite keeps, under every set. G6's fix: a name and rows of their own.
+- **`REPLACE` of a search holding U+0000** (item 4). Both targets replace every unit (`REPLACE('abc', U+0000, 'x')` is
+  `xxx` on EN20261019 and EN20260907, as `Service.NulEndsWhatReplaceAndContainsRead` says of Azure), and S, keying
+  `REPLACE` on its subject alone, proves the place. The loader gives it none while `Spell` refuses a literal holding
+  U+0000, so the case writes the place as `Spell` would without that refusal: the refusal, a G1 site, hides the defect
+  and is no fix of it. F2's is: operand keys.
+- **`REPLACE` of a replacement that is no string**, found beside item 6. `REPLACE(c.s, 'a', c.t) = '5'`, `t` a number:
+  Calcite replaces with its text and keeps the row, both emulator images answer undefined, and S proves the place under
+  every set, the replacement no key of it. Azure is not measured; the case asks `Emulator` alone. F2's fix too.
+
+Three do not reproduce as wrong answers:
+
+- **`SUBSTRING` of a negative length** (item 1). S proves `SUBSTRING(c.s, 0, -1) = ''` from `SUBSTRING(s, 1, -1)`, but
+  Calcite raises over every string the place reads, and both emulator images answer `''`, no failure, which decision 2
+  lets refine a raise. `Spell` saying it does not write one is a disagreement of two writers (G6), not a wrong row.
+- **The case mapping over the surrogate and high bands** (item 5). Both emulator images map U+10428 and U+10400, U+FF21
+  and U+FF41, as Java does, so `UPPER` over a surrogate and `LOWER` over either band, which S proves, answer as Calcite
+  there. Azure's answer is run 2's, whose cases hold these letters; until then `Production`'s proofs rest on the rows'
+  uncased witnesses.
+- **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite: a replacement read
+  from a path holding U+0000 or U+FDD0, `CONCAT` of two stored strings, `REPLICATE(s, 0)` over either escape. What fails
+  is a sent literal (`REPLACE(c.s, 'a', U+0000)` and `CONCAT(c.s, U+0000)` projected fail the statement on EN20260907),
+  which never has a place while `Spell` refuses it.
+
+**Item 7 is no defect under the documented contract.** On `main` (`5a5cf15`), `CAST(JSON_VALUE(…, '$.n') AS SMALLINT) =
+CAST(7 AS SMALLINT)` over `n` declared `^(0|[1-9][0-9]*)$` sends `c.n = '7'` (a bare `7` widens the cast to `INTEGER`
+and is not lowered), and Calcite raises over a stored `"100000"`; `TINYINT` over `"200"` and `DECIMAL(3, 0)` over
+`"100000"` alike, and `INTEGER` over `"3000000000"`, which `WithoutPaddingOnlyTheEqualityLowers` pins. The error
+refinement order lets a pushdown answer where the engine raises (*Differential testing*), and `AgreementRows` lets any
+answer but a failure refine a raise. That `TryNumericCastOperand` refuses the same raise for `DECIMAL` is a stricter
+choice the order permits; two lists deciding one claim is G9's, at h24.
 
 ## Differential testing
 
