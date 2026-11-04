@@ -101,15 +101,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The opposite constant needs a two-valued condition. <c>NOT ((label = 'bikes') IS TRUE)</c> keeps the rows the
-        /// label is null on, which <c>label = 'bikes'</c> written bare would not: Unproven under <c>Production</c> (the
-        /// soundness critic's counterexample). <c>NOT (IS_NUMBER(x) IS TRUE)</c> is Proven there.
+        /// label is null on, which <c>label = 'bikes'</c> written bare would not (the soundness critic's counterexample):
+        /// under <c>Production</c>, the probe account having measured the ternary (S1), its form keeps the ternary.
+        /// <c>NOT (IS_NUMBER(x) IS TRUE)</c> is Proven there with none.
         /// </summary>
         [Fact]
         public void TheOppositeConstantNeedsATwoValuedCondition()
         {
             var counterexample = Generate(Not(Case(Nullable, True, False)), RenderingSet.Production);
             counterexample.Run.Should().Be(Disciplined);
-            counterexample.Answer.Kind.Should().Be(RenderingVerdictKind.Unproven);
+            counterexample.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
+            HasTernary(counterexample.Best!).Should().BeTrue("the condition is not two-valued, so its opposite constant needs the ternary");
 
             var typed = Generate(Not(Case(TwoValued, True, False)), RenderingSet.Production);
             typed.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
@@ -118,20 +120,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// <c>x IS NOT TRUE</c> over a nullable comparison at <c>Pos</c> is the opposite constant over a condition that is
-        /// not two-valued: Unproven without the ternary's row, Proven under the emulator's set, which licenses it (S1).
+        /// not two-valued: Proven as the ternary under every set, each target having measured it (S1, Azure at run 1).
         /// </summary>
         [Fact]
         public void IsNotTrueOverANullableComparisonNeedsTheTernary()
         {
             var root = Case(Nullable, False, True);
-            Generate(root, RenderingSet.Production).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven);
-
-            var emulator = Generate(root, RenderingSet.Emulator);
-            emulator.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
-            emulator.Best!.Kind.Should().Be(ServiceFormKind.Choose);
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+            {
+                var generated = Generate(root, set);
+                generated.Answer.Kind.Should().Be(RenderingVerdictKind.Proven, set.ToString());
+                generated.Best!.Kind.Should().Be(ServiceFormKind.Choose, set.ToString());
+            }
         }
 
-        /// <summary>A general <c>CASE</c> is Proven under a set that licenses the ternary and Unproven under one that does not, each with a weakening.</summary>
+        /// <summary>A general <c>CASE</c> is Proven as the ternary under a set that licenses it, every set since run 1 measured it on Azure.</summary>
         [Fact]
         public void AGeneralCaseIsTheTernaryWhereTheSetLicensesIt()
         {
@@ -142,8 +145,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             HasTernary(emulator.Best!).Should().BeTrue();
 
             var production = Generate(root, RenderingSet.Production);
-            production.Answer.Kind.Should().Be(RenderingVerdictKind.Unproven);
-            production.Answer.Weakening.Should().NotBeNull("a case weakens where no exact form is found");
+            production.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
+            HasTernary(production.Best!).Should().BeTrue();
         }
 
         /// <summary>

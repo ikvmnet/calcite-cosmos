@@ -6434,6 +6434,13 @@ record (`2026-10-28-probe-account-conformance.tsv`) is of printed forms, not of 
 project does not embed it: what licenses a form is still the rows' records, and this one shows the forms those rows
 license kept on the service as the model says.
 
+**The probe account has run h06's rows (run 1, 2026-11-04).** S1, M2, M3, M4, N4–N7, N11 and N12, measured on the
+emulator alone since h06, ran on Azure from their pinning tests, each line logged before any assertion: 2,809 lines
+(`Runs/2026-11-04-probe-account.tsv`, the witness probe's format, release, row, expression, witness and answer). An
+Azure target on any of the eleven needs that record to hold every line the row's emulator record holds, answered alike
+but where `CosmosAxiomsTests.Parted` names a line, and a function key's Azure answer is the record's projections read
+again through Calcite in process; both checks run in CI with no endpoint (*What the probe account answered*, below).
+
 **The rendering tests read the registry and nothing else.** `ProbeRows` is `CosmosAxiomRows.Read` of the registry, its
 table the one S settles for the emulator's set; a test that needs a row the registry lacks plants it under an id no row
 holds. Calcite's connectives are a row like the service's, `Calcite.ConnectivesAreKleene`, its measurement reading its
@@ -7982,8 +7989,9 @@ answers of a ternary…*):
   their definitions; the `IS_*` tests are their bodies, now with `Calcite`-target outcomes beside the service's;
   `ITEM` and a reading of an element; a `VARIANT` equals only its own box; `INTEGER` and `BIGINT` wrap and `DECIMAL`
   is exact.
-- **On the emulator,** each a `Service.` row measured there alone, Azure at the probe account's run 1 (h14b): the
-  ternary takes its then-arm on true alone (S1); an index over a non-array is undefined (M4); `IN`, the affixes and
+- **On both targets,** each a `Service.` row measured on the emulator first and on the probe account at run 1 (h14b),
+  four of them answering apart in places (*What the probe account answered*): the ternary takes its then-arm on true
+  alone (S1); an index over a non-array is undefined (M4); `IN`, the affixes and
   `LIKE` over non-strings and by code point, and how an integral number reads back (N4–N7, N11); `LIKE` reads a
   bracket as a range (N12); the string functions by band (M2); and integer arithmetic (M3).
 
@@ -8294,18 +8302,18 @@ reads both into S as constant raw facts, `functionsubject` and `measuredreaders`
 keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
 read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
 `CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column gate reads the same subjects
-(`CosmosFunctionSpellings.Subjects`), and the Azure bridge's one function no row names, `LENGTH`, is gated on every
-operand. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+(`CosmosFunctionSpellings.Subjects`), and the one function it gates that no row names, `LENGTH`, is refused on every
+operand and every target (`CosmosFunctionSpellings.Gated`). The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
 measured, and the case mapping beyond ASCII under every set, since the rows' witnesses for the surrogate and high bands
 (an emoji, `ﬀ`) hold no cased letter while Java maps U+10428 and U+FF21. A refusal is never weakened to a row.
 
 **The column bridge.** `RequireStringFunctionsAgree` asks, for every target the set serves, the bands the function's
-rows part over, and refuses a subject not proved free of them; a function no row names is refused there. Azure has no
-function rows until the probe account's run 1, so for Azure it reads the declared verdicts
-(`CosmosFunctionSpellings.AzureVerdicts`, what `CosmosStringFunctions` asked) until h14b. Under the emulator this refuses
-`POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` (Calcite's library operator, whose rows are
-owed). The bridge goes at h37, when S writes the column.
+rows part over, and refuses a subject not proved free of them; a function no row names is refused there. Until the
+probe account's run 1 Azure had no function rows and the bridge read declared verdicts for it (what
+`CosmosStringFunctions` asked); since h14b both targets read their rows, Azure's measured. Under the emulator this
+refuses `POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` under both (Calcite's library
+operator, whose rows are owed). The bridge goes at h37, when S writes the column.
 
 **What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
 `Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
@@ -8357,8 +8365,9 @@ mirrored test's row the other way round. All of it rests on `Service.TwoPathsCom
 emulator over 15 values at `v` against 8 at `w` (an absent path, U+0000, U+FFFF and a surrogate pair among them), six
 comparators each way round, each also against the right's value as a literal where the two differ in kind or the right
 is no string: EN20261019 and EN20260907 answer its 1,890 lines alike. The leaf reads its one key (`ComparePaths`) before
-anything else, so where the set holds no such row (`Production` and `Portable`, Azure having measured no two paths
-until run 1) a pair is anything and proves nothing.
+anything else, so where a set holds no such row a pair is anything and proves nothing; every set holds it since the
+probe account measured the same witnesses (run 1), Azure ordering a string holding U+0000 by code point where the
+emulator orders what it stores, which the set's comparator already says.
 
 **The form.** `ServiceFormKind.ComparePaths` reads two paths, so a pair's spelling is both places' as a JSON array
 (`PlaceSpellings`), which no path's or call's spelling begins with; the partition rule's guard reads that set, and the
@@ -8495,7 +8504,7 @@ ternary's Azure row (Q2), which the emulator's answers say is all they wait on. 
 negation were not built, and S stays at 76.
 
 **What it left**, each Unproven for a piece S does not have, not a reading: an affix form (built since, below; Azure's
-rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
+rows N5–N7 since run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
 `SIGN`; `SUBSTRING` from 0; a column compared with a text reading, two readings of different kinds; and the two-path
 row's absent and null cells on the emulator. (A cast of the text to `BOOLEAN` was among them until the readers below.) Under `Emulator` one more is
 refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
@@ -8572,8 +8581,10 @@ as they were.
   where a pattern holds neither escape and no run but the first begins with `0` or `1` (`AffixPattern.StoredAlike`) or
   its classes hold neither U+0000 nor the high band. Its `LIKE` names no matcher: what the emulator's `LIKE` makes of a
   stored escape is unmeasured, so that key is declared owed (`CosmosAxiomRows.Owed`) and a `LIKE` of two runs or more
-  is anything to S there. Azure's rows are run 1's N5–N7, so under `Production` every key is missing and the form is
-  never Proven, as it must not be until then.
+  is anything to S there. Azure's are run 1's N5–N7: its matcher is `codepoint` for the three affixes and for `LIKE`,
+  the string as written, but its `CONTAINS`, and a `LIKE` of one run between two `%`, read only up to a string's first
+  U+0000 (`Service.NulEndsWhatReplaceAndContainsRead`), so `ServiceLeaf.Matched` answers either for such a pattern
+  over a cell that may hold one, or for a pattern that holds one; over a string free of it the matcher is exact.
 - **Calcite's side** (`PredicateAtom.OnCell`, F's `On` unchanged): a string read as itself by the rendering, a cast to
   text, a `VARCHAR` column's raw value or a computed text place matches by the pattern, an interval as an affix cut it
   and every string `%`; a boolean renders `true` or `false`; a number renders in its grammar's units
@@ -8589,6 +8600,33 @@ as they were.
   three holding `_`; one a number's rendering may match; one Q3); J1 from 6 Proven of 15 to 12, one open (`SUBSTRING`
   from 0). Under `Production` nothing moved, as it must not: F, G stay 18 of 98 with 33 open, J1 0 of 22, every affix
   waiting on N5–N7. No row lost a proof, no refutation is false, and the plans and digests are unchanged.
+
+### What the probe account answered (h14b)
+
+Run 1 ran h06's eleven rows on the probe account (2026-11-04, the branch at `57eda06`, Release, each measurement class
+in a container of its own at 400 RU/s, deleted when it ended; 5,715 RU). Seven answer line for line as EN20261019 does.
+Four answer apart in 51 of 2,809 lines, and each difference is an outcome per target, declared, so S reads the target's
+own answer and neither is stretched to the other:
+
+- **An integral number past 2^53 reads back as written (N11).** Azure holds `9007199254740993.0` as the int64
+  9007199254740993 where the emulator holds the double 9007199254740992; the row says so per target, and `CosmosEval`
+  reads it so under `Production`.
+- **Two paths order a string holding U+0000 by code point (`TwoPaths`, 12 lines),** below `"bikes"`, where the emulator
+  orders the U+FDD0 it stores above. The pair reads through the set's `Order` comparator, which already said so, so the
+  row's claim — a pair answers as a path against the right side's value as a literal — holds on both.
+- **`9223372036854775807 % 2` is 0 on Azure (M3, one line),** the remainder taken in doubles past 2^53, 1 on the
+  emulator. No function key moves: a number's key has no magnitude, so all 140 answer as the emulator's do.
+- **Azure counts, cuts and searches the string as written (M2, 37 lines).** It answers `Same` on 17 keys the emulator
+  answers `Differs` on: the lengths, `SUBSTRING`, `LEFT` and `RIGHT` over the high band and U+0000, `POSITION` over every
+  band, `REPLACE` over the high band, `REVERSE` over the high band and U+0000. Its bands are the surrogates for the
+  lengths and the windows, none for `POSITION`, `REVERSE`, `CONCAT`, `||` and `REPEAT`, `NonAscii` and the high band for
+  `UPPER`, `NonAscii` for `LOWER`, U+0000 for `REPLACE`, and the trimmed characters for `TRIM`. `RIGHT` keeps the
+  surrogates though it answered `Same` there, since no witness puts its cut inside a pair (`TODO.md`).
+
+**What it gives S.** `Production` and `Portable` license the ternary (S1), the affix form (N5–N7, below the cut above),
+the two-path form, and an image for a function wherever Azure's bands allow; the column bridge reads Azure's rows, the
+declared verdicts gone, and `LENGTH`, which no row names, is refused on both targets. The plans do not move: at the
+parent and at the commit, on both frameworks, new and again, Production is `3dc62a38…` and Emulator `542c9f12…`.
 
 ## Differential testing
 

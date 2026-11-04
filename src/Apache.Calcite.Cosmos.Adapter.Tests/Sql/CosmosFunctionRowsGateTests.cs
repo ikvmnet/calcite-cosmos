@@ -236,18 +236,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// A function some target's rows name and the emulator's do not is unmeasured there and refused whatever it holds:
-        /// <c>LENGTH</c>, whose emulator row is owed. Azure, with no rows until run 1, is held to its verdict (h10).
+        /// A string function the gate holds and no row names is unmeasured and refused whatever it holds, on every target:
+        /// <c>LENGTH</c>, whose row is owed. Azure's verdict declared for it went with run 1 (h14b).
         /// </summary>
         [Fact]
-        public void AFunctionTheEmulatorsRowsDoNotNameIsRefusedThere()
+        public void AFunctionNoRowNamesIsRefusedEverywhere()
         {
             CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Emulator).Should().BeNull();
-            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().Be(JsonCharacterBand.Surrogates);
+            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().BeNull();
+            CosmosFunctionSpellings.Named("LENGTH").Should().BeTrue("the gate holds it, so it is refused rather than passed unasked");
             var length = SqlLibraryOperators.LENGTH;
             Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
-            Pushes(Azure, JsonCharacterBand.None, length, Str()).Should().BeTrue();
-            Pushes(Azure, JsonCharacterBand.Surrogates, length, Str()).Should().BeFalse();
+            Pushes(Azure, JsonCharacterBand.None, length, Str()).Should().BeFalse("nor did the probe account");
         }
 
         /// <summary>

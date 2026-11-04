@@ -87,8 +87,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// Text equal to text over ASCII strings is Proven under the emulator, whose rows say two paths compare as a path
         /// and a literal (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>), as the two paths' comparison, which the printer
-        /// writes with no literal bound; under <c>Production</c>, Azure having measured no two paths until run 1, it is
-        /// not. The pair's atom is assumed by the rule, as the product, and its spelling is both places'.
+        /// writes with no literal bound; and under <c>Production</c>, the probe account having measured the row (run 1). The
+        /// pair's atom is assumed by the rule, as the product, and its spelling is both places'.
         /// </summary>
         [Fact]
         public void TextEqualToTextIsProvenAsTheTwoPathsComparison()
@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (answer.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Proven, RunStopReason.Completed), answer.Reason);
             answer.Best.Should().Be(form);
             rows.Should().BeLessThan(RenderingBundle.RowLimit);
-            Generate(equal, RenderingSet.Production, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, "no Azure row measures two paths");
+            Generate(equal, RenderingSet.Production, Strings, Ascii).Answer.Best.Should().Be(form, "the probe account measured two paths in run 1");
 
             var parameters = new CosmosParameterList();
             RenderingPrinter.Print(form, equal.Places.ToDictionary(Spelled), "c", parameters).Should().Be("(c.name = c.other)");
@@ -173,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// What S proves of a pair under the emulator, each Proven form judged on documents by the two oracles: Calcite's
         /// truth on each is TRUE exactly where the service keeps it. Over ASCII every comparison is Proven; over every band,
         /// whatever is Proven is held to strings holding U+0000, a surrogate pair, a character above it and one between.
-        /// Under <c>Production</c> nothing is, until Azure measures two paths.
+        /// Under <c>Production</c> whatever is Proven over every band is held to the same strings on Azure's model.
         /// </summary>
         [Fact]
         public void EveryProvenPairKeepsWhatCalciteKeeps()
@@ -188,7 +188,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 if (Generate(ir, RenderingSet.Emulator, Strings, AllBands).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
                     Agrees(ir, best, RenderingSet.Emulator, wide);
-                Generate(ir, RenderingSet.Production, Strings, AllBands).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, op);
+                if (Generate(ir, RenderingSet.Production, Strings, AllBands).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } azure })
+                    Agrees(ir, azure, RenderingSet.Production, wide);
             }
 
             static void Agrees(SqlPredicate ir, ServiceForm form, RenderingSet set, string[] values)

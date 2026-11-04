@@ -57,8 +57,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// apart; of its run of 2026-10-16, what it projected, wrote inline or only ordered backs no
     /// claim, since its filter has answered apart from its projection. The Azure targets of the
     /// string functions and the stored values rest on a run of 2026-10-19, which has no record. A function row's keys
-    /// (<see cref="CosmosFunctionOutcome"/>) claim Azure the same way, and none does yet; a row measured on the emulator
-    /// since 2026-11-02 names the release that answered it in <c>Measurements/Runs/Emulator</c>.
+    /// (<see cref="CosmosFunctionOutcome"/>) claim Azure where the probe account's run 1 (2026-11-04) measured them, its
+    /// record's lines read again through Calcite in process; a row measured on the emulator since 2026-11-02 names the
+    /// release that answered it in <c>Measurements/Runs/Emulator</c>, and one run 1 measured holds every line of it there.
     /// </para>
     /// </remarks>
     internal static class CosmosAxioms
@@ -87,31 +88,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         const CosmosAxiomTarget Both = CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Emulator = CosmosAxiomTarget.Emulator, Azure = CosmosAxiomTarget.Azure;
 
         /// <summary>
-        /// A string function's keys on the emulator: <see cref="CosmosFunctionAnswer.Differs"/> over the bands named and the
-        /// same over the rest of a string's, undefined over a number and a boolean, the same over a null, an absent path,
-        /// an object and an array.
+        /// A string function's keys on each target: <see cref="CosmosFunctionAnswer.Differs"/> over the bands named for it
+        /// and the same over the rest of a string's, one outcome for both where the two agree; undefined over a number and a
+        /// boolean, the same over a null, an absent path, an object and an array, on both.
         /// </summary>
-        static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, long subject, JsonCharacterBand differs) =>
+        static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, long subject, JsonCharacterBand differs, JsonCharacterBand azure) =>
         [
             .. from band in new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii, JsonCharacterBand.Trimmed, JsonCharacterBand.Nul }
-               select new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, band != JsonCharacterBand.None && differs.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same),
+               let emulator = band != JsonCharacterBand.None && differs.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same
+               let onAzure = band != JsonCharacterBand.None && azure.HasFlag(band) ? CosmosFunctionAnswer.Differs : CosmosFunctionAnswer.Same
+               from outcome in emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator)]
+                   : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure) }
+               select outcome,
             .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same),
         ];
 
         /// <summary>
-        /// A typed arithmetic operator's keys on the emulator: what it answers over a number, undefined over a string and a
-        /// boolean, the same over a null, an absent path, an object and an array.
+        /// A typed arithmetic operator's keys, the two targets alike: what it answers over a number, undefined over a string
+        /// and a boolean, the same over a null, an absent path, an object and an array.
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, CosmosFunctionAnswer overNumbers) =>
         [
-            new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Emulator, overNumbers),
+            new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Both, overNumbers),
             .. from kind in new[] { Class.String, Class.True }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same),
         ];
 
         /// <summary>The row of an id.</summary>
@@ -280,8 +285,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "Calcite's / over two integers is integer division, truncating toward zero: 7 / 2 is 3, -7 / 2 is -3, and an accessor RETURNING INTEGER divides the same way.",
                 CosmosAxiomTarget.Calcite, Today, "Measurements.CalciteArithmeticMeasurementTests.IntegerDivisionTruncatesTowardZero"),
             new("Service.IntegerArithmeticIsExactWithinLong",
-                "+, - and * over integers are exact while the result fits int64, past 2^31 and past 2^53, 2^53 + 1 being 9007199254740993, and a double past it, 2^63 - 1 + 1 above 2^63 - 1 and never wrapped; / is a double; a result JSON cannot hold, an infinity, fails the statement projected and is undefined in a WHERE, 1e308 * 2 and any number / 0 alike; and each is undefined over a string, a boolean, a null and an absent path. So against Calcite's INTEGER, BIGINT, DECIMAL and DOUBLE each typed operator parts over a number, Calcite wrapping, truncating, raising over a fraction or rounding past 2^53 where the service does not, and * and / fail where Calcite answers an infinity or raises.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegerArithmeticIsExactWithinLong",
+                "+, - and * over integers are exact while the result fits int64, past 2^31 and past 2^53, 2^53 + 1 being 9007199254740993, and a double past it, 2^63 - 1 + 1 above 2^63 - 1 and never wrapped; / is a double; a result JSON cannot hold, an infinity, fails the statement projected and is undefined in a WHERE, 1e308 * 2 and any number / 0 alike; and each is undefined over a string, a boolean, a null and an absent path. So against Calcite's INTEGER, BIGINT, DECIMAL and DOUBLE each typed operator parts over a number, Calcite wrapping, truncating, raising over a fraction or rounding past 2^53 where the service does not, and * and / fail where Calcite answers an infinity or raises. Azure answers alike, but for % of 2^63 - 1 by 2, 0 there in doubles where the emulator answers 1.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegerArithmeticIsExactWithinLong",
                 Readers: [.. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" } from reader in new[] { PredicateAtom.TypedReader(type), PredicateAtom.CastReader(type, PredicateAtom.TextReader) } select reader],
                 FunctionOutcomes:
                 [
@@ -440,56 +445,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "+, - and * over DECIMAL are exact: 0.1 + 0.2 is 0.3 and 9007199254740993 + 0 is itself, where a double holds neither.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteArithmeticMeasurementTests.DecimalArithmeticIsExact"),
 
-            // ── What the emulator answers of a ternary, an index, IN, the affixes and LIKE, and a number read back (Azure at h14b) ──
+            // ── What the service answers of a ternary, an index, IN, the affixes and LIKE, and a number read back (Azure at h14b) ──
 
             new("Service.TernaryTakesThenOnTrueAlone",
                 "c ? a : b and IIF(c, a, b) take a where c is true and b over every other value, false, null, a number, a string, \"true\" among them, an object, an array and an absent path alike, never undefined for a defined arm: so c ? true : false is true where c is true and false elsewhere, in a SELECT and in a WHERE.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheTernaryTakesThenOnTrueAlone",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheTernaryTakesThenOnTrueAlone",
                 [
-                    new(Test.Choose, Class.None, CosmosAxiomTarget.Emulator, "true=true false=false undefined=false absent=false null=false number=false string=false object=false array=false"),
+                    new(Test.Choose, Class.None, Both, "true=true false=false undefined=false absent=false null=false number=false string=false object=false array=false"),
                 ]),
             new("Service.IndexOverANonArrayIsUndefined",
                 "An index is the element of an array, counted from zero, and undefined over every value that is no array, a string included, and past an array's end, an empty array's too: IS_DEFINED of it is false there, and a comparison with it undefined.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.AnIndexOverANonArrayIsUndefined"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.AnIndexOverANonArrayIsUndefined"),
             new("Service.InIsMembership",
                 "IN is true where the value equals a member, a value of another kind never equal, 30 no \"30\" and true no \"true\", null IN (null) true, and false elsewhere, an object and an array included; over an absent path it is undefined.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.InIsMembership"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.InIsMembership"),
             new("Service.StringPredicatesOverNonStringsAreUndefined",
                 "STARTSWITH, ENDSWITH, CONTAINS and LIKE are undefined over a number, a boolean, a null, an object, an array and an absent path, a number matched by no pattern of its digits; over a string each is true or false.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheStringPredicatesOverNonStringsAreUndefined",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.TheStringPredicatesOverNonStringsAreUndefined",
                 [
                     // S's affix form (h07) reads a value that is no string by its kind.
-                    new(Test.StartsWith, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
-                    new(Test.EndsWith, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
-                    new(Test.Contains, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
-                    new(Test.Like, Class.None, Emulator, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.StartsWith, Class.None, Both, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.EndsWith, Class.None, Both, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.Contains, Class.None, Both, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
+                    new(Test.Like, Class.None, Both, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
                 ]),
             new("Service.AffixesMatchByCodePoint",
-                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too. The emulator matches the string as it stores it against the argument as sent, so a statement sends it in that spelling (Service.EmulatorComparesTheSpellingItIsSent).",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint",
+                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too. The emulator matches the string as it stores it against the argument as sent, so a statement sends it in that spelling (Service.EmulatorComparesTheSpellingItIsSent); Azure matches the string as written, its CONTAINS reading it only up to its first U+0000 (Service.NulEndsWhatReplaceAndContainsRead).",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint",
                 [
-                    // S's affix form (h07): a string by whether the argument matches it, under the matcher the cell's none names.
+                    // S's affix form (h07): a string by whether the argument matches it, under the matcher the cell's none names;
+                    // Azure's by code point, a CONTAINS either side where the string or the argument may hold U+0000 (ServiceLeaf).
                     new(Test.StartsWith, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
                     new(Test.EndsWith, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
                     new(Test.Contains, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
+                    new(Test.StartsWith, Class.String, Azure, "none=codepoint matching=true missing=false"),
+                    new(Test.EndsWith, Class.String, Azure, "none=codepoint matching=true missing=false"),
+                    new(Test.Contains, Class.String, Azure, "none=codepoint matching=true missing=false"),
                 ]),
             new("Service.LikeMatchesByCodePoint",
                 "LIKE matches by code point, case sensitive: _ matches one code point, U+1F600, U+00E9 and U+E000 alike, and % any run of them, the empty one too.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint",
                 [
                     // No matcher: what the emulator's LIKE makes of a stored escape is unmeasured (CosmosAxiomRows.Owed), so S's LIKE form answers anything.
                     new(Test.Like, Class.String, Emulator, "matching=true missing=false"),
+                    // Azure's by code point, one run between two % read as a CONTAINS is (ServiceLeaf).
+                    new(Test.Like, Class.String, Azure, "none=codepoint matching=true missing=false"),
                 ]),
             new("Service.LikeReadsBracketsAsARange",
                 "LIKE reads [a-c] as one character of the range and [^a-c] as one outside it, [[] as a literal [, and a pattern holding a [ it never closes matches nothing, the string it spells included; ESCAPE makes the character after it literal.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange"),
             new("Service.IntegralNumbersReadBackAsHeld",
-                "A number reads back as the emulator holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point as a double, 9007199254740993.0 as 9007199254740992, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
+                "A number reads back as the service holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point by the emulator as a double, 9007199254740993.0 as 9007199254740992, and by Azure as an int64 where it is one, 9007199254740993.0 as itself, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
             new("Service.TwoPathsCompareAsAPathAndALiteral",
                 "c.v op c.w answers as c.v op the value at w written as a literal, for each of =, !=, <, <=, > and >=, over every kind of value on either side, an absent path included, and as c.w op' c.v with the comparator mirrored (< and >, <= and >=), so a right side no literal can be, null, an object, an array or an absent path, reads as the left compared with it the other way round.",
-                CosmosAxiomTarget.Emulator, Pairs, "Measurements.CosmosJsonTypeMeasurementTests.TwoPathsCompareAsAPathAndALiteral",
-                [new(Test.ComparePaths, Class.None, CosmosAxiomTarget.Emulator, "none=true")]),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Pairs, "Measurements.CosmosJsonTypeMeasurementTests.TwoPathsCompareAsAPathAndALiteral",
+                [new(Test.ComparePaths, Class.None, Both, "none=true")]),
 
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 
@@ -580,28 +591,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
             new("Service.StringFunctionAnswersByBand",
-                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one, LOWER over the first; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over none measured. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them.",
-                CosmosAxiomTarget.Emulator, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
+                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one, LOWER over the first; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over none measured. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one, LOWER over the first; REPLACE over U+0000; the trims over the trimmed class; RIGHT read as parting over a surrogate though no witness's last two units split a pair. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
                 FunctionOutcomes:
                 [
-                    .. StringFunction("CHAR_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("CHARACTER_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("SUBSTRING", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("LEFT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("RIGHT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
+                    .. StringFunction("CHAR_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                    .. StringFunction("CHARACTER_LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                    .. StringFunction("SUBSTRING", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                    .. StringFunction("LEFT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                    .. StringFunction("RIGHT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
                     // The emulator's INDEX_OF counts code points, so POSITION parts over a surrogate as well (Service.IndexOfCountsUnits).
-                    .. StringFunction("POSITION", 1, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("UPPER", 0, JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp),
-                    .. StringFunction("LOWER", 0, JsonCharacterBand.NonAscii),
-                    .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("REVERSE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul),
-                    .. StringFunction("TRIM BOTH", 1, JsonCharacterBand.Trimmed),
-                    .. StringFunction("TRIM LEADING", 1, JsonCharacterBand.Trimmed),
-                    .. StringFunction("TRIM TRAILING", 1, JsonCharacterBand.Trimmed),
-                    .. StringFunction("||", FunctionKey.Every, JsonCharacterBand.None),
-                    .. StringFunction("CONCAT", FunctionKey.Every, JsonCharacterBand.None),
-                    .. StringFunction("REPEAT", 0, JsonCharacterBand.None),
+                    .. StringFunction("POSITION", 1, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.None),
+                    .. StringFunction("UPPER", 0, JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp),
+                    .. StringFunction("LOWER", 0, JsonCharacterBand.NonAscii, JsonCharacterBand.NonAscii),
+                    .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Nul),
+                    .. StringFunction("REVERSE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.None),
+                    .. StringFunction("TRIM BOTH", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM LEADING", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
+                    .. StringFunction("TRIM TRAILING", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
+                    .. StringFunction("||", FunctionKey.Every, JsonCharacterBand.None, JsonCharacterBand.None),
+                    .. StringFunction("CONCAT", FunctionKey.Every, JsonCharacterBand.None, JsonCharacterBand.None),
+                    .. StringFunction("REPEAT", 0, JsonCharacterBand.None, JsonCharacterBand.None),
                 ]),
             new("Calcite.StringCountsAreInUnits",
                 "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",

@@ -22,9 +22,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <c>DESIGN.md</c>, <em>A computed value is a place</em>.
     /// </para>
     /// <para>
-    /// <b>Azure has no function rows until the probe account's run 1 (h14b).</b> Until then the column gate reads the
-    /// verdicts the translator held Azure to (<see cref="AzureVerdicts"/>), measured on 2026-10-19 with no run record, and S
-    /// reads none: under <c>Production</c> no computed place has an image. A bridge, gone when the rows land.
+    /// <b>Azure's function rows are the probe account's run 1 (2026-11-04),</b> read by the column gate and by S alike, as
+    /// the emulator's are; the verdicts declared for Azure on 2026-10-19 with no run record went with them.
     /// </para>
     /// </remarks>
     internal static class CosmosFunctionSpellings
@@ -168,30 +167,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
 
         /// <summary>
-        /// The bands each string function was measured on Azure to part from Calcite over (2026-10-19, no run record), its
-        /// subject a string: what the column gate holds Azure to until run 1 gives Azure rows. A bridge (TODO.md).
+        /// The string functions the column gate holds to their rows on every target the set serves, whether a row names them
+        /// or not: one no row names, <c>LENGTH</c> (Calcite's library function, keyed by its own name), is refused.
         /// </summary>
-        public static readonly IReadOnlyDictionary<string, JsonCharacterBand> AzureVerdicts = new Dictionary<string, JsonCharacterBand>(StringComparer.Ordinal)
+        public static readonly IReadOnlySet<string> Gated = new HashSet<string>(StringComparer.Ordinal)
         {
-            // LENGTH counts code points; SUBSTRING, LEFT and RIGHT units, a split pair sent as U+FFFD.
-            ["CHAR_LENGTH"] = JsonCharacterBand.Surrogates,
-            ["CHARACTER_LENGTH"] = JsonCharacterBand.Surrogates,
-            ["LENGTH"] = JsonCharacterBand.Surrogates,
-            ["SUBSTRING"] = JsonCharacterBand.Surrogates,
-            ["LEFT"] = JsonCharacterBand.Surrogates,
-            ["RIGHT"] = JsonCharacterBand.Surrogates,
-            ["UPPER"] = CaseMapped,
-            ["LOWER"] = CaseMapped,
-            ["TRIM BOTH"] = JsonCharacterBand.Trimmed,
-            ["TRIM LEADING"] = JsonCharacterBand.Trimmed,
-            ["TRIM TRAILING"] = JsonCharacterBand.Trimmed,
-            ["REPLACE"] = JsonCharacterBand.Nul,
-            // INDEX_OF counts units as Calcite does; a reversal, a concatenation and a repetition keep every character.
-            ["POSITION"] = JsonCharacterBand.None,
-            ["REVERSE"] = JsonCharacterBand.None,
-            ["CONCAT"] = JsonCharacterBand.None,
-            ["||"] = JsonCharacterBand.None,
-            ["REPEAT"] = JsonCharacterBand.None,
+            "CHAR_LENGTH", "CHARACTER_LENGTH", "LENGTH", "SUBSTRING", "LEFT", "RIGHT", "UPPER", "LOWER", "TRIM BOTH", "TRIM LEADING", "TRIM TRAILING",
+            "REPLACE", "POSITION", "REVERSE", "CONCAT", "||", "REPEAT",
         };
 
         /// <summary>Every function row by key and target, as S reads them.</summary>
@@ -216,9 +198,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="target">The target.</param>
         public static JsonCharacterBand? Parting(string function, RenderingTarget target)
         {
-            if (target == RenderingTarget.Azure && Rows.Keys.Any(k => k.Target == RenderingTarget.Azure) == false)
-                return AzureVerdicts.TryGetValue(function, out var verdict) ? verdict : null;
-
             if (Answer(function, target, JsonCharacterBand.None) != CosmosFunctionAnswer.Same)
                 return null;
 
@@ -244,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// The Rex ordinals of a call the rows describe (<see cref="Subjects"/>), a trim's flag shifting them by one; each
-        /// ordinal of a call no row describes, which the Azure bridge alone names.
+        /// ordinal of a call no row describes, which is refused.
         /// </summary>
         public static IEnumerable<int> SubjectsOf(string function, RexCall call)
         {
@@ -255,8 +234,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     yield return i;
         }
 
-        /// <summary>Whether the column gate holds a function to a verdict: rows name it, or the Azure bridge does.</summary>
-        public static bool Named(string function) => Subjects.ContainsKey(function) || AzureVerdicts.ContainsKey(function);
+        /// <summary>Whether the column gate holds a function to a verdict: rows name it, or it is a string function gated.</summary>
+        public static bool Named(string function) => Subjects.ContainsKey(function) || Gated.Contains(function);
 
         /// <summary>
         /// Determines whether a string function written by name has a verdict: rows the column gate reads, or a result that

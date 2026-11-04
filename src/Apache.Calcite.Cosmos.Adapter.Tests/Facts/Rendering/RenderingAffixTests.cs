@@ -159,14 +159,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), emulator)[0].Should().Be(ServiceOutcomes.Widest);
             ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), cells, emulator, ValueSet<string>.Empty).Rows.Should().Contain("missing:Like/String/None");
 
-            var azure = ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.StartsWith, path, "a"), cells, production, ValueSet<string>.Empty);
-            azure.Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "run 1 has not measured N5-N7");
+            // Azure's by code point, read past U+0000 by STARTSWITH and to it by CONTAINS (run 1).
+            On(ServiceForm.AffixOf(CosmosServiceTest.StartsWith, path, "a"), production).Should().Equal(
+                ServiceOutcomes.True, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
+            On(ServiceForm.AffixOf(CosmosServiceTest.Contains, path, "a"), production).Should().Equal(
+                ServiceOutcomes.True, ServiceOutcomes.True, ServiceOutcomes.True | ServiceOutcomes.False, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
         }
 
         /// <summary>
         /// Over a path that holds strings every affix the translator writes for <c>LIKE</c> is Proven under <c>Emulator</c>,
         /// its form the affix that says the pattern, and so is its negation; a pattern of two runs, a <c>LIKE</c> the emulator's
-        /// unmeasured matcher reads, and a <c>_</c>, which no row measures, are not. Under <c>Production</c> none is.
+        /// unmeasured matcher reads, and a <c>_</c>, which no row measures, are not. Under <c>Production</c> each is too, but a
+        /// <c>CONTAINS</c> over strings that may hold U+0000, which Azure's reads only up to.
         /// </summary>
         [Fact]
         public void AnAffixOverStringsIsProvenUnderEmulator()
@@ -188,7 +192,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var answer = Generate(shape, RenderingSet.Emulator, Strings);
                     answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{shape}: {answer.Reason}");
                     answer.Best!.Subforms.Should().Contain(form);
-                    Generate(shape, RenderingSet.Production, Strings).Kind.Should().Be(RenderingVerdictKind.Unproven, $"{shape} waits on N5-N7");
+                    var azure = Generate(shape, RenderingSet.Production, Strings);
+                    azure.Kind.Should().Be(RenderingVerdictKind.Proven, $"{shape}: {azure.Reason}");
+                    azure.Best!.Subforms.Should().Contain(form);
+                    Generate(shape, RenderingSet.Production, Strings, JsonCharacterBand.Nul).Kind.Should().Be(form.Test == CosmosServiceTest.Contains ? RenderingVerdictKind.Unproven : RenderingVerdictKind.Proven, shape.ToString());
                 }
             }
 
@@ -211,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "%0")), RenderingSet.Emulator, PathValues.Anything).Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 
-        /// <summary>Over a <c>VARCHAR</c> column holding strings, and over a computed text place of ASCII strings, an affix is Proven under <c>Emulator</c>.</summary>
+        /// <summary>Over a <c>VARCHAR</c> column holding strings, and over a computed text place of ASCII strings, an affix is Proven under <c>Emulator</c>, and over the place under <c>Production</c>.</summary>
         [Fact]
         public void AnAffixOverAColumnAndAPlaceIsProvenUnderEmulator()
         {
@@ -224,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var upper = Generate(read, RenderingSet.Emulator, Strings);
             upper.Kind.Should().Be(RenderingVerdictKind.Proven, upper.Reason);
             upper.Best!.Subforms.Should().Contain(ServiceForm.AffixOf(CosmosServiceTest.Contains, place, "B"));
-            Generate(read, RenderingSet.Production, Strings).Kind.Should().Be(RenderingVerdictKind.Unproven);
+            Generate(read, RenderingSet.Production, Strings).Best!.Subforms.Should().Contain(ServiceForm.AffixOf(CosmosServiceTest.Contains, place, "B"));
         }
 
         /// <summary>

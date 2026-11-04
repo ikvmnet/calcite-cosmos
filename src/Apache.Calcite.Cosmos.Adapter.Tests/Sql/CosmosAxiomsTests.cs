@@ -48,7 +48,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// emulator keeps and Azure does not; and the string order, which Azure reads past U+0000 by code point and the
         /// emulator as it stores it. Two constants compared, the other known divergence, are no key S reads.
         /// </summary>
-        static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None)];
+        static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None),
+            // The emulator matches an affix against the string it stores, Azure against the string as written (run 1).
+            MeasuredKey.Of(Test.StartsWith, Class.String, Class.None), MeasuredKey.Of(Test.EndsWith, Class.String, Class.None), MeasuredKey.Of(Test.Contains, Class.String, Class.None)];
 
         static IEnumerable<CosmosAxiom> WithOutcomes => CosmosAxioms.All.Where(a => a.Outcomes is not null);
 
@@ -356,7 +358,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                              where Enum.TryParse<CosmosAnswer>(r.Answer, out _) && declared.TryGetValue((r.Row, r.Key, r.Cell), out var operand)
                                  && split.Contains((r.Record, r.Row, r.Key, r.Cell)) == false && Witnessed(operand, r.Cell, r.Witnesses)
                              select (r.Row, r.Key, r.Cell, Answer: Enum.Parse<CosmosAnswer>(r.Answer))).ToList();
+            // A row the probe account's witness record holds is held to it below, line by line, not by the harness's cells.
+            var witnessed = AzureWitnessRecords().Select(l => l.Row).ToHashSet();
             var claims = (from axiom in WithOutcomes
+                          where witnessed.Contains(axiom.Id) == false
                           from outcome in axiom.Outcomes!
                           where outcome.On.HasFlag(CosmosAxiomTarget.Azure)
                           from cell in outcome.Cells
@@ -367,18 +372,87 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claimable.Where(line => claims.Any(c => (c.Item1, c.Item2, c.Cell) == (line.Row, line.Key, line.Cell)
                 && (c.Answer == line.Answer || AnswerMeanings.Measured.Of(c.Answer) is var meant and not ServiceOutcomes.None
                     && (meant & ~AnswerMeanings.Measured.Of(line.Answer)) == ServiceOutcomes.None)) == false).Should().BeEmpty("no evidence a run read so is dropped");
+
+            // A row measured by the witness probe claims Azure only where the probe account's record holds every line its
+            // emulator record holds, each answered alike but where the row says the two part.
+            var emulator = EmulatorRecords().Where(l => l.Release == "EN20261019").ToLookup(l => l.Row);
+            var azure = AzureWitnessRecords().ToLookup(l => l.Row);
+            var claiming = CosmosAxioms.All.Where(a => a.MeasuredOn.HasFlag(CosmosAxiomTarget.Azure) && emulator.Contains(a.Id)).Select(a => a.Id).ToList();
+            claiming.Should().BeEquivalentTo(azure.Select(g => g.Key), "a row the probe account ran claims Azure, and one it did not claims nothing");
+            foreach (var row in claiming)
+            {
+                var asked = azure[row].ToDictionary(l => (l.Expression, l.Witness, Kept(l.Answer)), l => l.Answer);
+                emulator[row].Select(l => (l.Expression, l.Witness, Kept(l.Answer))).Except(asked.Keys).Should().BeEmpty($"{row}: the probe account ran every line the emulator did");
+                emulator[row].Where(l => asked.TryGetValue((l.Expression, l.Witness, Kept(l.Answer)), out var a) && a != l.Answer && Parted(row, l.Expression, l.Witness) == false)
+                    .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer} on the emulator, {asked[(l.Expression, l.Witness, Kept(l.Answer))]} on Azure").Should().BeEmpty($"{row} answers alike but where it says the targets part");
+            }
         }
 
+        /// <summary>Whether a witness probe's answer is <c>value/kept</c>, not a projection alone.</summary>
+        static bool Kept(string answer) => answer.Length >= 2 && answer[^2] == '/' && "TFU!?".Contains(answer[^1]);
+
         /// <summary>
-        /// A function outcome claims Azure only with a run record of its keys, and none exists before the probe account's
-        /// run 1 (h14b): so none claims it yet.
+        /// Where a row measured by the witness probe says the targets part: a string holding U+0000 ordered against another
+        /// (<c>Service.StringOrderIsCodePoint</c>), 9007199254740993.0 held, % past 2^53, and the string functions, whose
+        /// keys are each target's own (<see cref="EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures"/>).
+        /// </summary>
+        static bool Parted(string row, string expression, string witness) => row switch
+        {
+            "Service.TwoPathsCompareAsAPathAndALiteral" => witness.Contains("\\u0000", StringComparison.Ordinal) && witness.Contains("\"w\":\"", StringComparison.Ordinal),
+            "Service.IntegralNumbersReadBackAsHeld" => witness == "9007199254740993.0",
+            "Service.IntegerArithmeticIsExactWithinLong" => expression.Contains('%', StringComparison.Ordinal),
+            "Service.StringFunctionAnswersByBand" => true,
+            _ => false,
+        };
+
+        /// <summary>
+        /// A function outcome claims Azure only where the probe account's record holds its key's lines: those lines read
+        /// again through Calcite in process answer each key as the row records it on Azure, or better.
         /// </summary>
         [Fact]
-        public void NoFunctionOutcomeClaimsAzureWithoutARecordedRun()
+        public void EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures()
         {
-            (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] where o.On.HasFlag(CosmosAxiomTarget.Azure) select $"{axiom.Id} {o.Function}/{o.Operand}/{o.Band}")
-                .Should().BeEmpty("a function key claims Azure only where a committed run holds its answer");
+            var measured = new (string Row, IReadOnlyList<(string Function, string Calcite, string Service)> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
+            {
+                ("Service.StringFunctionAnswersByBand", CosmosStringFunctionMeasurementTests.Functions, CosmosStringFunctionMeasurementTests.FunctionWitnesses),
+                ("Service.IntegerArithmeticIsExactWithinLong", CosmosJsonTypeMeasurementTests.Arithmetic, CosmosJsonTypeMeasurementTests.ArithmeticWitnesses),
+            };
+
+            CosmosAxioms.All.Where(a => a.FunctionOutcomes?.Any(o => o.On.HasFlag(CosmosAxiomTarget.Azure)) == true).Select(a => a.Id)
+                .Should().BeSubsetOf(measured.Select(m => m.Row), "a function key claims Azure only where a committed run holds its answer");
+
+            var lines = AzureWitnessRecords().Where(l => Kept(l.Answer) == false).ToDictionary(l => (l.Row, l.Expression, l.Witness), l => l.Answer);
+            foreach (var (row, functions, keys) in measured)
+            {
+                var asked = CosmosFunctionComparison.Spellings(functions)
+                    .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
+                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, functions, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!, CosmosAxiomTarget.Azure)
+                    .Should().BeEmpty(row);
+            }
         }
+
+        /// <summary>The lines of every probe-account record the witness probe wrote: the row, the expression, the witness and the answer.</summary>
+        static IEnumerable<(string Row, string Expression, string Witness, string Answer)> AzureWitnessRecords()
+        {
+            var assembly = typeof(CosmosAxiomsTests).Assembly;
+            foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
+            {
+                using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+                var lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').ToList();
+                if (lines[0] != WitnessHeader)
+                    continue;
+
+                foreach (var f in lines.Skip(1).Select(l => l.Split('\t')))
+                {
+                    f.Should().HaveCount(5, name);
+                    f[0].Should().Be("Azure", name);
+                    yield return (f[1], f[2], f[3], f[4]);
+                }
+            }
+        }
+
+        /// <summary>The header of a record the witness probe wrote, which <see cref="Records"/> leaves to <see cref="AzureWitnessRecords"/>.</summary>
+        const string WitnessHeader = "release\trow\texpression\twitness\tanswer";
 
         /// <summary>
         /// A row measured on the emulator since the run records began (2026-11-02) names its release in a committed
@@ -432,7 +506,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
             {
                 using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
-                foreach (var line in reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').Skip(1))
+                var lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').ToList();
+                if (lines[0] == WitnessHeader)
+                    continue;
+
+                foreach (var line in lines.Skip(1))
                 {
                     var f = line.Split('\t');
                     f.Should().HaveCount(7, $"{name}: {line}");

@@ -366,6 +366,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (seen, disagreements.Count).Should().Be((witnesses.Count, 0), string.Join("; ", disagreements));
         }
 
+        /// <summary>The target the service answering is, whose outcomes a row's test holds it to: the emulator wherever the endpoint is this machine's.</summary>
+        internal static CosmosAxiomTarget Answering => Facts.Rendering.CosmosEvalServiceTests.Target == RenderingTarget.Emulator ? CosmosAxiomTarget.Emulator : CosmosAxiomTarget.Azure;
+
         /// <summary>A value of each kind at <c>c.v</c>, and none: true, false, null, absent, two numbers, two strings, an object and an array.</summary>
         static readonly string?[] Kinds = ["true", "false", "null", null, "30", "30.5", "\"bikes\"", "\"true\"", "{\"x\":1}", "[1]"];
 
@@ -515,15 +518,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "!/U !/U !/U !/U !/U undefined/U undefined/U undefined/U undefined/U");
 
             var measured = await CosmosFunctionComparison.Measure(_container!, _unavailable, row, Arithmetic, ArithmeticWitnesses);
-            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get(row).FunctionOutcomes!, CosmosAxiomTarget.Emulator).Should().BeEmpty();
+            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get(row).FunctionOutcomes!, Answering).Should().BeEmpty();
         }
 
-        /// <summary>A number reads back, compares and tests as the emulator holds it: exactly as an int64 written without a point, as a double written with one.</summary>
+        /// <summary>A number reads back, compares and tests as the service holds it: exactly as an int64 written without a point, and written with one as a double on the emulator and as an int64 where it is one on Azure.</summary>
         [Fact, CosmosPins("Service.IntegralNumbersReadBackAsHeld")]
         public async Task IntegralNumbersReadBackAsHeld()
         {
             (await Probe("Service.IntegralNumbersReadBackAsHeld", ["30", "30.0", "3e1", "300e-1", "-0", "-0.0", "1e20", "1E21", "9007199254740993", "9007199254740993.0", "1.5e300"], "c.v", "c.v = 30", "IS_INTEGER(c.v)")).Should().Equal(
-                "30/U 30/U 30/U 30/U 0/U 0/U 1E+20/U 1E+21/U 9007199254740993/U 9007199254740992/U 1.5E+300/U",
+                "30/U 30/U 30/U 30/U 0/U 0/U 1E+20/U 1E+21/U 9007199254740993/U " + (Answering == CosmosAxiomTarget.Emulator ? "9007199254740992" : "9007199254740993") + "/U 1.5E+300/U",
                 "true/T true/T true/T true/T false/F false/F false/F false/F false/F false/F false/F",
                 "true/T true/T true/T true/T true/T true/T false/F false/F true/T true/T false/F");
         }

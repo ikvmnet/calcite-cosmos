@@ -101,16 +101,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// unit, which a pattern of runs does alike over well-formed text, and a cell an affix cut by its own pattern; under the
         /// emulator's, a string's stored spelling against the pattern's (<c>Service.EmulatorComparesTheSpellingItIsSent</c>),
         /// and a cell where that changes nothing (<see cref="AffixPattern.StoredAlike"/>). Either, where a lone surrogate the
-        /// service stores as U+FFFD may meet a pattern holding one, or the cell is not told.
+        /// service stores as U+FFFD may meet a pattern holding one, or the cell is not told; and under the code point
+        /// matcher, Azure's, a <c>CONTAINS</c> or the <c>LIKE</c> of one run between two <c>%</c> the service answers as one,
+        /// where the string may hold U+0000 or the argument does: the service reads the string only up to its first U+0000,
+        /// and an argument holding one matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>).
         /// </summary>
         static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher)
         {
             CosmosValueClass[] either = [CosmosValueClass.Matching, CosmosValueClass.Missing];
             CosmosValueClass[] Side(bool match) => match ? [CosmosValueClass.Matching] : [CosmosValueClass.Missing];
             var replaced = pattern.Any(u => char.IsSurrogate(u) || u == '\uFFFD');
+            var cut = matcher == CosmosAnswer.CodePoint && AffixPattern.Runs(pattern) is ["", { Length: > 0 }, ""];
             return cell switch
             {
                 PathCell.Point { Value: var v } when replaced && JsonValues.IsEncodable(StringOf(v)) == false => either,
+                PathCell.Point { Value: var v } when cut && (StringOf(v).Contains('\0') || pattern.Contains('\0')) => either,
+                PathCell.Strings s when cut && (s.Classes.Contains(NulClass) || pattern.Contains('\0')) => either,
                 PathCell.Point { Value: var v } when matcher == CosmosAnswer.StoredCodePoint => Side(AffixPattern.Matches(EmulatorStoredText.Of(StringOf(v)), EmulatorStoredText.Of(pattern))),
                 PathCell.Point { Value: var v } => Side(AffixPattern.Matches(StringOf(v), pattern)),
                 PathCell.Strings s when replaced && s.Classes.Contains(SurrogateBand) => either,

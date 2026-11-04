@@ -984,7 +984,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public async Task EachStringFunctionAnswersItsRowByBand()
         {
             var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.StringFunctionAnswersByBand", Functions, FunctionWitnesses);
-            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!, CosmosAxiomTarget.Emulator).Should().BeEmpty();
+            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!, CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
         }
 
         static string Spell(string text) => string.Concat(text.EnumerateRunes().Select(r => r.Value is >= 0x21 and <= 0x7E ? ((char)r.Value).ToString() : $"<U+{r.Value:X4}>"));

@@ -2782,15 +2782,6 @@ across documents* and *A join of a container to itself* is the record.
   renders a fraction as Java spells its double, so a stored `0.10000000000000001` reads `'0.1'` (measured in process),
   which `Renderings.MayRenderAs` says no number of another value renders as; the text reading's cells inherit it. A
   service that holds numbers as doubles returns no such spelling. The cast's cells (g09) read a number's double.
-- **The probe account's run of 2026-10-19 has no record** — *small, Stage 3 run 1 (h14b).* The Azure targets of the
-  string functions' and the stored values' rows rest on it, and neither record under `Tests/Measurements/Runs/`,
-  2026-10-16's or 2026-10-21's, ran their witnesses, so an outcome on one of those rows cannot claim Azure until a run of
-  its witnesses is recorded. `Service.StringFunctionAnswersByBand` (h06) is the measurement that record is owed by: its
-  keys run on the emulator alone (`Runs/Emulator/2026-11-03-EN20261019.tsv`), and run 1 gives them Azure's.
-- **The emulator rows of h06 claim no Azure** — *small, Stage 3 run 1 (h14b).* S1, M2, M3, M4, N4–N7, N11 and N12 are
-  measured on EN20261019 alone. Their tests compare a function row against its `Emulator` outcomes whatever endpoint
-  answers, so run 1 adds `Azure` outcomes beside them and the test reads the target it runs on. The spec's M3,
-  `IntegerArithmeticIsInDoubles`, is false on the emulator; the row is `Service.IntegerArithmeticIsExactWithinLong`.
 - **A number's function key has no magnitude** — *small; h10 did not add it, h14's triage decides.* `FunctionKey` keys a
   number by kind alone, so every typed arithmetic operator answers `Differs` or `Fails` over a number, a sum that cannot
   wrap included, and no arithmetic place has an image: the census's 143 arithmetic pushes are listed Unproven
@@ -2887,24 +2878,24 @@ across documents* and *A join of a container to itself* is the record.
   differential's 33 statements with parameters are not planned for the check. A relational gate claiming a form over
   every value a parameter's type admits, with parameter witnesses, is Stage 3's, and with it the parameterised
   weakenings the translator kept (O7).
-- **`LIKE` is F's and not yet S's, and N4–N7 and N11 are measured on the emulator alone** —
-  *medium, Stage 3 (O3; F reads `LIKE` since h07, S at h15; Azure at h14b).* Since h07 the loader reads `LIKE` of text
+- **`LIKE` is F's and not yet S's** —
+  *medium, Stage 3 (O3; F reads `LIKE` since h07, S at h15).* Since h07 the loader reads `LIKE` of text
   against a literal pattern as an affix, which F learns from; production's S reads the IR as it was
   (`RenderingStatement`), so for it a pattern is still opaque, while the switch's S reads it with the affix form (the
   affix step). `STARTSWITH` and `ENDSWITH` reach no filter as Rex operators, so there is nothing to read;
   the printer writes them from forms at h15. Until then a conjunct holding one is the translator's when exact (P7, a
   declared string), skipped by the check, and weakened by S to the presence its accessor implies, where the translator
   pushed a string branch with `STARTSWITH` or `CONTAINS`: O7's loss 4, 18 such statements at the gate and one more whose
-  disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S would read are measured on the
-  emulator since h06: `IN` as membership (N4), the string predicates over values that are no string (N5), affixes (N6)
-  and `LIKE` (N7) matched by code point, and how an integral number reads back (N11); Azure's are owed by run 1.
-- **S's affix form waits on Azure's N5–N7 for `Production`** — *medium, h14b.* Since the affix step S has an affix form
-  (`ServiceFormKind.Affix`, `DESIGN.md`, *The affix form*), proven under `Emulator` from the emulator's rows; Azure has
-  measured none of `(test, None, kind)`, `(test, String, None)` or `(test, String, Matching|Missing)`, so under
-  `Production` every affix is Unproven. Run 1's N5–N7 give Azure's outcomes, its matcher `codepoint` for the three
-  affixes and for `LIKE`, beside `Service.NulEndsWhatReplaceAndContainsRead`: Azure's `CONTAINS` and a `'%x%'` `LIKE` read
-  only up to a string's first U+0000, so its matcher for those is not `codepoint` over a string that may hold one, and the
-  rows must say how (a matcher of its own, or `Fails`-like anything over the nul class).
+  disjunction S then cannot weaken at all (partitions 2278). RU, never rows. The rows S reads are measured on both
+  targets, the emulator since h06 and the probe account since run 1 (h14b): `IN` as membership (N4), the string
+  predicates over values that are no string (N5), affixes (N6) and `LIKE` (N7) matched by code point, and how an
+  integral number reads back (N11).
+- **Azure's `CONTAINS` over a string that may hold U+0000 is anything** — *small, a matcher.* Azure's `CONTAINS`, and a
+  `LIKE` of one run between two `%`, read a string only up to its first U+0000
+  (`Service.NulEndsWhatReplaceAndContainsRead`), so `ServiceLeaf.Matched` answers either for such a pattern over a cell
+  that may hold one, or for a pattern holding one, and the affix is proven under `Production` only over strings free of
+  it (h14b). A matcher of its own, the pattern against the string's prefix to its first U+0000, measured as run 1 measured
+  `codepoint`, would prove it there too. RU, never rows.
 - **The emulator's `LIKE` over a stored escape is owed** — *small, a measurement.* `(Like, String, None)` on the emulator is
   declared owed (`CosmosAxiomRows.Owed`): no statement has measured what its `LIKE` makes of U+0000 or U+FDD0 stored
   escaped, so S writes a pattern of two runs or more as `LIKE` and proves it nowhere. A witness set like
@@ -2915,12 +2906,12 @@ across documents* and *A join of a container to itself* is the record.
 - **The Rex builder writes no affix** — *small, h15.* `RenderingRexBuilder` has no Rex for an affix form, so a weakening
   holding one is not pushed; the switch writes `LIKE` over the reading the atom was judged over, or a call of
   `CosmosOperators`, whichever the loader reads back.
-- **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, with h14b's rows.* Each is opaque to S, so
+- **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, a measurement; run 1 measured the rows as they stood.* Each is opaque to S, so
   their 10 generated pushes are Unproven under both sets, and one real push of the suite's under `Emulator`. Each is a function row,
   Calcite's measured here and the service's on each target.
 - **`SUBSTRING` from 0 is outside the rows' spellings** — *small.* The translator writes Calcite's start 0 as ternaries
-  over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` (and under
-  `Production` with every function row until h14b).
+  over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` and, since run 1
+  gave Azure its rows, under `Production` for the same reason.
 - **A schema's own type tests but `IS_DEFINED` are opaque to S** — *small.* The loader reads a schema's own `IS_DEFINED`
   by reference since 2026-11-03 (`CosmosSchemaFunctions.Presents`, DESIGN.md *Two readers the owner ordered built*); the
   seven other type tests a connection resolves through `CosmosSchemaFunctions` are Calcite's wrappings too, and nothing
@@ -2945,9 +2936,9 @@ across documents* and *A join of a container to itself* is the record.
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
   places are rooted at the container until 3D or 3E. The translator's code for both stays until then; the triage lists
   each by its text.
-- **The two-path row reads no absent or null pair** — *small, with h14b.* `ServiceLeaf.Paired` finds no key for an absent
-  or a null right side against the same on the left, though the measurement asks both, so every pair is Unproven under
-  `Emulator`: 5 real pushes, the diagonal `c.k < c.k` among them. Pinning that either side absent answers undefined, and a null against a null as the literal
+- **The two-path row reads no absent or null pair** — *small.* `ServiceLeaf.Paired` finds no key for an absent
+  or a null right side against the same on the left, though the measurement asks both and the probe account answered
+  them as the emulator did (run 1), so every such pair is Unproven under `Emulator`, and now `Production`: 5 real pushes, the diagonal `c.k < c.k` among them. Pinning that either side absent answers undefined, and a null against a null as the literal
   null, reads them.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
@@ -3001,9 +2992,6 @@ across documents* and *A join of a container to itself* is the record.
   `FALSE`, the two `Service.AConstantIsItsOwnTruth` measured. A missing else is read by the absorbing rule, but
   `CASE WHEN c THEN NULL ELSE b END` gives its ternary no best. Citing Kleene's rows (`KleeneTables.AbsorbingElse`) for
   `UNKNOWN` as the constant that keeps no row at a position would give it back, as data.
-- **Azure's ternary and its undefined condition are unmeasured** — *small, h14b.* `Service.TernaryTakesThenOnTrueAlone`
-  is the emulator's, so `Production` and `Portable` license no `Choose` and a general `CASE` there is Unproven; the probe
-  account's run adds the Azure rows, `undefined` among them, and the licence follows as data.
 - **The rule count is one over the spec's** — *note, line 31; the owner's at h14.* The ternary is one template written
   twice and a truth value's constant is a rule of its own (h08): 68 as built against the spec's 66. h10 adds five of the
   spec's six, a call's reading of its place being the bundle's: 73 against its 72; h11 its two, 75 against 74; h12 its
@@ -3029,28 +3017,24 @@ across documents* and *A join of a container to itself* is the record.
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
-- **Azure has no function rows; the bridge reads declared verdicts** — *bridge, h14b.* No run of the probe account has
-  measured `Service.StringFunctionAnswersByBand`, so S writes no image for any place under `Production` or `Portable`, and
-  the column bridge reads `CosmosFunctionSpellings.AzureVerdicts`, the bands `CosmosStringFunctions` asked of Azure
-  (declared 2026-10-19 from `reports/verify-strings.md`, no run record). Run 1 adds the Azure rows; the verdicts go then,
-  and `NoFunctionOutcomeClaimsAzureWithoutARecordedRun` turns.
+- **No witness splits a surrogate pair at `RIGHT`'s cut** — *small, a measurement.* The probe account answered `RIGHT`
+  `Same` over the surrogate band (run 1), where `LEFT`, `SUBSTRING` and the lengths answer `Differs`, but none of the
+  row's witnesses puts the cut between a pair's halves, so `Same` there proves nothing of one that does, and
+  `CosmosAxioms` records Azure's `RIGHT` as `Differs` over `Surrogates`, the band refused. A witness whose count from the
+  end falls inside a pair, measured, decides it.
 - **The case mapping asks ASCII under every set** — *legality, until a cased witness is measured.* The rows' witnesses for
   the surrogate and high bands (an emoji, `ﬀ`) hold no cased letter, while Java maps U+10428 and U+FF21, so a `Same`
   there proves nothing of a cased one; `CosmosFunctionSpellings.Mapped` keeps `UPPER` and `LOWER` to ASCII on every
   target. Witnesses holding cased letters in each band, measured, would let the rows decide it.
-- **`LENGTH` has no emulator row** — *small, emulator only.* Calcite's library `LENGTH` is keyed by its own name and the
-  string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), where it pushed before; no digest statement moved.
-  A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured, gives it back.
-- **A result key bounds nothing yet** — *small, h14b.* The image rule reads no key of a call's result, since no row
+- **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
+  and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
+  (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
+  on every target rather than passed unasked. It pushed under `Production` before; no digest statement moved at either
+  step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
+- **A result key bounds nothing yet** — *small, legality until a row holds one.* The image rule reads no key of a call's result, since no row
   holds one, so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
-  spelling a `REPEAT` place only for a count of 0. Azure's rows decide whether a result key is measured or the bound
-  stays legality.
-- **Two paths compared answer as a path and a literal on the emulator alone** — *small, h14b.* `ServiceLeaf.Paired`
-  reads a comparison of two paths through the literal comparison's rows, within a type by the set's `Order` comparator
-  and across types by the left's class against the right's, mirrored where the right is no literal a row keys, on the
-  authority of `Service.TwoPathsCompareAsAPathAndALiteral`, measured on EN20261019 and EN20260907 alike. Azure has no
-  such row, so under `Production` a pair proves nothing; the probe account's run at h14b measures the same witnesses,
-  and the row's Azure target follows as data.
+  spelling a `REPEAT` place only for a count of 0. Run 1 measured Azure's rows as they stood, with no result key, so
+  the bound stays legality.
 - **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,
   so a pair's form is exact or nothing, never implied, and the translator's Rex of it is not built. Writing it is the
   grammar's row and the builder's arm, at the switch, when S first owns a pair.

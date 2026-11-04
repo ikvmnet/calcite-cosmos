@@ -127,16 +127,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// No image where a key may disagree: under <c>Production</c>, Azure having no rows; over a band LOWER parts over on
-        /// the emulator; over a path that may hold a number, which the service's LOWER leaves undefined; and over integer
+        /// No image where a key may disagree: over a band LOWER parts over, on the emulator and on Azure alike; over a path that may hold a number, which the service's LOWER leaves undefined; and over integer
         /// arithmetic, whose emulator rows differ or fail over numbers, so the 44 arithmetic statements are listed.
         /// </summary>
         [Fact]
         public void APlaceWhoseKeysMayDisagreeHasNoImage()
         {
             var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
-            Generate(lower, RenderingSet.Production, Strings, JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "Azure's rows are owed to run 1");
-            Generate(lower, RenderingSet.Portable, Strings, JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            Generate(lower, RenderingSet.Production, Strings, JsonCharacterBand.NonAscii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "Azure's LOWER parts over a character outside ASCII");
+            Generate(lower, RenderingSet.Portable, Strings, JsonCharacterBand.NonAscii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
             Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.NonAscii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
             Generate(lower, RenderingSet.Emulator, PathValues.OfKinds(ValueSet.Of(StringType, IntegerType)), JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
 
@@ -184,7 +183,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 read.Computed.Should().ContainSingle(name);
                 Generate(read, RenderingSet.Emulator, Strings, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, name);
                 Generate(read, RenderingSet.Emulator, PathValues.OfKinds(ValueSet.Of(StringType, IntegerType)), JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, name);
-                Generate(read, RenderingSet.Production, Strings, JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, name);
+                Generate(read, RenderingSet.Production, Strings, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{name}, Azure's rows being run 1's");
             }
 
             Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(2)), Lit("a"))).Computed.Should().BeEmpty();

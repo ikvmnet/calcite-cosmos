@@ -39,9 +39,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public static async Task<IReadOnlyDictionary<string, CosmosFunctionAnswer>> Measure(Container container, string? unavailable, string row,
             IReadOnlyList<(string Function, string Calcite, string Service)> functions, IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys)
         {
+            var measured = Judge(row, functions, keys, await CosmosWitnessProbe.Project(container, unavailable, row, [.. keys.SelectMany(k => k.Witnesses)], Spellings(functions)));
+
+            // Each key's answer beside the lines the probe logged, so a run on an account can be written up as rows.
+            lock (Answers)
+            {
+                var path = System.IO.Path.GetFullPath(System.IO.Path.Combine("TestResults", "measurements", "function-answers.tsv"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+                System.IO.File.AppendAllLines(path, measured.Select(m => string.Join('\t', CosmosWitnessProbe.Release, row, m.Key, m.Value)));
+            }
+
+            return measured;
+        }
+
+        static readonly object Answers = new();
+
+        /// <summary>The service's spellings of the functions, <c>c.v</c> for the value, each once: what the probe projects.</summary>
+        public static string[] Spellings(IReadOnlyList<(string Function, string Calcite, string Service)> functions) =>
+            [.. functions.Select(f => f.Service.Replace("s", "c.v", StringComparison.Ordinal)).Distinct()];
+
+        /// <summary>
+        /// Each key's answer from what the service projected, by spelling (<see cref="Spellings"/>) and witness, against
+        /// Calcite in process: a probe's, or a run record's lines read again.
+        /// </summary>
+        public static IReadOnlyDictionary<string, CosmosFunctionAnswer> Judge(string row, IReadOnlyList<(string Function, string Calcite, string Service)> functions,
+            IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys, string[][] asked)
+        {
             string?[] witnesses = [.. keys.SelectMany(k => k.Witnesses)];
-            string[] spellings = [.. functions.Select(f => f.Service.Replace("s", "c.v", StringComparison.Ordinal)).Distinct()];
-            var asked = await CosmosWitnessProbe.Project(container, unavailable, row, witnesses, spellings);
+            var spellings = Spellings(functions);
             var service = functions.Select(f => asked[Array.IndexOf(spellings, f.Service.Replace("s", "c.v", StringComparison.Ordinal))]).ToArray();
 
             using DbConnection connection = MaterialisedTable.Open("all");
@@ -61,18 +86,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     }
                 }
 
-            // Each key's answer beside the lines the probe logged, so a run on an account can be written up as rows.
-            lock (Answers)
-            {
-                var path = System.IO.Path.GetFullPath(System.IO.Path.Combine("TestResults", "measurements", "function-answers.tsv"));
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-                System.IO.File.AppendAllLines(path, measured.Select(m => string.Join('	', CosmosWitnessProbe.Release, row, m.Key, m.Value)));
-            }
-
             return measured;
         }
-
-        static readonly object Answers = new();
 
         /// <summary>
         /// Calcite's reading of <c>v</c> through a reader the row names: the text accessor, a typed one, or a cast of either.

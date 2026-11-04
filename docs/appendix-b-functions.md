@@ -66,7 +66,8 @@ agree over, and the table says which.
 | SQL | Cosmos | pushes where |
 | --- | --- | --- |
 | `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone |
-| `CHAR_LENGTH`, `CHARACTER_LENGTH`, `LENGTH` | `LENGTH` | its argument holds no character beyond U+FFFF (an emoji is one; Calcite counts it as two). On the emulator the library's `LENGTH` stays in process: what it answers there has not been measured |
+| `CHAR_LENGTH`, `CHARACTER_LENGTH` | `LENGTH` | its argument holds no character beyond U+FFFF (an emoji is one; Calcite counts it as two) |
+| `LENGTH` (*library*) | — | stays in process on every target: what the service answers for it beside Calcite's has not been measured |
 | `SUBSTRING(s FROM i FOR n)` | `SUBSTRING(s, i - 1, n)` | `s` holds no character beyond U+FFFF: Azure returns half of one as U+FFFD. A start not proved at least one — a column, a parameter, a `POSITION` that may find nothing — is written with Calcite's clip to the string, `SUBSTRING(s, (i < 1 ? 0 : (i - 1)), …)`, since the service answers a negative start with the empty string. The form without a length stays in process |
 | `POSITION(a IN b)` | `(INDEX_OF(b, a) + 1)` | anything: Azure counts as Calcite does. The emulator counts an emoji as one, so there the position after one differs, and counts a stored U+0000 or U+FDD0 as two, so there `b` must hold no character beyond U+FFFF and neither of those |
 | `TRIM`, `LTRIM`, `RTRIM` (spaces) | `TRIM`, `LTRIM`, `RTRIM` | its argument holds nothing the service trims beside a space: U+0009–U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000. Trimming other characters stays in process |

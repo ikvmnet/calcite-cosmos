@@ -41,10 +41,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.Compare => Read(document, form.Path!, target, places) is (true, var v) ? Compare(form.Test, v, form.Literal!, target) : null,
             ServiceFormKind.Affix => Read(document, form.Path!, target, places) is (true, var v) ? Affix(form, v, target) : null,
 
-            // Service.TwoPathsCompareAsAPathAndALiteral, measured on the emulator alone: the left against the right's value
-            // as a literal, but two numbers each as the service holds it, the diagonal a value against itself; nothing of
-            // a container on either side.
-            ServiceFormKind.ComparePaths when target == RenderingTarget.Emulator && IsPath(form.Path!) && IsPath(form.Right!) => (At(document, form.Path!), At(document, form.Right!)) switch
+            // Service.TwoPathsCompareAsAPathAndALiteral, measured on both targets: the left against the right's value as a
+            // literal, but two numbers each as the service holds it, the diagonal a value against itself; nothing of a
+            // container on either side.
+            ServiceFormKind.ComparePaths when IsPath(form.Path!) && IsPath(form.Right!) => (At(document, form.Path!), At(document, form.Right!)) switch
             {
                 (null, _) or (_, null) => ServiceOutcomes.Undefined,
                 ({ IsScalar: false }, _) or (_, { IsScalar: false }) => null,
@@ -63,9 +63,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.And => Kleene(Arms(form, document, target, places), ServiceOutcomes.False, ServiceOutcomes.True),
             ServiceFormKind.Or => Kleene(form.Members.Select(m => On(m, document, target, places)), ServiceOutcomes.True, ServiceOutcomes.False),
 
-            // Service.TernaryTakesThenOnTrueAlone, measured on the emulator alone: the then-arm where the condition is true,
-            // the else-arm over every other value, undefined and an absent path among them.
-            ServiceFormKind.Choose when target == RenderingTarget.Emulator => On(form.Members[0], document, target, places) switch
+            // Service.TernaryTakesThenOnTrueAlone, measured on both targets: the then-arm where the condition is true, the
+            // else-arm over every other value, undefined and an absent path among them.
+            ServiceFormKind.Choose => On(form.Members[0], document, target, places) switch
             {
                 null => null,
                 ServiceOutcomes.True => On(form.Members[1], document, target, places),
@@ -111,8 +111,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// An affix or <c>LIKE</c>: undefined over anything but a string (Service.StringPredicatesOverNonStringsAreUndefined);
         /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), on the emulator an affix
         /// matching the stored string against the argument as sent in that spelling (Service.EmulatorComparesTheSpellingItIsSent).
-        /// None for an argument no pattern of runs says, for the emulator's LIKE where either holds an escape, unmeasured, and
-        /// on Azure where either holds U+0000, which ends what CONTAINS reads (Service.NulEndsWhatReplaceAndContainsRead).
+        /// None for an argument no pattern of runs says, and for the emulator's LIKE where either holds an escape, unmeasured.
+        /// On Azure a CONTAINS, and the LIKE of one run between two % it answers as one, reads the string only up to its
+        /// first U+0000, and an argument holding one matches every string (Service.NulEndsWhatReplaceAndContainsRead).
         /// </summary>
         static ServiceOutcomes? Affix(ServiceForm form, J? value, RenderingTarget target)
         {
@@ -127,7 +128,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 RenderingTarget.Emulator when form.Test == CosmosServiceTest.Like =>
                     EmulatorStoredText.Escapes(s.Value) || EmulatorStoredText.Escapes(pattern) ? null : Truth(AffixPattern.Matches(s.Value, pattern)),
                 RenderingTarget.Emulator => Truth(AffixPattern.Matches(EmulatorStoredText.Of(s.Value), EmulatorStoredText.Of(pattern))),
-                _ => s.Value.Contains('\0') || pattern.Contains('\0') ? null : Truth(AffixPattern.Matches(s.Value, pattern)),
+                _ when AffixPattern.Runs(pattern) is ["", { Length: > 0 }, ""] => pattern.Contains('\0') ? ServiceOutcomes.True : Truth(AffixPattern.Matches(s.Value.Split('\0')[0], pattern)),
+                _ => Truth(AffixPattern.Matches(s.Value, pattern)),
             };
         }
 
