@@ -161,8 +161,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The census's string-function pushes under the emulator (h05, <c>coverage-J1-where.tsv</c>), each over a path
-        /// imported an ASCII string: proven as the place's comparison, but a window starting before 1, which has no
-        /// service spelling the slot rule keeps, and every one over a path that may hold a number.
+        /// imported an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
+        /// service's window from 0 (differential 488); but none over a path that may hold a number, and no window of a
+        /// negative length, which Calcite raises over.
         /// </summary>
         [Fact]
         public void TheCensusStringPushesAreProvenOverAsciiStrings()
@@ -176,6 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ("CHAR_LENGTH", Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.CHAR_LENGTH, Path("t")), Int(1))),
                 ("POSITION", Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.POSITION, Lit("b"), Path("t")), Int(2))),
                 ("IS NULL", Rex.makeCall(SqlStdOperatorTable.IS_NULL, Rex.makeCall(SqlStdOperatorTable.UPPER, Path("category")))),
+                ("SUBSTRING from 0", Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(2)), Lit("a"))),
             };
             foreach (var (name, rex) in proven)
             {
@@ -186,7 +188,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Generate(read, RenderingSet.Production, Strings, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{name}, Azure's rows being run 1's");
             }
 
-            Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(2)), Lit("a"))).Computed.Should().BeEmpty();
+            var from0 = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(2)), Lit("a")));
+            var window = PlaceOf(from0);
+            RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, window.Spelled!, Of("a")), from0.Places.ToDictionary(SqlValue.Spell), "c", new CosmosParameterList(),
+                computed: new Dictionary<string, SqlValue.Call> { [window.Spelled!] = window })
+                .Should().Be("(SUBSTRING(c.a, (@p0 < 1 ? 0 : (@p0 - 1)), (@p0 < 1 ? (((@p0 + @p1) < 1) ? 0 : ((@p0 + @p1) - 1)) : @p1)) = @p2)", "the translator's clip");
+            Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(-1)), Lit("a"))).Computed.Should().BeEmpty();
         }
 
         /// <summary>

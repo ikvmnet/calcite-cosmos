@@ -144,6 +144,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static bool MayRenderStructure(string type, string text) =>
             type == ArrayType ? text.StartsWith('[') : type == ObjectType && text.StartsWith('{');
 
+        /// <summary>
+        /// Determines whether a structure's rendering, <c>[…]</c> or <c>{…}</c>, may match a pattern of runs: a first run
+        /// starts with the opening bracket and a last run ends with the closing one, where the pattern begins or ends with
+        /// a run.
+        /// </summary>
+        public static bool MayRenderStructureLike(string type, string pattern)
+        {
+            if (type is not (ArrayType or ObjectType))
+                return false;
+
+            var (open, close) = type == ArrayType ? ('[', ']') : ('{', '}');
+            var runs = pattern.Split('%');
+            return (runs[0].Length == 0 || runs[0][0] == open) && (runs[^1].Length == 0 || runs[^1][^1] == close) && (runs.Length > 1 || pattern.Length >= 2);
+        }
+
         /// <summary>Determines whether two scalars may be one value: numbers by their value, anything else by its spelling.</summary>
         public static bool SameValue(string a, string b) => IsNumber(a) && IsNumber(b) ? SameNumber(a, b) : a == b;
 

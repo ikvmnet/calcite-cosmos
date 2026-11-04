@@ -185,13 +185,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// <c>LIKE</c> over text, as Calcite's runtime matches it: UNKNOWN over null. A cast to text of a raw value is read
-        /// through its column, or unnamed as either a <c>VARIANT</c> or an <c>ANY</c> reads it, and a cast of a rendering to
-        /// a character type, whose length the IR does not keep, is a coin where it is not null.
+        /// through its column, or unnamed as either a <c>VARIANT</c> or an <c>ANY</c> reads it, an <c>ANY</c>'s structure as
+        /// Java's map or list renders, between its brackets, a coin where the pattern may match that; and a cast of a
+        /// rendering to a character type, whose length the IR does not keep, is a coin where it is not null.
         /// </summary>
         static Truths Like(SqlPredicate.Affix affix, J.Obj document, World world, TypedAs typed, RawAs? raw)
         {
-            Truths Of(SqlDatum? text) => text switch
+            Truths Of(SqlDatum? text, J? stored = null) => text switch
             {
+                null when stored is J.Obj or J.Arr => Bracketed(stored is J.Arr ? "[]" : "{}", affix.Pattern) ? T | F : F,
                 null => T | F,
                 SqlDatum.NullDatum => U,
                 SqlDatum.Raised => R,
@@ -204,13 +206,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 case SqlValue.Cast { Value: SqlValue.Raw r }:
                     var stored = At(document, r.Path);
-                    return stored is null ? U : world.Choose(raw is RawAs one ? Of(CastText(stored, one)) : Of(CastText(stored, RawAs.Variant)) | Of(CastText(stored, RawAs.Any)), question);
+                    return stored is null ? U : world.Choose(raw is RawAs one ? Of(CastText(stored, one), stored) : Of(CastText(stored, RawAs.Variant), stored) | Of(CastText(stored, RawAs.Any), stored), question);
 
                 case SqlValue.Cast { Value: SqlValue.Text text }:
                     return Rendering(At(document, text.Path)) is null ? U : world.Choose(T | F, question);
 
                 default:
                     return Of(Read(affix.Value, document, world, typed));
+            }
+
+            // Whether a pattern of runs and % may match some text between the brackets: its first run opens, its last closes.
+            static bool Bracketed(string brackets, string pattern)
+            {
+                var runs = pattern.Split('%');
+                return pattern.IndexOfAny(['_', '\\']) >= 0
+                    || (runs[0].Length == 0 || runs[0][0] == brackets[0]) && (runs[^1].Length == 0 || runs[^1][^1] == brackets[1]) && (runs.Length > 1 || pattern.Length >= 2);
             }
         }
 

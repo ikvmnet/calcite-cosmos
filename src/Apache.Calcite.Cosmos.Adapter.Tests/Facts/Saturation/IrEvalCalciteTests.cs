@@ -138,14 +138,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// The cast of a raw value to text through each column (<c>Calcite.CastOfARawValueToText</c>): every value in one
         /// statement a column but those the evaluator says raise, two of which are asked alone; an <c>ANY</c>'s structure,
-        /// a coin, is left out.
+        /// a coin, is left out, but where <c>LIKE</c>'s pattern misses every text between its brackets.
         /// </summary>
         [Fact]
         public void TheCastOfARawValueToTextAgreesWithCalcite()
         {
             var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(Declaration.A));
             SqlPredicate[] predicates = [new SqlPredicate.IsNull(cast),
-                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text))];
+                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text)),
+                .. from pattern in new[] { "bi%", "x%", "%x", "{%", "%}", "[%", "%]", "{}", "[]", "%x%", "%" } select new SqlPredicate.Affix("LIKE", cast, pattern)];
             var documents = Values.Append(new J.Num(99999999999999999999m)).Append(new J.Num(long.MaxValue)).Select(v => new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = v }))
                 .Append(new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal))).ToArray();
             var (world, mismatches, compared) = (new World(0), new List<string>(), 0);
@@ -404,6 +405,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             SqlPredicate.Compare c => $"({Sql(c.Left, drawn)} {c.Op} {Sql(c.Right, drawn, c.Left)})",
             SqlPredicate.In i => $"({Sql(i.Value, drawn)} IN ({string.Join(", ", i.Points.Select(p => Sql(new SqlValue.Literal(p), drawn, i.Value)))}))",
             SqlPredicate.IsNull n => $"({Sql(n.Value, drawn)} IS NULL)",
+            SqlPredicate.Affix { Op: "LIKE" } a => $"({Sql(a.Value, drawn)} LIKE '{a.Pattern.Replace("'", "''")}')",
             SqlPredicate.Not n => $"(NOT {Sql(n.Operand, drawn)})",
             SqlPredicate.And a => "(" + string.Join(" AND ", a.Arms.Select(arm => Sql(arm, drawn))) + ")",
             SqlPredicate.Or o => "(" + string.Join(" OR ", o.Arms.Select(arm => Sql(arm, drawn))) + ")",

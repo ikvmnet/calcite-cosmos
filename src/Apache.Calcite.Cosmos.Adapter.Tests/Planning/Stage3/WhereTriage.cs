@@ -132,22 +132,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             classed.Class is "Unproven declined" or "Unproven closable" ? OwnerDecisions.Of(push, classed.Reason)?.Kind : null;
 
         /// <summary>
-        /// Why an affix S reads stays Unproven under <c>Emulator</c>, by its pattern: a <c>_</c>, which no row measures the
-        /// service's of over a line terminator; runs between and around <c>%</c>, a <c>LIKE</c> the emulator's matcher reads
-        /// over a stored escape, owed; a pattern a number's rendering may match, which the service reads as no string.
+        /// Why an affix S reads stays Unproven, by its pattern and reading: a <c>_</c>, which no row measures the service's of
+        /// over a line terminator; under <c>Emulator</c> runs between and around <c>%</c>, a <c>LIKE</c> the emulator's
+        /// matcher reads over a stored escape, owed; under <c>Production</c> one run between two <c>%</c>, which Azure reads
+        /// only to a string's first U+0000; a pattern a number's rendering may match, which the service reads as no string; a
+        /// raw column cast to text, whose columns' union parts what a negation keeps.
         /// </summary>
-        static string Affix(string rex)
+        static string Affix(string rex, string ir, bool emulator)
         {
             if (Regex.Match(rex, @"LIKE\(.*, '((?:[^']|'')*)'\)") is not { Success: true } like)
                 return "an affix whose pattern the triage reads not";
 
             var pattern = like.Groups[1].Value.Replace("''", "'", StringComparison.Ordinal);
+            var canonical = AffixPattern.Canonical(pattern);
             if (pattern.Contains('_'))
                 return "LIKE's _: one code point that is no line terminator, which no row measures the service at";
-            if (AffixPattern.Canonical(pattern) is { } canonical && AffixPattern.Written(canonical) is { Test: CosmosServiceTest.Like })
+            if (emulator && canonical is not null && AffixPattern.Written(canonical) is { Test: CosmosServiceTest.Like })
                 return "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed";
+            if (emulator == false && canonical is not null && AffixPattern.Runs(canonical) is ["", { Length: > 0 }, ""])
+                return "one run between two %: Azure's CONTAINS reads a string only to its first U+0000, so S answers either over one that may hold it (sound refusal)";
             if (pattern.All(c => c == '%' || Renderings.MayBeNumberUnit(c)))
                 return "a pattern a number's rendering may match, over a path that may hold one: the service reads no number as a string (sound refusal)";
+            if (ir.Contains("cast(VARCHAR, raw(", StringComparison.Ordinal))
+                return "an affix over a raw column cast to text: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps (the reading names no column)";
             return "an affix: Unproven otherwise";
         }
 
@@ -160,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             bool Rexes(string text) => rex.Contains(text, StringComparison.Ordinal);
             bool Matches(string pattern) => Regex.IsMatch(rex, pattern);
 
-            (string, string) Waits(string closable, string onAzure) => emulator ? (Closable, closable) : (Declined, onAzure);
+            // Run 1 gave every row h14 waited on an Azure target (h14b): what stays Unproven is classed alike under both sets.
 
             if (Has("parameter"))
                 return (Declined, "a parameter (3B)");
@@ -179,13 +186,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                     return (Declined, "an unnest element: S's places are rooted at the container (no piece)");
                 // The affix step reads LIKE over a computed text place and a VARCHAR column; what stays opaque is over a call no row types.
                 if (Matches(@"LIKE\((UPPER|LOWER|\|\||CONCAT|SUBSTRING|TRIM)\("))
-                    return Waits("an affix over a call the loader types no place of", "affix rows N5-N7 not on Azure (h14b)");
+                    return (Closable, "an affix over a call the loader types no place of");
                 if (Matches(@"LIKE\(\$\d+,"))
-                    return Waits("LIKE over a column the loader reads no affix of", "affix rows N5-N7 not on Azure (h14b)");
+                    return (Closable, "LIKE over a column the loader reads no affix of");
                 if (Matches(@"(MOD|ABS|CEIL|FLOOR|SIGN)\("))
-                    return Waits("a function no row names (MOD, ABS, CEIL, FLOOR, SIGN): new function rows", "a function no row names: new function rows, Azure's half not measured");
+                    return (Closable, emulator ? "a function no row names (MOD, ABS, CEIL, FLOOR, SIGN): new function rows" : "a function no row names: new function rows, Azure's half not measured");
                 if (Rexes("SUBSTRING("))
-                    return Waits("SUBSTRING from 0: outside the rows' spellings", "function rows not on Azure (h14b)");
+                    return (Closable, "SUBSTRING from 0: outside the rows' spellings");
                 // The text cast to BOOLEAN and a schema's own IS_DEFINED are read (the readers step); a schema's other type
                 // tests are each another operator instance the loader does not yet read by reference (TODO.md).
                 if (Matches(@"^(NOT\()?IS_(BOOL|NUMBER|STRING|NULL|ARRAY|OBJECT|PRIMITIVE)\("))
@@ -202,20 +209,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 return (Declined, "Q3: arithmetic past 2^53 or its rounding (no magnitude class)");
             if (Has("fraction literal"))
                 return (Declined, "a fraction literal no double is: the service's double of it is placed against no cell (sound refusal)");
+            if (Has("place:UPPER") || Has("place:LOWER"))
+                return (Declined, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured");
+            // A raw reading under a function: the rows read a call's operand through the text, a typed VARCHAR or its cast alone.
+            if (Has("place:") && Regex.IsMatch(own.Ir, @"(\|\||CONCAT|SUBSTRING|TRIM [A-Z]+|REPLACE|REVERSE|POSITION|CHAR_LENGTH)\(raw\("))
+                return (Closable, "a function over a raw reading: no row reads a raw value under a function (the rows' Calcite side through the raw reader)");
             if (Has("case") && emulator == false)
-                return (Declined, "Q2: a ternary while S1 is unmeasured on Azure (h14b)");
+                return (Closable, "a ternary: Unproven otherwise, S1 measured on both targets");
             if (Has("place:") && emulator == false)
-                return (Declined, "function rows not on Azure (h14b)");
+                return (Closable, "a computed place: Unproven otherwise, the function rows measured on both targets");
             if (Has("affix"))
-                return emulator ? (Closable, Affix(rex)) : (Declined, "affix rows N5-N7 not on Azure (h14b)");
+                return (Closable, Affix(rex, own.Ir, emulator));
+            // Two texts ordered and Unproven under the emulator are its stored order over U+0000 (RenderingPairTests): a
+            // pair's absent and null cells are read since post1, and two nulls the service keeps S refutes rather than leaves.
+            if (Has("pair") && emulator && Regex.IsMatch(own.Ir, @"^\(?text\([^)]*\) (<|<=|>|>=) text\("))
+                return (Declined, "the emulator's stored string order over U+0000 or the high band: refused under Emulator");
             if (Has("pair"))
-                return Waits("a pair: the two-path row's absent and null cells unread", "the two-path row not on Azure (h14b)");
+                return (Closable, "a pair: Unproven otherwise, its absent and null cells read");
             if (Has("string order") && emulator)
                 return (Declined, "the emulator's stored string order over U+0000 or the high band: refused under Emulator");
             if (Has("element") && emulator == false)
-                return (Declined, "M4 not on Azure (h14b)");
-            if (Has("place:UPPER") || Has("place:LOWER"))
-                return (Declined, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured");
+                return (Closable, "an element: Unproven otherwise, M4 measured on both targets");
             if (Has("call:"))
                 return (Closable, "a call no row names: " + string.Join(",", holds.Where(h => h.StartsWith("call:", StringComparison.Ordinal))));
             return (Closable, "unclassed: " + string.Join(",", holds));

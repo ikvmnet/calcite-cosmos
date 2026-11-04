@@ -3606,7 +3606,10 @@ three things; a review measured a fourth, and three functions that part over som
 - **Not a character: a window's start, a repetition's count, a replacement's search.** Calcite clips a window that
   starts before the string, `SUBSTRING('abc' FROM 0 FOR 2)` being `a`, and the service answers a negative start with the
   empty string projected (`Service.SubstringOfANegativeStartIsEmpty`) — in a `WHERE` on Azure, compared with `''`, for
-  nothing but the empty string. The service's `REPLICATE` is undefined for a negative count, where Calcite's `REPEAT`
+  nothing but the empty string. So the translator spells a window from a start at or below 0 as ternaries over the
+  start that clip it as Calcite does, and the computed places read that spelling as the window from 0 where the start
+  and a length at least 0 are literals (`CosmosFunctionSpellings.SubstringClipped`, post1); a negative length, which
+  Calcite raises over, is no place. The service's `REPLICATE` is undefined for a negative count, where Calcite's `REPEAT`
   is the empty string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on
   (`Service.ReplicateStopsAtTenThousandCodePoints`); the emulator has no limit. And the service's `REPLACE` of an
   empty search is undefined, where Calcite's is the subject (`Service.ReplaceOfAnEmptySearchIsUndefined`).
@@ -7268,6 +7271,14 @@ double. Under decision 2 the raises refute nothing. The union proves `c.category
 `VARIANT`'s UNKNOWN beside an `ANY`'s TRUE, which no form keeps alike; so S declines the negation, and the translator's
 guarded form for it is implied and no more.
 
+**An affix over it (post1).** A `LIKE` over the cast reads a string by the pattern and a structure as the `ANY`
+renders it, `{a=1}` or `[1]`, between its brackets: so a structure may match a pattern whose first run begins with the
+opening bracket, or begins with `%`, and whose last run ends with the closing one, or ends with `%`, and misses every
+other (`Renderings.MayRenderStructureLike`); `%` alone matches it. So `'b%'` misses every structure, and over a
+category that may hold anything the positive affix is proved, as the column of text's is. Its negation is not: the
+`ANY` renders a number or a boolean the negation keeps where the `VARIANT` reads null and drops it, and the reading
+names no column to choose between them (`TODO.md`).
+
 **What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
 graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
 `Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.
@@ -8358,8 +8369,8 @@ h32's grouping keys read). Anything but two strings is paired with no order.
 both read a value the comparison of the order, but only on the diagonal or where both readings read strings as
 themselves (text, not a raw value nor `CHAR`'s padding); otherwise TRUE or FALSE, which proves nothing. The service's
 (`ServiceLeaf.Paired`): within one type the literal comparison's rows, the side read from the set's `Order` comparator,
-two string points compared directly, and every side where the comparator parts the cells' bands (U+0000 or a character
-above U+FFFF stored on the emulator, a surrogate against a character above U+DFFF by code point); across types the row
+two string points compared directly, and every side where the comparator parts the cells' bands (U+0000 stored on the
+emulator, a surrogate against a character above U+DFFF by code point); across types the row
 of the left's class against the right's, or, where the right is no literal a row keys (null, absent, a structure), the
 mirrored test's row the other way round. All of it rests on `Service.TwoPathsCompareAsAPathAndALiteral`, measured on the
 emulator over 15 values at `v` against 8 at `w` (an absent path, U+0000, U+FFFF and a surrogate pair among them), six
@@ -8368,6 +8379,23 @@ is no string: EN20261019 and EN20260907 answer its 1,890 lines alike. The leaf r
 anything else, so where a set holds no such row a pair is anything and proves nothing; every set holds it since the
 probe account measured the same witnesses (run 1), Azure ordering a string holding U+0000 by code point where the
 emulator orders what it stores, which the set's comparator already says.
+
+**An absent side, and two nulls (post1).** The row pins what both records answer of the cells the literal comparison
+cannot key: a pair with either side absent is undefined under every comparator, both absent included (294 such lines
+on the probe account, as many on each emulator), read by its own key `(ComparePaths, Absent, None)`; and a right side
+null answers as the literal `null`, `(test, Null, left)`, so a null against a null is equal, `<=` and `>=` true, `<` and
+`>` false, and every ordering of a value against a null undefined. Calcite answers UNKNOWN wherever either side reads
+null, so over two sides that may both be null `<` and `>` are proved and the rest are not: `=`, `<=` and `>=` are true
+at the service of two nulls, and `!=` of a value against a null; over sides that may be absent but never null all six are proved, absence being undefined to the service and
+null to Calcite alike.
+
+**The emulator's stored order over the high band (post1).** The pair once answered anywhere under the emulator where
+either side may hold U+0000 or the high band. Its spelling (`EmulatorStoredText`) escapes U+FDD0 as U+FDD0 `1`, which
+keeps code-point order: two strings first differ where they did, at the same unit or at U+FDD0 against what it was
+against. Only U+0000, stored as U+FDD0 `0`, moves, above every unit from U+0001 to U+FDCF. So the pair now answers
+anywhere over U+0000 alone, as the literal comparison already did, and two texts of the high band order as Azure's do,
+held on documents through `CosmosEval` (`RenderingPairTests`). A surrogate against the high band stays parted, on both
+targets, by code point against Calcite's unit.
 
 **The form.** `ServiceFormKind.ComparePaths` reads two paths, so a pair's spelling is both places' as a JSON array
 (`PlaceSpellings`), which no path's or call's spelling begins with; the partition rule's guard reads that set, and the
@@ -8646,6 +8674,33 @@ affixes over a raw column cast to text that the emulator's set does not prove ei
 absent and null cells (four) — or on their statements: `STARTSWITH(c.s, 'a')` and three truth tests of a declared
 boolean, translator tests' pushes, are Unproven in the census though S proves each shape over a path that may hold
 anything under `Production`, and `c.a` is declared printable ASCII where the census reads it as anything (`TODO.md`).
+
+
+### What line 6 asks after run 1 (post1)
+
+Built where run 1's rows license both halves, each S's alone until the switch: a pair's absent side and two nulls
+(*A comparison of two readings*), the emulator's stored order over the high band (the same), `SUBSTRING` from 0 (*Not a
+character*), and a structure against an affix over a raw value cast to text (*The cast of a raw value to text*). No
+half was declined for want of a licence. The plans do not move: the eight digests at the commit are byte-equal to the
+parent's (`Production` `3dc62a38…`, `Emulator` `542c9f12…`).
+
+**The census over a fresh capture.** h14b's census read sources (b) and (d) from the affix step's capture, so the
+translator tests' pushes it left Unproven "in their statements" were S's verdicts from before run 1's rows: over a fresh
+whole-suite capture `STARTSWITH(c.s, 'a')`, the three truth tests, `CONTAINS(c.a, 'X', true)` and `c.a LIKE '%b%'` are
+Proven. At the gate, real pushes left neither Proven nor decided by name, h14b's census to this one (`Production` /
+`Emulator`): type tests 0 / 0 to 0 / 0; H 4 / 0 to 0 / 0; F, G 23 / 17 to 13 / 8; I 0 / 0 to 0 / 0; J1 17 / 1 to 14 / 0.
+`Portable`, beside, proves 35 / 51 of F, G's and 6 / 13 of J1's. No refutation, false or not yet reproduced.
+
+**What stays open**, each for a piece the rows do not hold, none small:
+
+- **The case mapping beyond ASCII** (5 under `Production`: `UPPER` and a case-folded `ENDSWITH`): a correctness-fix
+  decline, the rows' witnesses holding no cased letter beyond ASCII; under `Emulator` its 2 are the named refusal.
+- **`LIKE`'s `_`** (6 / 3): no row measures the service's `_` over a line terminator, on either target.
+- **A raw reading under a function** (9 `CONCAT(c.id, '!')` under `Production`) and **an affix's negation over a raw
+  value cast to text** (partitions 289, 660, 1314, under both): the reading is the columns' union and names no column.
+- **`NOT STARTSWITH(c.category, '')`** under `Emulator`, the order differential's: the union again, `'%'` matching
+  every rendering, a sound refusal.
+- **Partitions 1792**, under both: Q3's class, an `INTEGER` column multiplied and compared, but no name the owner gave.
 
 ## Differential testing
 

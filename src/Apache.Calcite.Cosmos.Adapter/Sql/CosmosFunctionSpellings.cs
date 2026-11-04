@@ -345,6 +345,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 case "SUBSTRING" when operands.Length == 3 && Integral(1) >= 1:
                     return SubstringFrom(operands[0], operands[1], operands[2]);
+                // A window from before the string, clipped as Calcite clips it, is the service's window from 0
+                // (Calcite.SubstringClipsAWindowBeforeTheString, Service.SubstringOfANegativeStartIsEmpty); a negative
+                // length Calcite raises over is not spelled.
+                case "SUBSTRING" when operands.Length == 3 && Integral(1) <= 0 && Integral(2) >= 0:
+                    return SubstringClipped(operands[0], operands[1], operands[2]);
                 case "POSITION" when operands.Length == 2:
                     return Position(operands[0], operands[1]);
                 case "TRIM BOTH" or "TRIM LEADING" or "TRIM TRAILING" when operands.Length == 2 && Text(0) == " ":

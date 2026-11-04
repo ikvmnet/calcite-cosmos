@@ -121,7 +121,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An ordering of ASCII strings is Proven, both orders agreeing below U+D800; over every band it is not, where Calcite's
-        /// order by UTF-16 unit and the service's by code point part a surrogate pair from a character above U+DFFF. The
+        /// order by UTF-16 unit and the service's by code point part a surrogate pair from a character above U+DFFF. Over the
+        /// high band without U+0000 it is Proven on both targets, the emulator's stored spelling keeping code-point order there,
+        /// and over U+0000 the emulator's is not. The
         /// rows each run leaves are recorded against <see cref="RenderingBundle.RowLimit"/> (line 39).
         /// </summary>
         [Fact]
@@ -138,6 +140,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (across, run, most, product) = Generate(ordered, RenderingSet.Emulator, Strings, AllBands);
                 (across.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Unproven, RunStopReason.Completed), op);
                 most.Should().BeLessThan(RenderingBundle.RowLimit);
+
+                // The high band without U+0000 (planted_free's U+FDD0): the emulator's stored spelling keeps code-point order.
+                var high = ClassSet(JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp);
+                foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+                    Generate(ordered, set, Strings, high).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op} over the high band under {set}");
+                Generate(ordered, RenderingSet.Emulator, Strings, ClassSet(JsonCharacterBand.Nul)).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, $"{op}: U+0000 stored above U+0001");
                 TestContext.Current.TestOutputHelper?.WriteLine($"{op}: rows a bundle {rows} over ASCII ({cells} cells), {most} over every band ({product} cells), of {RenderingBundle.RowLimit}");
             }
         }
@@ -157,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A path against itself is the diagonal: <c>name &lt; name</c> is FALSE wherever it is a string and <c>name = name</c>
         /// TRUE, the service's equal, so both are Proven under the emulator over ASCII strings; over the bands its stored
-        /// order reads apart (U+0000, the high band) the order row leaves anything, which the emulator's rule keeps.
+        /// order reads apart (U+0000) the order row leaves anything, which the emulator's rule keeps.
         /// </summary>
         [Fact]
         public void APathAgainstItselfIsTheDiagonal()
@@ -166,6 +174,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var (answer, _, _, _) = Generate(Pair(op, NamePath, NamePath), RenderingSet.Emulator, Strings, Ascii);
                 answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}: {answer.Reason}");
+            }
+        }
+
+        /// <summary>
+        /// A side absent is undefined and a right side null reads as the literal null (the two-path row's own outcomes, on
+        /// both targets). Over strings that may be absent every comparison of two paths is Proven under both sets; over
+        /// strings that may be null, two nulls are equal to the service and unknown to Calcite, so = is not proved there and
+        /// &lt; is; a typed integer against itself is the diagonal, null or absent alike. Each Proven form keeps on
+        /// documents exactly what Calcite keeps.
+        /// </summary>
+        [Fact]
+        public void APairReadsAnAbsentSideAndANullFromTheRow()
+        {
+            var absent = PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind));
+            var nullable = PathValues.OfKinds(ValueSet.Of(StringType, NullType, PathValues.AbsentKind));
+            J?[] values = [null, new J.Null(), new J.Str(""), new J.Str("a"), new J.Str("b")];
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+            {
+                foreach (var op in Comparisons)
+                {
+                    var ir = Pair(op, NamePath, OtherPath);
+                    var (answer, run, _, _) = Generate(ir, set, absent, Ascii);
+                    (answer.Kind, run.StopReason).Should().Be((RenderingVerdictKind.Proven, RunStopReason.Completed), $"{op} under {set}: {answer.Reason}");
+                    Agrees(ir, answer.Best!, set, values.Where(v => v is not J.Null));
+                    if (Generate(ir, set, nullable, Ascii).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
+                        Agrees(ir, best, set, values);
+                }
+
+                Generate(Pair(PredicateAtom.Equal, NamePath, OtherPath), set, nullable, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, "two nulls are equal at the service alone");
+                Generate(Pair(PredicateAtom.Less, NamePath, OtherPath), set, nullable, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "two nulls are less at neither");
+                var diagonal = new SqlPredicate.Compare(PredicateAtom.Less, new SqlValue.Typed(NamePath, "INTEGER"), new SqlValue.Typed(NamePath, "INTEGER"));
+                Generate(diagonal, set, PathValues.OfKinds(ValueSet.Of(IntegerType, NullType, PathValues.AbsentKind)), Ascii).Answer.Kind
+                    .Should().Be(RenderingVerdictKind.Proven, $"an integer against itself under {set}");
+            }
+
+            static void Agrees(SqlPredicate ir, ServiceForm form, RenderingSet set, IEnumerable<J?> values)
+            {
+                var target = set == RenderingSet.Emulator ? RenderingTarget.Emulator : RenderingTarget.Azure;
+                foreach (var left in values)
+                    foreach (var right in values)
+                    {
+                        var fields = new SortedDictionary<string, J>(StringComparer.Ordinal);
+                        if (left is not null)
+                            fields["name"] = left;
+                        if (right is not null)
+                            fields["other"] = right;
+                        var kept = IrEval.Truth(ir, new J.Obj(fields), new World(0)) == Truths.True;
+                        (CosmosEval.On(form, new J.Obj(fields), target) == ServiceOutcomes.True).Should().Be(kept, $"{form} under {set} on {left?.ToString() ?? "absent"}, {right?.ToString() ?? "absent"}");
+                    }
             }
         }
 
@@ -179,12 +236,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void EveryProvenPairKeepsWhatCalciteKeeps()
         {
             string[] ascii = ["", "a", "ab", "b", "B", "~", "a b"], wide = [.. ascii, "\0", "a\0", "é", "😀", "～", "￿", "a😀"];
+            string[] high = [.. ascii, "é", "～", "￿", "﷐", "a﷐", "﷐0", "﷐1", "﷐~", "﷏", "﷑"];
             foreach (var op in Comparisons)
             {
                 var ir = Pair(op, NamePath, OtherPath);
                 var (answer, _, _, _) = Generate(ir, RenderingSet.Emulator, Strings, Ascii);
                 answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}: {answer.Reason}");
                 Agrees(ir, answer.Best!, RenderingSet.Emulator, ascii);
+
+                var (stored, _, _, _) = Generate(ir, RenderingSet.Emulator, Strings, ClassSet(JsonCharacterBand.NonAscii | JsonCharacterBand.HighBmp));
+                stored.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op} over the high band: {stored.Reason}");
+                Agrees(ir, stored.Best!, RenderingSet.Emulator, high);
 
                 if (Generate(ir, RenderingSet.Emulator, Strings, AllBands).Answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
                     Agrees(ir, best, RenderingSet.Emulator, wide);

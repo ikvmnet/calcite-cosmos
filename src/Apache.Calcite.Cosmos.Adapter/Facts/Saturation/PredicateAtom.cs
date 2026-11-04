@@ -369,7 +369,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// text, a raw value and a computed text place; a cell an affix cut by the pattern matches as cut, and every string
         /// <c>%</c>. A boolean renders as <c>true</c> or <c>false</c> and a number in its grammar's units
         /// (<see cref="Renderings.MayBeNumberUnit"/>) through the rendering and the cast of a raw value, so a pattern holding
-        /// another unit misses every number. Anything else is either.
+        /// another unit misses every number; a structure the cast of a raw value renders between its brackets
+        /// (<see cref="Renderings.MayRenderStructureLike"/>), the only reading that renders one. Anything else is either.
         /// </summary>
         Truths LikeOn(PathCell cell, Truths isNull)
         {
@@ -389,6 +390,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(Like(Renderings.BooleanText(v), pattern)),
                 PathCell.Point { Value: var v } when renders && IsNumber(v) && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
                 PathCell.Numbers when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
+                PathCell.Structure { Type: var type } when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : Renderings.MayRenderStructureLike(type, canonical) ? null : false),
                 _ => Truths.True | Truths.False,
             };
         }

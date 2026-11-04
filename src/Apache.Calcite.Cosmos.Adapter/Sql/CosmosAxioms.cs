@@ -498,9 +498,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "A number reads back as the service holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point by the emulator as a double, 9007199254740993.0 as 9007199254740992, and by Azure as an int64 where it is one, 9007199254740993.0 as itself, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
             new("Service.TwoPathsCompareAsAPathAndALiteral",
-                "c.v op c.w answers as c.v op the value at w written as a literal, for each of =, !=, <, <=, > and >=, over every kind of value on either side, an absent path included, and as c.w op' c.v with the comparator mirrored (< and >, <= and >=), so a right side no literal can be, null, an object, an array or an absent path, reads as the left compared with it the other way round.",
+                "c.v op c.w answers as c.v op the value at w written as a literal, for each of =, !=, <, <=, > and >=, over every kind of value on either side, an absent path included, and as c.w op' c.v with the comparator mirrored (< and >, <= and >=), so a right side no literal can be, null, an object, an array or an absent path, reads as the left compared with it the other way round. A pair with either side absent is undefined, both absent included; against null = is true of a null alone, != of everything else, <= and >= true of a null and < and > false of one, each ordering undefined over the rest.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Pairs, "Measurements.CosmosJsonTypeMeasurementTests.TwoPathsCompareAsAPathAndALiteral",
-                [new(Test.ComparePaths, Class.None, Both, "none=true")]),
+                [
+                    new(Test.ComparePaths, Class.None, Both, "none=true"),
+                    // A side absent, whatever the other holds (ServiceLeaf.Paired).
+                    new(Test.ComparePaths, Class.Absent, Both, "none=undefined"),
+                    // Each comparator against the literal null, as the right side null reads: two nulls among them.
+                    new(Test.Equal, Class.Null, Both, "null=true absent=undefined true=false false=false number=false string=false object=false array=false"),
+                    new(Test.NotEqual, Class.Null, Both, "null=false absent=undefined true=true false=true number=true string=true object=true array=true"),
+                    .. new[] { (Test.Less, "false"), (Test.LessOrEqual, "true"), (Test.Greater, "false"), (Test.GreaterOrEqual, "true") }.Select(t =>
+                        new CosmosOutcome(t.Item1, Class.Null, Both, $"null={t.Item2} absent=undefined true=undefined false=undefined number=undefined string=undefined object=undefined array=undefined")),
+                ]),
 
             // ── Temporal conversions (CosmosTemporalForms, CosmosStoredForms, CosmosQueries.Bind) ──
 

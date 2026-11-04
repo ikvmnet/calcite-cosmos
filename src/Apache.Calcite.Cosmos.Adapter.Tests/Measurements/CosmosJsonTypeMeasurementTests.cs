@@ -404,17 +404,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Two paths compare as the left with the right's value written as a literal, and as the right with the left's
         /// with the comparator mirrored: each value at <c>v</c> against each at <c>w</c>, an absent path on either side, a
         /// string holding U+0000, U+FFFF or a surrogate pair among them. Within strings the stored order is the Order row's,
-        /// so the literal is asked where the two differ in kind, or over a number, a boolean or a null.
+        /// so the literal is asked where the two differ in kind, or over a number, a boolean or a null. A side absent answers
+        /// undefined, and a right side null each comparator's answer over the literal null, as the row's outcomes claim.
         /// </summary>
         [Fact, CosmosPins("Service.TwoPathsCompareAsAPathAndALiteral")]
         public async Task TwoPathsCompareAsAPathAndALiteral()
         {
             using var scope = new FluentAssertions.Execution.AssertionScope();
             const string Row = "Service.TwoPathsCompareAsAPathAndALiteral";
-            CosmosAxioms.Get(Row).Outcomes!.Single().Test.Should().Be(CosmosServiceTest.ComparePaths);
-            (string Op, string Mirror)[] ops = [("=", "="), ("!=", "!="), ("<", ">"), ("<=", ">="), (">", "<"), (">=", "<=")];
+            CosmosAxioms.Get(Row).Outcomes!.Should().ContainSingle(o => o.Test == CosmosServiceTest.ComparePaths && o.Operand == CosmosValueClass.None, "the licence");
+            (string Op, string Mirror, CosmosServiceTest Test)[] ops = [("=", "=", CosmosServiceTest.Equal), ("!=", "!=", CosmosServiceTest.NotEqual), ("<", ">", CosmosServiceTest.Less),
+                ("<=", ">=", CosmosServiceTest.LessOrEqual), (">", "<", CosmosServiceTest.Greater), (">=", "<=", CosmosServiceTest.GreaterOrEqual)];
+            var outcomes = CosmosAxioms.Get(Row).Outcomes!;
+            string Claimed(CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell) => outcomes.Single(o => o.Test == test && o.Operand == operand).Cells.Single(c => c.Cell == cell).Answer switch
+            {
+                CosmosAnswer.True => "true/T",
+                CosmosAnswer.False => "false/F",
+                _ => "undefined/U",
+            };
             string?[] lefts = [.. Kinds, "2.5", "\"a\"", "\"\\u0000\"", "\"\\uFFFF\"", "\"\\uD83D\\uDE00\""];
             string?[] rights = ["null", null, "30", "\"bikes\"", "\"\\uFFFF\"", "true", "[1]", "{\"x\":1}"];
+            static CosmosValueClass Class(string? json) => json switch
+            {
+                null => CosmosValueClass.Absent,
+                "true" => CosmosValueClass.True,
+                "false" => CosmosValueClass.False,
+                _ => Enum.Parse<CosmosValueClass>(Kind(json), ignoreCase: true),
+            };
             static string Kind(string? json) => json switch { null => "absent", "true" or "false" => "bool", _ => json[0] switch { '"' => "string", '{' => "object", '[' => "array", 'n' => "null", _ => "number" } };
             var asked = 0;
             foreach (var right in rights)
@@ -429,6 +445,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     {
                         var direct = answers[o * width][i];
                         answers[o * width + 1][i].Should().Be(direct, $"{expressions[o * width + 1]} answers as {expressions[o * width]} over {witnesses[i]}");
+                        if (lefts[i] is null || right is null)
+                            direct.Should().Be(Claimed(CosmosServiceTest.ComparePaths, CosmosValueClass.Absent, CosmosValueClass.None), $"{expressions[o * width]} has a side absent over {witnesses[i]}");
+                        else if (right == "null")
+                            direct.Should().Be(Claimed(ops[o].Test, CosmosValueClass.Null, Class(lefts[i])), $"{expressions[o * width]} is the left against null over {witnesses[i]}");
                         if (literal && (Kind(lefts[i]) != Kind(right) || Kind(right) != "string"))
                             answers[o * width + 2][i].Should().Be(direct, $"{expressions[o * width + 2]} answers as {expressions[o * width]} over {witnesses[i]}");
                     }

@@ -2909,9 +2909,6 @@ across documents* and *A join of a container to itself* is the record.
 - **No function row names `MOD`, `ABS`, `CEIL`, `FLOOR` or `SIGN`** — *small, a measurement; run 1 measured the rows as they stood.* Each is opaque to S, so
   their 10 generated pushes are Unproven under both sets, and one real push of the suite's under `Emulator`. Each is a function row,
   Calcite's measured here and the service's on each target.
-- **`SUBSTRING` from 0 is outside the rows' spellings** — *small.* The translator writes Calcite's start 0 as ternaries
-  over the start, which the function rows do not read: one real J1 push, Unproven under `Emulator` and, since run 1
-  gave Azure its rows, under `Production` for the same reason.
 - **A schema's own type tests but `IS_DEFINED` are opaque to S** — *small.* The loader reads a schema's own `IS_DEFINED`
   by reference since 2026-11-03 (`CosmosSchemaFunctions.Presents`, DESIGN.md *Two readers the owner ordered built*); the
   seven other type tests a connection resolves through `CosmosSchemaFunctions` are Calcite's wrappings too, and nothing
@@ -2925,7 +2922,7 @@ across documents* and *A join of a container to itself* is the record.
 - **Q3's declines are accepted by name; a magnitude class would recover them** — *medium, after 3A.* The owner accepted
   (2026-11-03) the 43 `Production` and 50 `Emulator` pushes S declines for integer overflow, an `INTEGER` column with a
   small integer added, subtracted or multiplied, then compared or null-tested, a ternary's arm among them, and the one
-  generated out-of-domain push (`LOG(c.price) > 50`); the branch's triage lists each by its text (line 6). Calcite
+  generated out-of-domain push (`LOG(c.price) > 50`); the branch's triage lists each by its text (line 6). One more push of the class is no name the owner gave: partitions 1792, `NOT ((c.category != 'Road Runner' OR (c.price * 3 > 5 OR …)) AND STARTSWITH(c.id, 'B'))`, under both sets (post1's triage), so line 6 stays open for it until it is named or the class recovered. Calcite
   computes in the column's type and wraps past 2,147,483,647, the service never does
   (`Service.IntegerArithmeticIsExactWithinLong`), and nothing bounds the column, so each comparison is computed in
   process: RU, never rows. A function key carrying a magnitude, read at the literal's critical points, would prove
@@ -2936,10 +2933,6 @@ across documents* and *A join of a container to itself* is the record.
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
   places are rooted at the container until 3D or 3E. The translator's code for both stays until then; the triage lists
   each by its text.
-- **The two-path row reads no absent or null pair** — *small.* `ServiceLeaf.Paired` finds no key for an absent
-  or a null right side against the same on the left, though the measurement asks both and the probe account answered
-  them as the emulator did (run 1), so every such pair is Unproven under `Emulator`, and now `Production`: 5 real pushes, the diagonal `c.k < c.k` among them. Pinning that either side absent answers undefined, and a null against a null as the literal
-  null, reads them.
 - **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
   reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
   with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
@@ -3017,18 +3010,18 @@ across documents* and *A join of a container to itself* is the record.
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
+- **A raw reading names no column** — *medium, before h15's switch.* A raw value's reading is the union of the
+  `VARIANT`, `ANY` and `VARCHAR` columns' (h12), since the loader does not tell S which the table declares. So no row
+  reads a raw value under a function, its Calcite side being the column's own (nine `CONCAT(c.id, '!')` under
+  `Production`, the function rows read through the text and `VARCHAR` readers alone), and an affix's negation over a
+  raw value cast to text is Unproven under every set, the `ANY` rendering a number or a boolean the negation keeps where
+  the `VARIANT` reads null (`NOT LIKE 'b%'`, `NOT LIKE '%!'` and a compound, partitions 289, 660 and 1314). A reading
+  that carries its column's type, read where the loader knows it, decides both; the translator keeps them until then.
 - **C6's switch subset holds no affix** — *small, before h15's switch.* Run 1 ran C6 on the switch's subset under
   `Production` (`Runs/2026-11-04-probe-account-conformance.tsv`, 259 forms, 0 divergences), but the switch's run at the
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
   licenses one is N5–N7's lines alone. An input holding `STARTSWITH` or a `LIKE` over a path among the gate's
   conjuncts, run again before the switch, would give C6 one.
-- **Six translator pushes are Unproven under `Production` in their statements alone** — *small, h15's triage.* The
-  census at h14b leaves `STARTSWITH(c.s, 'a')` (`CosmosDeclaredFactPlanningTests.ALikeOverAPathDeclaredAStringPushesExactly`)
-  and three truth tests of a declared boolean (`CosmosBooleanPlanningTests.ADeclaredBooleanIsTestedAtTheService`)
-  Unproven, though S proves the affix over a path that may hold anything, in every band, under `Production`, and the
-  ternary since run 1; and `CONTAINS(c.a, 'X', true)` and `c.a LIKE '%b%'` from the first test, whose `a` it declares
-  printable ASCII, which the census reads neither as ASCII nor as free of U+0000. What their statements give S beyond a
-  bare path is not yet read; the translator keeps them, exact, until then.
 - **No witness splits a surrogate pair at `RIGHT`'s cut** — *small, a measurement.* The probe account answered `RIGHT`
   `Same` over the surrogate band (run 1), where `LEFT`, `SUBSTRING` and the lengths answer `Differs`, but none of the
   row's witnesses puts the cut between a pair's halves, so `Same` there proves nothing of one that does, and

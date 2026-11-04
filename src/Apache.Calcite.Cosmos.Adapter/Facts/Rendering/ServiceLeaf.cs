@@ -161,7 +161,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// right's value (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>): within a type by the side or sides the
         /// comparator places the left on (<c>Service.ComparisonWithinAType</c>, <c>Service.StringOrderIsCodePoint</c>),
         /// across types by the classes' row, and where the right is no literal a row keys (null, absent, a structure) by the
-        /// row mirrored, as that row measured both ways round. Without it, anything.
+        /// row mirrored, as that row measured both ways round; a side absent by the row's own key for one, and two nulls as
+        /// against the literal null. Without it, anything.
         /// </summary>
         static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, ISet<string> rows)
         {
@@ -176,6 +177,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
 
             rows.UnionWith(paired.Evidence);
+
+            if (left == CosmosValueClass.Absent || right == CosmosValueClass.Absent)
+                return table.Outcomes(MeasuredKey.Of(CosmosServiceTest.ComparePaths, CosmosValueClass.Absent, CosmosValueClass.None), rows);
 
             if (left == right && left is CosmosValueClass.String or CosmosValueClass.Number)
             {
@@ -216,8 +220,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Where the left of a pair lies against the right under a comparator: two points as they compare; a cell parted
         /// by UTF-16 unit as it is parted where the comparator orders as that does or the pair is equal, but either way
         /// where code point order may rank them apart (a surrogate against the high band), and anywhere under the
-        /// emulator's stored order where either may hold U+0000 or the high band; two numbers equal on a place's diagonal,
-        /// a number against a point by its value; anywhere otherwise.
+        /// emulator's stored order where either may hold U+0000, the one unit its spelling moves in order; two numbers
+        /// equal on a place's diagonal, a number against a point by its value; anywhere otherwise.
         /// </summary>
         static IEnumerable<CosmosValueClass> Sides(PathCell.Pair pair, CosmosAnswer comparator)
         {
@@ -235,7 +239,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return [Side(Compare(comparator, StringOf(a), StringOf(b)))];
                 case (_, _, _) when pair.Order is null:
                     return anywhere;
-                case (CosmosAnswer.StoredCodePoint, _, _) when new[] { Bands(pair.Left), Bands(pair.Right) }.Any(b => b.Contains(NulClass) || b.Contains(HighBand)):
+                // The stored spelling keeps code-point order everywhere but at U+0000 (EmulatorStoredText).
+                case (CosmosAnswer.StoredCodePoint, _, _) when Bands(pair.Left).Contains(NulClass) || Bands(pair.Right).Contains(NulClass):
                     return anywhere;
                 case (CosmosAnswer.CodePoint or CosmosAnswer.StoredCodePoint, _, _) when pair.Order != 0 && (Bands(pair.Left).Contains(SurrogateBand) && Bands(pair.Right).Contains(HighBand)
                     || Bands(pair.Left).Contains(HighBand) && Bands(pair.Right).Contains(SurrogateBand)):
