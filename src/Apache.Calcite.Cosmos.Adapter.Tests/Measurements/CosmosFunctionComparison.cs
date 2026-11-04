@@ -61,8 +61,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     }
                 }
 
+            // Each key's answer beside the lines the probe logged, so a run on an account can be written up as rows.
+            lock (Answers)
+            {
+                var path = System.IO.Path.GetFullPath(System.IO.Path.Combine("TestResults", "measurements", "function-answers.tsv"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+                System.IO.File.AppendAllLines(path, measured.Select(m => string.Join('	', CosmosWitnessProbe.Release, row, m.Key, m.Value)));
+            }
+
             return measured;
         }
+
+        static readonly object Answers = new();
 
         /// <summary>
         /// Calcite's reading of <c>v</c> through a reader the row names: the text accessor, a typed one, or a cast of either.

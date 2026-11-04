@@ -47,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The release that answers: <c>COSMOS_EMULATOR_RELEASE</c>, which CI reads off the container's log, else the
         /// endpoint, which no record names.
         /// </summary>
-        static string Release => Environment.GetEnvironmentVariable("COSMOS_EMULATOR_RELEASE") is { Length: > 0 } release ? release : new Uri(CosmosEmulator.Endpoint!).Authority;
+        internal static string Release => Environment.GetEnvironmentVariable("COSMOS_EMULATOR_RELEASE") is { Length: > 0 } release ? release : new Uri(CosmosEmulator.Endpoint!).Authority;
 
         /// <summary>Every committed emulator record's answer, by release, row, expression, witness and whether it is a projection alone.</summary>
         static readonly Lazy<Dictionary<(string Release, string Row, string Expression, string Witness, bool Projected), string>> Recorded = new(() =>

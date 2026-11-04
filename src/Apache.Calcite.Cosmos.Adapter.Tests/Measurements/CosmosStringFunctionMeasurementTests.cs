@@ -117,6 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static CosmosClient? _client;
         static Database? _database;
         static string? _unavailable;
+        static CosmosRequestCharges? _charges;
 
         /// <summary>
         /// The status the service refused a document with, or <c>null</c> where it stored them all.
@@ -133,6 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             {
                 ConnectionMode = ConnectionMode.Gateway,
                 RequestTimeout = TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 5 : 30),
+                CustomHandlers = { (_charges = new(nameof(CosmosStringFunctionMeasurementTests))) },
             };
 
             if (CosmosEmulator.IsEmulator)
@@ -216,6 +218,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static void Cleanup()
         {
             try { _database?.DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+            if (_client is not null)
+                _charges?.Write();
             _client?.Dispose();
             _client = null;
             _database = null;

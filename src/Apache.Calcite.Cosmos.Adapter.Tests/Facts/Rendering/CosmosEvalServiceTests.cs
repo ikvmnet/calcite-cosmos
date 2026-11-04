@@ -126,6 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         wrong.Add($"{text} over {Documents.Json(documents[id])}: the service {observed}, CosmosEval {said}");
             }
 
+            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms over {documents.Count} documents, {judged} answers judged, {_service.Charged:F2} RU charged; {wrong.Count} divergences");
             wrong.Should().BeEmpty();
             judged.Should().BeGreaterThan(Target == RenderingTarget.Emulator ? 5_000 : 1_000);
         }
@@ -151,12 +152,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
 
             readonly string _database;
+            readonly CosmosRequestCharges _charges;
             CosmosClient? _client;
             bool _created;
 
             public Fixture() : this("eval") { }
 
-            protected Fixture(string name) => _database = $"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
+            protected Fixture(string name) => (_database, _charges) = ($"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_"), new(name));
 
             public Container? Container { get; protected set; }
 
@@ -173,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return;
                 }
 
-                var options = new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway, MaxRetryAttemptsOnRateLimitedRequests = 0 };
+                var options = new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway, MaxRetryAttemptsOnRateLimitedRequests = 0, CustomHandlers = { _charges } };
                 if (CosmosEmulator.IsEmulator)
                     (options.LimitToEndpoint, options.ServerCertificateCustomValidationCallback) = (true, (_, _, _) => true);
 
@@ -202,6 +204,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (_created)
                     try { _client!.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
+                if (_client is not null)
+                    _charges.Write();
                 _client?.Dispose();
                 return default;
             }

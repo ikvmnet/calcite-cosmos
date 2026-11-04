@@ -40,12 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var target = CosmosEvalServiceTests.Target;
             var set = target == RenderingTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
 
-            // The forms a conjunct's best was, each with the bundle that proved it: printed, they are what implementation sends.
-            var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
-            var forms = generated.Bundles.Where(b => b.Set == set && b.Cells is not null)
-                .SelectMany(b => b.Roots.Where(r => r is not SqlPredicate.And && b.Answers[r.Digest] is { Kind: RenderingVerdictKind.Proven, Best: not null })
-                    .Select(r => (Form: b.Answers[r.Digest].Best!, Bundle: b)))
-                .DistinctBy(f => f.Form.Text).OrderBy(f => f.Form.Text, StringComparer.Ordinal).ToList();
+            var forms = Forms(set, Subset);
             // Listed in the report, each with why it was not run, so that g16's reader sees every form line 4 leaves out.
             var (wrong, rows, unwritten, documents) = (new List<string>(), new List<object?[]>(), new List<string>(), 0);
             foreach (var (form, _) in forms.Where(f => f.Form.Subforms.Any(s => s.Path is { } p && Set.Contains(p))))
@@ -90,10 +85,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             RenderingReports.Tsv(RenderingReports.Folder(), "conformance.tsv", ["form", "printed", "document", "service", "cosmos eval"], rows);
-            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms printed under {set}, over {documents} documents ({unwritten.Count} forms not written, {apart} over a path the service sets listed apart), "
+            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms printed under {set}{(Subset ? " (the switch's subset)" : "")}, over {documents} documents ({unwritten.Count} forms not written, {apart} over a path the service sets listed apart), "
                 + $"{service.Charged:F2} RU charged; {wrong.Count} divergences");
             forms.Should().NotBeEmpty();
             wrong.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// Whether C6 runs the subset a probe-account run before a switch asks (spec §4.8), named by
+        /// <c>COSMOS_CONFORMANCE_SUBSET=switch</c>, in place of every form of the pull request's run.
+        /// </summary>
+        internal static bool Subset => Environment.GetEnvironmentVariable("COSMOS_CONFORMANCE_SUBSET") == "switch";
+
+        /// <summary>
+        /// The forms a conjunct's best was under a set, each with the bundle that proved it: printed, they are what
+        /// implementation sends. Every one of the pull request's run, or, for the subset, those of the run over every
+        /// template production asks from h15 (<see cref="RenderingCheckRun.Switched"/>) that hold a string ordering, an
+        /// affix, a type test or an element path.
+        /// </summary>
+        internal static List<(ServiceForm Form, RenderingGenerateRun.Bundle Bundle)> Forms(RenderingSet set, bool subset)
+        {
+            static bool Asked(ServiceForm f) => f.Kind is ServiceFormKind.Affix or ServiceFormKind.Test
+                || f.Kind == ServiceFormKind.Compare && f.Test is not (CosmosServiceTest.Equal or CosmosServiceTest.NotEqual) && f.Literal is { } l && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsString(l)
+                || f.Path is { } p && p.Contains("][", StringComparison.Ordinal) && char.IsDigit(p[p.LastIndexOf('[') + 1]);
+
+            var generated = (subset ? RenderingCheckRun.Switched : RenderingCheckRun.PerPullRequest).Value.Generated!;
+            return [.. generated.Bundles.Where(b => b.Set == set && b.Cells is not null)
+                .SelectMany(b => b.Roots.Where(r => r is not SqlPredicate.And && b.Answers[r.Digest] is { Kind: RenderingVerdictKind.Proven, Best: not null })
+                    .Select(r => (Form: b.Answers[r.Digest].Best!, Bundle: b)))
+                .Where(f => subset == false || f.Form.Subforms.Any(Asked))
+                .DistinctBy(f => f.Form.Text).OrderBy(f => f.Form.Text, StringComparer.Ordinal)];
         }
 
         /// <summary>Whether a document holds a string with a lone surrogate anywhere: what the SDK will not send.</summary>

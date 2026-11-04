@@ -92,6 +92,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static CosmosClient? _client;
         static Container? _container;
         static string? _unavailable;
+        static CosmosRequestCharges? _charges;
 
         static async Task Initialize()
         {
@@ -100,6 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 ConnectionMode = ConnectionMode.Gateway,
                 RequestTimeout = TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 5 : 30),
                 MaxRetryAttemptsOnRateLimitedRequests = 0,
+                CustomHandlers = { (_charges = new(nameof(CosmosJsonTypeMeasurementTests))) },
             };
 
             if (CosmosEmulator.IsEmulator)
@@ -142,6 +144,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         {
             try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
+            if (_client is not null)
+                _charges?.Write();
             _client?.Dispose();
             _client = null;
         }
@@ -377,6 +381,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.TernaryTakesThenOnTrueAlone")]
         public async Task TheTernaryTakesThenOnTrueAlone()
         {
+            // Every probe is asked before any answer is asserted, so a run on an account records them all.
+            using var scope = new FluentAssertions.Execution.AssertionScope();
             var row = CosmosAxioms.Get("Service.TernaryTakesThenOnTrueAlone").Outcomes!.Single(o => o.Test == CosmosServiceTest.Choose).Cells.ToDictionary(c => c.Cell, c => c.Answer);
             CosmosValueClass[] classes = [CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null, CosmosValueClass.Absent, CosmosValueClass.Number, CosmosValueClass.Number,
                 CosmosValueClass.String, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array];
@@ -400,6 +406,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.TwoPathsCompareAsAPathAndALiteral")]
         public async Task TwoPathsCompareAsAPathAndALiteral()
         {
+            using var scope = new FluentAssertions.Execution.AssertionScope();
             const string Row = "Service.TwoPathsCompareAsAPathAndALiteral";
             CosmosAxioms.Get(Row).Outcomes!.Single().Test.Should().Be(CosmosServiceTest.ComparePaths);
             (string Op, string Mirror)[] ops = [("=", "="), ("!=", "!="), ("<", ">"), ("<=", ">="), (">", "<"), (">=", "<=")];
@@ -496,6 +503,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, CosmosPins("Service.IntegerArithmeticIsExactWithinLong")]
         public async Task IntegerArithmeticIsExactWithinLong()
         {
+            using var scope = new FluentAssertions.Execution.AssertionScope();
             const string row = "Service.IntegerArithmeticIsExactWithinLong";
             (await Probe(row, ["2147483647", "9007199254740992", "9223372036854775807", "1e308", "0.1", "\"1\"", "true", "null", null],
                 "c.v - 1", "c.v * 2", "c.v + 1 = 2147483648", "c.v + 1 = 9007199254740993", "c.v + 1 > 9223372036854775807", "c.v / 0")).Should().Equal(
