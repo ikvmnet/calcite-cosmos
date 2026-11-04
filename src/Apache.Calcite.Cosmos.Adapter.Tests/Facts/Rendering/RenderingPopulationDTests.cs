@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             tally.Uncovered.Should().BeEmpty("a cell partition covers every document its import admits");
             tally.Unimported.Should().BeEmpty("the import admits every declared document");
             tally.Forms.Agreed.Should().BePositive();
-            foreach (var kind in new[] { "place", "pair", "raw beside a string", "raw beside a number", "raw beside a boolean", "raw null test", "raw cast to text" })
+            foreach (var kind in new[] { "place", "pair", "raw beside a string", "raw beside a number", "raw beside a boolean", "raw null test", "raw cast to text", "raw through its column" })
                 tally.ProvenKinds.GetValueOrDefault(kind).Should().BePositive(kind);
             tally.Varchar.Should().BePositive("a VARCHAR column is read beside a string and in a null test");
         }
@@ -239,6 +239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             SqlPredicate.Compare { Left: SqlValue.Call } or SqlPredicate.In { Value: SqlValue.Call } or SqlPredicate.IsNull { Value: SqlValue.Call } => "place",
             SqlPredicate.Compare { Right: not SqlValue.Literal } => "pair",
+            _ when ColumnOf(atom) is not null => "raw through its column",
             SqlPredicate.Compare { Left: SqlValue.Cast { Value: SqlValue.Raw } } or SqlPredicate.In { Value: SqlValue.Cast { Value: SqlValue.Raw } }
                 or SqlPredicate.IsNull { Value: SqlValue.Cast { Value: SqlValue.Raw } } => "raw cast to text",
             SqlPredicate.IsNull { Value: SqlValue.Raw } => "raw null test",
@@ -246,6 +247,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             SqlPredicate.In { Value: SqlValue.Raw } i => "raw beside a " + Class(i.Points.First()),
             _ => null,
         };
+
+        /// <summary>The column an atom's raw value is read through, where it names one (rawtyped).</summary>
+        static string? ColumnOf(SqlPredicate atom) => atom switch
+        {
+            SqlPredicate.Compare c => ColumnOf(c.Left),
+            SqlPredicate.In i => ColumnOf(i.Value),
+            SqlPredicate.IsNull n => ColumnOf(n.Value),
+            _ => null,
+        };
+
+        static string? ColumnOf(SqlValue value) => value switch { SqlValue.Raw r => r.Column, SqlValue.Cast { Value: SqlValue.Raw r } => r.Column, _ => null };
 
         static string Class(string literal) => TypeOf(literal) switch { StringType => "string", BooleanType => "boolean", _ => "number" };
 
@@ -264,7 +276,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 _ => (Array.Empty<SqlValue>(), Array.Empty<string>()),
             };
 
-            IrEval.RawAs?[] raws = values.Any(v => v is SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Raw })
+            IrEval.RawAs?[] raws = ColumnOf(atom) is { } column ? [IrEval.Named(column)]
+                : values.Any(v => v is SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Raw })
                 ? literals.All(IsString) ? [IrEval.RawAs.Variant, IrEval.RawAs.Any, IrEval.RawAs.Varchar] : [IrEval.RawAs.Variant, IrEval.RawAs.Any]
                 : [null];
             IrEval.TypedAs[] typed = values.Any(v => v is SqlValue.Typed { Type: not "DECIMAL" }) ? [IrEval.TypedAs.Returning, IrEval.TypedAs.Column] : [IrEval.TypedAs.Returning];

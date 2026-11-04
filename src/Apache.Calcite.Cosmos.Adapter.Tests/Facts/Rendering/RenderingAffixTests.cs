@@ -96,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheLoaderReadsAnAffixOfEveryReading()
         {
             Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "a%")).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Text(TPath), "a%"));
-            Loading.Read(Like(Column, "a%")).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Raw(RPath), "a%"));
+            Loading.Read(Like(Column, "a%")).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Raw(RPath) { Column = "VARCHAR" }, "a%"));
             Legacy.Read(Like(Column, "a%")).Should().BeOfType<SqlPredicate.Opaque>();
 
             var upper = Loading.Read(Like(Rex.makeCall(SqlStdOperatorTable.UPPER, Name), "%B%"));

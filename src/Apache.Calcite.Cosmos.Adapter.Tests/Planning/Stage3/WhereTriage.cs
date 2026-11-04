@@ -57,8 +57,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (own.Best == nameof(RenderingVerdictKind.Proven))
                 return ("Proven", own.Pos == nameof(RenderingVerdictKind.Proven) ? "the text and S's own form" : "S's own form; the text " + own.Pos);
 
+            // An ordering over a declared VARIANT column (rawtyped): Calcite compiles none, so each cell is a raise alone and
+            // the gate's agreement with the text is vacuous, which no lift takes (DESIGN.md, "Vacuity is a table").
             if (own.Pos == nameof(RenderingVerdictKind.Proven))
-                return ("Unproven closable", "S proves the text, and generates no form for it");
+                return ("Unproven closable", Regex.IsMatch(own.Ir, @"raw\([^()]* VARIANT\) (<|<=|>|>=) ")
+                    ? "an ordering over a VARIANT column: Calcite compiles none, so the agreement is vacuous and S lifts it not (the owner's)"
+                    : "S proves the text, and generates no form for it");
 
             return Unproven(push, own);
         }
@@ -119,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             // A name no push answers to is stale: the push is gone, Proven, or read for another reason, and decides nothing.
             var answered = pushes.Where(p => p.Position == "where").Select(p => (p.Set, p.Text, Class(p).Reason)).ToHashSet();
             var stale = OwnerDecisions.Named.Where(d => answered.Contains((d.Set, d.Text, d.Reason)) == false).ToList();
-            text.Append($"## The owner's decisions by name (2026-11-03)\n\n{OwnerDecisions.Named.Count:N0} named: "
+            text.Append($"## The owner's decisions by name (2026-11-03, 2026-11-04)\n\n{OwnerDecisions.Named.Count:N0} named: "
                 + string.Join(", ", OwnerDecisions.Named.GroupBy(d => (d.Kind, d.Set)).Select(g => $"{g.Key.Kind} under {g.Key.Set} {g.Count():N0}")) + $". Answered by no push: {stale.Count:N0}.\n");
             foreach (var d in stale)
                 text.Append($"- {d.Kind} under {d.Set}, {d.Reason}: `{d.Text.Replace("`", "'")}`\n");
@@ -136,7 +140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         /// over a line terminator; under <c>Emulator</c> runs between and around <c>%</c>, a <c>LIKE</c> the emulator's
         /// matcher reads over a stored escape, owed; under <c>Production</c> one run between two <c>%</c>, which Azure reads
         /// only to a string's first U+0000; a pattern a number's rendering may match, which the service reads as no string; a
-        /// raw column cast to text, whose columns' union parts what a negation keeps.
+        /// raw value cast to text that names no column (an accessor, an item chain), whose columns' union parts what a
+        /// negation keeps.
         /// </summary>
         static string Affix(string rex, string ir, bool emulator)
         {
@@ -154,7 +159,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (pattern.All(c => c == '%' || Renderings.MayBeNumberUnit(c)))
                 return "a pattern a number's rendering may match, over a path that may hold one: the service reads no number as a string (sound refusal)";
             if (ir.Contains("cast(VARCHAR, raw(", StringComparison.Ordinal))
-                return "an affix over a raw column cast to text: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps (the reading names no column)";
+                return "an affix over a raw value cast to text that names no column: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps";
             return "an affix: Unproven otherwise";
         }
 
@@ -211,9 +216,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 return (Declined, "a fraction literal no double is: the service's double of it is placed against no cell (sound refusal)");
             if (Has("place:UPPER") || Has("place:LOWER"))
                 return (Declined, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured");
-            // A raw reading under a function: the rows read a call's operand through the text, a typed VARCHAR or its cast alone.
+            // A raw reading under a function: the rows read a call's operand through the text, a typed VARCHAR, its cast or a
+            // declared VARCHAR column alone (rawtyped), so one over another column or naming none stays.
             if (Has("place:") && Regex.IsMatch(own.Ir, @"(\|\||CONCAT|SUBSTRING|TRIM [A-Z]+|REPLACE|REVERSE|POSITION|CHAR_LENGTH)\(raw\("))
-                return (Closable, "a function over a raw reading: no row reads a raw value under a function (the rows' Calcite side through the raw reader)");
+                return (Closable, "a function over a raw reading that is no VARCHAR column: no row reads one under a function (the rows' Calcite side through the raw reader)");
             if (Has("case") && emulator == false)
                 return (Closable, "a ternary: Unproven otherwise, S1 measured on both targets");
             if (Has("place:") && emulator == false)

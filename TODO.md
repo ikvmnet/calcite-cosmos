@@ -2922,8 +2922,10 @@ across documents* and *A join of a container to itself* is the record.
 - **Q3's declines are accepted by name; a magnitude class would recover them** — *medium, after 3A.* The owner accepted
   (2026-11-03) the 43 `Production` and 50 `Emulator` pushes S declines for integer overflow, an `INTEGER` column with a
   small integer added, subtracted or multiplied, then compared or null-tested, a ternary's arm among them, and the one
-  generated out-of-domain push (`LOG(c.price) > 50`); the branch's triage lists each by its text (line 6). One more push of the class is no name the owner gave: partitions 1792, `NOT ((c.category != 'Road Runner' OR (c.price * 3 > 5 OR …)) AND STARTSWITH(c.id, 'B'))`, under both sets (post1's triage), so line 6 stays open for it until it is named or the class recovered. Calcite
-  computes in the column's type and wraps past 2,147,483,647, the service never does
+  generated out-of-domain push (`LOG(c.price) > 50`), and (2026-11-04, after post1's triage) partitions 1792,
+  `NOT ((c.category != 'Road Runner' OR (c.price * 3 > 5 OR …)) AND STARTSWITH(c.id, 'B'))`, under both sets; the
+  branch's triage lists each by its text (line 6, `OwnerDecisions`). Calcite computes in the column's type and wraps
+  past 2,147,483,647, the service never does
   (`Service.IntegerArithmeticIsExactWithinLong`), and nothing bounds the column, so each comparison is computed in
   process: RU, never rows. A function key carrying a magnitude, read at the literal's critical points, would prove
   `c.price + n` wherever a declared range bounds the column; no column in the corpus declares one, and it needs function
@@ -2988,10 +2990,11 @@ across documents* and *A join of a container to itself* is the record.
 - **The rule count is one over the spec's** — *note, line 31; the owner's at h14.* The ternary is one template written
   twice and a truth value's constant is a rule of its own (h08): 68 as built against the spec's 66. h10 adds five of the
   spec's six, a call's reading of its place being the bundle's: 73 against its 72; h11 its two, 75 against 74; h12 its
-  one, 76 against 75. The spec's 78 at h31 is 79 as built, one under line 31's 80. The rules still asked for would cross
-  it: the two compound two-valuedness rules (above), h09's lift asking S of the pair's arm (above), an `evaluate` rule
-  for the ternary if an untaken arm's failure must fail it. h14 lists them against that headroom of one, so the line is
-  decided before the triage closes any of them.
+  one, 76 against 75; rawtyped one the spec has not, a raw value read through its declared column, 77 against 75. The
+  spec's 78 at h31 is 80 as built, at line 31's 80. The rules still asked for would cross it: the two compound
+  two-valuedness rules (above), h09's lift asking S of the pair's arm (above), an `evaluate` rule for the ternary if an
+  untaken arm's failure must fail it. With no headroom left at h31, the line is decided before the triage closes any of
+  them.
 - **The string functions' column bridge** — *bridge, deleted at h37.* `CosmosRexTranslator.RequireStringFunctionsAgree`
   reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
   not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
@@ -3010,13 +3013,21 @@ across documents* and *A join of a container to itself* is the record.
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
-- **A raw reading names no column** — *medium, before h15's switch.* A raw value's reading is the union of the
-  `VARIANT`, `ANY` and `VARCHAR` columns' (h12), since the loader does not tell S which the table declares. So no row
-  reads a raw value under a function, its Calcite side being the column's own (nine `CONCAT(c.id, '!')` under
-  `Production`, the function rows read through the text and `VARCHAR` readers alone), and an affix's negation over a
-  raw value cast to text is Unproven under every set, the `ANY` rendering a number or a boolean the negation keeps where
-  the `VARIANT` reads null (`NOT LIKE 'b%'`, `NOT LIKE '%!'` and a compound, partitions 289, 660 and 1314). A reading
-  that carries its column's type, read where the loader knows it, decides both; the translator keeps them until then.
+- **An ordering over a declared `VARIANT` column is vacuous** — *the owner's, before h15's switch.* Since rawtyped S
+  reads a declared field through its column (DESIGN.md, *The raw reading through its column*), and a `VARIANT` has no
+  ordering: Calcite compiles no `<` over one, so every cell of `c.category > 'a'` is a raise alone, the gate's agreement
+  with the text is vacuous, and S lifts nothing vacuous (*Vacuity is a table*). Eight `Production` type-test pushes at
+  the gate the union proved through its `ANY` column (partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863) are now
+  "S proves the text, and generates no form for it"; after h15 each stays in Calcite, which fails the statement where
+  the translator pushes it whole today. Three ways: accept them by name, the statement then failing as Calcite fails it
+  (permanent); lift an agreement whose cells are raises Calcite answers on real documents, none set aside, as decision 2
+  already lets any answer refine a raise (permanent, a change to the vacuity policy); or read a `VARIANT`'s ordering
+  through the union again (a bridge, until one of the others).
+- **A raw reading names its column only where a field declares one** — *small.* The loader names `VARIANT`, `ANY` or
+  `VARCHAR` for a declared field under S's reading alone; an accessor, an item chain, the cast-to-`ANY` marker and a
+  `CHAR` field read the three columns' union as before (h12), and F reads every raw value through the union. A raw value
+  under a function over any of them, or an affix's negation over its cast to text, stays Unproven, as the union parts
+  them; none reaches the gate's census.
 - **C6's switch subset holds no affix** — *small, before h15's switch.* Run 1 ran C6 on the switch's subset under
   `Production` (`Runs/2026-11-04-probe-account-conformance.tsv`, 259 forms, 0 divergences), but the switch's run at the
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what

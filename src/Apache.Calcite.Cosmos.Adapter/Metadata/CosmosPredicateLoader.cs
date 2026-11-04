@@ -773,8 +773,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (reading != CosmosReading.Typed)
                     return null;
 
+                // The field's declared type is the column Calcite reads it through, which a loading that reads places names
+                // (rawtyped); a CHAR's padding no row measured, so it stays the union.
                 if (CosmosRexShapes.IsDocumentValueType(type) || IsCharacter(type))
-                    return new SqlValue.Raw(path);
+                    return new SqlValue.Raw(path) { Column = _places && type?.getName() is string column && Cosmos.Facts.Saturation.PredicateAtom.RawColumns.Contains(column) ? column : null };
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
             }

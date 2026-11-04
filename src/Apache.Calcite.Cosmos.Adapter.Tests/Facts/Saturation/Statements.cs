@@ -282,14 +282,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
 
             var atoms = new[] { Place(), Place(), Pair(), Pair(), Raw(), Raw(), Raw() };
-            return [.. atoms.Select(atom => random.Next(5) switch
+            var roots = atoms.Select(atom => random.Next(5) switch
             {
                 0 => atom,
                 1 => new SqlPredicate.Not(atom),
                 2 => new SqlPredicate.Case(new SqlPredicate.IsDefined(new SqlValue.Raw(Path())), atom, new SqlPredicate.Constant(false)),
                 3 => new SqlPredicate.Case(atom, new SqlPredicate.Constant(true), atoms[random.Next(atoms.Length)]),
                 _ => SqlPredicate.AllOf([atom, atoms[random.Next(atoms.Length)]]),
-            }).Distinct()];
+            }).ToList();
+
+            // Each raw atom again through one column, as a loading reading places names a field's (rawtyped), bare and
+            // negated: drawn after the rest, so what the stream drew before moves not. A VARCHAR column is raw beside a
+            // string alone, the loader casting it beside anything else.
+            var twins = atoms.Skip(4).Select(atom => (atom, column: PredicateAtom.RawColumns[random.Next(PredicateAtom.RawColumns.Count)]))
+                .Select(t => InColumn(t.atom, t.column == "VARCHAR" && BesideNoString(t.atom) ? "ANY" : t.column));
+            return [.. roots.Concat(twins.SelectMany(t => new[] { t, new SqlPredicate.Not(t) })).Distinct()];
+        }
+
+        static bool BesideNoString(SqlPredicate atom) => atom switch
+        {
+            SqlPredicate.Compare { Right: SqlValue.Literal l } => JsonValues.IsString(l.Value) == false,
+            SqlPredicate.In i => i.Points.Any(p => JsonValues.IsString(p) == false),
+            _ => false,
+        };
+
+        /// <summary>A raw atom with its raw value read through one column.</summary>
+        static SqlPredicate InColumn(SqlPredicate atom, string column)
+        {
+            SqlValue In(SqlValue value) => value switch
+            {
+                SqlValue.Raw r => r with { Column = column },
+                SqlValue.Cast { Value: SqlValue.Raw r } c => c with { Value = r with { Column = column } },
+                _ => value,
+            };
+
+            return atom switch
+            {
+                SqlPredicate.Compare c => c with { Left = In(c.Left) },
+                SqlPredicate.In i => i with { Value = In(i.Value) },
+                SqlPredicate.IsNull n => n with { Value = In(n.Value) },
+                _ => atom,
+            };
         }
 
         /// <summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -29,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static ReaderEdges Limits(string type, params CutKind[] edges) =>
             PredicateAtom.IntegerLimits(type) is var (least, most) ? new(ValueSet.From(edges), ValueSet.Of(JsonValues.Of(least), JsonValues.Of(most))) : Row(edges);
 
-        public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = new Dictionary<string, ReaderEdges>
+        public static IReadOnlyDictionary<string, ReaderEdges> Rows { get; } = InColumns(new Dictionary<string, ReaderEdges>
         {
             [PredicateAtom.TextReader] = Row(),
             [PredicateAtom.RawReader] = Row(CutKind.Double),
@@ -51,7 +52,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader)] = Limits("INTEGER", CutKind.Rendering),
             [PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader)] = Limits("BIGINT", CutKind.Rendering),
             [PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader)] = Row(CutKind.Double, CutKind.Rendering),
-        };
+        });
+
+        /// <summary>A raw reading read through one column (rawtyped) is cut where the union is: each column's answer changes there or nowhere.</summary>
+        static Dictionary<string, ReaderEdges> InColumns(Dictionary<string, ReaderEdges> rows)
+        {
+            foreach (var (reader, edges) in rows.Where(r => PredicateAtom.IsRaw(r.Key) || r.Key.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal)).ToList())
+                foreach (var column in PredicateAtom.RawColumns)
+                    rows[PredicateAtom.InColumn(reader, column)] = edges;
+
+            return rows;
+        }
 
     }
 

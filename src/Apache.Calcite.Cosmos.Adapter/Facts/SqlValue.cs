@@ -34,7 +34,15 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>The value the service holds at a path: a promoted column, an <c>ANY</c>-typed accessor, <c>id</c>.</summary>
         public sealed record Raw(JsonDocumentPath Path) : SqlValue
         {
-            public override string ToString() => "raw(" + Spell(Path) + ")";
+
+            /// <summary>
+            /// The column the value is read through, where the loader knows it (<c>PredicateAtom.RawColumns</c>): a field
+            /// declared <c>VARIANT</c>, <c>ANY</c> or <c>VARCHAR</c>. <c>null</c> reads every column's union (h12).
+            /// </summary>
+            public string? Column { get; init; }
+
+            public override string ToString() => "raw(" + Spell(Path) + (Column is { } column ? " " + column : "") + ")";
+
         }
 
         /// <summary><c>JSON_VALUE(DOC, path RETURNING type)</c>: the stored scalar, asserted to be of the type.</summary>

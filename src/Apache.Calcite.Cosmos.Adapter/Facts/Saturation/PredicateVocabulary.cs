@@ -25,6 +25,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             Text = graph.DefineConstructor<JPath, Val>("text", options: term);
             Raw = graph.DefineConstructor<JPath, Val>("raw", options: term);
+            RawIn = graph.DefineConstructor<JPath, string, Val>("raw in", options: term);
             Typed = graph.DefineConstructor<JPath, string, Val>("typed", options: term);
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
@@ -58,6 +59,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>The value the service holds at a path.</summary>
         public Constructor<JPath, Val> Raw { get; }
+
+        /// <summary>
+        /// The value the service holds at a path, read through the column the loader knows it is in (rawtyped): S's alone,
+        /// written where a loading reads places, and read by S's own rule (<c>RenderingTheory</c>), so the facts graph's
+        /// budget holds no rule for it and F never writes one.
+        /// </summary>
+        public Constructor<JPath, string, Val> RawIn { get; }
 
         /// <summary><c>JSON_VALUE(DOC, path RETURNING type)</c>.</summary>
         public Constructor<JPath, string, Val> Typed { get; }

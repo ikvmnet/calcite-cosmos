@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static IEnumerable<(TemplateId, string)> Rows()
         {
             string[] text = [PredicateAtom.TextReader], textual = [PredicateAtom.TextReader, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)];
-            string[] readers = [.. ReaderEdgesTable.Rows.Keys, .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
+            string[] readers = [.. ReaderEdgesTable.Rows.Keys.Where(r => PredicateAtom.ColumnOf(r) is null), .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
             string[] parsed = [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(t => PredicateAtom.CastReader(t, PredicateAtom.TextReader)), PredicateAtom.TypedReader("DECIMAL")];
             string[] orderings = [PredicateAtom.Less, PredicateAtom.LessOrEqual, PredicateAtom.Greater, PredicateAtom.GreaterOrEqual];
             string[] comparisons = [PredicateAtom.Equal, PredicateAtom.NotEqual, .. orderings], equalOrOrdering = [PredicateAtom.Equal, .. orderings];

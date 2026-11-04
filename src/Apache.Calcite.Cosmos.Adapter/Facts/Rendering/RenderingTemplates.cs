@@ -34,10 +34,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static readonly ServiceForm Unspelled = ServiceForm.OpaqueOf("unspelled", ValueSet<string>.Empty);
 
-        /// <summary>An atom's shape, read off it: its reader, its test and its operand's kind; <see cref="ParameterShape"/> for a parameter.</summary>
-        public static string ShapeOf(PredicateAtom atom) => atom.Parameter ? ParameterShape : atom.Reader + "/" + atom.Test + "/" + KindOf(atom);
+        /// <summary>
+        /// An atom's shape, read off it: its reader, a raw column apart since a template only proposes, its test and its
+        /// operand's kind; <see cref="ParameterShape"/> for a parameter.
+        /// </summary>
+        public static string ShapeOf(PredicateAtom atom) => atom.Parameter ? ParameterShape : PredicateAtom.Columnless(atom.Reader) + "/" + atom.Test + "/" + KindOf(atom);
 
-        static string KindOf(PredicateAtom atom) => atom.Against is { } right ? ReadingKind + right
+        static string KindOf(PredicateAtom atom) => atom.Against is { } right ? ReadingKind + PredicateAtom.Columnless(right)
             : atom.Test == PredicateAtom.InTest ? PointsKind : atom.Operand is { } literal ? KindOf(literal) : NoOperand;
 
         /// <summary>A literal's kind: a string, one rendering a boolean, one spelling a number, a number, or its own type.</summary>

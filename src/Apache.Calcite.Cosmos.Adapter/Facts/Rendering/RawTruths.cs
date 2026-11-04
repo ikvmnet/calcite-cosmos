@@ -41,6 +41,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>One column's truths on a key, as the rule joins it in.</summary>
         public static RawTruths Of(RawKey key, Truths truths) => new(ImmutableSortedDictionary<RawKey, Truths>.Empty.Add(key, truths), HashOf(key, truths));
 
+        /// <summary>
+        /// One column's truths on a key, as the rule joins them in: under the union's key, beside the other columns', and
+        /// under the key of the reading through that column alone (rawtyped).
+        /// </summary>
+        public static RawTruths Of(RawKey key, string column, Truths truths) =>
+            new(ImmutableSortedDictionary<RawKey, Truths>.Empty.Add(key, truths).Add(key.In(column), truths), HashOf(key, truths) + HashOf(key.In(column), truths));
+
         /// <summary>The truths on a key; anything, a raise among it, where no column answers for it.</summary>
         public Truths this[RawKey key] => _truths.TryGetValue(key, out var truths) ? truths : Truths.Any | Truths.Raises;
 

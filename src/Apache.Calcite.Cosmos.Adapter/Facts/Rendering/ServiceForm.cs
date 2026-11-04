@@ -196,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static ServiceForm Read(ServiceForm form, string reader) => form.Kind switch
         {
-            _ when reader == PredicateAtom.RawReader => form,
+            _ when PredicateAtom.IsRaw(reader) => form,
             ServiceFormKind.Compare or ServiceFormKind.In when form.Literals.Count > 0 && form.Literals.Any(JsonValues.IsString) == false =>
                 new(form.Kind, form.Test, form.Path, form.Literal, form.Literals, form.Paths, Leaf, form.Text, reader),
             ServiceFormKind.Not or ServiceFormKind.And or ServiceFormKind.Or or ServiceFormKind.Choose =>

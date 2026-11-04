@@ -64,6 +64,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         internal static string? ReaderOf(SqlValue value) => value switch
         {
             SqlValue.Text => PredicateAtom.TextReader,
+            SqlValue.Raw { Column: { } column } => PredicateAtom.RawIn(column),
             SqlValue.Raw => PredicateAtom.RawReader,
             SqlValue.Typed t => PredicateAtom.TypedReader(t.Type),
             SqlValue.Cast c => ReaderOf(c.Value) is { } inner ? PredicateAtom.CastReader(c.Target, inner) : null,

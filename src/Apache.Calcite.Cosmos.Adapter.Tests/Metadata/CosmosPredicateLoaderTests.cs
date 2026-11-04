@@ -121,6 +121,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             One(Call(SqlStdOperatorTable.IS_NULL, JsonValue("label"))).Should().Be(IsNull(Text(Label)));
         }
 
+        /// <summary>
+        /// A field's raw value names the column its declared type is where S reads places (rawtyped): a promoted path's
+        /// <c>VARIANT</c>; the facts graph's reading names none, its terms as they were until h15.
+        /// </summary>
+        [Fact]
+        public void ARawFieldNamesItsColumnWhereSReads()
+        {
+            var equal = Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), false), Str("b")));
+            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Eq(new SqlValue.Raw(Category) { Column = "VARIANT" }, "b"));
+            One(equal).Should().Be(Eq(new SqlValue.Raw(Category), "b"));
+        }
+
         [Fact]
         public void ANumberComparedWithReturningDoubleIsItsConstantWhereSReads()
         {

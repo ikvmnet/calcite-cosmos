@@ -205,6 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             switch (affix.Value)
             {
                 case SqlValue.Cast { Value: SqlValue.Raw r }:
+                    raw = Own(r, raw);
                     var stored = At(document, r.Path);
                     return stored is null ? U : world.Choose(raw is RawAs one ? Of(CastText(stored, one), stored) : Of(CastText(stored, RawAs.Variant), stored) | Of(CastText(stored, RawAs.Any), stored), question);
 
@@ -382,6 +383,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                 case SqlValue.Literal l:
                     return Datum(l.Value);
+
+                // A VARCHAR column reads a string as itself, a null as null, and fails over anything else (Calcite.RawNullIsSqlNull).
+                case SqlValue.Raw { Column: "VARCHAR" } r:
+                    return At(document, r.Path) switch { null or J.Null => SqlDatum.Null, J.Str s => new SqlDatum.Text(s.Value), _ => SqlDatum.Raise };
 
                 case SqlValue.Parameter p:
                     return world.Parameter(p);
@@ -724,6 +729,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         public static bool IsRaw(SqlValue value) => value is SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Raw };
 
+        /// <summary>The column a raw reading names, which overrides the one asked for; the one asked for where it names none.</summary>
+        public static RawAs? Own(SqlValue reading, RawAs? raw) => Named((reading switch { SqlValue.Raw r => r, SqlValue.Cast { Value: SqlValue.Raw r } => r, _ => null })?.Column) ?? raw;
+
+        /// <summary>The column a raw reading's name for it stands for; <c>null</c> for none.</summary>
+        public static RawAs? Named(string? column) => column switch
+        {
+            "VARIANT" => RawAs.Variant,
+            "ANY" => RawAs.Any,
+            "VARCHAR" => RawAs.Varchar,
+            _ => null,
+        };
+
         static JsonDocumentPath PathOf(SqlValue value) => value.PathRead ?? throw new InvalidOperationException(value + " reads no path.");
 
         /// <summary>
@@ -731,6 +748,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static Truths RawCompare(string op, SqlValue reading, SqlValue operand, J.Obj document, World world, RawAs? raw)
         {
+            raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
             if (reading is SqlValue.Raw && operand is SqlValue.Literal literal && (raw is not null || op is PredicateAtom.Equal or PredicateAtom.NotEqual))
             {
@@ -907,6 +925,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static Truths RawIsNull(SqlValue reading, J.Obj document, World world, RawAs? raw)
         {
+            raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
             var question = reading + " is null @ " + (stored is null ? "absent" : Documents.Json(stored));
             return (reading, stored) switch

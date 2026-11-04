@@ -104,7 +104,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// service stores as U+FFFD may meet a pattern holding one, or the cell is not told; and under the code point
         /// matcher, Azure's, a <c>CONTAINS</c> or the <c>LIKE</c> of one run between two <c>%</c> the service answers as one,
         /// where the string may hold U+0000 or the argument does: the service reads the string only up to its first U+0000,
-        /// and an argument holding one matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>).
+        /// and an argument holding one matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>). A lone
+        /// <c>%</c>, spelled <c>STARTSWITH</c> of the empty string (<see cref="AffixPattern.Written"/>), matches every string
+        /// of a cell, as the point case above already answers each of them: a matcher by code point, stored or not, places
+        /// the empty run before every string, and no exception above can hold of a pattern holding no unit (rawtyped).
         /// </summary>
         static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher)
         {
@@ -121,6 +124,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 PathCell.Point { Value: var v } => Side(AffixPattern.Matches(StringOf(v), pattern)),
                 PathCell.Strings s when replaced && s.Classes.Contains(SurrogateBand) => either,
                 PathCell.Strings s when matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern) == false && (s.Classes.Contains(NulClass) || s.Classes.Contains(HighBand)) => either,
+                PathCell.Strings when AffixPattern.Universal(pattern) => [CosmosValueClass.Matching],
                 PathCell.Strings s when s.Like?.Contains(pattern) == true => [CosmosValueClass.Matching],
                 PathCell.Strings s when s.NotLike?.Contains(pattern) == true => [CosmosValueClass.Missing],
                 _ => either,

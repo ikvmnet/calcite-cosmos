@@ -8,7 +8,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The key of a raw column's truths (h12): a raw reading, the kind of value a cell holds, the test, and the class of
+    /// The key of a raw column's truths (h12): a raw reading, the union's or one column's (rawtyped), the kind of value a cell holds, the test, and the class of
     /// the literal beside it (<see cref="CosmosValueClass.None"/> for the null test), which says both whether a column
     /// raw beside strings alone is read and whether the literal is of the value's type.
     /// </summary>
@@ -17,6 +17,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The key, as a rule computes one.</summary>
         public static RawKey Of(string reader, CosmosValueClass kind, CosmosServiceTest test, CosmosValueClass operand) => new(reader, kind, test, operand);
+
+        /// <summary>The key as the reading through one column asks it: its own column's truths, no other's (rawtyped).</summary>
+        public RawKey In(string column) => this with { Reader = PredicateAtom.InColumn(Reader, column) };
 
         /// <summary>Whether the literal is of another type than the value: across, where no column compares the two as one type.</summary>
         public bool Across => TypeOf(Kind) != TypeOf(Operand);

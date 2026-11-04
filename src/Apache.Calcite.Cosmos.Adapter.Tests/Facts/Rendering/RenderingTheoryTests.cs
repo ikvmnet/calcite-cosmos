@@ -34,8 +34,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
         /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
         /// truth value's constant beside it; h10's computed places, five (a call's reading of its place is the bundle's);
-        /// h11's pair, two; h12's raw columns' union, one, 76 in all. Each family's rules are held by name, so a rule that
-        /// moves, goes or is swapped is seen.
+        /// h11's pair, two; h12's raw columns' union, one; a raw value read through its column, one (rawtyped), 77 in all.
+        /// Each family's rules are held by name, so a rule that moves, goes or is swapped is seen.
         /// </summary>
         [Fact]
         public void TheTheoryHasAtMostEightyRules()
@@ -48,6 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "text reads its path",
                     "a raw value reads its path",
+                    "a raw value in a column reads its path through the column",
                     "a returning reads its path as its type",
                     "a cast reads what it converts",
                     "a comparison with a literal is an atom of what it reads",
@@ -93,7 +94,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["raw"] =
                 [
-                    "a raw reading's truths on a key are the union of its columns'",
+                    "a raw reading's truths on a key are the union of its columns', and a column's reading's its own",
                 ],
                 ["tag"] =
                 [
@@ -220,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(76);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(77);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
@@ -334,9 +335,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Append(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader))
                 .ToList();
 
-            // A numeric cast of the raw value is held back until a Calcite row measures it.
+            // Each raw reading again through each declared column (rawtyped).
+            built.AddRange([.. from reader in built where PredicateAtom.IsRaw(reader) || reader.EndsWith(":" + PredicateAtom.RawReader, StringComparison.Ordinal)
+                               from column in PredicateAtom.RawColumns select PredicateAtom.InColumn(reader, column)]);
+
+            // A numeric cast of the raw value is held back until a Calcite row measures it, through a column or not.
             var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)
-                || reader == PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)).ToList();
+                || PredicateAtom.Columnless(reader) == PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)).ToList();
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }

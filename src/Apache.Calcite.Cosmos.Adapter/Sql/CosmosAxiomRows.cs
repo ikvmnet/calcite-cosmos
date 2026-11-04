@@ -47,13 +47,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// One row per function a row computes: the operand its keys are of and the readers its witnesses were read
         /// through, which S reads as constant raw facts beside the keys. It merges nothing either.
         /// </summary>
-        public static IReadOnlyList<(string Function, long Subject, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms) =>
-        [
-            .. from axiom in axioms
-               from outcome in axiom.FunctionOutcomes ?? []
-               group (outcome.Subject, Readers: axiom.Readers ?? []) by outcome.Function into function
-               select (function.Key, function.First().Subject, function.First().Readers),
-        ];
+        /// <remarks>
+        /// Beside the text, each raw column that reads a string as itself and raises over every other kind that is no null
+        /// (<c>Calcite.RawNullIsSqlNull</c>'s <c>VARCHAR</c>), read through that column (rawtyped): over a string it hands the
+        /// function what the text hands it (<c>Calcite.JsonValueRendersScalarsAsText</c>), and a null as the text does,
+        /// and over anything else Calcite raises, which any answer refines.
+        /// </remarks>
+        public static IReadOnlyList<(string Function, long Subject, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms)
+        {
+            var all = axioms.ToList();
+            var asText = (from axiom in all
+                          where axiom.MeasuredOn == CosmosAxiomTarget.Calcite
+                          from column in axiom.Columns ?? []
+                          where column.Read.All(r => r.Value == (r.Key == CosmosRawColumn.String ? CosmosRawColumn.Answer.Itself : CosmosRawColumn.Answer.Raises))
+                          select PredicateAtom.RawIn(column.Name)).ToList();
+            return
+            [
+                .. from axiom in all
+                   from outcome in axiom.FunctionOutcomes ?? []
+                   group (outcome.Subject, Readers: axiom.Readers ?? []) by outcome.Function into function
+                   let readers = function.First().Readers
+                   select (function.Key, function.First().Subject, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
+            ];
+        }
 
         /// <summary>
         /// What each raw column a <c>Calcite</c> row states answers on each key, one row a column a key, whose union S's rule

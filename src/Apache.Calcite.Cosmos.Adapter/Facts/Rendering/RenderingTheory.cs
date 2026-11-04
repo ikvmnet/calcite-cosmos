@@ -138,11 +138,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var raw = Graph.DefineRuleset("raw");
             DefineTheory(measure, allowed, refutes, tabulate);
             DefineLicences(expected, matched, licence);
-            raw.DefineRule("a raw reading's truths on a key are the union of its columns'", r =>
+            raw.DefineRule("a raw reading's truths on a key are the union of its columns', and a column's reading's its own", r =>
             {
                 var (k, c, t) = r.Vars<RawKey, string, Truths>("k", "c", "t");
                 r.When(t.Is(RawColumn.Of(k, c)));
-                r.Then(RawUnion.Of().Is(Compute.Of(k, t, RawTruths.Of)));
+                r.Then(RawUnion.Of().Is(Compute.Of(k, c, t, RawTruths.Of)));
+            });
+
+            // S's alone, in the vocabulary's ruleset: a declared field read through its column (rawtyped), which F never writes.
+            Ir.Analyse.DefineRule("a raw value in a column reads its path through the column", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
+                r.When(v.Is(Ir.RawIn.Of(p, c)));
+                r.Then(Ir.Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
             });
 
             var tag = Graph.DefineRuleset("tag");

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.sql;
@@ -35,8 +36,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>Each operator, by every name in the IR's spelling it is read by, and whether Calcite declares or was measured null over a null operand.</summary>
         public static IReadOnlyList<(string Name, bool Strict)> Operators { get; } = Read(CosmosAxioms.Get(Functions).Subjects!);
 
-        /// <summary>Every reader, in <c>PredicateAtom</c>'s spelling, measured null over an absent path.</summary>
-        public static IReadOnlyList<string> Readers { get; } = CosmosAxioms.Get(Readings).Subjects!;
+        /// <summary>
+        /// Every reader, in <c>PredicateAtom</c>'s spelling, measured null over an absent path; a raw reading's measured
+        /// through each of its columns, so each column's reading of it too (rawtyped).
+        /// </summary>
+        public static IReadOnlyList<string> Readers { get; } =
+        [
+            .. CosmosAxioms.Get(Readings).Subjects!,
+            .. from reader in CosmosAxioms.Get(Readings).Subjects!
+               where reader == PredicateAtom.RawReader || reader.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal)
+               from column in PredicateAtom.RawColumns
+               select PredicateAtom.InColumn(reader, column),
+        ];
 
         static IReadOnlyList<(string Name, bool Strict)> Read(IReadOnlyList<string> measured)
         {

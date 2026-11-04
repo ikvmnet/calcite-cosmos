@@ -166,6 +166,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return value switch
             {
                 SqlValue.Text t => r.Text.Of(_path(t.Path)),
+                SqlValue.Raw { Column: { } column } w => r.RawIn.Of(_path(w.Path), column),
                 SqlValue.Raw w => r.Raw.Of(_path(w.Path)),
                 SqlValue.Typed t => r.Typed.Of(_path(t.Path), t.Type),
                 SqlValue.Cast c => r.Cast.Of(c.Target, Value(c.Value)),

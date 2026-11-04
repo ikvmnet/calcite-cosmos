@@ -7,7 +7,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 {
 
     /// <summary>
-    /// Branch-only, deleted at h16: what the owner decided of h14's triage on 2026-11-03, each push by its set and text
+    /// Branch-only, deleted at h16: what the owner decided of h14's triage on 2026-11-03, and of post1's partitions 1792 on
+    /// 2026-11-04, each push by its set and text
     /// (spec §7.2 step 4; line 6). Q3's declines are accepted by name, as correctness fixes: Calcite computes an
     /// <c>INTEGER</c>'s arithmetic in the column's type and wraps, the service never does, and no declared range bounds the
     /// column; the out-of-domain one is generated. A value <c>CASE</c> compared (3D, h31's <c>Yield</c>) and an unnest
@@ -122,6 +123,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             new(Accepted, Production, "Q3: integer overflow", @"(NOT IS_DEFINED((c.price + integer|1)) OR IS_NULL((c.price + integer|1)))"),
             new(Accepted, Production, "Q3: integer overflow", @"(NOT IS_DEFINED((c.price - integer|1)) OR IS_NULL((c.price - integer|1)))"),
             new(Accepted, Production, "Q3: integer overflow", @"(NOT IS_DEFINED((c.price - integer|3)) OR IS_NULL((c.price - integer|3)))"),
+            // 2026-11-04, after run 1: partitions 1792, both sets, accepted by name with Q3's declines.
+            new(Accepted, Emulator, "Q3: integer overflow", @"(NOT (((c.category != string|Road Runner) OR (((c.price * integer|3) > integer|5) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price) OR NOT IS_NUMBER(c.price))) AND STARTSWITH(c.id, string|B)))"),
+            new(Accepted, Production, "Q3: integer overflow", @"(NOT (((c.category != string|Road Runner) OR (((c.price * integer|3) > integer|5) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price) OR NOT IS_NUMBER(c.price))) AND STARTSWITH(c.id, string|B)))"),
             new(Accepted, Emulator, "Q3: out-of-domain math", @"(LOG(c.price) > integer|50)"),
             new(Accepted, Production, "Q3: out-of-domain math", @"(LOG(c.price) > integer|50)"),
             new(Overridden, Emulator, "a column compared with a text reading: two readings of different kinds, no pair", @"(c.e <= c.id)"),

@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public const string TypeTest = "type test";
 
         /// <summary>How a reader is read: its row, or coarse.</summary>
-        public static ReadingPrecision Of(string reader) => Rows.TryGetValue(reader, out var precision) ? precision : ReadingPrecision.Coarse;
+        public static ReadingPrecision Of(string reader) => Rows.TryGetValue(PredicateAtom.Columnless(reader), out var precision) ? precision : ReadingPrecision.Coarse;
 
     }
 

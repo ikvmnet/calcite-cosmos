@@ -83,6 +83,37 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Returns the reader of a cast to a SQL type over another reader.</summary>
         public static string CastReader(string target, string inner) => "cast:" + target + ":" + inner;
 
+        /// <summary>
+        /// The columns a raw value is read through, as <c>Calcite.RawNullIsSqlNull</c> names them: a promoted path's
+        /// <c>VARIANT</c>, an <c>ANY</c>, a field typed <c>VARCHAR</c>.
+        /// </summary>
+        public static readonly IReadOnlyList<string> RawColumns = ["VARIANT", "ANY", "VARCHAR"];
+
+        /// <summary>
+        /// Returns a reader read through one raw column: <c>raw:VARIANT</c> for <c>raw</c>, <c>cast:VARCHAR:raw:ANY</c> for
+        /// <c>cast:VARCHAR:raw</c>. The raw reading is always innermost, so the column is the reader's last segment.
+        /// </summary>
+        public static string InColumn(string reader, string column) => reader + ":" + column;
+
+        /// <summary>Returns the raw value's reader through one column: <c>raw:VARIANT</c>.</summary>
+        public static string RawIn(string column) => InColumn(RawReader, column);
+
+        /// <summary>The raw column a reader is read through, or <c>null</c> for a reader naming none.</summary>
+        public static string? ColumnOf(string reader)
+        {
+            foreach (var column in RawColumns)
+                if (reader == RawReader + ":" + column || reader.EndsWith(":" + RawReader + ":" + column, StringComparison.Ordinal))
+                    return column;
+
+            return null;
+        }
+
+        /// <summary>A reader with its raw column dropped: what the host's tables key a reading by, its column apart.</summary>
+        public static string Columnless(string reader) => ColumnOf(reader) is { } column ? reader.Substring(0, reader.Length - column.Length - 1) : reader;
+
+        /// <summary>Whether a reader is the raw value itself, read through the union or through one column.</summary>
+        public static bool IsRaw(string reader) => Columnless(reader) == RawReader;
+
         /// <summary>An integer type's limits, or <c>null</c>: what its readings raise or saturate past, and S's cells are cut at.</summary>
         public static (decimal Least, decimal Most)? IntegerLimits(string type) => type switch
         {
@@ -292,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 return On(cell.Coarse);
 
             if (Test == LikeTest)
-                return MatchesText || Reader is RawReader or "typed:VARCHAR" ? LikeOn(cell, reading.NullOn(cell, columns)) : Truths.Any;
+                return MatchesText || IsRaw(Reader) || Reader is "typed:VARCHAR" ? LikeOn(cell, reading.NullOn(cell, columns)) : Truths.Any;
 
             // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
             // anything where that read finds a value.
@@ -381,7 +412,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var pattern = StringOf(Operand!);
             var canonical = AffixPattern.Canonical(pattern);
             var renders = Reader is TextReader || Reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal);
-            var reads = renders || Reader is RawReader or "typed:VARCHAR";
+            var reads = renders || IsRaw(Reader) || Reader is "typed:VARCHAR";
             static Truths Of(bool? match) => match is bool m ? m ? Truths.True : Truths.False : Truths.True | Truths.False;
             return truths | cell switch
             {
@@ -547,13 +578,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             public static Reading? Parse(string reader)
             {
-                switch (reader)
-                {
-                    case TextReader:
-                        return new Text(structures: false);
-                    case RawReader:
-                        return new Raw();
-                }
+                if (reader == TextReader)
+                    return new Text(structures: false);
+
+                // The raw value, through every column's union or through the one its reader names (rawtyped).
+                if (IsRaw(reader))
+                    return new Raw(reader);
 
                 // A computed text place (S's Valued) is read as the text it holds: its image holds strings alone, or none.
                 if (reader is "typed:VARCHAR" or "typed:CHAR")
@@ -571,12 +601,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                     var target = rest.Substring(0, colon);
                     var inner = rest.Substring(colon + 1);
+                    var raw = IsRaw(inner);
                     return (target, inner) switch
                     {
-                        ("VARCHAR", RawReader) => new RawText(),
-                        ("CHAR", RawReader) => new Text(structures: true),
+                        ("VARCHAR", _) when raw => new RawText(reader),
+                        ("CHAR", _) when raw => new Text(structures: true),
                         ("VARCHAR" or "CHAR", TextReader) => new Text(structures: false),
-                        ("INTEGER" or "BIGINT" or "DOUBLE", TextReader or RawReader) => new NumberCast(target, inner == TextReader),
+                        ("INTEGER" or "BIGINT" or "DOUBLE", _) when raw => new NumberCast(target, false),
+                        ("INTEGER" or "BIGINT" or "DOUBLE", TextReader) => new NumberCast(target, true),
                         ("BOOLEAN", TextReader) => new BooleanCast(),
                         _ => null,
                     };
@@ -846,16 +878,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             /// <summary>
-            /// The cast to text of a raw value on a cell: its columns' union (<c>Calcite.CastOfARawValueToText</c>), S's. The
-            /// facts graph reads the rendering alone (<c>TODO.md</c>).
+            /// The cast to text of a raw value on a cell: its columns' union (<c>Calcite.CastOfARawValueToText</c>), or the one
+            /// column its reader names, S's. The facts graph reads the rendering alone (<c>TODO.md</c>).
             /// </summary>
-            sealed class RawText() : Text(structures: true)
+            /// <param name="castOfRaw">The reading's spelling, which keys its columns' truths.</param>
+            sealed class RawText(string castOfRaw) : Text(structures: true)
             {
 
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.CastOfARawValueToText", "Calcite.TextOrderIsByCodeUnit");
-
-                /// <summary>The reading's spelling, which keys its columns' truths.</summary>
-                const string CastOfRaw = "cast:VARCHAR:" + RawReader;
 
                 public override ValueSet<string> Rests => Rows;
 
@@ -863,8 +893,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// A comparison on a cell through the union: where a column casts the value itself, the rendering compared; its
                 /// null and its raise as the union says. None for a cell of no one kind.
                 /// </summary>
-                static Truths? AsText(PathCell cell, string op, string literal, RawTruths columns, Truths rendered) =>
-                    RawKey.On(CastOfRaw, cell, op, literal) is { } key ? columns[key] & (rendered | U | R) : null;
+                Truths? AsText(PathCell cell, string op, string literal, RawTruths columns, Truths rendered) =>
+                    RawKey.On(castOfRaw, cell, op, literal) is { } key ? columns[key] & (rendered | U | R) : null;
 
                 /// <summary>
                 /// Whether a number of the cell may render as the text through an <c>ANY</c>: a long as its digits, which hold no
@@ -897,7 +927,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => IsString(literal) == false ? Order(cell.Coarse, op, literal)
                     : AsText(cell, op, literal, columns, base.OrderOn(cell, op, literal)) ?? base.OrderOn(cell, op, literal);
 
-                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(CastOfRaw, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
+                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(castOfRaw, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
 
             }
 
@@ -910,7 +940,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// and an unequal one is not, or the comparison is unknown. A value of another type is not equal, or the
             /// comparison is unknown, for the same reason.
             /// </remarks>
-            sealed class Raw : Reading
+            /// <param name="raw">The reading's spelling, which keys its columns' truths: <c>raw</c>, or <c>raw</c> in one column.</param>
+            sealed class Raw(string raw) : Reading
             {
 
                 public override Truths Equal(State state, string literal) => state switch
@@ -958,8 +989,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// comparison on the cell, <paramref name="alike"/>, which only a literal of the value's type asks; its null, its
                 /// answer across types and its raise as the union says. None for a cell of no one kind.
                 /// </summary>
-                static Truths? Through(PathCell cell, string op, string literal, RawTruths columns, Func<Truths> alike) =>
-                    RawKey.On(RawReader, cell, op, literal) is { } key ? columns[key] & ((key.Across ? Truths.Any : alike()) | U | R) : null;
+                Truths? Through(PathCell cell, string op, string literal, RawTruths columns, Func<Truths> alike) =>
+                    RawKey.On(raw, cell, op, literal) is { } key ? columns[key] & ((key.Across ? Truths.Any : alike()) | U | R) : null;
 
                 /// <summary>
                 /// A string is equal to the one with its units alone (<c>Calcite.RawStringEqualityIsOrdinal</c>), and a number
@@ -990,7 +1021,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 }) ?? Order(cell.Coarse, op, literal) | R;
 
                 /// <summary>As the union says: true of a null alone, and a raise where a column reads no value of the kind.</summary>
-                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(RawReader, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
+                public override Truths NullOn(PathCell cell, RawTruths columns) => RawKey.On(raw, cell, NullTest, null) is { } key ? columns[key] : Null(cell.Coarse);
 
             }
 

@@ -7275,9 +7275,9 @@ guarded form for it is implied and no more.
 renders it, `{a=1}` or `[1]`, between its brackets: so a structure may match a pattern whose first run begins with the
 opening bracket, or begins with `%`, and whose last run ends with the closing one, or ends with `%`, and misses every
 other (`Renderings.MayRenderStructureLike`); `%` alone matches it. So `'b%'` misses every structure, and over a
-category that may hold anything the positive affix is proved, as the column of text's is. Its negation is not: the
-`ANY` renders a number or a boolean the negation keeps where the `VARIANT` reads null and drops it, and the reading
-names no column to choose between them (`TODO.md`).
+category that may hold anything the positive affix is proved, as the column of text's is. Its negation is not, over the
+union: the `ANY` renders a number or a boolean the negation keeps where the `VARIANT` reads null and drops it. Since
+rawtyped a declared field's reading names its column, which chooses (*The raw reading through its column*).
 
 **What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
 graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
@@ -8420,7 +8420,8 @@ so a comparison of two numbers is Unproven.
 **What moved.** The raw reading and its cast to text read three columns at once (the IR does not say which), and the
 cells took their union in C#, each column's answer looked up in a host table. The table is gone: its three columns are
 `Calcite.RawNullIsSqlNull`'s, `CosmosAxiomRows.ReadColumns` reads them into S as one `rawcolumn` row a column a key, and
-one rule, *a raw reading's truths on a key are the union of its columns'*, joins them into `rawunion` (77 rules).
+one rule, *a raw reading's truths on a key are the union of its columns'*, joins them into `rawunion` (76 rules; since
+rawtyped it also keeps each column's own, *…and a column's reading's its own*).
 
 **The key carries the literal's class.** `RawKey(Reader, Kind, Test, Operand)`: the reading (`raw` or
 `cast:VARCHAR:raw`), the cell's kind, the test, and the literal's class (none for the null test). The spec's key held
@@ -8542,8 +8543,8 @@ anything.
 by name, and the triage reads each decision by the push's set and text, for the reason it was taken for alone. Q3's
 declines are **accepted** as correctness fixes: 43 pushes under `Production` and 50 under `Emulator`, each an `INTEGER`
 column with a small integer added, subtracted or multiplied and then compared or null-tested, which Calcite computes in
-the column's type and wraps where the service never does, and nothing bounds the column; and the one generated push
-outside its function's domain. Each is computed in process: RU, never rows. A value `CASE` compared and an unnest element
+the column's type and wraps where the service never does, and nothing bounds the column; the one generated push
+outside its function's domain; and (2026-11-04, after post1) partitions 1792 under both sets, of the same class. Each is computed in process: RU, never rows. A value `CASE` compared and an unnest element
 are **overridden** for 3A, their translator code kept until h31's `Yield` and 3D or 3E; a column compared with a text
 reading and `MOD`, whose pushes are the emulator's alone, are overridden under the emulator rule, as are its own two
 refusals (the case mapping beyond ASCII and #246's stored order). A push no name lists, or one read again for another
@@ -8701,6 +8702,62 @@ Proven. At the gate, real pushes left neither Proven nor decided by name, h14b's
 - **`NOT STARTSWITH(c.category, '')`** under `Emulator`, the order differential's: the union again, `'%'` matching
   every rendering, a sound refusal.
 - **Partitions 1792**, under both: Q3's class, an `INTEGER` column multiplied and compared, but no name the owner gave.
+
+### The raw reading through its column (rawtyped)
+
+**What moved.** Under S's reading alone (`places`), the loader names the column a declared field is read through,
+`SqlValue.Raw.Column`: `VARIANT`, `ANY` or `VARCHAR`, the three of `Calcite.RawNullIsSqlNull`. A `CHAR` field, an
+accessor, an item chain and the cast-to-`ANY` marker name none and read the union as before, and so do F and every
+planning path, which never set `places`: the eight plan digests at the commit are byte-equal to the parent's
+(`Production` `3dc62a38…`, `Emulator` `542c9f12…`).
+
+**One reader a column, one rule more.** A named reading is the reader `raw:VARIANT`, its cast to text
+`cast:VARCHAR:raw:VARIANT`, its path read through the term `raw in(path, column)`, which one analysis rule reads as that
+reader (*a raw value in a column reads its path through the column*), S's own and so none of the facts graph's 47. Its
+edges, precision and shape are the unnamed reader's (`PredicateAtom.Columnless`), a column reading the same literals.
+The h12 rule now writes each column's own truths into `rawunion` beside the union, under the key whose reader names the
+column (`RawKey.In`), so a named reading's cells ask its column alone and the union stays one rule: 77 rules, one the
+spec has not (`TODO.md`).
+
+**A function over a `VARCHAR` column.** The function rows read a call's operand through the text
+(`Calcite.JsonValueRendersScalarsAsText`). A column that reads a string as itself and raises over every other kind but
+null, the row's `VARCHAR`, hands a function what the text does over a string, a null as null, and over anything else
+Calcite raises, which any answer refines; so `CosmosAxiomRows.ReadFunctionReads` adds its reader beside the text's,
+derived from the row's column rather than listed. `CONCAT(c.id, '!')` over `id` is read so.
+
+**An affix's negation.** Over a field declared `VARIANT`, the cast to text is a string itself, a number or a boolean
+null and a structure a raise. `NOT LIKE 'b%'` then keeps no number or boolean, where the service's `NOT STARTSWITH` is
+undefined over each, and they agree; over the union the `ANY`'s rendering kept them. The seven `Emulator` affixes over
+`cast(VARCHAR, raw(category))` the affix step left "Unproven otherwise" were two cases: the affix step read a structure
+under the cast as either, and post1's `Renderings.MayRenderStructureLike` proved the four positive ones (`NOT NOT
+STARTSWITH(c.category, 'B')`, `LIKE '%b'`, `STARTSWITH 'b'` and `'bi'`); the three negations (`NOT LIKE '%!'`, `NOT
+STARTSWITH 'b'` and partitions 289's compound) stayed on the union, and the column now proves them.
+
+**A lone `%`.** `AffixPattern.Written` spells it `STARTSWITH` of the empty string. The service's side placed a point's
+string by its match and answered either over a cell of strings the pattern had not cut, which `%` cuts nothing of. A
+matcher by code point, stored or not, places the empty run before every string, as the point case already answers each,
+and no exception (a lone surrogate, U+0000, a stored escape) holds of a pattern holding no unit, so `ServiceLeaf` answers
+a lone `%` over any cell of strings as matching. The emulator's `NOT STARTSWITH(c.category, '')`, the order
+differential's, is proved so.
+
+**What the column takes away.** A `VARIANT` has no ordering: Calcite compiles no `<` over one, so each cell of
+`c.category > 'a'` over a declared `VARIANT` is a raise alone, and the agreement the union proved through its `ANY`
+column is vacuous, which S lifts not (*Vacuity is a table*). Eight `Production` type-test pushes at the gate are so
+(partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863), the gate proving the text and S lifting no form. The vacuity
+policy is the owner's, so the column reads as the row says and the pushes wait on a decision (`TODO.md`).
+
+**Population D through each column.** Each raw atom is drawn again through one column, bare and negated, after the rest
+so the stream before moves not, a `VARCHAR` beside a literal that is no string read as `ANY`, since the loader casts a
+`VARCHAR` field beside one. `IrEval` reads a named column's own answer alone, a `VARCHAR` reading over anything but a
+string, null or absent a raise. The cell check holds every named cell to Calcite, and the plant still catches each
+column dropped (`RenderingPopulationDTests.ARawColumnDroppedFromTheUnionIsCaught`).
+
+**What line 6 reads now.** Over a fresh whole-suite capture, real pushes left neither Proven nor decided by name,
+post1's census to this one (`Production` / `Emulator`): type tests 0 / 0 to 8 / 0, the `VARIANT` orderings above; H 0 / 0
+to 1 / 0, `c.flag = true` beside a guard in `CosmosBooleanPlanningTests.AGuardedBooleanPushesBesideItsGuard`, Unproven in
+post1's capture too and now the census's example of the push, reading no raw value; F, G 13 / 8 to 7 / 3, six and three
+`LIKE`'s `_` and one case-folded `ENDSWITH`; I 0 / 0; J1 14 / 0 to 5 / 0, the case mapping. Every push named above
+is Proven under each set it ran in, partitions 1792 is accepted, and no refutation, false or not yet reproduced.
 
 ## Differential testing
 
