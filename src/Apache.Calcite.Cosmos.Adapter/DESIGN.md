@@ -8467,9 +8467,8 @@ negation were not built, and S stays at 76.
 
 **What it left**, each Unproven for a piece S does not have, not a reading: an affix form (no `ServiceFormKind` writes
 `STARTSWITH` or `LIKE`; Azure's rows N5–N7 are owed by run 1); function rows for `MOD`, `ABS`, `CEIL`, `FLOOR` and
-`SIGN`; `SUBSTRING` from 0; a cast of the text to `BOOLEAN`, which no reader reads though
-`Calcite.CastToBooleanParses` states it; a column compared with a text reading, two readings of different kinds; and
-the two-path row's absent and null cells on the emulator. Under `Emulator` one more is
+`SIGN`; `SUBSTRING` from 0; a column compared with a text reading, two readings of different kinds; and the two-path
+row's absent and null cells on the emulator. (A cast of the text to `BOOLEAN` was among them until the readers below.) Under `Emulator` one more is
 refused: an ordering over strings that may hold U+0000 or the high band, which the emulator's stored order makes
 anything.
 
@@ -8483,6 +8482,34 @@ are **overridden** for 3A, their translator code kept until h31's `Yield` and 3D
 reading and `MOD`, whose pushes are the emulator's alone, are overridden under the emulator rule, as are its own two
 refusals (the case mapping beyond ASCII and #246's stored order). A push no name lists, or one read again for another
 reason, stays open.
+
+**Two readers the owner ordered built (2026-11-03)**, each S's alone until the switch, under `places`, so F's terms and
+the plans stay as they were:
+
+- **The text cast to `BOOLEAN`**, the way a view types a boolean column, is the text's parse: a reader of its own,
+  `cast:BOOLEAN:text`, whose edges row cuts at the literals alone. A boolean reads as itself; a null, an absent path and
+  a structure as null; an ASCII string trimmed of every character up to U+0020, as `String.trim` trims, and spelling
+  `true` or `false` in any ASCII case as that boolean, and every other ASCII string and every number as a raise; a string
+  holding anything beyond ASCII as either boolean or a raise, since no case folding past ASCII was measured but
+  `"falſe"`'s, which raises (`Calcite.CastToBooleanParses`, restated with the trim and the case
+  `IrEvalCalciteTests.TheCastOfTheTextToBooleanAgreesWithCalcite` measured). So over a path the container declares a
+  boolean S proves what `TryStoredBoolean` argues: the path written bare, its negation, its comparisons with a boolean
+  and its null test; where the path may hold a string it proves nothing, `"TRUE"` being true to Calcite and a string to
+  the service. A number raises on every row, which anything but a failure refines. A truth test is read as the `CASE`
+  Calcite defines it as, so under `Production` it waits with the other ternaries on S1. The reader is coarse in the
+  precision table, which only F reads, and F never builds it before the switch.
+- **A schema's own `IS_DEFINED`.** A call through a connection carries Calcite's `SqlUserDefinedFunction` around the
+  declaration `CosmosSchemaFunctions` holds, another operator instance with the one in-process body
+  (`CosmosTypeTestImplementor`). The loader reads it as the operator's test where the call's function is, by reference,
+  that table's own declaration of `CosmosOperators.IsDefined` (`CosmosSchemaFunctions.Presents`). A function merely named
+  `IS_DEFINED`, which a schema may define to mean anything, and a declaration the table does not hold stay opaque.
+
+What they moved, by the triage over a fresh whole-suite capture (Unproven to Proven, `Production` / `Emulator`): type
+tests 1 / 2, every schema `IS_DEFINED`, so line 6 passes for type tests under both sets; H 3 / 3 and F, G 4 / 2, the
+`BOOLEAN` casts. H's other 3 `Production` casts are truth tests, read as a `CASE`, and now wait on S1 with Q2. So no
+push is Unproven for either reading and nothing was refuted. For the bare path, its negation, and a truth test under
+`Production`, what S proves is its own form (`c.flag = true`), and the translator's text stays Unproven beside it. That
+is enough for line 6, and it is the form S writes from h15.
 
 ## Differential testing
 

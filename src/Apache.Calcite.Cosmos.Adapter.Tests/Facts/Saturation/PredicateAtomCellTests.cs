@@ -274,7 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             PredicateAtom.RawReader => true,
             PredicateAtom.TextReader or "cast:VARCHAR:raw" => IsString(literal),
-            "typed:BOOLEAN" => TypeOf(literal) == BooleanType,
+            "typed:BOOLEAN" or "cast:BOOLEAN:text" => TypeOf(literal) == BooleanType,
             _ => IsNumber(literal),
         }));
 

@@ -195,6 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PathValues", ["AllKinds", "Anything", "AnythingThere", "Lattice", "Rendered"], StaticFact, "the lattice and its tops"),
             ("Facts.Saturation.PredicateAtom", ["Parsed"], StaticFact, "each reader spelling's parse: keys from a finite grammar, values stateless"),
             ("Facts.Saturation.PredicateAtom", ["TypeTests"], StaticFact, "the kinds each type test is TRUE of"),
+            ("Facts.Saturation.PredicateAtom.Reading.BooleanCast", ["Parses", "Rows"], StaticFact, "a reader's rows and the kinds it parses"),
             ("Facts.Saturation.PredicateAtom.Reading.NumberCast", ["Converts", "DecimalRows", "TextRows"], StaticFact, "a reader's rows"),
             ("Facts.Saturation.PredicateAtom.Reading.Raw", ["Rows"], StaticFact, "a reader's rows"),
             ("Facts.Saturation.PredicateAtom.Reading.RawText", ["Rows"], StaticFact, "a reader's rows"),

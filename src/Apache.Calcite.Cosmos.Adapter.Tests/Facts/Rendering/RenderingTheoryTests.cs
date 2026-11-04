@@ -330,6 +330,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 // A computed text place's reader (h10): the loader types a call VARCHAR or CHAR.
                 .Concat(new[] { "VARCHAR", "CHAR" }.Select(PredicateAtom.TypedReader))
                 .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
+                // The text's parse as a boolean, which S's reading builds (h14's triage).
+                .Append(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader))
                 .ToList();
 
             // A numeric cast of the raw value is held back until a Calcite row measures it.

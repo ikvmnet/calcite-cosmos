@@ -105,7 +105,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <param name="places">
             /// Reads, outside the legacy reading, a call the function rows name as a computed place (h10) and two readings
             /// of one kind compared as a pair (h11); a number compared with <c>RETURNING DOUBLE</c> and a null test of a plain
-            /// <c>JSON_QUERY</c>, a text boxed as a <c>VARIANT</c>, and a truth reading as a whole condition (h14). Only S's tests read them until its switch (h15), which lists the IR
+            /// <c>JSON_QUERY</c>, a text boxed as a <c>VARIANT</c>, and a truth reading as a whole condition (h14); the text cast to
+            /// <c>BOOLEAN</c> and a schema's own <c>IS_DEFINED</c> (the owner's decisions, 2026-11-03). Only S's tests read them until its switch (h15), which lists the IR
             /// moves they make: F's terms and memo keys stay as they were, each such call and comparison opaque to F.
             /// </param>
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false, bool places = false)
@@ -242,8 +243,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     // The service's test of the document, which a weakening writes and a caller may: what it asks is the
                     // path's whatever reads it, so it is read of the raw value. A cast is no accessor the in-process body
-                    // can take apart, and is not read.
-                    case var _ when ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) && operands.size() == 1:
+                    // can take apart, and is not read. A schema's own declaration of it is Calcite's wrapping, with the one
+                    // body, read by reference too and by S alone until h15, F's terms unchanged.
+                    case var _ when (ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) || _places && CosmosSchemaFunctions.Presents(call.getOperator(), CosmosOperators.IsDefined))
+                        && operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath defined } read && read is not SqlValue.Cast
                             ? new SqlPredicate.IsDefined(new SqlValue.Raw(defined))
                             : Opaque(node);
@@ -403,7 +406,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             static string? KindOf(SqlValue reading) => reading switch
             {
                 SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" } or SqlValue.Call { Type: "VARCHAR" or "CHAR" } => "text",
-                SqlValue.Typed { Type: "BOOLEAN" } or SqlValue.Call { Type: "BOOLEAN" } => "truth",
+                SqlValue.Typed { Type: "BOOLEAN" } or SqlValue.Cast { Target: "BOOLEAN" } or SqlValue.Call { Type: "BOOLEAN" } => "truth",
                 SqlValue.Typed or SqlValue.Cast or SqlValue.Call { Type: not null } => "number",
                 _ => null,
             };
@@ -549,6 +552,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     SqlValue.Typed { Type: "BOOLEAN" } => literal.Kind == "boolean",
                     SqlValue.Typed => literal.IsNumber,
                     SqlValue.Cast { Target: "VARCHAR" or "CHAR" } => literal.Kind == "string",
+                    SqlValue.Cast { Target: "BOOLEAN" } => literal.Kind == "boolean",
                     SqlValue.Cast => literal.IsNumber,
                     SqlValue.Call { Type: "VARCHAR" or "CHAR" } => literal.Kind == "string",
                     SqlValue.Call { Type: "BOOLEAN" } => literal.Kind == "boolean",
@@ -827,6 +831,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (_legacy == false && operand is RexInputRef && (target == SqlTypeName.INTEGER || target == SqlTypeName.BIGINT || target == SqlTypeName.DOUBLE)
                     && Value(operand) is SqlValue.Text rendering)
                     return new SqlValue.Cast(target!.getName(), rendering);
+
+                // The text cast to BOOLEAN parses it (Calcite.CastToBooleanParses), the way a view types a boolean column: read
+                // by S alone until h15, F's terms unchanged. Over anything but the text no row measures the cast.
+                if (target == SqlTypeName.BOOLEAN)
+                    return _places && Value(operand) is SqlValue.Text parsed ? new SqlValue.Cast(target.getName(), parsed) : null;
 
                 if (CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
                     return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;

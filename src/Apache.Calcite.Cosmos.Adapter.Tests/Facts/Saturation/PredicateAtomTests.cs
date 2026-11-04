@@ -300,7 +300,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.TypedReader("DECIMAL"),
             PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Raw), PredicateAtom.CastReader("DOUBLE", Text),
-            PredicateAtom.CastReader("VARCHAR", Raw),
+            PredicateAtom.CastReader("VARCHAR", Raw), PredicateAtom.CastReader("BOOLEAN", Text),
         };
 
         internal static readonly string[] Literals = { Of("30"), Of("x"), Of("true"), Of("[1]"), Of("null"), Of(30m), Of(30.5m), Of(-3000000000m), Of(true), Of(1e30) };

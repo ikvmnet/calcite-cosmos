@@ -38,8 +38,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <b>The readings</b>, by name: <c>text</c> is <c>JSON_VALUE</c> read as text, whose rendering of a scalar is the
     /// accessor's and which answers SQL null for an absent path, a null, an object and an array. <c>raw</c> is the value
     /// the service holds: a promoted column, the split rule's <c>ANY</c> marker, <c>id</c>. <c>typed:T</c> is a
-    /// <c>RETURNING T</c>. <c>cast:T:r</c> is a cast to <c>T</c> over reading <c>r</c>: a numeric cast, or the cast to
-    /// text over a raw value, which renders an object and an array as well.
+    /// <c>RETURNING T</c>. <c>cast:T:r</c> is a cast to <c>T</c> over reading <c>r</c>: a numeric cast, the cast to
+    /// text over a raw value, which renders an object and an array as well, or the text's parse as a boolean.
     /// </para>
     /// </remarks>
     /// <param name="Reader">How the value is read: <c>text</c>, <c>raw</c>, <c>typed:T</c> or <c>cast:T:r</c>.</param>
@@ -545,6 +545,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         ("CHAR", RawReader) => new Text(structures: true),
                         ("VARCHAR" or "CHAR", TextReader) => new Text(structures: false),
                         ("INTEGER" or "BIGINT" or "DOUBLE", TextReader or RawReader) => new NumberCast(target, inner == TextReader),
+                        ("BOOLEAN", TextReader) => new BooleanCast(),
                         _ => null,
                     };
                 }
@@ -1107,6 +1108,92 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                     return Placed(op, sides, _type != "DOUBLE" || integral ? R : Truths.None);
                 }
+
+            }
+
+            /// <summary>
+            /// A cast of the text accessor to <c>BOOLEAN</c>, which parses the rendering (<c>Calcite.CastToBooleanParses</c>):
+            /// a stored boolean reads as itself, a null, an absent path and a structure as null, a string spelling a boolean as
+            /// that boolean, and anything else raises, a number among them.
+            /// </summary>
+            /// <remarks>
+            /// A string is decided only where it is ASCII: trimmed of every character up to U+0020, as Java's <c>String.trim</c>
+            /// trims, and read in any ASCII case, as measured (<c>IrEvalCalciteTests.TheCastOfTheTextToBooleanAgreesWithCalcite</c>);
+            /// any other string may read as either boolean or raise, no case folding beyond ASCII having been measured but
+            /// <c>"falſe"</c>'s, which raises. A number's rendering spells no boolean, so it raises. A declaration that the
+            /// path holds a boolean is what leaves the cast the stored value.
+            /// </remarks>
+            sealed class BooleanCast : Reading
+            {
+
+                static readonly ValueSet<string> Parses = ValueSet.Of(BooleanType, StringType);
+
+                static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.JsonValueReadsStructureAsNull", "Calcite.CastToBooleanParses");
+
+                public override ValueSet<string> Rests => Rows;
+
+                /// <summary>The boolean a stored string parses as; <c>null</c> where it is not decided here.</summary>
+                static bool? Parsed(string text)
+                {
+                    if (Decided(text) == false)
+                        return null;
+
+                    var trimmed = text.Trim(Renderings.JavaTrims);
+                    return string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase) ? true : string.Equals(trimmed, "false", StringComparison.OrdinalIgnoreCase) ? false : null;
+                }
+
+                /// <summary>Whether a stored string is decided to raise: ASCII, and spelling no boolean however trimmed and cased.</summary>
+                static bool Raises(string text) => Decided(text) && Parsed(text) is null;
+
+                static bool Decided(string text) => text.All(c => c <= '\u007F');
+
+                /// <summary>What a test of the value read answers on a state: of a boolean read, by <paramref name="boolean"/>; UNKNOWN of null; a raise.</summary>
+                static Truths Read(State state, Func<bool, Truths> boolean) => state switch
+                {
+                    State.Absent or State.Null or State.Structure => U,
+                    State.Scalar { Value: var v } when TypeOf(v) == BooleanType => boolean(v == Of(true)),
+                    State.Scalar { Value: var v } when IsString(v) => Parsed(StringOf(v)) is bool b ? boolean(b) : Raises(StringOf(v)) ? R : boolean(true) | boolean(false) | R,
+                    State.Scalar { Value: var v } when IsNumber(v) => R,
+                    State.AnyNumber => R,
+                    State.AnyString => boolean(true) | boolean(false) | R,
+                    _ => Truths.Any | R,
+                };
+
+                public override Truths Equal(State state, string literal) =>
+                    TypeOf(literal) == BooleanType ? Read(state, b => b == (literal == Of(true)) ? T : F) : Truths.Any | R;
+
+                // Calcite orders FALSE before TRUE; nothing finer is said of an ordering than that a boolean read gives one.
+                public override Truths Order(State state, string op, string literal) => TypeOf(literal) == BooleanType ? Read(state, _ => T | F) : Truths.Any | R;
+
+                // Calcite takes the null test of a cast to its operand's where it stands alone, and not always beside others.
+                public override Truths Null(State state) => state switch
+                {
+                    State.Absent or State.Null or State.Structure => T,
+                    State.Scalar { Value: var v } when TypeOf(v) == BooleanType => F,
+                    State.Scalar or State.AnyString or State.AnyNumber => F | R,
+                    _ => Truths.Any | R,
+                };
+
+                // Over what is no boolean a cell reads the parameter as the null test does (OnCell), which is its operand's:
+                // nothing finer than anything.
+                public override Truths Parameter(State state) =>
+                    state is State.Scalar { Value: var v } && TypeOf(v) == BooleanType || state is State.Absent or State.Null or State.Structure ? Read(state, _ => T | F | U) : Truths.Any | R;
+
+                public override PathValues KeptEqual(string literal) => TypeOf(literal) == BooleanType
+                    ? PathValues.Join(PathValues.Meet(PathValues.OfKinds(ValueSet.Of(BooleanType)), PathValues.OneOf(ValueSet.Of(literal))), PathValues.OfKinds(ValueSet.Of(StringType)))
+                    : PathValues.Anything;
+
+                public override PathValues KeptUnequal(string literal) => TypeOf(literal) == BooleanType
+                    ? PathValues.Join(PathValues.Meet(PathValues.OfKinds(ValueSet.Of(BooleanType)), PathValues.Not(literal)), PathValues.OfKinds(ValueSet.Of(StringType)))
+                    : PathValues.Anything;
+
+                public override PathValues KeptOrder(string op, string literal) => TypeOf(literal) == BooleanType ? PathValues.OfKinds(Parses) : PathValues.Anything;
+
+                // FALSE of a number too, where the null test is its operand's.
+                public override PathValues KeptNull(bool truth) =>
+                    truth ? PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind, NullType, ObjectType, ArrayType)) : PathValues.OfKinds(PathValues.Rendered);
+
+                public override PathValues KeptParameter() => PathValues.OfKinds(PathValues.Rendered);
 
             }
 

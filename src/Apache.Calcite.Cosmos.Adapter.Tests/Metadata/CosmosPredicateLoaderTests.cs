@@ -162,6 +162,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         [Fact]
+        public void TheTextCastToBooleanIsItsParseWhereSReads()
+        {
+            var flag = P("flag");
+            var parsed = new SqlValue.Cast("BOOLEAN", Text(flag));
+            var cast = _rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), JsonValue("flag"));
+            LoadPlaces(cast).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(parsed, "=", Lit(true)));
+            LoadPlaces(Call(SqlStdOperatorTable.NOT, cast)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(Cmp(parsed, "=", Lit(true))));
+            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, cast, _rex.makeLiteral(false))).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(parsed, "=", Lit(false)));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, cast)).Conjuncts.Should().ContainSingle().Which.Should().Be(IsNull(parsed));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NOT_TRUE, cast)).Conjuncts.Should().ContainSingle()
+                .Which.Should().Be(new SqlPredicate.Case(Cmp(parsed, "=", Lit(true)), new SqlPredicate.Constant(false), new SqlPredicate.Constant(true)));
+
+            // A text field cast is the same parse; a raw value's cast no row measures, and F's terms stay as they were until h15.
+            LoadPlaces(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), TextField)).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Cast("BOOLEAN", Text(Label)), "=", Lit(true)));
+            LoadPlaces(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), Variant)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>();
+            Load(cast).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+            new CosmosPredicateLoader.Loading(_fields, _readings, "c", legacy: true, places: true).Statement([cast]).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>();
+        }
+
+        /// <summary>
+        /// A schema's own <c>IS_DEFINED</c>, Calcite's wrapping of the declaration <see cref="CosmosSchemaFunctions"/> holds, is
+        /// the operator's test where S reads; a function merely named so, or a declaration of it this table does not hold, is
+        /// opaque, as is the schema's in F's reading until h15.
+        /// </summary>
+        [Fact]
+        public void ASchemasOwnIsDefinedIsTheTestWhereSReads()
+        {
+            org.apache.calcite.sql.SqlOperator Wrapped(org.apache.calcite.schema.Function function) =>
+                new org.apache.calcite.sql.validate.SqlUserDefinedFunction(new org.apache.calcite.sql.SqlIdentifier("IS_DEFINED", org.apache.calcite.sql.parser.SqlParserPos.ZERO),
+                    org.apache.calcite.sql.SqlKind.OTHER_FUNCTION, ReturnTypes.BOOLEAN, null, null, function);
+
+            var declared = CosmosSchemaFunctions.Instance.get("IS_DEFINED");
+            declared.size().Should().Be(1);
+            var schema = Call(Wrapped((org.apache.calcite.schema.Function)declared.iterator().next()), JsonValue("label"));
+            LoadPlaces(schema).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.IsDefined(Raw(Label)));
+            LoadPlaces(Call(SqlStdOperatorTable.NOT, schema)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(new SqlPredicate.IsDefined(Raw(Label))));
+            Load(schema).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+
+            var unheld = Call(Wrapped(new CosmosSchemaFunction(CosmosOperators.IsDefined, 1)), JsonValue("label"));
+            LoadPlaces(unheld).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("a declaration this table does not hold is no schema's own");
+            var named = new org.apache.calcite.sql.SqlFunction("IS_DEFINED", org.apache.calcite.sql.SqlKind.OTHER_FUNCTION, ReturnTypes.BOOLEAN, null, OperandTypes.ANY,
+                org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_FUNCTION);
+            LoadPlaces(Call(named, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("a function merely named IS_DEFINED may mean anything");
+            LoadPlaces(Call(CosmosOperators.IsString, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.TypeTest>();
+        }
+
+        [Fact]
         public void ANumericCastIsACastOfTheReadingItConverts()
         {
             One(Call(SqlStdOperatorTable.GREATER_THAN, _rex.makeCast(Sql(SqlTypeName.INTEGER), JsonValue("n")), Num(500)))

@@ -647,8 +647,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 ? new SqlDatum.Exact(whole) : SqlDatum.Raise,
             "DOUBLE" => Renderings.ParseDouble(text) is double d ? new SqlDatum.Double(d) : SqlDatum.Raise,
             "DECIMAL" => Renderings.ParseDecimal(text) is string number ? IsExactNumber(number) ? Datum(number) : new SqlDatum.Decimal(text) : SqlDatum.Raise,
+            "BOOLEAN" => JavaBoolean(text) is bool truth ? new SqlDatum.Boolean(truth) : SqlDatum.Raise,
             _ => throw new NotSupportedException(target),
         };
+
+        /// <summary>
+        /// Calcite's parse of text as a boolean (<c>Calcite.CastToBooleanParses</c>): trimmed of every character up to
+        /// U+0020, as Java's <c>String.trim</c> trims, then <c>TRUE</c> or <c>FALSE</c> in any ASCII case, <c>"falſe"</c>
+        /// not folded; <c>null</c>, a raise, for anything else.
+        /// </summary>
+        static bool? JavaBoolean(string text)
+        {
+            var trimmed = text.Trim(Enumerable.Range(0, 33).Select(c => (char)c).ToArray());
+            static bool Same(string a, string b) => a.Length == b.Length && a.Zip(b).All(p => p.First < 128 && char.ToUpperInvariant(p.First) == p.Second);
+
+            return Same(trimmed, "TRUE") ? true : Same(trimmed, "FALSE") ? false : null;
+        }
 
         /// <summary>
         /// A comparison of two values: UNKNOWN where either is null, a raise where either raises.

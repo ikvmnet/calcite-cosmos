@@ -35,6 +35,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.RawReader] = Row(CutKind.Double),
             [PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)] = Row(),
             [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
+            // The text's parse as a boolean (Calcite.CastToBooleanParses), S's alone until h15: a boolean read as itself.
+            [PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader)] = Row(),
             // A computed text place's (h10), read as text.
             [PredicateAtom.TypedReader("VARCHAR")] = Row(),
             [PredicateAtom.TypedReader("CHAR")] = Row(),

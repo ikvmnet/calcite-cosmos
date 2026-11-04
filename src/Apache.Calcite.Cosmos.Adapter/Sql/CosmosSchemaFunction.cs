@@ -65,6 +65,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _parameters = parameters;
         }
 
+        /// <summary>Gets the operator presented.</summary>
+        internal SqlFunction Operator => _operator;
+
         /// <inheritdoc />
         public java.util.List getParameters()
         {

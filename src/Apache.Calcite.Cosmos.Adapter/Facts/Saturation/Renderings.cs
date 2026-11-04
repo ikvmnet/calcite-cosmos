@@ -174,7 +174,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         // which reads this class, builds none.
         static string Trimmed(string text) => text.Trim(JavaTrims);
 
-        static readonly char[] JavaTrims = [.. Enumerable.Range(0, ' ' + 1).Select(c => (char)c)];
+        /// <summary>What Java's <c>String.trim</c> takes off either end: every character up to U+0020.</summary>
+        internal static readonly char[] JavaTrims = [.. Enumerable.Range(0, ' ' + 1).Select(c => (char)c)];
 
         /// <summary>
         /// Whether Calcite's cast of text to <c>BIGINT</c> reads it as a timestamp rather than parsing it: text that starts

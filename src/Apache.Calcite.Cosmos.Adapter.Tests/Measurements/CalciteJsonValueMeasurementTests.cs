@@ -624,6 +624,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             // What a declaration rules out.
             Ask($"CAST(JSON_VALUE({Document("\"TRUE\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "a string spelling a boolean is parsed, in any case");
             Ask($"CAST(JSON_VALUE({Document("\" false \"")}, '$.v') AS BOOLEAN)").Value.Should().Be("False", "and trimmed");
+            Ask($"CAST(JSON_VALUE({Document("\"\\tTRUE\\u0000\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "of every character up to U+0020, as String.trim trims");
+            Ask($"CAST(JSON_VALUE({Document("\"fal\\u017Fe\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("the case is ASCII's: a long s is no s");
+            Ask($"CAST(JSON_VALUE({Document("\"yes\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("and any other text raises");
             Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("a number raises");
         }
 
