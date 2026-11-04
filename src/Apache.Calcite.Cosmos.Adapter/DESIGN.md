@@ -8628,6 +8628,25 @@ the two-path form, and an image for a function wherever Azure's bands allow; the
 declared verdicts gone, and `LENGTH`, which no row names, is refused on both targets. The plans do not move: at the
 parent and at the commit, on both frameworks, new and again, Production is `3dc62a38…` and Emulator `542c9f12…`.
 
+**What the probe account kept, once its rows were in.** With the rows committed, the Stage-3 forms
+(`CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays`: 36 forms over 264 documents, 8,110 answers) and C6
+on the switch's subset under `Production` (`2026-11-04-probe-account-conformance.tsv`: 259 forms over 3,566 documents,
+279 holding U+0000, 37 string orderings, 26 element paths and 253 type tests) each answered on Azure as `CosmosEval` says
+Azure does, with no divergence, for 2,628 and 24,819 RU. The subset holds no affix: the switch's run at the gate proves no
+conjunct's best with one under `Production`, so Azure's affixes rest on N5–N7's lines alone until a run prints one
+(`TODO.md`). The run's 33,162 RU stayed under its 35,000, and every database it made is deleted.
+
+**What the triage was waiting on (h14's, re-read).** The census at the gate, under `Production`, over the affix step's
+capture, after the rows: of the 22 pushes h14 tagged as waiting on Azure's function rows, 5 are Proven; of the 20 on
+N5–N7, 6; of the 5 on the ternary, 2; of the 4 pairs, none. No push is left Unproven by an answer Azure and the emulator
+give apart, but one: `c.a LIKE '%b%'`, a pattern of one run, which Azure reads only to a string's first U+0000. The rest
+stand on what the rows do not say on either target — a raw column's reading under a function, which no row names
+(nine `CONCAT(c.id, '!')`), the case mapping beyond ASCII (seven), `SUBSTRING` from 0, `LIKE`'s `_` (six), the
+affixes over a raw column cast to text that the emulator's set does not prove either (six), and the two-path row's
+absent and null cells (four) — or on their statements: `STARTSWITH(c.s, 'a')` and three truth tests of a declared
+boolean, translator tests' pushes, are Unproven in the census though S proves each shape over a path that may hold
+anything under `Production`, and `c.a` is declared printable ASCII where the census reads it as anything (`TODO.md`).
+
 ## Differential testing
 
 Every pushdown is checked against an oracle rather than an expected string: the same SQL is planned

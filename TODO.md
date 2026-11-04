@@ -3017,6 +3017,18 @@ across documents* and *A join of a container to itself* is the record.
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
+- **C6's switch subset holds no affix** — *small, before h15's switch.* Run 1 ran C6 on the switch's subset under
+  `Production` (`Runs/2026-11-04-probe-account-conformance.tsv`, 259 forms, 0 divergences), but the switch's run at the
+  gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
+  licenses one is N5–N7's lines alone. An input holding `STARTSWITH` or a `LIKE` over a path among the gate's
+  conjuncts, run again before the switch, would give C6 one.
+- **Six translator pushes are Unproven under `Production` in their statements alone** — *small, h15's triage.* The
+  census at h14b leaves `STARTSWITH(c.s, 'a')` (`CosmosDeclaredFactPlanningTests.ALikeOverAPathDeclaredAStringPushesExactly`)
+  and three truth tests of a declared boolean (`CosmosBooleanPlanningTests.ADeclaredBooleanIsTestedAtTheService`)
+  Unproven, though S proves the affix over a path that may hold anything, in every band, under `Production`, and the
+  ternary since run 1; and `CONTAINS(c.a, 'X', true)` and `c.a LIKE '%b%'` from the first test, whose `a` it declares
+  printable ASCII, which the census reads neither as ASCII nor as free of U+0000. What their statements give S beyond a
+  bare path is not yet read; the translator keeps them, exact, until then.
 - **No witness splits a surrogate pair at `RIGHT`'s cut** — *small, a measurement.* The probe account answered `RIGHT`
   `Same` over the surrogate band (run 1), where `LEFT`, `SUBSTRING` and the lengths answer `Differs`, but none of the
   row's witnesses puts the cut between a pair's halves, so `Same` there proves nothing of one that does, and
