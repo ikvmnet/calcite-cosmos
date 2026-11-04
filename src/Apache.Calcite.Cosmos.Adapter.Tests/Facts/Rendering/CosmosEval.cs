@@ -284,8 +284,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             if (CosmosFunctionSpellings.Subjects.TryGetValue(function, out var subjects) == false)
                 return (false, null);
 
-            var each = subjects.Contains(FunctionKey.Every);
-            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => each || subjects.Contains(i))];
+            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => subjects.Contains(FunctionKey.Every) || subjects.Contains(i))];
             if (call.Operands.Where((_, i) => keyed.Contains(i) == false).Any(o => o is not SqlValue.Literal))
                 return (false, null);
 
@@ -312,8 +311,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     J.Obj => (CosmosValueClass.Object, JsonCharacterBand.None),
                     _ => (CosmosValueClass.Array, JsonCharacterBand.None),
                 };
+                // Every row that holds of the value: by its ordinal and by every operand, of no class and of each class
+                // the value is in. None is unknown; rows that disagree with one another are too.
+                var spelled = value switch { J.Str s => Of(s.Value), J.Num n => Of(n.Value), _ => null };
+                long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i }.Where(subjects.Contains)];
+                FunctionValueClass[] classes = [.. Enum.GetValues<FunctionValueClass>().Where(c => c == FunctionValueClass.Any || spelled is not null && FunctionValueClasses.Holds(c, spelled))];
                 foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
-                    switch (CosmosFunctionSpellings.Rows.TryGetValue((FunctionKey.Of(function, each ? FunctionKey.Every : i, kind, band), target), out var answer) ? answer : (CosmosFunctionAnswer?)null)
+                    switch ((from subject in subjectsOf
+                             from @class in classes
+                             where CosmosFunctionSpellings.Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
+                             select CosmosFunctionSpellings.Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
                     {
                         case CosmosFunctionAnswer.Undefined:
                             undefined = true;

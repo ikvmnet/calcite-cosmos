@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
         /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
         /// truth value's constant beside it; h10's computed places, five (a call's reading of its place is the bundle's);
-        /// h11's pair, two; h12's raw columns' union, one; a raw value read through its column, one (rawtyped), 77 in all.
+        /// h11's pair, two; h12's raw columns' union, one; a raw value read through its column, one (rawtyped); the atoms a function row covers, one (F2), 78 in all.
         /// Each family's rules are held by name, so a rule that moves, goes or is swapped is seen.
         /// </summary>
         [Fact]
@@ -90,6 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["disagree"] =
                 [
+                    "a function key some target measured covers each atom its class holds",
                     "a function key a target of the set answers otherwise than Same disagrees there",
                 ],
                 ["raw"] =
@@ -221,7 +222,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(77);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(78);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>

@@ -3,6 +3,7 @@ using System.Linq;
 using Eggnog;
 
 using JsonCharacterBand = Apache.Calcite.Cosmos.Facts.JsonCharacterBand;
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -26,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class CharactersTests
     {
 
-        static readonly JsonContexts Contexts = new();
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
 
         static readonly ValueSet<string> Surrogate = ValueSet.Of(SurrogateBand);
 
@@ -112,7 +113,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 .Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Surrogates | JsonCharacterBand.Trimmed);
             Closed(JsonCharacterBand.HighBmp).Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Replacement | JsonCharacterBand.Escape);
             Closed(JsonCharacterBand.NonAscii).Should().Be(JsonCharacterBand.NonAscii);
-            Stored(ValueSet.Of(SurrogateBand, HighBand)).Should().Equal(ValueSet.Of(SurrogateBand, HighBand, ReplacementClass), "a lone surrogate written is stored as U+FFFD");
+            Mapped(ValueSet.Of(SurrogateBand, HighBand), ValueSet.From(CosmosReasoning.Stored))
+                .Should().Equal(ValueSet.Of(SurrogateBand, HighBand, ReplacementClass), "a lone surrogate written is stored as U+FFFD, the rows say");
+            Mapped(ValueSet.Of(NonAsciiBand), ValueSet.From(CosmosReasoning.Stored)).Should().Equal(ValueSet.Of(NonAsciiBand), "no row maps a class not written");
         }
 
         [Fact]

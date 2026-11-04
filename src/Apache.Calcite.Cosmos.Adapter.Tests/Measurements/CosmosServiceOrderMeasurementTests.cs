@@ -291,7 +291,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// image answers 403 and the one CI runs answers 400, both with "Failed to parse Json request", so the refusal is
         /// read from either code rather than one. Measured on the probe account on 2026-10-16.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.LoneSurrogateIsStoredAsReplacement")]
         public async Task ALoneSurrogateIsStoredAsTheReplacementCharacter()
         {
             if (_database is null)

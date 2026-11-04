@@ -520,7 +520,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>What each function computes over a band is the function rows', the ones S reads</b>
         /// (<see cref="CosmosFunctionSpellings.Parting"/>): for every target the set serves (<see cref="Set"/>), the bands
-        /// its subject may hold must each answer <c>Same</c>, and a key unmeasured there refuses. What the rows do not carry
+        /// each operand the rows name may hold must each answer <c>Same</c> by that operand's rows, and a key unmeasured there refuses. What the rows do not carry
         /// is the spelling's legality (<see cref="CosmosFunctionSpellings.Refusals"/>). Azure has no rows until run 1, and
         /// is held to the verdicts it was held to before. A bridge reading the rows, gone at h37 (TODO.md). This reads the
         /// characters off the facts the translation was licensed (<see cref="Facts"/>, <see cref="Unproved"/>). Refused,
@@ -544,15 +544,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(function))
                 foreach (var target in Metadata.CosmosRendering.Definition.Serves[Set])
-                {
-                    if (CosmosFunctionSpellings.Parting(function, target) is not JsonCharacterBand parting)
-                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: what it computes over a string on {target} has not been measured to be Calcite's.");
+                    foreach (var (ordinal, subject) in CosmosFunctionSpellings.SubjectsOf(function, call))
+                    {
+                        if (CosmosFunctionSpellings.Parting(function, subject, target) is not JsonCharacterBand parting)
+                            throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: what it computes over a string on {target} has not been measured to be Calcite's.");
 
-                    if (parting != JsonCharacterBand.None)
-                        foreach (var ordinal in CosmosFunctionSpellings.SubjectsOf(function, call))
-                            if (Unproved(Operand(call, ordinal), parting) is string input)
-                                throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {target} answers it otherwise than Calcite over {parting}, and nothing proves {input} holds none of it.");
-                }
+                        if (parting != JsonCharacterBand.None && Unproved(Operand(call, ordinal), parting) is string input)
+                            throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {target} answers it otherwise than Calcite over {parting}, and nothing proves {input} holds none of it.");
+                    }
 
             foreach (var rule in CosmosFunctionSpellings.Refusals(call, Set))
                 foreach (var ordinal in rule.Asked)

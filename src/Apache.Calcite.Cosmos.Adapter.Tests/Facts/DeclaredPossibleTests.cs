@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
@@ -41,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             static PathValues Allowed(PathValues x) =>
                 x.Values is null ? x : x with { Values = ValueSet.From(x.Values.Where(v => x.Kinds.Contains(JsonValues.TypeOf(v)))) };
 
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
             Theory().In(generations).Declaration()!.DeclaredPossible().Should().BeNull();
             var (compared, respelled) = (0, 0);
 
@@ -83,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void SixteenThreadsBuildOneD0()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
             var declaration = Theory(Outright(P("a"), Present), When(P("kind"), "k", P("b"), Type(JsonType.String))).In(generations).Declaration()!;
             var seen = new Scope?[16];
 
@@ -112,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void AStatementIsRootedAtD0()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String))).In(generations);
             var statement = new PredicateStatement(new[] { Eq(Text(P("a")), "x") });
             var scope = new CosmosOracle(theory, generations).Admit(statement);

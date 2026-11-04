@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
@@ -68,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// The graphs the fixture's oracles reason in: the oracle tests' own, apart from those the planner's fixtures share
         /// (<see cref="TestReasoning"/>).
         /// </summary>
-        static readonly JsonFactGenerations Graphs = new();
+        static readonly JsonFactGenerations Graphs = new(CosmosReasoning.Stored);
 
         /// <summary>A fresh oracle over a declaration, so that no test reads another's memo.</summary>
         public static CosmosOracle Oracle(JsonFactTheory theory) => new(theory, Graphs);

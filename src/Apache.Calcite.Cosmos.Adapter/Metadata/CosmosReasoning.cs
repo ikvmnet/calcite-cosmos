@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -36,10 +38,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// definition, its graph not yet built, which prints each generation's warm-up answer as it is built.
         /// </summary>
         public CosmosReasoning() :
-            this(new JsonFactGenerations())
+            this(new JsonFactGenerations(Stored))
         {
 
         }
+
+        /// <summary>
+        /// What the service stores of a string written in a class, its measured rows (<see cref="Sql.CosmosAxiomRows.ReadStored"/>):
+        /// facts fixed in the assembly, which every schema's generations hand their graphs.
+        /// </summary>
+        internal static readonly IReadOnlyList<JsonClassMap> Stored = Sql.CosmosAxiomRows.ReadStored(Sql.CosmosAxioms.All);
 
         /// <summary>
         /// Initializes a new instance over the given generations, and the given oracle and probe where there are: a test's,

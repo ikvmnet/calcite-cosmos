@@ -2,6 +2,7 @@ using System.Linq;
 
 using Eggnog;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -20,7 +21,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class ScenarioTests
     {
 
-        static readonly JsonContexts Contexts = new();
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
 
         /// <summary>Opens a context holding the facts, mentioning the predicate's path, and decides the predicate.</summary>
         static Truth Decide(JsonAtom atom, params JsonFact[] facts)

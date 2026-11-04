@@ -429,9 +429,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
                 var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
-                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)));
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(Json.CallMaps.Of(f)));
                 r.Where(f, i, StringCalls.Reads);
-                r.Then(Drawn.Of(v, a).Is(Compute.Of(f, c, d, StringCalls.Drawn)));
+                r.Then(Drawn.Of(v, a).Is(Compute.Of(c, m, d, StringCalls.Drawn)));
             });
             Characters.DefineRule("a call holds what it draws from its operands", r =>
             {

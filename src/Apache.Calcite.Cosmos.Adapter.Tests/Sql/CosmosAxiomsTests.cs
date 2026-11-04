@@ -123,11 +123,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claims.Should().OnlyHaveUniqueItems();
         }
 
-        /// <summary>A row read as data, by its outcomes, its subjects, its function outcomes or its columns, names a test that says it pins the row.</summary>
+        /// <summary>A row read as data, by its outcomes, its subjects, its function outcomes, its columns or its stored classes, names a test that says it pins the row.</summary>
         [Fact]
         public void EveryRowReadAsDataNamesAPinningTestThatCarriesItsId()
         {
-            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null))
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -158,6 +158,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.Read([banded]).Select(r => r.Key).Should().Equal(MeasuredKey.Of(CosmosServiceTest.Contains, Class.String, Class.String, JsonCharacterBand.Nul));
             CosmosAxiomRows.ReadFunctions([banded]).Select(r => r.Key).Should().Equal(FunctionKey.Of("REPLACE", 1, Class.String, JsonCharacterBand.None, FunctionValueClass.Empty));
             rows.Select(r => r.Key).Order().Select(FunctionKey.FunctionOf).Should().BeInAscendingOrder(StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// Each axiom's readers are read for each function its rows compute, one row an axiom, and none is picked: two axioms
+        /// of one function give two rows, which S meets (<c>measuredreaders</c>, an intersection).
+        /// </summary>
+        [Fact]
+        public void EachAxiomsReadersAreReadForEachFunctionItsRowsCompute()
+        {
+            var row = CosmosAxioms.All.First(a => a.FunctionOutcomes is not null);
+            CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All).Select(r => r.Function).Should().OnlyHaveUniqueItems("no two axioms of the registry compute one function");
+            var outcome = new CosmosFunctionOutcome("F", 0, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Emulator, CosmosFunctionAnswer.Same);
+            var (one, two) = (row with { FunctionOutcomes = [outcome, outcome with { Band = JsonCharacterBand.Nul }], Readers = ["a", "b"] }, row with { FunctionOutcomes = [outcome], Readers = ["b"] });
+            CosmosAxiomRows.ReadFunctionReads([one, two]).Select(r => (r.Function, string.Join(",", r.Readers))).Should().Equal(("F", "a,b"), ("F", "b"));
+        }
+
+        /// <summary>
+        /// The classes a written string is stored holding are a <c>Service</c> row's cells, read alike from every target the
+        /// row names, since the rules of JSON have none: a lone surrogate written, the high band and U+FFFD within it.
+        /// </summary>
+        [Fact]
+        public void TheStoredClassesAreReadOffTheirRow()
+        {
+            CosmosAxiomRows.ReadStored(CosmosAxioms.All).Should().BeEquivalentTo(new[]
+            {
+                new JsonClassMap(JsonValues.SurrogateBand, JsonValues.HighBand), new JsonClassMap(JsonValues.SurrogateBand, JsonValues.ReplacementClass),
+            });
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.StoredAs is not null))
+                foreach (var stored in axiom.StoredAs!)
+                    (stored.On != 0 && (stored.On & ~axiom.MeasuredOn) == 0).Should().BeTrue($"{axiom.Id}'s {stored.Written}={stored.Stored} names {stored.On}, within {axiom.MeasuredOn}");
+            global::Apache.Calcite.Cosmos.Adapter.Metadata.CosmosReasoning.Stored.Should().Equal(CosmosAxiomRows.ReadStored(CosmosAxioms.All));
         }
 
         /// <summary>

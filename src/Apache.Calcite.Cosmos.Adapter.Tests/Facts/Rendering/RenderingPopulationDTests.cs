@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -99,7 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         internal static Tally Run(int trials, IReadOnlyList<RenderingTheory> theories, IReadOnlyList<RenderingSet> sets)
         {
-            var (tally, generations, clock) = (new Tally(), new JsonFactGenerations(), Stopwatch.StartNew());
+            var (tally, generations, clock) = (new Tally(), new JsonFactGenerations(CosmosReasoning.Stored), Stopwatch.StartNew());
             for (var trial = 0; trial < trials; trial++)
             {
                 var seed = PredicateSoundnessTests.Seed + trial;

@@ -119,6 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPatternReader.Parser", ["Digit", "Word"], StaticFact, "character classes"),
             ("Adapter.Metadata.CosmosPredicateLoader.Loading", ["False", "True", "TypeTests"], StaticFact, "the truth constants, and the type tests' operators by name"),
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
+            ("Adapter.Metadata.CosmosReasoning", ["Stored"], StaticFact, "the rows of what the service stores of a string written in a class, read once from the measured registry; every schema's generations hand them their graphs"),
             ("Adapter.Metadata.CosmosRendering", ["Defined", "Spelled"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness, and the sets storing a spelling read off it; every schema's S is defined from it"),
             ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Census", "Current"], TestArm, "the observer a test arms for its flow, and the census's for every flow (branch-only, h16)"),
             ("Adapter.Metadata.CosmosRenderingCost", ["Armed", "Clock", "Flow"], TestArm, "what a test measures of its flow: the samples S's questions cost, and the thread's clock it hands"),
@@ -167,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.AgreementRows", ["Allowing", "Classes", "Refuting"], StaticFact, "S's agreement boxes"),
             ("Facts.Rendering.AnswerMeanings", ["Measured"], StaticFact, "what each answer was measured to mean"),
             ("Facts.Rendering.CellOutcomes", ["WholeCondition"], StaticFact, "a sentinel"),
-            ("Facts.Rendering.FunctionValueClasses", ["Families"], StaticFact, "the classes of value a function row may be keyed by"),
+            ("Facts.Rendering.FunctionValueClasses", ["Holding"], StaticFact, "the atoms each class of value a function row may be keyed by holds"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "Identity", "Operands", "Opposite", "OppositeElse", "Rows"], StaticFact, "Kleene logic as rows"),
             ("Facts.Rendering.Priced", ["None", "Unpriced"], StaticFact, "sentinels"),
             ("Facts.Rendering.RawTruths", ["Empty", "TruthsUnion", "Union"], StaticFact, "the raw union's lattices and its bottom"),
@@ -206,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
-            ("Facts.Saturation.StringCalls", ["Every", "First", "Functions", "Window"], StaticFact, "how each string function draws its operands' characters"),
+            ("Facts.Saturation.StringCalls", ["Cut", "Every", "First", "Functions", "Upper", "Window"], StaticFact, "how each string function draws its operands' characters, and the rows of what it makes of them"),
         ];
 
         /// <summary>

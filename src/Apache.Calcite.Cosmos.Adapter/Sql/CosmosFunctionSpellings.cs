@@ -192,28 +192,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static readonly IReadOnlySet<string> Declared = new HashSet<string>(StringComparer.Ordinal) { "ToString" };
 
         /// <summary>
-        /// The bands of its subject's characters over which a target answers a function otherwise than Calcite, or
-        /// <c>null</c> where its answer over a string of no band is unmeasured there or not Calcite's.
+        /// The bands of an operand's characters over which a target answers a function otherwise than Calcite, by the rows
+        /// of that operand, or <c>null</c> where their answer over a string of no band is unmeasured there or not Calcite's.
         /// </summary>
         /// <param name="function">The rows' name of the function (<see cref="KeyOf"/>).</param>
+        /// <param name="subject">The operand as the rows name it (<see cref="SubjectsOf"/>).</param>
         /// <param name="target">The target.</param>
-        public static JsonCharacterBand? Parting(string function, RenderingTarget target)
+        public static JsonCharacterBand? Parting(string function, long subject, RenderingTarget target)
         {
-            if (Answer(function, target, JsonCharacterBand.None) != CosmosFunctionAnswer.Same)
+            if (Answer(function, subject, target, JsonCharacterBand.None) != CosmosFunctionAnswer.Same)
                 return null;
 
             var parting = JsonCharacterBand.None;
             foreach (var band in Bands)
-                if (Answer(function, target, band) != CosmosFunctionAnswer.Same)
+                if (Answer(function, subject, target, band) != CosmosFunctionAnswer.Same)
                     parting |= band;
 
             return parting;
         }
 
-        // The bridge reads a function of one operand only; one whose rows name more is unmeasured to it.
-        static CosmosFunctionAnswer? Answer(string function, RenderingTarget target, JsonCharacterBand band) =>
-            Subjects.TryGetValue(function, out var subjects) && subjects.Count == 1
-            && Rows.TryGetValue((FunctionKey.Of(function, subjects.Single(), CosmosValueClass.String, band), target), out var answer) ? answer : null;
+        static CosmosFunctionAnswer? Answer(string function, long subject, RenderingTarget target, JsonCharacterBand band) =>
+            Rows.TryGetValue((FunctionKey.Of(function, subject, CosmosValueClass.String, band), target), out var answer) ? answer : null;
 
         /// <summary>
         /// The rows' name of a call: its operator's, a trim with its flag as the loader names it, or <c>null</c> for a
@@ -225,16 +224,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : null;
 
         /// <summary>
-        /// The Rex ordinals of a call the rows describe (<see cref="Subjects"/>), a trim's flag shifting them by one; each
-        /// ordinal of a call no row describes, which is refused.
+        /// The Rex ordinals of a call the rows describe (<see cref="Subjects"/>), a trim's flag shifting them by one, each
+        /// with every operand the rows name it by, its own ordinal and <see cref="FunctionKey.Every"/>; each ordinal of a call
+        /// no row describes, by <see cref="FunctionKey.Every"/>, which no row holds and so is refused.
         /// </summary>
-        public static IEnumerable<int> SubjectsOf(string function, RexCall call)
+        public static IEnumerable<(int Ordinal, long Subject)> SubjectsOf(string function, RexCall call)
         {
             var shift = function.StartsWith("TRIM ", StringComparison.Ordinal) ? 1 : 0;
             var subjects = Subjects.TryGetValue(function, out var s) ? s : new HashSet<long> { FunctionKey.Every };
             for (var i = shift; i < call.getOperands().size(); i++)
-                if (subjects.Contains(FunctionKey.Every) || subjects.Contains(i - shift))
-                    yield return i;
+                foreach (var subject in new[] { FunctionKey.Every, i - shift })
+                    if (subjects.Contains(subject))
+                        yield return (i, subject);
         }
 
         /// <summary>Whether the column gate holds a function to a verdict: rows name it, or it is a string function gated.</summary>

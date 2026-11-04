@@ -160,6 +160,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The rows' classes of value are S's to read (F2): rows of a key split by classes cover the atoms those hold and no
+        /// more, and a row covering an atom that disagrees keeps the place from its image whatever row of every value agrees.
+        /// </summary>
+        [Fact]
+        public void ARowCoversTheAtomsItsClassHolds()
+        {
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            static bool Subject(FunctionKey k) => k.Function == "LOWER" && k.Kind == CosmosValueClass.String && k.Band == JsonCharacterBand.None;
+            static RenderingTheory Split(params FunctionValueClass[] classes) => RenderingTheory.Define(Measured with
+            {
+                Functions = [.. Measured.Functions.Where(f => Subject(f.Key) == false), .. from f in Measured.Functions where Subject(f.Key) from c in classes select (f.Key with { Value = c }, f.Target, f.Answer)],
+            });
+            var (whole, part) = (Split(FunctionValueClass.Empty, FunctionValueClass.NonEmpty), Split(FunctionValueClass.NonEmpty));
+            var differing = RenderingTheory.Define(Measured with
+            {
+                Functions = [.. Measured.Functions, .. from f in Measured.Functions where Subject(f.Key) select (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs)],
+            });
+
+            Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, whole).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "the two classes hold both atoms of a string");
+            Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, part).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "no row covers the empty string");
+            Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, differing).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "the empty string's row disagrees");
+            GC.KeepAlive((whole, part, differing));
+        }
+
+        /// <summary>
         /// The census's string-function pushes under the emulator (h05, <c>coverage-J1-where.tsv</c>), each over a path
         /// imported an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
         /// service's window from 0 (differential 488); but none over a path that may hold a number, and no window of a

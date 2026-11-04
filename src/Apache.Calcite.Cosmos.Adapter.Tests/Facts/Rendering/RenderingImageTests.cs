@@ -30,6 +30,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ValueSet<PathImport> Gathered(params PathImport[] imports) => ValueSet.From(imports);
 
+        /// <summary>The keys of an operand of strings of unknown values under each band: one an atom of a string, empty or not.</summary>
+        static ValueSet<FunctionKey> Strings(string function, long ordinal, params JsonCharacterBand[] bands) =>
+            ValueSet.From(from band in bands from atom in new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty } select FunctionKey.Of(function, ordinal, CosmosValueClass.String, band, atom));
+
         /// <summary>The keys of a call under the subjects and readers its rows carry.</summary>
         static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered)
         {
@@ -43,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void EachRowClassIsAKey()
         {
             var keys = Keys("LOWER", Gathered(Text(0, ValueSet.Of(StringType, IntegerType, BooleanType, NullType, PathValues.AbsentKind), JsonCharacterBand.NonAscii | JsonCharacterBand.Nul)));
-            keys.AsEnumerable().Select(k => (k.Kind, k.Band)).Should().BeEquivalentTo(new[]
+            keys.AsEnumerable().Select(k => (k.Kind, k.Band)).Distinct().Should().BeEquivalentTo(new[]
             {
                 (CosmosValueClass.String, JsonCharacterBand.None), (CosmosValueClass.String, JsonCharacterBand.NonAscii), (CosmosValueClass.String, JsonCharacterBand.Nul),
                 (CosmosValueClass.Number, JsonCharacterBand.None), (CosmosValueClass.True, JsonCharacterBand.None), (CosmosValueClass.False, JsonCharacterBand.None),
@@ -56,9 +60,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ATwoOperandCallIsKeyedByItsSubject()
         {
             Keys("REPLACE", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("a\u0000")), Literal(2, Of("b"))))
-                .Should().BeEquivalentTo(ValueSet.Of(FunctionKey.Of("REPLACE", 0, CosmosValueClass.String, JsonCharacterBand.None)));
+                .Should().BeEquivalentTo(Strings("REPLACE", 0, JsonCharacterBand.None));
             Keys("POSITION", Gathered(Literal(0, Of("é")), Text(1, ValueSet.Of(StringType))))
-                .Should().BeEquivalentTo(ValueSet.Of(FunctionKey.Of("POSITION", 1, CosmosValueClass.String, JsonCharacterBand.None)));
+                .Should().BeEquivalentTo(Strings("POSITION", 1, JsonCharacterBand.None));
         }
 
         /// <summary>
@@ -70,34 +74,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void EveryOperandTheRowsNameIsKeyed()
         {
             var gathered = Gathered(Text(0, ValueSet.Of(StringType), JsonCharacterBand.HighBmp | JsonCharacterBand.Replacement), Literal(1, Of("a\uD83D")), Literal(2, Of("b")));
-            RenderingImage.Keys("REPLACE", gathered, ValueSet.Of(0L, 1L), ValueSet.Of(PredicateAtom.TextReader)).Should().BeEquivalentTo(ValueSet.Of(
-                FunctionKey.Of("REPLACE", 0, CosmosValueClass.String, JsonCharacterBand.None), FunctionKey.Of("REPLACE", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp),
-                FunctionKey.Of("REPLACE", 1, CosmosValueClass.String, JsonCharacterBand.None), FunctionKey.Of("REPLACE", 1, CosmosValueClass.String, JsonCharacterBand.Surrogates)));
+            static FunctionKey Search(JsonCharacterBand band) => FunctionKey.Of("REPLACE", 1, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
+            RenderingImage.Keys("REPLACE", gathered, ValueSet.Of(0L, 1L), ValueSet.Of(PredicateAtom.TextReader)).Should().BeEquivalentTo(
+                Strings("REPLACE", 0, JsonCharacterBand.None, JsonCharacterBand.HighBmp).Add(Search(JsonCharacterBand.None)).Add(Search(JsonCharacterBand.Surrogates)));
             RenderingImage.Keys("||", Gathered(Literal(0, Of("a")), Literal(1, Of("b"))), ValueSet.Of(FunctionKey.Every), ValueSet<string>.Empty)
-                .Should().Equal(ValueSet.Of(FunctionKey.Of("||", FunctionKey.Every, CosmosValueClass.String, JsonCharacterBand.None)));
+                .Should().Equal(ValueSet.Of(FunctionKey.Of("||", FunctionKey.Every, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty)));
         }
 
         /// <summary>
-        /// A key is split by the classes of value the rows split its operand by (F2), one a class its cells may hold a value
-        /// of: a literal by its own, a path of unknown values by every one, beside the unsplit key where a value may lie in
-        /// none of them. Rows that split nothing leave the keys as they are.
+        /// A cell is keyed by the atoms its values may be in (F2), whatever the rows name: a literal by its own, a path of
+        /// unknown values by every atom of its kind, a number by its sign and its place against 1 met, and a kind no class
+        /// splits by its kind alone. Which rows cover an atom is S's (<see cref="RenderingValuedTests.ARowCoversTheAtomsItsClassHolds"/>).
         /// </summary>
         [Fact]
-        public void AKeyIsSplitByTheClassesItsRowsName()
+        public void ACellIsKeyedByTheAtomsItsValuesAreIn()
         {
-            static FunctionKey Search(FunctionValueClass value) => FunctionKey.Of("REPLACE", 1, CosmosValueClass.String, JsonCharacterBand.None, value);
-            var subject = FunctionKey.Of("REPLACE", 0, CosmosValueClass.String, JsonCharacterBand.None);
-            var measured = ValueSet.Of(subject, Search(FunctionValueClass.Empty), Search(FunctionValueClass.NonEmpty));
-            ValueSet<FunctionKey> Classed(PathImport search) =>
-                RenderingImage.Classed(ValueSet.Of(subject, Search(FunctionValueClass.Any)), Gathered(Text(0, ValueSet.Of(StringType)), search), measured);
+            static ValueSet<FunctionValueClass> Atoms(PathImport import, CosmosValueClass kind) =>
+                ValueSet.From(RenderingImage.Keys("F", Gathered(import), ValueSet.Of(0L), ValueSet.Of(PredicateAtom.TextReader)).AsEnumerable()
+                    .Where(k => k.Kind == kind && k.Band == JsonCharacterBand.None).Select(k => k.Value));
 
-            Classed(Literal(1, Of(""))).Should().Equal(ValueSet.Of(subject, Search(FunctionValueClass.Empty)));
-            Classed(Literal(1, Of("a"))).Should().Equal(ValueSet.Of(subject, Search(FunctionValueClass.NonEmpty)));
-            Classed(Text(1, ValueSet.Of(StringType))).Should().Equal(ValueSet.Of(subject, Search(FunctionValueClass.Empty), Search(FunctionValueClass.NonEmpty)));
-            RenderingImage.Classed(ValueSet.Of(subject, Search(FunctionValueClass.Any)), Gathered(Text(0, ValueSet.Of(StringType)), Text(1, ValueSet.Of(StringType))),
-                ValueSet.Of(subject, Search(FunctionValueClass.Empty))).Should().Equal(ValueSet.Of(subject, Search(FunctionValueClass.Any), Search(FunctionValueClass.Empty)),
-                "a search may be of no class the rows name, so its unsplit key stays, which no row holds");
-            RenderingImage.Classed(ValueSet.Of(subject), Gathered(Literal(0, Of("a"))), ValueSet.Of(subject)).Should().Equal(ValueSet.Of(subject));
+            Atoms(Literal(0, Of("")), CosmosValueClass.String).Should().Equal(ValueSet.Of(FunctionValueClass.Empty));
+            Atoms(Literal(0, Of("a")), CosmosValueClass.String).Should().Equal(ValueSet.Of(FunctionValueClass.NonEmpty));
+            Atoms(Text(0, ValueSet.Of(StringType)), CosmosValueClass.String).Should().Equal(ValueSet.Of(FunctionValueClass.Empty, FunctionValueClass.NonEmpty));
+            Atoms(Literal(0, Of(-2m)), CosmosValueClass.Number).Should().Equal(ValueSet.Of(FunctionValueClass.Negative));
+            Atoms(Literal(0, Of(0.5m)), CosmosValueClass.Number).Should().Equal(ValueSet.Of(FunctionValueClass.PositiveBelowOne));
+            Atoms(Literal(0, Of(1m)), CosmosValueClass.Number).Should().Equal(ValueSet.Of(FunctionValueClass.AtLeastOne));
+            Atoms(Text(0, ValueSet.Of(IntegerType)), CosmosValueClass.Number).Should().Equal(ValueSet.Of(
+                FunctionValueClass.Negative, FunctionValueClass.Zero, FunctionValueClass.PositiveBelowOne, FunctionValueClass.AtLeastOne));
+            Atoms(Text(0, ValueSet.Of(NullType)), CosmosValueClass.Null).Should().Equal(ValueSet.Of(FunctionValueClass.Any));
+        }
+
+        /// <summary>Every class holds the atoms it is the union of, and every atom is held by its kind's <see cref="FunctionValueClass.Any"/>.</summary>
+        [Fact]
+        public void EveryClassHoldsTheAtomsItIsTheUnionOf()
+        {
+            var values = new[] { Of(-2m), Of(0m), Of(0.5m), Of(1m), Of(7m), Of(""), Of("a") };
+            foreach (var (kind, @class, atom) in FunctionValueClasses.Holding.Where(h => h.Class != FunctionValueClass.Any))
+                FunctionValueClasses.AtomsOf(kind).Should().Contain(atom, $"{@class} holds an atom of {kind}");
+            foreach (var kind in new[] { CosmosValueClass.Number, CosmosValueClass.String })
+                foreach (var @class in FunctionValueClasses.Holding.Where(h => h.Kind == kind).Select(h => h.Class).Distinct())
+                    foreach (var value in values.Where(v => CosmosValueClasses.Of(v) == kind))
+                        FunctionValueClasses.Holds(@class, value).Should().Be(
+                            FunctionValueClasses.Holding.Any(h => h.Kind == kind && h.Class == @class && FunctionValueClasses.Holds(h.Atom, value)), $"{@class} of {value}");
         }
 
         /// <summary>A repeated operand is gathered once an ordinal, so <c>x || x</c> is two imports; a gathering missing or doubling an ordinal is malformed.</summary>
@@ -115,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ANestedPlaceIsReadThroughItsType()
         {
             var inner = PathImport.Of(0, PredicateAtom.TypedReader("VARCHAR"), PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(JsonCharacterBand.None));
-            Keys("LOWER", Gathered(inner)).Should().Equal(ValueSet.Of(FunctionKey.Of("LOWER", 0, CosmosValueClass.String, JsonCharacterBand.None)));
+            Keys("LOWER", Gathered(inner)).Should().Equal(Strings("LOWER", 0, JsonCharacterBand.None));
             Keys("LOWER", Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
             RenderingImage.KeyFunction("+", "INTEGER").Should().Be("+:INTEGER");
             RenderingImage.KeyFunction("LOWER", "VARCHAR").Should().Be("LOWER");

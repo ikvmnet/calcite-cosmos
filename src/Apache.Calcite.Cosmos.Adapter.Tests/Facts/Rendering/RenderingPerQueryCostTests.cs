@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             using var load = new CpuLoad();
             Print(ThreadCpu.Describe());
-            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations());
+            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations(CosmosReasoning.Stored));
 
             // A plan over a container of its own warms the process.
             Implement(new PlannerHarness(Fresh(graph, facts)).PlanToAsync("""SELECT c."id" FROM customers AS c WHERE c."id" = 'warm'"""));
@@ -243,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var figures = new Dictionary<string, string> { ["mode"] = mode };
             var clock = Stopwatch.StartNew();
-            var reasoning = new CosmosReasoning(new JsonFactGenerations(), renderingOff: mode == "off");
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), renderingOff: mode == "off");
             var harness = new PlannerHarness(reasoning);
             if (mode == "built")
             {
@@ -300,7 +300,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public async Task InterningPerBundleIsCounted()
         {
             using var load = new CpuLoad();
-            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations());
+            var (graph, facts) = (await Warmed(), new Cosmos.Facts.JsonFactGenerations(CosmosReasoning.Stored));
 
             var bundles = new List<RenderingCostSample>();
             foreach (var query in PlannerQueries.All)

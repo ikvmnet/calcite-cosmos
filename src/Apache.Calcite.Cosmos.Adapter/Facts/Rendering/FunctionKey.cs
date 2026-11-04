@@ -23,6 +23,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The key's function, as a rule reads it.</summary>
         public static string FunctionOf(FunctionKey key) => key.Function;
 
+        /// <summary>The key's kind, as a rule reads it.</summary>
+        public static CosmosValueClass KindOf(FunctionKey key) => key.Kind;
+
+        /// <summary>The key's class of value, as a rule reads it.</summary>
+        public static FunctionValueClass ValueOf(FunctionKey key) => key.Value;
+
+        /// <summary>The key with another class of value, as a rule makes one.</summary>
+        public static FunctionKey WithValue(FunctionKey key, FunctionValueClass value) => key with { Value = value };
+
         /// <summary>By function, kind and band as before the operand was keyed, then by operand and class of value.</summary>
         public int CompareTo(FunctionKey other) =>
             string.CompareOrdinal(Function, other.Function) is var f and not 0 ? f

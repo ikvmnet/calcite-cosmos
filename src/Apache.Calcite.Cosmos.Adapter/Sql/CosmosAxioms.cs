@@ -680,8 +680,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Greater, Class.String, Both, "below=false equal=false above=true"),
                 ]),
             new("Service.LoneSurrogateIsStoredAsReplacement",
-                "A lone surrogate written as a JSON escape is stored as U+FFFD, a unit of the high band, where a surrogate pair is stored as written; the emulator refuses the write. Read as data by the theory's rule of what a string written in some bands holds stored (JsonValues.Stored).",
-                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ALoneSurrogateIsStoredAsTheReplacementCharacter"),
+                "A lone surrogate written as a JSON escape is stored as U+FFFD, a unit of the high band, where a surrogate pair is stored as written; the emulator refuses the write. Read as data by the rules of JSON (CosmosAxiomRows.ReadStored, the rule of what a string written in some classes holds stored): a string written with a surrogate may be stored holding the high band and U+FFFD.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ALoneSurrogateIsStoredAsTheReplacementCharacter",
+                StoredAs:
+                [
+                    new(JsonValues.SurrogateBand, JsonValues.HighBand, Azure),
+                    new(JsonValues.SurrogateBand, JsonValues.ReplacementClass, Azure),
+                ]),
             new("Service.ConstantStringComparisonIsByCodeUnit",
                 "Two constants are compared by UTF-16 code unit on Azure, @a < @b false for U+E000 and U+1F600, where the emulator compares them by code point.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.TwoConstantsCompareByUtf16"),

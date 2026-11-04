@@ -44,6 +44,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
+        /// One row per class a <c>Service</c> row says a string written in another is stored holding, as the rules of JSON
+        /// read it: they have no target, so every target's row is read alike, and the union of the rows is what they hold.
+        /// It merges nothing.
+        /// </summary>
+        public static IReadOnlyList<JsonClassMap> ReadStored(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. (from axiom in axioms
+                from stored in axiom.StoredAs ?? []
+                select new JsonClassMap(stored.Written, stored.Stored)).Distinct(),
+        ];
+
+        /// <summary>
         /// One row per operand a function outcome is of, each as its row names it (F2): S's union gathers a function's, so
         /// no reader picks one. It merges nothing either.
         /// </summary>
@@ -55,8 +67,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
-        /// One row per function a row computes: the readers its witnesses were read through, which S reads as constant raw
-        /// facts beside the keys.
+        /// One row per function an axiom's rows compute: the readers its witnesses were read through, which S reads as
+        /// constant raw facts beside the keys and meets (<c>measuredreaders</c>, an intersection), so two axioms of one
+        /// function each give theirs and no reader picks one.
         /// </summary>
         /// <remarks>
         /// Beside the text, each raw column that reads a string as itself and raises over every other kind that is no null
@@ -75,10 +88,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return
             [
                 .. from axiom in all
-                   from outcome in axiom.FunctionOutcomes ?? []
-                   group axiom.Readers ?? [] by outcome.Function into function
-                   let readers = function.First()
-                   select (function.Key, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
+                   let readers = axiom.Readers ?? []
+                   from function in (axiom.FunctionOutcomes ?? []).Select(o => o.Function).Distinct()
+                   select (function, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
             ];
         }
 

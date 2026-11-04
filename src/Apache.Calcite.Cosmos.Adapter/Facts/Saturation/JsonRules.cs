@@ -39,6 +39,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Graph = graph;
             Paths = new PathVocabulary(graph);
             graph.Values.Register<Bound>("bound");
+            graph.Values.Register<JsonClassMap>("class map");
+            graph.Values.RegisterSet<JsonClassMap>();
 
             Present = graph.DefineRelation<JPath>("present");
             Absent = graph.DefineRelation<JPath>("absent");
@@ -70,6 +72,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
             Written = graph.DefineFunction<JPath, ValueSet<string>>("written", ValueLattice.Intersect<string>());
+            StoredAs = graph.DefineFunction<ValueSet<JsonClassMap>>("storedAs", ValueLattice.Union<JsonClassMap>());
+            CallMaps = graph.DefineFunction<string, ValueSet<JsonClassMap>>("callMaps", ValueLattice.Union<JsonClassMap>());
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
@@ -203,6 +207,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// which is of the document a validator checked, and from which <see cref="Chars"/>, what is stored, is derived.
         /// </summary>
         public Function<JPath, ValueSet<string>> Written { get; }
+
+        /// <summary>
+        /// What the service stores of a string written in a class, by its measured rows (<c>CosmosAxiomRows.ReadStored</c>),
+        /// every target's alike: the root's, assumed once, which the union holds.
+        /// </summary>
+        public Function<ValueSet<JsonClassMap>> StoredAs { get; }
+
+        /// <summary>
+        /// What each function Calcite computes makes of an operand's classes beyond keeping them (<see cref="StringCalls"/>):
+        /// the root's, assumed once a function, which the union holds.
+        /// </summary>
+        public Function<string, ValueSet<JsonClassMap>> CallMaps { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing
@@ -398,15 +414,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain))));
             });
             // What a validator checked is the string as written, and the service does not store every string as it was
-            // written: measured on the probe account, a lone surrogate written as a JSON escape is stored as U+FFFD, a unit
-            // of the high band (Service.LoneSurrogateIsStoredAsReplacement). A string written with a surrogate may have
-            // had a lone one, so what is stored may hold a high unit too; one written without holds what it was written
-            // with.
-            Rule("a string is stored as it was written, a lone surrogate as U+FFFD", r =>
+            // written: its rows say what a class written may be stored as (StoredAs; a lone surrogate written as a JSON
+            // escape is stored as U+FFFD, Service.LoneSurrogateIsStoredAsReplacement). What is stored holds what was
+            // written and what every row maps it to, at once, so the intersection never meets two rows apart.
+            Rule("a string is stored as it was written, and as its rows store a class", r =>
             {
                 var (p, w) = r.Vars<JPath, ValueSet<string>>("p", "w");
-                r.When(w.Is(Written.Of(p)));
-                r.Then(Chars.Of(p).Is(Compute.Of(w, Stored)));
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                r.When(w.Is(Written.Of(p)), m.Is(StoredAs.Of()));
+                r.Then(Chars.Of(p).Is(Compute.Of(w, m, Mapped)));
             });
             SchemaRule("a stored form holds the characters it is written in", r =>
             {

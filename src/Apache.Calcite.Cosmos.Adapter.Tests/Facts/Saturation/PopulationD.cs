@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -70,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <param name="oracle">How an oracle is made over a declaration: by default, as the planner would, in graphs of the population's own.</param>
         public PopulationD(Func<JsonFactTheory, CosmosOracle>? oracle = null)
         {
-            var generations = new JsonFactGenerations();
+            var generations = new JsonFactGenerations(CosmosReasoning.Stored);
             _oracle = oracle ?? (theory => new CosmosOracle(theory, generations));
         }
 

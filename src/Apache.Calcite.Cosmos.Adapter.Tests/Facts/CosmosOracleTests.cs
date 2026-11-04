@@ -314,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ARunThatDoesNotCompleteKnowsNothingMore()
         {
-            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(CosmosReasoning.Stored), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var scope = oracle.Admit(new PredicateStatement(new[] { Eq(Text(A), "x"), IsNotNull(Text(Kind)) }), (i, facts) => true);
 
             scope.Complete.Should().BeFalse();
@@ -332,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void WhatAScopeAssumesIsAlwaysTrueThereHoweverItsRunEnds()
         {
-            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(CosmosReasoning.Stored), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var weakening = And(Opaque(0), Opaque(1));
             var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
 
@@ -356,7 +356,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ThePlannersOracleReasonsInThePlannersGraphs()
         {
-            var theory = Theory(Outright(Kind, Present)).In(new JsonFactGenerations());
+            var theory = Theory(Outright(Kind, Present)).In(new JsonFactGenerations(CosmosReasoning.Stored));
             CosmosOracle.For(theory).Theory.Should().BeSameAs(theory);
             CosmosOracle.For(theory).Should().BeSameAs(CosmosOracle.For(theory));
             Oracle(theory).Theory.Generations.Should().NotBeSameAs(theory.Generations);

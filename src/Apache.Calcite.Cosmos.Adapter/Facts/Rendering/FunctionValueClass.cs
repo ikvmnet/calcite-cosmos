@@ -4,8 +4,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <summary>
     /// The class of an operand's value a function row is keyed by beside its kind and band (F2): what a row measured over
     /// some values of an operand alone — a start below 1 or from 1, a length below 0, a count's sign, a search empty or
-    /// not. Each family partitions its kind (<see cref="FunctionValueClasses.Families"/>); a row keyed
-    /// <see cref="Any"/> holds over every value of its kind and band.
+    /// not. A row keyed <see cref="Any"/> holds over every value of its kind and band. Each class holds some atoms, the
+    /// finest classes, one a value (<see cref="FunctionValueClasses.Holding"/>): a call's cell is keyed by the atoms its
+    /// values are in, and S reads a row as covering each atom its class holds.
     /// </summary>
     internal enum FunctionValueClass
     {
@@ -33,6 +34,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A string of at least one unit.</summary>
         NonEmpty,
+
+        /// <summary>A number above 0 and below 1: the atom where <see cref="Positive"/> and <see cref="BelowOne"/> meet.</summary>
+        PositiveBelowOne,
 
     }
 

@@ -16,17 +16,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class JsonContexts
     {
 
+        /// <param name="stored">What the service stores of a string written in a class, its measured rows.</param>
         /// <param name="documentsAreObjects">Whether every document is an object, as every Cosmos DB item is.</param>
-        public JsonContexts(bool documentsAreObjects = true)
+        public JsonContexts(IReadOnlyCollection<JsonClassMap> stored, bool documentsAreObjects = true)
         {
             Graph = new EGraph();
             Rules = new JsonRules(Graph);
             Saturation = Rules.Settle;
 
-            // The rules of JSON hold everywhere: they are the graph's own, and the root is frozen with them.
+            // The rules of JSON hold everywhere: they are the graph's own, and the root is frozen with them, and with the
+            // rows they read: what the service stores, and what each function Calcite computes makes of its operands.
             var root = Graph.Root;
             if (documentsAreObjects)
                 root.Assume(Rules.Present.Of(Rules.Root.Of()), Rules.Types.Of(Rules.Root.Of()).Is(Types(ObjectType)));
+
+            root.Assume(Rules.StoredAs.Of().Is(ValueSet.From(stored)));
+            foreach (var (function, maps) in StringCalls.Maps)
+                root.Assume(Rules.CallMaps.Of(function).Is(maps));
 
             root.Run(Saturation);
             root.Freeze();

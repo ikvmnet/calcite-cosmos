@@ -3044,8 +3044,11 @@ across documents* and *A join of a container to itself* is the record.
 - **A claim carries the five classes, not their refinements** — *small.* The pattern reader computes which refinements
   a pattern excludes, but a claim states only the five, read closed (`JsonValues.Closed`), so a pattern holding high
   characters but not U+FFFD is stated as holding U+FFFD. A claim carrying refinements gives it back once a row reads one.
-- **The column bridge reads one operand a function** — *until h37.* `CosmosFunctionSpellings.Answer` asks the key of
-  the one operand the rows name, and reads a function whose rows name two as unmeasured, so refuses it; it goes at h37.
+- **The stored rows are keyed by the surrogate band, not by `unpaired`** — *small.* `Service.LoneSurrogateIsStoredAsReplacement`
+  stores `surrogate` as `high` and `replacement`, which a string written of pairs alone does not need; keyed by
+  `unpaired` it would be exact, once every written set a pair-only string reaches names its refinements.
+- **The column bridge reads a class of value as no key** — *until h37.* `CosmosFunctionSpellings.Parting` asks each
+  operand's `Any` rows; a row naming a class is S's alone (the atoms it covers) until the bridge goes at h37.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused

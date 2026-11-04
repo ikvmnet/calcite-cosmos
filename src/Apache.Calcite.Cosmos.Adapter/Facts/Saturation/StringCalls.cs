@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Eggnog;
 
@@ -37,28 +38,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     {
 
         /// <summary>
-        /// One function: which operands its value draws characters from, by position, and what it makes of each one's.
+        /// One function: which operands its value draws characters from, by position, and the rows of what it makes of each
+        /// one's beyond keeping every class (<see cref="JsonClassMap"/>), which the rules read as data (<c>callMaps</c>).
         /// </summary>
-        sealed record Draw(Func<long, bool> Reads, Func<JsonCharacterBand, JsonCharacterBand> Image);
+        sealed record Draw(Func<long, bool> Reads, JsonClassMap[] Maps);
 
-        static JsonCharacterBand Kept(JsonCharacterBand classes) => classes;
-
-        /// <summary>Every class kept, and a pair's units cut apart: a surrogate may be left unpaired.</summary>
-        static JsonCharacterBand Cut(JsonCharacterBand classes) =>
-            (classes & JsonCharacterBand.Surrogates) != JsonCharacterBand.None ? classes | JsonCharacterBand.Unpaired : classes;
+        /// <summary>A pair's units cut apart: a surrogate may be left unpaired.</summary>
+        static readonly JsonClassMap Cut = new(SurrogateBand, UnpairedClass);
 
         /// <summary>
-        /// Java's full upper-case mapping: every class kept, and a character from U+E000 mapped to letters below U+D800,
-        /// as the ligatures U+FB13 to U+FB17 are to Armenian.
+        /// Java's full upper-case mapping: a character from U+E000 mapped to letters below U+D800, as the ligatures U+FB13
+        /// to U+FB17 are to Armenian.
         /// </summary>
-        static JsonCharacterBand Upper(JsonCharacterBand classes) =>
-            (classes & JsonCharacterBand.HighBmp) != JsonCharacterBand.None ? classes | JsonCharacterBand.NonAscii : classes;
+        static readonly JsonClassMap Upper = new(HighBand, NonAsciiBand);
 
-        static readonly Draw Every = new(_ => true, Kept);
+        static readonly Draw Every = new(_ => true, []);
 
-        static readonly Draw First = new(operand => operand == 0, Kept);
+        static readonly Draw First = new(operand => operand == 0, []);
 
-        static readonly Draw Window = new(operand => operand == 0, Cut);
+        static readonly Draw Window = new(operand => operand == 0, [Cut]);
 
         /// <summary>The functions, by the name the loader spells a call of each with.</summary>
         static readonly Dictionary<string, Draw> Functions = new(StringComparer.Ordinal)
@@ -66,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ["||"] = Every,
             ["CONCAT"] = Every,
             ["CASE"] = Every,
-            ["UPPER"] = new(operand => operand == 0, Upper),
+            ["UPPER"] = new(operand => operand == 0, [Upper]),
             ["LOWER"] = First,
             ["SUBSTRING"] = Window,
             ["LEFT"] = Window,
@@ -74,10 +72,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ["REVERSE"] = First,
             ["REPEAT"] = First,
             ["CAST"] = First,
-            ["REPLACE"] = new(operand => operand is 0 or 2, Kept),
-            ["TRIM BOTH"] = new(operand => operand == 1, Kept),
-            ["TRIM LEADING"] = new(operand => operand == 1, Kept),
-            ["TRIM TRAILING"] = new(operand => operand == 1, Kept),
+            ["REPLACE"] = new(operand => operand is 0 or 2, []),
+            ["TRIM BOTH"] = new(operand => operand == 1, []),
+            ["TRIM LEADING"] = new(operand => operand == 1, []),
+            ["TRIM TRAILING"] = new(operand => operand == 1, []),
         };
 
         /// <summary>
@@ -93,20 +91,28 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static bool Reads(string function, long operand) => Functions[function].Reads(operand);
 
         /// <summary>
-        /// Returns the classes a function's value may hold characters of, drawn from an operand holding characters of
-        /// these, beside those it draws from the operands after it.
+        /// The rows of what each function makes of an operand's classes: the root's data, assumed once a function, every
+        /// function the theory reads among them (<c>JsonRules.CallMaps</c>).
         /// </summary>
-        /// <param name="function">The function, one the theory reads.</param>
-        /// <param name="operand">The classes of the operand.</param>
-        /// <param name="rest">The classes the function draws from the operands after it.</param>
-        public static ValueSet<string> Drawn(string function, ValueSet<string> operand, ValueSet<string> rest) =>
-            ClassSet(Functions[function].Image(ClassMask(operand)) | ClassMask(rest));
+        public static IEnumerable<(string Function, ValueSet<JsonClassMap> Maps)> Maps =>
+            Functions.Select(f => (f.Key, ValueSet.From(f.Value.Maps)));
 
         /// <summary>
-        /// Returns the classes a function's value may hold characters of where its operand holds characters of these:
-        /// the function's own image, for a check to hold to what Calcite computes.
+        /// Returns the classes a function's value may hold characters of, drawn from an operand holding characters of
+        /// these under its rows, beside those it draws from the operands after it.
         /// </summary>
-        internal static JsonCharacterBand Image(string function, JsonCharacterBand operand) => Functions[function].Image(operand);
+        /// <param name="operand">The classes of the operand.</param>
+        /// <param name="maps">The function's rows (<see cref="Maps"/>).</param>
+        /// <param name="rest">The classes the function draws from the operands after it.</param>
+        public static ValueSet<string> Drawn(ValueSet<string> operand, ValueSet<JsonClassMap> maps, ValueSet<string> rest) =>
+            ClassSet(ClassMask(Mapped(operand, maps)) | ClassMask(rest));
+
+        /// <summary>
+        /// Returns the classes a function's value may hold characters of where its operand holds characters of these,
+        /// under its rows: for a check to hold the rows to what Calcite computes.
+        /// </summary>
+        internal static JsonCharacterBand Image(string function, JsonCharacterBand operand) =>
+            ClassMask(Mapped(ClassSet(operand), ValueSet.From(Functions[function].Maps)));
 
     }
 

@@ -242,8 +242,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void AFunctionNoRowNamesIsRefusedEverywhere()
         {
-            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Emulator).Should().BeNull();
-            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().BeNull();
+            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.FunctionKey.Every, Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Emulator).Should().BeNull();
+            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.FunctionKey.Every, Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().BeNull();
             CosmosFunctionSpellings.Named("LENGTH").Should().BeTrue("the gate holds it, so it is refused rather than passed unasked");
             var length = SqlLibraryOperators.LENGTH;
             Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
@@ -270,7 +270,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var trim = (RexCall)Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str());
             CosmosFunctionSpellings.KeyOf(trim).Should().Be("TRIM LEADING");
-            CosmosFunctionSpellings.SubjectsOf("TRIM LEADING", trim).Should().Equal(2);
+            CosmosFunctionSpellings.SubjectsOf("TRIM LEADING", trim).Should().Equal((2, 1L));
             Pushes(Emulator, W, SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str()).Should().BeFalse();
         }
 

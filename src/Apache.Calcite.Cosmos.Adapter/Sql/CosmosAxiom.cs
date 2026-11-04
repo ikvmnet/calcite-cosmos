@@ -22,8 +22,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// (<see cref="CosmosAxiomRows.ReadFunctionReads"/>): a computed place over any other is no key of the row's.</param>
     /// <param name="Columns">What each raw column makes of each kind of value, a <c>Calcite</c> row's
     /// (<see cref="CosmosAxiomRows.ReadColumns"/>).</param>
+    /// <param name="StoredAs">What a string written in a class was stored holding, a <c>Service</c> row's
+    /// (<see cref="CosmosAxiomRows.ReadStored"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
-        IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null);
+        IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
+        IReadOnlyList<CosmosStoredClass>? StoredAs = null);
 
 }

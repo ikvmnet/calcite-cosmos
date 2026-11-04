@@ -91,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 recorder.Records.Should().NotBeEmpty("the capture was armed");
                 TestContext.Current.TestOutputHelper?.WriteLine($"the probe: {probe.Opened} bundles opened");
                 probe.Opened.Should().BePositive("S was asked at admission");
-            }, new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(), probe: probe));
+            }, new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(CosmosReasoning.Stored), probe: probe));
         }
 
     }

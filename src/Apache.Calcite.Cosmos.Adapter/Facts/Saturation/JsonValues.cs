@@ -418,18 +418,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Returns the classes a string written in some classes may hold once it is stored: the same, and the high band and
-        /// U+FFFD's class within it too where it was written with a surrogate, which may have been a lone one.
+        /// Returns the classes a string holding characters of some classes may make under some rows: the same, and each
+        /// class a row maps one of them to. The one evaluation of a set of <see cref="JsonClassMap"/> rows, a primitive:
+        /// which rows there are is the data's, and which apply is this set's members.
         /// </summary>
-        /// <remarks>
-        /// The service's measured behaviour, read as data by one rule of the theory: a lone surrogate written as a JSON
-        /// escape is stored as U+FFFD (<c>Service.LoneSurrogateIsStoredAsReplacement</c>, measured on the probe account;
-        /// the emulator refuses the write). A surrogate pair is stored as it is. U+FFFD is in the high band alone, and no
-        /// trim removes it.
-        /// </remarks>
-        public static ValueSet<string> Stored(ValueSet<string> written) =>
-            written.Contains(SurrogateBand) && (written.Contains(HighBand) == false || written.Contains(ReplacementClass) == false)
-                ? written.Union(ValueSet.Of(HighBand, ReplacementClass)) : written;
+        /// <param name="classes">The classes held.</param>
+        /// <param name="maps">The rows.</param>
+        public static ValueSet<string> Mapped(ValueSet<string> classes, ValueSet<JsonClassMap> maps) =>
+            classes.Union(ValueSet.From(from map in maps where classes.Contains(map.From) select map.To));
 
         /// <summary>
         /// Determines whether a text holds no unpaired surrogate, which the SDK's encoder refuses to send

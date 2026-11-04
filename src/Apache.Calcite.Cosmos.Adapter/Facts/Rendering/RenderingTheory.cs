@@ -120,7 +120,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             FunctionAnswer = Graph.DefineFunction<FunctionKey, RenderingTarget, CosmosFunctionAnswer>("functionanswer");
             MeasuredKeys = Graph.DefineFunction<string, ValueSet<FunctionKey>>("measuredkeys", ValueLattice.Union<FunctionKey>());
             FunctionSubjects = Graph.DefineFunction<string, ValueSet<long>>("functionsubjects", ValueLattice.Union<long>());
-            MeasuredReaders = Graph.DefineFunction<string, ValueSet<string>>("measuredreaders", ValueLattice.Union<string>());
+            MeasuredReaders = Graph.DefineFunction<string, ValueSet<string>>("measuredreaders", ValueLattice.Intersect<string>());
+            ValueClassHolds = Graph.DefineRelation<CosmosValueClass, FunctionValueClass, FunctionValueClass>("valueclassholds");
             DisagreeingKeys = Graph.DefineFunction<RenderingSet, string, ValueSet<FunctionKey>>("disagreeingkeys", ValueLattice.Union<FunctionKey>());
 
             // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
@@ -268,7 +269,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A function key's answer on a target, total over the targets (<see cref="CosmosFunctionAnswer.Unmeasured"/>).</summary>
         public Function<FunctionKey, RenderingTarget, CosmosFunctionAnswer> FunctionAnswer { get; }
 
-        /// <summary>The keys some target measured of a function, by its rows' name.</summary>
+        /// <summary>
+        /// The keys some target measured of a function, by its rows' name, each read as the atoms its class holds
+        /// (<see cref="ValueClassHolds"/>): what a call's keys must fall within.
+        /// </summary>
         public Function<string, ValueSet<FunctionKey>> MeasuredKeys { get; }
 
         /// <summary>
@@ -277,8 +281,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public Function<string, ValueSet<long>> FunctionSubjects { get; }
 
-        /// <summary>The readers a function's rows were measured through: a constant raw fact.</summary>
+        /// <summary>
+        /// The readers a function's rows were measured through: a constant raw fact, one row's at a time, which the
+        /// intersection meets, so a function two rows measure holds only through what both were measured through.
+        /// </summary>
         public Function<string, ValueSet<string>> MeasuredReaders { get; }
+
+        /// <summary>The atoms a class of value holds of a kind of operand (<see cref="FunctionValueClasses.Holding"/>): constant data.</summary>
+        public Relation<CosmosValueClass, FunctionValueClass, FunctionValueClass> ValueClassHolds { get; }
 
         /// <summary>The keys of a function some target a set serves answers otherwise than Calcite, derived at the build.</summary>
         public Function<RenderingSet, string, ValueSet<FunctionKey>> DisagreeingKeys { get; }
@@ -433,6 +443,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<ServiceOutcomes>();
             values.RegisterEnum<TemplateId>();
             values.RegisterEnum<CosmosFunctionAnswer>();
+            values.RegisterEnum<FunctionValueClass>();
             values.Register<ServiceForm>("service form");
             values.Register<Priced>("priced");
             values.Register<RenderingRexGrammar.Value>("rex grammar");
@@ -1016,14 +1027,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // assumed as that. RenderingImage reads keys and evaluates; it decides nothing.
         void DefineValued(Ruleset disagree, Ruleset place, Ruleset image, Ruleset assume)
         {
+            // A row covers, and disagrees on, each atom its class holds: a union, so a call's atom is the image rule's once
+            // some row covers it and none disagrees, whether the row names a class or every value (F2).
+            disagree.DefineRule("a function key some target measured covers each atom its class holds", r =>
+            {
+                var (key, x) = r.Vars<FunctionKey, RenderingTarget>("key", "x");
+                var ans = r.Var<CosmosFunctionAnswer>("ans");
+                var kd = r.Var<CosmosValueClass>("kd");
+                var (c, a) = r.Vars<FunctionValueClass, FunctionValueClass>("c", "a");
+                r.When(ans.Is(FunctionAnswer.Of(key, x)), kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
+                r.Then(MeasuredKeys.Of(Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(Compute.Of(key, a, FunctionKey.WithValue))));
+            });
+
             disagree.DefineRule("a function key a target of the set answers otherwise than Same disagrees there", r =>
             {
                 var (key, x, st) = r.Vars<FunctionKey, RenderingTarget, RenderingSet>("key", "x", "st");
                 var (ans, d) = r.Vars<CosmosFunctionAnswer, ValueSet<RenderingTarget>>("ans", "d");
-                r.When(ans.Is(FunctionAnswer.Of(key, x)), d.Is(Serves.Of(st)));
+                var kd = r.Var<CosmosValueClass>("kd");
+                var (c, a) = r.Vars<FunctionValueClass, FunctionValueClass>("c", "a");
+                r.When(ans.Is(FunctionAnswer.Of(key, x)), d.Is(Serves.Of(st)), kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
                 r.Where(RenderingPrimitives.IsNotSame.Of(ans));
-                r.Then(DisagreeingKeys.Of(st, Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(key)));
+                r.Then(DisagreeingKeys.Of(st, Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(Compute.Of(key, a, FunctionKey.WithValue))));
             });
 
             place.DefineRule("a call's operands' imports are gathered beneath each stratum, one an ordinal", r =>
@@ -1046,13 +1071,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var g = r.Var<ValueSet<PathImport>>("g");
                 var st = r.Var<RenderingSet>("st");
                 var (z, d, ks) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>>("z", "d", "ks");
-                var kc = r.Var<ValueSet<FunctionKey>>("kc");
                 var img = r.Var<PathValues>("img");
                 r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(Compute.Of(n, t, RenderingImage.KeyFunction)),
                     g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)), m.Is(Primitives.Count<PathImport>().Of(g)), Under.Of(st), z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)));
-                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), MeasuredReaders.Of(kn), RenderingImage.Keys)), kc.Is(Compute.Of(ks, g, z, RenderingImage.Classed)));
-                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(kc, z));
-                r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(kc, d)));
+                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), MeasuredReaders.Of(kn), RenderingImage.Keys)));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
+                r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
                 r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)));
                 r.Then(ArmImport.Of(s, q).Is(img));
             });
@@ -1373,15 +1397,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     w.Assume(StrictReader.Of(reader));
 
                 // The function rows, total over the targets: a key one target measured is unmeasured on the rest, and read as
-                // anything there. Each set's disagreeing keys start empty, so the image rule reads a function none disagrees on.
+                // anything there; which atoms each covers is the disagree stratum's. Each set's disagreeing keys start empty,
+                // so the image rule reads a function none disagrees on.
                 var keys = definition.Functions.Select(f => f.Key).Distinct().ToList();
                 var answered = definition.Functions.ToDictionary(f => (f.Key, f.Target), f => f.Answer);
                 foreach (var key in keys)
-                {
-                    w.Assume(MeasuredKeys.Of(key.Function).Is(ValueSet.Of(key)));
                     foreach (var target in Enum.GetValues<RenderingTarget>())
                         w.Assume(FunctionAnswer.Of(key, target).Is(answered.TryGetValue((key, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured));
-                }
+
+                foreach (var (kind, @class, atom) in FunctionValueClasses.Holding)
+                    w.Assume(ValueClassHolds.Of(kind, @class, atom));
 
                 foreach (var (function, subject) in definition.FunctionSubjects)
                     w.Assume(FunctionSubjects.Of(function).Is(ValueSet.Of(subject)));

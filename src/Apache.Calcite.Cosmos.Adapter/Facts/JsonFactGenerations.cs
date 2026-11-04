@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -55,18 +56,27 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
+        /// <param name="stored">What the service stores of a string written in a class, its measured rows, which each
+        /// generation's root holds (<see cref="JsonContexts"/>).</param>
         /// <param name="internedLimit">How many values a generation interns before it is retired.</param>
         /// <param name="usedLimit">The share of its graph's ids or epochs a generation uses before it is retired.</param>
-        public JsonFactGenerations(long internedLimit = DefaultInternedLimit, double usedLimit = DefaultUsedLimit)
+        public JsonFactGenerations(IReadOnlyCollection<JsonClassMap> stored, long internedLimit = DefaultInternedLimit, double usedLimit = DefaultUsedLimit)
         {
+            ArgumentNullException.ThrowIfNull(stored);
             if (internedLimit < 1)
                 throw new ArgumentOutOfRangeException(nameof(internedLimit));
             if (usedLimit is not (> 0 and <= 1))
                 throw new ArgumentOutOfRangeException(nameof(usedLimit));
 
+            Stored = stored;
             _internedLimit = internedLimit;
             _usedLimit = usedLimit;
         }
+
+        /// <summary>
+        /// Gets what the service stores of a string written in a class: the rows each generation's root holds.
+        /// </summary>
+        public IReadOnlyCollection<JsonClassMap> Stored { get; }
 
         /// <summary>
         /// Gets how many generations have been started, for diagnostics and tests.
@@ -110,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 Owner = owner;
                 Number = number;
-                Contexts = new JsonContexts();
+                Contexts = new JsonContexts(owner.Stored);
             }
 
             /// <summary>

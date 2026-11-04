@@ -32,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AFirstPlanStartsItsSchemasBuild()
         {
-            var (validated, off, planned) = (new CosmosReasoning(), new CosmosReasoning(new JsonFactGenerations(), renderingOff: true), new CosmosReasoning());
+            var (validated, off, planned) = (new CosmosReasoning(), new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), renderingOff: true), new CosmosReasoning());
 
             var harness = new PlannerHarness(validated);
             harness.Validate(harness.Parse(Filtered));
@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ADeclineReadsTheContainerAndIsCounted()
         {
-            var declining = new CosmosReasoning(new JsonFactGenerations(), new RenderingOracle(new RenderingGraph(() => throw new InvalidOperationException("planted")), wait: TimeSpan.Zero));
+            var declining = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), new RenderingOracle(new RenderingGraph(() => throw new InvalidOperationException("planted")), wait: TimeSpan.Zero));
             var counted = new List<(long Count, string? Container, string? Reason)>();
             using var listener = new MeterListener
             {
