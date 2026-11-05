@@ -351,14 +351,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds the
-        /// path's, a literal its own, and a call what it draws from its operands, by <see cref="StringCalls"/>. A parameter
-        /// and a call of a function the table does not name hold anything: no row is stated of them.
+        /// path's, a literal its own, and a call what it draws from its operands, by the rows of <see cref="StringCalls"/>
+        /// the root holds (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>). A parameter and a call of a
+        /// function no row names hold anything: no row is stated of them.
         /// </summary>
         /// <remarks>
         /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
-        /// a call draws from an operand on is the image of that operand's classes, where the function reads it, beside
-        /// what it draws from the operands after it. Every row only narrows, as the characters of what is read narrow, so
-        /// the run terminates over the terms it was given.
+        /// a call draws from an operand on is the image of that operand's classes, where its function's row names the
+        /// operand or every one, beside what it draws from the operands after it, and what it draws from the rest alone where
+        /// the row names neither. Every row only narrows, as the characters of what is read narrow, so the run terminates
+        /// over the terms it was given.
         /// </remarks>
         void DefineCharacters()
         {
@@ -395,11 +397,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(ValueChars.Of(v).Is(Compute.Of(s, value => JsonValues.CharactersOf(value))));
             });
 
-            Characters.DefineRule("a call of a function the theory reads walks its operands from the first", r =>
+            // The walk is the call's shape alone, an analysis of its terms; what it draws is the rows', joined below.
+            Characters.DefineRule("a call walks its operands from the first", r =>
             {
                 var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
                 r.When(v.Is(ir.Call.Of(f, a)));
-                r.Where(f, StringCalls.Knows);
                 r.Then(Walk.Of(v, 0L, a));
             });
             Characters.DefineRule("the walk steps past an operand", r =>
@@ -409,29 +411,44 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)));
                 r.Then(Walk.Of(v, Primitives.Add.Of(i, 1L), t));
             });
-            Characters.DefineRule("a call draws nothing past its last operand", r =>
+            Characters.DefineRule("a call of a function a row names draws nothing past its last operand", r =>
             {
-                var (v, a) = r.Vars<Val, Args>("v", "a");
-                var i = r.Var<long>("i");
-                r.When(Walk.Of(v, i, a), a.Is(ir.NoOperands.Of()));
+                var (v, a, x) = r.Vars<Val, Args, Args>("v", "a", "x");
+                var (i, f) = r.Vars<long, string>("i", "f");
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.NoOperands.Of()), v.Is(ir.Call.Of(f, x)), n.Is(json.CallDraws.Of(f)));
                 r.Then(Drawn.Of(v, a).Is(JsonValues.NoBand));
             });
-            Characters.DefineRule("a call draws nothing from an operand it does not read characters of", r =>
+            Characters.DefineRule("a call draws nothing from an operand its function's row names not, nor every one", r =>
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f, d) = r.Vars<long, Val, string, ValueSet<string>>("i", "h", "f", "d");
-                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), d.Is(Drawn.Of(v, t)));
-                r.Where(f, i, (function, operand) => StringCalls.Reads(function, operand) == false);
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), d.Is(Drawn.Of(v, t)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.IsEmpty<long>().Of(Primitives.Intersect<long>().Of(n,
+                    Primitives.Union<long>().Of(Primitives.Singleton<long>().Of(i), Primitives.Singleton<long>().Of(Rendering.FunctionKey.Every)))));
                 r.Then(Drawn.Of(v, a).Is(d));
             });
-            Characters.DefineRule("a call draws an operand's characters, as the function maps them", r =>
+            Characters.DefineRule("a call draws an operand its function's row names, as the function maps it", r =>
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
                 var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
                 var m = r.Var<ValueSet<JsonClassMap>>("m");
-                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(Json.CallMaps.Of(f)));
-                r.Where(f, i, StringCalls.Reads);
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(json.CallMaps.Of(f)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.Contains<long>().Of(n, i));
+                r.Then(Drawn.Of(v, a).Is(Compute.Of(c, m, d, StringCalls.Drawn)));
+            });
+            Characters.DefineRule("a call draws every operand of a function whose row names every one, as the function maps it", r =>
+            {
+                var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
+                var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
+                var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(json.CallMaps.Of(f)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.Contains<long>().Of(n, Rendering.FunctionKey.Every));
                 r.Then(Drawn.Of(v, a).Is(Compute.Of(c, m, d, StringCalls.Drawn)));
             });
             Characters.DefineRule("a call holds what it draws from its operands", r =>

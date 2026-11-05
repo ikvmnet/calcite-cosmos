@@ -31,8 +31,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 root.Assume(Rules.Present.Of(Rules.Root.Of()), Rules.Types.Of(Rules.Root.Of()).Is(Types(ObjectType)));
 
             root.Assume(Rules.StoredAs.Of().Is(ValueSet.From(stored)));
-            foreach (var (function, maps) in StringCalls.Maps)
-                root.Assume(Rules.CallMaps.Of(function).Is(maps));
+            foreach (var (function, draws, maps) in StringCalls.Rows)
+                root.Assume(Rules.CallDraws.Of(function).Is(draws), Rules.CallMaps.Of(function).Is(maps));
 
             root.Run(Saturation);
             root.Freeze();

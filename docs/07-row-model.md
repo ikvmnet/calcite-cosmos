@@ -69,6 +69,11 @@ concrete type is learned per row. In practice:
   service where the container's schema declares the path a string (Chapter 9).
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
+- **A string function over it does not push.** `UPPER(CAST(c."$.category" AS VARCHAR))` reads the column
+  cast to text, which is null for a number or a boolean where the service's function is undefined, and
+  the service's string functions were not measured through that reading. Apply the function to the
+  path instead: `UPPER(JSON_VALUE(c."DOC", '$.category'))` pushes where the schema declares the path a
+  string and its characters are proved (Appendix B.2).
 - **To read a typed value**, select the path rather than the column: `JSON_VALUE(c."DOC",
   '$.category')` is text.
 

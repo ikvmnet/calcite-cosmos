@@ -518,13 +518,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What each function computes over a band is the function rows', the ones S reads</b>
-        /// (<see cref="CosmosFunctionSpellings.Parting"/>): for every target the set serves (<see cref="Set"/>), the bands
-        /// each operand the rows name may hold must each answer <c>Same</c> by that operand's rows, and a key unmeasured there refuses. What the rows do not carry
-        /// is the spelling's legality (<see cref="CosmosFunctionSpellings.Refusals"/>). Azure has no rows until run 1, and
-        /// is held to the verdicts it was held to before. A bridge reading the rows, gone at h37 (TODO.md). This reads the
-        /// characters off the facts the translation was licensed (<see cref="Facts"/>, <see cref="Unproved"/>). Refused,
-        /// the function stays in process, which is what happens over a path nothing is declared of.
+        /// <b>What each function computes is the function rows', read as S's image rule reads them</b>
+        /// (<see cref="CosmosFunctionSpellings.Disagreeing"/>): the call's operands gathered as S gathers them
+        /// (<see cref="Gathered"/>) fall under S's keys, by each kind each operand the rows name may hold, its bands and the
+        /// atoms its values may be in, and every key must be covered by a row and answered <c>Same</c> by every row covering
+        /// it on every target the set serves (<see cref="Set"/>), over the definition the schema's S is built from
+        /// (<see cref="Rendering"/>). What the rows do not carry is the spelling's legality
+        /// (<see cref="CosmosFunctionSpellings.Refusals"/>), read off the facts the translation was licensed
+        /// (<see cref="Facts"/>, <see cref="Unproved"/>). A bridge, which G6 replaces by asking S's image of each call, and
+        /// which goes at h37 (TODO.md). Refused, the function stays in process, which is what happens over a path nothing is
+        /// declared of.
         /// </para>
         /// <para>
         /// <b>Asked once, of the whole expression, before anything is written</b>, as a rendering is
@@ -542,16 +545,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || _paths.TryResolvePath(call, out _))
                 return;
 
-            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(function))
-                foreach (var target in Metadata.CosmosRendering.Definition.Serves[Set])
-                    foreach (var (ordinal, subject) in CosmosFunctionSpellings.SubjectsOf(function, call))
-                    {
-                        if (CosmosFunctionSpellings.Parting(function, subject, target) is not JsonCharacterBand parting)
-                            throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: what it computes over a string on {target} has not been measured to be Calcite's.");
-
-                        if (parting != JsonCharacterBand.None && Unproved(Operand(call, ordinal), parting) is string input)
-                            throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {target} answers it otherwise than Calcite over {parting}, and nothing proves {input} holds none of it.");
-                    }
+            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(function)
+                && (Gathered(call) is { } gathered ? CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) : "an operand is no literal, path or call S gathers") is string why)
+                throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
 
             foreach (var rule in CosmosFunctionSpellings.Refusals(call, Set))
                 foreach (var ordinal in rule.Asked)
@@ -561,6 +557,87 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
         }
+
+        /// <summary>
+        /// Returns a call's operands as S's place rule gathers them (<c>RenderingTheory.DefineValued</c>), one import an
+        /// ordinal of the loader's, or <c>null</c> where the loader does not read the call as a call of values or S gathers
+        /// nothing of an operand: S's image asks one import an operand, its arity.
+        /// </summary>
+        /// <remarks>
+        /// Each operand read as the loader that reads places reads it, S's, and imported as S imports one, from what F
+        /// holds of it where the call is written: a literal as its own cell; a reading of a path through its reader, with
+        /// the path's <c>possible</c> and <c>chars</c>; a nested call through its type's reader, with its image over its own
+        /// operands, where its own keys agree, and the characters F derives of the call. Read off this translation's facts,
+        /// the stratum it was licensed (<see cref="Facts"/>), and where the stratum holds no <c>possible</c> of the path, off
+        /// the root S imports from (<see cref="JsonFactTheory.PossibleOf"/>): every row the stratum narrows is within the
+        /// root's. An operand S gathers nothing of — a parameter, a <c>CASE</c>, a call it reads no place of — leaves the call
+        /// no image, as the gathering's count short of the call's arity leaves S's.
+        /// </remarks>
+        /// <param name="call">The call.</param>
+        /// <returns>The imports, or <c>null</c>.</returns>
+        Eggnog.ValueSet<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>? Gathered(RexCall call)
+        {
+            if (Places.ReadValue(call) is not SqlValue.Call place || Values.ReadValue(call) is not SqlValue.Call read || read.Operands.Count != place.Operands.Count)
+                return null;
+
+            // The loader leaves out what is no operand of the function, a trim's leading flag, so its ordinals start past it.
+            var shift = call.getOperands().size() - place.Operands.Count;
+            var imports = new List<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>();
+            for (var i = 0; i < place.Operands.Count; i++)
+                if (Imported(i, Operand(call, i + shift), place.Operands[i], read.Operands[i]) is { } import)
+                    imports.Add(import);
+                else
+                    return null;
+
+            return Eggnog.ValueSet.From(imports);
+        }
+
+        /// <summary>
+        /// An operand's import as S's place rule gathers it (<see cref="Gathered"/>), or <c>null</c> where S gathers none; a
+        /// nested call's characters F's of the reading without places, whose raw readings F's character rules read.
+        /// </summary>
+        Apache.Calcite.Cosmos.Facts.Rendering.PathImport? Imported(long ordinal, RexNode node, SqlValue place, SqlValue read)
+        {
+            switch (place)
+            {
+                case SqlValue.Literal literal:
+                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Literal(ordinal, literal.Value);
+
+                case SqlValue.Call { Type: string type } inner when StripRedundantTextCast(node) is RexCall nested && Gathered(nested) is { } gathered
+                    && Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.KeyFunction(inner.Function, type) is var function
+                    && CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) is null:
+                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, Apache.Calcite.Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type),
+                        Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.Of(function, type, gathered), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(read)));
+
+                case { PathRead: { } path } when Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(place) is string reader:
+                    var possible = _facts.TryPossible(path, out var held) ? held : Declaration?.PossibleOf(path) ?? Apache.Calcite.Cosmos.Facts.Saturation.PathValues.Anything;
+                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, reader, possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the declaration S imports a statement's paths from at its root, the container's, where a schema's reasoning
+        /// binds it; <c>null</c> otherwise, which imports every path as the top.
+        /// </summary>
+        JsonFactTheory? Declaration => _container?.Facts is { Generations: not null } theory ? theory : null;
+
+        /// <summary>
+        /// Gets the definition the statement's S is built from, whose function rows the column bridge reads: its container's
+        /// reasoning's (<see cref="Metadata.CosmosReasoning.Definition"/>), or the registry's for a translator built without one.
+        /// </summary>
+        Apache.Calcite.Cosmos.Facts.Rendering.RenderingDefinition Rendering => _container?.Reasoning?.Definition ?? Metadata.CosmosRendering.Definition;
+
+        /// <summary>
+        /// Gets the reader of this translation's expressions as S reads them, made the first time it is asked for: as
+        /// <see cref="Values"/> reads them, and a raw reading through its column and a call the function rows name as a
+        /// place (h10).
+        /// </summary>
+        Metadata.CosmosPredicateLoader.Loading Places => _places ??= new(_fields, _readings, CosmosImplementor.DefaultRootAlias, places: true);
+
+        Metadata.CosmosPredicateLoader.Loading? _places;
 
         /// <summary>
         /// Returns an expression the facts do not prove free of some classes of character, spelled, or <c>null</c> where

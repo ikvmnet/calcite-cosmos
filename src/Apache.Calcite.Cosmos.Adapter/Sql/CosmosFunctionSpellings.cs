@@ -6,6 +6,8 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
+using Eggnog;
+
 using org.apache.calcite.rex;
 
 namespace Apache.Calcite.Cosmos.Adapter.Sql
@@ -144,9 +146,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         const string EscapedNamed = "U+0000 or unit from U+E000, U+FDD0 among them,";
 
-        /// <summary>The single bands a string's characters fall in, each a key of the rows.</summary>
-        static readonly JsonCharacterBand[] Bands = [JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.NonAscii, JsonCharacterBand.Trimmed, JsonCharacterBand.Nul];
-
         static readonly Refusal Mapped = new(CaseMapped, "character outside ASCII", [0],
             "the service maps case by a simple mapping and Calcite by Java's full one, which agree over ASCII alone");
 
@@ -176,43 +175,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "REPLACE", "POSITION", "REVERSE", "CONCAT", "||", "REPEAT",
         };
 
-        /// <summary>Every function row by key and target, as S reads them.</summary>
-        public static readonly IReadOnlyDictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> Rows =
-            CosmosAxiomRows.ReadFunctions(CosmosAxioms.All).ToDictionary(r => (r.Key, r.Target), r => r.Answer);
-
-        /// <summary>The operands each function's rows name, by the loader's ordinals, as S reads them.</summary>
-        public static readonly IReadOnlyDictionary<string, IReadOnlySet<long>> Subjects =
-            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).GroupBy(f => f.Function, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => (IReadOnlySet<long>)g.Select(f => f.Subject).ToHashSet(), StringComparer.Ordinal);
-
         /// <summary>The rows' names of the functions some target measured: what the loader reads as a computed place (h10).</summary>
-        public static readonly IReadOnlySet<string> RowFunctions = Rows.Keys.Select(k => k.Key.Function).ToHashSet(StringComparer.Ordinal);
+        public static readonly IReadOnlySet<string> RowFunctions = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All).Select(r => r.Key.Function).ToHashSet(StringComparer.Ordinal);
 
         /// <summary>The functions whose result is the service's own, which Calcite has no body for: what the service computes is what it means.</summary>
         public static readonly IReadOnlySet<string> Declared = new HashSet<string>(StringComparer.Ordinal) { "ToString" };
 
         /// <summary>
-        /// The bands of an operand's characters over which a target answers a function otherwise than Calcite, by the rows
-        /// of that operand, or <c>null</c> where their answer over a string of no band is unmeasured there or not Calcite's.
+        /// Why the function rows do not agree on a call's operands under a set, or <c>null</c> where they do: the rows S's
+        /// image rule reads (<c>RenderingTheory.DefineValued</c>), read as it reads them.
         /// </summary>
-        /// <param name="function">The rows' name of the function (<see cref="KeyOf"/>).</param>
-        /// <param name="subject">The operand as the rows name it (<see cref="SubjectsOf"/>).</param>
-        /// <param name="target">The target.</param>
-        public static JsonCharacterBand? Parting(string function, long subject, RenderingTarget target)
+        /// <remarks>
+        /// <para>
+        /// <b>S's keys over S's rows.</b> The keys are S's own (<see cref="RenderingImage.Keys"/>), under the operands the
+        /// rows name and the readers they were measured through, met across the axioms that name the function. A key is
+        /// measured where a row of the function covers it, the row's class holding the key's atom
+        /// (<see cref="FunctionValueClasses.Holding"/>), and agrees where every row covering it answers <c>Same</c> on every
+        /// target the set serves, a target that measured none of them answering it unmeasured. A function no row names has
+        /// no key measured. Nothing is read beside the definition the schema's S is built from.
+        /// </para>
+        /// <para>
+        /// <b>The bridge G6 replaces</b>, which asks S's image of each call the translator writes (TODO.md).
+        /// </para>
+        /// </remarks>
+        /// <param name="definition">The definition the schema's S is built from.</param>
+        /// <param name="set">The set the statement is sent under.</param>
+        /// <param name="function">The rows' name of the call (<see cref="RenderingImage.KeyFunction"/>).</param>
+        /// <param name="gathered">The call's operands as S's place rule gathers them, one import an ordinal of the loader's.</param>
+        public static string? Disagreeing(RenderingDefinition definition, RenderingSet set, string function, ValueSet<PathImport> gathered)
         {
-            if (Answer(function, subject, target, JsonCharacterBand.None) != CosmosFunctionAnswer.Same)
-                return null;
+            var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
+            var reads = definition.FunctionReads.Where(f => f.Function == function).Select(f => ValueSet.From(f.Readers)).ToList();
+            if (rows.Count == 0 || reads.Count == 0)
+                return "what it computes has not been measured";
 
-            var parting = JsonCharacterBand.None;
-            foreach (var band in Bands)
-                if (Answer(function, subject, target, band) != CosmosFunctionAnswer.Same)
-                    parting |= band;
+            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
+            foreach (var key in RenderingImage.Keys(function, gathered, subjects, reads.Aggregate((a, b) => a.Intersect(b))).AsEnumerable())
+            {
+                FunctionKey[] covering = [.. rows.Keys.Select(r => r.Key).Distinct().Where(r => r with { Value = key.Value } == key && FunctionValueClasses.Holding.Contains((key.Kind, r.Value, key.Value)))];
+                if (covering.Length == 0)
+                    return key == RenderingImage.Malformed ? "an operand is no value S gathers, or is read through no reader its rows were measured through" : $"no row measured {key}";
 
-            return parting;
+                foreach (var row in covering)
+                    foreach (var target in definition.Serves[set])
+                        if ((rows.TryGetValue((row, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) is var held && held != CosmosFunctionAnswer.Same)
+                            return $"{target} answers {row} {held}";
+            }
+
+            return null;
         }
-
-        static CosmosFunctionAnswer? Answer(string function, long subject, RenderingTarget target, JsonCharacterBand band) =>
-            Rows.TryGetValue((FunctionKey.Of(function, subject, CosmosValueClass.String, band), target), out var answer) ? answer : null;
 
         /// <summary>
         /// The rows' name of a call: its operator's, a trim with its flag as the loader names it, or <c>null</c> for a
@@ -223,23 +234,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : call.getOperands().size() == 3 && call.getOperands().get(0) is RexLiteral { } flag && flag.getValue() is org.apache.calcite.sql.fun.SqlTrimFunction.Flag f ? "TRIM " + f.name()
             : null;
 
-        /// <summary>
-        /// The Rex ordinals of a call the rows describe (<see cref="Subjects"/>), a trim's flag shifting them by one, each
-        /// with every operand the rows name it by, its own ordinal and <see cref="FunctionKey.Every"/>; each ordinal of a call
-        /// no row describes, by <see cref="FunctionKey.Every"/>, which no row holds and so is refused.
-        /// </summary>
-        public static IEnumerable<(int Ordinal, long Subject)> SubjectsOf(string function, RexCall call)
-        {
-            var shift = function.StartsWith("TRIM ", StringComparison.Ordinal) ? 1 : 0;
-            var subjects = Subjects.TryGetValue(function, out var s) ? s : new HashSet<long> { FunctionKey.Every };
-            for (var i = shift; i < call.getOperands().size(); i++)
-                foreach (var subject in new[] { FunctionKey.Every, i - shift })
-                    if (subjects.Contains(subject))
-                        yield return (i, subject);
-        }
-
         /// <summary>Whether the column gate holds a function to a verdict: rows name it, or it is a string function gated.</summary>
-        public static bool Named(string function) => Subjects.ContainsKey(function) || Gated.Contains(function);
+        public static bool Named(string function) => RowFunctions.Contains(function) || Gated.Contains(function);
 
         /// <summary>
         /// Determines whether a string function written by name has a verdict: rows the column gate reads, or a result that

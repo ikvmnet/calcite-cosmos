@@ -57,19 +57,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rendering">The rendering oracle; <c>null</c> for one over the registry's definition.</param>
         /// <param name="probe">A test's probe of its filters' admission; <c>null</c> for none, as in production.</param>
         /// <param name="renderingOff">Whether a test turns S off for the schema (<see cref="RenderingOff"/>); never in production.</param>
+        /// <param name="definition">What a test's S is defined from (<see cref="Definition"/>); <c>null</c> for the registry's, as in production.</param>
         /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
-        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null, ICosmosRenderingProbe? probe = null, bool renderingOff = false)
+        internal CosmosReasoning(JsonFactGenerations facts, RenderingOracle? rendering = null, ICosmosRenderingProbe? probe = null, bool renderingOff = false,
+            RenderingDefinition? definition = null)
         {
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
             ServiceFacts = new JsonFactTheory(CosmosServiceFacts.Rules, facts);
             Probe = probe;
             RenderingOff = renderingOff;
+            _definition = definition;
 
             // Made, never started: its graph is defined on a thread of its own once something first asks it, and each
             // generation's warm-up answer printed there, into a box the build holds rather than the reasoning, so that a
             // schema let go while its build runs goes with it.
-            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition, exercised: Printing(_warmed)));
+            Rendering = rendering ?? new RenderingOracle(new RenderingGraph(() => definition ?? CosmosRendering.Definition, exercised: Printing(_warmed)));
         }
+
+        readonly RenderingDefinition? _definition;
+
+        /// <summary>
+        /// What the schema's S is defined from: the registry's (<see cref="CosmosRendering.Definition"/>), fixed in the
+        /// assembly, or a test's with rows of its own. The translator's column bridge reads its function rows, the rows S's
+        /// image rule reads, until G6 asks S's image instead (TODO.md).
+        /// </summary>
+        internal RenderingDefinition Definition => _definition ?? CosmosRendering.Definition;
 
         readonly StrongBox<string?> _warmed = new();
 

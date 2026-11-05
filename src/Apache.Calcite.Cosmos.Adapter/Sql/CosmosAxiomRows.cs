@@ -45,8 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// One row per class a <c>Service</c> row says a string written in another is stored holding, as the rules of JSON
-        /// read it: they have no target, so every target's row is read alike, and the union of the rows is what they hold.
-        /// It merges nothing.
+        /// read it: they have no target, so a row names none, and the union of the rows is what they hold. It merges nothing.
         /// </summary>
         public static IReadOnlyList<JsonClassMap> ReadStored(IEnumerable<CosmosAxiom> axioms) =>
         [

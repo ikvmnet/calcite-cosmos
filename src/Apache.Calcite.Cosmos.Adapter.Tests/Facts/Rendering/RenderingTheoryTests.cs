@@ -19,9 +19,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// S's theory, loaded and frozen: the rule count, the boxes' algebra and their definition, the merge of targets into
-    /// a set's table, and the readers the cuts are named for. A contradicting row refused at load (T6) is gate fault G1
-    /// (<see cref="RenderingGateFaultTests"/>).
+    /// S's theory, loaded and frozen: its rules by family, the boxes' algebra and their definition, the merge of targets
+    /// into a set's table, and the readers the cuts are named for. A contradicting row refused at load (T6) is gate
+    /// fault G1 (<see cref="RenderingGateFaultTests"/>).
     /// </summary>
     public sealed class RenderingTheoryTests
     {
@@ -31,16 +31,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static ValueSet<CellClass> Refutes(RenderPosition pos, Verdict v) => ProbeTheory.Theory.Get(ProbeTheory.Refutes.Of(pos, v));
 
         /// <summary>
-        /// Stage 3's line: check mode's 42 (design 2) and generate mode's 14, h07's two atoms, the type test's and the
-        /// affix's, and h08's case, eight by the spec's count and ten as built: its ternary a template written twice, and a
-        /// truth value's constant beside it; h10's computed places, five (a call's reading of its place is the bundle's);
-        /// h11's pair, two; h12's raw columns' union, one; a raw value read through its column, one (rawtyped); the atoms a function row covers, one (F2), 78 in all.
-        /// Each family's rules are held by name, so a rule that moves, goes or is swapped is seen.
+        /// S's rules, held by family and each by name, so a rule that moves, goes or is swapped is seen: check mode's
+        /// (design 2) and generate mode's, h07's two atoms, the type test's and the affix's, h08's case (its ternary a
+        /// template written twice, and a truth value's constant beside it), h10's computed places (a call's reading of its
+        /// place is the bundle's), h11's pair, h12's raw columns' union, a raw value read through its column (rawtyped), and
+        /// the atoms a function row covers (F2). No count bounds them: what the rules cost is judged at the end-of-plan
+        /// evaluation.
         /// </summary>
         [Fact]
-        public void TheTheoryHasAtMostEightyRules()
+        public void TheTheorysRulesAreHeldByFamily()
         {
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(80);
             ProbeTheory.Graph.Rulesets.Where(r => r.Rules.Count > 0).ToDictionary(r => r.Name, r => r.Rules.Select(x => x.Name).ToList())
                 .Should().BeEquivalentTo(new Dictionary<string, List<string>>
             {

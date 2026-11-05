@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
@@ -281,8 +282,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static (bool Known, J? Value) Place(SqlValue.Call call, J.Obj document, RenderingTarget target)
         {
             var function = RenderingImage.KeyFunction(call.Function, call.Type!);
-            if (CosmosFunctionSpellings.Subjects.TryGetValue(function, out var subjects) == false)
+            if (Subjects.Contains(function) == false)
                 return (false, null);
+
+            var subjects = Subjects[function].ToHashSet();
 
             int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => subjects.Contains(FunctionKey.Every) || subjects.Contains(i))];
             if (call.Operands.Where((_, i) => keyed.Contains(i) == false).Any(o => o is not SqlValue.Literal))
@@ -313,14 +316,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 };
                 // Every row that holds of the value: by its ordinal and by every operand, of no class and of each class
                 // the value is in. None is unknown; rows that disagree with one another are too.
-                var spelled = value switch { J.Str s => Of(s.Value), J.Num n => Of(n.Value), _ => null };
+                var spelled = value switch { J.Str s => Of(s.Value), J.Num n => Of(n.Value), J.Huge h => Of(h.Value), _ => null };
                 long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i }.Where(subjects.Contains)];
                 FunctionValueClass[] classes = [.. Enum.GetValues<FunctionValueClass>().Where(c => c == FunctionValueClass.Any || spelled is not null && FunctionValueClasses.Holds(c, spelled))];
                 foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
                     switch ((from subject in subjectsOf
                              from @class in classes
-                             where CosmosFunctionSpellings.Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
-                             select CosmosFunctionSpellings.Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
+                             where Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
+                             select Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
                     {
                         case CosmosFunctionAnswer.Undefined:
                             undefined = true;
@@ -344,6 +347,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 _ => (false, null),
             };
         }
+
+        /// <summary>The registry's function rows by key and target, which S reads (<see cref="CosmosRendering.Definition"/>).</summary>
+        static readonly IReadOnlyDictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> Rows =
+            CosmosRendering.Definition.Functions.ToDictionary(r => (r.Key, r.Target), r => r.Answer);
+
+        /// <summary>The operands each function's rows name, by the loader's ordinals, which S reads.</summary>
+        static readonly ILookup<string, long> Subjects = CosmosRendering.Definition.FunctionSubjects.ToLookup(f => f.Function, f => f.Subject, StringComparer.Ordinal);
 
         [GeneratedRegex("""^\$(?:\[(?:"(?:[^"\\]|\\.)*"|[0-9]+)\])*$""")]
         private static partial Regex Whole();

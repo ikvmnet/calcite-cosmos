@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -93,6 +94,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             foreach (var function in new[] { "SUBSTRING", "LEFT", "RIGHT", "REVERSE", "REPEAT", "CAST", "LOWER", "TRIM BOTH", "||", "CASE" })
                 StringCalls.Image(function, JsonCharacterBand.Any).Should().Be(JsonCharacterBand.Any, function);
+        }
+
+        /// <summary>
+        /// Each function's value draws characters from the operands its row names, by the loader's ordinals or as every
+        /// one, and from no other string operand: Calcite's runtime given a character of the non-ASCII class in one operand
+        /// alone, every other one character long, as a trim's must be, keeps it exactly where the row names that operand. A
+        /// conditional has no runtime function, its arms being the values it takes; a cast to text of a string is the
+        /// string.
+        /// </summary>
+        [Fact]
+        public void EachFunctionDrawsFromTheOperandsItsRowNames()
+        {
+            const string Marked = "é";
+            const string Plain = "a";
+            var called = new Dictionary<string, (int Strings, Func<string[], string> Call)>(StringComparer.Ordinal)
+            {
+                ["||"] = (2, o => org.apache.calcite.runtime.SqlFunctions.concat(o[0], o[1])),
+                ["CONCAT"] = (3, o => org.apache.calcite.runtime.SqlFunctions.concatMulti(o)),
+                ["UPPER"] = (1, o => org.apache.calcite.runtime.SqlFunctions.upper(o[0])),
+                ["LOWER"] = (1, o => org.apache.calcite.runtime.SqlFunctions.lower(o[0])),
+                ["SUBSTRING"] = (1, o => org.apache.calcite.runtime.SqlFunctions.substring(o[0], 1, 2)),
+                ["LEFT"] = (1, o => org.apache.calcite.runtime.SqlFunctions.left(o[0], 1)),
+                ["RIGHT"] = (1, o => org.apache.calcite.runtime.SqlFunctions.right(o[0], 1)),
+                ["REVERSE"] = (1, o => org.apache.calcite.runtime.SqlFunctions.reverse(o[0])),
+                ["REPEAT"] = (1, o => org.apache.calcite.runtime.SqlFunctions.repeat(o[0], 2)),
+                ["CAST"] = (1, o => o[0]),
+                ["REPLACE"] = (3, o => org.apache.calcite.runtime.SqlFunctions.replace(o[0], o[1], o[2], true)),
+                ["TRIM BOTH"] = (2, o => org.apache.calcite.runtime.SqlFunctions.trim(true, true, o[0], o[1])),
+                ["TRIM LEADING"] = (2, o => org.apache.calcite.runtime.SqlFunctions.trim(true, false, o[0], o[1])),
+                ["TRIM TRAILING"] = (2, o => org.apache.calcite.runtime.SqlFunctions.trim(false, true, o[0], o[1])),
+            };
+
+            StringCalls.Rows.Select(r => r.Function).Should().BeEquivalentTo(called.Keys.Append("CASE"));
+            StringCalls.Rows.Where(r => r.Function is "||" or "CONCAT" or "CASE").Should().OnlyContain(r => r.Draws.Contains(FunctionKey.Every));
+            foreach (var (function, draws, _) in StringCalls.Rows.Where(r => called.ContainsKey(r.Function)))
+                for (var operand = 0; operand < called[function].Strings; operand++)
+                {
+                    var operands = Enumerable.Repeat(Plain, called[function].Strings).ToArray();
+                    operands[operand] = Marked;
+                    var kept = (JsonValues.MaskOf(called[function].Call(operands)) & JsonCharacterBand.NonAscii) != JsonCharacterBand.None;
+                    kept.Should().Be(draws.Contains(operand) || draws.Contains(FunctionKey.Every), $"{function} given the mark in operand {operand}");
+                }
         }
 
     }

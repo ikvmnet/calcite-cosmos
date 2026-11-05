@@ -2959,7 +2959,8 @@ across documents* and *A join of a container to itself* is the record.
 - **A compound condition of a `CASE` is never two-valued** — *small; h14's triage found no loss.* `twovalued` is derived
   of atoms alone (h08), so a junction or negation as a condition reads its else-arm wide, which is sound and may cost a
   cheaper narrow form. No push of the census is Unproven for it alone (DESIGN.md, *What the triage closed*), so the two
-  rules over junction sides and negation were not built. Should a push come to need them, they are two rules more (line 31).
+  rules over junction sides and negation were not built. Should a push come to need them, they are two rules more, their
+  cost weighed with the rest at the end-of-plan evaluation.
 - **The ternary rule reads no failure of an arm off its stratum** — *small; held at h10 by the image rule, owed when a
   failing key is licensed.* An arm's agreement is proved on its own stratum's cells; arithmetic fails the statement
   (`Service.OutOfDomainArithmeticFailsTheStatement`). A computed place reaches an arm from h10, but it has an import only
@@ -2972,18 +2973,36 @@ across documents* and *A join of a container to itself* is the record.
   `FALSE`, the two `Service.AConstantIsItsOwnTruth` measured. A missing else is read by the absorbing rule, but
   `CASE WHEN c THEN NULL ELSE b END` gives its ternary no best. Citing Kleene's rows (`KleeneTables.AbsorbingElse`) for
   `UNKNOWN` as the constant that keeps no row at a position would give it back, as data.
-- **The rule count is one over the spec's** — *note, line 31; the owner's at h14.* The ternary is one template written
-  twice and a truth value's constant is a rule of its own (h08): 68 as built against the spec's 66. h10 adds five of the
-  spec's six, a call's reading of its place being the bundle's: 73 against its 72; h11 its two, 75 against 74; h12 its
-  one, 76 against 75; rawtyped one the spec has not, a raw value read through its declared column, 77 against 75. The
-  spec's 78 at h31 is 80 as built, at line 31's 80. The rules still asked for would cross it: the two compound
-  two-valuedness rules (above), h09's lift asking S of the pair's arm (above), an `evaluate` rule for the ternary if an
-  untaken arm's failure must fail it. With no headroom left at h31, the line is decided before the triage closes any of
+- **S's rules are held by family, not by a count** — *note; the owner's.* There is no rule cap: the rules are held by
+  family, each by name (`RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`), so a rule that moves, goes or is swapped
+  is seen, and what they cost is judged at the end-of-plan evaluation. As built S holds 78: the ternary one template
+  written twice and a truth value's constant a rule of its own (h08), five of h10's six, a call's reading of its place
+  being the bundle's, h11's two, h12's one, rawtyped's one, a raw value read through its declared column, and F2's one.
+  The rules still asked for — the two compound two-valuedness rules (above), h09's lift asking S of the pair's arm
+  (above), an `evaluate` rule for the ternary if an untaken arm's failure must fail it — are built when a push needs
   them.
-- **The string functions' column bridge** — *bridge, deleted at h37.* `CosmosRexTranslator.RequireStringFunctionsAgree`
-  reads the function rows (`CosmosFunctionSpellings.Parting`), for every target the set serves, and refuses a subject
-  not proved free of the bands they part over (h10). It goes when S writes the column (h37), its refusals then the image
-  rule's.
+- **The string functions' column bridge** — *bridge, replaced at G6 and deleted at h37.*
+  `CosmosRexTranslator.RequireStringFunctionsAgree` reads every function row S's image rule reads
+  (`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from): the call's operands
+  gathered as S's place rule gathers them, keyed as S keys them (`RenderingImage.Keys`: each kind each operand may hold,
+  by its ordinal and by `Every`, each band, each value class's atoms, through readers the rows were measured through),
+  and every key covered by a row and answered `Same` by every covering row on every target the set serves (owed,
+  latent item 9). It reads what the stratum the translation was licensed holds of each operand, and the declaration's
+  root import where the stratum holds no `possible` of the path, so it pushes what S's image rule pushes over that
+  stratum's facts. An operand S gathers nothing of, a parameter or a `CASE`, leaves the call no image, as S's count
+  short of the arity does. What it does not yet do: apply S's outer place gate (the spelling and the depth of four), or
+  read a nested call without the places loader's type. G6 replaces it by asking S's image of each call the translator
+  writes, and finds two gaps in S first. S's place gathering imports the root (`ArmImport` narrows only beneath an
+  `OR`'s arm, `ImportedChars` has no stratum), so it would decline three pushes the bridge keeps over their stratum's
+  facts (DESIGN.md, *The column bridge*: 477, 240, and 2763 on Azure) until it imports the stratum's. And F has no
+  character rule for a raw reading through its column, so S keys a call nested over one by every band, where the bridge
+  reads F's characters of the reading without places. It goes when S writes the column (h37).
+- **The string functions over a raw reading or a bound read off a path** — *rows owed, the owner's to schedule.* No row
+  measured a string function through the cast to `ANY` (the split rule's spelling of a fold under a rendering), a
+  `VARIANT` column cast to text (the partition key's `UPPER(c."$.category")`), or a count read through `typed:INTEGER`
+  or a cast of the text to a number (a `SUBSTRING`, `LEFT` or `RIGHT` start or count from a column or a `POSITION`),
+  so S has no image of such a call and the bridge, reading S's rows, keeps it in process: the corpus held one, 487, and
+  docs/ says so (Chapter 7.3, Appendix B.2). A witness read through each, beside the text, gives it rows.
 - **3A crosses its size checkpoint** — *note, Q13; the owner's at the pull request's opening.* Production (`Adapter`
   `.cs`) against `origin/main` is +3,429 / −773, net +2,656 at the review answers, of which the census's branch-only
   hooks are +76 / −3: +2,583 net to stay. The review's cuts (the ternary's evaluator, the critical points, the result
@@ -3047,8 +3066,6 @@ across documents* and *A join of a container to itself* is the record.
 - **The stored rows are keyed by the surrogate band, not by `unpaired`** — *small.* `Service.LoneSurrogateIsStoredAsReplacement`
   stores `surrogate` as `high` and `replacement`, which a string written of pairs alone does not need; keyed by
   `unpaired` it would be exact, once every written set a pair-only string reaches names its refinements.
-- **The column bridge reads a class of value as no key** — *until h37.* `CosmosFunctionSpellings.Parting` asks each
-  operand's `Any` rows; a row naming a class is S's alone (the atoms it covers) until the bridge goes at h37.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused

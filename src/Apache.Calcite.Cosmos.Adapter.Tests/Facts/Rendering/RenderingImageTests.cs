@@ -104,6 +104,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Atoms(Text(0, ValueSet.Of(NullType)), CosmosValueClass.Null).Should().Equal(ValueSet.Of(FunctionValueClass.Any));
         }
 
+        /// <summary>
+        /// A number held approximately, whose place against 0 and 1 no bound reads, is in every atom of a number, whatever
+        /// its sign: a cell holding one is keyed by each, as a cell of unknown numbers is, and every class holds it.
+        /// </summary>
+        [Fact]
+        public void ACellHoldingAnApproximateNumberIsKeyedByEveryNumberAtom()
+        {
+            var every = ValueSet.From(FunctionValueClasses.AtomsOf(CosmosValueClass.Number));
+            foreach (var approximate in new[] { Of(1e30), Of(-1e30), Of(1e-30) })
+            {
+                IsExactNumber(approximate).Should().BeFalse(approximate);
+                ValueSet.From(RenderingImage.Keys("F", Gathered(Literal(0, approximate)), ValueSet.Of(0L), ValueSet<string>.Empty).AsEnumerable().Select(k => k.Value))
+                    .Should().Equal(every, approximate);
+                foreach (var (_, @class, _) in FunctionValueClasses.Holding.Where(h => h.Kind == CosmosValueClass.Number))
+                    FunctionValueClasses.Holds(@class, approximate).Should().BeTrue($"{@class} of {approximate}");
+            }
+        }
+
         /// <summary>Every class holds the atoms it is the union of, and every atom is held by its kind's <see cref="FunctionValueClass.Any"/>.</summary>
         [Fact]
         public void EveryClassHoldsTheAtomsItIsTheUnionOf()

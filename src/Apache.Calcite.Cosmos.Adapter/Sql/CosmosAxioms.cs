@@ -684,8 +684,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ALoneSurrogateIsStoredAsTheReplacementCharacter",
                 StoredAs:
                 [
-                    new(JsonValues.SurrogateBand, JsonValues.HighBand, Azure),
-                    new(JsonValues.SurrogateBand, JsonValues.ReplacementClass, Azure),
+                    new(JsonValues.SurrogateBand, JsonValues.HighBand),
+                    new(JsonValues.SurrogateBand, JsonValues.ReplacementClass),
                 ]),
             new("Service.ConstantStringComparisonIsByCodeUnit",
                 "Two constants are compared by UTF-16 code unit on Azure, @a < @b false for U+E000 and U+1F600, where the emulator compares them by code point.",

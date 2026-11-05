@@ -43,6 +43,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
             }
 
+            /// <summary>A translator over a container declaring strings of these classes at field 0's path, the facts S imports.</summary>
+            CosmosRexTranslator Declared(CosmosServiceTarget target, JsonCharacterBand characters)
+            {
+                _t._parameters = new CosmosParameterList();
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products")
+                    .WithFacts(StringsOf(characters).Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim))))).WithServiceTarget(target);
+                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, container.Facts.Declared, null, container);
+            }
+
             RexNode Name => _t.Ref(0, SqlTypeName.VARCHAR);
 
             /// <summary>Strings at field 0's path, holding characters of these classes; any, U+0000 among them, for <c>null</c>.</summary>
@@ -90,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Translator(CosmosServiceTarget.Emulator).Translate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("\0%"))).Should().Be("STARTSWITH(c.name, @p0)");
                 _t._parameters.Parameters[0].Value.Should().Be("﷐0");
 
-                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
+                Declared(CosmosServiceTarget.Emulator, JsonCharacterBand.None).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
                 _t._parameters.Parameters[0].Value.Should().Be("a﷐0");
                 Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name), out _).Should().BeFalse("the emulator counts a subject's stored units (D10)");
 

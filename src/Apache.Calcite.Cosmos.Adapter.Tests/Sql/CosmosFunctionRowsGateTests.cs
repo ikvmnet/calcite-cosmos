@@ -1,9 +1,13 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
+using Eggnog;
 
 using FluentAssertions;
 
@@ -19,10 +23,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
     /// <summary>
-    /// The translator's column gate over a string function, the bridge reading the function rows S reads until h37
-    /// (<see cref="CosmosFunctionSpellings.Parting"/>, <see cref="CosmosFunctionSpellings.Refusals"/>): under the emulator
-    /// each band its rows part over is refused, and what the rows do not carry (#246's stored escapes, a case mapping
-    /// outside ASCII) is legality; under Azure, which has no rows until run 1, each asks what it asked before
+    /// The translator's column gate over a string function, the bridge reading the function rows as S's image rule reads
+    /// them until G6 asks S's image (<see cref="CosmosFunctionSpellings.Disagreeing"/>, <see cref="CosmosFunctionSpellings.Refusals"/>):
+    /// each band a target's rows part over is refused there, every kind and class of value an operand may hold is keyed,
+    /// and what the rows do not carry (#246's stored escapes, a case mapping outside ASCII) is legality
     /// (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
     /// </summary>
     public class CosmosFunctionRowsGateTests
@@ -49,11 +53,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         const JsonCharacterBand N = JsonCharacterBand.NonAscii;
         const JsonCharacterBand W = JsonCharacterBand.Trimmed;
 
-        /// <summary>A translator for a container of a target, whose facts say <c>c.s</c>'s strings hold characters of these classes alone; anything for <c>null</c>.</summary>
-        CosmosRexTranslator Translator(CosmosServiceTarget target, JsonCharacterBand? characters, CosmosParameterList? parameters = null) =>
-            new(_rex, _fields, parameters ?? new CosmosParameterList(), characters is { } bands
-                ? new JsonFactTheory([JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), new JsonClaim.Characters(bands)))]).Derive(null)
-                : JsonFactSet.Empty, null, TestReasoning.Bind(new CosmosContainerMetadata("strings")).WithServiceTarget(target));
+        /// <summary>
+        /// A translator for a container of a target that declares <c>c.s</c> holds strings, where typed, of characters of
+        /// these classes alone, of any for <c>null</c>, handed its declaration's facts as a statement's root is; and whose S
+        /// is defined from these rows, the registry's for <c>null</c>.
+        /// </summary>
+        CosmosRexTranslator Translator(CosmosServiceTarget target, JsonCharacterBand? characters, CosmosParameterList? parameters = null, RenderingDefinition? rows = null, bool typed = true)
+        {
+            var declared = new CosmosContainerMetadata("strings").WithFacts(StringsOf(characters, typed));
+            var container = (rows is null
+                ? Declared.GetOrAdd((characters, typed), _ => TestReasoning.Bind(declared))
+                : declared.WithReasoning(new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), definition: rows))).WithServiceTarget(target);
+            return new(_rex, _fields, parameters ?? new CosmosParameterList(), container.Facts.Declared, null, container);
+        }
+
+        /// <summary>Each declaration's container, bound to the shared reasoning once, so that each compiles once.</summary>
+        static readonly ConcurrentDictionary<(JsonCharacterBand?, bool), CosmosContainerMetadata> Declared = new();
+
+        /// <summary>That <c>c.s</c> holds strings, where typed, of characters of these classes alone, of any for <c>null</c>.</summary>
+        static JsonFactRule[] StringsOf(JsonCharacterBand? characters, bool typed) =>
+        [
+            .. typed ? [JsonFactRule.Unconditional(new JsonFact(S, new JsonClaim.OfType(JsonType.String)))] : new JsonFactRule[0],
+            .. characters is { } bands ? [JsonFactRule.Unconditional(new JsonFact(S, new JsonClaim.Characters(bands)))] : new JsonFactRule[0],
+        ];
+
+        static readonly JsonDocumentPath S = JsonDocumentPath.Root.Property("s");
 
         bool Pushes(CosmosServiceTarget target, JsonCharacterBand? characters, SqlOperator op, params RexNode[] operands) =>
             Translator(target, characters).TryTranslate(_rex.makeCall(op, operands), out _);
@@ -136,18 +160,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// D9 and D10: the emulator reverses the units it stores, and its <c>INDEX_OF</c> counts them, so both ask their
         /// subject — <c>POSITION</c>'s second operand, not its pattern, which is sent stored — to hold neither escape. On
-        /// Azure both push whatever the string holds.
+        /// Azure both push whatever characters the string holds.
         /// </summary>
         [Fact]
         public void AReversalAndAPositionAskTheirSubjectUnderTheEmulator()
         {
             foreach (var (op, operands) in new (SqlOperator, RexNode[])[] { (SqlLibraryOperators.REVERSE, [Str()]), (SqlStdOperatorTable.POSITION, [Lit("b"), Str()]) })
             {
-                Pushes(Azure, null, op, operands).Should().BeTrue(op.getName() + " on Azure over anything");
+                Pushes(Azure, null, op, operands).Should().BeTrue(op.getName() + " on Azure over any string");
                 Pushes(Emulator, N | W, op, operands).Should().BeTrue(op.getName() + " under the emulator over a string holding neither");
                 Pushes(Emulator, Z, op, operands).Should().BeFalse(op.getName() + " under the emulator over a string that may hold U+0000");
                 Pushes(Emulator, H, op, operands).Should().BeFalse(op.getName() + " under the emulator over a string that may hold U+FDD0");
-                Pushes(Emulator, null, op, operands).Should().BeFalse(op.getName() + " under the emulator over a string nothing is known of");
+                Pushes(Emulator, null, op, operands).Should().BeFalse(op.getName() + " under the emulator over a string nothing is known of the characters of");
             }
 
             Pushes(Emulator, null, SqlStdOperatorTable.POSITION, Str(), Lit("abc")).Should().BeTrue("the subject is the literal; the path is the pattern, matched stored");
@@ -242,8 +266,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void AFunctionNoRowNamesIsRefusedEverywhere()
         {
-            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.FunctionKey.Every, Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Emulator).Should().BeNull();
-            CosmosFunctionSpellings.Parting("LENGTH", Apache.Calcite.Cosmos.Facts.Rendering.FunctionKey.Every, Apache.Calcite.Cosmos.Facts.Rendering.RenderingTarget.Azure).Should().BeNull();
+            CosmosFunctionSpellings.Disagreeing(CosmosRendering.Definition, RenderingSet.Emulator, "LENGTH", ValueSet<PathImport>.Empty).Should().NotBeNull();
+            CosmosFunctionSpellings.Disagreeing(CosmosRendering.Definition, RenderingSet.Production, "LENGTH", ValueSet<PathImport>.Empty).Should().NotBeNull();
             CosmosFunctionSpellings.Named("LENGTH").Should().BeTrue("the gate holds it, so it is refused rather than passed unasked");
             var length = SqlLibraryOperators.LENGTH;
             Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
@@ -264,14 +288,78 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Pushes(Azure, Z, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
         }
 
-        /// <summary>The rows key a trim by its flag as the loader names it, and describe its subject, not its character.</summary>
+        /// <summary>
+        /// The rows key a trim by its flag as the loader names it, and describe its subject, the loader's operand 1 past the
+        /// flag, not its character.
+        /// </summary>
         [Fact]
         public void ATrimIsKeyedByItsFlagAndAskedOfItsSubject()
         {
             var trim = (RexCall)Call(SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str());
             CosmosFunctionSpellings.KeyOf(trim).Should().Be("TRIM LEADING");
-            CosmosFunctionSpellings.SubjectsOf("TRIM LEADING", trim).Should().Equal((2, 1L));
+            CosmosRendering.Definition.FunctionSubjects.Where(f => f.Function == "TRIM LEADING").Select(f => f.Subject).Should().Equal(1L);
             Pushes(Emulator, W, SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str()).Should().BeFalse();
+            Pushes(Emulator, N, SqlStdOperatorTable.TRIM, _rex.makeFlag(SqlTrimFunction.Flag.LEADING), Lit(" "), Str()).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// The bridge reads every row S's image rule reads (owed, latent item 9), over the definition the container's S is
+        /// built from: a row of one class of value disagreeing beside a row of every value refuses; rows of each class alone
+        /// that agree push, where no row of every value is; and a row of another operand, of the kind it holds, keys that
+        /// operand by its kind, where the bridge once asked it as a string and refused the call S proves
+        /// (<see cref="Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingValuedTests.ANumberRowOfAnotherOperandKeysItByItsKind"/>).
+        /// </summary>
+        [Fact]
+        public void TheBridgeReadsEveryRowSsImageRuleReads()
+        {
+            var registry = CosmosRendering.Definition;
+            static bool Lower(FunctionKey k) => k.Function == "LOWER" && k.Kind == CosmosValueClass.String && k.Band == JsonCharacterBand.None;
+            var lower = Call(SqlStdOperatorTable.LOWER, Str());
+            bool Over(RenderingDefinition rows, CosmosServiceTarget target, RexNode call) => Translator(target, JsonCharacterBand.None, rows: rows).TryTranslate(call, out _);
+
+            Over(registry, Emulator, lower).Should().BeTrue("the registry's rows agree over ASCII");
+            var differing = registry with
+            {
+                Functions = [.. registry.Functions, .. from f in registry.Functions where Lower(f.Key) select (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs)],
+            };
+            Over(differing, Emulator, lower).Should().BeFalse("the empty string's row disagrees beside the row of every string");
+            Over(differing, Azure, lower).Should().BeFalse();
+
+            var split = registry with
+            {
+                Functions =
+                [
+                    .. registry.Functions.Where(f => Lower(f.Key) == false),
+                    .. from f in registry.Functions where Lower(f.Key) from c in new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty } select (f.Key with { Value = c }, f.Target, f.Answer),
+                ],
+            };
+            Over(split, Emulator, lower).Should().BeTrue("the two classes cover both atoms of a string, and agree");
+            Over(split, Azure, lower).Should().BeTrue();
+
+            var left = Call(SqlLibraryOperators.LEFT, Str(), Int(2));
+            var counted = registry with
+            {
+                Functions = [.. registry.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, CosmosFunctionAnswer.Same)],
+                FunctionSubjects = [.. registry.FunctionSubjects, ("LEFT", 1L)],
+            };
+            Over(counted, Emulator, left).Should().BeTrue("the count is keyed as the number it is, and its row agrees");
+            Over(counted, Azure, left).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// Every kind an operand may hold is keyed, and every operand is read through a reader the rows were measured
+        /// through, as S keys them (latent item 9): a case mapping over a path that may hold a number, which the service's
+        /// LOWER leaves undefined, is refused where the bridge once asked its strings alone; and a window whose start is a
+        /// position, read through <c>typed:INTEGER</c>, which no row of <c>SUBSTRING</c> was measured through.
+        /// </summary>
+        [Fact]
+        public void EveryKindAndReaderIsKeyedAsSKeysThem()
+        {
+            Translator(Emulator, JsonCharacterBand.None, typed: false).TryTranslate(Call(SqlStdOperatorTable.LOWER, Str()), out _).Should().BeFalse("c.s may hold a number");
+            Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("c.s holds strings");
+
+            Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.SUBSTRING, Str(), Call(SqlStdOperatorTable.POSITION, Lit("x"), Str()), Int(2)).Should().BeFalse();
+            Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.SUBSTRING, Str(), Int(1), Int(2)).Should().BeTrue();
         }
 
     }

@@ -474,6 +474,12 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
             }
 
+            public override bool TryPossible(JsonDocumentPath path, out PathValues values)
+            {
+                values = PathValues.Anything;
+                return false;
+            }
+
             public override bool Extension(JsonDocumentPath path, string key) => false;
 
             public override bool Constant(JsonDocumentPath path, string value) => false;

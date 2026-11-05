@@ -552,6 +552,7 @@ documents it has to read.
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
 | a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |
+| `SUBSTRING`, `LEFT` or `RIGHT` whose start, length or count is not a literal — a column, a parameter, a `POSITION` — and a string function over the `VARIANT` partition key column | the service's answers were measured with literal bounds and over text alone (Appendix B.2) |
 | an array literal, `ARRAY['x', 'y']` | not rendered yet — so functions taking one stay in process too |
 | a relational join, `UNION`, `INTERSECT`, `EXCEPT` | no Cosmos equivalent (Chapter 12) |
 | a subquery (`EXISTS`, `IN (SELECT …)`) | Cosmos subqueries are document-scoped only |

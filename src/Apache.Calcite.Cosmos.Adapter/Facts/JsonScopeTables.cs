@@ -95,6 +95,9 @@ namespace Apache.Calcite.Cosmos.Facts
         public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => TryGet(path, r => r.Chars, out bands);
 
         /// <inheritdoc />
+        public override bool TryPossible(JsonDocumentPath path, out PathValues values) => TryGet(path, r => PredicateRules.Of(r).Possible, out values);
+
+        /// <inheritdoc />
         /// <remarks>
         /// <para>
         /// <b>Asked in a context made for the question</b>, as a path the context was never told of is

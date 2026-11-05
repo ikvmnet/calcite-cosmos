@@ -175,8 +175,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// The classes a written string is stored holding are a <c>Service</c> row's cells, read alike from every target the
-        /// row names, since the rules of JSON have none: a lone surrogate written, the high band and U+FFFD within it.
+        /// The classes a written string is stored holding are a <c>Service</c> row's cells, which name no target, since the
+        /// rules of JSON have none: a lone surrogate written, the high band and U+FFFD within it.
         /// </summary>
         [Fact]
         public void TheStoredClassesAreReadOffTheirRow()
@@ -185,9 +185,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 new JsonClassMap(JsonValues.SurrogateBand, JsonValues.HighBand), new JsonClassMap(JsonValues.SurrogateBand, JsonValues.ReplacementClass),
             });
-            foreach (var axiom in CosmosAxioms.All.Where(a => a.StoredAs is not null))
-                foreach (var stored in axiom.StoredAs!)
-                    (stored.On != 0 && (stored.On & ~axiom.MeasuredOn) == 0).Should().BeTrue($"{axiom.Id}'s {stored.Written}={stored.Stored} names {stored.On}, within {axiom.MeasuredOn}");
             global::Apache.Calcite.Cosmos.Adapter.Metadata.CosmosReasoning.Stored.Should().Equal(CosmosAxiomRows.ReadStored(CosmosAxioms.All));
         }
 

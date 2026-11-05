@@ -73,6 +73,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
             Written = graph.DefineFunction<JPath, ValueSet<string>>("written", ValueLattice.Intersect<string>());
             StoredAs = graph.DefineFunction<ValueSet<JsonClassMap>>("storedAs", ValueLattice.Union<JsonClassMap>());
+            CallDraws = graph.DefineFunction<string, ValueSet<long>>("callDraws", ValueLattice.Union<long>());
             CallMaps = graph.DefineFunction<string, ValueSet<JsonClassMap>>("callMaps", ValueLattice.Union<JsonClassMap>());
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
@@ -213,6 +214,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// every target's alike: the root's, assumed once, which the union holds.
         /// </summary>
         public Function<ValueSet<JsonClassMap>> StoredAs { get; }
+
+        /// <summary>
+        /// Which operands each function Calcite computes draws its value's characters from, by the loader's ordinals, and
+        /// <c>FunctionKey.Every</c> where it draws from each alike (<see cref="StringCalls"/>): the root's, assumed once a
+        /// function, which the union holds. A function with no row is one the theory reads no call of.
+        /// </summary>
+        public Function<string, ValueSet<long>> CallDraws { get; }
 
         /// <summary>
         /// What each function Calcite computes makes of an operand's classes beyond keeping them (<see cref="StringCalls"/>):

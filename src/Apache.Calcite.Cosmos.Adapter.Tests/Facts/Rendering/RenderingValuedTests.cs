@@ -185,6 +185,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A row of another operand keys that operand by the kind it holds (F2): a count a number's row names is keyed as the
+        /// number it is, so where that row agrees the place has its image and where it disagrees none, whatever the
+        /// subject's rows say. The translator's bridge reads the same rows alike
+        /// (<see cref="Sql.CosmosFunctionRowsGateTests.TheBridgeReadsEveryRowSsImageRuleReads"/>).
+        /// </summary>
+        [Fact]
+        public void ANumberRowOfAnotherOperandKeysItByItsKind()
+        {
+            var left = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlLibraryOperators.LEFT, Name, Int(2)), Lit("ab")));
+            static RenderingTheory Counted(CosmosFunctionAnswer answer) => RenderingTheory.Define(Measured with
+            {
+                Functions = [.. Measured.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, answer)],
+                FunctionSubjects = [.. Measured.FunctionSubjects, ("LEFT", 1L)],
+            });
+            var (agrees, differs) = (Counted(CosmosFunctionAnswer.Same), Counted(CosmosFunctionAnswer.Differs));
+
+            Generate(left, RenderingSet.Emulator, Strings, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "the registry's rows name the subject alone");
+            Generate(left, RenderingSet.Emulator, Strings, JsonCharacterBand.None, agrees).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "the count's row agrees");
+            Generate(left, RenderingSet.Emulator, Strings, JsonCharacterBand.None, differs).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "the count's row disagrees");
+            GC.KeepAlive((agrees, differs));
+        }
+
+        /// <summary>
+        /// A cell holding a number held approximately is answered, never faulted: it is keyed by every atom of a number
+        /// (<see cref="RenderingImageTests.ACellHoldingAnApproximateNumberIsKeyedByEveryNumberAtom"/>), so where a row of one
+        /// atom disagrees no image is written, though the number is negative and a negative cell's rows agree.
+        /// </summary>
+        [Fact]
+        public void ACellHoldingAnApproximateNumberIsAnswered()
+        {
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            static bool Subject(FunctionKey k) => k.Function == "LOWER" && k.Kind == CosmosValueClass.Number;
+            var split = RenderingTheory.Define(Measured with
+            {
+                Functions =
+                [
+                    .. Measured.Functions.Where(f => Subject(f.Key) == false),
+                    .. from f in Measured.Functions
+                       where Subject(f.Key)
+                       from row in new[] { (FunctionValueClass.BelowOne, CosmosFunctionAnswer.Same), (FunctionValueClass.AtLeastOne, CosmosFunctionAnswer.Differs) }
+                       select (f.Key with { Value = row.Item1 }, f.Target, row.Item2),
+                ],
+            });
+            static PathValues Cell(string number) => PathValues.Meet(PathValues.OneOf(ValueSet.Of(Of("ABC"), number)), PathValues.OfKinds(ValueSet.Of(StringType, TypeOf(number))));
+
+            Generate(lower, RenderingSet.Emulator, Cell(Of(-7m)), JsonCharacterBand.None, split).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "a negative number's row agrees");
+            Generate(lower, RenderingSet.Emulator, Cell(Of(-1e30)), JsonCharacterBand.None, split).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "a number held approximately is in every atom, from 1 among them");
+            Generate(lower, RenderingSet.Emulator, Cell(Of(1e30)), JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, "the service's LOWER is undefined over a number");
+            GC.KeepAlive(split);
+        }
+
+        /// <summary>
         /// The census's string-function pushes under the emulator (h05, <c>coverage-J1-where.tsv</c>), each over a path
         /// imported an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
         /// service's window from 0 (differential 488); but none over a path that may hold a number, and no window of a

@@ -375,8 +375,8 @@ proved of nothing. `POSITION`, `CONCAT`, `||` and `REVERSE` push over any string
 other than a character, where the service answers otherwise than Calcite: `REPLACE` needs its search
 proved to hold something, a literal that does or a path whose `enum` lists no empty string; `REPEAT` a literal
 count, and a subject short enough that the result stays within Azure's 10,000 code points, which only an
-`enum`, a `const` or a literal proves yet (`maxLength` is not read); and a `SUBSTRING` whose start is not
-proved at least one is written with Calcite's clip to the string (Appendix B.2).
+`enum`, a `const` or a literal proves yet (`maxLength` is not read); and a `SUBSTRING`, `LEFT` or `RIGHT`
+pushes with literal bounds alone, a start below one written with Calcite's clip to the string (Appendix B.2).
 
 **How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
 whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one

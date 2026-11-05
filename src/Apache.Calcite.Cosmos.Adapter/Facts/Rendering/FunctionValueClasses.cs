@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -51,19 +52,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static IEnumerable<FunctionValueClass> AtomsOf(CosmosValueClass kind) =>
             Holding.Where(h => h.Kind == kind && h.Class == FunctionValueClass.Any).Select(h => h.Atom);
 
-        /// <summary>Whether a value, in <see cref="Saturation.JsonValues"/>' spelling, is of a class; every value is of <see cref="FunctionValueClass.Any"/>.</summary>
+        /// <summary>
+        /// Whether a value, in <see cref="Saturation.JsonValues"/>' spelling, is of a class; every value is of
+        /// <see cref="FunctionValueClass.Any"/>, and a number held approximately, whose place no bound reads, of every class of a number.
+        /// </summary>
         public static bool Holds(FunctionValueClass @class, string value) => @class switch
         {
-            FunctionValueClass.Negative => IsNumber(value) && NumberOf(value) < 0,
-            FunctionValueClass.Zero => IsNumber(value) && NumberOf(value) == 0,
-            FunctionValueClass.Positive => IsNumber(value) && NumberOf(value) > 0,
-            FunctionValueClass.BelowOne => IsNumber(value) && NumberOf(value) < 1,
-            FunctionValueClass.AtLeastOne => IsNumber(value) && NumberOf(value) >= 1,
-            FunctionValueClass.PositiveBelowOne => IsNumber(value) && NumberOf(value) > 0 && NumberOf(value) < 1,
+            FunctionValueClass.Negative => Number(value, x => x < 0),
+            FunctionValueClass.Zero => Number(value, x => x == 0),
+            FunctionValueClass.Positive => Number(value, x => x > 0),
+            FunctionValueClass.BelowOne => Number(value, x => x < 1),
+            FunctionValueClass.AtLeastOne => Number(value, x => x >= 1),
+            FunctionValueClass.PositiveBelowOne => Number(value, x => x > 0 && x < 1),
             FunctionValueClass.Empty => IsString(value) && StringOf(value).Length == 0,
             FunctionValueClass.NonEmpty => IsString(value) && StringOf(value).Length > 0,
             _ => true,
         };
+
+        // A number's test of its value, read exactly; one held approximately passes every test, as AtLeast and AtMost keep it.
+        static bool Number(string value, Func<decimal, bool> test) => IsNumber(value) && (TryNumberOf(value, out var x) == false || test(x));
 
     }
 

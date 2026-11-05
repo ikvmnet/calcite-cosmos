@@ -144,7 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Sql.CosmosAxiomRows", ["Comparisons", "Kinds", "Owed", "Targets"], StaticFact, "the registry's rows owed a target, the targets, and the raw columns' keys"),
             ("Adapter.Sql.CosmosAxioms", ["All", "Cases", "Family", "NoTruth", "Orders", "Pairs", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry and the dates it was measured on"),
             ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
-            ("Adapter.Sql.CosmosFunctionSpellings", ["Bands", "ConcatenatedStored", "Declared", "DirectFunctions", "Gated", "Mapped", "PatternedStored", "RepeatedStored", "ReplacedStored", "RowFunctions", "Rows", "Searched", "SearchedFor", "Subjects"], StaticFact, "the functions spelled as they are, the rows read once from the registry, the string functions gated, and the legality the rows do not carry"),
+            ("Adapter.Sql.CosmosFunctionSpellings", ["ConcatenatedStored", "Declared", "DirectFunctions", "Gated", "Mapped", "PatternedStored", "RepeatedStored", "ReplacedStored", "RowFunctions", "Searched", "SearchedFor"], StaticFact, "the functions spelled as they are, the names the rows measured, the string functions gated, and the legality the rows do not carry"),
             ("Adapter.Sql.CosmosRexTranslator", ["ArrayReading", "FragmentReading", "GeographyFunctions", "ScalarReading"], StaticFact, "the functions the translator writes as they are"),
             ("Adapter.Sql.CosmosSchemaFunctions", ["Instance"], StaticFact, "the functions a schema offers"),
             ("Adapter.Sql.CosmosSql", ["ReservedWords"], StaticFact, "Cosmos SQL's reserved words"),
@@ -207,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
-            ("Facts.Saturation.StringCalls", ["Cut", "Every", "First", "Functions", "Upper", "Window"], StaticFact, "how each string function draws its operands' characters, and the rows of what it makes of them"),
+            ("Facts.Saturation.StringCalls", ["Cut", "Rows", "Upper"], StaticFact, "the rows of which operands each string function draws characters from and what it makes of them, the root's data"),
         ];
 
         /// <summary>

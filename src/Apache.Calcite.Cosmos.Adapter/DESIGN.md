@@ -7965,7 +7965,7 @@ site took the branch it keeps.
 
 **Where the faults are caught now.** Each is planted in S where S would carry it, and caught by the gate or by source
 A (*Faults planted in S*, line 16). With J (g18), K (g19) and the plants gone, the deletions of spec §3.5 are done and
-S's theory holds 56 rules (line 31).
+S's theory holds 56 rules.
 
 ---
 
@@ -8328,19 +8328,41 @@ which `CosmosFunctionComparison` asks Calcite through, a key's answer the worst 
 reads both into S as constant raw facts, `functionsubject` and `measuredreaders` (since f12 `functionsubjects`, every
 operand the rows name, and `measuredreaders` an intersection of each axiom's), which the image rule reads beside the keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
 read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
-`CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column gate reads the same subjects
-(`CosmosFunctionSpellings.Subjects`), and the one function it gates that no row names, `LENGTH`, is refused on every
-operand and every target (`CosmosFunctionSpellings.Gated`). The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+`CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column bridge reads the same rows, subjects
+and readers, off the definition its schema's S is built from (`CosmosFunctionSpellings.Disagreeing`, *The column
+bridge*), and the one function it gates that no row names, `LENGTH`, is refused on every operand and every target
+(`CosmosFunctionSpellings.Gated`). The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
 measured, and the case mapping beyond ASCII under every set, since the rows' witnesses for the surrogate and high bands
 (an emoji, `ﬀ`) hold no cased letter while Java maps U+10428 and U+FF21. A refusal is never weakened to a row.
 
-**The column bridge.** `RequireStringFunctionsAgree` asks, for every target the set serves, the bands the function's
-rows part over, and refuses a subject not proved free of them; a function no row names is refused there. Until the
-probe account's run 1 Azure had no function rows and the bridge read declared verdicts for it (what
-`CosmosStringFunctions` asked); since h14b both targets read their rows, Azure's measured. Under the emulator this
-refuses `POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` under both (Calcite's library
-operator, whose rows are owed). The bridge goes at h37, when S writes the column.
+**The column bridge.** `RequireStringFunctionsAgree` reads every row S's image rule reads (owed): the call's operands
+gathered as S's place rule gathers them (`CosmosRexTranslator.Gathered`, through the loader that reads places), keyed
+by `RenderingImage.Keys` — each kind each operand may hold, by its ordinal and by `Every`, each band, each value
+class's atoms, through readers the rows were measured through — and refused unless every key is covered by a row
+(`FunctionValueClasses.Holding`) and every row covering it answers `Same` on every target the set serves
+(`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from, no table of its own). An
+operand S gathers nothing of — a parameter, a `CASE`, a call it reads no place of — leaves the call no image, as S's
+image asks one import an operand (`Gathered` returns none short of the call's arity). Before, it read the `Any` row of
+each operand alone and asked an operand of another kind as a string, so it could push what S's image rule declines
+(latent item 9); one plan moved, a window whose start is a position, `SUBSTRING(a FROM POSITION('x' IN a) FOR 2)`,
+read through `typed:INTEGER`, which no row of `SUBSTRING` was measured through. No other corpus plan holds what the
+bridge now keeps in process: a bound that is a parameter or read off a path (a `SUBSTRING`, `LEFT` or `RIGHT` start or
+count), and a fold of a raw reading no row was read through, the cast to `ANY` naming the raw value under a rendering
+and a `VARIANT` column cast to text, which makes a number null where the service's fold is undefined. What an
+operand may hold is read off the stratum the translation was licensed, F's `possible` and `chars` there, and off the
+declaration's root (`JsonFactTheory.PossibleOf`, `D0`'s row, where S imports from) where the stratum holds no
+`possible` of the path. S's own gathering reads the root's alone (`ArmImport` narrows only beneath an `OR`'s arm, and
+`ImportedChars` has no stratum), so beneath a conjunct that narrows a path the bridge keeps a push S's rule declines:
+read over the root alone it moved three more, `UPPER(s) = 'ABC'` beneath `s IN ('aBc', 'axb')`, `UPPER(category) IS
+NULL` beneath `category IN ('true', '1.0E30')`, and on Azure `UPPER(category) > 'bikes'` beneath `category IS NULL`,
+each sound over its stratum's facts. F has no character rule for a raw reading through its column (`raw:VARCHAR`), so
+S keys a call nested over one by every band; the bridge reads a nested call's characters off the reading without
+places, whose raw readings F's rules read, and G6 needs that rule. Until the probe account's run 1 Azure had no
+function rows and the bridge read declared verdicts for it (what `CosmosStringFunctions` asked); since h14b both
+targets read their rows, Azure's measured. Under the emulator this refuses `POSITION` over a surrogate, the correctness
+fix h06 recorded, and `LENGTH` under both (Calcite's library operator, whose rows are owed). It is a bridge: G6
+replaces it by asking S's image of each call the translator writes, and it goes at h37, when S writes the column.
 
 **What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
 `Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
@@ -8840,7 +8862,10 @@ class, so every class test that asked before answers as before.
   `from`, what is made of it may hold `to` too, and the one evaluation of a set of them is `JsonValues.Mapped`, a
   union with the image, which chooses nothing. Calcite's functions carry theirs in `StringCalls` (a window cuts a pair,
   `surrogate` to `unpaired`, for `SUBSTRING`, `LEFT` and `RIGHT`; Java's upper case maps `high` to `nonascii`), which
-  the root of F's graph holds as `callMaps` and the drawing rule joins by the call's name. The service's stores are a
+  the root of F's graph holds as `callMaps`, beside `callDraws`, the operands each function draws from by the loader's
+  ordinals, `FunctionKey.Every` for a concatenation's and a conditional's every one (owed); the drawing rules join both
+  by the call's name, the guard that a call draws nothing from an operand reading the same row, and no C# names a
+  function or an operand. The walk over a call's operands is its shape alone, an analysis of its terms. The service's stores are a
   `Service` row's cells, `CosmosAxiom.StoredAs` (`surrogate` stored as `high` and as `replacement`, a lone surrogate
   being stored as U+FFFD), read by `CosmosAxiomRows.ReadStored` alike from every target, since F has none, and handed
   by the schema's generations to each graph's root as `storedAs`; the stored rule takes what was written and every row
@@ -8870,9 +8895,9 @@ the band it lies within, never a key of its own, until a row names it.
 - **What does not move yet.** The rows still name one operand of each function, so the keys are the ones they were;
   the defects F2 fixes (`REPLACE`'s search and replacement) strike when rows name those operands. A result's class
   (`REPEAT` within or past 10,000 code points) is no operand's, and waits for a result key (`TODO.md`).
-- **The column bridge reads each operand by its own rows.** `CosmosFunctionSpellings.SubjectsOf` pairs each Rex
-  operand with every operand the rows name it by, its ordinal and `Every`, and `Parting` reads that operand's keys, so
-  a function whose rows name two operands is asked of each; it goes at h37.
+- **The column bridge reads each operand by its own rows.** It keys a call as S's image rule keys it, every operand the
+  rows name by its ordinal and by `Every` (owed: `CosmosFunctionSpellings.Disagreeing`, *The column bridge*), so a
+  function whose rows name two operands is asked of each; G6 replaces it, and it goes at h37.
 
 ## Differential testing
 

@@ -221,6 +221,35 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactSet Declared => _rules.Length == 0 ? JsonFactSet.Empty : Compile().Outright;
 
         /// <summary>
+        /// Returns what a path may hold where a statement's S imports it (<c>RenderingImporter.Import</c>), at the root the
+        /// declaration's licence chooses, <c>D0</c> or the context where <c>D0</c> states nothing: its <c>possible</c> row, or
+        /// the top where it holds none, the declaration states nothing or the engine fails. Read with <c>TryGet</c>, which
+        /// interns nothing.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <returns>What it may hold.</returns>
+        /// <exception cref="ArgumentException">The theory states something and is bound to no schema's generations.</exception>
+        internal PathValues PossibleOf(JsonDocumentPath path)
+        {
+            if (_rules.Length == 0)
+                return PathValues.Anything;
+
+            var compiled = Compile();
+            try
+            {
+                if ((compiled.DeclaredPossible() ?? compiled.Schema) is not Scope root)
+                    return PathValues.Anything;
+
+                var rules = PredicateRules.Of(compiled.Generation.Contexts);
+                return root.TryGet(rules.Possible.Of(JsonFactEncoding.Path(path).ToTerm(rules.Json)), out var possible) ? possible : PathValues.Anything;
+            }
+            catch (Exception e) when (IsEngineFailure(e))
+            {
+                return PathValues.Anything;
+            }
+        }
+
+        /// <summary>
         /// Returns this declaration compiled into the current generation, for the predicate oracle, which puts contexts of
         /// its own beneath it: what a filter establishes is a stratum of its statement, never a context made here.
         /// </summary>
