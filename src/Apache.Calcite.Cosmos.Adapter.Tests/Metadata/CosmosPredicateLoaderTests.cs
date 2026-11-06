@@ -134,21 +134,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A number compared with <c>RETURNING DOUBLE</c> is its constant where S reads, but not a literal a cast truncated:
-        /// the reading compares the double exactly, so 2.5 cast to <c>DECIMAL(19, 0)</c> is no constant of it (audit item 2;
-        /// a stopgap until G8 reads the casts as terms in S).
+        /// A number Calcite wrote cast is read as the casts' terms where S reads (G8), whatever the reading it is compared with:
+        /// what it denotes, and whether the reading takes it, are S's rules and rows, so the 2.5 a cast to <c>DECIMAL(19, 0)</c>
+        /// truncates is read as written, and S's row for <c>RETURNING DOUBLE</c> takes no constant a cast moved (audit item 2).
+        /// F's reading folds the casts as it did until h15, and <c>RETURNING DOUBLE</c> is none of its conversions.
         /// </summary>
         [Fact]
-        public void ANumberComparedWithReturningDoubleIsItsConstantWhereSReads()
+        public void ANumberCalciteWroteCastIsReadAsTheCastsWhereSReads()
         {
             var price = Call(SqlStdOperatorTable.GREATER_THAN, JsonValue("price", SqlTypeName.DOUBLE),
                 _rex.makeAbstractCast(Sql(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal("10.0"))));
-            LoadPlaces(price).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(Typed(P("price"), "DOUBLE"), ">", Lit(10m)));
+            LoadPlaces(price).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(Typed(P("price"), "DOUBLE"), ">", Cast("DOUBLE", Lit(10m))));
             Load(price).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
 
             var truncated = _rex.makeCast(Sql(SqlTypeName.DOUBLE), _rex.makeCast(_types.createSqlType(SqlTypeName.DECIMAL, 19, 0), _rex.makeExactLiteral(new java.math.BigDecimal("2.5"))));
-            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.DOUBLE), truncated)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>(
-                "RETURNING DOUBLE compares the 2 Calcite truncated to, which is not 2.5");
+            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.DOUBLE), truncated)).Conjuncts.Should().ContainSingle().Which.Should().Be(
+                Cmp(Typed(N, "DOUBLE"), "=", Cast("DOUBLE", new SqlValue.DecimalCast(19, 0, Lit(2.5m)))), "the truncation is S's to read");
         }
 
         [Fact]

@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
-                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null))
+                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -526,8 +526,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 var ran = functions.Where(f => keys.SelectMany(k => k.Witnesses).All(w => lines.ContainsKey((row, CosmosFunctionComparison.Spelled(f), w ?? "absent")))).ToList();
                 var asked = CosmosFunctionComparison.Spellings(ran)
                     .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
-                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, ran, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!, CosmosAxiomTarget.Azure)
+                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, ran, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!.Where(o => o.Evidence is null), CosmosAxiomTarget.Azure)
                     .Should().BeEmpty(row);
+            }
+        }
+
+        /// <summary>
+        /// A function key another row's measurement ran names a row measured on every target the key claims, whose pinning
+        /// test carries its id, and claims no target its own row's run measured: <c>SUBSTRING</c>'s length of 0 on Azure is
+        /// <c>Service.SubstringOfANegativeStartIsEmpty</c>'s window from 0 of length 0, where the probe account's record holds
+        /// no length below 1.
+        /// </summary>
+        [Fact]
+        public void AFunctionKeyAnotherRowRanNamesARowMeasuredWhereItClaims()
+        {
+            var backed = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] where o.Evidence is not null select (axiom, o)).ToList();
+            backed.Should().NotBeEmpty();
+            foreach (var (axiom, o) in backed)
+            {
+                var evidence = CosmosAxioms.Get(o.Evidence!);
+                (evidence.MeasuredOn & o.On).Should().Be(o.On, $"{o} claims only where {o.Evidence} was measured");
+                (PinningTest(evidence)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(evidence.Id, evidence.PinnedBy);
+                axiom.FunctionOutcomes!.Where(other => other.Evidence is null && (other.On & o.On) != 0
+                    && FunctionKey.Of(other.Function, other.Subject, other.Operand, other.Band, other.Value) == FunctionKey.Of(o.Function, o.Subject, o.Operand, o.Band, o.Value))
+                    .Should().BeEmpty($"{o} is the key's one row on its targets");
             }
         }
 

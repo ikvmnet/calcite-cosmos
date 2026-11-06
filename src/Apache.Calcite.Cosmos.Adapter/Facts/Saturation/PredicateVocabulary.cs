@@ -28,6 +28,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             RawIn = graph.DefineConstructor<JPath, string, Val>("raw in", options: term);
             Typed = graph.DefineConstructor<JPath, string, Val>("typed", options: term);
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
+            DecimalCast = graph.DefineConstructor<long, long, Val, Val>("decimal cast", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
             Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
@@ -72,6 +73,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>A cast of a value to a SQL type.</summary>
         public Constructor<string, Val, Val> Cast { get; }
+
+        /// <summary>
+        /// A cast of a number to <c>DECIMAL(precision, scale)</c>, one a comparison's other side is made of: written where a
+        /// loading reads places, so never in F's statements; read by S's own rules of what a cast of a literal denotes
+        /// (<c>RenderingTheory.Denotes</c>, G8).
+        /// </summary>
+        public Constructor<long, long, Val, Val> DecimalCast { get; }
 
         /// <summary>A literal, in <see cref="JsonValues"/>' spelling.</summary>
         public Constructor<string, Val> Literal { get; }

@@ -84,6 +84,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static string CastReader(string target, string inner) => "cast:" + target + ":" + inner;
 
         /// <summary>
+        /// Returns the reading a reader applies last, which its value is compared as: a cast's target over whatever it
+        /// converts (<c>cast:DOUBLE</c> of <c>cast:DOUBLE:raw:ANY</c>), and any other reader itself. S keys what a reading
+        /// compares a number Calcite wrote cast with by it (<c>RenderingTheory.TakesConstant</c>, G8).
+        /// </summary>
+        public static string Outermost(string reader) =>
+            reader.StartsWith("cast:", StringComparison.Ordinal) && reader.IndexOf(':', "cast:".Length) is var colon and > 0 ? reader.Substring(0, colon) : reader;
+
+        /// <summary>
         /// The columns a raw value is read through, as <c>Calcite.RawNullIsSqlNull</c> names them: a promoted path's
         /// <c>VARIANT</c>, an <c>ANY</c>, a field typed <c>VARCHAR</c>.
         /// </summary>

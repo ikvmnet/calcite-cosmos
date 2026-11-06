@@ -38,12 +38,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// (<see cref="CosmosAxiomRows.ReadCalciteReadings"/>).</param>
     /// <param name="Casts">The casts a <c>Calcite</c> row measured, by target and the reading cast (<see cref="CosmosAxiomRows.ReadCasts"/>).</param>
     /// <param name="ReaderOrders">What a reading's order holds in process (<see cref="CosmosAxiomRows.ReadReaderOrders"/>).</param>
+    /// <param name="Comparands">The readings a <c>Calcite</c> row says compare a number Calcite wrote cast with the number the cast
+    /// denotes, moved or not (<see cref="CosmosAxiomRows.ReadComparands"/>, G8).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
         IReadOnlyList<CosmosStoredClass>? StoredAs = null, IReadOnlyList<CosmosParting>? Parts = null, IReadOnlyList<CosmosMove>? Moves = null,
         IReadOnlyList<CosmosTruncation>? Truncations = null, IReadOnlyList<CosmosPairReading>? PairReadings = null, IReadOnlyList<CosmosBox>? Boxes = null,
         IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
-        IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null);
+        IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null);
 
 }

@@ -34,9 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// S's rules, held by family and each by name, so a rule that moves, goes or is swapped is seen: check mode's
         /// (design 2) and generate mode's, h07's two atoms, the type test's and the affix's, h08's case (its ternary a
         /// template written twice, and a truth value's constant beside it), h10's computed places (a call's reading of its
-        /// place is the bundle's), h11's pair, h12's raw columns' union, a raw value read through its column (rawtyped), and
-        /// the atoms a function row covers (F2). No count bounds them: what the rules cost is judged at the end-of-plan
-        /// evaluation.
+        /// place is the bundle's), h11's pair, h12's raw columns' union, a raw value read through its column (rawtyped), the
+        /// atoms a function row covers (F2), and what a number Calcite wrote cast denotes (G8). No count bounds them: what the
+        /// rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -49,6 +49,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "text reads its path",
                     "a raw value reads its path",
                     "a raw value in a column reads its path through the column",
+                    "a literal a cast to DOUBLE converts denotes the number it spells",
+                    "a literal a cast to a DECIMAL converts denotes the number it spells",
+                    "a cast to DOUBLE denotes what it converts denotes",
+                    "a cast to a DECIMAL that holds the number's digits denotes what it converts denotes",
+                    "a cast to a DECIMAL that drops the number's places denotes it moved",
+                    "a comparison with what a cast denotes is an atom of what it reads where its reading takes it",
                     "a returning reads its path as its type",
                     "a cast reads what it converts",
                     "a comparison with a literal is an atom of what it reads",
@@ -223,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(79);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(85);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
@@ -328,7 +334,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (d, s) = (Measured, ProbeTheory);
             new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.PairReadings.Count, d.Boxes.Count, d.SeesThrough.Count, d.StructureOnly.Count,
-                d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count }.Should().OnlyContain(n => n > 0);
+                d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count }.Should().OnlyContain(n => n > 0);
 
             d.Parts.Should().OnlyContain(r => s.Theory.Check(s.Parts.Of(r.Comparator, r.Band, r.Other)));
             d.Moves.Should().OnlyContain(r => s.Theory.Check(s.Moves.Of(r.Comparator, r.Band)));
@@ -340,6 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.StructureOnly.Should().OnlyContain(r => s.Theory.Check(s.StructureOnly.Of(r)));
             d.CalciteReadings.Should().OnlyContain(r => s.Theory.Check(s.CalciteReads.Of(r.Reader, r.Kind, r.Answer)));
             d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
+            d.Comparands.Should().OnlyContain(r => s.Theory.Check(s.TakesConstant.Of(r.Reading, r.Moved, r.Row)));
             foreach (var g in d.CalciteBands.GroupBy(r => (r.Reader, r.Kind)))
                 s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
             foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))

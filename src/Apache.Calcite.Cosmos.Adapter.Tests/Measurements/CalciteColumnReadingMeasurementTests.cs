@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 
 using FluentAssertions;
 
@@ -47,7 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>DOUBLE</c> reads 2^53 + 1 as 2^53, which is the double nearest. The comparisons are asked over the values
         /// the column reads, a letter a value: <c>T</c>, <c>F</c>, or <c>U</c> for unknown.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.ColumnReadsWholeNumbersAsItsType")]
         public void EachColumnReadsAndComparesAsItsType()
         {
             Reads(SqlTypeName.BIGINT).Should().Equal("42", "-7", "42", "raises", "2147483648", "9007199254740993", "raises", "raises", "raises", "raises", "null", "null");

@@ -59,6 +59,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CalciteReads = Graph.DefineRelation<string, CosmosValueClass, string>("calcitereads");
             CalciteBands = Graph.DefineFunction<string, CosmosValueClass, ValueSet<string>>("calcitebands", ValueLattice.Union<string>());
             MeasuredCast = Graph.DefineRelation<string, string, string>("measuredcast");
+            // What a reader compares with a number Calcite wrote cast (G8): rows at the frozen root, read beside the terms by
+            // the rule that makes the comparison an atom, which may read only terms and analyses, so held as an analysis.
+            TakesConstant = Graph.DefineRelation<string, bool, string>("takesconstant", new TableOptions { Role = TableRole.Analysis });
             ReaderOrder = Graph.DefineFunction<string, ValueSet<string>>("readerorder", ValueLattice.Union<string>());
             TestKinds = Graph.DefineFunction<CosmosServiceTest, ValueSet<CosmosValueClass>>("testkinds", ValueLattice.Union<CosmosValueClass>());
             Kleene = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("kleene");
@@ -166,6 +169,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(v.Is(Ir.RawIn.Of(p, c)));
                 r.Then(Ir.Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
             });
+
+            Denotes = Graph.DefineRelation<Val, string, bool>("denotes", analysis);
+            DefineComparands();
 
             var tag = Graph.DefineRuleset("tag");
             DefineTag(tag);
@@ -375,6 +381,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The casts a <c>Calcite</c> row measured, by target and the reading cast, citing the row, G8's.</summary>
         public Relation<string, string, string> MeasuredCast { get; }
+
+        /// <summary>
+        /// The readers that compare with what a number Calcite wrote cast denotes (G8), citing the row: with the number itself
+        /// (<c>false</c>), and with one a cast that drops scale moved by less than one (<c>true</c>), which only a reader whose
+        /// reading rescales the literal reads (<c>PredicateAtom</c>'s decimal parse). A reader no row names takes neither.
+        /// </summary>
+        public Relation<string, bool, string> TakesConstant { get; }
+
+        /// <summary>
+        /// What a cast of a literal denotes, as the loader reads one where it reads places (G8): the number the literal spells,
+        /// and whether a cast that drops scale moved Calcite's value from it; nothing where a cast's whole digits do not fit,
+        /// which raises. Derived from the terms alone.
+        /// </summary>
+        public Relation<Val, string, bool> Denotes { get; }
 
         /// <summary>What a reading's order holds in process, every reading a row names, G3's.</summary>
         public Function<string, ValueSet<string>> ReaderOrder { get; }
@@ -951,6 +971,63 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        // S's alone, in the vocabulary's ruleset (G8): what a number Calcite wrote cast denotes, which the loader reads as the
+        // casts' terms where it reads places, and the atom of a comparison with it where a row says the reading takes it. A
+        // cast to a DECIMAL its whole digits do not fit raises in Calcite and denotes nothing; one whose scale is below the
+        // number's truncates it toward zero, by less than one, which only a reading that rescales its literal takes.
+        void DefineComparands()
+        {
+            Ir.Analyse.DefineRule("a literal a cast to DOUBLE converts denotes the number it spells", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var c = r.Var<string>("c");
+                r.When(v.Is(Ir.Cast.Of("DOUBLE", w)), w.Is(Ir.Literal.Of(c)));
+                r.Then(Denotes.Of(w, c, false));
+            });
+            Ir.Analyse.DefineRule("a literal a cast to a DECIMAL converts denotes the number it spells", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc, c) = r.Vars<long, long, string>("pr", "sc", "c");
+                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), w.Is(Ir.Literal.Of(c)));
+                r.Then(Denotes.Of(w, c, false));
+            });
+            Ir.Analyse.DefineRule("a cast to DOUBLE denotes what it converts denotes", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(Ir.Cast.Of("DOUBLE", w)), Denotes.Of(w, c, m));
+                r.Then(Denotes.Of(v, c, m));
+            });
+            Ir.Analyse.DefineRule("a cast to a DECIMAL that holds the number's digits denotes what it converts denotes", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc) = r.Vars<long, long>("pr", "sc");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
+                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
+                r.Where(RenderingPrimitives.PlacesWithin.Of(c, sc));
+                r.Then(Denotes.Of(v, c, m));
+            });
+            Ir.Analyse.DefineRule("a cast to a DECIMAL that drops the number's places denotes it moved", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc) = r.Vars<long, long>("pr", "sc");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
+                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
+                r.Where(RenderingPrimitives.PlacesBeyond.Of(c, sc));
+                r.Then(Denotes.Of(v, c, true));
+            });
+            Ir.Analyse.DefineRule("a comparison with what a cast denotes is an atom of what it reads where its reading takes it", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (op, c, k, o) = r.Vars<string, string, string, string>("op", "c", "k", "o");
+                var (m, p, row) = r.Vars<bool, JPath, string>("m", "p", "row");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), Denotes.Of(w, c, m), Ir.Reads.Of(v, p, k), o.Is(Compute.Of(k, PredicateAtom.Outermost)), TakesConstant.Of(o, m, row));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+        }
+
         // Positions are derived down the IR, never carried; each node they reach starts with no exact form and nothing
         // implied, complete values the later strata only lower or grow. A template only proposes: the gate disposes.
         void DefineProposal(Ruleset at, Ruleset spell)
@@ -1488,6 +1565,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (target, reader, row) in definition.Casts)
                     w.Assume(MeasuredCast.Of(target, reader, row));
+
+                foreach (var (reader, moved, row) in definition.Comparands)
+                    w.Assume(TakesConstant.Of(reader, moved, row));
 
                 foreach (var (reader, claim) in definition.ReaderOrders)
                     w.Assume(ReaderOrder.Of(reader).Is(ValueSet.Of(claim)));

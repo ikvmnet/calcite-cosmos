@@ -123,6 +123,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<(string Target, string Reader, string Row)> ReadCasts(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from cast in axiom.Casts ?? [] select (cast.Target, cast.Reader, axiom.Id)).Distinct()];
 
+        /// <summary>
+        /// One row per reading that compares a number Calcite wrote cast with the number it denotes, moved or not (G8), S's
+        /// <c>takesconstant</c>, citing its row.
+        /// </summary>
+        public static IReadOnlyList<(string Reading, bool Moved, string Row)> ReadComparands(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from comparand in axiom.Comparands ?? [] select (comparand.Reading, comparand.Moved, axiom.Id)).Distinct()];
+
         /// <summary>One row per claim a reading's order holds in process (F3), S's <c>readerorder</c>, whose union is a reading's.</summary>
         public static IReadOnlyList<(string Reader, string Claim)> ReadReaderOrders(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from order in axiom.ReaderOrders ?? [] select (order.Reader, order.Claim)).Distinct()];

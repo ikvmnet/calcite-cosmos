@@ -70,8 +70,9 @@ stored form, or the statement's own `IN (…)`. In a projection the property alo
 service, and only the function runs in process; in a filter the comparison runs in process, over the
 documents the rest of the filter keeps, which are read whole. `REPLACE` and `REPEAT` ask something of
 their other operands as well, a search that is not empty and a count the service repeats as far as
-Calcite does; on Azure `REPLACE`'s search and replacement are literals of ASCII that hold something, and
-a `SUBSTRING`'s length is at least 1, as measured there so far. Chapter 14.4 and Appendix B.2 say which
+Calcite does; on Azure `REPLACE`'s search and replacement are proved strings of ASCII that hold
+something — a literal, or a `required` path whose `enum` lists only such strings — as measured there so
+far, and on both targets a `SUBSTRING`'s length is at least 0. Chapter 14.4 and Appendix B.2 say which
 pattern lets which function push.
 
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**

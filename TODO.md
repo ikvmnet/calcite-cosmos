@@ -3069,21 +3069,28 @@ across documents* and *A join of a container to itself* is the record.
   Java does (2026-11-04, the defects step); Azure's is run 2's.
 - **Azure's operand keys are run 1's literals alone** — *small, run 2's.* Since fix6 the rows key `REPLACE`'s search and
   replacement and `SUBSTRING`'s length (DESIGN.md, *The defects answered before h15*), measured on the emulator over
-  every kind and band, and on Azure only as run 1's spellings hold them: a search and a replacement that are strings of
-  no band and not empty, a length from 1. So under `Production` a `REPLACE` whose search or replacement is empty, of any
-  band or read from a path, and a `SUBSTRING` of length 0, which the column bridge pushed before, are computed in process
+  every kind and band, and on Azure only as run 1's spellings hold them, a search and a replacement that are strings of
+  no band and not empty and a length from 1, and as `Service.SubstringOfANegativeStartIsEmpty`'s window from 0 of length
+  0 holds it, a length of 0. A path keys those cells as a literal does where the declaration proves it present and every
+  string it may be one of them, so it pushes there. So under `Production` a `REPLACE` whose replacement is empty, whose
+  search or replacement holds any band, or which reads either from a path that may be absent is computed in process
   until run 2 runs `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims on the probe account and
   `CosmosAxioms` records what it answers; among them a replacement holding U+0000, which
   `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
   (`CosmosRexTranslatorTests.Functions` holds both). Those spellings hold the literals the emulator stores escaped too:
   on Azure a literal U+0000 or U+FDD0 in `CONCAT`, `||` or `REPEAT` is keyed with a stored one, which run 1's stored
   witnesses alone measured; it matters once `Spell`'s literal refusal goes (G1).
-- **The comparand's casts are read in C# until G8** — *G8's, before h15.* `Comparand` reads a literal a cast truncated
-  only against `RETURNING DECIMAL` (`truncates: reading is SqlValue.Typed { Type: "DECIMAL" }`, the audit's narrow guard
-  for its item 2, fix6), and `converts` lists the readings that take a folded constant, as `PredicateAtom`'s decimal
-  parse is the reading that knows a literal moves: two C# lists deciding one claim. G8 reads the cast chain as terms,
-  with rows saying which readers take a constant and which read a truncation and rules for the constant, the moved
-  constant and the raise (`reports/audit-3a/loader-comparand-constant-cast.md`), and the guard goes.
+- **F still folds a cast comparand, and the legality and `Membership` read none** — *G8's remainder, h15's.* Since fix6's fix
+  round a loading that reads places reads a number Calcite wrote cast as the casts' terms, and S's rules and rows derive
+  what it denotes and which readings take it (DESIGN.md, *The comparand's casts are S's*), where `Comparand` decided both
+  in C#. What reads the fold yet: F's statements and the legacy statement S's switch reads until h15, which load without
+  places and keep main's fold (`converts`, `truncates: reading is SqlValue.Typed`), until F reads places and its own
+  analysis gains `denotes` and the atom rule, and the rows reach F's root; the legality, `RenderingFamily.Owns` reading a
+  comparison's right side as a literal and `ReadExactly` reading any other as two readings compared, so that over the
+  places reading S owns no comparison with a cast number, which matters once h15 reads `Owns` there; and `Membership`,
+  which reads an `OR` of equalities as an `IN` over literals alone, so over the places reading an `OR` of cast numbers
+  stays a disjunction of atoms. A raw reading, and a typed one no row names, compared with a cast number is a comparison
+  with no atom over the places reading, where the fold left it opaque.
 - **The foundation's F3 rows wait on their groups** — *each group's, G1 to G8.* f345 reads the prose rows' cells into S
   (DESIGN.md, *The foundation's cells, roles and case mapping*), and no rule reads them but `parts`: G1 reads `moves`,
   `storedas` and `truncates`, and restricts `PartingBands`, the sendable gate's, to the comparators each set's string

@@ -405,6 +405,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <summary>A translator whose container, on this target, declares <c>c.s</c> to be one of these strings.</summary>
             CosmosRexTranslator OneOf(CosmosServiceTarget target, params string[] values) => Declaring(target, new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
 
+            /// <summary>A translator whose Azure container declares <c>c.s</c> present, and one of these strings.</summary>
+            CosmosRexTranslator PresentOneOf(params string[] values) => Declaring(new JsonClaim.Present(), new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
+
             /// <remarks>
             /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
             /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal,
@@ -428,8 +431,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
             /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
-            /// parameter may be empty until it is bound. Azure's answers were measured with a literal search alone, so a
-            /// path's is computed in process there until run 2 measures one (TODO.md); the emulator's were measured with both.
+            /// parameter may be empty until it is bound. Azure's answers were measured with searches and replacements that
+            /// are strings of no band holding something, as run 1's literals are, and a path keys that cell alone where the
+            /// declaration proves it present and every string it may be one of them, so it pushes there; a path that may be
+            /// absent keys a cell Azure has not measured, which is computed in process there until run 2 measures it
+            /// (TODO.md). The emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereTheSearchHoldsSomething()
@@ -439,7 +445,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Param(), Lit("b")).Should().BeFalse("a parameter may be empty");
                 Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
                 Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
-                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("Azure's answers were measured with a literal search alone");
+                Pushes(PresentOneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("the search is present and every string it may be is of no band and holds something, the cell Azure measured");
+                Pushes(PresentOneOf("x", "yz"), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a replacement read from a path keys the same cell");
+                Pushes(PresentOneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be absent, which Azure has not measured");
             }
 
             /// <remarks>

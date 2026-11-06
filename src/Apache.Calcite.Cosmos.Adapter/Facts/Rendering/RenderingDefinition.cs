@@ -104,6 +104,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<(string Target, string Reader, string Row)> Casts { get; init; } = [];
 
+        /// <summary>
+        /// The readings that compare a number Calcite wrote cast with the number it denotes, by the reading a reader applies
+        /// last, and whether they take one a cast that drops scale moved, each citing its row (<c>CosmosAxiomRows.ReadComparands</c>,
+        /// G8): S's <c>takesconstant</c>.
+        /// </summary>
+        public IReadOnlyList<(string Reading, bool Moved, string Row)> Comparands { get; init; } = [];
+
         /// <summary>What each reading's order holds in process (<c>CosmosAxiomRows.ReadReaderOrders</c>, F3); no rule reads it yet (G3).</summary>
         public IReadOnlyList<(string Reader, string Claim)> ReaderOrders { get; init; } = [];
 

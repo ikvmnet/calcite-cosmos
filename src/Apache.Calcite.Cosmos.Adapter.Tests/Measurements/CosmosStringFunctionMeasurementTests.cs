@@ -544,7 +544,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// where Calcite's clips the window to the string; one starting at 0 of length 0 is the empty string, projected and
         /// in a <c>WHERE</c>, which is what the clip is written as.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.SubstringOfANegativeStartIsEmpty")]
         public async Task AWindowStartingBeforeTheStringIsEmpty()
         {
             var strings = Strings_();

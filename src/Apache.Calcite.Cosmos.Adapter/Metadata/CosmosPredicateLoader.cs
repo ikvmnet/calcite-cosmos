@@ -424,18 +424,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             };
 
             /// <summary>
-            /// Reads what a reading is compared with: a parameter, a literal, and against a conversion to a number the
-            /// constant <see cref="TryConstantNumber"/> reads there.
+            /// Reads what a reading is compared with: a parameter, a literal, and a number Calcite wrote cast — where places are
+            /// read, as the casts' terms (<see cref="CastNumber"/>); otherwise, against a conversion to a number, the constant
+            /// <see cref="TryConstantNumber"/> reads there.
             /// </summary>
             /// <remarks>
             /// <para>
             /// <b>A number a conversion is compared with arrives cast</b> — <c>&lt;= 30.5</c> against a cast to
             /// <c>DOUBLE</c> as <c>CAST(30.5:DECIMAL(3, 1)):DOUBLE</c>, and against <c>RETURNING DECIMAL</c> as the
-            /// literal cast to the clause's scale — and is read in one place: a cast to a number is the constant,
-            /// except one to a <c>DECIMAL</c> its whole digits do not fit, which raises in Calcite and is no constant
-            /// at all. A cast that drops scale truncates the literal, which the conversion
-            /// <c>RETURNING DECIMAL</c> is, alone, reads as such (<c>PredicateAtom</c>); against any other reading a
-            /// truncated literal would be read as a number Calcite does not compare with, and is not read.
+            /// literal cast to the clause's scale. Where places are read, which S reads, the casts are read as they stand
+            /// (G8): what they denote and which readings compare with it are S's rules and rows (<c>RenderingTheory.Denotes</c>,
+            /// <c>takesconstant</c>) — a cast to a <c>DECIMAL</c> its whole digits do not fit raises in Calcite and denotes
+            /// nothing, and one that drops scale moves the literal, which only a reading its row says reads the move takes.
+            /// </para>
+            /// <para>
+            /// Elsewhere — F's reading, and the legacy one S's switch reads until h15 — a cast to a number is folded here into
+            /// the constant, except one to a <c>DECIMAL</c> its whole digits do not fit, which is no constant at all; and a cast
+            /// that drops scale truncates the literal, which the conversion <c>RETURNING DECIMAL</c>, alone, reads as such
+            /// (<c>PredicateAtom</c>). F's terms stay so until it reads places (h15), and with them the casts as S does.
             /// </para>
             /// <para>
             /// Anything else is a literal as written, or boxed for a <c>VARIANT</c> comparison.
@@ -446,14 +452,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (node is RexDynamicParam)
                     return Value(node);
 
-                // RETURNING DOUBLE is a conversion too; read only for S until its switch (h15), F's terms unchanged.
-                var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" } || _places && reading is SqlValue.Typed { Type: "DOUBLE" };
-                // Only RETURNING DECIMAL reads a literal a cast truncated, as PredicateAtom's decimal parse rescales it; RETURNING
-                // DOUBLE compares the double exactly. A stopgap (audit item 2), deleted when G8 reads the casts as terms in S.
-                if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed { Type: "DECIMAL" }) is java.math.BigDecimal number)
+                if (_places)
+                    return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : CastNumber(node);
+
+                var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
+                if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
                     return Number(number);
 
-                return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : null;
+                return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral plain ? Literal(plain) : null;
+            }
+
+            /// <summary>
+            /// Reads a number Calcite wrote cast, as the casts' terms: each cast to <c>DOUBLE</c> a <see cref="SqlValue.Cast"/>,
+            /// each to <c>DECIMAL(p, s)</c> a <see cref="SqlValue.DecimalCast"/>, over the literal as the translator would send
+            /// it (<see cref="Number"/>); <c>null</c> where anything else is cast, or the literal is no number the service
+            /// compares as one.
+            /// </summary>
+            static SqlValue? CastNumber(RexNode node)
+            {
+                if (node is RexLiteral literal)
+                    return literal.getValue() is java.math.BigDecimal value ? Number(value) : null;
+
+                if (node is not RexCall call || call.getKind().name() is not (nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST)) || call.getOperands().size() != 1
+                    || CastNumber((RexNode)call.getOperands().get(0)) is not { } cast)
+                    return null;
+
+                var type = call.getType();
+                return type?.getSqlTypeName() == SqlTypeName.DOUBLE ? new SqlValue.Cast(SqlTypeName.DOUBLE.getName(), cast)
+                    : type?.getSqlTypeName() == SqlTypeName.DECIMAL ? new SqlValue.DecimalCast(type.getPrecision(), type.getScale(), cast)
+                    : null;
             }
 
             /// <summary>
@@ -549,14 +576,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Determines whether a reading is compared with an operand of this kind: a parameter of any, and a literal of
-            /// the kind the reading yields.
+            /// the kind the reading yields, a number Calcite wrote cast by the literal it casts.
             /// </summary>
             static bool Compares(SqlValue reading, SqlValue operand)
             {
                 if (operand is SqlValue.Parameter)
                     return true;
 
-                if (operand is not SqlValue.Literal literal)
+                if (Uncast(operand) is not SqlValue.Literal literal)
                     return false;
 
                 return reading switch
@@ -574,6 +601,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     _ => false,
                 };
             }
+
+            /// <summary>The literal a number Calcite wrote cast casts (<see cref="CastNumber"/>), or the operand itself.</summary>
+            static SqlValue Uncast(SqlValue operand) => operand switch
+            {
+                SqlValue.Cast { PathRead: null } cast => Uncast(cast.Value),
+                SqlValue.DecimalCast cast => Uncast(cast.Value),
+                _ => operand,
+            };
 
             /// <summary>
             /// Reads a value: a reading of a path, a literal, or a parameter; <c>null</c> where it is none of these.

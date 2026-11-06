@@ -41,6 +41,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CalciteReadings = CosmosAxiomRows.ReadCalciteReadings(CosmosAxioms.All),
             CalciteBands = CosmosAxiomRows.ReadCalciteBands(CosmosAxioms.All),
             Casts = CosmosAxiomRows.ReadCasts(CosmosAxioms.All),
+            Comparands = CosmosAxiomRows.ReadComparands(CosmosAxioms.All),
             ReaderOrders = CosmosAxiomRows.ReadReaderOrders(CosmosAxioms.All),
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],

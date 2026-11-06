@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -102,6 +104,42 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The Rex builder writes a form over the atom's reader: every comparison, membership and test of it is in the grammar.</summary>
         public static Primitive<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool> RexWritable { get; } =
             Primitive.Create<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool>("rex-writable", (f, a, g) => g.Writes(f, a.Reader));
+
+        /// <summary>
+        /// A cast to <c>DECIMAL(p, s)</c> holds a number's whole digits (G8): it is zero, or its digits before the point number
+        /// no more than <c>p - s</c>. Calcite raises on a cast they do not fit (<c>Calcite.ReturningDecimalParsesTheRendering</c>,
+        /// <c>DECIMAL(19, 18) = 50</c>), so a number read through one that does not denotes nothing.
+        /// </summary>
+        public static Primitive<string, long, long, bool> WholeDigitsFit { get; } = Primitive.Create<string, long, long, bool>("whole-digits-fit", (c, p, s) =>
+            JsonValues.TryNumberOf(c, out var x) && (x == 0 || WholeDigits(x) <= p - s));
+
+        /// <summary>A number has no more places than a scale: a cast to it keeps the number as it is.</summary>
+        public static Primitive<string, long, bool> PlacesWithin { get; } = Primitive.Create<string, long, bool>("places-within", (c, s) =>
+            JsonValues.TryNumberOf(c, out var x) && Places(x) <= s);
+
+        /// <summary>A number has more places than a scale: a cast to it truncates the number toward zero, by less than one.</summary>
+        public static Primitive<string, long, bool> PlacesBeyond { get; } = Primitive.Create<string, long, bool>("places-beyond", (c, s) =>
+            JsonValues.TryNumberOf(c, out var x) && Places(x) > s);
+
+        /// <summary>
+        /// The digits a number has before its point, as a <c>BigDecimal</c>'s precision less its scale counts them: the
+        /// whole part's, and below one less a digit for each zero after the point, so <c>0.05</c> has -1. Zero has none.
+        /// </summary>
+        static int WholeDigits(decimal value)
+        {
+            var x = Math.Abs(value);
+            if (x >= 1)
+                return decimal.Truncate(x).ToString(CultureInfo.InvariantCulture).Length;
+
+            var digits = 0;
+            for (; x != 0 && x < 0.1m; x *= 10)
+                digits--;
+
+            return digits;
+        }
+
+        /// <summary>The places a number has after its point, its trailing zeros apart.</summary>
+        static int Places(decimal value) => (value / 1.000000000000000000000000000000000m).Scale;
 
         static IEnumerable<ServiceForm> FlatParts(ServiceForm form, ServiceFormKind kind) =>
             form.Kind == kind && kind is ServiceFormKind.And or ServiceFormKind.Or ? form.Flat : [form];

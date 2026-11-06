@@ -208,15 +208,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(target, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("x")).Should().BeFalse($"{target}: a search that may be empty");
             }
 
-            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("Azure measured a replacement only as the literal x");
+            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("Azure measured a replacement only as a string of no band and not empty");
             Pushes(Emulator, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+0000 fails the statement");
             Pushes(Emulator, H, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+FDD0 mixes its spelling into the stored one");
             Pushes(Emulator, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue();
         }
 
         /// <summary>
-        /// A window's length is keyed by its sign (F2): from 1 alike on both targets; 0 alike on the emulator and unmeasured
-        /// on Azure until run 2; below 0, which Calcite raises over, parting on the emulator and unmeasured on Azure.
+        /// A window's length is keyed by its sign (F2): from 1 alike on both targets; 0 alike on both, Azure's measured as the
+        /// window from 0 of length 0 (<c>Service.SubstringOfANegativeStartIsEmpty</c>); below 0, which Calcite raises over,
+        /// parting on the emulator and unmeasured on Azure.
         /// </summary>
         [Fact]
         public void AWindowsLengthIsKeyedByItsSign()
@@ -228,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             Pushes(Emulator, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("the emulator answers a length of 0 as Calcite does");
-            Pushes(Azure, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeFalse("Azure has not measured a length of 0");
+            Pushes(Azure, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("Azure answers a length of 0 as Calcite does, measured as the window from 0");
         }
 
         /// <summary>

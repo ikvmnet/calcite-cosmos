@@ -8827,16 +8827,16 @@ the operand; and each case is declined under every set it asks.
 
 - **`SUBSTRING` of a negative length** (item 1). Calcite raises and both emulator images answer `''`, which decision 2
   lets refine a raise; `Spell` refused the length where the window starts before the string and wrote it where it
-  starts from 1, two writers disagreeing. The length is keyed now (F2, ordinal 2, by sign): from 1 alike on both targets,
-  0 alike on the emulator and below 0 parting there, which Calcite raising makes `Differs`, and Azure, which measured
-  lengths from 1 alone, unmeasured below. `Spell` writes every length and S declines what the rows part or leave
-  unmeasured.
+  starts from 1, two writers disagreeing. The length is keyed now (F2, ordinal 2, by sign): from 1 alike on both targets;
+  0 alike on both, Azure's as the window from 0 of length 0 `Service.SubstringOfANegativeStartIsEmpty` measured, the
+  clip's spelling, which the row names as its evidence (`CosmosFunctionOutcome.Evidence`, a key another row's run
+  measured); and below 0 parting on the emulator, which Calcite raising makes `Differs`, and unmeasured on Azure. `Spell`
+  writes every length and S declines what the rows part or leave unmeasured.
 - **`RETURNING DOUBLE` against a literal cast to fewer decimals** (item 2). `Comparand`'s `truncates: reading is
   SqlValue.Typed` held for `RETURNING DOUBLE` too, so `= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` was read as
-  `= 2.5`, dropping `2.0`, which Calcite keeps. `RETURNING DECIMAL` alone reads a truncated literal now (`truncates:
-  reading is SqlValue.Typed { Type: "DECIMAL" }`, the report's narrow guard): a stopgap, deleted when G8 reads the
-  comparand's casts as terms in S, whose rows say which readers take a constant and which read a truncation, where
-  `converts` and `PredicateAtom`'s decimal parse say it in C#.
+  `= 2.5`, dropping `2.0`, which Calcite keeps. fix6 answered it with the report's narrow guard in C#; its fix round
+  answers it by G8's form, the comparand's casts read as terms whose meaning S's rules and rows derive (*The comparand's
+  casts are S's*, below), and the guard is gone.
 - **The PostgreSQL, SQL Server and Oracle `CONCAT`** (item 3), `CONCAT_FUNCTION_WITH_NULL` and `CONCAT2`, which read a
   null as empty, were loaded as `CONCAT`, whose rows answer `Same` over a null. They have a name of their own now,
   `CONCAT NULL AS EMPTY` (`StringCalls.NullAsEmpty`), which the loader reads by their kind
@@ -8849,7 +8849,9 @@ the operand; and each case is declined under every set it asks.
   emulator from its 2026-11-06 record (`Runs/Emulator/2026-11-06-EN20261019.tsv`, both releases alike), an empty search
   `Undefined`, a search holding U+0000 `Differs`, a number or a boolean `Undefined`; on Azure only as the literals run
   1's spellings hold, a string of no band and not empty, so every other search and replacement is unmeasured there
-  and declined until run 2. `Spell` writes an empty search, which the rows decline, where it refused one.
+  and declined until run 2. A path keys that cell as a literal does where the declaration proves it present and every
+  string it may be one of them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell`
+  writes an empty search, which the rows decline, where it refused one.
 - **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
   where they said `Same` over witnesses that held no letter the mapping changes; S proves none of these places until run
   2's cased witnesses let a row say `Same`.
@@ -8867,6 +8869,30 @@ and is not lowered), and Calcite raises over a stored `"100000"`; `TINYINT` over
 refinement order lets a pushdown answer where the engine raises (*Differential testing*), and `AgreementRows` lets any
 answer but a failure refine a raise. That `TryNumericCastOperand` refuses the same raise for `DECIMAL` is a stricter
 choice the order permits; two lists deciding one claim is G9's, at h24.
+
+**The comparand's casts are S's (G8).** Calcite writes a number it compares with a conversion cast: `<= 30.5` against a
+cast to `DOUBLE` as `CAST(30.5:DECIMAL(3, 1)):DOUBLE`, and against `RETURNING DECIMAL` as the literal cast to the clause's
+scale. A loading that reads places, S's, reads such a number as the casts' terms (`CosmosPredicateLoader.CastNumber`): a
+cast to `DOUBLE` a `cast`, one to `DECIMAL(p, s)` a `decimal cast` (`SqlValue.DecimalCast`), over the literal as the
+translator would send it. What they denote is S's analysis, `denotes(v, c, moved)`, five rules in the vocabulary's
+ruleset: a literal under a cast denotes the number it spells; a cast to `DOUBLE` denotes what it converts denotes; a cast
+to a `DECIMAL` whose whole digits hold the number (`WholeDigitsFit`: `p − s` digits, or the number is 0) denotes it
+unmoved where its scale holds the number's places (`PlacesWithin`), and moved where it drops some (`PlacesBeyond`), a
+truncation toward zero by less than one; one whose digits do not hold it raises in Calcite and denotes nothing. Which
+readings compare with what is denoted are rows, `takesconstant(reader, moved, row)`, an analysis table assumed at the root
+from `CosmosAxiom.Comparands`, a reader named by its outermost cast (`PredicateAtom.Outermost`): the casts to `INTEGER`,
+`BIGINT` and `DOUBLE` take an unmoved number (`Calcite.CastOfTheAccessorParsesTheRendering`), `RETURNING DECIMAL` either,
+its parse rescaling the literal (`Calcite.ReturningDecimalParsesTheRendering`, `PredicateAtom`), and `RETURNING DOUBLE`
+an unmoved one (`Calcite.ColumnReadsWholeNumbersAsItsType`). The rule *a comparison with what a cast denotes is an atom of
+what it reads where its reading takes it* makes the atom the fold made where a row takes the number, and none elsewhere:
+`= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` against `RETURNING DOUBLE` denotes 2.5 moved, which its row does not
+take. `Comparand`'s two C# lists, `converts` (the readings that take a folded constant) and `truncates` (the one that
+reads a truncation), no longer decide S's reading, and fix6's guard is gone; F's reading and the legacy one S's switch
+reads until h15 keep main's fold (`TODO.md`). `IrEval` evaluates the casts as Calcite does, `setScale` toward zero and a
+raise past the precision. Two answers part from the fold's, each finer and each Calcite's: the move is read off the
+number's places without trailing zeros, not the literal's written scale, so `CAST(2.50 AS DECIMAL(19, 1))` is 2.5
+unmoved where the fold read no constant against a reading that takes no move; and a computed place read as `DOUBLE`
+takes the number as a path read so does, where the fold, which named path readings alone, left the comparison opaque.
 
 ### The foundation's rows: refinements and operand keys (F1, F2)
 

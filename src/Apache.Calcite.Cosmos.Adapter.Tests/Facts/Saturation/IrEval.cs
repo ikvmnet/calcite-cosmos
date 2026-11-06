@@ -234,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             static (SqlValue? Value, string[] Literals) Reading(SqlPredicate term) => term switch
             {
-                SqlPredicate.Compare c => (c.Left, c.Right is SqlValue.Literal l ? [l.Value] : []),
+                SqlPredicate.Compare c => (c.Left, c.Right is SqlValue.Literal l ? [l.Value] : Uncast(c.Right) is SqlValue.Literal u ? [u.Value] : []),
                 SqlPredicate.In i => (i.Value, i.Points.ToArray()),
                 SqlPredicate.IsNull n => (n.Value, []),
                 _ => (null, []),
@@ -248,6 +248,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             return read.Where(r => r.Value is SqlValue.Raw).SelectMany(r => r.Literals).All(IsString) ? [RawAs.Variant, RawAs.Any, RawAs.Varchar] : [RawAs.Variant, RawAs.Any];
         }
+
+        /// <summary>The literal a number Calcite wrote cast casts (G8), or the value itself.</summary>
+        static SqlValue Uncast(SqlValue value) => value switch
+        {
+            SqlValue.Cast { PathRead: null } cast => Uncast(cast.Value),
+            SqlValue.DecimalCast cast => Uncast(cast.Value),
+            _ => value,
+        };
 
         /// <summary><c>NOT</c>: TRUE and FALSE swap, UNKNOWN and a raise stay.</summary>
         public static Truths Swap(Truths truth) => truth == T ? F : truth == F ? T : truth;
@@ -384,6 +392,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Literal l:
                     return Datum(l.Value);
 
+                // A number Calcite wrote cast, as a loading that reads places reads one (G8): to DOUBLE the double nearest it.
+                case SqlValue.Cast { Target: "DOUBLE", PathRead: null } c:
+                    return Read(c.Value, document, world, typed) is SqlDatum.Exact e
+                        ? new SqlDatum.Double(double.Parse(e.Value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture))
+                        : Read(c.Value, document, world, typed);
+
+                case SqlValue.DecimalCast d:
+                    return Read(d.Value, document, world, typed) switch
+                    {
+                        SqlDatum.Exact number => CastDecimal(number.Value, d.Precision, d.Scale),
+                        SqlDatum.Double x when TryExactly(x.Value, out var exact) => CastDecimal(exact, d.Precision, d.Scale),
+                        var other => other,
+                    };
+
                 // A VARCHAR column reads a string as itself, a null as null, and fails over anything else (Calcite.RawNullIsSqlNull).
                 case SqlValue.Raw { Column: "VARCHAR" } r:
                     return At(document, r.Path) switch { null or J.Null => SqlDatum.Null, J.Str s => new SqlDatum.Text(s.Value), _ => SqlDatum.Raise };
@@ -412,6 +434,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 default:
                     throw new NotSupportedException(value.ToString());
             }
+        }
+
+        /// <summary>
+        /// A number cast to <c>DECIMAL(p, s)</c> as Calcite casts one: set to <c>s</c> places rounding toward zero, and raising
+        /// where what that leaves has more than <c>p</c> digits (<c>CalciteJsonValueMeasurementTests</c>, the literal a
+        /// comparison through <c>RETURNING DECIMAL</c> casts down).
+        /// </summary>
+        static SqlDatum CastDecimal(decimal value, long precision, long scale)
+        {
+            var cast = new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)).setScale(checked((int)scale), java.math.RoundingMode.DOWN);
+            return cast.precision() > precision ? SqlDatum.Raise : new SqlDatum.Exact(decimal.Parse(cast.toPlainString(), CultureInfo.InvariantCulture));
         }
 
         /// <summary>
@@ -750,6 +783,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
+
+            // A number Calcite wrote cast (G8) is the value the cast makes, a cast that raises raising on every row; beside the
+            // raw value itself, whose box a column compares by, what it compares as is not modelled.
+            if (operand is SqlValue.Cast { PathRead: null } or SqlValue.DecimalCast)
+            {
+                var asked = reading + " " + op + " " + operand + " @ " + (stored is null ? "absent" : Documents.Json(stored));
+                switch (Read(operand, document, world))
+                {
+                    case SqlDatum.Raised:
+                        return R;
+                    case var _ when reading is SqlValue.Raw:
+                        return world.Choose(T | F | U | R, asked);
+                    case SqlDatum.Exact e:
+                        operand = new SqlValue.Literal(Of(e.Value));
+                        break;
+                    case SqlDatum.Double x:
+                        operand = new SqlValue.Literal(Of(x.Value));
+                        break;
+                    case var other:
+                        throw new NotSupportedException(other.ToString());
+                }
+            }
             if (reading is SqlValue.Raw && operand is SqlValue.Literal literal && (raw is not null || op is PredicateAtom.Equal or PredicateAtom.NotEqual))
             {
                 // <> is = swapped, on the one coin.

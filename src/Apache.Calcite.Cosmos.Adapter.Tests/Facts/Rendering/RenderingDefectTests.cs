@@ -30,10 +30,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// The wrong answers the 3A audit found waiting for h15 (audit plan §1, items 1 to 6), each through S's own judgement,
     /// answered right by its group's form: CONCAT's own name and rows (G6), REPLACE's search and replacement and a window's
     /// length keyed by operand (F2), the case mapping's rows (F5), the emulator's stored escapes as its rows (F2), and a
-    /// literal a cast truncated read against <c>RETURNING DECIMAL</c> alone (the loader's stopgap until G8). S proves no form
-    /// over what the loader reads that keeps another row than Calcite in process on a document, or IrEval where the reading
-    /// is Calcite's, the service's answer CosmosEval's or, where CosmosEval does not model the operand, the one measured;
-    /// and each case is declined under every set asked (<c>DESIGN.md</c>, <i>The defects answered before h15</i>).
+    /// literal a cast truncated, read as the casts' terms, which <c>RETURNING DECIMAL</c>'s row alone takes (G8). S proves
+    /// no form over what the loader reads that keeps another row than Calcite in process on a document, or IrEval where the
+    /// reading is Calcite's, the service's answer CosmosEval's or, where CosmosEval does not model the operand, the one
+    /// measured; and each case is declined under every set asked (<c>DESIGN.md</c>, <i>The defects answered before h15</i>).
     /// </summary>
     public sealed class RenderingDefectTests
     {
@@ -89,7 +89,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [Doc(("s", new J.Str("abc"))), Doc(("s", new J.Str("")))]),
 
             // Item 2. JSON_VALUE(... RETURNING DOUBLE) = CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE): the loader read the
-            // literal Calcite truncates to 2 as 2.5, so 2.0 was dropped and 2.5 kept; RETURNING DECIMAL alone reads it now.
+            // literal Calcite truncates to 2 as 2.5, so 2.0 was dropped and 2.5 kept. The casts are terms now, and what they
+            // denote a moved 2.5, which only RETURNING DECIMAL's row takes (G8): RETURNING DOUBLE's comparison is no atom.
             ["ReturningDoubleReadsATruncatedLiteral"] = () => FromRex(
                 Eq(JsonValue("n", SqlTypeName.DOUBLE), Rex.makeCast(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.DOUBLE),
                     Rex.makeCast(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.DECIMAL, 19, 0), Rex.makeExactLiteral(new java.math.BigDecimal("2.5"))))),

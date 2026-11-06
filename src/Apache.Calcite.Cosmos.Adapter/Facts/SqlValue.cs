@@ -51,10 +51,24 @@ namespace Apache.Calcite.Cosmos.Facts
             public override string ToString() => "typed(" + Spell(Path) + " " + Type + ")";
         }
 
-        /// <summary>A cast of a value to a SQL type: a number, or text over a raw value.</summary>
+        /// <summary>
+        /// A cast of a value to a SQL type: a number, or text over a raw value; and, where S's reading reads what a number is
+        /// compared with (G8), a cast to <c>DOUBLE</c> of a number as Calcite writes it, read as a term whose constant S's
+        /// rules derive.
+        /// </summary>
         public sealed record Cast(string Target, SqlValue Value) : SqlValue
         {
             public override string ToString() => "cast(" + Target + ", " + Value + ")";
+        }
+
+        /// <summary>
+        /// A cast of a number to <c>DECIMAL(p, s)</c>, as Calcite writes one around a literal it compares with a number: read
+        /// as a term only where S's reading reads what a number is compared with (G8), whether its whole digits fit and its
+        /// scale is kept S's rules decide (<c>denotes</c>).
+        /// </summary>
+        public sealed record DecimalCast(long Precision, long Scale, SqlValue Value) : SqlValue
+        {
+            public override string ToString() => "cast(DECIMAL(" + Precision + ", " + Scale + "), " + Value + ")";
         }
 
         /// <summary>A literal: a JSON scalar in the theory's spelling.</summary>

@@ -294,7 +294,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// rewriter answered with <c>FALSE</c>.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.ReturningDecimalParsesTheRendering")]
         public void ReturningDecimalParsesTheRendering()
         {
             Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "a string of digits is parsed");

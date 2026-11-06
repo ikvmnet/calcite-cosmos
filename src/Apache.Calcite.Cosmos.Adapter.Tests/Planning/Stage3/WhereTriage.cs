@@ -288,6 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             SqlValue.Call { Type: { } type } call => call.Operands.SelectMany(Values).Prepend("place:" + call.Function + ":" + type),
             SqlValue.Call call => call.Operands.SelectMany(Values).Prepend("call:" + call.Function),
             SqlValue.Cast cast => Values(cast.Value),
+            SqlValue.DecimalCast cast => Values(cast.Value),
             SqlValue.Case c => c.Conditions.SelectMany(Holds).Concat(c.Arms.SelectMany(Values)).Prepend("value case"),
             _ when v.PathRead is { HasElement: true } => ["element"],
             _ => [],

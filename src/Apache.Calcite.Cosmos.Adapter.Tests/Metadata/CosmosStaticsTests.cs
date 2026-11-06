@@ -178,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.RenderingCost", ["None"], StaticFact, "a sentinel"),
             ("Facts.Rendering.RenderingGraph", ["DefaultRetry"], Infra, "a setting"),
             ("Facts.Rendering.RenderingOracle", ["DefaultWait"], Infra, "a setting"),
-            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsJoinOf", "FormIsLeaf", "FormJoins", "FormRegroups", "IsNotSame", "NoCalciteUnknown", "OutcomesWithin", "PricedIsReal", "RexWritable", "SameForm", "Sendable", "SetNonempty", "StringComparison", "StringOrdering", "TruthsWithin"], StaticFact, "pure functions S's rules call"),
+            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsJoinOf", "FormIsLeaf", "FormJoins", "FormRegroups", "IsNotSame", "NoCalciteUnknown", "OutcomesWithin", "PlacesBeyond", "PlacesWithin", "PricedIsReal", "RexWritable", "SameForm", "Sendable", "SetNonempty", "StringComparison", "StringOrdering", "TruthsWithin", "WholeDigitsFit"], StaticFact, "pure functions S's rules call"),
             ("Facts.Rendering.RenderingImage", ["Malformed", "Typed"], StaticFact, "a sentinel key, and the operators keyed by type"),
             ("Facts.Rendering.RenderingRexGrammar", ["Guarded", "TypeTests", "Written"], StaticFact, "what a Rex writes"),
             ("Facts.Rendering.RenderingRexGrammar.Value", ["Unguarded"], StaticFact, "an empty set of guarded paths"),
