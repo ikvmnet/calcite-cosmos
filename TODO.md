@@ -2721,13 +2721,17 @@ across documents* and *A join of a container to itself* is the record.
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
   where Calcite answers TRUE; the cells read the rendering.
-- **One numeric order answer serves both targets** — *small, for the next probe-account run.* `Service.IntegersOrderExactly`
-  answers `Order/Number` `numeric` on both, and `ServiceLeaf` places a whole number in int64 both as itself and as its
-  double, since the theory spells it alike written with a point, which the emulator holds as a double and Azure as an
-  int64 (`reports/verify-bytes.md`). Splitting the answer per target, `numeric` for Azure and `storednumeric` for the
-  emulator, as `Order/String` is, needs order witnesses that tell them apart: 2^54 + 1 beside 18014398509481986.0, which
-  the emulator holds as 2^54 and Azure as itself, neither tying another witness. Added to the catalogue, they leave the
-  record of 2026-10-21 short of Azure's claim (`CosmosAxiomsTests`), so the split waits on the probe account's run of
+- **The two numeric orders are evaluated as one** — *small, G2's, with a measurement for the next probe-account run.*
+  `Service.IntegersOrderExactly` names each target's comparator apart since f345 (F3): `numeric` on Azure,
+  `numericpointedasdouble` on the emulator, which holds a whole number written with a point as its double. `ServiceLeaf`
+  still places a whole number in int64 both as itself and as its double under either, since the theory spells it alike
+  written with a point (`reports/verify-bytes.md`); G2 gives each its own placing. The harness cannot tell the two
+  apart: its order witnesses are integers, which both order alike, so the emulator's record reads `Numeric`, which
+  `CosmosOutcomeHarness.Check` accepts as Azure's answer, and naming the pointed comparator there would make every
+  integer witness answer two. Witnesses that do tell them apart, 2^54 + 1 beside 18014398509481986.0, which the
+  emulator holds as 2^54 and Azure as itself, neither tying another witness, measured on both targets, let the harness
+  name `NumericPointedAsDouble` and the emulator's record read it; added to the catalogue, they leave the record of
+  2026-10-21 short of Azure's claim (`CosmosAxiomsTests`), so they wait on the probe account's run of
   `IntegersOrderExactly` over them.
 - **A comparison with a null literal has no row** — *small.* `ServiceLeaf` keys `c.v = null` over a null as
   `Equal/Null/Null`, which no planned row holds, so it answers widest. The translator records that the service equates
@@ -3055,11 +3059,14 @@ across documents* and *A join of a container to itself* is the record.
   row's witnesses puts the cut between a pair's halves, so `Same` there proves nothing of one that does, and
   `CosmosAxioms` records Azure's `RIGHT` as `Differs` over `Surrogates`, the band refused. A witness whose count from the
   end falls inside a pair, measured, decides it.
-- **The case mapping asks ASCII under every set** — *legality, until a cased witness is measured.* The rows' witnesses for
-  the surrogate and high bands (an emoji, `ﬀ`) hold no cased letter, while Java maps U+10428 and U+FF21, so a `Same`
-  there proves nothing of a cased one; `CosmosFunctionSpellings.Mapped` keeps `UPPER` and `LOWER` to ASCII on every
-  target. Witnesses holding cased letters in each band, measured, would let the rows decide it. Both emulator images
-  map U+10428/U+10400 and U+FF21/U+FF41 as Java does (2026-11-04, the defects step); Azure's is run 2's.
+- **The case mapping parts over every band beyond ASCII until a cased witness is measured** — *small, run 2's.* The
+  rows said `Same` for `UPPER` over a surrogate and for `LOWER` over a surrogate and the high band, whose witnesses (an
+  emoji, `ﬀ`) hold no letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so each `Same`
+  proved nothing of a cased one, and since f345 (F5) `Service.StringFunctionAnswersByBand` says `Differs` for `UPPER`
+  and `LOWER` over the three bands beyond ASCII on both targets, as `RIGHT`'s surrogate key is read; the legality that
+  said it (`CosmosFunctionSpellings.Mapped`) is gone. Witnesses holding cased letters in each band (U+10428/U+10400,
+  U+FF21/U+FF41), measured, let the rows say `Same` where a target maps as Java does. Both emulator images map them as
+  Java does (2026-11-04, the defects step); Azure's is run 2's.
 - **Four wrong answers held before h15** — *before h15, each by its group's proper fix.* `RenderingDefectTests` holds each
   to still answer wrong (DESIGN.md, *The defects held before h15*): `RETURNING DOUBLE` against a literal cast to fewer
   decimals read untruncated (G8, the comparand's casts as terms); the PostgreSQL and Oracle `CONCAT` loaded as `CONCAT`
@@ -3067,6 +3074,18 @@ across documents* and *A join of a container to itself* is the record.
   (F2, operand keys); `REPLACE` of a replacement that is no string, measured on the emulator alone (F2). A fix strikes
   its name from `Held`. F2's key shape landed at f12; the `REPLACE` cases strike once rows name its search (ordinal 1,
   `nul` and empty or not) and replacement (ordinal 2, each kind), measured on both targets.
+- **The foundation's F3 rows wait on their groups** — *each group's, G1 to G8.* f345 reads the prose rows' cells into S
+  (DESIGN.md, *The foundation's cells, roles and case mapping*), and no rule reads them but `parts`: G1 reads `moves`,
+  `storedas` and `truncates`, and restricts `PartingBands`, the sendable gate's, to the comparators each set's string
+  order names, where it is every comparator's today; it also retires the evaluator's own copies of `parts` and `moves`
+  (`ServiceLeaf.Sides` and `Place`, which name the code point orders, the surrogate and high bands and U+0000), and
+  `CosmosRendering.StoresSpelled`, which names the emulator's stored order. G3 reads `pairreads` and `readerorder`, G7
+  `calcitereads`, `calcitebands` and `testkinds` (where `PredicateAtom.TypeTests` holds a C# copy of the last), G8
+  `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`, which no row states yet.
+  Rows still owed: `readerorder ∋ reflexive` for any reading, which a double's NaN makes a measurement; the emulator's
+  stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
+  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and the raw columns' absent-path entries,
+  which `CosmosAxiomRows.ReadColumns` does not read, since its keys hold a stored null and no absent path (G5).
 - **No row names a refinement, a band of a service outcome or a class of value** — *small, the rows' half of F1 and F2.*
   f12 gave the keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`,
   `escape`, `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`. Each needs a measured cell before it moves an

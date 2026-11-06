@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var changed = kept[random.Next(kept.Count)];
                 var other = kept.Select(e => e == changed ? e with { Answers = e.Answers.Add(CosmosAnswer.Fails), Outcomes = e.Outcomes | ServiceOutcomes.Fails } : e).ToList();
 
-                var (a, again, b) = (ServiceTable.Of(ValueSet.From(kept)), ServiceTable.Of(ValueSet.From(kept.ToArray())), ServiceTable.Of(ValueSet.From(other)));
+                var (a, again, b) = (ServiceTable.Of(ValueSet.From(kept), ProbeRows.Placed), ServiceTable.Of(ValueSet.From(kept.ToArray()), ProbeRows.Placed), ServiceTable.Of(ValueSet.From(other), ProbeRows.Placed));
                 if (equal(a, again) == false || hash(a) != hash(again))
                     faults.Add($"a table of {kept.Count} entries is not equal to itself built again");
                 if (equal(a, b))
@@ -54,9 +54,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var entries = ProbeRows.Table.Entries;
             var first = entries.First();
             using var scope = graph.Root.CreateChild();
-            scope.Assume(table.Of("t").Is(ServiceTable.Of(entries)));
-            scope.Assume(table.Of("t").Is(ServiceTable.Of(ValueSet.From(entries.ToArray()))));
-            scope.Invoking(s => s.Assume(table.Of("t").Is(ServiceTable.Of(entries.Remove(first).Add(first with { Evidence = ValueSet.Of("Service.Planted") })))))
+            scope.Assume(table.Of("t").Is(ServiceTable.Of(entries, ProbeRows.Placed)));
+            scope.Assume(table.Of("t").Is(ServiceTable.Of(ValueSet.From(entries.ToArray()), ProbeRows.Placed)));
+            scope.Invoking(s => s.Assume(table.Of("t").Is(ServiceTable.Of(entries.Remove(first).Add(first with { Evidence = ValueSet.Of("Service.Planted") }), ProbeRows.Placed))))
                 .Should().Throw<FactConflictException>();
         }
 

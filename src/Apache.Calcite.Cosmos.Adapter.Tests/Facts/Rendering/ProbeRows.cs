@@ -32,6 +32,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
+        /// <summary>
+        /// S as measured from the rows given, with nothing the host names but the registry's parts, which the parted rules
+        /// read (<see cref="RenderingDefinition.Parts"/>): the definition a test that plants rows starts from.
+        /// </summary>
+        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows) with { Parts = Measured.Parts };
+
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
 
@@ -50,7 +56,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
 
         /// <summary>The table S settles for the set CI asserts under.</summary>
-        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)));
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed);
+
+        /// <summary>The classes S places by their order's comparators, derived from the registry's rows.</summary>
+        public static ValueSet<CosmosValueClass> Placed => ProbeTheory.Theory.Get(ProbeTheory.Placed.Of());
 
         public static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
 
@@ -75,9 +84,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly ServiceForm Guarded = ServiceForm.JunctionOf(CosmosServiceTest.And,
             [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
 
-        /// <summary>A plant's table: one entry a key, holding every answer its rows give and every row's id.</summary>
-        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows) => ServiceTable.Of(ValueSet.From(rows.GroupBy(row => row.Key).Select(key =>
-            MeasuredEntry.Of(key.Key, ValueSet.From(key.Select(row => row.Answer)), ValueSet.From(key.Select(row => row.AxiomId)), AnswerMeanings.Measured))));
+        /// <summary>
+        /// A plant's table: one entry a key, holding every answer its rows give and every row's id, with the roles S's rule
+        /// settles of them, and the classes its rows order placed, as S's rules derive both.
+        /// </summary>
+        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows)
+        {
+            var all = rows.ToList();
+            return ServiceTable.Of(ValueSet.From(all.GroupBy(row => row.Key).Select(key => EntryOf(key.Key, ValueSet.From(key.Select(row => row.Answer)), ValueSet.From(key.Select(row => row.AxiomId))))),
+                ValueSet.From(all.Where(row => row.Key.Test == CosmosServiceTest.Order).Select(row => row.Key.Operand)));
+        }
+
+        /// <summary>A key's entry as S's rule settles it from the measured meanings: its outcomes, and its answers' roles.</summary>
+        static MeasuredEntry EntryOf(MeasuredKey key, ValueSet<CosmosAnswer> answers, ValueSet<string> evidence)
+        {
+            var means = AnswerMeanings.Measured;
+            var placing = ValueSet.From(answers.Where(means.Comparators.Contains));
+            return MeasuredEntry.Placed(MeasuredEntry.Of(key, answers, evidence, means), placing, ValueSet.From(answers.Where(means.Matchers.Contains)),
+                ValueSet.From(placing.Where(a => means.Matchers.Contains(a) == false)));
+        }
 
         /// <summary>
         /// Checks a form claimed for a conjunct in a bundle of its own, every path imported as anything unless given, and

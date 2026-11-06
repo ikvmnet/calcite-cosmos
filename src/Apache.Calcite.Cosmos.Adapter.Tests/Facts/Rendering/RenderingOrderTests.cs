@@ -74,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AChoiceOrAVacuityReadWhileItMovesIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             theory.Graph.Rulesets.Single(r => r.Name == "best").DefineRule("planted: a leaf weakens to its fold before its best is final", r =>
             {
                 var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
@@ -101,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AUniversalOverASetItsOwnStratumGrowsIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var seen = theory.Graph.DefineFunction<Pred, ValueSet<CellClass>>("seen", ValueLattice.Union<CellClass>());
             theory.Graph.Rulesets.Single(r => r.Name == "classes").DefineRule("planted: a cell's class is seen", r =>
             {
@@ -128,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AGatheringReadWithoutItsCountIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var whole = theory.Graph.DefineRelation<Val, long>("whole");
             theory.Graph.Rulesets.Single(r => r.Name == "image").DefineRule("planted: a gathering inside the call's keys", r =>
             {
@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AUniversalOverATableItsOwnStratumNarrowsIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var chars = theory.Graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             theory.Graph.Rulesets.Single(r => r.Name == "partition").DefineRule("planted: a path's classes narrow", r =>
             {
@@ -172,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ALambdaFilterIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var proven = theory.Graph.DefineRelation<Pred>("proven");
             theory.Graph.Rulesets.Single(r => r.Name == "compose").DefineRule("planted: an agreement over some cell", r =>
             {

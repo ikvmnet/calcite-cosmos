@@ -50,10 +50,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>The column of the row the raw cells' union reads (<see cref="CosmosRawColumn"/>), which these tests hold.</summary>
         static CosmosRawColumn Column(string name) => CosmosAxioms.All.Single(a => a.Id == "Calcite.RawNullIsSqlNull").Columns!.Single(c => c.Name == name);
 
-        /// <summary>A value of each kind but a string answered alike: what the table says a column makes of each.</summary>
+        /// <summary>
+        /// A value of each kind but a string answered alike, and a stored null and an absent path SQL null, as every column
+        /// reads them: what the table says a column makes of each.
+        /// </summary>
         static Dictionary<string, CosmosRawColumn.Answer> Kinds(CosmosRawColumn.Answer text, CosmosRawColumn.Answer others, CosmosRawColumn.Answer? structure = null) => new()
         {
             [CosmosRawColumn.String] = text, [CosmosRawColumn.Number] = others, [CosmosRawColumn.Boolean] = others, [CosmosRawColumn.Structure] = structure ?? others,
+            [CosmosRawColumn.Null] = CosmosRawColumn.Answer.Null, [CosmosRawColumn.Absent] = CosmosRawColumn.Answer.Null,
         };
 
         /// <summary>
@@ -136,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// reader's box, a long in its digits and any other number as its double; and a <c>VARCHAR</c> column reads a string
         /// alone.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Calcite.CastOfARawValueToText")]
         public void ACastOfARawValueToTextIsEachColumnsOwn()
         {
             using var connection = MaterialisedTable.Open();

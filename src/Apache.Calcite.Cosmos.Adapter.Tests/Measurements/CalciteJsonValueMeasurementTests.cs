@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
@@ -78,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// An object, an array, a JSON null and an absent path all answer SQL null: the first two by
         /// the standard's error path, since neither is a scalar.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.JsonValueRendersScalarsAsText")]
         public void TheBareAccessorRendersEveryScalarAsText()
         {
             var expected = new (string Json, string? Value)[]
@@ -154,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// for that reason.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.JsonQueryAnswersStructureOnly")]
         public void JsonQueryAnswersStructureOnlyAndWritesItCompactly()
         {
             const string Spaced = "'{\"v\": [ \"a\" ,   \"b\" ] , \"o\": { \"a\" : 1 }, \"s\": \"bikes\", \"n\": null }'";
@@ -490,7 +491,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// the statement fails on.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.CastOfTheAccessorParsesTheRendering")]
         public void ACastOfTheAccessorToANumberParsesTheRendering()
         {
             Ask($"CAST(JSON_VALUE({Document("30")}, '$.v') AS INTEGER)").Value.Should().Be("30");
@@ -610,7 +611,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// ignoring case, so <c>"TRUE"</c> is true here and is a string at the service; and a number
         /// raises. Neither of those is the stored value, and only a declaration rules them out.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.CastToBooleanParses")]
         public void ACastToBooleanParsesTheRendering()
         {
             Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS BOOLEAN)").Value.Should().Be("True");

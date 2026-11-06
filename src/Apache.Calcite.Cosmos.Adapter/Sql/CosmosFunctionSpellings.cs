@@ -135,9 +135,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         };
 
         /// <summary>
-        /// The classes a case mapping asks its argument to be free of: everything outside ASCII. Kept as legality under
-        /// every set: the rows' witnesses of a surrogate and of the high band hold no cased letter, and Java maps both
-        /// (U+10428, U+FF21), so a row's <c>Same</c> there proves nothing of a case mapping.
+        /// The classes outside ASCII, where the service's simple case folding and Calcite's full one are not known to agree:
+        /// what a case-insensitive match asks its text to be free of (<see cref="FoldsAlike"/>). A case mapping's own rows
+        /// say it of UPPER and LOWER, each parting over every band beyond ASCII (<c>Service.StringFunctionAnswersByBand</c>, F5).
         /// </summary>
         public const JsonCharacterBand CaseMapped = JsonCharacterBand.BeyondAscii;
 
@@ -145,9 +145,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         const JsonCharacterBand Escaped = JsonCharacterBand.Nul | JsonCharacterBand.HighBmp;
 
         const string EscapedNamed = "U+0000 or unit from U+E000, U+FDD0 among them,";
-
-        static readonly Refusal Mapped = new(CaseMapped, "character outside ASCII", [0],
-            "the service maps case by a simple mapping and Calcite by Java's full one, which agree over ASCII alone");
 
         static readonly Refusal Searched = new(JsonCharacterBand.Nul, "U+0000", [0, 1],
             "the service's REPLACE, CONTAINS and the LIKE it answers as a CONTAINS read a string only up to its first U+0000, and a search holding one matches every string");
@@ -249,10 +246,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// What a call's spelling asks of its operands' characters beyond the rows, under a set (<see cref="CosmosRendering.StoresSpelled"/>).
         /// </summary>
         /// <remarks>
-        /// The rows describe the subject alone. A case mapping asks ASCII under every set, its rows unwitnessed beyond it;
-        /// Azure's search reads to its first U+0000; and under the emulator, which stores U+0000 and U+FDD0 escaped, a
-        /// replacement's search and replacement, a concatenation's operands, a repetition's subject and a pattern's subject
-        /// are asked to hold neither (#246). Carried as legality: no row says them.
+        /// The rows describe the subject alone. Azure's search reads to its first U+0000; and under the emulator, which stores
+        /// U+0000 and U+FDD0 escaped, a replacement's search and replacement, a concatenation's operands, a repetition's
+        /// subject and a pattern's subject are asked to hold neither (#246). Carried as legality: no row says them.
         /// </remarks>
         public static IEnumerable<Refusal> Refusals(RexCall call, RenderingSet set)
         {
@@ -266,9 +262,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             switch (call.getOperator().getName())
             {
-                case "UPPER" or "LOWER":
-                    yield return Mapped;
-                    break;
                 case "REPLACE":
                     yield return stored ? ReplacedStored : SearchedFor;
                     break;

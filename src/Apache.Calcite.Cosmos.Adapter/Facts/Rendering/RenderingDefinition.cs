@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<MeasuredOutcome> Rows, IReadOnlyDictionary<RenderingSet, ValueSet<RenderingTarget>> Serves, AnswerMeanings Means,
         IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Kleene, IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity,
         IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing, IReadOnlyList<(RenderPosition, Verdict, Box)> Refuting, Truths Tolerated,
-        IReadOnlyDictionary<string, ReaderEdges> Edges, IReadOnlyList<(string, string)> Parting,
+        IReadOnlyDictionary<string, ReaderEdges> Edges,
         Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
         Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> Split,
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
@@ -34,7 +34,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
 
-        /// <summary>The parting bands as one set, which <c>sendable</c> reads.</summary>
         /// <summary>
         /// The function rows S reads at a computed place (h10): each key's answer on each target that measured it
         /// (<c>CosmosAxiomRows.ReadFunctions</c>). None in a definition that names none.
@@ -59,7 +58,57 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(RawKey Key, string Column, Truths Truths)> Columns { get; init; } = [];
 
-        public ValueSet<string> PartingBands => ValueSet.From(Parting.SelectMany(p => new[] { p.Item1, p.Item2 }));
+        /// <summary>
+        /// Which bands each comparator ranks apart from Calcite's UTF-16 order (<c>CosmosAxiomRows.ReadParts</c>, F3), which
+        /// S's parted rules read through the comparators a set's string order names. None in a definition that names none,
+        /// where no literal parts an order.
+        /// </summary>
+        public IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> Parts { get; init; } = [];
+
+        /// <summary>The bands any comparator ranks apart, as one set, which <c>sendable</c> reads.</summary>
+        public ValueSet<string> PartingBands => ValueSet.From(Parts.SelectMany(p => new[] { p.Band, p.Other }));
+
+        /// <summary>Which band each comparator moves in order (<c>CosmosAxiomRows.ReadMoves</c>, F3); no rule reads it yet (G1).</summary>
+        public IReadOnlyList<(CosmosAnswer Comparator, string Band)> Moves { get; init; } = [];
+
+        /// <summary>
+        /// What a string written in a class is stored holding, on each target that stored it so (<c>CosmosAxiomRows.ReadStoredOn</c>,
+        /// F3); no rule reads it yet (G1).
+        /// </summary>
+        public IReadOnlyList<(RenderingTarget Target, string Written, string Stored)> StoredAs { get; init; } = [];
+
+        /// <summary>
+        /// Which tests read a string only to a band's first character, for an argument of a shape, on each target
+        /// (<c>CosmosAxiomRows.ReadTruncations</c>, F3); no rule reads it yet (G1).
+        /// </summary>
+        public IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Shape, string Band)> Truncations { get; init; } = [];
+
+        /// <summary>How a comparison of two paths reads against a literal (<c>CosmosAxiomRows.ReadPairReadings</c>, F3); no rule reads it yet (G3).</summary>
+        public IReadOnlyList<(CosmosServiceTest Test, bool Swapped, CosmosServiceTest Reads)> PairReadings { get; init; } = [];
+
+        /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<c>CosmosAxiomRows.ReadBoxes</c>, F3); no rule reads it yet (G8).</summary>
+        public IReadOnlyList<(string Kind, string Box)> Boxes { get; init; } = [];
+
+        /// <summary>The comparisons that read the values inside one box (<c>CosmosAxiomRows.ReadSeesThrough</c>, F3); no rule reads it yet (G8).</summary>
+        public IReadOnlyList<string> SeesThrough { get; init; } = [];
+
+        /// <summary>The functions that answer a structure alone (<c>CosmosAxiomRows.ReadStructureOnly</c>, F3); no rule reads it yet (G8).</summary>
+        public IReadOnlyList<string> StructureOnly { get; init; } = [];
+
+        /// <summary>What a reading answers over each kind of stored value in process (<c>CosmosAxiomRows.ReadCalciteReadings</c>, F3); no rule reads it yet (G7).</summary>
+        public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> CalciteReadings { get; init; } = [];
+
+        /// <summary>The character classes a reading's witnesses of a kind held (<c>CosmosAxiomRows.ReadCalciteBands</c>, F3); no rule reads it yet (G7).</summary>
+        public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> CalciteBands { get; init; } = [];
+
+        /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
+        public IReadOnlyList<(string Target, string Reader, string Row)> Casts { get; init; } = [];
+
+        /// <summary>What each reading's order holds in process (<c>CosmosAxiomRows.ReadReaderOrders</c>, F3); no rule reads it yet (G3).</summary>
+        public IReadOnlyList<(string Reader, string Claim)> ReaderOrders { get; init; } = [];
+
+        /// <summary>The classes each one-place test is true of in process (<c>CosmosAxiomRows.ReadTestKinds</c>, F3); no rule reads it yet (G7).</summary>
+        public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind)> TestKinds { get; init; } = [];
 
         /// <summary>
         /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges,
@@ -76,8 +125,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             },
             AnswerMeanings.Measured, KleeneTables.Rows, KleeneTables.Identity, AgreementRows.Allowing, AgreementRows.Refuting, Truths.Raises,
             ReaderEdgesTable.Rows,
-            // U+E000 and above sorts after a surrogate by UTF-16 unit and before the character it writes by code point.
-            [(JsonValues.SurrogateBand, JsonValues.HighBand), (JsonValues.HighBand, JsonValues.SurrogateBand)],
             CutPoints.Of, PathCell.Split, PathCell.SetAside, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of,
             RenderingTemplateRows.Templates, RenderingTemplateRows.Fits, [], []);
 

@@ -6943,7 +6943,7 @@ form" (`priced-is-real`) and never an absence. No registry row ranks a filter fo
 the size.
 
 **What may be sent is read off the form, against data beside it.** `sendable` refuses a string ordering whose literal
-holds a character of a parting band, read against the parting bands loaded as data, so that no form S sends is one
+holds a character of a parting band, read against the bands the rows part (`parts`, F3), so that no form S sends is one
 bound of a range the two orders rank apart, beside any conjunct in any round; and a literal with an unpaired surrogate,
 which the SDK refuses to send on either target. That second is one test of a concrete literal,
 `JsonValues.IsEncodable`, the one `CosmosEncodable` asks of every string a statement carries: no band can hold it, since
@@ -8337,8 +8337,9 @@ and readers, off the definition its schema's S is built from (`CosmosFunctionSpe
 bridge*), and the one function it gates that no row names, `LENGTH`, is refused on every operand and every target
 (`CosmosFunctionSpellings.Gated`). The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
-measured, and the case mapping beyond ASCII under every set, since the rows' witnesses for the surrogate and high bands
-(an emoji, `ﬀ`) hold no cased letter while Java maps U+10428 and U+FF21. A refusal is never weakened to a row.
+measured. Until f345 the case mapping beyond ASCII was one too, under every set, since the rows' witnesses for the
+surrogate and high bands (an emoji, `ﬀ`) hold no letter the mapping changes while Java's changes U+10428, U+10400 and
+U+FF21; the rows part there themselves now (F5). A refusal is never weakened to a row.
 
 **The column bridge.** `RequireStringFunctionsAgree` reads every row S's image rule reads (owed): the call's operands
 gathered as S's place rule gathers them (`CosmosRexTranslator.Gathered`, through the loader that reads places), keyed
@@ -8844,8 +8845,9 @@ Three do not reproduce as wrong answers:
   lets refine a raise. `Spell` saying it does not write one is a disagreement of two writers (G6), not a wrong row.
 - **The case mapping over the surrogate and high bands** (item 5). Both emulator images map U+10428 and U+10400, U+FF21
   and U+FF41, as Java does, so `UPPER` over a surrogate and `LOWER` over either band, which S proves, answer as Calcite
-  there. Azure's answer is run 2's, whose cases hold these letters; until then `Production`'s proofs rest on the rows'
-  uncased witnesses.
+  there. Azure's answer is run 2's, whose cases hold these letters; until then `Production`'s proofs rested on the rows'
+  uncased witnesses, and since f345 the rows part there under every set (F5), so S proves none of these places until
+  run 2's witnesses let a row say `Same`.
 - **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite: a replacement read
   from a path holding U+0000 or U+FDD0, `CONCAT` of two stored strings, `REPLICATE(s, 0)` over either escape. What fails
   is a sent literal (`REPLACE(c.s, 'a', U+0000)` and `CONCAT(c.s, U+0000)` projected fail the statement on EN20260907),
@@ -8917,6 +8919,71 @@ the band it lies within, never a key of its own, until a row names it.
 - **The column bridge reads each operand by its own rows.** It keys a call as S's image rule keys it, every operand the
   rows name by its ordinal and by `Every` (owed: `CosmosFunctionSpellings.Disagreeing`, *The column bridge*), so a
   function whose rows name two operands is asked of each; G6 replaces it, and it goes at h37.
+
+### The foundation's cells, roles and case mapping (F3, F4, F5)
+
+f345 lands the rest of the foundation (the audit plan's §3): what the registry said in prose is cells, what each answer
+is to the leaf is a role the meanings hold, and the case mapping's refusal is its rows'. One rule is added to S, and the
+digests are byte-equal.
+
+**The prose rows as cells (F3).** Each row keeps its id, statement, dates and pinning test, so its run records still
+attach; what changes is that a reader can take the claim as data. `CosmosAxiomRows` reads each list into a list of the
+definition (`CosmosRendering.Definition`), and S's root assumes it into a relation of its own:
+
+- `Service.StringOrderIsCodePoint`: `parts(comparator, band, band)`, each code point order ranking U+E000 and above
+  against a surrogate the other way from UTF-16, and `moves(storedcodepoint, nul)`, the emulator's order of what it
+  stores moving U+0000 above U+0001 to U+FDCF. The parted rules join `parts` through the comparators the set's string
+  order names (`final(Order/String/None, s)`), where they read a two-row table `RenderingDefinition.Measured` held for
+  every set alike; `PartingBands`, which the sendable gate reads, is still the union over every comparator.
+- `Service.IntegersOrderExactly`: `Order/Number` per target, `numeric` on Azure and `numericpointedasdouble` on the
+  emulator (`CosmosAnswer.NumericPointedAsDouble`: a whole number written with a point ordered as the double the
+  emulator holds it as, `Service.IntegralNumbersReadBackAsHeld`). The leaf places a whole number in int64 both ways
+  under either, as it did under the one answer, until G2 gives Azure's its own reading; the order witnesses are
+  integers, which both order alike, so the harness cannot tell them apart yet (`TODO.md`).
+- `Service.NulEndsWhatReplaceAndContainsRead`: `truncates(azure, contains, onerun, nul)` and the `LIKE` of one run Azure
+  answers as a `CONTAINS`; `REPLACE`'s is its function row's. `Service.LoneSurrogateIsStoredAsReplacement` is read again
+  by the target that measured it (`CosmosAxiomRows.ReadStoredOn`, S's `storedas`), beside F's target-free `storedAs`.
+- `Service.TwoPathsCompareAsAPathAndALiteral`: `pairreads(op, swapped, op')`, the mirror law.
+- `Calcite.VariantEqualsOnlyItsOwnBox`: `boxof(kind, box)` (an integer `BIGINT`, a fraction `DOUBLE`, a string and the
+  text reader `VARCHAR`) and `seesthrough` (`=`, `<>`); `Calcite.JsonQueryAnswersStructureOnly`:
+  `structureonly(JSON_QUERY)`.
+- `Calcite.CastToBooleanParses`: `calcitereads(reader, kind, answer)` for each kind it names, and `calcitebands`, the
+  classes its witnesses of a string held (the trimmed class and U+0000), beyond which the parse is unmeasured.
+- `Calcite.CastToBooleanParses`, `Calcite.CastOfTheAccessorParsesTheRendering` and `Calcite.CastOfARawValueToText`:
+  `measuredcast(target, reader, row)`, each citing its row.
+- `Calcite.JsonValueRendersScalarsAsText`: `readerorder(text) ∋ itself`, the text reader's string being the string. No
+  row says `reflexive` of any reading yet: a double's NaN makes it a measurement.
+- `Calcite.TypeTestsAreTheirBodies`: `testkinds(test)`, the classes each type test is true of in process, read off its
+  vector.
+- `Calcite.RawNullIsSqlNull`: each column's own entries for a stored null and an absent path, read and cast alike, SQL
+  null in each. `ReadColumns` reads a stored null's entry where it had chosen SQL null in C#, and an absent path's entry
+  waits on G5.
+- `CosmosFunctionAnswer.Defined`, the D class's answer, apart from `Undefined`; no row states it yet (G6).
+
+No rule reads any of them but `parts` until its group's does: G1 `moves`, `storedas` and `truncates`, G2 the pointed
+number, G3 `pairreads` and `readerorder`, G7 `calcitereads`, `calcitebands` and `testkinds`, G8 `boxof`, `seesthrough`,
+`structureonly` and `measuredcast` (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
+fact of S as the definition carries it.
+
+**What each answer is to the leaf (F4).** `AnswerMeanings` holds the roles beside the outcomes: `Comparators` (every
+order answer), `Matchers` (the two code point orders, those an affix and a `LIKE` match by), `Stands` (true and a
+failure, what a whole condition over a value that is no boolean keeps as it is; any other reads as `NonBoolean`) and
+`NonBooleanRows` (the rows that say so). S's table rule meets them with each key's answers: an entry's `Placing` is its
+answers that are comparators, `Matching` those that are matchers, and `Unmatched` the comparators no matcher is. The
+leaf reads those sets, where it named the answers in three lists and an affix's in a fourth, and `CellOutcomes` reads
+`AnswerMeanings.Whole` and its rows, where it held both as a mask and a sentinel. Which classes are placed by their
+order's comparators is S's too: the rule *a class some row orders is placed by its comparators* derives `placed` from
+the outcome rows (strings and numbers), of every set alike, so a set whose table holds no order of a placed class still
+asks for one and is named missing it; it reaches the leaf with the table (`ServiceTable.Placed`).
+
+**The case mapping (F5).** `UPPER` and `LOWER` part over every band beyond ASCII on both targets in
+`Service.StringFunctionAnswersByBand`. `UPPER` was measured parting over the first band and the high one and `LOWER`
+over the first; where a row said `Same`, over a surrogate for each and the high band for `LOWER`, no witness held a
+letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so the `Same` proved nothing, as
+`RIGHT`'s surrogate key is read. The rows now say it, so S's image rule and the column bridge refuse a case mapping
+beyond ASCII through them, and the legality that kept it to ASCII under every set (`CosmosFunctionSpellings.Mapped`) is
+gone. `CaseMapped` remains the case-insensitive match's legality (`FoldsAlike`), which no row describes. Run 2 measures
+cased witnesses in each band.
 
 ## Differential testing
 

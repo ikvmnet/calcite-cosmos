@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
             foreach (var target in new[] { RenderingTarget.Azure, RenderingTarget.Emulator })
             {
-                var refusal = FluentActions.Invoking(() => RenderingTheory.Define(RenderingDefinition.Measured(
+                var refusal = FluentActions.Invoking(() => RenderingTheory.Define(ProbeRows.Planted(
                     [.. Rows, new("Service.Planted", key, target, CosmosAnswer.False)]))).Should().Throw<FactConflictException>().Which;
                 (refusal.Table.Name, refusal.Data["axiom"], refusal.Data["faulted"]).Should().Be(("outcome", "Service.Planted", false));
             }
@@ -283,7 +283,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (d0, stratum) = (statement.ContextFor(OracleLicence.RenderConjunct(0)), statement.ContextFor(OracleLicence.RenderConjunct(1)));
             // The theory: IS_PRIMITIVE of an object measured the other way on Azure, the rows another generation is defined with.
             static bool Flipped(MeasuredOutcome r) => r.Key.Test == CosmosServiceTest.IsPrimitive && r.Key.Cell == CosmosValueClass.Object && r.Target == RenderingTarget.Azure;
-            var changed = RenderingDefinition.Measured([.. Rows.Select(r => Flipped(r) ? r with { Answer = r.Answer == CosmosAnswer.False ? CosmosAnswer.True : CosmosAnswer.False } : r)])
+            var changed = ProbeRows.Planted([.. Rows.Select(r => Flipped(r) ? r with { Answer = r.Answer == CosmosAnswer.False ? CosmosAnswer.True : CosmosAnswer.False } : r)])
                 with { StrictOperators = Measured.StrictOperators, StrictReaders = Measured.StrictReaders };
             Rows.Where(Flipped).Should().NotBeEmpty();
             var notBikes = Ne(Text(LabelPath), "bikes");

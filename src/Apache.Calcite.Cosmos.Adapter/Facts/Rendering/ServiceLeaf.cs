@@ -48,9 +48,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 case ServiceFormKind.Constant:
                     return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClasses.Of(leaf.Literal!), kind), rows);
 
+                // A class S placed is placed by its order's comparators (F4); any other is read by its key.
                 case ServiceFormKind.Compare:
                     var operand = CosmosValueClasses.Of(leaf.Literal!);
-                    return operand == kind && operand is CosmosValueClass.String or CosmosValueClass.Number
+                    return operand == kind && table.Placed.Contains(operand)
                         ? Within(leaf, cell, operand, table, parted, rows)
                         : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
 
@@ -83,13 +84,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return ServiceOutcomes.Widest;
             }
 
+            // The matchers are the entry's, as S settled them from the meanings' roles; a comparator no matcher evaluates beside
+            // them leaves the match unsaid.
             rows.UnionWith(matchers.Evidence);
-            var placing = matchers.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.StoredCodePoint).ToList();
-            if (placing.Count == 0 || matchers.Answers.Any(a => a is CosmosAnswer.Utf16 or CosmosAnswer.Numeric))
+            if (matchers.Matching.IsEmpty || matchers.Unmatched.IsEmpty == false)
                 return ServiceOutcomes.Widest;
 
             var outcomes = matchers.Outcomes;
-            foreach (var matcher in placing)
+            foreach (var matcher in matchers.Matching)
                 foreach (var side in Matched(cell, pattern, matcher))
                     outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, side), rows);
 
@@ -131,7 +133,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             };
         }
 
-        /// <summary>A comparison with a literal of the cell's type: by the side or sides each comparator places the cell on.</summary>
+        /// <summary>
+        /// A comparison with a literal of the cell's type: by the side or sides each comparator of the type's order entry
+        /// places the cell on, the comparators S settled of its answers (<see cref="MeasuredEntry.Placing"/>).
+        /// </summary>
         static ServiceOutcomes Within(ServiceForm leaf, PathCell cell, CosmosValueClass operand, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
         {
             var order = MeasuredKey.Of(CosmosServiceTest.Order, operand, CosmosValueClass.None);
@@ -143,12 +148,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             // An entry that names no comparator orders nothing; what else it answers, a failure say, stands beside.
             rows.UnionWith(comparators.Evidence);
-            var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric or CosmosAnswer.StoredCodePoint).ToList();
-            if (placing.Count == 0)
+            if (comparators.Placing.IsEmpty)
                 return ServiceOutcomes.Widest;
 
             var outcomes = comparators.Outcomes;
-            foreach (var comparator in placing)
+            foreach (var comparator in comparators.Placing)
             {
                 if (Place(cell, leaf.Literal!, comparator, parted) is not { } sides)
                     return ServiceOutcomes.Widest;
@@ -185,7 +189,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (left == CosmosValueClass.Absent || right == CosmosValueClass.Absent)
                 return table.Outcomes(MeasuredKey.Of(CosmosServiceTest.ComparePaths, CosmosValueClass.Absent, CosmosValueClass.None), rows);
 
-            if (left == right && left is CosmosValueClass.String or CosmosValueClass.Number)
+            // Two values of one class S placed are placed by its order's comparators (F4).
+            if (left == right && table.Placed.Contains(left))
             {
                 var order = MeasuredKey.Of(CosmosServiceTest.Order, left, CosmosValueClass.None);
                 if (table.TryGet(order, out var comparators) == false)
@@ -195,12 +200,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 }
 
                 rows.UnionWith(comparators.Evidence);
-                var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric or CosmosAnswer.StoredCodePoint).ToList();
-                if (placing.Count == 0)
+                if (comparators.Placing.IsEmpty)
                     return ServiceOutcomes.Widest;
 
                 var outcomes = comparators.Outcomes;
-                foreach (var side in placing.SelectMany(comparator => Sides(pair, comparator)).Distinct())
+                foreach (var side in comparators.Placing.AsEnumerable().SelectMany(comparator => Sides(pair, comparator)).Distinct())
                     outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, left, side), rows);
 
                 return outcomes;
@@ -232,11 +236,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosValueClass[] anywhere = [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above];
             switch (comparator, pair.Left, pair.Right)
             {
-                case (CosmosAnswer.Numeric, _, _) when pair.Order == 0:
+                case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, _, _) when pair.Order == 0:
                     return [CosmosValueClass.Equal];
-                case (CosmosAnswer.Numeric, PathCell.Point or PathCell.Numbers, PathCell.Point { Value: var v }) when TryNumberOf(v, out var c):
+                case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, PathCell.Point or PathCell.Numbers, PathCell.Point { Value: var v }) when TryNumberOf(v, out var c):
                     return Numeric(pair.Left, c) ?? anywhere;
-                case (CosmosAnswer.Numeric, _, _):
+                case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, _, _):
                     return anywhere;
                 case (_, PathCell.Point { Value: var a }, PathCell.Point { Value: var b }) when IsString(a) && IsString(b)
                     && (comparator != CosmosAnswer.StoredCodePoint || Bands(pair.Left).Contains(NulClass) == false && Bands(pair.Right).Contains(NulClass) == false):
@@ -290,10 +294,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return Sides(cell, literal, parted.Contains(literal) == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
                         parted.Contains(literal) == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0);
 
-                case (CosmosAnswer.Numeric, PathCell.Point { Value: var v }) when IsNumber(v) && TryNumberOf(literal, out var c):
+                case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, PathCell.Point { Value: var v }) when IsNumber(v) && TryNumberOf(literal, out var c):
                     return Numeric(cell, c);
 
-                case (CosmosAnswer.Numeric, PathCell.Numbers) when TryNumberOf(literal, out var c):
+                case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, PathCell.Numbers) when TryNumberOf(literal, out var c):
                     return Numeric(cell, c);
 
                 default:
@@ -339,9 +343,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Where a number or a cell of numbers lies against a literal by the value the service compares
         /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>): an int64 as itself and any other number as its double, by
         /// value, [2^63, 2^64) among the others. A whole number in int64 is placed both ways, since the theory spells it
-        /// alike written with a point, which the emulator holds as a double and Azure as an int64, and one answer serves
-        /// both until a run of the probe account separates them (<c>TODO.md</c>); a literal sent as a double is placed
-        /// against only where that double is it.
+        /// alike written with a point, which the emulator holds as a double and Azure as an int64: the order rows name each
+        /// target's comparator apart (<see cref="CosmosAnswer.Numeric"/>, <see cref="CosmosAnswer.NumericPointedAsDouble"/>),
+        /// and both are evaluated so until Azure's is given its own reading (G2, <c>TODO.md</c>); a literal sent as a double
+        /// is placed against only where that double is it.
         /// </summary>
         static CosmosValueClass[]? Numeric(PathCell cell, decimal c) => cell.SidesOf(c, byValue: true, byDouble: true) is not { } sides ? null
             : sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];

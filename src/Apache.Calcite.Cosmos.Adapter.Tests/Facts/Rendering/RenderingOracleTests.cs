@@ -221,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public async Task AFailedDefinitionDeclinesAndCounts()
         {
             var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
-            var failed = new RenderingOracle(new RenderingGraph(() => RenderingDefinition.Measured([.. Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)])));
+            var failed = new RenderingOracle(new RenderingGraph(() => ProbeRows.Planted([.. Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)])));
             await failed.Ready;
             foreach (var _ in Enumerable.Range(0, 2))
                 Ask(failed, [NotBikes]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == RenderingOracle.Unavailable && a.Key == null

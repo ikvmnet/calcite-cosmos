@@ -18,11 +18,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal sealed record CellOutcomes(string Path, ValueSet<CellAt> Cells, ValueSet<CellClass> Classes, ValueSet<string> Rows)
     {
 
-        static readonly ValueSet<string> WholeCondition = ValueSet.Of("Service.BarePathKeepsOnlyTrue", "Service.NotOverAPathKeepsOnlyFalse");
-
         /// <summary>
-        /// Pairs the atom's truths on each cell with the service's outcome there. Where a value that is no boolean is not
-        /// kept, a whole condition reads as the meanings say; what its row keeps, and a failure, stand. On a cell only a
+        /// Pairs the atom's truths on each cell with the service's outcome there. A whole condition over a value that is no
+        /// boolean reads as the meanings say, resting on the rows they name (<see cref="AnswerMeanings.Whole"/>,
+        /// <see cref="AnswerMeanings.NonBooleanRows"/>). On a cell only a
         /// document an earlier round drops holds, Calcite's truths are those the policy sets aside (<c>tolerated</c>, which a
         /// rule hands in): anything but a failure refines them, and they refute nothing. A raw reading reads its columns' union.
         /// </summary>
@@ -30,16 +29,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             var cells = service.Cells.Cells;
             var at = cells.Select((cell, i) => new CellAt(cell, new CellClass(service.Cells.Outside?.Contains(cell) == true ? tolerated : atom.OnCell(cell, columns),
-                Whole(service.Outcomes[i], means)))).ToList();
+                service.Outcomes[i].NonBoolean == CosmosValueClass.None ? service.Outcomes[i].Outcomes : means.Whole(service.Outcomes[i].Outcomes)))).ToList();
             var rows = service.Rows.Union(atom.Rests);
             if (service.Outcomes.Any(o => o.NonBoolean != CosmosValueClass.None))
-                rows = rows.Union(WholeCondition);
+                rows = rows.Union(means.NonBooleanRows);
 
             return new CellOutcomes(service.Cells.Path, ValueSet.From(at), ValueSet.From(at.Select(c => c.Class)), rows);
         }
-
-        static ServiceOutcomes Whole(CellOutcome outcome, AnswerMeanings means) => outcome.NonBoolean == CosmosValueClass.None ? outcome.Outcomes
-            : (outcome.Outcomes & (ServiceOutcomes.True | ServiceOutcomes.Fails)) | ((outcome.Outcomes & (ServiceOutcomes.False | ServiceOutcomes.Undefined)) != 0 ? means.NonBoolean : 0);
 
     }
 

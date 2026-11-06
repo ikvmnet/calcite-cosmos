@@ -142,8 +142,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheLeafReadsTheMatcherItsEntryNames()
         {
             var path = SqlValue.Spell(TPath);
-            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)));
-            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)));
+            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.Placed);
+            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed);
             var cells = new CellPartition(path, ValueSet.Of<PathCell>(new PathCell.Point(Of("ab")), new PathCell.Point(Of("ba")), new PathCell.Point(Of("a\0")), new PathCell.Point(Of(1m)), new PathCell.Null(), new PathCell.Absent()));
             // Each cell's outcome in the order written above, whatever order the partition keeps.
             ServiceOutcomes[] On(ServiceForm leaf, ServiceTable table) => ServiceLeaf.On(leaf, cells, table, ValueSet<string>.Empty) is var vector

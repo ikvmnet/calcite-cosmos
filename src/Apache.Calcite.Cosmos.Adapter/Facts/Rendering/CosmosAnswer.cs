@@ -42,6 +42,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         StoredCodePoint,
 
+        /// <summary>
+        /// Numbers ordered as <see cref="Numeric"/> orders them, but a whole number written with a point held as its double,
+        /// as the emulator holds one (<c>Service.IntegralNumbersReadBackAsHeld</c>): 9007199254740993.0 as 9007199254740992,
+        /// where Azure holds it as the int64 it is.
+        /// </summary>
+        NumericPointedAsDouble,
+
     }
 
 }

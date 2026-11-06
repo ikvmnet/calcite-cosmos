@@ -50,7 +50,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// </summary>
         static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None),
             // The emulator matches an affix against the string it stores, Azure against the string as written (run 1).
-            MeasuredKey.Of(Test.StartsWith, Class.String, Class.None), MeasuredKey.Of(Test.EndsWith, Class.String, Class.None), MeasuredKey.Of(Test.Contains, Class.String, Class.None)];
+            MeasuredKey.Of(Test.StartsWith, Class.String, Class.None), MeasuredKey.Of(Test.EndsWith, Class.String, Class.None), MeasuredKey.Of(Test.Contains, Class.String, Class.None),
+            // The emulator holds a whole number written with a point as its double, Azure as the int64 it is (N11).
+            MeasuredKey.Of(Test.Order, Class.Number, Class.None)];
 
         static IEnumerable<CosmosAxiom> WithOutcomes => CosmosAxioms.All.Where(a => a.Outcomes is not null);
 
@@ -127,7 +129,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void EveryRowReadAsDataNamesAPinningTestThatCarriesItsId()
         {
-            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null))
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
+                || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
+                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -189,6 +193,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
+        /// The structured cells that were a prose row's (F3) read back as written, each under its row: the bands each code
+        /// point order parts and the one the emulator's moves, what a lone surrogate is stored as on the target that stores
+        /// it so, what Azure's <c>CONTAINS</c> and a <c>LIKE</c> of one run read a string to, the mirror law, the boxes and
+        /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
+        /// classes its witnesses held, the casts each citing its row, the text reader's order, and the classes each type
+        /// test is true of in process.
+        /// </summary>
+        [Fact]
+        public void TheFoundationsRowsReadBackAsWritten()
+        {
+            var all = CosmosAxioms.All;
+            CosmosAxiomRows.ReadParts(all).Should().BeEquivalentTo(new[]
+            {
+                (CosmosAnswer.CodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), (CosmosAnswer.CodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
+                (CosmosAnswer.StoredCodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), (CosmosAnswer.StoredCodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
+            });
+            CosmosAxiomRows.ReadMoves(all).Should().Equal((CosmosAnswer.StoredCodePoint, JsonValues.NulClass));
+            CosmosAxiomRows.ReadStoredOn(all).Should().BeEquivalentTo(new[]
+            {
+                (RenderingTarget.Azure, JsonValues.SurrogateBand, JsonValues.HighBand), (RenderingTarget.Azure, JsonValues.SurrogateBand, JsonValues.ReplacementClass),
+            });
+            CosmosAxiomRows.ReadTruncations(all).Should().BeEquivalentTo(new[]
+            {
+                (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
+            });
+
+            var mirror = CosmosAxiomRows.ReadPairReadings(all);
+            mirror.Should().HaveCount(12).And.Contain((Test.Less, true, Test.Greater)).And.Contain((Test.GreaterOrEqual, false, Test.GreaterOrEqual));
+            mirror.Select(r => (r.Test, r.Swapped)).Should().OnlyHaveUniqueItems();
+
+            CosmosAxiomRows.ReadBoxes(all).Should().HaveCount(6).And.Contain((PredicateAtom.TextReader, "VARCHAR")).And.Contain((JsonValues.IntegerType, "BIGINT"));
+            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
+            CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");
+
+            var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
+            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(6).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+                .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises));
+            CosmosAxiomRows.ReadCalciteBands(all).Should().BeEquivalentTo(new[] { (parse, Class.String, JsonValues.TrimmedClass), (parse, Class.String, JsonValues.NulClass) });
+            CosmosAxiomRows.ReadCasts(all).Should().HaveCount(5).And.Contain(("BOOLEAN", PredicateAtom.TextReader, "Calcite.CastToBooleanParses"))
+                .And.Contain(("DOUBLE", PredicateAtom.TextReader, "Calcite.CastOfTheAccessorParsesTheRendering")).And.Contain(("VARCHAR", PredicateAtom.RawReader, "Calcite.CastOfARawValueToText"));
+            CosmosAxiomRows.ReadReaderOrders(all).Should().Equal((PredicateAtom.TextReader, CosmosReaderOrder.Itself));
+
+            var kinds = CosmosAxiomRows.ReadTestKinds(all);
+            kinds.Where(k => k.Test == Test.IsString).Select(k => k.Kind).Should().Equal(Class.String);
+            kinds.Where(k => k.Test == Test.IsDefined).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String, Class.Object, Class.Array]);
+            kinds.Where(k => k.Test == Test.IsPrimitive).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String]);
+        }
+
+        /// <summary>
         /// The raw columns S takes the union of are a <c>Calcite</c> row's, read through the registry one row a column a key
         /// (h12): every key the raw reading and its cast ask, a column raw beside strings alone only beside a string, and each
         /// answer as the row states it.
@@ -212,6 +265,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             (At(cast, Class.Number, Test.Equal, Class.String, "VARIANT"), At(cast, Class.Number, Test.Equal, Class.String, "ANY"), At(cast, Class.Object, Test.IsNull, Class.None, "VARIANT"))
                 .Should().Be((U, T | F, R));
             rows.Should().NotContain(r => r.Column == "VARCHAR" && r.Key.Reader == "raw" && r.Key.Test != Test.IsNull && r.Key.Operand != Class.String);
+
+            // A stored null and an absent path are each column's own entries, read and cast alike (F3): SQL null in each.
+            CosmosAxioms.All.Single(a => a.Id == "Calcite.RawNullIsSqlNull").Columns.Should().HaveCount(3).And.OnlyContain(c =>
+                new[] { c.Read, c.AsText }.All(d => d[CosmosRawColumn.Null] == CosmosRawColumn.Answer.Null && d[CosmosRawColumn.Absent] == CosmosRawColumn.Answer.Null));
         }
 
         /// <summary>
@@ -294,7 +351,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
             var tables = new[] { (CosmosAxiomTarget.Emulator, RenderingSet.Emulator), (CosmosAxiomTarget.Azure, RenderingSet.Production) }
-                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2))));
+                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2)), ProbeTheory.Theory.Get(ProbeTheory.Placed.Of())));
             var wrong = from axiom in WithOutcomes
                         from outcome in axiom.Outcomes!
                         where outcome.Formula is not null

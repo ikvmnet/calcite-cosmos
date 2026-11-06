@@ -38,6 +38,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Evidence = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<string>>("evidence", ValueLattice.Union<string>());
             Final = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>>("final");
             Table = Graph.DefineFunction<RenderingSet, ValueSet<MeasuredEntry>>("table", ValueLattice.Union<MeasuredEntry>());
+            Placed = Graph.DefineFunction<ValueSet<CosmosValueClass>>("placed", ValueLattice.Union<CosmosValueClass>());
             Class = Graph.DefineRelation<CellClass>("class");
             RaiseOnly = Graph.DefineFunction<ValueSet<CellClass>>("raiseonly", ValueLattice.Union<CellClass>());
             Allowing = Graph.DefineRelation<RenderPosition, Verdict, Box>("allowing");
@@ -47,7 +48,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             AllowedCites = Graph.DefineFunction<RenderPosition, Verdict, ValueSet<string>>("allowedcites", ValueLattice.Union<string>());
             Refutes = Graph.DefineFunction<RenderPosition, Verdict, ValueSet<CellClass>>("refutes", ValueLattice.Union<CellClass>());
             Edges = Graph.DefineFunction<string, ReaderEdges>("edges");
-            Parting = Graph.DefineRelation<string, string>("parting");
+            Parts = Graph.DefineRelation<CosmosAnswer, string, string>("parts");
+            Moves = Graph.DefineRelation<CosmosAnswer, string>("moves");
+            StoredAs = Graph.DefineRelation<RenderingTarget, string, string>("storedas");
+            Truncates = Graph.DefineRelation<RenderingTarget, CosmosServiceTest, string, string>("truncates");
+            PairReads = Graph.DefineRelation<CosmosServiceTest, bool, CosmosServiceTest>("pairreads");
+            BoxOf = Graph.DefineRelation<string, string>("boxof");
+            SeesThrough = Graph.DefineRelation<string>("seesthrough");
+            StructureOnly = Graph.DefineRelation<string>("structureonly");
+            CalciteReads = Graph.DefineRelation<string, CosmosValueClass, string>("calcitereads");
+            CalciteBands = Graph.DefineFunction<string, CosmosValueClass, ValueSet<string>>("calcitebands", ValueLattice.Union<string>());
+            MeasuredCast = Graph.DefineRelation<string, string, string>("measuredcast");
+            ReaderOrder = Graph.DefineFunction<string, ValueSet<string>>("readerorder", ValueLattice.Union<string>());
+            TestKinds = Graph.DefineFunction<CosmosServiceTest, ValueSet<CosmosValueClass>>("testkinds", ValueLattice.Union<CosmosValueClass>());
             Kleene = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("kleene");
             Expected = Graph.DefineFunction<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>>("expected", ValueLattice.Union<MeasuredKey>());
             Matched = Graph.DefineFunction<CosmosServiceTest, RenderingSet, ValueSet<MeasuredKey>>("matched", ValueLattice.Union<MeasuredKey>());
@@ -306,6 +319,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<MeasuredKey, RenderingSet, ValueSet<string>> Evidence { get; }
         public Function<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>> Final { get; }
         public Function<RenderingSet, ValueSet<MeasuredEntry>> Table { get; }
+
+        /// <summary>
+        /// The classes some row measures an order of, whose comparisons the leaf places by the order entry's comparators
+        /// (F4): derived from the rows, of every set alike, so that a set whose table holds no order of a class still asks
+        /// for that order and is named missing it.
+        /// </summary>
+        public Function<ValueSet<CosmosValueClass>> Placed { get; }
+
         public Relation<CellClass> Class { get; }
         public Function<ValueSet<CellClass>> RaiseOnly { get; }
         public Relation<RenderPosition, Verdict, Box> Allowing { get; }
@@ -315,7 +336,51 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<RenderPosition, Verdict, ValueSet<string>> AllowedCites { get; }
         public Function<RenderPosition, Verdict, ValueSet<CellClass>> Refutes { get; }
         public Function<string, ReaderEdges> Edges { get; }
-        public Relation<string, string> Parting { get; }
+
+        /// <summary>
+        /// Which bands each comparator ranks apart from Calcite's UTF-16 order, a string order row's (F3): what the parted
+        /// rules read through the comparators the set's string order names.
+        /// </summary>
+        public Relation<CosmosAnswer, string, string> Parts { get; }
+
+        // The rows the foundation reads in for the groups that follow (F3, plan §3): each a row's structured cells, assumed
+        // as written; no rule reads them until its group's does (TODO.md).
+
+        /// <summary>Which band a comparator moves in order (the emulator's of what it stores, U+0000), G1's.</summary>
+        public Relation<CosmosAnswer, string> Moves { get; }
+
+        /// <summary>What a string written in a class is stored holding, by the target that stores it so, G1's.</summary>
+        public Relation<RenderingTarget, string, string> StoredAs { get; }
+
+        /// <summary>Which tests read a string only to a band's first character, for an argument of a shape, by target, G1's.</summary>
+        public Relation<RenderingTarget, CosmosServiceTest, string, string> Truncates { get; }
+
+        /// <summary>How a comparison of two paths reads against a literal, the sides swapped or not: the mirror law, G3's.</summary>
+        public Relation<CosmosServiceTest, bool, CosmosServiceTest> PairReads { get; }
+
+        /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c>, G8's.</summary>
+        public Relation<string, string> BoxOf { get; }
+
+        /// <summary>The comparisons that read the values inside one box, G8's.</summary>
+        public Relation<string> SeesThrough { get; }
+
+        /// <summary>The functions that answer a structure alone, G8's.</summary>
+        public Relation<string> StructureOnly { get; }
+
+        /// <summary>What a reading answers over each kind of stored value in process, G7's.</summary>
+        public Relation<string, CosmosValueClass, string> CalciteReads { get; }
+
+        /// <summary>The character classes a reading's witnesses of a kind held, beyond which it is unmeasured, G7's.</summary>
+        public Function<string, CosmosValueClass, ValueSet<string>> CalciteBands { get; }
+
+        /// <summary>The casts a <c>Calcite</c> row measured, by target and the reading cast, citing the row, G8's.</summary>
+        public Relation<string, string, string> MeasuredCast { get; }
+
+        /// <summary>What a reading's order holds in process, every reading a row names, G3's.</summary>
+        public Function<string, ValueSet<string>> ReaderOrder { get; }
+
+        /// <summary>The classes each one-place test is true of in process, G7's.</summary>
+        public Function<CosmosServiceTest, ValueSet<CosmosValueClass>> TestKinds { get; }
 
         // Composition's: Kleene's answers, the keys each set is expected and matched on, the connectives it composes
         // through, an identity's class and the position beneath a negation.
@@ -475,6 +540,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<FunctionKey>();
             values.RegisterSet<PathImport>();
             values.RegisterSet<CosmosServiceTest>();
+            values.RegisterSet<CosmosValueClass>();
             values.RegisterSet<ServiceForm>();
         }
 
@@ -524,7 +590,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Refutes.Of(pos, v).Is(Primitives.Singleton<CellClass>().Of(k)));
             });
 
-            // Measured is complete when this stratum runs, so a key is settled once and its answers are all of them.
+            // Outcome is complete here too: a class an order row is of is placed by comparators, whatever set asks.
+            tabulate.DefineRule("a class some row orders is placed by its comparators", r =>
+            {
+                var (k, tg) = r.Vars<MeasuredKey, RenderingTarget>("k", "tg");
+                var (a, t, c) = r.Vars<CosmosAnswer, CosmosServiceTest, CosmosValueClass>("a", "t", "c");
+                r.When(a.Is(Outcome.Of(k, tg)), t.Is(Compute.Of(k, x => x.Test)), t.Is(CosmosServiceTest.Order), c.Is(Compute.Of(k, x => x.Operand)));
+                r.Then(Placed.Of().Is(Primitives.Singleton<CosmosValueClass>().Of(c)));
+            });
+
+            // Measured is complete when this stratum runs, so a key is settled once and its answers are all of them. What each
+            // answer is to the leaf is the meanings' roles, met here (F4): the comparators that place a cell, those an affix
+            // matches by, and the comparators beside which a match says nothing.
             tabulate.DefineRule("a settled key is an entry of its set's table", r =>
             {
                 var (k, s) = r.Vars<MeasuredKey, RenderingSet>("k", "s");
@@ -532,7 +609,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (v, i, mn) = r.Vars<ValueSet<CosmosAnswer>, ValueSet<string>, AnswerMeanings>("v", "i", "mn");
                 r.When(m.Is(Measured.Of(k, s)), d.Is(Serves.Of(s)), v.Is(Answers.Of(k, s)), i.Is(Evidence.Of(k, s)), mn.Is(Means.Of()));
                 r.Where(Primitives.IsSubsetOf<RenderingTarget>().Of(d, m));
-                r.Then(Table.Of(s).Is(Primitives.Singleton<MeasuredEntry>().Of(Compute.Of(k, v, i, mn, MeasuredEntry.Of))), Final.Of(k, s).Is(v));
+                var placing = Primitives.Intersect<CosmosAnswer>().Of(v, Compute.Of(mn, x => x.Comparators));
+                var matching = Primitives.Intersect<CosmosAnswer>().Of(v, Compute.Of(mn, x => x.Matchers));
+                var unmatched = Primitives.Except<CosmosAnswer>().Of(placing, Compute.Of(mn, x => x.Matchers));
+                r.Then(Table.Of(s).Is(Primitives.Singleton<MeasuredEntry>().Of(Compute.Of(Compute.Of(k, v, i, mn, MeasuredEntry.Of), placing, matching, unmatched, MeasuredEntry.Placed))),
+                    Final.Of(k, s).Is(v));
             });
         }
 
@@ -693,13 +774,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Need.Of(z, h1), Need.Of(z, h2), Needs.Of(h1).Is(ValueSet<CosmosServiceTest>.Empty), Needs.Of(h2).Is(ValueSet<CosmosServiceTest>.Empty));
             });
 
+            // Which bands part is the set's string comparators' (Service.StringOrderIsCodePoint's parts, F3).
             parted.DefineRule("a string literal parts the orders over a path whose strings may hold the other band", r =>
             {
                 var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
                 var (f, g) = r.Vars<ServiceForm, ServiceForm>("f", "g");
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
                 var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
-                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Parting.Of(u, w));
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Under.Of(s), o.Is(Final.Of(StringOrder, s)), Parts.Of(c, u, w));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
                 r.Where(RenderingPrimitives.StringComparison.Of(g));
                 r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(g, CharactersOfLiteral)));
                 r.Where(Primitives.Contains<string>().Of(k, u));
@@ -714,8 +798,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (f, h1, h2, p) = r.Vars<ServiceForm, ServiceForm, ServiceForm, JPath>("f", "h1", "h2", "p");
                 var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
                 var (n, u, w) = r.Vars<string, string, string>("n", "u", "w");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
                 r.When(Conjunct.Of(f, h1), Conjunct.Of(f, h2), h1.IsNot(h2), n.Is(Compute.Of(h1, x => x.Path ?? "")), n.Is(Compute.Of(h2, x => x.Path ?? "")),
-                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Parting.Of(u, w), b.Is(Compute.Of(h1, CharactersOfLiteral)));
+                    n.Is(Spelling.Of(p)), k.Is(ImportedChars.Of(p)), Under.Of(s), o.Is(Final.Of(StringOrder, s)), Parts.Of(c, u, w), b.Is(Compute.Of(h1, CharactersOfLiteral)));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h1));
                 r.Where(RenderingPrimitives.StringOrdering.Of(h2));
                 r.Where(Primitives.Contains<string>().Of(k, u));
@@ -731,10 +817,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
                 var (f, g, s) = r.Vars<ServiceForm, ServiceForm, RenderingSet>("f", "g", "s");
-                var (q, t) = r.Vars<ValueSet<string>, ValueSet<MeasuredEntry>>("q", "t");
-                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), q.Is(PartedLiterals.Of(p)), Under.Of(s), t.Is(Table.Of(s)));
+                var (q, t, pl) = r.Vars<ValueSet<string>, ValueSet<MeasuredEntry>, ValueSet<CosmosValueClass>>("q", "t", "pl");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), q.Is(PartedLiterals.Of(p)), Under.Of(s), t.Is(Table.Of(s)), pl.Is(Placed.Of()));
                 r.Where(RenderingPrimitives.FormIsLeaf.Of(g));
-                r.Then(Svc.Of(z, g).Is(Compute.Of(g, z, Compute.Of(t, ServiceTable.Of), q, definition.Leaf)));
+                r.Then(Svc.Of(z, g).Is(Compute.Of(g, z, Compute.Of(t, pl, ServiceTable.Of), q, definition.Leaf)));
             });
 
             // A junction of three members or more is evaluated as its first and a regrouped rest rid of copies, which only
@@ -744,14 +830,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var z = r.Var<CellPartition>("z");
                 var (g, h1, h2, s) = r.Vars<ServiceForm, ServiceForm, ServiceForm, RenderingSet>("g", "h1", "h2", "s");
                 var (v, w, t) = r.Vars<OutcomeVector, OutcomeVector, ValueSet<MeasuredEntry>>("v", "w", "t");
-                var (lic, nd) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>>("lic", "nd");
+                var (lic, nd, pl) = r.Vars<ValueSet<CosmosServiceTest>, ValueSet<CosmosServiceTest>, ValueSet<CosmosValueClass>>("lic", "nd", "pl");
                 r.When(Need.Of(z, g));
                 r.Where(RenderingPrimitives.FormIsCompound.Of(g));
                 r.When(h1.Is(Compute.Of(g, ServiceForm.First)), h2.Is(Compute.Of(g, ServiceForm.Rest)), v.Is(Svc.Of(z, h1)), w.Is(Svc.Of(z, h2)),
-                    Under.Of(s), t.Is(Table.Of(s)), lic.Is(Licensed.Of(s)), nd.Is(Needs.Of(g)));
+                    Under.Of(s), t.Is(Table.Of(s)), lic.Is(Licensed.Of(s)), nd.Is(Needs.Of(g)), pl.Is(Placed.Of()));
                 r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(RenderingPrimitives.FormRegroups.Of(g), lic));
                 r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(nd, lic));
-                r.Then(Svc.Of(z, g).Is(Compute.Of(g, v, w, Compute.Of(t, ServiceTable.Of), definition.Compound)));
+                r.Then(Svc.Of(z, g).Is(Compute.Of(g, v, w, Compute.Of(t, pl, ServiceTable.Of), definition.Compound)));
             });
         }
 
@@ -1277,6 +1363,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        /// <summary>The key of the order strings are compared by, whose comparators the parted rules read the parts of.</summary>
+        static readonly MeasuredKey StringOrder = MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None);
+
         /// <summary>What a truth value's constant rests on: the row that measured each constant its own truth, on no cell.</summary>
         static readonly Proof ConstantProof = new(ValueSet.Of("Service.AConstantIsItsOwnTruth"), 0);
 
@@ -1366,8 +1455,45 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (reader, edges) in definition.Edges)
                     w.Assume(Edges.Of(reader).Is(edges));
 
-                foreach (var (u, v) in definition.Parting)
-                    w.Assume(Parting.Of(u, v));
+                foreach (var (c, u, v) in definition.Parts)
+                    w.Assume(Parts.Of(c, u, v));
+
+                // The foundation's rows (F3), each as its row states it.
+                foreach (var (c, band) in definition.Moves)
+                    w.Assume(Moves.Of(c, band));
+
+                foreach (var (target, written, stored) in definition.StoredAs)
+                    w.Assume(StoredAs.Of(target, written, stored));
+
+                foreach (var (target, test, shape, band) in definition.Truncations)
+                    w.Assume(Truncates.Of(target, test, shape, band));
+
+                foreach (var (test, swapped, reads) in definition.PairReadings)
+                    w.Assume(PairReads.Of(test, swapped, reads));
+
+                foreach (var (kind, box) in definition.Boxes)
+                    w.Assume(BoxOf.Of(kind, box));
+
+                foreach (var op in definition.SeesThrough)
+                    w.Assume(SeesThrough.Of(op));
+
+                foreach (var function in definition.StructureOnly)
+                    w.Assume(StructureOnly.Of(function));
+
+                foreach (var (reader, kind, answer) in definition.CalciteReadings)
+                    w.Assume(CalciteReads.Of(reader, kind, answer));
+
+                foreach (var (reader, kind, band) in definition.CalciteBands)
+                    w.Assume(CalciteBands.Of(reader, kind).Is(ValueSet.Of(band)));
+
+                foreach (var (target, reader, row) in definition.Casts)
+                    w.Assume(MeasuredCast.Of(target, reader, row));
+
+                foreach (var (reader, claim) in definition.ReaderOrders)
+                    w.Assume(ReaderOrder.Of(reader).Is(ValueSet.Of(claim)));
+
+                foreach (var (test, kind) in definition.TestKinds)
+                    w.Assume(TestKinds.Of(test).Is(ValueSet.Of(kind)));
 
                 foreach (var (target, key, answer) in definition.Kleene)
                     w.Assume(Kleene.Of(key, target).Is(answer));
@@ -1424,7 +1550,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 w.Assume(RawUnion.Of().Is(RawTruths.Empty));
 
-                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
+                w.Assume(Means.Of().Is(definition.Means), Placed.Of().Is(ValueSet<CosmosValueClass>.Empty), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
                     PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));
             });
 

@@ -20,7 +20,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The statement is refused before it runs, whatever the operand.</summary>
         Refuses,
 
-        /// <summary>Undefined on some operand, where Calcite may answer a value: what the service defines alone, too.</summary>
+        /// <summary>Undefined on some operand, where Calcite may answer a value.</summary>
         Undefined,
 
         /// <summary>
@@ -29,6 +29,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// otherwise (h10). No row of <c>CosmosAxioms</c> states it.
         /// </summary>
         Unmeasured,
+
+        /// <summary>
+        /// A value the service defines where Calcite has no function of its own to answer one, a service-defined (D-class)
+        /// function's (F3): distinct from <see cref="Undefined"/>, which is undefined where Calcite may answer a value. No row
+        /// states it yet; the rows of the functions the service defines alone are G6's.
+        /// </summary>
+        Defined,
 
     }
 

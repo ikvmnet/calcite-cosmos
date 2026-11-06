@@ -74,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["tabulate"] =
                 [
+                    "a class some row orders is placed by its comparators",
                     "a settled key is an entry of its set's table",
                 ],
                 ["expected"] =
@@ -222,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(78);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(79);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
@@ -230,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheRaiseOnlyClassesAreTheOnesThePolicySetsAside()
         {
             ProbeTheory.Theory.Get(ProbeTheory.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises));
-            var strict = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows) with { Tolerated = Truths.None });
+            var strict = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows) with { Tolerated = Truths.None });
             strict.Theory.Get(strict.RaiseOnly.Of()).Should().BeEmpty();
         }
 
@@ -306,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             // An ordering against a boolean, which no row measures.
             var once = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, True);
             var twice = MeasuredKey.Of(CosmosServiceTest.LessOrEqual, True, False);
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured([.. ProbeRows.Rows,
+            var theory = RenderingTheory.Define(ProbeRows.Planted([.. ProbeRows.Rows,
                 new("Service.Planted", once, RenderingTarget.Emulator, CosmosAnswer.False),
                 new("Service.Planted", twice, RenderingTarget.Emulator, CosmosAnswer.False),
                 new("Service.Planted", twice, RenderingTarget.Azure, CosmosAnswer.Undefined)]));
@@ -316,6 +317,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             theory.Theory.Get(theory.Table.Of(RenderingSet.Emulator)).Should().ContainSingle(e => e.Key == once);
             portable.Single(e => e.Key == twice).Should().Be(new MeasuredEntry(twice, ValueSet.Of(CosmosAnswer.False, CosmosAnswer.Undefined),
                 ServiceOutcomes.False | ServiceOutcomes.Undefined, ValueSet.Of("Service.Planted")));
+        }
+
+        /// <summary>
+        /// Each row the foundation reads in (F3) is a fact of S as the measured definition carries it, and the definition
+        /// carries some of each: what the groups that read them start from. A function's value is the union of its rows.
+        /// </summary>
+        [Fact]
+        public void TheFoundationsRowsAreFactsOfS()
+        {
+            var (d, s) = (Measured, ProbeTheory);
+            new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.PairReadings.Count, d.Boxes.Count, d.SeesThrough.Count, d.StructureOnly.Count,
+                d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count }.Should().OnlyContain(n => n > 0);
+
+            d.Parts.Should().OnlyContain(r => s.Theory.Check(s.Parts.Of(r.Comparator, r.Band, r.Other)));
+            d.Moves.Should().OnlyContain(r => s.Theory.Check(s.Moves.Of(r.Comparator, r.Band)));
+            d.StoredAs.Should().OnlyContain(r => s.Theory.Check(s.StoredAs.Of(r.Target, r.Written, r.Stored)));
+            d.Truncations.Should().OnlyContain(r => s.Theory.Check(s.Truncates.Of(r.Target, r.Test, r.Shape, r.Band)));
+            d.PairReadings.Should().OnlyContain(r => s.Theory.Check(s.PairReads.Of(r.Test, r.Swapped, r.Reads)));
+            d.Boxes.Should().OnlyContain(r => s.Theory.Check(s.BoxOf.Of(r.Kind, r.Box)));
+            d.SeesThrough.Should().OnlyContain(r => s.Theory.Check(s.SeesThrough.Of(r)));
+            d.StructureOnly.Should().OnlyContain(r => s.Theory.Check(s.StructureOnly.Of(r)));
+            d.CalciteReadings.Should().OnlyContain(r => s.Theory.Check(s.CalciteReads.Of(r.Reader, r.Kind, r.Answer)));
+            d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
+            foreach (var g in d.CalciteBands.GroupBy(r => (r.Reader, r.Kind)))
+                s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
+            foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))
+                s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
+            foreach (var g in d.TestKinds.GroupBy(r => r.Test))
+                s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind));
         }
 
         /// <summary>

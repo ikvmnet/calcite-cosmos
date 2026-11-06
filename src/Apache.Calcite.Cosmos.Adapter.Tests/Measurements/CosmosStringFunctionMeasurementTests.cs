@@ -483,7 +483,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// shape and a replacement holding U+0000 read past it. The emulator stores U+0000 as U+FDD0 followed by
         /// <c>0</c>, and there the test skips.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.NulEndsWhatReplaceAndContainsRead")]
         public async Task NulEndsWhatReplaceAndContainsRead()
         {
             var strings = Strings_();

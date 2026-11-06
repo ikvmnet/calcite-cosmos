@@ -278,9 +278,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// A case mapping asks ASCII under every set though the emulator's rows say it agrees over a surrogate, and LOWER over
-        /// the high band: their witnesses hold no cased letter there, and Java maps U+10428 and U+FF21. No emulator refusal
-        /// is lost (h10).
+        /// A case mapping asks ASCII under every set: its rows part over a surrogate, and LOWER's over the high band, where
+        /// the witnesses held no letter the mapping changes while Java's changes U+10428, U+10400 and U+FF21 (F5). No
+        /// emulator refusal is lost (h10).
         /// </summary>
         [Fact]
         public void ACaseMappingAsksAsciiWhereItsRowsAreUnwitnessed()

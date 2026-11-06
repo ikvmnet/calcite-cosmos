@@ -23,10 +23,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Columns">What each raw column makes of each kind of value, a <c>Calcite</c> row's
     /// (<see cref="CosmosAxiomRows.ReadColumns"/>).</param>
     /// <param name="StoredAs">What a string written in a class was stored holding, a <c>Service</c> row's
-    /// (<see cref="CosmosAxiomRows.ReadStored"/>).</param>
+    /// (<see cref="CosmosAxiomRows.ReadStored"/>, and by target <see cref="CosmosAxiomRows.ReadStoredOn"/>).</param>
+    /// <param name="Parts">Which bands a comparator ranks apart from Calcite's order, a <c>Service</c> order row's
+    /// (<see cref="CosmosAxiomRows.ReadParts"/>, F3).</param>
+    /// <param name="Moves">Which band a comparator moves in order, a <c>Service</c> order row's (<see cref="CosmosAxiomRows.ReadMoves"/>).</param>
+    /// <param name="Truncations">Which tests read a string only up to a band's first character (<see cref="CosmosAxiomRows.ReadTruncations"/>).</param>
+    /// <param name="PairReadings">How a comparison of two paths reads against a literal, the mirror law (<see cref="CosmosAxiomRows.ReadPairReadings"/>).</param>
+    /// <param name="Boxes">The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<see cref="CosmosAxiomRows.ReadBoxes"/>).</param>
+    /// <param name="SeesThrough">The comparisons that read the values inside one box, by the names <c>PredicateAtom</c> spells
+    /// them (<see cref="CosmosAxiomRows.ReadSeesThrough"/>).</param>
+    /// <param name="StructureOnly">The functions that answer a structure alone, null for anything else, by the name the IR
+    /// reads each by (<see cref="CosmosAxiomRows.ReadStructureOnly"/>).</param>
+    /// <param name="CalciteReadings">What a reading answers over each kind of stored value in process, a <c>Calcite</c> row's
+    /// (<see cref="CosmosAxiomRows.ReadCalciteReadings"/>).</param>
+    /// <param name="Casts">The casts a <c>Calcite</c> row measured, by target and the reading cast (<see cref="CosmosAxiomRows.ReadCasts"/>).</param>
+    /// <param name="ReaderOrders">What a reading's order holds in process (<see cref="CosmosAxiomRows.ReadReaderOrders"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
-        IReadOnlyList<CosmosStoredClass>? StoredAs = null);
+        IReadOnlyList<CosmosStoredClass>? StoredAs = null, IReadOnlyList<CosmosParting>? Parts = null, IReadOnlyList<CosmosMove>? Moves = null,
+        IReadOnlyList<CosmosTruncation>? Truncations = null, IReadOnlyList<CosmosPairReading>? PairReadings = null, IReadOnlyList<CosmosBox>? Boxes = null,
+        IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
+        IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null);
 
 }
