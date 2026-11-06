@@ -172,8 +172,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// D9 and D10: the emulator reverses the units it stores, and its <c>INDEX_OF</c> counts them, so both ask their
-        /// subject — <c>POSITION</c>'s second operand, not its pattern, which is sent stored — to hold neither escape. On
-        /// Azure both push whatever characters the string holds.
+        /// subject — <c>POSITION</c>'s second operand — to hold neither escape. On Azure both push whatever characters the
+        /// string holds. <c>POSITION</c>'s pattern is keyed as the operand it is, measured on both targets as a literal of no
+        /// band and not empty, so a path there, which may be empty or hold anything, stays in process.
         /// </summary>
         [Fact]
         public void AReversalAndAPositionAskTheirSubjectUnderTheEmulator()
@@ -187,7 +188,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(Emulator, null, op, operands).Should().BeFalse(op.getName() + " under the emulator over a string nothing is known of the characters of");
             }
 
-            Pushes(Emulator, null, SqlStdOperatorTable.POSITION, Str(), Lit("abc")).Should().BeTrue("the subject is the literal; the path is the pattern, matched stored");
+            foreach (var target in new[] { Azure, Emulator })
+                Pushes(target, JsonCharacterBand.None, SqlStdOperatorTable.POSITION, Str(), Lit("abc")).Should().BeFalse($"{target}: the pattern is a path, which may be empty, and no run sent one");
+            Pushes(Azure, null, SqlStdOperatorTable.POSITION, Lit("\u00e9"), Str()).Should().BeFalse("no run sent a pattern beyond ASCII");
         }
 
         /// <summary>
@@ -234,7 +237,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// D13: a concatenation or a repetition joins what the emulator stores with what it makes, so every operand is
-        /// asked to hold neither escape, a path among them (owner, 2026-11-01: "Cut it"). Azure asks nothing.
+        /// asked to hold neither escape, a path among them (owner, 2026-11-01: "Cut it"). Azure asks nothing of a stored
+        /// operand. A literal is keyed apart (<c>FunctionKey.Literal</c>), as the runs sent it: on both targets a string of
+        /// no band and not empty, and a count of 0 on Azure alone (<c>Service.ReplicateStopsAtTenThousandCodePoints</c>).
         /// </summary>
         [Fact]
         public void AConcatenationAsksEveryOperandUnderTheEmulator()
@@ -242,14 +247,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var made = Call(SqlStdOperatorTable.UPPER, Str());
 
             Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
+            Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("\u00e9")).Should().BeFalse("no run sent a literal beyond ASCII");
+            Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("")).Should().BeFalse("no run sent an empty literal");
             Pushes(Emulator, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeFalse("a path is asked as any operand is");
             Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Str(), Lit("!")).Should().BeTrue();
             Pushes(Emulator, Z, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeFalse("UPPER's value may hold U+0000, made at the service");
             Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeTrue("and holds neither where its argument holds neither");
 
-            Pushes(Azure, Z, SqlLibraryOperators.REPEAT, made, Int(0)).Should().BeTrue();
+            Pushes(Azure, Z, SqlLibraryOperators.REPEAT, made, Int(0)).Should().BeTrue("a count of 0, as Azure answered it");
             Pushes(Emulator, Z, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeFalse("REPEAT's subject joins CONCAT's rule");
-            Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue();
+            Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeFalse("the emulator's runs sent a count of 2 alone");
         }
 
         /// <summary>

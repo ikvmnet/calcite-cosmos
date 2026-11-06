@@ -3316,8 +3316,9 @@ pattern, which folded a service fact into the reading of an input. It now states
 strings were written in (`JsonClaim.Written`, the theory's `written`), and one rule of the theory derives what is
 stored from it, reading the measured behaviour as data (the cells of the axiom
 `Service.LoneSurrogateIsStoredAsReplacement`, `CosmosAxiom.StoredAs`, which the root of F's graph holds as `storedAs`,
-pinned by a measurement that asserts on Azure and skips where the emulator refuses the write): written with a
-surrogate, stored with the high band and U+FFFD too. So what a pattern can prove of
+pinned by a measurement that asserts on Azure and skips where the emulator refuses the write): written with an
+unpaired surrogate, stored with the high band and U+FFFD too, and a pair as written. A set written with the surrogate
+band holds `unpaired`, the written sets being closed over their refinements, so what a pattern can prove of
 the stored strings is still "neither band" or "no surrogate", and the deciding is in one place. A domain needs no such
 care: `System.Text.Json` will not read a lone surrogate escape as a string, so no `enum` or `const` holds one.
 
@@ -7041,7 +7042,7 @@ extra strata take the 16.
 - `Agreements` lists the non-vacuous agreements, which source A and the pairwise check judge.
 
 **The definition holds generate mode's rows.** The template, fits and strictness rows join the rows of characters in
-`RenderingDefinition` (`Parts`, `Moves`, `StoredAs`, `Truncations`, `Rewrites`, `Collisions`, `Unsent`), so a planted
+`RenderingDefinition` (`Parts`, `Moves`, `StoredAs`, `Truncations`, `Rewrites`, `Unsent`), so a planted
 fault replaces one row in a graph of its own; S derives each set's parting bands from them (G1).
 The grammar is the Rex builder's own and loads from `RenderingRexGrammar` as one registered value.
 
@@ -7054,7 +7055,8 @@ finished a stratum before. One plant shows each refusal.
 **What holds it.** `RenderingGenerateTests`:
 - P1 restricted under the asserted set and `Production`, and P8 bare.
 - The negations; a junction's best; the round's junction, absent where an arm has none.
-- Nothing vacuous lifted; the band filter; a lone surrogate never admitted, though the gate agrees with it.
+- Nothing vacuous lifted; the band filter; a lone surrogate never admitted, though the gate agrees with it, by
+  implication alone: a point holding one is unkept (G1).
 - Presence at both positions and through calls; a leaf's best or its fold; no sentinel lifted.
 - Probe T4's weakening keeping arm 2's `c.kind = 'c'`, and P6's cast comparison weakening to its presence at `Neg`.
 - A contradicted and a merged bundle reading nothing.
@@ -8661,7 +8663,7 @@ as they were.
   exactly where it matches by code point: a run's surrogate pair can only meet a pair. So Calcite's `LIKE`, the cells and
   the service's rows (`Service.AffixesMatchByCodePoint`, `Service.LikeMatchesByCodePoint`) share one matcher, and only a
   lone surrogate the service stores as U+FFFD can part them, from a pattern holding what it is stored as. There the
-  leaf answers either, over the surrogates S hands it unread (`storedas`, G1): a pattern holding only pairs meets only
+  leaf answers either, over the unpaired surrogates S hands it unread (`storedas`, G1): a pattern holding only pairs meets only
   pairs, and one holding a lone surrogate is never sent.
 - **A cell cut by what a pattern matches.** An affix is no interval of the code-unit order, so `CutPoints` hands its
   pattern as a cut of its own (`CutKind.Affix`), and `PathCell.Split` parts each interval of strings into those the
@@ -8934,8 +8936,8 @@ class, so every class test that asked before answers as before.
   function or an operand. The walk over a call's operands is its shape alone, an analysis of its terms. Which casts write
   a value as text, and of which kinds, are rows too (`castsToText`, the fix round of owed), where a C# test named
   `VARCHAR` and `CHAR` and the scalars. The service's stores are a
-  `Service` row's cells, `CosmosAxiom.StoredAs` (`surrogate` stored as `high` and as `replacement`, a lone surrogate
-  being stored as U+FFFD), read by `CosmosAxiomRows.ReadStored` alike from every target, since F has none, and handed
+  `Service` row's cells, `CosmosAxiom.StoredAs` (`unpaired` stored as `high` and as `replacement`, a lone surrogate
+  being stored as U+FFFD and a pair as written), read by `CosmosAxiomRows.ReadStored` alike from every target, since F has none, and handed
   by the schema's generations to each graph's root as `storedAs`; the stored rule takes what was written and every row
   it meets at once, so the intersection of `chars` never meets two rows apart. A reversal keeps a pair and a
   replacement matches by code point, which `StringCallsTests` holds to Calcite.
@@ -9039,67 +9041,101 @@ cased witnesses in each band.
 
 g1 moves into S every decision the audit's G1 named: the leaf's character exceptions, what may be sent, the spelling a
 set's statements are sent and the names its writer may write. Each is now rules over the foundation's cells (F1, F3) and
-three new rows; C# keeps the readers, the writer and the evaluators of one atom on concrete cells. Sixteen rules are
-added (S is 101, `RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`), and the digests are byte-equal.
+new rows; C# keeps the readers, the writer and the evaluators of one atom on concrete cells. g1 added sixteen rules and
+its fix round five, removing one and recasting two (S is 105, `RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`),
+and the digests are byte-equal.
 
-**Three rows the prose held.** `Service.EmulatorComparesTheSpellingItIsSent` gains `rewrites(storedcodepoint, nul)` and
+**Two rows the prose held, and the stored row keyed by the class it reads.**
+`Service.EmulatorComparesTheSpellingItIsSent` gains `rewrites(storedcodepoint, nul)` and
 `rewrites(storedcodepoint, escape)`, the two characters the emulator's spelling (`EmulatorStoredText`) rewrites, under
-the comparator and matcher that read it. `Service.StringOrderIsCodePoint` gains `collides(storedcodepoint, nul, high)`:
-a stored U+0000, U+FDD0 `0`, against a value holding the high band, as U+FDD0 is, which no bound of a range places.
+the comparator and matcher that read it.
 `Service.LoneSurrogateParameterIsNeverSent` gains `unsent(target, unpaired)` on each target it was measured on.
-`CosmosAxiomRows.ReadRewrites`, `ReadCollisions` and `ReadUnsent` read them, S's root assumes them, and each pinning test
-carries its row's id.
+`CosmosAxiomRows.ReadRewrites` and `ReadUnsent` read them, S's root assumes them, and each pinning test carries its
+row's id. `Service.LoneSurrogateIsStoredAsReplacement`'s `storedas` is keyed by `unpaired` (F1), not the surrogate band:
+an unpaired surrogate is stored as U+FFFD, a pair as written. F's written sets are closed over their refinements, so a
+set written with the surrogate band meets the row through `unpaired` and F's characters are what they were. g1 also read
+a `collides(storedcodepoint, nul, high)` row, a stored U+0000, U+FDD0 `0`, equal to a value holding the high band, which
+no measurement backed; the fix round removed it. A set sent the stored spelling sends its literals in it, and that
+spelling is one to one, so a stored string equals a literal exactly where it is that literal, which the leaf's
+comparator says of a point and `PathCell.Contains` of a range.
 
 **What each set is sent (`sets`, Settle's last stratum).** A comparator whose spelling rewrites a band is `rewriting`, a
-nullary union complete in `tabulate`. A set whose string order (`final(Order/String/None, s)`) holds a rewriting
-comparator is sent that spelling, `sends(s) = stored`, the bands it rewrites `respelled(s)`; one whose order meets none
-is sent as written. A set's parting bands are those its string comparators rank apart (`parts`), and the classes no
-parameter is sent holding on a target it serves are `unsendable` under it. The writer reads `sends` at the frozen root:
-`CosmosRendering.StoresSpelled` is the sets whose spelling is stored, read once off S built from the registry's
-definition (`RenderingTheory.SpellingOf`), where it read the order row's answer in C#. A set whose rows name no string
-order has no `sends` and is read as sent as written.
+nullary union complete in `tabulate`, and the bands each answer's spelling rewrites are `rewrittenby`, a union seeded
+empty for every answer there, so an answer no row names keeps every band. A set whose string order
+(`final(Order/String/None, s)`) holds a rewriting comparator is sent that spelling, `sends(s) = stored`, the bands it
+rewrites `respelled(s)`; one whose order meets none is sent as written. A set's parting bands are those its string
+comparators rank apart (`parts`), and the classes no parameter is sent holding on a target it serves are `unsendable`
+under it. The writer reads `sends` at the frozen root: `CosmosRendering.StoresSpelled` is the sets whose spelling is
+stored, read once off S built from the registry's definition (`RenderingTheory.SpellingOf`). A set whose rows name no
+string order has no `sends` and is read as sent as written.
 
 **What a leaf reads beside its table (`LeafReads`).** The evaluate rule hands the leaf eight sets S derived for it, each
-seeded empty where a partition needs the leaf and grown only by a `parted` rule, so a literal or band absent from one,
+seeded empty where a partition needs the leaf and grown only by a `parted` rule, so a literal or class absent from one,
 complete an earlier stratum, is read as not:
-- `parted`: the literals whose order against a range its bounds do not say. As before, a literal holding a band the
-  set's comparators rank apart, over a path that may hold the other; now also every string literal over a path that may
-  hold a band they move (`moves`, U+0000 under the emulator's order).
-- `unplaced`: the literals holding a band the comparators move, which lie anywhere.
-- `loose`: the literals a stored string may equal that a range does not hold (`collides`), over a path that may hold
-  U+0000, one holding the high band; such a literal is parted there too.
+- `parted`: the literals whose order against a range its bounds do not say. A literal holding a band the set's
+  comparators rank apart, over a path that may hold the other; every string literal over a path that may hold a band
+  they move (`moves`, U+0000 under the emulator's order); and a literal holding such a band over any path, no written
+  bound placing it even where the path holds none of the band (a range from U+0001 to U+FDD5 holds strings either side
+  of a U+0000 in the stored order). A point is the comparator's, which compares the literal in the spelling it is sent,
+  as measured (`TheEmulatorEscapesUFDD0Too`); g1 read such a literal as lying anywhere, a point too, wider than the row.
+- `unplaced`: the literals that lie anywhere: one holding a band the set respells, under a comparator of its order whose
+  spelling keeps the band (`rewrittenby`), as a set serving Azure beside the emulator sends the stored spelling to
+  Azure's comparator, which reads it as written.
+- `unkept`: the classes a point holding one says nothing of the stored string by, those a target the set serves stores
+  as another (`storedas`: under Azure, an unpaired surrogate as U+FFFD), where the comparison's path, or either place of
+  a pair, may hold one. The comparator compares the strings it is given as they are, a lone surrogate by its unit, and
+  such a point lies anywhere.
 - `departs` and `moved`: the pairs of bands a pair's two places may hold that the comparators rank apart, one a side,
   and the bands its places may hold that they move.
-- `unread`: the bands an affix reads no string over. One its test reads a string only up to, on a target the set serves,
-  its pattern of the row's shape (`truncates`, `AffixPattern.ShapeOf`); and one a target stores as what the pattern holds
-  (`storedas`: under Azure, a pattern holding the high band reads no surrogate).
-- `blind`: a band the pattern holds that its test reads a string only up to, so every cell is unread.
-- `uncut`: the bands a range's affix cut does not tell, those the matcher's spelling rewrites where that splits the
-  pattern (`spelling-splits`, `AffixPattern.StoredAlike`).
+- `unread`: the classes an affix reads no string over. A band its test reads a string only up to, on a target the set
+  serves, its pattern of the row's shape (`truncates`, `AffixPattern.ShapeOf`); and a class a target stores as what the
+  pattern holds (`storedas`: under Azure, a pattern holding the high band reads no string holding an unpaired surrogate).
+- `blind`: the bands a pattern holds that leave no cell's match said, so every cell is unread. One its test reads a
+  string only up to; and one the set's spelling and the test's matcher read apart, sent respelled to a matcher whose
+  spelling keeps it or as written to one that rewrites it.
+- `uncut`: the bands a range's affix cut does not tell, those the matcher's spelling rewrites where that spelling splits
+  the pattern (`spelling-splits`, the matcher's own evaluation of a concrete pattern, `ServiceLeaf.Splits`: the stored
+  spelling's `AffixPattern.StoredAlike` under the emulator's matcher, never under one that matches what it is sent).
 
 `ServiceLeaf` tests them on concrete cells and names no band, character or comparator: `Place`, `Sides` and `Matched`
-lost their arms for `StoredCodePoint`, U+0000, the high band and the surrogates. What a matcher matches of two concrete
-strings is `ServiceLeaf.Matches`, the stored spelling's evaluation beside `Compare`'s; which comparator a cell is
-evaluated under, a string's or a number's, is the evaluator's own dispatch, and which comparators an entry names is the
-answers' roles (F4). `RenderingLeafReadsTests` holds what S hands a comparison, an affix and a pair under each target's
-set, and which names each set may write.
+lost their arms for `StoredCodePoint`, U+0000, the high band and the surrogates, and `ByCodePoint` its reading of a lone
+surrogate as U+FFFD: it compares a lone surrogate by its unit and a pair as the code point it encodes, as the service
+orders what it holds. What a matcher matches of two concrete strings is `ServiceLeaf.Matches`, and whether its spelling
+splits a concrete pattern `ServiceLeaf.Splits`, the stored spelling's evaluations beside `Compare`'s; which comparator a
+cell is evaluated under, a string's or a number's, is the evaluator's own dispatch, and which comparators an entry names
+is the answers' roles (F4). `RenderingLeafReadsTests` holds what S hands a comparison, an affix and a pair under each
+target's set and the portable one, a planted matcher that rewrites under a set sent as written, and which names each set
+may write.
+
+**The spelling is a set's, the matcher a test's.** `sends` is derived per set from its string order, and an affix is
+matched by its own test's entry. Where the two agree, every registry set, the leaf evaluates the matcher on the spelling
+sent; where they part, S reads the parting as the rows say (`blind`, `unplaced` above), and no C# compares them.
 
 **Two readings moved with the rows.** The replaced rule reads `storedas`: under Azure a pattern holding the high band
-(U+FFFD within it) reads no string holding a surrogate, a point or a range, where it read a point that is not encodable
-and a range of the surrogate band beneath a pattern holding U+FFFD or a surrogate. It is wider for a point holding a
-pair beneath a high-band pattern, and narrower for a pattern holding only pairs, which meet only pairs (*Matched by code
-point, which is matched by unit*). Under the emulator no row stores a lone surrogate, which it refuses to write. And the
-cut is narrower: a range is uncut over U+0000 and U+FDD0 (`escape`, F1), where it was over U+0000 and the high band, so
-a range of the high band that holds no U+FDD0 is told by its cut. No plan moved.
+(U+FFFD within it) reads no string holding an unpaired surrogate, a point or a range, where it read a point that is not
+encodable and a range of the surrogate band beneath a pattern holding U+FFFD or a surrogate. A pattern holding only pairs
+meets only pairs, which are stored as written (*Matched by code point, which is matched by unit*). Under the emulator no
+row stores a lone surrogate, which it refuses to write. And the cut is narrower: a range is uncut over U+0000 and U+FDD0
+(`escape`, F1), where it was over U+0000 and the high band, so a range of the high band that holds no U+FDD0 is told by
+its cut. No plan moved.
 
 **The names the writer may write (`writable`).** The bundle reads each place's member names into `namechars` (a path's,
 the paths a computed place reads, a pair's two sides'), a reader's fact. *A place is writable under a set whose spelling
 rewrites no band its names hold* derives `writable`, and the `spell` proposer asks it, so S proposes no form over a name
-the stored spelling would rewrite. The printer's refusal of such a name stays, as the writer's legality.
+the stored spelling would rewrite. The printer writes a name as it is: its refusal named U+0000 and U+FDD0 itself,
+agreeing with `respelled` by convention alone, and no path reached it once `writable` gated the proposer.
 
-**The loader's literal filter is legality alone.** `CosmosFunctionSpellings.Spell` refused a place to a literal holding
-U+0000, U+FDD0 or any surrogate; it refuses only one holding an unpaired surrogate, which the SDK will not send
-(`unsent`). What any other literal makes is the function rows' (F2).
+**What a literal makes is the function rows'.** `CosmosFunctionSpellings.Spell` refuses only a literal holding an
+unpaired surrogate, which the SDK will not send (`unsent`), legality. A function's rows key a literal operand at its
+ordinal, and at `FunctionKey.Literal` as well wherever they name it: a concatenation's and a repetition's rows were
+measured over a stored operand beside a literal held fixed, `z` and a count of 2, so a literal is keyed apart from a
+stored operand there, each row of it measured as the runs sent it, and one of a band no run sent, or empty, has no row
+and is no image (`RenderingImage.Keys`, the image rule's subset test). `POSITION`'s pattern is keyed as the operand it
+is, measured as the literal `0` and `1`, so a path there pushes only where the declaration proves it present and every
+string it may be one of no band that holds something, as `REPLACE`'s search does. The column bridge reads the same
+keys, so a call S declines this way is computed in process (docs/, the functions chapter). The emulator's rows over a
+stored operand holding U+0000 or U+FDD0 stay parting, as they were while a literal shared their key; they measured the
+same as Calcite's, and reading them so would move the emulator's digests, a change for after h15 (`TODO.md`).
 
 **What stays C#, until its group moves it.** The translator bridge's copies of these decisions,
 `CosmosFunctionSpellings.Refusals`' case-mapped, searched and stored records, `LikeRefusal`, `IsContainment` and
@@ -9107,9 +9143,7 @@ U+0000, U+FDD0 or any surrogate; it refuses only one holding an unpaired surroga
 (f345), the stored escapes of `REPLACE`, `CONCAT` and `REPEAT` (fix6), and the containment and the stored prefix
 (`truncates`, `rewrites`, G1). Their stored branch reads `StoresSpelled` as S derives it. One is wider than S: it
 refuses a containment `LIKE` over a path that may hold U+0000 on the emulator too, which no row says, and reading the
-rows would push such a `LIKE` there and move the digests. `ServiceLeaf.ByCodePoint` still reads a lone surrogate as U+FFFD under Azure's
-comparator, a character fact the `storedas` row states at the surrogate band: refining the row to `unpaired` would change
-F, which reads the same cells, so it waits for F's group (`TODO.md`).
+rows would push such a `LIKE` there and move the digests.
 
 ## Differential testing
 

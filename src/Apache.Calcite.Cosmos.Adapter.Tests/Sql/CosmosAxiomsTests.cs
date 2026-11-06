@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
-                || a.Rewrites is not null || a.Collisions is not null || a.Unsent is not null))
+                || a.Rewrites is not null || a.Unsent is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -152,7 +152,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             rows.Should().HaveCount(outcomes.Sum(x => System.Numerics.BitOperations.PopCount((uint)x.o.On)));
             rows.Select(r => (r.Key, r.Target)).Should().OnlyHaveUniqueItems();
             rows.Should().Contain((FunctionKey.Of("POSITION", 1, Class.String, JsonCharacterBand.Surrogates), RenderingTarget.Emulator, CosmosFunctionAnswer.Differs));
-            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).Should().Contain(("POSITION", 1L)).And.Contain(("CONCAT", FunctionKey.Every)).And.OnlyHaveUniqueItems();
+            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).Should().Contain(("POSITION", 1L)).And.Contain(("POSITION", 0L)).And.Contain(("CONCAT", FunctionKey.Every))
+                .And.Contain(("CONCAT", FunctionKey.Literal)).And.Contain(("REPEAT", FunctionKey.Literal)).And.OnlyHaveUniqueItems();
 
             // A row's band and class of value are read into its key (F1, F2).
             var banded = CosmosAxioms.All.First(a => a.Outcomes is not null) with
@@ -181,14 +182,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// The classes a written string is stored holding are a <c>Service</c> row's cells, which name no target, since the
-        /// rules of JSON have none: a lone surrogate written, the high band and U+FFFD within it.
+        /// rules of JSON have none: an unpaired surrogate written, the high band and U+FFFD within it; a pair is stored as
+        /// written.
         /// </summary>
         [Fact]
         public void TheStoredClassesAreReadOffTheirRow()
         {
             CosmosAxiomRows.ReadStored(CosmosAxioms.All).Should().BeEquivalentTo(new[]
             {
-                new JsonClassMap(JsonValues.SurrogateBand, JsonValues.HighBand), new JsonClassMap(JsonValues.SurrogateBand, JsonValues.ReplacementClass),
+                new JsonClassMap(JsonValues.UnpairedClass, JsonValues.HighBand), new JsonClassMap(JsonValues.UnpairedClass, JsonValues.ReplacementClass),
             });
             global::Apache.Calcite.Cosmos.Adapter.Metadata.CosmosReasoning.Stored.Should().Equal(CosmosAxiomRows.ReadStored(CosmosAxioms.All));
         }
@@ -199,9 +201,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// it so, what Azure's <c>CONTAINS</c> and a <c>LIKE</c> of one run read a string to, the mirror law, the boxes and
         /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
         /// classes its witnesses held, the casts each citing its row, the text reader's order, and the classes each type
-        /// test is true of in process; and G1's, the two characters the emulator's spelling rewrites, the stored U+0000 a
-        /// value holding the high band may equal there, and the unpaired surrogate no parameter is sent holding on either
-        /// target.
+        /// test is true of in process; and G1's, the two characters the emulator's spelling rewrites and the unpaired
+        /// surrogate no parameter is sent holding on either target.
         /// </summary>
         [Fact]
         public void TheFoundationsRowsReadBackAsWritten()
@@ -215,14 +216,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadMoves(all).Should().Equal((CosmosAnswer.StoredCodePoint, JsonValues.NulClass));
             CosmosAxiomRows.ReadStoredOn(all).Should().BeEquivalentTo(new[]
             {
-                (RenderingTarget.Azure, JsonValues.SurrogateBand, JsonValues.HighBand), (RenderingTarget.Azure, JsonValues.SurrogateBand, JsonValues.ReplacementClass),
+                (RenderingTarget.Azure, JsonValues.UnpairedClass, JsonValues.HighBand), (RenderingTarget.Azure, JsonValues.UnpairedClass, JsonValues.ReplacementClass),
             });
             CosmosAxiomRows.ReadTruncations(all).Should().BeEquivalentTo(new[]
             {
                 (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
             });
             CosmosAxiomRows.ReadRewrites(all).Should().BeEquivalentTo(new[] { (CosmosAnswer.StoredCodePoint, JsonValues.NulClass), (CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass) });
-            CosmosAxiomRows.ReadCollisions(all).Should().Equal((CosmosAnswer.StoredCodePoint, JsonValues.NulClass, JsonValues.HighBand));
             CosmosAxiomRows.ReadUnsent(all).Should().BeEquivalentTo(new[] { (RenderingTarget.Azure, JsonValues.UnpairedClass), (RenderingTarget.Emulator, JsonValues.UnpairedClass) });
 
             var mirror = CosmosAxiomRows.ReadPairReadings(all);

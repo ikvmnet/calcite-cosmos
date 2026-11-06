@@ -208,11 +208,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The emulator stores a member's name escaped as it stores a value, so where the target stores spelled a path
-        /// naming U+0000 or U+FDD0 is refused, and printed as it is elsewhere.
+        /// A member's name is written as it is, whatever spelling the statement's literals are sent in: whether a place may be
+        /// written is S's (<c>RenderingTheory.Writable</c>), which proposes no form over a name holding U+0000 or U+FDD0 where
+        /// the set respells them (<see cref="RenderingLeafReadsTests.APlaceIsWritableWhereItsSetsSpellingRewritesNoCharacterItsNamesHold"/>).
         /// </summary>
         [Fact]
-        public void APathNamingAnEscapeIsRefusedWhereTheTargetStoresSpelled()
+        public void APathIsWrittenAsItIsUnderEitherSpelling()
         {
             foreach (var name in new[] { "m\0", "m﷐" })
             {
@@ -220,8 +221,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var paths = new Dictionary<string, JsonDocumentPath> { [SqlValue.Spell(path)] = path };
                 var form = ServiceForm.CompareOf(CosmosServiceTest.Equal, SqlValue.Spell(path), JsonValues.Of("v"));
 
-                FluentActions.Invoking(() => RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList(), stored: true)).Should().Throw<CosmosTranslationException>(name);
-                RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList()).Should().Contain(Alias + "[");
+                RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList(), stored: true)
+                    .Should().Be(RenderingPrinter.Print(form, paths, Alias, new CosmosParameterList()), name).And.Contain(Alias + "[");
             }
         }
 

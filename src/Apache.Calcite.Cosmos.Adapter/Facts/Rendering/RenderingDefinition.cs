@@ -91,12 +91,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(CosmosAnswer Comparator, string Band)> Rewrites { get; init; } = [];
 
         /// <summary>
-        /// Which band a stored string may hold that equals a sent value holding another, under a comparator
-        /// (<c>CosmosAxiomRows.ReadCollisions</c>, G1).
-        /// </summary>
-        public IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> Collisions { get; init; } = [];
-
-        /// <summary>
         /// The classes a parameter holding a character of is never sent on a target (<c>CosmosAxiomRows.ReadUnsent</c>, G1): what
         /// S's lifts read of each form's literals under a set serving it.
         /// </summary>

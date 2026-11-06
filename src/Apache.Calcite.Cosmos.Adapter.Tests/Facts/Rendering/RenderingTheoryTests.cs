@@ -151,14 +151,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a string literal parts the orders over a path whose strings may hold the other band",
                     "two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range",
                     "a band the set's string comparator moves parts every string literal over a path whose strings may hold it",
-                    "a string literal holding a band the set's string comparator moves lies anywhere",
-                    "a string literal a stored string may equal is loose and parted over a path whose strings may hold that string's band",
+                    "a string literal holding a band the set's string comparator moves is parted over the path it is compared with",
+                    "a string literal holding a band its set respells lies anywhere under a comparator of its string order whose spelling keeps the band",
+                    "a string comparison's points are unkept over a class a target the set serves stores as another, where its path's strings may hold it",
                     "a pair departs where its places may hold two bands the set's string comparator ranks apart",
                     "a pair whose places may hold a band the set's string comparator moves lies anywhere where a side holds it",
+                    "a pair's points are unkept over a class a target the set serves stores as another, where its places may hold it",
                     "an affix is unread over a band its test reads a string only up to on a target the set serves, its pattern of the row's shape",
                     "an affix whose pattern holds a band its test reads a string only up to reads no string",
                     "an affix whose pattern holds what a target the set serves stores a band as is unread over that band",
-                    "an affix whose pattern the stored spelling splits is uncut over a band its matcher's spelling rewrites",
+                    "an affix whose pattern its matcher's spelling splits is uncut over a band that spelling rewrites",
+                    "an affix whose pattern holds a band its set respells reads no string under a matcher of its test whose spelling keeps the band",
+                    "an affix whose pattern holds a band its matcher's spelling rewrites reads no string under a set that does not respell it",
                 ],
                 ["evaluate"] =
                 [
@@ -250,7 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(101);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(105);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
@@ -347,15 +351,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Each row the foundation reads in (F3, and G1's of what a spelling rewrites, what a stored string collides with and
-        /// what is never sent) is a fact of S as the measured definition carries it, and the definition carries some of each:
+        /// Each row the foundation reads in (F3, and G1's of what a spelling rewrites and what is never sent) is a fact of S as
+        /// the measured definition carries it, and the definition carries some of each:
         /// what the groups that read them start from. A function's value is the union of its rows.
         /// </summary>
         [Fact]
         public void TheFoundationsRowsAreFactsOfS()
         {
             var (d, s) = (Measured, ProbeTheory);
-            new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Collisions.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
+            new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
                 d.SeesThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count }
                 .Should().OnlyContain(n => n > 0);
 
@@ -364,7 +368,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.StoredAs.Should().OnlyContain(r => s.Theory.Check(s.StoredAs.Of(r.Target, r.Written, r.Stored)));
             d.Truncations.Should().OnlyContain(r => s.Theory.Check(s.Truncates.Of(r.Target, r.Test, r.Shape, r.Band)));
             d.Rewrites.Should().OnlyContain(r => s.Theory.Check(s.Rewrites.Of(r.Comparator, r.Band)));
-            d.Collisions.Should().OnlyContain(r => s.Theory.Check(s.Collides.Of(r.Comparator, r.Band, r.Other)));
             d.Unsent.Should().OnlyContain(r => s.Theory.Check(s.Unsent.Of(r.Target, r.Class)));
             d.PairReadings.Should().OnlyContain(r => s.Theory.Check(s.PairReads.Of(r.Test, r.Swapped, r.Reads)));
             d.Boxes.Should().OnlyContain(r => s.Theory.Check(s.BoxOf.Of(r.Kind, r.Box)));

@@ -327,7 +327,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static string? Spell(SqlValue.Call call, Func<SqlValue, string?> spell)
         {
             // A literal the SDK refuses to send, one holding an unpaired surrogate, is never bound (Service.LoneSurrogateParameterIsNeverSent):
-            // legality. What any other literal makes, U+0000 and U+FDD0 among them, is the function rows' (F2, G1).
+            // legality. What any other literal makes, U+0000, U+FDD0 and a pair among them, is the function rows' (F2, G1),
+            // which key a literal at its ordinal and, where they were measured over a stored operand beside a fixed one, at
+            // FunctionKey.Literal apart, so that one of a band no run sent as a literal has no row there.
             if (call.Operands.Any(o => o is SqlValue.Literal l && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsString(l.Value)
                 && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsEncodable(Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.StringOf(l.Value)) == false))
                 return null;

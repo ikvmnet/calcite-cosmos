@@ -44,7 +44,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             StoredAs = Measured.StoredAs,
             Truncations = Measured.Truncations,
             Rewrites = Measured.Rewrites,
-            Collisions = Measured.Collisions,
             Unsent = Measured.Unsent,
         };
 

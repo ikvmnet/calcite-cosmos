@@ -562,7 +562,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// and defined up to them: <c>ab</c> 5,000 times is, 5,001 times is not, and a, U+1F600, b 3,333 times, 13,332
         /// UTF-16 units, is. The emulator has no such limit, and there the test skips.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.ReplicateStopsAtTenThousandCodePoints")]
         public async Task ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints()
         {
             var strings = Strings_();
@@ -939,7 +939,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>CONCAT</c>'s, so that run 1's lines of it judge them on Azure too; and the spellings after the trims, a search,
         /// a replacement, a window's length and the literals the emulator stores escaped, each keyed as it is, which the
         /// probe account has not run and so claim nothing on Azure
-        /// (<c>CosmosAxiomsTests.EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures</c>).
+        /// (<c>CosmosAxiomsTests.EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures</c>). Keyed the same day: a
+        /// concatenation's and a repetition's literal apart from a stored operand (<see cref="FunctionKey.Literal"/>), and
+        /// <c>POSITION</c>'s needle, each as the spellings run 1 holds send it, so that its lines judge them on Azure.
         /// </remarks>
         internal static readonly CosmosFunctionSpelling[] Functions =
         [
@@ -952,14 +954,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             new("LOWER", 0, "LOWER(s)", "LOWER(s)"),
             new("REPLACE", 0, "REPLACE(s, '0', 'x')", "REPLACE(s, \"0\", \"x\")", Fixed: [Search, Replacement]),
             new("REPLACE", 0, "REPLACE(s, '1', 'x')", "REPLACE(s, \"1\", \"x\")", Fixed: [Search, Replacement]),
-            new("POSITION", 1, "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1"),
-            new("POSITION", 1, "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1"),
+            new("POSITION", 1, "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1", Fixed: [Needle]),
+            new("POSITION", 1, "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1", Fixed: [Needle]),
             new("REVERSE", 0, "REVERSE(s)", "REVERSE(s)"),
-            new("||", FunctionKey.Every, "s || 'z'", "CONCAT(s, \"z\")"),
-            new("CONCAT", FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")"),
-            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "postgresql"),
-            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "oracle"),
-            new("REPEAT", 0, "REPEAT(s, 2)", "REPLICATE(s, 2)"),
+            new("||", FunctionKey.Every, "s || 'z'", "CONCAT(s, \"z\")", Fixed: [Joined("||", JsonCharacterBand.None)]),
+            new("CONCAT", FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", Fixed: [Joined("CONCAT", JsonCharacterBand.None)]),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.None)]),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.None)]),
+            new("REPEAT", 0, "REPEAT(s, 2)", "REPLICATE(s, 2)", Fixed: [Key("REPEAT", FunctionKey.Literal, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.AtLeastOne)]),
             new("TRIM BOTH", 1, "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
             new("TRIM LEADING", 1, "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
             new("TRIM TRAILING", 1, "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
@@ -978,7 +980,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             new("CONCAT", null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", Fixed: [Joined("CONCAT", JsonCharacterBand.HighBmp)]),
             new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
             new(StringCalls.NullAsEmpty, null, "CONCAT(CONCAT(s, U&'\\FDD0'), '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
-            new("REPEAT", null, "REPEAT(U&'\\0000', 2)", "REPLICATE(\"\\u0000\", 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.Nul, FunctionValueClass.NonEmpty)]),
+            new("REPEAT", null, "REPEAT(U&'\\0000', 2)", "REPLICATE(\"\\u0000\", 2)", Fixed: [Key("REPEAT", FunctionKey.Literal, CosmosValueClass.String, JsonCharacterBand.Nul, FunctionValueClass.NonEmpty)]),
             new("REPEAT", null, "REPEAT(U&'\\FDD0' || '0', 2)", "REPLICATE(CONCAT(\"\\uFDD0\", \"0\"), 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp, FunctionValueClass.NonEmpty)]),
         ];
 
@@ -989,8 +991,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static FunctionKey Replacement => Search with { Ordinal = 2 };
 
-        /// <summary>A concatenation's literal of one band, keyed as every operand is.</summary>
-        static FunctionKey Joined(string function, JsonCharacterBand band) => Key(function, FunctionKey.Every, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
+        /// <summary>A concatenation's literal of one band, keyed apart from a stored operand (<see cref="FunctionKey.Literal"/>).</summary>
+        static FunctionKey Joined(string function, JsonCharacterBand band) => Key(function, FunctionKey.Literal, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
+
+        /// <summary>The needle <c>POSITION</c>'s spellings hold, a <c>0</c> or a <c>1</c>: a string of no band, not empty.</summary>
+        static FunctionKey Needle => Key("POSITION", 0, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty);
 
         /// <summary>
         /// The witnesses of each key: three strings of each band, holding that band's characters and ASCII alone, at either

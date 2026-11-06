@@ -209,7 +209,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// <c>c.name = U&amp;'\D800'</c>: a literal the SDK refuses to send on either target is never a best, at either
-        /// position, nor implied, though the gate agrees with forms holding it; the weakening is presence alone. Beside
+        /// position, nor implied, though the gate agrees with forms holding it, by implication alone: Azure stores the
+        /// character as U+FFFD, so a point holding it is unkept and no form is equal there; the weakening is presence alone. Beside
         /// <c>&lt;&gt;</c> the restricted form is exact and refused, so the root is Unproven, and says which form the gate
         /// refuted.
         /// </summary>
@@ -224,7 +225,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 generated.Implied(atom, pos).Should().NotContain(f => f.Literals.Contains(Of("\uD800")), pos.ToString());
             }
 
-            generated.Agreed.Should().Contain(a => a.Claim == Verdict.Equal && a.Form.Literals.Contains(Of("\uD800")), "the gate agrees with forms holding it");
+            generated.Agreed.Should().Contain(a => a.Form.Literals.Contains(Of("\uD800")), "the gate agrees with forms holding it")
+                .And.NotContain(a => a.Claim == Verdict.Equal && a.Form.Literals.Contains(Of("\uD800")), "a point holding it is unkept");
             (generated.Answers[2].Kind, generated.Answers[2].Reason).Should().Be((RenderingVerdictKind.Unproven,
                 "refuted: " + Compare(Op.NotEqual, Name, Of("\uD800")) + " at " + Name + "=" + ArrayType));
             generated.Answers[0].Weakening.Should().Be(Is(Op.IsDefined, Name));

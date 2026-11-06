@@ -35,7 +35,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             StoredAs = CosmosAxiomRows.ReadStoredOn(CosmosAxioms.All),
             Truncations = CosmosAxiomRows.ReadTruncations(CosmosAxioms.All),
             Rewrites = CosmosAxiomRows.ReadRewrites(CosmosAxioms.All),
-            Collisions = CosmosAxiomRows.ReadCollisions(CosmosAxioms.All),
             Unsent = CosmosAxiomRows.ReadUnsent(CosmosAxioms.All),
             PairReadings = CosmosAxiomRows.ReadPairReadings(CosmosAxioms.All),
             Boxes = CosmosAxiomRows.ReadBoxes(CosmosAxioms.All),

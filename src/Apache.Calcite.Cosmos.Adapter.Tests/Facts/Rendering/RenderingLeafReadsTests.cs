@@ -34,13 +34,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Every class but U+0000's.</summary>
         static readonly ValueSet<string> WithoutNul = ValueSet.From(AllBands.Where(c => c != NulClass));
 
+        /// <summary>Every class but the unpaired surrogate's: a string of pairs alone, where it holds the surrogate band.</summary>
+        static readonly ValueSet<string> WithoutUnpaired = ValueSet.From(AllBands.Where(c => c != UnpairedClass));
+
         /// <summary>
         /// What S hands a leaf claimed for a conjunct under a set, every place the conjunct reads imported as strings of these
-        /// classes: the check needs the leaf and derives its reads, the literals parted over any place among them.
+        /// classes: the check needs the leaf and derives its reads, the literals parted over any place among them. S is the
+        /// registry's unless a test plants rows of its own.
         /// </summary>
-        static LeafReads Reads(SqlPredicate conjunct, ServiceForm leaf, RenderingSet set, ValueSet<string> classes)
+        static LeafReads Reads(SqlPredicate conjunct, ServiceForm leaf, RenderingSet set, ValueSet<string> classes, RenderingTheory? theory = null)
         {
-            using var bundle = ProbeTheory.Open(set);
+            var s = theory ?? ProbeTheory;
+            using var bundle = s.Open(set);
             var root = bundle.Write(conjunct);
             foreach (var path in conjunct.Places)
                 bundle.Import(Source, path, Strings, classes);
@@ -54,51 +59,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 return read!;
             }
 
-            var parted = bundle.Scope.Rows(ProbeTheory.PartedLiterals).Aggregate(ValueSet<string>.Empty, (all, row) => all.Union((ValueSet<string>)row.Output!));
-            return LeafReads.Of(LeafReads.Places(parted, Read(ProbeTheory.UnplacedLiterals.Of(leaf)), Read(ProbeTheory.LooseLiterals.Of(leaf))),
-                LeafReads.Matches(Read(ProbeTheory.Unread.Of(leaf)), Read(ProbeTheory.Uncut.Of(leaf)), Read(ProbeTheory.Blind.Of(leaf))),
-                LeafReads.Pairs(Read(ProbeTheory.Departs.Of(leaf)), Read(ProbeTheory.Moved.Of(leaf))));
+            var parted = bundle.Scope.Rows(s.PartedLiterals).Aggregate(ValueSet<string>.Empty, (all, row) => all.Union((ValueSet<string>)row.Output!));
+            return LeafReads.Of(LeafReads.Places(parted, Read(s.UnplacedLiterals.Of(leaf)), Read(s.Unkept.Of(leaf))),
+                LeafReads.Matches(Read(s.Unread.Of(leaf)), Read(s.Uncut.Of(leaf)), Read(s.Blind.Of(leaf))),
+                LeafReads.Pairs(Read(s.Departs.Of(leaf)), Read(s.Moved.Of(leaf))));
         }
 
         /// <summary>
         /// A comparison with a literal. The emulator orders what it stores, which moves U+0000
         /// (<c>Service.StringOrderIsCodePoint</c>'s <c>moves</c>): over strings that may hold U+0000 every literal is parted,
-        /// one holding U+0000 lies anywhere, and one holding the high band is loose, a stored U+0000 being U+FDD0 and 0 (its
-        /// <c>collides</c>). Either code point order ranks a surrogate pair against the high band the other way from UTF-16's
+        /// and one holding U+0000 over any strings, no written bound saying where the stored order puts it, a point placed by
+        /// the comparator; a literal holding U+FDD0 is sent to it in the spelling it compares, so that one is placed. Either code point order ranks a surrogate pair against the high band the other way from UTF-16's
         /// (its <c>parts</c>), so a literal of the high band is parted over strings that may hold a pair, on Azure too, whose
-        /// order moves nothing.
+        /// order moves nothing. Azure stores an unpaired surrogate as U+FFFD (<c>Service.LoneSurrogateIsStoredAsReplacement</c>'s
+        /// <c>storedas</c>), so under a set serving it a point holding one says nothing of the stored string, wherever the
+        /// path's strings may hold one, and a string of pairs alone is kept. A set serving both sends the emulator's spelling,
+        /// which Azure's comparator reads as written, so there a literal holding U+FDD0 lies anywhere
+        /// (<c>Service.EmulatorComparesTheSpellingItIsSent</c>'s <c>rewrites</c>).
         /// </summary>
         [Fact]
-        public void AComparisonReadsWhatItsSetsStringOrderMovesAndParts()
+        public void AComparisonReadsWhatItsSetsStringOrderMovesPartsAndStores()
         {
             LeafReads Compared(string literal, RenderingSet set, ValueSet<string> classes) =>
                 Reads(Cmp(Text(LabelPath), PredicateAtom.Less, Lit(literal)), ServiceForm.CompareOf(CosmosServiceTest.Less, Label, Of(literal)), set, classes);
 
-            LeafReads Placed(string literal, bool parted = false, bool unplaced = false, bool loose = false)
+            LeafReads Placed(string literal, bool parted = false, bool unplaced = false, bool unkept = false)
             {
                 ValueSet<string> If(bool holds) => holds ? ValueSet.Of(Of(literal)) : ValueSet<string>.Empty;
-                return LeafReads.Places(If(parted), If(unplaced), If(loose));
+                return LeafReads.Places(If(parted), If(unplaced), unkept ? ValueSet.Of(UnpairedClass) : ValueSet<string>.Empty);
             }
 
             Compared("b", RenderingSet.Emulator, AllBands).Should().Be(Placed("b", parted: true));
-            Compared("a\0", RenderingSet.Emulator, AllBands).Should().Be(Placed("a\0", parted: true, unplaced: true));
-            Compared("", RenderingSet.Emulator, AllBands).Should().Be(Placed("", parted: true, loose: true));
+            Compared("a\0", RenderingSet.Emulator, AllBands).Should().Be(Placed("a\0", parted: true));
+            Compared("a\0", RenderingSet.Emulator, WithoutNul).Should().Be(Placed("a\0", parted: true));
+            Compared("\ue000", RenderingSet.Emulator, AllBands).Should().Be(Placed("\ue000", parted: true));
+            Compared("a\ufdd0", RenderingSet.Emulator, AllBands).Should().Be(Placed("a\ufdd0", parted: true));
             Compared("b", RenderingSet.Emulator, WithoutNul).Should().Be(Placed("b"));
-            Compared("", RenderingSet.Emulator, WithoutNul).Should().Be(Placed("", parted: true));
+            Compared("\ue000", RenderingSet.Emulator, WithoutNul).Should().Be(Placed("\ue000", parted: true));
 
-            Compared("b", RenderingSet.Production, AllBands).Should().Be(Placed("b"));
-            Compared("a\0", RenderingSet.Production, AllBands).Should().Be(Placed("a\0"));
-            Compared("", RenderingSet.Production, AllBands).Should().Be(Placed("", parted: true));
+            Compared("b", RenderingSet.Production, AllBands).Should().Be(Placed("b", unkept: true));
+            Compared("a\0", RenderingSet.Production, AllBands).Should().Be(Placed("a\0", unkept: true));
+            Compared("\ue000", RenderingSet.Production, AllBands).Should().Be(Placed("\ue000", parted: true, unkept: true));
+            Compared("a\ufdd0", RenderingSet.Production, AllBands).Should().Be(Placed("a\ufdd0", parted: true, unkept: true));
+            Compared("b", RenderingSet.Production, WithoutUnpaired).Should().Be(Placed("b"));
+
+            Compared("b", RenderingSet.Portable, AllBands).Should().Be(Placed("b", parted: true, unkept: true));
+            Compared("a\ufdd0", RenderingSet.Portable, AllBands).Should().Be(Placed("a\ufdd0", parted: true, unplaced: true, unkept: true));
+            Compared("a\ufdd0", RenderingSet.Portable, WithoutUnpaired).Should().Be(Placed("a\ufdd0", parted: true, unplaced: true));
         }
 
         /// <summary>
         /// An affix. Azure's <c>CONTAINS</c>, and the <c>LIKE</c> of one run it answers as one, read a string only up to its
         /// first U+0000, and a pattern holding one reads none (<c>Service.NulEndsWhatReplaceAndContainsRead</c>'s
-        /// <c>truncates</c>); a pattern holding what Azure stores a lone surrogate as matches a string that held one
+        /// <c>truncates</c>); a pattern holding what Azure stores an unpaired surrogate as matches a string that held one
         /// (<c>Service.LoneSurrogateIsStoredAsReplacement</c>'s <c>storedas</c>). The emulator matches what it stores against
         /// what it is sent, so a pattern its stored spelling splits leaves a range's cut untold over the characters that
         /// spelling rewrites (<c>Service.EmulatorComparesTheSpellingItIsSent</c>'s <c>rewrites</c>), and one it does not split,
-        /// a <c>0</c> its first run begins with among them, leaves it told.
+        /// a <c>0</c> its first run begins with among them, leaves it told. A set serving both sends the emulator's spelling to
+        /// Azure's matcher as well, which reads it as written, so a pattern holding a character that spelling rewrites matches
+        /// no string there; one holding U+FDD0 holds the high band Azure stores an unpaired surrogate in, as U+FFFD.
         /// </summary>
         [Fact]
         public void AnAffixReadsWhatItsTestTruncatesAndItsMatcherRewrites()
@@ -115,29 +134,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Matched(CosmosServiceTest.Like, "%a%", RenderingSet.Production).Should().Be(LeafReads.Matches(nul, none, none));
             Matched(CosmosServiceTest.Like, "a%b", RenderingSet.Production).Should().Be(LeafReads.None);
             Matched(CosmosServiceTest.StartsWith, "a", RenderingSet.Production).Should().Be(LeafReads.None);
-            Matched(CosmosServiceTest.EndsWith, "�", RenderingSet.Production).Should().Be(LeafReads.Matches(ValueSet.Of(SurrogateBand), none, none));
+            Matched(CosmosServiceTest.EndsWith, "\ufffd", RenderingSet.Production).Should().Be(LeafReads.Matches(ValueSet.Of(UnpairedClass), none, none));
 
             var rewritten = ValueSet.Of(NulClass, EscapeClass);
             Matched(CosmosServiceTest.EndsWith, "\0", RenderingSet.Emulator).Should().Be(LeafReads.Matches(none, rewritten, none));
             Matched(CosmosServiceTest.EndsWith, "0", RenderingSet.Emulator).Should().Be(LeafReads.Matches(none, rewritten, none));
             Matched(CosmosServiceTest.StartsWith, "0", RenderingSet.Emulator).Should().Be(LeafReads.None);
             Matched(CosmosServiceTest.Contains, "a", RenderingSet.Emulator).Should().Be(LeafReads.None);
-            Matched(CosmosServiceTest.EndsWith, "�", RenderingSet.Emulator).Should().Be(LeafReads.None);
+            Matched(CosmosServiceTest.EndsWith, "\ufffd", RenderingSet.Emulator).Should().Be(LeafReads.None);
+
+            Matched(CosmosServiceTest.EndsWith, "a\0", RenderingSet.Portable).Should().Be(LeafReads.Matches(none, rewritten, nul));
+            Matched(CosmosServiceTest.EndsWith, "a\ufdd0", RenderingSet.Portable).Should().Be(LeafReads.Matches(ValueSet.Of(UnpairedClass), rewritten, ValueSet.Of(EscapeClass)));
+            Matched(CosmosServiceTest.EndsWith, "a", RenderingSet.Portable).Should().Be(LeafReads.None);
+        }
+
+        /// <summary>
+        /// A matcher whose spelling rewrites a band, under a set sent the spelling it compares as written: planted, an Azure
+        /// that matched what the emulator stores, a pattern holding U+0000 arrives as written and matches no string, and its
+        /// cut of a range is untold; one holding neither is read as before. No registry set has such a matcher.
+        /// </summary>
+        [Fact]
+        public void AMatcherThatRewritesABandItsSetSendsAsWrittenReadsNoStringOverIt()
+        {
+            var key = MeasuredKey.Of(CosmosServiceTest.EndsWith, CosmosValueClass.String, CosmosValueClass.None);
+            ProbeRows.Rows.Should().Contain(r => r.Key == key && r.Target == RenderingTarget.Azure && r.Answer == CosmosAnswer.CodePoint);
+            var planted = RenderingTheory.Define(ProbeRows.Planted([.. ProbeRows.Rows.Select(r => r.Key == key && r.Target == RenderingTarget.Azure ? r with { Answer = CosmosAnswer.StoredCodePoint } : r)]));
+
+            LeafReads Matched(string argument)
+            {
+                var leaf = ServiceForm.AffixOf(CosmosServiceTest.EndsWith, Label, argument);
+                return Reads(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), leaf.Pattern!), leaf, RenderingSet.Production, AllBands, planted);
+            }
+
+            var (none, nul) = (ValueSet<string>.Empty, ValueSet.Of(NulClass));
+            Matched("a\0").Should().Be(LeafReads.Matches(none, ValueSet.Of(NulClass, EscapeClass), nul));
+            Matched("a").Should().Be(LeafReads.None);
         }
 
         /// <summary>
         /// A comparison of two paths: its places' characters meet the bands the set's string comparator ranks apart from
         /// UTF-16's order one a side (<c>parts</c>, on both targets), and the band the emulator's moves where either may hold
-        /// it (<c>moves</c>).
+        /// it (<c>moves</c>); and under a set serving Azure, which stores an unpaired surrogate as U+FFFD, a point holding one
+        /// says nothing of the stored strings where either place may hold it (<c>storedas</c>).
         /// </summary>
         [Fact]
-        public void APairReadsTheBandsItsSetsStringOrderPartsAndMoves()
+        public void APairReadsTheBandsItsSetsStringOrderPartsMovesAndStores()
         {
             var pair = Cmp(Text(NamePath), PredicateAtom.Less, Text(OtherPath));
             var leaf = ServiceForm.ComparePathsOf(CosmosServiceTest.Less, SqlValue.Spell(NamePath), SqlValue.Spell(OtherPath));
             var apart = ValueSet.Of((SurrogateBand, HighBand), (HighBand, SurrogateBand));
 
-            Reads(pair, leaf, RenderingSet.Production, AllBands).Should().Be(LeafReads.Pairs(apart, ValueSet<string>.Empty));
+            Reads(pair, leaf, RenderingSet.Production, AllBands).Should().Be(LeafReads.Pairs(apart, ValueSet<string>.Empty) with { Unkept = ValueSet.Of(UnpairedClass) });
+            Reads(pair, leaf, RenderingSet.Production, WithoutUnpaired).Should().Be(LeafReads.Pairs(apart, ValueSet<string>.Empty));
             Reads(pair, leaf, RenderingSet.Emulator, AllBands).Should().Be(LeafReads.Pairs(apart, ValueSet.Of(NulClass)));
             Reads(pair, leaf, RenderingSet.Emulator, WithoutNul).Should().Be(LeafReads.Pairs(apart, ValueSet<string>.Empty));
             Reads(pair, leaf, RenderingSet.Emulator, NoBand).Should().Be(LeafReads.None);

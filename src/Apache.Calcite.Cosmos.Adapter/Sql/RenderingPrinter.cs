@@ -33,8 +33,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="stored">Whether S derived that the statement's set is sent the spelling its target stores
         /// (<see cref="Metadata.CosmosRendering.StoresSpelled(RenderingSet)"/>, <c>RenderingTheory.Sends</c>): then each
         /// literal, every one a compared value, is bound in that spelling, the writer's (<see cref="EmulatorStoredText.Of"/>),
-        /// which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>); and a path naming a member holding a character
-        /// it rewrites, which S proposes no form over (<c>RenderingTheory.Writable</c>), is one the writer cannot write.</param>
+        /// which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>). A member's name is written as it is: whether a
+        /// place may be written is S's, which proposes no form over one naming a band the set respells
+        /// (<c>RenderingTheory.Writable</c>).</param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
         public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false,
@@ -61,10 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     if (segment is not string name)
                         builder.Append('[').Append(((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
                     else
-                        // A name is stored spelled too, so written as it is it reads nothing there: legality, S never proposing one.
-                        CosmosSql.WritePropertyAccess(builder, stored && EmulatorStoredText.Escapes(name)
-                            ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
-                            : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                        CosmosSql.WritePropertyAccess(builder, RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
             }
 
             string? Place(SqlValue.Call call) => CosmosFunctionSpellings.Spell(call, operand =>

@@ -76,10 +76,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadRewrites(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from rewrite in axiom.Rewrites ?? [] select (rewrite.Comparator, rewrite.Band)).Distinct()];
 
-        /// <summary>One row per band a stored string may hold that equals a sent value of another (G1), S's <c>collides</c>. It merges nothing.</summary>
-        public static IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> ReadCollisions(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from collision in axiom.Collisions ?? [] select (collision.Comparator, collision.Band, collision.Other)).Distinct()];
-
         /// <summary>
         /// One row per class a parameter holding a character of is never sent, on each target the row was measured on (G1),
         /// S's <c>unsent</c>. It merges nothing.

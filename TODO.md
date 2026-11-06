@@ -3078,10 +3078,16 @@ across documents* and *A join of a container to itself* is the record.
   until run 2 runs `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims on the probe account and
   `CosmosAxioms` records what it answers; among them a replacement holding U+0000, which
   `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
-  (`CosmosRexTranslatorTests.Functions` holds both). Those spellings hold the literals the emulator stores escaped too:
-  on Azure a literal U+0000 or U+FDD0 in `CONCAT`, `||` or `REPEAT` is keyed with a stored one, which run 1's stored
-  witnesses alone measured; it matters now that `Spell`'s literal refusal is gone (G1): such a literal is a place,
-  which the emulator's rows decline and Azure's key with a stored one.
+  (`CosmosRexTranslatorTests.Functions` holds both). Since g1's fix round a concatenation's and a repetition's literal
+  is keyed apart from a stored operand (`FunctionKey.Literal`), and `POSITION`'s pattern as the operand it is, each
+  with rows only as the runs sent it: on both targets a string of no band and not empty (`z`, `0`, `1`) and a count of
+  2, on Azure a count of 0 (`Service.ReplicateStopsAtTenThousandCodePoints`), and on the emulator the literals it
+  stores escaped. So on both targets a concatenation whose literal is empty or holds any band, a `REPEAT` of a literal
+  subject and a `POSITION` whose pattern is a path or a literal that is empty or holds any band are computed in
+  process, and on the emulator a `REPEAT` of a count of 0, until a run sends each: on the probe account
+  `CosmosStringFunctionMeasurementTests.Functions`' spellings with literals of each band and empty, on the emulator a
+  count of 0. A path pattern keys as a literal does where the declaration proves it present and every string it may
+  be one of them.
 - **F still folds a cast comparand, and the legality and `Membership` read none** — *G8's remainder, h15's.* Since fix6's fix
   round a loading that reads places reads a number Calcite wrote cast as the casts' terms, and S's rules and rows derive
   what it denotes and which readings take it (DESIGN.md, *The comparand's casts are S's*), where `Comparand` decided both
@@ -3112,13 +3118,15 @@ across documents* and *A join of a container to itself* is the record.
 - **A claim carries the five classes, not their refinements** — *small.* The pattern reader computes which refinements
   a pattern excludes, but a claim states only the five, read closed (`JsonValues.Closed`), so a pattern holding high
   characters but not U+FFFD is stated as holding U+FFFD. A claim carrying refinements gives it back once a row reads one.
-- **The stored rows are keyed by the surrogate band, not by `unpaired`** — *small.* `Service.LoneSurrogateIsStoredAsReplacement`
-  stores `surrogate` as `high` and `replacement`, which a string written of pairs alone does not need; keyed by
-  `unpaired` it would be exact, once every written set a pair-only string reaches names its refinements. Since G1 S's
-  `storedas` rule reads it, so under Azure an affix whose pattern holds the high band answers either over a string
-  holding a pair too, which keyed by `unpaired` it would match exactly; and `ServiceLeaf.ByCodePoint` still reads a lone
-  surrogate as U+FFFD under Azure's comparator, the row's fact in C#, because refining the row changes F, which reads
-  the same cells. Both go with the row's refinement, F's group's.
+  Since g1's fix round `Service.LoneSurrogateIsStoredAsReplacement`'s `storedas` is keyed by `unpaired`, so a path a
+  claim states holding the surrogate band is read as holding an unpaired surrogate too: under Azure a pattern holding
+  the high band reads no string of a range of it, though a point holding pairs alone is placed and matched as written.
+- **The emulator's concatenation rows part over a stored operand it answered as Calcite's** — *small, after h15.* Since
+  g1's fix round a literal is keyed apart (`FunctionKey.Literal`), so the emulator's `Every` rows of `CONCAT`, `||` and
+  the concatenation that reads a null as empty, and `REPEAT`'s subject row, speak of a stored operand alone, which
+  `EachStringFunctionAnswersItsRowByBand` measured answering as Calcite's over U+0000 and U+FDD0; the rows still say
+  `Fails` and `Differs` there, as they did while a literal shared their key, worse than measured. Read as measured, a
+  concatenation over a path that may hold either would push on the emulator and move its digests, so it waits for h15.
 - **The bridge still refuses a containment over U+0000 on the emulator** — *h37 to h42.* The translator's
   `CosmosFunctionSpellings.Refusals` refuses a containment `LIKE` over a path that may hold U+0000 on the emulator as on
   Azure, which no emulator row says; reading the rows would push such a `LIKE` there and move the digests. It reads
@@ -3291,7 +3299,9 @@ across documents* and *A join of a container to itself* is the record.
   94–251 ms with none declined; the registry read is most of the build (2.4–5.6 s at 100 % load). Paired with S off, the
   first plan's wall time differs by −0.47 s over fifteen pairs, against line 29's 0.5 s and its 1.0 s kill; one run of
   five read +1.21 s. The registry's first read is where to cut, should a quieter host show the build in the plan. The
-  registry's rows and the definition read from them are fixed facts and stay once a process (`CosmosRendering.Definition`);
+  registry's rows and the definition read from them are fixed facts and stay once a process (`CosmosRendering.Definition`),
+  and so does the S `CosmosRendering.StoresSpelled` reads each set's spelling off (`RenderingTheory.SpellingOf`, G1),
+  built from them on first use beside every schema's own, about a second in Debug, which the end-of-plan evaluation weighs;
   each schema object builds its own graph from them at its first plan, so a schema made in a warm process pays the warm
   build off its planning thread, its first plan waiting at most 5 s. Line 29 reads the cold case, line 29b the warm one:
   at g15r, ten new schemas in a warm process, alternately with S writing and without, read 459–497 ms more wall time at

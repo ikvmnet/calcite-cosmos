@@ -61,8 +61,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// What S's rules may hand a leaf beside its table (<see cref="LeafReads"/>): nothing; every string literal parted;
-        /// and every read at once, every literal unplaced, parted and loose, every band unread, uncut and moved, every two
-        /// bands departing, and every cell blind.
+        /// and every read at once, every literal unplaced and parted, every class unkept, every band unread, uncut and moved,
+        /// every two bands departing, and every cell blind.
         /// </summary>
         static IEnumerable<LeafReads> Reads()
         {
@@ -70,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var departs = ValueSet.From(AllBands.AsEnumerable().SelectMany(u => AllBands.AsEnumerable().Select(w => (u, w))));
             yield return LeafReads.None;
             yield return LeafReads.None with { Parted = strings };
-            yield return LeafReads.Of(LeafReads.Places(strings, strings, strings), LeafReads.Matches(AllBands, AllBands, AllBands), LeafReads.Pairs(departs, AllBands));
+            yield return LeafReads.Of(LeafReads.Places(strings, strings, AllBands), LeafReads.Matches(AllBands, AllBands, AllBands), LeafReads.Pairs(departs, AllBands));
         }
 
         static MeasuredOutcome Row(CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer) =>
@@ -177,10 +177,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Under the emulator's order a point holding U+0000 lies where U+FDD0 then 0 does, a range that may hold one lies
-        /// either side, and a literal holding one lies nowhere: the point by the comparator itself, the rest by what S's
-        /// rules hand the leaf of the order's moves row, every string literal parted over a path that may hold U+0000 and
-        /// one holding it unplaced (<c>Service.StringOrderIsCodePoint</c>, G1).
+        /// Under the emulator's order a point holding U+0000 lies where U+FDD0 then 0 does, and a range that may hold one,
+        /// or any range against a literal holding one, lies either side: a point by the comparator itself, which compares
+        /// the literal in the spelling it is sent, and a range by what S's rules hand the leaf of the order's moves row, every
+        /// string literal parted over a path that may hold U+0000 and one holding it over any path
+        /// (<c>Service.StringOrderIsCodePoint</c>, G1).
         /// </summary>
         [Fact]
         public void TheStoredOrderReadsU0000AsTheEmulatorStoresIt()
@@ -192,8 +193,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(less, nul).Should().Be(ServiceOutcomes.False, "stored as U+FDD0 then 0, it lies above b");
             cells.Cells.Select((cell, i) => (cell, less.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
                 .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("a\0")), cells, table, LeafReads.Places(ValueSet.Of(Of("a\0")), ValueSet.Of(Of("a\0")), ValueSet<string>.Empty)).Outcomes
-                .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
+            var held = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("a\0")), cells, table, LeafReads.None with { Parted = ValueSet.Of(Of("a\0")) });
+            (At(held, nul), At(held, Of("b"))).Should().Be((ServiceOutcomes.False, ServiceOutcomes.False), "U+FDD0 then 0, and b, lie above a then U+FDD0 then 0");
+            cells.Cells.Select((cell, i) => (cell, held.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
+                .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
         }
 
         /// <summary>
@@ -213,14 +216,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Select(side => Row(CosmosServiceTest.Equal, CosmosValueClass.String, side, side == CosmosValueClass.Equal ? CosmosAnswer.True : CosmosAnswer.False))
                 .Append(Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, CosmosAnswer.StoredCodePoint)));
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("\0"), CutKind.Literal), new CutPoint(Of(fdd0), CutKind.Literal)));
-            // What S's rules hand the leaf here: each literal parted over a path that may hold U+0000, and loose, as one holding
-            // U+FDD0 a stored U+0000 may equal (Service.StringOrderIsCodePoint's moves and collides, G1); a point reads neither.
-            LeafReads Stored(string literal) => LeafReads.Places(ValueSet.Of(literal), ValueSet<string>.Empty, ValueSet.Of(literal));
+            // What S's rules hand the leaf here: each literal parted over a path that may hold U+0000 (Service.StringOrderIsCodePoint's
+            // moves, G1); a point is read by the comparator, the literal sent in the spelling it compares.
+            LeafReads Stored(string literal) => LeafReads.None with { Parted = ValueSet.Of(literal) };
             var equal = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(aliased)), cells, table, Stored(Of(aliased)));
             At(equal, Of("\0")).Should().Be(ServiceOutcomes.False, "the one escape spelled U+0000 as the literal U+FDD0 0");
             At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(fdd0)), cells, table, Stored(Of(fdd0))), Of(fdd0)).Should().Be(ServiceOutcomes.True);
+            // The stored spelling is one to one: a range that may hold U+0000 lies either side of a literal parted over it, and
+            // equals it only where it holds the literal itself.
             cells.Cells.Select((cell, i) => (cell, equal.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
-                .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False), "a range that may hold U+0000 may equal a literal holding U+FDD0");
+                .Should().OnlyContain(c => c.Outcomes == (c.cell.Contains(Of(aliased)) ? ServiceOutcomes.True | ServiceOutcomes.False : ServiceOutcomes.False))
+                .And.Contain(c => c.cell.Contains(Of(aliased)));
+        }
+
+        /// <summary>
+        /// A code point order compares the strings it is given as they are, a lone surrogate by its unit and a pair as the code
+        /// point it is: what a target stores of a string written otherwise is S's (<see cref="LeafReads.Unkept"/>), under which
+        /// a point holding an unpaired surrogate lies anywhere, Azure storing it as U+FFFD, and a point of pairs alone is
+        /// placed as written.
+        /// </summary>
+        [Fact]
+        public void ACodePointOrderComparesALoneSurrogateAsItIsAndAnUnkeptPointLiesAnywhere()
+        {
+            ServiceLeaf.Compare(CosmosAnswer.CodePoint, "\ud800", "\ufffd").Should().BeLessThan(0, "U+D800 is below U+FFFD");
+            ServiceLeaf.Compare(CosmosAnswer.CodePoint, "\ud83d\ude00", "\ufffd").Should().BeGreaterThan(0, "a pair is U+1F600");
+            ServiceLeaf.Compare(CosmosAnswer.CodePoint, "a\udc00", "a\ud800").Should().BeGreaterThan(0, "each lone unit by its own value");
+            ServiceLeaf.Compare(CosmosAnswer.CodePoint, "a\ud800", "a").Should().BeGreaterThan(0, "a prefix is below");
+
+            var table = Less(CosmosAnswer.CodePoint, CosmosAnswer.True);
+            var (lone, pair, b) = (Of("\ud800"), Of("\ud83d\ude00"), Of("b"));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(lone, CutKind.Literal), new CutPoint(pair, CutKind.Literal), new CutPoint(b, CutKind.Literal)));
+            var form = ServiceForm.CompareOf(CosmosServiceTest.Less, S, b);
+
+            var given = ServiceLeaf.On(form, cells, table, LeafReads.None);
+            (At(given, lone), At(given, pair)).Should().Be((ServiceOutcomes.False, ServiceOutcomes.False), "as given, U+D800 and U+1F600 are above b");
+
+            var unkept = ServiceLeaf.On(form, cells, table, LeafReads.Places(ValueSet<string>.Empty, ValueSet<string>.Empty, ValueSet.Of(UnpairedClass)));
+            At(unkept, lone).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False, "what is stored of it says where it lies");
+            At(unkept, pair).Should().Be(ServiceOutcomes.False, "a pair is stored as written");
+            At(unkept, b).Should().Be(ServiceOutcomes.False);
         }
 
         /// <summary>

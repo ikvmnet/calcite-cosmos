@@ -113,8 +113,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 .Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Surrogates | JsonCharacterBand.Trimmed);
             Closed(JsonCharacterBand.HighBmp).Should().Be(JsonCharacterBand.HighBmp | JsonCharacterBand.Replacement | JsonCharacterBand.Escape);
             Closed(JsonCharacterBand.NonAscii).Should().Be(JsonCharacterBand.NonAscii);
+            Mapped(ValueSet.Of(SurrogateBand, UnpairedClass), ValueSet.From(CosmosReasoning.Stored))
+                .Should().Equal(ValueSet.Of(SurrogateBand, HighBand, UnpairedClass, ReplacementClass), "an unpaired surrogate written is stored as U+FFFD, the rows say");
             Mapped(ValueSet.Of(SurrogateBand, HighBand), ValueSet.From(CosmosReasoning.Stored))
-                .Should().Equal(ValueSet.Of(SurrogateBand, HighBand, ReplacementClass), "a lone surrogate written is stored as U+FFFD, the rows say");
+                .Should().Equal(ValueSet.Of(SurrogateBand, HighBand), "a string of pairs alone is stored as written");
             Mapped(ValueSet.Of(NonAsciiBand), ValueSet.From(CosmosReasoning.Stored)).Should().Equal(ValueSet.Of(NonAsciiBand), "no row maps a class not written");
         }
 

@@ -287,7 +287,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var subjects = Subjects[function].ToHashSet();
 
-            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => subjects.Contains(FunctionKey.Every) || subjects.Contains(i))];
+            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => subjects.Contains(FunctionKey.Every) || subjects.Contains(i)
+                || subjects.Contains(FunctionKey.Literal) && call.Operands[i] is SqlValue.Literal)];
             if (call.Operands.Where((_, i) => keyed.Contains(i) == false).Any(o => o is not SqlValue.Literal))
                 return (false, null);
 
@@ -314,16 +315,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     J.Obj => (CosmosValueClass.Object, JsonCharacterBand.None),
                     _ => (CosmosValueClass.Array, JsonCharacterBand.None),
                 };
-                // Every row that holds of the value: by its ordinal and by every operand, of no class and of each class
-                // the value is in. None is unknown; rows that disagree with one another are too.
+                // Every row that holds of the value: by its ordinal, by every operand and, a literal, by a literal, of no
+                // class and of each class the value is in. An operand the rows name that none holds of is unknown; rows
+                // that disagree with one another are too.
                 var spelled = value switch { J.Str s => Of(s.Value), J.Num n => Of(n.Value), J.Huge h => Of(h.Value), _ => null };
-                long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i }.Where(subjects.Contains)];
+                long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i, call.Operands[i] is SqlValue.Literal ? FunctionKey.Literal : (long)i }.Distinct().Where(subjects.Contains)];
                 FunctionValueClass[] classes = [.. Enum.GetValues<FunctionValueClass>().Where(c => c == FunctionValueClass.Any || spelled is not null && FunctionValueClasses.Holds(c, spelled))];
                 foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
                     switch ((from subject in subjectsOf
-                             from @class in classes
-                             where Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
-                             select Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
+                             select (from @class in classes
+                                     where Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
+                                     select Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).ToList()).ToList() is var held
+                             && held.All(h => h.Count > 0) && held.SelectMany(h => h).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
                     {
                         case CosmosFunctionAnswer.Undefined:
                             undefined = true;

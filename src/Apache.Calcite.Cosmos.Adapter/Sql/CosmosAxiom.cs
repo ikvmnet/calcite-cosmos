@@ -41,8 +41,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Comparands">The readings a <c>Calcite</c> row says compare a number Calcite wrote cast with the number the cast
     /// denotes, moved or not (<see cref="CosmosAxiomRows.ReadComparands"/>, G8).</param>
     /// <param name="Rewrites">Which bands a comparator's spelling rewrites, a <c>Service</c> spelling row's (<see cref="CosmosAxiomRows.ReadRewrites"/>, G1).</param>
-    /// <param name="Collisions">Which band a stored string may hold that equals a sent value of another, a <c>Service</c> order row's
-    /// (<see cref="CosmosAxiomRows.ReadCollisions"/>, G1).</param>
     /// <param name="Unsent">The classes a parameter holding a character of is never sent, on the row's targets
     /// (<see cref="CosmosAxiomRows.ReadUnsent"/>, G1).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
@@ -52,6 +50,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<CosmosTruncation>? Truncations = null, IReadOnlyList<CosmosPairReading>? PairReadings = null, IReadOnlyList<CosmosBox>? Boxes = null,
         IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
         IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null,
-        IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<CosmosCollision>? Collisions = null, IReadOnlyList<string>? Unsent = null);
+        IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null);
 
 }

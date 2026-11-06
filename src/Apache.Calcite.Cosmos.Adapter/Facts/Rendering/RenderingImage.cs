@@ -30,15 +30,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static bool IsArithmetic(string key) => key.Contains(':');
 
         /// <summary>
-        /// The keys a call's operands' cells fall under (F2): for every operand the rows name — by its ordinal, and by
-        /// <see cref="FunctionKey.Every"/> where they name each alike — each kind it may hold, a string by the band each class
+        /// The keys a call's operands' cells fall under (F2): for every operand the rows name — by its ordinal, by
+        /// <see cref="FunctionKey.Every"/> where they name each alike, and a literal by <see cref="FunctionKey.Literal"/> where
+        /// they key one apart from a stored operand — each kind it may hold, a string by the band each class
         /// its characters may hold lies within and by none, and each by the atoms of its kind its values may be in
         /// (<see cref="FunctionValueClasses.Holding"/>); <see cref="Malformed"/> where the gathering is not one import an
         /// ordinal, each a literal or read through a reader the rows were measured over. Which rows cover an atom is S's.
         /// </summary>
         /// <param name="function">The rows' name of the call (<see cref="KeyFunction"/>).</param>
         /// <param name="gathered">The call's gathered operands.</param>
-        /// <param name="subjects">The operands the rows name, <see cref="FunctionKey.Every"/> among them where they read each alike: the rows' own.</param>
+        /// <param name="subjects">The operands the rows name, <see cref="FunctionKey.Every"/> among them where they read each alike and
+        /// <see cref="FunctionKey.Literal"/> where they key a literal apart: the rows' own.</param>
         /// <param name="readers">The readers the rows were measured through: the rows' own.</param>
         public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, ValueSet<long> subjects, ValueSet<string> readers)
         {
@@ -47,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return ValueSet.Of(Malformed);
 
             return ValueSet.From(from i in imports
-                                 from ordinal in new[] { FunctionKey.Every, i.Ordinal }
+                                 from ordinal in i.Reader == PathImport.LiteralReader ? new[] { FunctionKey.Every, i.Ordinal, FunctionKey.Literal } : new[] { FunctionKey.Every, i.Ordinal }
                                  where subjects.Contains(ordinal)
                                  from key in KeysOf(function, ordinal, i)
                                  select key);

@@ -57,7 +57,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An operand is keyed where a row names it, and only there: <c>REPLACE</c>'s search and replacement, which rows name
-        /// (F2), each by its own ordinal, its band and its atom; <c>POSITION</c>'s needle, which none names, by none.
+        /// (F2), each by its own ordinal, its band and its atom; <c>POSITION</c>'s needle by its ordinal, as its rows name it;
+        /// and a concatenation's literal at <see cref="FunctionKey.Literal"/> as well as every operand's key, its rows keying a
+        /// literal apart from a stored operand, which a path is not keyed at.
         /// </summary>
         [Fact]
         public void AnOperandIsKeyedOnlyWhereARowNamesIt()
@@ -65,8 +67,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             static FunctionKey Operand(long ordinal, JsonCharacterBand band) => FunctionKey.Of("REPLACE", ordinal, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
             Keys("REPLACE", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("a\u0000")), Literal(2, Of("b"))))
                 .Should().BeEquivalentTo(Strings("REPLACE", 0, JsonCharacterBand.None).Add(Operand(1, JsonCharacterBand.None)).Add(Operand(1, JsonCharacterBand.Nul)).Add(Operand(2, JsonCharacterBand.None)));
+
+            static FunctionKey Needle(JsonCharacterBand band) => FunctionKey.Of("POSITION", 0, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
             Keys("POSITION", Gathered(Literal(0, Of("é")), Text(1, ValueSet.Of(StringType))))
-                .Should().BeEquivalentTo(Strings("POSITION", 1, JsonCharacterBand.None));
+                .Should().BeEquivalentTo(Strings("POSITION", 1, JsonCharacterBand.None).Add(Needle(JsonCharacterBand.None)).Add(Needle(JsonCharacterBand.NonAscii)));
+
+            static FunctionKey Joined(long ordinal) => FunctionKey.Of("||", ordinal, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty);
+            Keys("||", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("z"))))
+                .Should().BeEquivalentTo(Strings("||", FunctionKey.Every, JsonCharacterBand.None).Add(Joined(FunctionKey.Literal)));
+            Keys("||", Gathered(Text(0, ValueSet.Of(StringType)), Text(1, ValueSet.Of(StringType))))
+                .Should().BeEquivalentTo(Strings("||", FunctionKey.Every, JsonCharacterBand.None));
         }
 
         /// <summary>

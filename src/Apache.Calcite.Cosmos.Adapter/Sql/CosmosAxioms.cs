@@ -129,6 +129,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
         ];
 
+        /// <summary>
+        /// A concatenation's literal operand (<see cref="FunctionKey.Literal"/>): a string of no band and not empty answering
+        /// Calcite's on both targets, and on the emulator a U+0000 failing the statement and a U+FDD0 before a 1 read back as
+        /// an escape's first unit, each as the spellings sent it.
+        /// </summary>
+        static IEnumerable<CosmosFunctionOutcome> Joined(string function) =>
+        [
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.NonEmpty),
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, FunctionValueClass.NonEmpty),
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.HighBmp, Emulator, CosmosFunctionAnswer.Differs, FunctionValueClass.NonEmpty),
+        ];
+
         static CosmosFunctionAnswer Over(JsonCharacterBand band, JsonCharacterBand differs, JsonCharacterBand fails) =>
             band == JsonCharacterBand.None ? CosmosFunctionAnswer.Same
             : fails.HasFlag(band) ? CosmosFunctionAnswer.Fails
@@ -676,7 +688,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
             new("Service.StringFunctionAnswersByBand",
-                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, so each parts over both, a path among them, the key being one. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, and each read as parting over the rest beyond ASCII as on the emulator; REPLACE over U+0000, its search and replacement measured only as the literals run 1's spellings hold, strings of no band and not empty, and SUBSTRING's length from 1, and at 0 as the window from 0 of length 0 Service.SubstringOfANegativeStartIsEmpty measured; the trims over the trimmed class; RIGHT read as parting over a surrogate though no witness's last two units split a pair. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
+                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, keyed apart, and a stored operand of either is read as parting still, as it was while a literal shared its key. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. A literal operand of CONCAT, || and REPEAT is keyed apart from a stored one, and POSITION's needle as the operand it is, each measured as the literal its spellings hold on both targets, z, a count of 2 and a 0 or a 1, strings of no band and not empty and a count from 1, and on the emulator as the literals it stores escaped; on Azure REPEAT's count of 0 as well, the empty string as Calcite's, as Service.ReplicateStopsAtTenThousandCodePoints measured it. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, and each read as parting over the rest beyond ASCII as on the emulator; REPLACE over U+0000, its search and replacement measured only as the literals run 1's spellings hold, strings of no band and not empty, and SUBSTRING's length from 1, and at 0 as the window from 0 of length 0 Service.SubstringOfANegativeStartIsEmpty measured; the trims over the trimmed class; RIGHT read as parting over a surrogate though no witness's last two units split a pair. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
                 FunctionOutcomes:
@@ -712,11 +724,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. StringFunction("TRIM TRAILING", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
                     // What the emulator makes of a literal it would store escaped: a U+0000 fails the statement, and a U+FDD0
                     // before a 0 or a 1 is read back as an escape's first unit (Service.EmulatorFailsANulMadeFromAPath,
-                    // Service.EmulatorDecodesWhatItReturns). The concatenation that reads a null as empty is CONCAT's spelling.
+                    // Service.EmulatorDecodesWhatItReturns). A stored operand of either answered as Calcite's, and is read as
+                    // parting still, as it was while a literal shared its key. The concatenation that reads a null as empty is
+                    // CONCAT's spelling.
                     .. StringFunction("||", FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
                     .. StringFunction("CONCAT", FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
                     .. StringFunction(StringCalls.NullAsEmpty, FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul, CosmosFunctionAnswer.Undefined),
                     .. StringFunction("REPEAT", 0, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
+                    // A literal operand, keyed apart (FunctionKey.Literal): the rows above were measured over a stored operand
+                    // beside a literal held fixed, z and a count of 2, each a row of its own here, and the literals the emulator
+                    // stores escaped as it answered them; a literal of any other band, or empty, was sent by no run and has no
+                    // row. REPEAT's count of 0 on Azure is Service.ReplicateStopsAtTenThousandCodePoints's REPLICATE(c.s, 0).
+                    .. Joined("||"),
+                    .. Joined("CONCAT"),
+                    .. Joined(StringCalls.NullAsEmpty),
+                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.AtLeastOne),
+                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, FunctionValueClass.Zero, Evidence: "Service.ReplicateStopsAtTenThousandCodePoints"),
+                    new("REPEAT", FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, FunctionValueClass.NonEmpty),
+                    // POSITION's needle, keyed as the operand it is, measured as the 0 and the 1 its spellings hold.
+                    new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.NonEmpty),
                 ]),
             new("Calcite.StringCountsAreInUnits",
                 "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",
@@ -784,16 +810,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(CosmosAnswer.CodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), new(CosmosAnswer.CodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
                     new(CosmosAnswer.StoredCodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), new(CosmosAnswer.StoredCodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
                 ],
-                Moves: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass)],
-                // A stored U+0000, U+FDD0 followed by 0, against a value holding the high band, as U+FDD0 is (G1).
-                Collisions: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass, JsonValues.HighBand)]),
+                Moves: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass)]),
             new("Service.LoneSurrogateIsStoredAsReplacement",
-                "A lone surrogate written as a JSON escape is stored as U+FFFD, a unit of the high band, where a surrogate pair is stored as written; the emulator refuses the write. Read as data by the rules of JSON (CosmosAxiomRows.ReadStored, the rule of what a string written in some classes holds stored): a string written with a surrogate may be stored holding the high band and U+FFFD.",
+                "A lone surrogate written as a JSON escape is stored as U+FFFD, a unit of the high band, where a surrogate pair is stored as written; the emulator refuses the write. Read as data by the rules of JSON (CosmosAxiomRows.ReadStored, the rule of what a string written in some classes holds stored): a string written with an unpaired surrogate may be stored holding the high band and U+FFFD, and one written of pairs alone is stored holding them.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ALoneSurrogateIsStoredAsTheReplacementCharacter",
                 StoredAs:
                 [
-                    new(JsonValues.SurrogateBand, JsonValues.HighBand),
-                    new(JsonValues.SurrogateBand, JsonValues.ReplacementClass),
+                    new(JsonValues.UnpairedClass, JsonValues.HighBand),
+                    new(JsonValues.UnpairedClass, JsonValues.ReplacementClass),
                 ]),
             new("Service.ConstantStringComparisonIsByCodeUnit",
                 "Two constants are compared by UTF-16 code unit on Azure, @a < @b false for U+E000 and U+1F600, where the emulator compares them by code point.",
