@@ -145,25 +145,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.Placed);
             var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed);
             var cells = new CellPartition(path, ValueSet.Of<PathCell>(new PathCell.Point(Of("ab")), new PathCell.Point(Of("ba")), new PathCell.Point(Of("a\0")), new PathCell.Point(Of(1m)), new PathCell.Null(), new PathCell.Absent()));
-            // Each cell's outcome in the order written above, whatever order the partition keeps.
-            ServiceOutcomes[] On(ServiceForm leaf, ServiceTable table) => ServiceLeaf.On(leaf, cells, table, ValueSet<string>.Empty) is var vector
+            // Each cell's outcome in the order written above, whatever order the partition keeps, under what S's rules hand the leaf.
+            ServiceOutcomes[] On(ServiceForm leaf, ServiceTable table, LeafReads? reads = null) => ServiceLeaf.On(leaf, cells, table, reads ?? LeafReads.None) is var vector
                 ? [.. new PathCell[] { new PathCell.Point(Of("ab")), new PathCell.Point(Of("ba")), new PathCell.Point(Of("a\0")), new PathCell.Point(Of(1m)), new PathCell.Null(), new PathCell.Absent() }
                     .Select(cell => vector.Outcomes[cells.Cells.ToList().IndexOf(cell)].Outcomes)]
                 : [];
 
             On(ServiceForm.AffixOf(CosmosServiceTest.StartsWith, path, "a"), emulator).Should().Equal(
                 ServiceOutcomes.True, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
-            On(ServiceForm.AffixOf(CosmosServiceTest.EndsWith, path, "\0"), emulator).Should().Equal(
+            // The stored spelling splits this pattern, so S hands the leaf what it rewrites as uncut, which a range reads and a
+            // point, matched as it is stored, does not (Service.EmulatorComparesTheSpellingItIsSent, G1).
+            On(ServiceForm.AffixOf(CosmosServiceTest.EndsWith, path, "\0"), emulator, LeafReads.Matches(ValueSet<string>.Empty, ValueSet.Of(NulClass, EscapeClass), ValueSet<string>.Empty)).Should().Equal(
                 ServiceOutcomes.False, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
 
             On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), emulator)[0].Should().Be(ServiceOutcomes.Widest);
-            ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), cells, emulator, ValueSet<string>.Empty).Rows.Should().Contain("missing:Like/String/None");
+            ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), cells, emulator, LeafReads.None).Rows.Should().Contain("missing:Like/String/None");
 
-            // Azure's by code point, read past U+0000 by STARTSWITH and to it by CONTAINS (run 1).
+            // Azure's by code point, read past U+0000 by STARTSWITH and to it by CONTAINS (run 1): the truncates row S reads hands
+            // a CONTAINS U+0000 unread (Service.NulEndsWhatReplaceAndContainsRead, G1), and the leaf names no band itself.
             On(ServiceForm.AffixOf(CosmosServiceTest.StartsWith, path, "a"), production).Should().Equal(
                 ServiceOutcomes.True, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
-            On(ServiceForm.AffixOf(CosmosServiceTest.Contains, path, "a"), production).Should().Equal(
+            On(ServiceForm.AffixOf(CosmosServiceTest.Contains, path, "a"), production, LeafReads.Matches(ValueSet.Of(NulClass), ValueSet<string>.Empty, ValueSet<string>.Empty)).Should().Equal(
                 ServiceOutcomes.True, ServiceOutcomes.True, ServiceOutcomes.True | ServiceOutcomes.False, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
+            On(ServiceForm.AffixOf(CosmosServiceTest.Contains, path, "a"), production)[2].Should().Be(ServiceOutcomes.True, "unhanded the read, the point is matched as it is");
         }
 
         /// <summary>

@@ -52,6 +52,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Moves = Graph.DefineRelation<CosmosAnswer, string>("moves");
             StoredAs = Graph.DefineRelation<RenderingTarget, string, string>("storedas");
             Truncates = Graph.DefineRelation<RenderingTarget, CosmosServiceTest, string, string>("truncates");
+            Rewrites = Graph.DefineRelation<CosmosAnswer, string>("rewrites");
+            Collides = Graph.DefineRelation<CosmosAnswer, string, string>("collides");
+            Unsent = Graph.DefineRelation<RenderingTarget, string>("unsent");
+            Rewriting = Graph.DefineFunction<ValueSet<CosmosAnswer>>("rewriting", ValueLattice.Union<CosmosAnswer>());
+            Sends = Graph.DefineFunction<RenderingSet, SentSpelling>("sends");
+            Respelled = Graph.DefineFunction<RenderingSet, ValueSet<string>>("respelled", ValueLattice.Union<string>());
+            Unsendable = Graph.DefineFunction<RenderingSet, ValueSet<string>>("unsendable", ValueLattice.Union<string>());
             PairReads = Graph.DefineRelation<CosmosServiceTest, bool, CosmosServiceTest>("pairreads");
             BoxOf = Graph.DefineRelation<string, string>("boxof");
             SeesThrough = Graph.DefineRelation<string>("seesthrough");
@@ -78,6 +85,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Assumed = Graph.DefineFunction<Pred, PathValues>("assumed");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
+            UnplacedLiterals = Graph.DefineFunction<ServiceForm, ValueSet<string>>("unplacedliterals", ValueLattice.Union<string>());
+            LooseLiterals = Graph.DefineFunction<ServiceForm, ValueSet<string>>("looseliterals", ValueLattice.Union<string>());
+            Unread = Graph.DefineFunction<ServiceForm, ValueSet<string>>("unread", ValueLattice.Union<string>());
+            Uncut = Graph.DefineFunction<ServiceForm, ValueSet<string>>("uncut", ValueLattice.Union<string>());
+            Blind = Graph.DefineFunction<ServiceForm, ValueSet<string>>("blind", ValueLattice.Union<string>());
+            Departs = Graph.DefineFunction<ServiceForm, ValueSet<(string, string)>>("departs", ValueLattice.Union<(string, string)>());
+            Moved = Graph.DefineFunction<ServiceForm, ValueSet<string>>("moved", ValueLattice.Union<string>());
+            NameChars = Graph.DefineFunction<JPath, ValueSet<string>>("namechars");
+            Writable = Graph.DefineRelation<JPath>("writable");
             Candidate = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("candidate");
             Member = Graph.DefineRelation<ServiceForm, ServiceForm>("member");
             Partition = Graph.DefineFunction<Pred, ServiceForm, CellPartition>("partition");
@@ -100,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             At = Graph.DefineRelation<Pred, RenderPosition>("at");
             Template = Graph.DefineRelation<TemplateId, RenderPosition>("template");
             Fits = Graph.DefineRelation<TemplateId, string>("fits");
-            PartingBands = Graph.DefineFunction<ValueSet<string>>("partingbands");
+            PartingBands = Graph.DefineFunction<RenderingSet, ValueSet<string>>("partingbands", ValueLattice.Union<string>());
             RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
             StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>());
             StrictReader = Graph.DefineRelation<string>("strictreader");
@@ -155,6 +171,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var raw = Graph.DefineRuleset("raw");
             DefineTheory(measure, allowed, refutes, tabulate);
             DefineLicences(expected, matched, licence);
+            var sets = Graph.DefineRuleset("sets");
+            DefineSets(tabulate, sets);
             raw.DefineRule("a raw reading's truths on a key are the union of its columns', and a column's reading's its own", r =>
             {
                 var (k, c, t) = r.Vars<RawKey, string, Truths>("k", "c", "t");
@@ -216,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
 
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree, raw), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
-                Schedule.Saturate(licence));
+                Schedule.Saturate(licence), Schedule.Saturate(sets));
             // Two-valuedness reads the gate's classes complete, beside the lift; the case's best reads it complete.
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, pair, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
@@ -364,6 +382,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>How a comparison of two paths reads against a literal, the sides swapped or not: the mirror law, G3's.</summary>
         public Relation<CosmosServiceTest, bool, CosmosServiceTest> PairReads { get; }
 
+        /// <summary>Which band a comparator's spelling rewrites (the emulator's of what it stores, U+0000 and U+FDD0), a spelling row's (G1).</summary>
+        public Relation<CosmosAnswer, string> Rewrites { get; }
+
+        /// <summary>Which band a stored string may hold that equals a sent value holding another, under a comparator (G1).</summary>
+        public Relation<CosmosAnswer, string, string> Collides { get; }
+
+        /// <summary>The classes a parameter holding a character of is never sent, by target (G1).</summary>
+        public Relation<RenderingTarget, string> Unsent { get; }
+
+        /// <summary>The comparators whose spelling rewrites some band, a union over <see cref="Rewrites"/>.</summary>
+        public Function<ValueSet<CosmosAnswer>> Rewriting { get; }
+
+        /// <summary>
+        /// The spelling a set's statements send a string in, derived from its string order and <see cref="Rewrites"/> (G1): what
+        /// the writer applies (<see cref="SpellingOf"/>). Absent for a set whose rows name no string order.
+        /// </summary>
+        public Function<RenderingSet, SentSpelling> Sends { get; }
+
+        /// <summary>The bands a set's string comparators' spelling rewrites, empty for a set sent as written: what a written name may not hold.</summary>
+        public Function<RenderingSet, ValueSet<string>> Respelled { get; }
+
+        /// <summary>The classes no literal of a form sent under a set may hold, a parameter holding one never being sent to a target it serves.</summary>
+        public Function<RenderingSet, ValueSet<string>> Unsendable { get; }
+
         /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c>, G8's.</summary>
         public Relation<string, string> BoxOf { get; }
 
@@ -424,6 +466,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<Pred, PathValues> Assumed { get; }
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
+
+        // What S's rules hand each leaf beside its table (LeafReads, G1), keyed by the leaf, each empty until a rule says
+        // otherwise: the literals unplaced and loose, the bands unread, uncut and blinding, a pair's bands departing and moved.
+        public Function<ServiceForm, ValueSet<string>> UnplacedLiterals { get; }
+        public Function<ServiceForm, ValueSet<string>> LooseLiterals { get; }
+        public Function<ServiceForm, ValueSet<string>> Unread { get; }
+        public Function<ServiceForm, ValueSet<string>> Uncut { get; }
+        public Function<ServiceForm, ValueSet<string>> Blind { get; }
+        public Function<ServiceForm, ValueSet<(string, string)>> Departs { get; }
+        public Function<ServiceForm, ValueSet<string>> Moved { get; }
+
+        /// <summary>The classes the member names a place reads hold, the bundle's reading of its paths (G1).</summary>
+        public Function<JPath, ValueSet<string>> NameChars { get; }
+
+        /// <summary>A place the writer can write under the bundle's set, which the spelling rule proposes a form over (G1).</summary>
+        public Relation<JPath> Writable { get; }
         public Relation<Pred, RenderPosition, ServiceForm> Candidate { get; }
         public Relation<ServiceForm, ServiceForm> Member { get; }
         public Function<Pred, ServiceForm, CellPartition> Partition { get; }
@@ -462,7 +520,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<Pred, RenderPosition> At { get; }
         public Relation<TemplateId, RenderPosition> Template { get; }
         public Relation<TemplateId, string> Fits { get; }
-        public Function<ValueSet<string>> PartingBands { get; }
+        /// <summary>The bands a set's string comparators rank apart, which no string ordering's literal S sends under it holds.</summary>
+        public Function<RenderingSet, ValueSet<string>> PartingBands { get; }
         public Function<RenderingRexGrammar.Value> RexGrammar { get; }
         public Function<string, bool> StrictOp { get; }
         public Relation<string> StrictReader { get; }
@@ -545,6 +604,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<MeasuredEntry>("measured entry");
             values.Register<AnswerMeanings>("answer meanings");
             values.Register<ServiceTable>("service table");
+            values.Register<LeafReads>("leaf reads");
+            values.Register<(string, string)>("band pair");
+            values.RegisterEnum<SentSpelling>();
             values.Register<ReaderEdges>("reader edges");
             values.Register<CutPoint>("cut point");
             values.Register<CellPartition>("cell partition");
@@ -562,6 +624,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<CosmosServiceTest>();
             values.RegisterSet<CosmosValueClass>();
             values.RegisterSet<ServiceForm>();
+            values.RegisterSet<(string, string)>();
         }
 
         void DefineTheory(Ruleset measure, Ruleset allowed, Ruleset refutes, Ruleset tabulate)
@@ -634,6 +697,55 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var unmatched = Primitives.Except<CosmosAnswer>().Of(placing, Compute.Of(mn, x => x.Matchers));
                 r.Then(Table.Of(s).Is(Primitives.Singleton<MeasuredEntry>().Of(Compute.Of(Compute.Of(k, v, i, mn, MeasuredEntry.Of), placing, matching, unmatched, MeasuredEntry.Placed))),
                     Final.Of(k, s).Is(v));
+            });
+        }
+
+        // What each set's rows make of its statements (G1): the spelling they send, the bands its string comparators rewrite
+        // and rank apart, and the classes no parameter may hold, read off the comparators the set's string order names or the
+        // targets it serves; the writer, the lifts and the bundles read them at the frozen root.
+        void DefineSets(Ruleset tabulate, Ruleset sets)
+        {
+            tabulate.DefineRule("a comparator whose spelling rewrites a band rewrites", r =>
+            {
+                var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
+                r.When(Rewrites.Of(c, u));
+                r.Then(Rewriting.Of().Is(Primitives.Singleton<CosmosAnswer>().Of(c)));
+            });
+
+            sets.DefineRule("a set whose string order compares a spelling that rewrites a band is sent that spelling, the band respelled", r =>
+            {
+                var (s, o) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>>("s", "o");
+                var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
+                r.When(o.Is(Final.Of(StringOrder, s)), Rewrites.Of(c, u));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Then(Sends.Of(s).Is(SentSpelling.Stored), Respelled.Of(s).Is(Primitives.Singleton<string>().Of(u)));
+            });
+
+            // Rewriting is complete here, the tabulate stratum's.
+            sets.DefineRule("a set whose string order compares no spelling that rewrites is sent as written", r =>
+            {
+                var (s, o, w) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, ValueSet<CosmosAnswer>>("s", "o", "w");
+                r.When(o.Is(Final.Of(StringOrder, s)), w.Is(Rewriting.Of()));
+                r.Where(Primitives.IsEmpty<CosmosAnswer>().Of(Primitives.Intersect<CosmosAnswer>().Of(o, w)));
+                r.Then(Sends.Of(s).Is(SentSpelling.Written));
+            });
+
+            sets.DefineRule("two bands a set's string comparator ranks apart are its parting bands", r =>
+            {
+                var (s, o) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>>("s", "o");
+                var (c, u, w) = r.Vars<CosmosAnswer, string, string>("c", "u", "w");
+                r.When(o.Is(Final.Of(StringOrder, s)), Parts.Of(c, u, w));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Then(PartingBands.Of(s).Is(Primitives.Singleton<string>().Of(u)), PartingBands.Of(s).Is(Primitives.Singleton<string>().Of(w)));
+            });
+
+            sets.DefineRule("a class no parameter is sent holding on a target a set serves is unsendable under it", r =>
+            {
+                var (s, d) = r.Vars<RenderingSet, ValueSet<RenderingTarget>>("s", "d");
+                var (t, x) = r.Vars<RenderingTarget, string>("t", "x");
+                r.When(d.Is(Serves.Of(s)), Unsent.Of(t, x));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
+                r.Then(Unsendable.Of(s).Is(Primitives.Singleton<string>().Of(x)));
             });
         }
 
@@ -794,6 +906,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Need.Of(z, h1), Need.Of(z, h2), Needs.Of(h1).Is(ValueSet<CosmosServiceTest>.Empty), Needs.Of(h2).Is(ValueSet<CosmosServiceTest>.Empty));
             });
 
+            // What a leaf reads beside its table is empty until a parted rule says otherwise (LeafReads, G1).
+            need.DefineRule("a leaf a partition needs reads nothing beside its table until a row says so", r =>
+            {
+                var (z, g) = r.Vars<CellPartition, ServiceForm>("z", "g");
+                r.When(Need.Of(z, g));
+                r.Where(RenderingPrimitives.FormIsLeaf.Of(g));
+                r.Then(UnplacedLiterals.Of(g).Is(ValueSet<string>.Empty), LooseLiterals.Of(g).Is(ValueSet<string>.Empty), Unread.Of(g).Is(ValueSet<string>.Empty),
+                    Uncut.Of(g).Is(ValueSet<string>.Empty), Blind.Of(g).Is(ValueSet<string>.Empty), Departs.Of(g).Is(ValueSet<(string, string)>.Empty),
+                    Moved.Of(g).Is(ValueSet<string>.Empty));
+            });
+
             // Which bands part is the set's string comparators' (Service.StringOrderIsCodePoint's parts, F3).
             parted.DefineRule("a string literal parts the orders over a path whose strings may hold the other band", r =>
             {
@@ -828,19 +951,153 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(Primitives.Contains<string>().Of(b, w));
                 r.Then(Needs.Of(f).Is(Primitives.Singleton<CosmosServiceTest>().Of(CosmosServiceTest.Range)));
             });
+
+            DefineReads(parted);
+        }
+
+        // The rest of what a leaf reads beside its table (LeafReads, G1), each from rows through the comparators the set's
+        // string order or the test's entry names, or the targets the set serves: the leaf tests what they hand it on a cell.
+        void DefineReads(Ruleset parted)
+        {
+            // The emulator's order of what it stores moves U+0000 (Service.StringOrderIsCodePoint's moves).
+            parted.DefineRule("a band the set's string comparator moves parts every string literal over a path whose strings may hold it", r =>
+            {
+                var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
+                var (f, g) = r.Vars<ServiceForm, ServiceForm>("f", "g");
+                var (k, u, l) = r.Vars<ValueSet<string>, string, string>("k", "u", "l");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Under.Of(s), o.Is(Final.Of(StringOrder, s)), Moves.Of(c, u));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(RenderingPrimitives.StringComparison.Of(g));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")));
+                r.Where(Primitives.Contains<string>().Of(k, u));
+                r.Then(PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
+            });
+
+            parted.DefineRule("a string literal holding a band the set's string comparator moves lies anywhere", r =>
+            {
+                var (z, g) = r.Vars<CellPartition, ServiceForm>("z", "g");
+                var (b, u, l) = r.Vars<ValueSet<string>, string, string>("b", "u", "l");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), Under.Of(s), o.Is(Final.Of(StringOrder, s)), Moves.Of(c, u));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(RenderingPrimitives.StringComparison.Of(g));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(g, CharactersOfLiteral)));
+                r.Where(Primitives.Contains<string>().Of(b, u));
+                r.Then(UnplacedLiterals.Of(g).Is(Primitives.Singleton<string>().Of(l)));
+            });
+
+            // A stored string may equal a sent literal it does not hold, so no bound of a range says where the literal lies.
+            parted.DefineRule("a string literal a stored string may equal is loose and parted over a path whose strings may hold that string's band", r =>
+            {
+                var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
+                var (f, g) = r.Vars<ServiceForm, ServiceForm>("f", "g");
+                var (k, b) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "b");
+                var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Under.Of(s), o.Is(Final.Of(StringOrder, s)), Collides.Of(c, u, w));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(RenderingPrimitives.StringComparison.Of(g));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(g, CharactersOfLiteral)));
+                r.Where(Primitives.Contains<string>().Of(k, u));
+                r.Where(Primitives.Contains<string>().Of(b, w));
+                r.Then(LooseLiterals.Of(g).Is(Primitives.Singleton<string>().Of(l)), PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
+            });
+
+            // A pair's places each hold their own characters, which the parts rows meet one band a side (h11, F3).
+            parted.DefineRule("a pair departs where its places may hold two bands the set's string comparator ranks apart", r =>
+            {
+                var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
+                var (f, g, x, y) = r.Vars<ServiceForm, ServiceForm, JPath, JPath>("f", "g", "x", "y");
+                var (kx, ky, u, w) = r.Vars<ValueSet<string>, ValueSet<string>, string, string>("kx", "ky", "u", "w");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), p.Is(Paired.Of(x, y)), kx.Is(ImportedChars.Of(x)), ky.Is(ImportedChars.Of(y)),
+                    Under.Of(s), o.Is(Final.Of(StringOrder, s)), Parts.Of(c, u, w));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(Primitives.Contains<string>().Of(kx, u));
+                r.Where(Primitives.Contains<string>().Of(ky, w));
+                r.Then(Departs.Of(g).Is(Primitives.Singleton<(string, string)>().Of(Compute.Of(u, w, (m, n) => (m, n)))));
+            });
+
+            parted.DefineRule("a pair whose places may hold a band the set's string comparator moves lies anywhere where a side holds it", r =>
+            {
+                var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
+                var (f, g, x, y) = r.Vars<ServiceForm, ServiceForm, JPath, JPath>("f", "g", "x", "y");
+                var (k, u) = r.Vars<ValueSet<string>, string>("k", "u");
+                var (s, o, c) = r.Vars<RenderingSet, ValueSet<CosmosAnswer>, CosmosAnswer>("s", "o", "c");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), p.Is(Paired.Of(x, y)), k.Is(ImportedChars.Of(p)), Under.Of(s), o.Is(Final.Of(StringOrder, s)),
+                    Moves.Of(c, u));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(Primitives.Contains<string>().Of(k, u));
+                r.Then(Moved.Of(g).Is(Primitives.Singleton<string>().Of(u)));
+            });
+
+            // Azure's CONTAINS, and the LIKE of one run it answers as one, read a string only to its first U+0000
+            // (Service.NulEndsWhatReplaceAndContainsRead's truncates).
+            parted.DefineRule("an affix is unread over a band its test reads a string only up to on a target the set serves, its pattern of the row's shape", r =>
+            {
+                var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
+                var (d, t) = r.Vars<ValueSet<RenderingTarget>, RenderingTarget>("d", "t");
+                var (x, sh, u) = r.Vars<CosmosServiceTest, string, string>("x", "sh", "u");
+                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), sh.Is(Compute.Of(g, AffixShapeOf)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
+                r.Then(Unread.Of(g).Is(Primitives.Singleton<string>().Of(u)));
+            });
+
+            // A search holding the band matches every string.
+            parted.DefineRule("an affix whose pattern holds a band its test reads a string only up to reads no string", r =>
+            {
+                var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
+                var (d, t, b) = r.Vars<ValueSet<RenderingTarget>, RenderingTarget, ValueSet<string>>("d", "t", "b");
+                var (x, sh, u) = r.Vars<CosmosServiceTest, string, string>("x", "sh", "u");
+                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), sh.Is(Compute.Of(g, AffixShapeOf)),
+                    b.Is(Compute.Of(g, CharactersOfPattern)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
+                r.Where(Primitives.Contains<string>().Of(b, u));
+                r.Then(Blind.Of(g).Is(Primitives.Singleton<string>().Of(u)));
+            });
+
+            // Azure stores a lone surrogate as U+FFFD (Service.LoneSurrogateIsStoredAsReplacement's storedas).
+            parted.DefineRule("an affix whose pattern holds what a target the set serves stores a band as is unread over that band", r =>
+            {
+                var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
+                var (d, t, b) = r.Vars<ValueSet<RenderingTarget>, RenderingTarget, ValueSet<string>>("d", "t", "b");
+                var (u, w) = r.Vars<string, string>("u", "w");
+                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), StoredAs.Of(t, u, w), b.Is(Compute.Of(g, CharactersOfPattern)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
+                r.Where(Primitives.Contains<string>().Of(b, w));
+                r.Then(Unread.Of(g).Is(Primitives.Singleton<string>().Of(u)));
+            });
+
+            // The emulator matches what it stores against what it is sent (Service.EmulatorComparesTheSpellingItIsSent's rewrites).
+            parted.DefineRule("an affix whose pattern the stored spelling splits is uncut over a band its matcher's spelling rewrites", r =>
+            {
+                var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
+                var (k, o) = r.Vars<MeasuredKey, ValueSet<CosmosAnswer>>("k", "o");
+                var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
+                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), Rewrites.Of(c, u));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
+                r.Where(RenderingPrimitives.SpellingSplits.Of(g));
+                r.Then(Uncut.Of(g).Is(Primitives.Singleton<string>().Of(u)));
+            });
         }
 
         void DefineEvaluation(RenderingDefinition definition, Ruleset evaluate)
         {
-            // Which literals part the orders is complete here, an earlier stratum's: a literal not among them is read as not.
+            // What a leaf reads beside its table is complete here, an earlier stratum's: a literal or band not among them is read
+            // as not (LeafReads, G1).
             evaluate.DefineRule("a test is evaluated on every cell by the rows", r =>
             {
                 var (z, e, p, a) = r.Vars<CellPartition, Pred, JPath, PredicateAtom>("z", "e", "p", "a");
                 var (f, g, s) = r.Vars<ServiceForm, ServiceForm, RenderingSet>("f", "g", "s");
                 var (q, t, pl) = r.Vars<ValueSet<string>, ValueSet<MeasuredEntry>, ValueSet<CosmosValueClass>>("q", "t", "pl");
-                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), q.Is(PartedLiterals.Of(p)), Under.Of(s), t.Is(Table.Of(s)), pl.Is(Placed.Of()));
+                var (un, lo, ur, uc) = r.Vars<ValueSet<string>, ValueSet<string>, ValueSet<string>, ValueSet<string>>("un", "lo", "ur", "uc");
+                var (bl, de, mv) = r.Vars<ValueSet<string>, ValueSet<(string, string)>, ValueSet<string>>("bl", "de", "mv");
+                r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), q.Is(PartedLiterals.Of(p)), Under.Of(s), t.Is(Table.Of(s)), pl.Is(Placed.Of()),
+                    un.Is(UnplacedLiterals.Of(g)), lo.Is(LooseLiterals.Of(g)), ur.Is(Unread.Of(g)), uc.Is(Uncut.Of(g)), bl.Is(Blind.Of(g)), de.Is(Departs.Of(g)), mv.Is(Moved.Of(g)));
                 r.Where(RenderingPrimitives.FormIsLeaf.Of(g));
-                r.Then(Svc.Of(z, g).Is(Compute.Of(g, z, Compute.Of(t, pl, ServiceTable.Of), q, definition.Leaf)));
+                var reads = Compute.Of(Compute.Of(q, un, lo, LeafReads.Places), Compute.Of(ur, uc, bl, LeafReads.Matches), Compute.Of(de, mv, LeafReads.Pairs), LeafReads.Of);
+                r.Then(Svc.Of(z, g).Is(Compute.Of(g, z, Compute.Of(t, pl, ServiceTable.Of), reads, definition.Leaf)));
             });
 
             // A junction of three members or more is evaluated as its first and a regrouped rest rid of copies, which only
@@ -1048,11 +1305,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(At.Of(a, q), BestExact.Of(a, q).Is(Priced.None), Implied.Of(a, q).Is(ValueSet<ServiceForm>.Empty));
             });
 
+            // A set sent as written respells nothing, so every place it reads is writable; the stored spelling writes a name
+            // holding neither character it rewrites (Service.EmulatorComparesTheSpellingItIsSent's rewrites, G1).
+            spell.DefineRule("a place is writable under a set whose spelling rewrites no band its names hold", r =>
+            {
+                var (p, s) = r.Vars<JPath, RenderingSet>("p", "s");
+                var (k, w) = r.Vars<ValueSet<string>, ValueSet<string>>("k", "w");
+                r.When(k.Is(NameChars.Of(p)), Under.Of(s), w.Is(Respelled.Of(s)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(k, w)));
+                r.Then(Writable.Of(p));
+            });
+
             spell.DefineRule("a template that fits an atom proposes its form at the atom's position", r =>
             {
                 var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
                 var (t, n, sh) = r.Vars<TemplateId, string, string>("t", "n", "sh");
-                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh));
+                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), Writable.Of(p), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh));
                 r.Then(Candidate.Of(e, pos, Compute.Of(t, pos, a, n, RenderingTemplates.Spell)));
             });
         }
@@ -1061,12 +1329,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // its price, an implied one the Rex builder writes as a member. Presence through calls is three rules over rows.
         void DefineLifts(Ruleset lift, Ruleset strict)
         {
+            // May be sent: no literal holds a class no parameter is sent holding, and no string ordering's literal a band the set's
+            // comparators rank apart, so that nothing S sends is one bound of a range the two orders rank apart (G1).
             lift.DefineRule("an exact agreement that rests on something and may be sent is a best candidate", r =>
             {
                 var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
-                var b = r.Var<ValueSet<string>>("b");
-                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Equal)), Vacuous.Of(e, pos, f, Verdict.Equal).Is(false), b.Is(PartingBands.Of()));
-                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                var (s, ub, pb) = r.Vars<RenderingSet, ValueSet<string>, ValueSet<string>>("s", "ub", "pb");
+                var (lc, oc) = r.Vars<ValueSet<string>, ValueSet<string>>("lc", "oc");
+                r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Equal)), Vacuous.Of(e, pos, f, Verdict.Equal).Is(false), Under.Of(s), ub.Is(Unsendable.Of(s)),
+                    pb.Is(PartingBands.Of(s)), lc.Is(Compute.Of(f, LiteralClasses)), oc.Is(Compute.Of(f, OrderedLiteralClasses)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(lc, ub)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(oc, pb)));
                 r.Then(BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
             });
 
@@ -1074,10 +1347,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
                 var (p, a) = r.Vars<JPath, PredicateAtom>("p", "a");
-                var (b, g) = r.Vars<ValueSet<string>, RenderingRexGrammar.Value>("b", "g");
+                var (s, ub, pb, g) = r.Vars<RenderingSet, ValueSet<string>, ValueSet<string>, RenderingRexGrammar.Value>("s", "ub", "pb", "g");
+                var (lc, oc) = r.Vars<ValueSet<string>, ValueSet<string>>("lc", "oc");
                 r.When(At.Of(e, pos), Fact.Exists(Agrees.Of(e, pos, f, Verdict.Implies)), Vacuous.Of(e, pos, f, Verdict.Implies).Is(false), Ir.Atom.Of(e, p, a),
-                    b.Is(PartingBands.Of()), g.Is(RexGrammar.Of()));
-                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                    Under.Of(s), ub.Is(Unsendable.Of(s)), pb.Is(PartingBands.Of(s)), lc.Is(Compute.Of(f, LiteralClasses)), oc.Is(Compute.Of(f, OrderedLiteralClasses)), g.Is(RexGrammar.Of()));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(lc, ub)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(oc, pb)));
                 r.Where(RenderingPrimitives.RexWritable.Of(f, a, g));
                 r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(f)));
             });
@@ -1477,6 +1752,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         static ValueSet<string> CharactersOfLiteral(ServiceForm form) => form.Literal is { } literal ? JsonValues.CharactersOf(literal) : JsonValues.NoBand;
 
+        /// <summary>The classes an affix's pattern holds characters of; none for any other form.</summary>
+        static ValueSet<string> CharactersOfPattern(ServiceForm form) => form.Kind == ServiceFormKind.Affix && form.Pattern is { } pattern ? JsonValues.BandsOfText(pattern) : JsonValues.NoBand;
+
+        /// <summary>The shape a truncation row may name of an affix's pattern (<see cref="AffixPattern.ShapeOf"/>); none for any other form.</summary>
+        static string AffixShapeOf(ServiceForm form) => form.Kind == ServiceFormKind.Affix && form.Pattern is { } pattern ? AffixPattern.ShapeOf(pattern) : "";
+
+        /// <summary>The key of a test's entry over a string, which names its matchers.</summary>
+        static MeasuredKey MatchKeyOf(ServiceForm form) => MeasuredKey.Of(form.Test, CosmosValueClass.String, CosmosValueClass.None);
+
+        /// <summary>The classes a form's literals hold characters of, which the lifts meet with what a set's targets are never sent.</summary>
+        internal static ValueSet<string> LiteralClasses(ServiceForm form) => JsonValues.CharactersOf(ValueSet.From(form.Literals));
+
+        /// <summary>The classes the literals of a form's string orderings hold characters of, which the lifts meet with a set's parting bands.</summary>
+        internal static ValueSet<string> OrderedLiteralClasses(ServiceForm form) =>
+            JsonValues.CharactersOf(ValueSet.From(form.Subforms.Where(g => RenderingPrimitives.StringOrdering.Function(g)).Select(g => g.Literal!)));
+
+        /// <summary>
+        /// The spelling S derived for a set's statements (<see cref="Sends"/>), read at the frozen root: what the writer applies,
+        /// and <c>null</c> for a set whose rows name no string order.
+        /// </summary>
+        public SentSpelling? SpellingOf(RenderingSet set) => Theory.TryGet(Sends.Of(set), out var spelling) ? spelling : null;
+
         /// <summary>
         /// Holds a step to every one of the connectives, which the set and Calcite both license: <see cref="Composes"/>'s
         /// reads under names of its own, so the two may stand in one rule.
@@ -1544,6 +1841,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (target, test, shape, band) in definition.Truncations)
                     w.Assume(Truncates.Of(target, test, shape, band));
+
+                foreach (var (c, band) in definition.Rewrites)
+                    w.Assume(Rewrites.Of(c, band));
+
+                foreach (var (c, band, other) in definition.Collisions)
+                    w.Assume(Collides.Of(c, band, other));
+
+                foreach (var (target, @class) in definition.Unsent)
+                    w.Assume(Unsent.Of(target, @class));
+
+                // What each set's rows make of its statements starts empty, so a set none says anything of reads nothing (G1).
+                foreach (var set in definition.Serves.Keys)
+                    w.Assume(PartingBands.Of(set).Is(ValueSet<string>.Empty), Respelled.Of(set).Is(ValueSet<string>.Empty), Unsendable.Of(set).Is(ValueSet<string>.Empty));
 
                 foreach (var (test, swapped, reads) in definition.PairReadings)
                     w.Assume(PairReads.Of(test, swapped, reads));
@@ -1631,7 +1941,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 w.Assume(RawUnion.Of().Is(RawTruths.Empty));
 
                 w.Assume(Means.Of().Is(definition.Means), Placed.Of().Is(ValueSet<CosmosValueClass>.Empty), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
-                    PartingBands.Of().Is(definition.PartingBands), RexGrammar.Of().Is(RenderingRexGrammar.Written));
+                    Rewriting.Of().Is(ValueSet<CosmosAnswer>.Empty), RexGrammar.Of().Is(RenderingRexGrammar.Written));
             });
 
             var report = Theory.Run(Settle);

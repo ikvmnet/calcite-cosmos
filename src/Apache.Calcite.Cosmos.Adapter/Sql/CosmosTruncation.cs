@@ -17,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     {
 
         /// <summary>An argument of one run of text between two <c>%</c>, as a <c>CONTAINS</c> is written (<c>AffixPattern.Runs</c>).</summary>
-        public const string OneRun = "onerun";
+        public const string OneRun = AffixPattern.OneRun;
 
     }
 

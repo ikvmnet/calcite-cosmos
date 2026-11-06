@@ -385,8 +385,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (atom, columns, vector, means, tolerated) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, columns, vector, means, tolerated);
 
         /// <summary>M8 and M9: the service's comparison of a boolean with a string, for the operators given, answered by the boolean's rendering.</summary>
-        static Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> leaf, Op[] ops) =>
-            (form, cells, table, parted) => leaf(form, cells, table, parted) is var vector && form.Kind == ServiceFormKind.Compare && ops.Contains(form.Test) && JsonValues.IsString(form.Literal!)
+        static Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> leaf, Op[] ops) =>
+            (form, cells, table, reads) => leaf(form, cells, table, reads) is var vector && form.Kind == ServiceFormKind.Compare && ops.Contains(form.Test) && JsonValues.IsString(form.Literal!)
                 ? vector with
                 {
                     Outcomes = [.. vector.Outcomes.Zip(cells.Cells, (o, cell) => cell is PathCell.Point { Value: var v } && JsonValues.TypeOf(v) == JsonValues.BooleanType

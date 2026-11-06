@@ -212,9 +212,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var generated = Planned(Planted(rules: theory => theory.Graph.Rulesets.Single(r => r.Name == "lift").DefineRule("planted: an implied agreement that may be sent is a best candidate", r =>
             {
                 var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
-                var b = r.Var<ValueSet<string>>("b");
-                r.When(theory.At.Of(e, pos), Fact.Exists(theory.Agrees.Of(e, pos, f, Verdict.Implies)), theory.Vacuous.Of(e, pos, f, Verdict.Implies).Is(false), b.Is(theory.PartingBands.Of()));
-                r.Where(RenderingPrimitives.Sendable.Of(f, b));
+                var (s, ub, pb) = r.Vars<RenderingSet, ValueSet<string>, ValueSet<string>>("s", "ub", "pb");
+                var (lc, oc) = r.Vars<ValueSet<string>, ValueSet<string>>("lc", "oc");
+                r.When(theory.At.Of(e, pos), Fact.Exists(theory.Agrees.Of(e, pos, f, Verdict.Implies)), theory.Vacuous.Of(e, pos, f, Verdict.Implies).Is(false), theory.Under.Of(s),
+                    ub.Is(theory.Unsendable.Of(s)), pb.Is(theory.PartingBands.Of(s)), lc.Is(Compute.Of(f, RenderingTheory.LiteralClasses)), oc.Is(Compute.Of(f, RenderingTheory.OrderedLiteralClasses)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(lc, ub)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(oc, pb)));
                 r.Then(theory.BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
             })), "SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" <> 'bikes'");
 
@@ -569,7 +572,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var failing = RenderingTheory.Define(Measured with
             {
-                Leaf = (form, cells, table, parted) => Measured.Leaf(form, cells, table, parted) is var vector && cells.Outside is { Count: > 0 } outside
+                Leaf = (form, cells, table, reads) => Measured.Leaf(form, cells, table, reads) is var vector && cells.Outside is { Count: > 0 } outside
                     ? vector with { Outcomes = [.. vector.Outcomes.Zip(cells.Cells, (o, cell) => outside.Contains(cell) ? o with { Outcomes = ServiceOutcomes.Fails } : o)] }
                     : vector,
             });
@@ -658,8 +661,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static RenderingDefinition ByRendering(RenderingDefinition definition) => RenderingGenerateMutationTests.Plants["M9"].Define(RenderingGenerateMutationTests.Plants["M8"].Define(definition));
 
         /// <summary>G3's mutation: the service's <c>!=</c> over a null answered false.</summary>
-        static Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> NullUnequalIsFalse(Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> leaf) =>
-            (form, cells, table, parted) => leaf(form, cells, table, parted) is var vector && form.Test == CosmosServiceTest.NotEqual
+        static Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> NullUnequalIsFalse(Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> leaf) =>
+            (form, cells, table, reads) => leaf(form, cells, table, reads) is var vector && form.Test == CosmosServiceTest.NotEqual
                 ? vector with { Outcomes = [.. vector.Outcomes.Zip(cells.Cells, (o, cell) => cell is PathCell.Null ? o with { Outcomes = ServiceOutcomes.False } : o)] }
                 : vector;
 

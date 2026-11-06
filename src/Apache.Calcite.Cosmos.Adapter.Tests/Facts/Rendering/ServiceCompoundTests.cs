@@ -98,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Append(new MeasuredOutcome("Service.Planted", and, RenderingTarget.Emulator, CosmosAnswer.False)));
 
             // The cells in order: absent, array, false, true, fractions, integers, null, object, 'bikes', the strings either side.
-            var bare = ServiceLeaf.On(Leaf, Cells, table, ValueSet<string>.Empty);
+            var bare = ServiceLeaf.On(Leaf, Cells, table, LeafReads.None);
             bare.Outcomes.Select(o => o.NonBoolean.ToString()).Should().Equal("Absent", "Array", "None", "None", "Number", "Number", "Null", "Object", "String", "String", "String");
 
             var truths = new OutcomeVector(Cells, Cells.Cells.Select(_ => new CellOutcome(ServiceOutcomes.True, CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);

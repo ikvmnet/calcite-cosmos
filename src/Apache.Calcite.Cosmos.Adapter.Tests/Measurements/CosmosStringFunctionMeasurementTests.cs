@@ -644,9 +644,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>=</c>, <c>IN</c>, <c>!=</c> and <c>STARTSWITH</c>, and so is one compared with a function of the path; under
         /// <c>ENDSWITH</c> and <c>CONTAINS</c>, both ways, unless it begins with <c>0</c> or <c>1</c>, which an escape's
         /// second unit matches. Sent as written, a value holding either character is kept nowhere, so <c>=</c> drops the row
-        /// and <c>!=</c> keeps it. Measured on both images on 2026-10-31.
+        /// and <c>!=</c> keeps it. Measured on both images on 2026-10-31. The row's rewrites, the two characters, are read as
+        /// data (G1).
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.EmulatorComparesTheSpellingItIsSent")]
         public async Task TheEmulatorComparesWhatItIsSentWithWhatItStores()
         {
             var spelling = await Spelling();
@@ -855,9 +856,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A parameter holding a lone surrogate is never sent: the SDK's UTF-8 encoder refuses it while it writes the
-        /// statement, so the statement fails on either target where Calcite answers it.
+        /// statement, so the statement fails on either target where Calcite answers it. The row's unsent class is read as
+        /// data (G1).
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LoneSurrogateParameterIsNeverSent")]
         public async Task ALoneSurrogateParameterFailsBeforeItIsSent()
         {
             var strings = Strings_();

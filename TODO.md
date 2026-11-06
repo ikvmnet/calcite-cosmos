@@ -3004,10 +3004,11 @@ across documents* and *A join of a container to itself* is the record.
     rule proves over that node's import (`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`).
     Before h15 S states a computed atom's operands where its conjunct is rendered, as it states a one-path atom there:
     a stratum of its own for a later round's computed atom, whose `ArmImport` and characters are that node's.
-  - The loader's place gate (`RowFunctions`, `Spell`'s literal filter, four deep; G6's sites) gives S no place for a
-    call it refuses, so S has no image of a nested call whose literal holds U+0000, U+FDD0 or a surrogate, or of one
-    more than four deep, where the bridge pushes it when its rows agree; no corpus plan holds one. G6 moves the gate
-    into rows and S's schedule, and lists what the depth it keeps still declines.
+  - The loader's place gate (`RowFunctions`, four deep; G6's site) gives S no place for a call more than four deep,
+    where the bridge pushes it when its rows agree; no corpus plan holds one. G6 moves the gate into rows and S's
+    schedule, and lists what the depth it keeps still declines. `Spell`'s literal filter is legality alone since G1,
+    refusing a literal holding an unpaired surrogate, which the SDK will not send; one holding U+0000, U+FDD0 or a pair
+    is a place S's image rule reads through the function rows.
   It goes when S writes the column (h37).
 - **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
   `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`
@@ -3079,7 +3080,8 @@ across documents* and *A join of a container to itself* is the record.
   `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
   (`CosmosRexTranslatorTests.Functions` holds both). Those spellings hold the literals the emulator stores escaped too:
   on Azure a literal U+0000 or U+FDD0 in `CONCAT`, `||` or `REPEAT` is keyed with a stored one, which run 1's stored
-  witnesses alone measured; it matters once `Spell`'s literal refusal goes (G1).
+  witnesses alone measured; it matters now that `Spell`'s literal refusal is gone (G1): such a literal is a place,
+  which the emulator's rows decline and Azure's key with a stored one.
 - **F still folds a cast comparand, and the legality and `Membership` read none** — *G8's remainder, h15's.* Since fix6's fix
   round a loading that reads places reads a number Calcite wrote cast as the casts' terms, and S's rules and rows derive
   what it denotes and which readings take it (DESIGN.md, *The comparand's casts are S's*), where `Comparand` decided both
@@ -3091,12 +3093,10 @@ across documents* and *A join of a container to itself* is the record.
   which reads an `OR` of equalities as an `IN` over literals alone, so over the places reading an `OR` of cast numbers
   stays a disjunction of atoms. A raw reading, and a typed one no row names, compared with a cast number is a comparison
   with no atom over the places reading, where the fold left it opaque.
-- **The foundation's F3 rows wait on their groups** — *each group's, G1 to G8.* f345 reads the prose rows' cells into S
-  (DESIGN.md, *The foundation's cells, roles and case mapping*), and no rule reads them but `parts`: G1 reads `moves`,
-  `storedas` and `truncates`, and restricts `PartingBands`, the sendable gate's, to the comparators each set's string
-  order names, where it is every comparator's today; it also retires the evaluator's own copies of `parts` and `moves`
-  (`ServiceLeaf.Sides` and `Place`, which name the code point orders, the surrogate and high bands and U+0000), and
-  `CosmosRendering.StoresSpelled`, which names the emulator's stored order. G3 reads `pairreads` and `readerorder`, G7
+- **The foundation's F3 rows wait on their groups** — *each group's, G2 to G8.* f345 reads the prose rows' cells into S
+  (DESIGN.md, *The foundation's cells, roles and case mapping*); G1's rules read `parts`, `moves`, `storedas` and
+  `truncates`, each set's parting bands are its own comparators', and the leaf, the lifts and `StoresSpelled` read what
+  S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3 reads `pairreads` and `readerorder`, G7
   `calcitereads`, `calcitebands` and `testkinds` (where `PredicateAtom.TypeTests` holds a C# copy of the last), G8
   `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`, which no row states yet.
   Rows still owed: `readerorder ∋ reflexive` for any reading, which a double's NaN makes a measurement; the emulator's
@@ -3114,7 +3114,17 @@ across documents* and *A join of a container to itself* is the record.
   characters but not U+FFFD is stated as holding U+FFFD. A claim carrying refinements gives it back once a row reads one.
 - **The stored rows are keyed by the surrogate band, not by `unpaired`** — *small.* `Service.LoneSurrogateIsStoredAsReplacement`
   stores `surrogate` as `high` and `replacement`, which a string written of pairs alone does not need; keyed by
-  `unpaired` it would be exact, once every written set a pair-only string reaches names its refinements.
+  `unpaired` it would be exact, once every written set a pair-only string reaches names its refinements. Since G1 S's
+  `storedas` rule reads it, so under Azure an affix whose pattern holds the high band answers either over a string
+  holding a pair too, which keyed by `unpaired` it would match exactly; and `ServiceLeaf.ByCodePoint` still reads a lone
+  surrogate as U+FFFD under Azure's comparator, the row's fact in C#, because refining the row changes F, which reads
+  the same cells. Both go with the row's refinement, F's group's.
+- **The bridge still refuses a containment over U+0000 on the emulator** — *h37 to h42.* The translator's
+  `CosmosFunctionSpellings.Refusals` refuses a containment `LIKE` over a path that may hold U+0000 on the emulator as on
+  Azure, which no emulator row says; reading the rows would push such a `LIKE` there and move the digests. It reads
+  `StoresSpelled` as S derives it since G1, and goes with the translator bridge's other copies of G1's decisions
+  (`Refusals`' case-mapped, searched and stored records, `LikeRefusal`, `IsPrefix`'s stored branch) at h37 to h42, S
+  carrying each.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
@@ -3217,7 +3227,7 @@ across documents* and *A join of a container to itself* is the record.
   a trailing zero reach it, `Print` takes each comparison's reading beside the form, from the conjunct's IR, binding a
   number compared through an approximate one as a double and a decimal at its literal's scale: about 15 lines.
 - **The reader reads no `IN`, bare path or constant** — *small.* `CosmosSqlFormReader` reads each as opaque, so the
-  printer's round trip cannot hold one; S chooses none (no template proposes an `IN` until N4, and `sendable` lifts no
+  printer's round trip cannot hold one; S chooses none (no template proposes an `IN` until N4, and S lifts no
   constant), and their spelling is held by a unit test alone. A template that proposes one brings the reader with it.
 - **The printer reads its fault switch at each node** — *small, O4's inventory.* `RenderingPrinterFaults` is read, one
   `volatile bool`, for each path name, `NOT` and junction a print writes; since the switch implementation prints every

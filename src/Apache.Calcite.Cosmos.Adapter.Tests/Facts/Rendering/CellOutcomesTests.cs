@@ -35,14 +35,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly PredicateAtom Atom = PredicateAtom.Compare(PredicateAtom.TextReader, PredicateAtom.NotEqual, Of("bikes"));
 
         /// <summary>A form's vector on a partition, evaluated from its leaves up, as S's rules evaluate one.</summary>
-        internal static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table, ValueSet<string> parted) => form.Members.Count == 0
-            ? ServiceLeaf.On(form, cells, table, parted)
-            : ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table, parted), Evaluate(ServiceForm.Rest(form), cells, table, parted), table);
+        internal static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table, LeafReads reads) => form.Members.Count == 0
+            ? ServiceLeaf.On(form, cells, table, reads)
+            : ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table, reads), Evaluate(ServiceForm.Rest(form), cells, table, reads), table);
 
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
             var cuts = CutPoints.Of(Atom, form, ReaderEdgesTable.Rows[PredicateAtom.TextReader]);
-            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured, Truths.Raises);
+            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None), AnswerMeanings.Measured, Truths.Raises);
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);

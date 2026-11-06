@@ -326,9 +326,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="spell">An operand's spelling, or <c>null</c> where it has none.</param>
         public static string? Spell(SqlValue.Call call, Func<SqlValue, string?> spell)
         {
-            // A literal the emulator would store escaped, or the SDK refuse to send, is never spelled into a place.
+            // A literal the SDK refuses to send, one holding an unpaired surrogate, is never bound (Service.LoneSurrogateParameterIsNeverSent):
+            // legality. What any other literal makes, U+0000 and U+FDD0 among them, is the function rows' (F2, G1).
             if (call.Operands.Any(o => o is SqlValue.Literal l && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsString(l.Value)
-                && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.StringOf(l.Value).Any(c => c == '\0' || c == '﷐' || char.IsSurrogate(c))))
+                && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsEncodable(Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.StringOf(l.Value)) == false))
                 return null;
 
             var operands = new string[call.Operands.Count];

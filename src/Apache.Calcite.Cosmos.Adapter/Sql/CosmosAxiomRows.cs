@@ -72,6 +72,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> ReadParts(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from part in axiom.Parts ?? [] select (part.Comparator, part.Band, part.Other)).Distinct()];
 
+        /// <summary>One row per band a comparator's spelling rewrites (G1), S's <c>rewrites</c>. It merges nothing.</summary>
+        public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadRewrites(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from rewrite in axiom.Rewrites ?? [] select (rewrite.Comparator, rewrite.Band)).Distinct()];
+
+        /// <summary>One row per band a stored string may hold that equals a sent value of another (G1), S's <c>collides</c>. It merges nothing.</summary>
+        public static IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> ReadCollisions(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from collision in axiom.Collisions ?? [] select (collision.Comparator, collision.Band, collision.Other)).Distinct()];
+
+        /// <summary>
+        /// One row per class a parameter holding a character of is never sent, on each target the row was measured on (G1),
+        /// S's <c>unsent</c>. It merges nothing.
+        /// </summary>
+        public static IReadOnlyList<(RenderingTarget Target, string Class)> ReadUnsent(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. (from axiom in axioms
+                from @class in axiom.Unsent ?? []
+                from target in Targets
+                where axiom.MeasuredOn.HasFlag(target.Flag)
+                select (target.Target, @class)).Distinct(),
+        ];
+
         /// <summary>One row per band a comparator moves in order (F3), S's <c>moves</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadMoves(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from move in axiom.Moves ?? [] select (move.Comparator, move.Band)).Distinct()];

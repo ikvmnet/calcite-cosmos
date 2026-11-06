@@ -94,12 +94,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             b.Form is not { } f || s.Contains(f) == false);
 
         /// <summary>
-        /// A form may be sent: no literal holds an unpaired surrogate, which the SDK refuses to send on either target
-        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>); and no string ordering's literal holds a character of a
-        /// parting band, so that nothing S sends is one bound of a range the two orders rank apart.
+        /// The stored spelling splits an affix's pattern (<see cref="AffixPattern.StoredAlike"/>, the writer's spelling read of
+        /// it): an affix cut of a range, made of strings as written, does not say what a matcher of that spelling matches.
         /// </summary>
-        public static Primitive<ServiceForm, ValueSet<string>, bool> Sendable { get; } = Primitive.Create<ServiceForm, ValueSet<string>, bool>("sendable", (f, bands) =>
-            f.Literals.All(l => JsonValues.IsString(l) == false || JsonValues.IsEncodable(JsonValues.StringOf(l))) && f.Subforms.All(g => PartsBands(g, bands) == false));
+        public static Primitive<ServiceForm, bool> SpellingSplits { get; } = Primitive.Create<ServiceForm, bool>("spelling-splits", f =>
+            f.Kind == ServiceFormKind.Affix && f.Pattern is { } pattern && AffixPattern.StoredAlike(pattern) == false);
 
         /// <summary>The Rex builder writes a form over the atom's reader: every comparison, membership and test of it is in the grammar.</summary>
         public static Primitive<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool> RexWritable { get; } =
@@ -143,8 +142,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static IEnumerable<ServiceForm> FlatParts(ServiceForm form, ServiceFormKind kind) =>
             form.Kind == kind && kind is ServiceFormKind.And or ServiceFormKind.Or ? form.Flat : [form];
-
-        static bool PartsBands(ServiceForm form, ValueSet<string> bands) => StringOrdering.Function(form) && JsonValues.CharactersOf(form.Literal!).Overlaps(bands);
 
     }
 

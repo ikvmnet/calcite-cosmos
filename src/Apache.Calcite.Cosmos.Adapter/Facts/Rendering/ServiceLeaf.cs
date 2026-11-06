@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     internal static class ServiceLeaf
     {
 
-        public static OutcomeVector On(ServiceForm leaf, CellPartition cells, ServiceTable table, ValueSet<string> parted)
+        public static OutcomeVector On(ServiceForm leaf, CellPartition cells, ServiceTable table, LeafReads reads)
         {
             if (leaf.Members.Count > 0)
                 throw new ArgumentException("A leaf tests one path; a connective is evaluated from its parts.", nameof(leaf));
@@ -27,14 +27,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 throw new ArgumentException("A leaf is evaluated on its own path's cells, and the partition rule hands no other.", nameof(cells));
 
             var rows = new HashSet<string>(StringComparer.Ordinal);
-            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, table, parted, rows), NonBoolean(leaf, cell))).ToList();
+            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, table, reads, rows), NonBoolean(leaf, cell))).ToList();
             return new OutcomeVector(cells, outcomes, ValueSet.From(rows));
         }
 
-        static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
+        static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
             if (leaf.Kind == ServiceFormKind.ComparePaths)
-                return cell is PathCell.Pair pair ? Paired(leaf, pair, table, rows) : ServiceOutcomes.Widest;
+                return cell is PathCell.Pair pair ? Paired(leaf, pair, table, reads, rows) : ServiceOutcomes.Widest;
 
             // A kind the theory does not know says nothing of the cell.
             if (CosmosValueClasses.Of(cell) is not CosmosValueClass kind)
@@ -52,11 +52,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 case ServiceFormKind.Compare:
                     var operand = CosmosValueClasses.Of(leaf.Literal!);
                     return operand == kind && table.Placed.Contains(operand)
-                        ? Within(leaf, cell, operand, table, parted, rows)
+                        ? Within(leaf, cell, operand, table, reads, rows)
                         : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
 
                 case ServiceFormKind.Affix:
-                    return Affix(leaf, cell, kind, table, rows);
+                    return Affix(leaf, cell, kind, table, reads, rows);
 
                 default:
                     return ServiceOutcomes.Widest;
@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// or matchers the test's own entry names, as an order names a comparator (<c>Service.AffixesMatchByCodePoint</c>,
         /// <c>Service.LikeMatchesByCodePoint</c>). An argument no pattern says, and an entry naming no matcher, answer anything.
         /// </summary>
-        static ServiceOutcomes Affix(ServiceForm leaf, PathCell cell, CosmosValueClass kind, ServiceTable table, ISet<string> rows)
+        static ServiceOutcomes Affix(ServiceForm leaf, PathCell cell, CosmosValueClass kind, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
             if (kind != CosmosValueClass.String)
                 return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
@@ -92,40 +92,32 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             var outcomes = matchers.Outcomes;
             foreach (var matcher in matchers.Matching)
-                foreach (var side in Matched(cell, pattern, matcher))
+                foreach (var side in Matched(cell, pattern, matcher, reads))
                     outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, side), rows);
 
             return outcomes;
         }
 
         /// <summary>
-        /// Whether a string cell's values match a pattern under a matcher: by code point, a string as it matches by UTF-16
-        /// unit, which a pattern of runs does alike over well-formed text, and a cell an affix cut by its own pattern; under the
-        /// emulator's, a string's stored spelling against the pattern's (<c>Service.EmulatorComparesTheSpellingItIsSent</c>),
-        /// and a cell where that changes nothing (<see cref="AffixPattern.StoredAlike"/>). Either, where a lone surrogate the
-        /// service stores as U+FFFD may meet a pattern holding one, or the cell is not told; and under the code point
-        /// matcher, Azure's, a <c>CONTAINS</c> or the <c>LIKE</c> of one run between two <c>%</c> the service answers as one,
-        /// where the string may hold U+0000 or the argument does: the service reads the string only up to its first U+0000,
-        /// and an argument holding one matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>). A lone
-        /// <c>%</c>, spelled <c>STARTSWITH</c> of the empty string (<see cref="AffixPattern.Written"/>), matches every string
-        /// of a cell, as the point case above already answers each of them: a matcher by code point, stored or not, places
-        /// the empty run before every string, and no exception above can hold of a pattern holding no unit (rawtyped).
+        /// Whether a string cell's values match a pattern under a matcher: a string as the matcher matches it
+        /// (<see cref="Matches"/>), and a range as the affix cut it by its own pattern, a lone <c>%</c> matching every string
+        /// (<see cref="AffixPattern.Universal"/>). Either where S's rules found the match unread over a band the cell may hold
+        /// (<see cref="LeafReads.Unread"/>), a range's affix cut untold over one it may hold (<see cref="LeafReads.Uncut"/>),
+        /// or every cell unread (<see cref="LeafReads.Blind"/>): which rows say so, and of which bands, is S's
+        /// (<c>truncates</c>, <c>storedas</c>, <c>rewrites</c>), and the leaf tests the bands it is handed on the cell.
         /// </summary>
-        static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher)
+        static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher, LeafReads reads)
         {
             CosmosValueClass[] either = [CosmosValueClass.Matching, CosmosValueClass.Missing];
             CosmosValueClass[] Side(bool match) => match ? [CosmosValueClass.Matching] : [CosmosValueClass.Missing];
-            var replaced = pattern.Any(u => char.IsSurrogate(u) || u == '\uFFFD');
-            var cut = matcher == CosmosAnswer.CodePoint && AffixPattern.Runs(pattern) is ["", { Length: > 0 }, ""];
+            if (reads.Blind.IsEmpty == false)
+                return either;
+
             return cell switch
             {
-                PathCell.Point { Value: var v } when replaced && JsonValues.IsEncodable(StringOf(v)) == false => either,
-                PathCell.Point { Value: var v } when cut && (StringOf(v).Contains('\0') || pattern.Contains('\0')) => either,
-                PathCell.Strings s when cut && (s.Classes.Contains(NulClass) || pattern.Contains('\0')) => either,
-                PathCell.Point { Value: var v } when matcher == CosmosAnswer.StoredCodePoint => Side(AffixPattern.Matches(EmulatorStoredText.Of(StringOf(v)), EmulatorStoredText.Of(pattern))),
-                PathCell.Point { Value: var v } => Side(AffixPattern.Matches(StringOf(v), pattern)),
-                PathCell.Strings s when replaced && s.Classes.Contains(SurrogateBand) => either,
-                PathCell.Strings s when matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern) == false && (s.Classes.Contains(NulClass) || s.Classes.Contains(HighBand)) => either,
+                PathCell.Point when Bands(cell).Overlaps(reads.Unread) => either,
+                PathCell.Point { Value: var v } => Side(Matches(matcher, StringOf(v), pattern)),
+                PathCell.Strings s when s.Classes.Overlaps(reads.Unread) || s.Classes.Overlaps(reads.Uncut) => either,
                 PathCell.Strings when AffixPattern.Universal(pattern) => [CosmosValueClass.Matching],
                 PathCell.Strings s when s.Like?.Contains(pattern) == true => [CosmosValueClass.Matching],
                 PathCell.Strings s when s.NotLike?.Contains(pattern) == true => [CosmosValueClass.Missing],
@@ -137,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// A comparison with a literal of the cell's type: by the side or sides each comparator of the type's order entry
         /// places the cell on, the comparators S settled of its answers (<see cref="MeasuredEntry.Placing"/>).
         /// </summary>
-        static ServiceOutcomes Within(ServiceForm leaf, PathCell cell, CosmosValueClass operand, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
+        static ServiceOutcomes Within(ServiceForm leaf, PathCell cell, CosmosValueClass operand, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
             var order = MeasuredKey.Of(CosmosServiceTest.Order, operand, CosmosValueClass.None);
             if (table.TryGet(order, out var comparators) == false)
@@ -154,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var outcomes = comparators.Outcomes;
             foreach (var comparator in comparators.Placing)
             {
-                if (Place(cell, leaf.Literal!, comparator, parted) is not { } sides)
+                if (Place(cell, leaf.Literal!, comparator, reads) is not { } sides)
                     return ServiceOutcomes.Widest;
 
                 foreach (var side in sides)
@@ -172,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// row mirrored, as that row measured both ways round; a side absent by the row's own key for one, and two nulls as
         /// against the literal null. Without it, anything.
         /// </summary>
-        static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, ISet<string> rows)
+        static ServiceOutcomes Paired(ServiceForm leaf, PathCell.Pair pair, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
             if (CosmosValueClasses.Of(pair.Left) is not CosmosValueClass left || CosmosValueClasses.Of(pair.Right) is not CosmosValueClass right)
                 return ServiceOutcomes.Widest;
@@ -204,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return ServiceOutcomes.Widest;
 
                 var outcomes = comparators.Outcomes;
-                foreach (var side in comparators.Placing.AsEnumerable().SelectMany(comparator => Sides(pair, comparator)).Distinct())
+                foreach (var side in comparators.Placing.AsEnumerable().SelectMany(comparator => Sides(pair, comparator, reads)).Distinct())
                     outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, left, side), rows);
 
                 return outcomes;
@@ -226,14 +218,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Where the left of a pair lies against the right under a comparator: two points as they compare; a cell parted
-        /// by UTF-16 unit as it is parted where the comparator orders as that does or the pair is equal, but either way
-        /// where code point order may rank them apart (a surrogate against the high band), and anywhere under the
-        /// emulator's stored order where either may hold U+0000, the one unit its spelling moves in order; two numbers
-        /// equal on a place's diagonal, a number against a point by its value; anywhere otherwise.
+        /// by UTF-16 unit as it is parted, but either way where the sides may hold two bands S's rules found the set's
+        /// comparators rank apart from that order (<see cref="LeafReads.Departs"/>), and anywhere where either side may hold
+        /// a band they move (<see cref="LeafReads.Moved"/>), two points too; two numbers equal on a place's diagonal, a number
+        /// against a point by its value; anywhere otherwise.
         /// </summary>
-        static IEnumerable<CosmosValueClass> Sides(PathCell.Pair pair, CosmosAnswer comparator)
+        static IEnumerable<CosmosValueClass> Sides(PathCell.Pair pair, CosmosAnswer comparator, LeafReads reads)
         {
             CosmosValueClass[] anywhere = [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above];
+            var moved = Bands(pair.Left).Overlaps(reads.Moved) || Bands(pair.Right).Overlaps(reads.Moved);
             switch (comparator, pair.Left, pair.Right)
             {
                 case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, _, _) when pair.Order == 0:
@@ -242,16 +235,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     return Numeric(pair.Left, c) ?? anywhere;
                 case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, _, _):
                     return anywhere;
-                case (_, PathCell.Point { Value: var a }, PathCell.Point { Value: var b }) when IsString(a) && IsString(b)
-                    && (comparator != CosmosAnswer.StoredCodePoint || Bands(pair.Left).Contains(NulClass) == false && Bands(pair.Right).Contains(NulClass) == false):
+                case (_, PathCell.Point { Value: var a }, PathCell.Point { Value: var b }) when IsString(a) && IsString(b) && moved == false:
                     return [Side(Compare(comparator, StringOf(a), StringOf(b)))];
-                case (_, _, _) when pair.Order is null:
+                case (_, _, _) when pair.Order is null || moved:
                     return anywhere;
-                // The stored spelling keeps code-point order everywhere but at U+0000 (EmulatorStoredText).
-                case (CosmosAnswer.StoredCodePoint, _, _) when Bands(pair.Left).Contains(NulClass) || Bands(pair.Right).Contains(NulClass):
-                    return anywhere;
-                case (CosmosAnswer.CodePoint or CosmosAnswer.StoredCodePoint, _, _) when pair.Order != 0 && (Bands(pair.Left).Contains(SurrogateBand) && Bands(pair.Right).Contains(HighBand)
-                    || Bands(pair.Left).Contains(HighBand) && Bands(pair.Right).Contains(SurrogateBand)):
+                case (_, _, _) when pair.Order != 0 && reads.Departs.AsEnumerable().Any(d => Bands(pair.Left).Contains(d.Band) && Bands(pair.Right).Contains(d.Other)):
                     return [CosmosValueClass.Below, CosmosValueClass.Above];
                 default:
                     return [Side(pair.Order!.Value)];
@@ -271,28 +259,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Where a cell's values lie against a literal under a comparator; <c>null</c> where the comparator does not order
-        /// them, or not exactly.
+        /// them, or not exactly. A literal S's rules found unplaced lies anywhere (<see cref="LeafReads.Unplaced"/>); a range
+        /// is placed by its bounds unless they found the literal parted over it (<see cref="LeafReads.Parted"/>), and is equal
+        /// to a literal it holds or one they found loose (<see cref="LeafReads.Loose"/>).
         /// </summary>
-        static CosmosValueClass[]? Place(PathCell cell, string literal, CosmosAnswer comparator, ValueSet<string> parted)
+        static CosmosValueClass[]? Place(PathCell cell, string literal, CosmosAnswer comparator, LeafReads reads)
         {
             switch (comparator, cell)
             {
-                // What the emulator stores for U+0000 is not what it is sent: a literal holding one lies anywhere, and so does
-                // a range that may hold one, equal only to a literal it holds or one holding the high band, as U+FDD0 is.
-                case (CosmosAnswer.StoredCodePoint, PathCell.Point or PathCell.Strings) when IsString(literal) && CharactersOf(literal).Contains(NulClass):
+                case (_, PathCell.Point or PathCell.Strings) when IsString(literal) && reads.Unplaced.Contains(literal):
                     return [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above];
-
-                case (CosmosAnswer.StoredCodePoint, PathCell.Strings s) when IsString(literal) && s.Classes.Contains(NulClass):
-                    return cell.Contains(literal) || CharactersOf(literal).Contains(HighBand)
-                        ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
 
                 case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint, PathCell.Point { Value: var v }) when IsString(v) && IsString(literal):
                     return [Side(Compare(comparator, StringOf(v), StringOf(literal)))];
 
                 case (CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint, PathCell.Strings s) when IsString(literal):
-                    var t = StringOf(literal);
-                    return Sides(cell, literal, parted.Contains(literal) == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
-                        parted.Contains(literal) == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0);
+                    var (t, parted) = (StringOf(literal), reads.Parted.Contains(literal));
+                    return Sides(cell, literal, parted == false && s.High is string h && string.CompareOrdinal(StringOf(h), t) <= 0,
+                        parted == false && s.Low is string l && string.CompareOrdinal(StringOf(l), t) >= 0, reads.Loose.Contains(literal));
 
                 case (CosmosAnswer.Numeric or CosmosAnswer.NumericPointedAsDouble, PathCell.Point { Value: var v }) when IsNumber(v) && TryNumberOf(literal, out var c):
                     return Numeric(cell, c);
@@ -305,10 +289,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
         }
 
-        /// <summary>One side where every value lies there; otherwise either, and the literal where the cell holds it.</summary>
-        static CosmosValueClass[] Sides(PathCell cell, string literal, bool below, bool above) =>
+        /// <summary>One side where every value lies there; otherwise either, and the literal where the cell holds it or may equal it.</summary>
+        static CosmosValueClass[] Sides(PathCell cell, string literal, bool below, bool above, bool loose) =>
             below ? [CosmosValueClass.Below] : above ? [CosmosValueClass.Above]
-            : cell.Contains(literal) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
+            : cell.Contains(literal) || loose ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [CosmosValueClass.Below, CosmosValueClass.Above];
 
         static CosmosValueClass Side(int order) => order < 0 ? CosmosValueClass.Below : order > 0 ? CosmosValueClass.Above : CosmosValueClass.Equal;
 
@@ -323,6 +307,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosAnswer.StoredCodePoint => ByCodePoint(EmulatorStoredText.Of(a), EmulatorStoredText.Of(b)),
             _ => ByCodePoint(a, b),
         };
+
+        /// <summary>
+        /// Whether a string matches a pattern of runs under a matcher, one the test's entry names: by code point, as by UTF-16
+        /// unit over well-formed text (<see cref="AffixPattern.Matches"/>); under the emulator's, the string's stored spelling
+        /// against the pattern's, which is what it matches (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). The matcher's
+        /// own evaluation on two concrete strings, as <see cref="Compare"/> is the comparator's.
+        /// </summary>
+        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => matcher == CosmosAnswer.StoredCodePoint
+            ? AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern))
+            : AffixPattern.Matches(text, pattern);
 
         /// <summary>Strings by code point, a lone surrogate read as U+FFFD, as the service stores one.</summary>
         static int ByCodePoint(string a, string b)

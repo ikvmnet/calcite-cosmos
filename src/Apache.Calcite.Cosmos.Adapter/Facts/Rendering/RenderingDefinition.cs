@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
         Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> Split,
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
-        Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
+        Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
         Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
@@ -65,23 +65,42 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> Parts { get; init; } = [];
 
-        /// <summary>The bands any comparator ranks apart, as one set, which <c>sendable</c> reads.</summary>
-        public ValueSet<string> PartingBands => ValueSet.From(Parts.SelectMany(p => new[] { p.Band, p.Other }));
-
-        /// <summary>Which band each comparator moves in order (<c>CosmosAxiomRows.ReadMoves</c>, F3); no rule reads it yet (G1).</summary>
+        /// <summary>
+        /// Which band each comparator moves in order (<c>CosmosAxiomRows.ReadMoves</c>, F3), which S's parted rules read through
+        /// the comparators a set's string order names (G1).
+        /// </summary>
         public IReadOnlyList<(CosmosAnswer Comparator, string Band)> Moves { get; init; } = [];
 
         /// <summary>
         /// What a string written in a class is stored holding, on each target that stored it so (<c>CosmosAxiomRows.ReadStoredOn</c>,
-        /// F3); no rule reads it yet (G1).
+        /// F3), which S reads where an affix's pattern holds what a target stores (G1).
         /// </summary>
         public IReadOnlyList<(RenderingTarget Target, string Written, string Stored)> StoredAs { get; init; } = [];
 
         /// <summary>
         /// Which tests read a string only to a band's first character, for an argument of a shape, on each target
-        /// (<c>CosmosAxiomRows.ReadTruncations</c>, F3); no rule reads it yet (G1).
+        /// (<c>CosmosAxiomRows.ReadTruncations</c>, F3), which S reads of an affix on a target a set serves (G1).
         /// </summary>
         public IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Shape, string Band)> Truncations { get; init; } = [];
+
+        /// <summary>
+        /// Which band each comparator's spelling rewrites (<c>CosmosAxiomRows.ReadRewrites</c>, G1): from which S derives the
+        /// spelling a set's statements send, the paths it may write, and where an affix's cut of a range says the match. None
+        /// in a definition that names none, where every set is sent as written.
+        /// </summary>
+        public IReadOnlyList<(CosmosAnswer Comparator, string Band)> Rewrites { get; init; } = [];
+
+        /// <summary>
+        /// Which band a stored string may hold that equals a sent value holding another, under a comparator
+        /// (<c>CosmosAxiomRows.ReadCollisions</c>, G1).
+        /// </summary>
+        public IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> Collisions { get; init; } = [];
+
+        /// <summary>
+        /// The classes a parameter holding a character of is never sent on a target (<c>CosmosAxiomRows.ReadUnsent</c>, G1): what
+        /// S's lifts read of each form's literals under a set serving it.
+        /// </summary>
+        public IReadOnlyList<(RenderingTarget Target, string Class)> Unsent { get; init; } = [];
 
         /// <summary>How a comparison of two paths reads against a literal (<c>CosmosAxiomRows.ReadPairReadings</c>, F3); no rule reads it yet (G3).</summary>
         public IReadOnlyList<(CosmosServiceTest Test, bool Swapped, CosmosServiceTest Reads)> PairReadings { get; init; } = [];

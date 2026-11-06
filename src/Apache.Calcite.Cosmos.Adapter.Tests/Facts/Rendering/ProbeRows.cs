@@ -33,10 +33,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
         /// <summary>
-        /// S as measured from the rows given, with nothing the host names but the registry's parts, which the parted rules
-        /// read (<see cref="RenderingDefinition.Parts"/>): the definition a test that plants rows starts from.
+        /// S as measured from the rows given, with nothing the host names but the registry's rows of characters, which the
+        /// parted, sets and spell rules read (<see cref="RenderingDefinition.Parts"/> and its neighbours, F3 and G1): the
+        /// definition a test that plants rows starts from.
         /// </summary>
-        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows) with { Parts = Measured.Parts };
+        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows) with
+        {
+            Parts = Measured.Parts,
+            Moves = Measured.Moves,
+            StoredAs = Measured.StoredAs,
+            Truncations = Measured.Truncations,
+            Rewrites = Measured.Rewrites,
+            Collisions = Measured.Collisions,
+            Unsent = Measured.Unsent,
+        };
 
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;

@@ -47,6 +47,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The pattern's runs, in order; an empty one where it begins or ends with <c>%</c>.</summary>
         public static string[] Runs(string pattern) => pattern.Split('%');
 
+        /// <summary>The shape of one run of text between two <c>%</c>, as a <c>CONTAINS</c> is written: what a truncation row names (F3).</summary>
+        public const string OneRun = "onerun";
+
+        /// <summary>The shape a truncation row may name of a pattern, read off its runs: <see cref="OneRun"/>, or none, the empty name.</summary>
+        public static string ShapeOf(string pattern) => Runs(pattern) is ["", { Length: > 0 }, ""] ? OneRun : "";
+
         /// <summary>
         /// Whether a pattern matches what the emulator stores of a string (<see cref="EmulatorStoredText"/>, U+0000 as U+FDD0
         /// then <c>0</c> and U+FDD0 as U+FDD0 then <c>1</c>) exactly where it matches the string: it holds neither character,

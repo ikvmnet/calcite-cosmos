@@ -59,7 +59,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     yield return PathCell.Split(S, import, classes, cuts);
         }
 
-        static IEnumerable<ValueSet<string>> Parted() => [ValueSet<string>.Empty, ValueSet.From(Literals.Where(IsString))];
+        /// <summary>
+        /// What S's rules may hand a leaf beside its table (<see cref="LeafReads"/>): nothing; every string literal parted;
+        /// and every read at once, every literal unplaced, parted and loose, every band unread, uncut and moved, every two
+        /// bands departing, and every cell blind.
+        /// </summary>
+        static IEnumerable<LeafReads> Reads()
+        {
+            var strings = ValueSet.From(Literals.Where(IsString));
+            var departs = ValueSet.From(AllBands.AsEnumerable().SelectMany(u => AllBands.AsEnumerable().Select(w => (u, w))));
+            yield return LeafReads.None;
+            yield return LeafReads.None with { Parted = strings };
+            yield return LeafReads.Of(LeafReads.Places(strings, strings, strings), LeafReads.Matches(AllBands, AllBands, AllBands), LeafReads.Pairs(departs, AllBands));
+        }
 
         static MeasuredOutcome Row(CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer) =>
             new("Service.Planted", MeasuredKey.Of(test, operand, cell), RenderingTarget.Emulator, answer);
@@ -72,8 +84,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var narrower = from leaf in Leaves()
                            from cells in Partitions()
-                           from parted in Parted()
-                           let vector = ServiceLeaf.On(leaf, cells, Empty, parted)
+                           from reads in Reads()
+                           let vector = ServiceLeaf.On(leaf, cells, Empty, reads)
                            from i in Enumerable.Range(0, vector.Outcomes.Count)
                            where vector.Outcomes[i].Outcomes != ServiceOutcomes.Widest
                            select $"{leaf} answers {vector.Outcomes[i].Outcomes} on {cells.Cells[i]}";
@@ -97,8 +109,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var empty = from table in tables
                         from leaf in Leaves()
                         from cells in Partitions()
-                        from parted in Parted()
-                        let vector = ServiceLeaf.On(leaf, cells, table, parted)
+                        from reads in Reads()
+                        let vector = ServiceLeaf.On(leaf, cells, table, reads)
                         from i in Enumerable.Range(0, vector.Outcomes.Count)
                         where vector.Outcomes[i].Outcomes == ServiceOutcomes.None
                         select $"{leaf} answers nothing on {cells.Cells[i]}";
@@ -118,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var strays = from table in new[] { Empty, orders }
                          from leaf in Leaves()
                          from cells in Partitions()
-                         from row in ServiceLeaf.On(leaf, cells, table, ValueSet<string>.Empty).Rows
+                         from row in ServiceLeaf.On(leaf, cells, table, LeafReads.None).Rows
                          where row.StartsWith("missing:", StringComparison.Ordinal)
                          let key = row["missing:".Length..].Split('/')
                          where CosmosOutcomeWitnesses.Cells(Enum.Parse<CosmosServiceTest>(key[0]), Enum.Parse<CosmosValueClass>(key[1]), RenderingTarget.Emulator)
@@ -135,9 +147,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceOutcomes.Widest.Should().HaveFlag(ServiceOutcomes.Fails);
 
             var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of(true)), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of(true)), strings, ProbeRows.Table, LeafReads.None).Outcomes
                 .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "no row measures <= against a boolean");
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, LeafReads.None).Outcomes
                 .Should().NotContain(o => o.Outcomes.HasFlag(ServiceOutcomes.Fails));
         }
 
@@ -153,11 +165,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
             var less = ServiceForm.CompareOf(CosmosServiceTest.Less, S, High);
 
-            var whole = ServiceLeaf.On(less, cells, table, ValueSet<string>.Empty);
+            var whole = ServiceLeaf.On(less, cells, table, LeafReads.None);
             At(whole, Emoji).Should().Be(ServiceOutcomes.False, "by code point U+1F600 is above U+E000");
             At(whole, new PathCell.Strings(Emoji, High, ValueSet<string>.Empty, AllBands).Text).Should().Be(ServiceOutcomes.True, "unparted, the interval is placed by its bounds");
 
-            var parted = ServiceLeaf.On(less, cells, table, ValueSet.Of(High));
+            var parted = ServiceLeaf.On(less, cells, table, LeafReads.None with { Parted = ValueSet.Of(High) });
             cells.Cells.Select((cell, i) => (cell, parted.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
                 .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
             At(parted, Emoji).Should().Be(ServiceOutcomes.False);
@@ -166,7 +178,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Under the emulator's order a point holding U+0000 lies where U+FDD0 then 0 does, a range that may hold one lies
-        /// either side, and a literal holding one lies nowhere.
+        /// either side, and a literal holding one lies nowhere: the point by the comparator itself, the rest by what S's
+        /// rules hand the leaf of the order's moves row, every string literal parted over a path that may hold U+0000 and
+        /// one holding it unplaced (<c>Service.StringOrderIsCodePoint</c>, G1).
         /// </summary>
         [Fact]
         public void TheStoredOrderReadsU0000AsTheEmulatorStoresIt()
@@ -174,11 +188,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var table = Less(CosmosAnswer.StoredCodePoint, CosmosAnswer.True);
             var nul = Of("\0");
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("b"), CutKind.Literal), new CutPoint(nul, CutKind.Literal)));
-            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("b")), cells, table, ValueSet<string>.Empty);
+            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("b")), cells, table, LeafReads.None with { Parted = ValueSet.Of(Of("b")) });
             At(less, nul).Should().Be(ServiceOutcomes.False, "stored as U+FDD0 then 0, it lies above b");
             cells.Cells.Select((cell, i) => (cell, less.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
                 .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("a\0")), cells, table, ValueSet<string>.Empty).Outcomes
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("a\0")), cells, table, LeafReads.Places(ValueSet.Of(Of("a\0")), ValueSet.Of(Of("a\0")), ValueSet<string>.Empty)).Outcomes
                 .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False));
         }
 
@@ -199,9 +213,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Select(side => Row(CosmosServiceTest.Equal, CosmosValueClass.String, side, side == CosmosValueClass.Equal ? CosmosAnswer.True : CosmosAnswer.False))
                 .Append(Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, CosmosAnswer.StoredCodePoint)));
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("\0"), CutKind.Literal), new CutPoint(Of(fdd0), CutKind.Literal)));
-            var equal = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(aliased)), cells, table, ValueSet<string>.Empty);
+            // What S's rules hand the leaf here: each literal parted over a path that may hold U+0000, and loose, as one holding
+            // U+FDD0 a stored U+0000 may equal (Service.StringOrderIsCodePoint's moves and collides, G1); a point reads neither.
+            LeafReads Stored(string literal) => LeafReads.Places(ValueSet.Of(literal), ValueSet<string>.Empty, ValueSet.Of(literal));
+            var equal = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(aliased)), cells, table, Stored(Of(aliased)));
             At(equal, Of("\0")).Should().Be(ServiceOutcomes.False, "the one escape spelled U+0000 as the literal U+FDD0 0");
-            At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(fdd0)), cells, table, ValueSet<string>.Empty), Of(fdd0)).Should().Be(ServiceOutcomes.True);
+            At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, Of(fdd0)), cells, table, Stored(Of(fdd0))), Of(fdd0)).Should().Be(ServiceOutcomes.True);
+            cells.Cells.Select((cell, i) => (cell, equal.Outcomes[i].Outcomes)).Where(c => c.cell is PathCell.Strings)
+                .Should().OnlyContain(c => c.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.False), "a range that may hold U+0000 may equal a literal holding U+FDD0");
         }
 
         /// <summary>
@@ -215,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var table = Less(CosmosAnswer.StoredCodePoint, CosmosAnswer.True);
             var (fdd0, above) = (Of("﷐"), Of("﷐\u0001"));
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(Closed(JsonCharacterBand.HighBmp)), ValueSet.Of(new CutPoint(fdd0, CutKind.Literal), new CutPoint(above, CutKind.Literal)));
-            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, above), cells, table, ValueSet<string>.Empty);
+            var less = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, above), cells, table, LeafReads.None);
             At(less, fdd0).Should().Be(ServiceOutcomes.True);
             At(less, new PathCell.Strings(null, fdd0, ValueSet<string>.Empty, ClassSet(Closed(JsonCharacterBand.HighBmp))).Text).Should().Be(ServiceOutcomes.True);
         }
@@ -229,14 +248,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             below!.Outcomes.Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
 
             var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
-            var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, table, ValueSet<string>.Empty);
+            var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, table, LeafReads.None);
             At(vector, Emoji).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined, "by code point it is above, by unit below");
             At(vector, new PathCell.Strings(null, Emoji, ValueSet<string>.Empty, AllBands).Text).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
 
             // What an order entry answers beside its comparators stands beside every cell it places.
             var failing = ProbeRows.TableOf(new[] { CosmosAnswer.CodePoint, CosmosAnswer.Fails }.Select(a => Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, a))
                 .Concat(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.Select(side => Row(CosmosServiceTest.Less, CosmosValueClass.String, side, CosmosAnswer.True))));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, failing, ValueSet<string>.Empty).Outcomes
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, failing, LeafReads.None).Outcomes
                 .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.Fails));
         }
 
@@ -248,14 +267,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == RenderingTarget.Emulator && row.Key != missing && row.Key.Test != CosmosServiceTest.LessOrEqual));
             var cells = PathCell.Split(S, PathValues.Anything, AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
 
-            var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty);
+            var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, table, LeafReads.None);
             vector.Rows.Where(row => row.StartsWith("missing:")).Should().Equal("missing:NotEqual/String/Null");
             At(vector, "null").Should().Be(ServiceOutcomes.Widest);
             At(vector, "absent").Should().Be(ServiceOutcomes.Undefined);
 
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty).Rows.Where(row => row.StartsWith("missing:"))
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), cells, table, LeafReads.None).Rows.Where(row => row.StartsWith("missing:"))
                 .Should().BeEquivalentTo(new[] { "Below", "Equal", "Above", "Absent", "Null", "True", "False", "Number", "Object", "Array" }.Select(cell => "missing:LessOrEqual/String/" + cell));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, Empty, ValueSet<string>.Empty).Rows.Should().Contain("missing:Order/String/None");
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, Empty, LeafReads.None).Rows.Should().Contain("missing:Order/String/None");
         }
 
         /// <summary>A table of <c>&lt;</c> against a string, ordered by the comparators, below the literal answering the rest.</summary>

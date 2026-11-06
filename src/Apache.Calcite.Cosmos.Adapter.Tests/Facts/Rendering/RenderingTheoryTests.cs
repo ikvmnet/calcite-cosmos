@@ -35,8 +35,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// (design 2) and generate mode's, h07's two atoms, the type test's and the affix's, h08's case (its ternary a
         /// template written twice, and a truth value's constant beside it), h10's computed places (a call's reading of its
         /// place is the bundle's), h11's pair, h12's raw columns' union, a raw value read through its column (rawtyped), the
-        /// atoms a function row covers (F2), and what a number Calcite wrote cast denotes (G8). No count bounds them: what the
-        /// rules cost is judged at the end-of-plan evaluation.
+        /// atoms a function row covers (F2), what a number Calcite wrote cast denotes (G8), and what the rows of characters make
+        /// of each set and leaf: the spelling a set is sent, its parting bands and unsendable classes, the paths it may write,
+        /// and what a leaf reads beside its table (G1). No count bounds them: what the rules cost is judged at the end-of-plan
+        /// evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -82,6 +84,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a class some row orders is placed by its comparators",
                     "a settled key is an entry of its set's table",
+                    "a comparator whose spelling rewrites a band rewrites",
+                ],
+                ["sets"] =
+                [
+                    "a set whose string order compares a spelling that rewrites a band is sent that spelling, the band respelled",
+                    "a set whose string order compares no spelling that rewrites is sent as written",
+                    "two bands a set's string comparator ranks apart are its parting bands",
+                    "a class no parameter is sent holding on a target a set serves is unsendable under it",
                 ],
                 ["expected"] =
                 [
@@ -134,11 +144,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a candidate of an atom is evaluated on the atom's cells",
                     "a compound that is evaluated is evaluated through its parts",
+                    "a leaf a partition needs reads nothing beside its table until a row says so",
                 ],
                 ["parted"] =
                 [
                     "a string literal parts the orders over a path whose strings may hold the other band",
                     "two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range",
+                    "a band the set's string comparator moves parts every string literal over a path whose strings may hold it",
+                    "a string literal holding a band the set's string comparator moves lies anywhere",
+                    "a string literal a stored string may equal is loose and parted over a path whose strings may hold that string's band",
+                    "a pair departs where its places may hold two bands the set's string comparator ranks apart",
+                    "a pair whose places may hold a band the set's string comparator moves lies anywhere where a side holds it",
+                    "an affix is unread over a band its test reads a string only up to on a target the set serves, its pattern of the row's shape",
+                    "an affix whose pattern holds a band its test reads a string only up to reads no string",
+                    "an affix whose pattern holds what a target the set serves stores a band as is unread over that band",
+                    "an affix whose pattern the stored spelling splits is uncut over a band its matcher's spelling rewrites",
                 ],
                 ["evaluate"] =
                 [
@@ -175,6 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["spell"] =
                 [
+                    "a place is writable under a set whose spelling rewrites no band its names hold",
                     "a template that fits an atom proposes its form at the atom's position",
                 ],
                 ["lift"] =
@@ -229,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings is an atom of their pair",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(85);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(101);
         }
 
         /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
@@ -326,20 +347,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Each row the foundation reads in (F3) is a fact of S as the measured definition carries it, and the definition
-        /// carries some of each: what the groups that read them start from. A function's value is the union of its rows.
+        /// Each row the foundation reads in (F3, and G1's of what a spelling rewrites, what a stored string collides with and
+        /// what is never sent) is a fact of S as the measured definition carries it, and the definition carries some of each:
+        /// what the groups that read them start from. A function's value is the union of its rows.
         /// </summary>
         [Fact]
         public void TheFoundationsRowsAreFactsOfS()
         {
             var (d, s) = (Measured, ProbeTheory);
-            new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.PairReadings.Count, d.Boxes.Count, d.SeesThrough.Count, d.StructureOnly.Count,
-                d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count }.Should().OnlyContain(n => n > 0);
+            new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Collisions.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
+                d.SeesThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count }
+                .Should().OnlyContain(n => n > 0);
 
             d.Parts.Should().OnlyContain(r => s.Theory.Check(s.Parts.Of(r.Comparator, r.Band, r.Other)));
             d.Moves.Should().OnlyContain(r => s.Theory.Check(s.Moves.Of(r.Comparator, r.Band)));
             d.StoredAs.Should().OnlyContain(r => s.Theory.Check(s.StoredAs.Of(r.Target, r.Written, r.Stored)));
             d.Truncations.Should().OnlyContain(r => s.Theory.Check(s.Truncates.Of(r.Target, r.Test, r.Shape, r.Band)));
+            d.Rewrites.Should().OnlyContain(r => s.Theory.Check(s.Rewrites.Of(r.Comparator, r.Band)));
+            d.Collisions.Should().OnlyContain(r => s.Theory.Check(s.Collides.Of(r.Comparator, r.Band, r.Other)));
+            d.Unsent.Should().OnlyContain(r => s.Theory.Check(s.Unsent.Of(r.Target, r.Class)));
             d.PairReadings.Should().OnlyContain(r => s.Theory.Check(s.PairReads.Of(r.Test, r.Swapped, r.Reads)));
             d.Boxes.Should().OnlyContain(r => s.Theory.Check(s.BoxOf.Of(r.Kind, r.Box)));
             d.SeesThrough.Should().OnlyContain(r => s.Theory.Check(s.SeesThrough.Of(r)));
@@ -353,6 +379,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
             foreach (var g in d.TestKinds.GroupBy(r => r.Test))
                 s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind));
+        }
+
+        /// <summary>
+        /// What S's sets rules derive of each set from its string order and the rows of characters (G1): the emulator's order
+        /// compares the spelling it stores, so a set serving it is sent that spelling, U+0000 and U+FDD0 respelled, and Azure's
+        /// is sent as written; a set serving either may send no unpaired surrogate, and both orders rank the surrogates and the
+        /// high band apart. Calcite is sent nothing, so nothing is unsendable under it.
+        /// </summary>
+        [Fact]
+        public void EachSetIsSentTheSpellingItsStringOrderCompares()
+        {
+            var s = ProbeTheory;
+            s.Theory.Get(s.Rewriting.Of()).AsEnumerable().Should().Equal([CosmosAnswer.StoredCodePoint]);
+            (s.SpellingOf(RenderingSet.Production), s.SpellingOf(RenderingSet.Emulator), s.SpellingOf(RenderingSet.Portable))
+                .Should().Be((SentSpelling.Written, SentSpelling.Stored, SentSpelling.Stored));
+            s.Theory.Get(s.Respelled.Of(RenderingSet.Production)).IsEmpty.Should().BeTrue();
+            s.Theory.Get(s.Respelled.Of(RenderingSet.Emulator)).AsEnumerable().Should().BeEquivalentTo([JsonValues.NulClass, JsonValues.EscapeClass]);
+            s.Theory.Get(s.Respelled.Of(RenderingSet.Portable)).AsEnumerable().Should().BeEquivalentTo([JsonValues.NulClass, JsonValues.EscapeClass]);
+            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator, RenderingSet.Portable })
+            {
+                s.Theory.Get(s.Unsendable.Of(set)).AsEnumerable().Should().Equal([JsonValues.UnpairedClass], set.ToString());
+                s.Theory.Get(s.PartingBands.Of(set)).AsEnumerable().Should().BeEquivalentTo([JsonValues.SurrogateBand, JsonValues.HighBand], set.ToString());
+            }
+
+            s.Theory.Get(s.Unsendable.Of(RenderingSet.Calcite)).IsEmpty.Should().BeTrue();
+            Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.StoresSpelled(RenderingSet.Emulator).Should().BeTrue();
+            Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.StoresSpelled(RenderingSet.Production).Should().BeFalse();
         }
 
         /// <summary>

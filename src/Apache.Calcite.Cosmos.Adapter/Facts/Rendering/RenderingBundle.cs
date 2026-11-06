@@ -30,6 +30,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Dictionary<SqlValue.Call, ConstructorTerm<Val>> _computed = [];
         readonly Dictionary<(long Stratum, JsonDocumentPath Path), PathValues> _arms = [];
         readonly Dictionary<string, ValueSet<string>> _chars = new(StringComparer.Ordinal);
+        readonly Dictionary<string, ValueSet<string>> _names = new(StringComparer.Ordinal);
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -137,6 +138,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ];
         }
 
+        /// <summary>The classes the member names of a path hold characters of, which the writer's spelling of them reads (G1).</summary>
+        static ValueSet<string> NamesOf(JsonDocumentPath path) =>
+            path.Segments.OfType<string>().Aggregate(JsonValues.NoBand, (classes, name) => classes.Union(JsonValues.BandsOfText(name)));
+
+        /// <summary>The classes the member names of every path a value reads hold, however deep its calls.</summary>
+        static ValueSet<string> NamesOf(SqlValue value) =>
+            value.PathRead is JsonDocumentPath read ? NamesOf(read)
+            : value is SqlValue.Call call ? call.Operands.Aggregate(JsonValues.NoBand, (classes, operand) => classes.Union(NamesOf(operand)))
+            : JsonValues.NoBand;
+
         /// <summary>The calls written as computed places.</summary>
         public IReadOnlyCollection<SqlValue.Call> ComputedCalls => _computed.Keys;
 
@@ -153,11 +164,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return;
 
             _chars.TryAdd(call.Spelled!, classes);
+            var names = NamesOf(call);
+            _names.TryAdd(call.Spelled!, names);
             var place = _theory.Valued.Of(term);
             try
             {
                 if (Failure is null)
-                    Scope.Write(w => w.Assume(_theory.ImportedChars.Of(place).Is(classes), _theory.PartedLiterals.Of(place).Is(ValueSet<string>.Empty)));
+                    Scope.Write(w => w.Assume(_theory.ImportedChars.Of(place).Is(classes), _theory.PartedLiterals.Of(place).Is(ValueSet<string>.Empty), _theory.NameChars.Of(place).Is(names)));
             }
             catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
             {
@@ -277,13 +290,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _source = source;
             _imported.TryAdd(path, values);
             _chars.TryAdd(SqlValue.Spell(path), classes);
+            var names = NamesOf(path);
+            _names.TryAdd(SqlValue.Spell(path), names);
             var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
 
             // A differing second import is the importer's fault, not the engine's, and throws.
             try
             {
                 if (Failure is null)
-                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
+                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty),
+                        _theory.NameChars.Of(term).Is(names));
             }
             catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
             {
@@ -402,6 +418,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     yield return _theory.Spelling.Of(pair).Is(PlaceSpellings.Of(ls, rs));
                     yield return _theory.ImportedChars.Of(pair).Is(lc.Union(rc));
                     yield return _theory.PartedLiterals.Of(pair).Is(ValueSet<string>.Empty);
+                    yield return _theory.NameChars.Of(pair).Is(_names.GetValueOrDefault(ls, JsonValues.NoBand).Union(_names.GetValueOrDefault(rs, JsonValues.NoBand)));
                 }
 
             var strata = _strata.Keys.Prepend(0L).ToList();

@@ -654,7 +654,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.TrimRemovesWhiteSpace"),
             new("Service.LoneSurrogateParameterIsNeverSent",
                 "A parameter holding a lone surrogate fails the statement before it is sent: the SDK's UTF-8 encoder refuses the unit (EncoderFallbackException), so it fails on either target where Calcite answers.",
-                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ALoneSurrogateParameterFailsBeforeItIsSent"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ALoneSurrogateParameterFailsBeforeItIsSent",
+                // What S's lifts read: no form whose literal holds an unpaired surrogate is sent under a set serving either (G1).
+                Unsent: [JsonValues.UnpairedClass]),
             new("Service.NulEndsWhatReplaceAndContainsRead",
                 "REPLACE and CONTAINS, both modes, read a string only up to its first U+0000, and so does a LIKE whose pattern is one run of text between two %, which the service answers as a CONTAINS: b is not found in a, U+0000, b. A search holding U+0000 matches every string, and REPLACE of one replaces every byte. INDEX_OF, STARTSWITH, ENDSWITH, LENGTH, a LIKE of any other shape and a replacement holding U+0000 read past it. The emulator stores U+0000 as U+FDD0 followed by 0. Read by the theory's class of U+0000 (JsonCharacterBand.Nul).",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.NulEndsWhatReplaceAndContainsRead",
@@ -739,7 +741,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             new("Service.EmulatorComparesTheSpellingItIsSent",
                 "The emulator compares a parameter, a literal and a constant built from them as sent, unescaped, with a string as it stores it, U+0000 as U+FDD0 followed by 0 and U+FDD0 as U+FDD0 followed by 1: a value sent as written that holds either character equals no stored string, and one sent in the stored spelling is kept exactly where Calcite keeps it under =, IN, != and STARTSWITH, against a path or a function of one, and under ENDSWITH, CONTAINS and NOT CONTAINS unless it begins with 0 or 1, which an escape's second unit matches. CONTAINS of U+FDD0 followed by 0 is true exactly of the strings holding U+0000 (TheStoredSpellingOfU0000IsAnExactTest).",
-                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorComparesWhatItIsSentWithWhatItStores"),
+                CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorComparesWhatItIsSentWithWhatItStores",
+                // The two characters its spelling rewrites, under the comparator and matcher that read it (G1): S derives from them
+                // the spelling a set's statements send, the names it writes and where an affix's cut of a range still says the match.
+                Rewrites: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass), new(CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass)]),
             new("Service.EmulatorCountsTheStringItStores",
                 "The emulator's LENGTH, SUBSTRING, LEFT, RIGHT, REVERSE and INDEX_OF work on a path's string as it stores it, U+0000 and U+FDD0 two units each, and what they return is decoded wherever a whole escape pair comes back: LENGTH of U+0000 is 2, LEFT of it by 1 a lone U+FDD0, its REVERSE 0 then U+FDD0.",
                 CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorCountsAndCutsTheStringItStores"),
@@ -779,7 +784,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(CosmosAnswer.CodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), new(CosmosAnswer.CodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
                     new(CosmosAnswer.StoredCodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), new(CosmosAnswer.StoredCodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
                 ],
-                Moves: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass)]),
+                Moves: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass)],
+                // A stored U+0000, U+FDD0 followed by 0, against a value holding the high band, as U+FDD0 is (G1).
+                Collisions: [new(CosmosAnswer.StoredCodePoint, JsonValues.NulClass, JsonValues.HighBand)]),
             new("Service.LoneSurrogateIsStoredAsReplacement",
                 "A lone surrogate written as a JSON escape is stored as U+FFFD, a unit of the high band, where a surrogate pair is stored as written; the emulator refuses the write. Read as data by the rules of JSON (CosmosAxiomRows.ReadStored, the rule of what a string written in some classes holds stored): a string written with a surrogate may be stored holding the high band and U+FFFD.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ALoneSurrogateIsStoredAsTheReplacementCharacter",

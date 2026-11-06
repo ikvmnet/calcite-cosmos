@@ -34,6 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Moves = CosmosAxiomRows.ReadMoves(CosmosAxioms.All),
             StoredAs = CosmosAxiomRows.ReadStoredOn(CosmosAxioms.All),
             Truncations = CosmosAxiomRows.ReadTruncations(CosmosAxioms.All),
+            Rewrites = CosmosAxiomRows.ReadRewrites(CosmosAxioms.All),
+            Collisions = CosmosAxiomRows.ReadCollisions(CosmosAxioms.All),
+            Unsent = CosmosAxiomRows.ReadUnsent(CosmosAxioms.All),
             PairReadings = CosmosAxiomRows.ReadPairReadings(CosmosAxioms.All),
             Boxes = CosmosAxiomRows.ReadBoxes(CosmosAxioms.All),
             SeesThrough = CosmosAxiomRows.ReadSeesThrough(CosmosAxioms.All),
@@ -62,11 +65,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static RenderingSet SetFor(CosmosServiceTarget target) => target == CosmosServiceTarget.Emulator ? RenderingSet.Emulator : RenderingSet.Production;
 
         /// <summary>
-        /// Whether a set holds a target that stores a string in another spelling than it is sent, the emulator's
-        /// (<see cref="EmulatorStoredText"/>): read off each target's measured string order, the row S reads
-        /// (<c>Service.StringOrderIsCodePoint</c>), answering <see cref="CosmosAnswer.StoredCodePoint"/>. Such a set's
-        /// statements send a compared value in the stored spelling, and decline what was not measured in it. A constant of
-        /// the registry, read once, not learned state.
+        /// Whether S derived that a set's statements send a string in the spelling its target stores, the emulator's
+        /// (<see cref="EmulatorStoredText"/>, <see cref="RenderingTheory.Sends"/>): from the set's string order and the rows of
+        /// what its comparators' spelling rewrites (<c>Service.StringOrderIsCodePoint</c>,
+        /// <c>Service.EmulatorComparesTheSpellingItIsSent</c>, G1). Such a set's statements send a compared value in the
+        /// stored spelling, and decline what was not measured in it. Read once off S built from the registry's definition, a
+        /// constant of the registry, not learned state.
         /// </summary>
         public static bool StoresSpelled(RenderingSet set) => Spelled.Value.Contains(set);
 
@@ -75,9 +79,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         static readonly System.Lazy<HashSet<RenderingSet>> Spelled = new(() =>
         {
-            var definition = Definition;
-            var order = MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None);
-            return [.. definition.Serves.Where(s => definition.Rows.Any(r => r.Key == order && r.Answer == CosmosAnswer.StoredCodePoint && s.Value.Contains(r.Target))).Select(s => s.Key)];
+            var theory = RenderingTheory.Define(Definition);
+            HashSet<RenderingSet> spelled = [.. Definition.Serves.Keys.Where(set => theory.SpellingOf(set) == SentSpelling.Stored)];
+            GC.KeepAlive(theory);
+            return spelled;
         });
 
         /// <summary>

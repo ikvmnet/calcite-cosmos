@@ -232,20 +232,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A literal with an unpaired surrogate is never sendable, at any depth, as <c>CosmosEncodable</c> says of it; a
         /// string ordering whose literal holds a supplementary or a high-band character is not either, and is beside an
-        /// equality, which parts no range.
+        /// equality, which parts no range. What S's lifts read, each set's from the rows its rules read (G1): the classes no
+        /// parameter is sent holding on a target the set serves (<c>Service.LoneSurrogateParameterIsNeverSent</c>), and the
+        /// bands its string comparators rank apart (<c>Service.StringOrderIsCodePoint</c>), against a form's literals.
         /// </summary>
         [Fact]
         public void ALoneSurrogateLiteralIsNotSendable()
         {
-            var bands = Measured.PartingBands;
+            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator, RenderingSet.Portable })
+            {
+                var (unsendable, bands) = (ProbeTheory.Theory.Get(ProbeTheory.Unsendable.Of(set)), ProbeTheory.Theory.Get(ProbeTheory.PartingBands.Of(set)));
+                unsendable.AsEnumerable().Should().Equal([JsonValues.UnpairedClass], set.ToString());
+                bands.AsEnumerable().Should().BeEquivalentTo([JsonValues.SurrogateBand, JsonValues.HighBand], set.ToString());
+                AreSendable(form => RenderingTheory.LiteralClasses(form).Overlaps(unsendable) == false && RenderingTheory.OrderedLiteralClasses(form).Overlaps(bands) == false);
+            }
+
+            ProbeTheory.Theory.Get(ProbeTheory.Unsendable.Of(RenderingSet.Calcite)).IsEmpty.Should().BeTrue("Calcite is sent nothing");
+        }
+
+        static void AreSendable(Func<ServiceForm, bool> sendable)
+        {
             bool Sendable(CosmosServiceTest op, string literal, bool nested = false) =>
-                RenderingPrimitives.Sendable.Function(nested ? Any(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), ServiceForm.CompareOf(op, Path, JsonValues.Of(literal))) : ServiceForm.CompareOf(op, Path, JsonValues.Of(literal)), bands);
+                sendable(nested ? Any(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), ServiceForm.CompareOf(op, Path, JsonValues.Of(literal))) : ServiceForm.CompareOf(op, Path, JsonValues.Of(literal)));
 
             foreach (var text in new[] { "\uD800", "a\uDC00", "\uDE00\uD83D", "x\uD83D" })
             {
                 (JsonValues.IsEncodable(text), CosmosEncodable.IsEncodable(text)).Should().Be((false, false));
                 (Sendable(CosmosServiceTest.Equal, text), Sendable(CosmosServiceTest.Equal, text, nested: true)).Should().Be((false, false), text);
-                RenderingPrimitives.Sendable.Function(ServiceForm.InOf(Path, ValueSet.Of(JsonValues.Of("ok"), JsonValues.Of(text))), bands).Should().BeFalse();
+                sendable(ServiceForm.InOf(Path, ValueSet.Of(JsonValues.Of("ok"), JsonValues.Of(text)))).Should().BeFalse();
             }
 
             foreach (var text in new[] { "", "bikes", "a😀b", "", "é" })
@@ -253,7 +267,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (Sendable(CosmosServiceTest.Less, "a😀b"), Sendable(CosmosServiceTest.GreaterOrEqual, "", nested: true), Sendable(CosmosServiceTest.Greater, "ébikes"))
                 .Should().Be((false, false, true), "a supplementary or high-band bound may part the orders; one of U+0080 to U+D7FF does not");
-            RenderingPrimitives.Sendable.Function(ServiceForm.CompareOf(CosmosServiceTest.Less, Path, JsonValues.Of(30m)), bands).Should().BeTrue();
+            sendable(ServiceForm.CompareOf(CosmosServiceTest.Less, Path, JsonValues.Of(30m))).Should().BeTrue();
         }
 
         /// <summary>

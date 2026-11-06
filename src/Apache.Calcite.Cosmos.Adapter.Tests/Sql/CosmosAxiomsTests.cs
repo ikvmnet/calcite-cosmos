@@ -131,7 +131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
-                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null))
+                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
+                || a.Rewrites is not null || a.Collisions is not null || a.Unsent is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -198,7 +199,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// it so, what Azure's <c>CONTAINS</c> and a <c>LIKE</c> of one run read a string to, the mirror law, the boxes and
         /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
         /// classes its witnesses held, the casts each citing its row, the text reader's order, and the classes each type
-        /// test is true of in process.
+        /// test is true of in process; and G1's, the two characters the emulator's spelling rewrites, the stored U+0000 a
+        /// value holding the high band may equal there, and the unpaired surrogate no parameter is sent holding on either
+        /// target.
         /// </summary>
         [Fact]
         public void TheFoundationsRowsReadBackAsWritten()
@@ -218,6 +221,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
             });
+            CosmosAxiomRows.ReadRewrites(all).Should().BeEquivalentTo(new[] { (CosmosAnswer.StoredCodePoint, JsonValues.NulClass), (CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass) });
+            CosmosAxiomRows.ReadCollisions(all).Should().Equal((CosmosAnswer.StoredCodePoint, JsonValues.NulClass, JsonValues.HighBand));
+            CosmosAxiomRows.ReadUnsent(all).Should().BeEquivalentTo(new[] { (RenderingTarget.Azure, JsonValues.UnpairedClass), (RenderingTarget.Emulator, JsonValues.UnpairedClass) });
 
             var mirror = CosmosAxiomRows.ReadPairReadings(all);
             mirror.Should().HaveCount(12).And.Contain((Test.Less, true, Test.Greater)).And.Contain((Test.GreaterOrEqual, false, Test.GreaterOrEqual));
@@ -360,7 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                         from cell in outcome.Cells
                         let measured = AnswerMeanings.Measured.Of(cell.Answer)
                         let cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell.Cell).Select(CellOf)))
-                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], ValueSet<string>.Empty).Outcomes.Select(o => o.Outcomes)
+                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], LeafReads.None).Outcomes.Select(o => o.Outcomes)
                         where composed != measured
                         select $"{axiom.Id}: {outcome.Formula} at {cell.Cell} on {target} is {measured}, composed {composed}";
 
