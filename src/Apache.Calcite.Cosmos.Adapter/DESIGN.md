@@ -3623,8 +3623,9 @@ three things; a review measured a fourth, and three functions that part over som
   empty string projected (`Service.SubstringOfANegativeStartIsEmpty`) — in a `WHERE` on Azure, compared with `''`, for
   nothing but the empty string. So the translator spells a window from a start at or below 0 as ternaries over the
   start that clip it as Calcite does, and the computed places read that spelling as the window from 0 where the start
-  and a length at least 0 are literals (`CosmosFunctionSpellings.SubstringClipped`, post1); a negative length, which
-  Calcite raises over, is no place. The service's `REPLICATE` is undefined for a negative count, where Calcite's `REPEAT`
+  and the length are literals (`CosmosFunctionSpellings.SubstringClipped`, post1); a negative length, which Calcite
+  raises over, is a place since fix6, which the length's rows decline (*The defects answered before h15*). The service's
+  `REPLICATE` is undefined for a negative count, where Calcite's `REPEAT`
   is the empty string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on
   (`Service.ReplicateStopsAtTenThousandCodePoints`); the emulator has no limit. And the service's `REPLACE` of an
   empty search is undefined, where Calcite's is the subject (`Service.ReplaceOfAnEmptySearchIsUndefined`).
@@ -8815,43 +8816,49 @@ post1's capture too and now the census's example of the push, reading no raw val
 `LIKE`'s `_` and one case-folded `ENDSWITH`; I 0 / 0; J1 14 / 0 to 5 / 0, the case mapping. Every push named above
 is Proven under each set it ran in, partitions 1792 is accepted, and no refutation, false or not yet reproduced.
 
-### The defects held before h15
+### The defects answered before h15
 
-The 3A audit read seven wrong answers off the code without running one (its plan, §1). Each is now run through S's own
-judgement: S generates over what the loader reads, and its best is held on documents to Calcite in process (or IrEval,
-where the reading is Calcite's) against `CosmosEval`, or against the service as measured where `CosmosEval` does not
-model the operand. Four answer wrong and are held to, `RenderingDefectTests`, each until its fix strikes it from `Held`:
+The 3A audit read seven wrong answers off the code without running one (its plan, §1); the defects step ran each
+through S's own judgement and held four to still answer wrong, and fix6 answers all six that h15 would make live, each
+by its group's form. `RenderingDefectTests.EachDefectAnswersAsCalcite` holds each case to Calcite: S generates over
+what the loader reads, and no form it proves keeps another row than Calcite in process (or IrEval, where the reading is
+Calcite's) on a document, against `CosmosEval`, or against the service as measured where `CosmosEval` does not model
+the operand; and each case is declined under every set it asks.
 
+- **`SUBSTRING` of a negative length** (item 1). Calcite raises and both emulator images answer `''`, which decision 2
+  lets refine a raise; `Spell` refused the length where the window starts before the string and wrote it where it
+  starts from 1, two writers disagreeing. The length is keyed now (F2, ordinal 2, by sign): from 1 alike on both targets,
+  0 alike on the emulator and below 0 parting there, which Calcite raising makes `Differs`, and Azure, which measured
+  lengths from 1 alone, unmeasured below. `Spell` writes every length and S declines what the rows part or leave
+  unmeasured.
 - **`RETURNING DOUBLE` against a literal cast to fewer decimals** (item 2). `Comparand`'s `truncates: reading is
-  SqlValue.Typed` holds for `RETURNING DOUBLE` too, so `= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` is read as `= 2.5`:
-  `c.n = 2.5`, proven under every set, drops `2.0`, which Calcite keeps (the literal truncates to 2), and keeps `2.5`.
-  The fix is G8's: the comparand's casts as terms.
-- **The PostgreSQL and Oracle `CONCAT`** (item 3), `CONCAT_FUNCTION_WITH_NULL` and `CONCAT2`, which read a null as empty,
-  are loaded as `CONCAT`, whose rows answer `Same` over a null: `CONCAT(c.s, '!') = '!'` drops an absent or null `s`
-  Calcite keeps, under every set. G6's fix: a name and rows of their own.
-- **`REPLACE` of a search holding U+0000** (item 4). Both targets replace every unit (`REPLACE('abc', U+0000, 'x')` is
-  `xxx` on EN20261019 and EN20260907, as `Service.NulEndsWhatReplaceAndContainsRead` says of Azure), and S, keying
-  `REPLACE` on its subject alone, proves the place. The loader gives it none while `Spell` refuses a literal holding
-  U+0000, so the case writes the place as `Spell` would without that refusal: the refusal, a G1 site, hides the defect
-  and is no fix of it. F2's is: operand keys.
-- **`REPLACE` of a replacement that is no string**, found beside item 6. `REPLACE(c.s, 'a', c.t) = '5'`, `t` a number:
-  Calcite replaces with its text and keeps the row, both emulator images answer undefined, and S proves the place under
-  every set, the replacement no key of it. Azure is not measured; the case asks `Emulator` alone. F2's fix too.
-
-Three do not reproduce as wrong answers:
-
-- **`SUBSTRING` of a negative length** (item 1). S proves `SUBSTRING(c.s, 0, -1) = ''` from `SUBSTRING(s, 1, -1)`, but
-  Calcite raises over every string the place reads, and both emulator images answer `''`, no failure, which decision 2
-  lets refine a raise. `Spell` saying it does not write one is a disagreement of two writers (G6), not a wrong row.
-- **The case mapping over the surrogate and high bands** (item 5). Both emulator images map U+10428 and U+10400, U+FF21
-  and U+FF41, as Java does, so `UPPER` over a surrogate and `LOWER` over either band, which S proves, answer as Calcite
-  there. Azure's answer is run 2's, whose cases hold these letters; until then `Production`'s proofs rested on the rows'
-  uncased witnesses, and since f345 the rows part there under every set (F5), so S proves none of these places until
-  run 2's witnesses let a row say `Same`.
-- **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite: a replacement read
-  from a path holding U+0000 or U+FDD0, `CONCAT` of two stored strings, `REPLICATE(s, 0)` over either escape. What fails
-  is a sent literal (`REPLACE(c.s, 'a', U+0000)` and `CONCAT(c.s, U+0000)` projected fail the statement on EN20260907),
-  which never has a place while `Spell` refuses it.
+  SqlValue.Typed` held for `RETURNING DOUBLE` too, so `= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` was read as
+  `= 2.5`, dropping `2.0`, which Calcite keeps. `RETURNING DECIMAL` alone reads a truncated literal now (`truncates:
+  reading is SqlValue.Typed { Type: "DECIMAL" }`, the report's narrow guard): a stopgap, deleted when G8 reads the
+  comparand's casts as terms in S, whose rows say which readers take a constant and which read a truncation, where
+  `converts` and `PredicateAtom`'s decimal parse say it in C#.
+- **The PostgreSQL, SQL Server and Oracle `CONCAT`** (item 3), `CONCAT_FUNCTION_WITH_NULL` and `CONCAT2`, which read a
+  null as empty, were loaded as `CONCAT`, whose rows answer `Same` over a null. They have a name of their own now,
+  `CONCAT NULL AS EMPTY` (`StringCalls.NullAsEmpty`), which the loader reads by their kind
+  (`CosmosPredicateLoader.NameOf`), and rows of their own: `CONCAT`'s over a string, spelled as the service's `CONCAT`,
+  and `Undefined` over a null, an absent path, an object and an array. Their Azure rows are run 1's `CONCAT(c.v, "z")`
+  lines judged against Calcite's own, as they share the service's spelling. The translator still refuses them by
+  operator identity until h42.
+- **`REPLACE` of a search holding U+0000** (item 4) and **of a replacement that is no string** (found beside item 6).
+  `REPLACE` was keyed on its subject alone. Its search and replacement are keyed now (F2, ordinals 1 and 2): on the
+  emulator from its 2026-11-06 record (`Runs/Emulator/2026-11-06-EN20261019.tsv`, both releases alike), an empty search
+  `Undefined`, a search holding U+0000 `Differs`, a number or a boolean `Undefined`; on Azure only as the literals run
+  1's spellings hold, a string of no band and not empty, so every other search and replacement is unmeasured there
+  and declined until run 2. `Spell` writes an empty search, which the rows decline, where it refused one.
+- **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
+  where they said `Same` over witnesses that held no letter the mapping changes; S proves none of these places until run
+  2's cased witnesses let a row say `Same`.
+- **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite, but what a literal
+  makes there does not: a U+0000 made by `CONCAT`, `||`, `REPEAT` or a replacement fails the statement, and a U+FDD0
+  made before a 0 or a 1 is read back as an escape's first unit. The emulator's rows say so, measured as the literal
+  each is: `CONCAT`, `||`, `REPEAT`'s subject and `REPLACE`'s replacement `Fails` over U+0000 and `Differs` over the
+  high band, a path among them, the key being one, as the translator's `Refusals` refuse a path too (D13, "Cut it").
+  `Spell` still refuses such a literal a place, a G1 site; the cases write the place as it would without the refusal.
 
 **Item 7 is no defect under the documented contract.** On `main` (`5a5cf15`), `CAST(JSON_VALUE(…, '$.n') AS SMALLINT) =
 CAST(7 AS SMALLINT)` over `n` declared `^(0|[1-9][0-9]*)$` sends `c.n = '7'` (a bare `7` widens the cast to `INTEGER`
@@ -8913,8 +8920,10 @@ the band it lies within, never a key of its own, until a row names it.
 - **Readers meet.** `measuredreaders` is an intersection, `CosmosAxiomRows.ReadFunctionReads` one row an axiom a
   function: two axioms of one function hold only through what both were measured through, and no reader picks one.
 
-- **What does not move yet.** The rows still name one operand of each function, so the keys are the ones they were;
-  the defects F2 fixes (`REPLACE`'s search and replacement) strike when rows name those operands. A result's class
+- **Rows that name a second operand.** `REPLACE`'s search and replacement and `SUBSTRING`'s length, since fix6, each
+  with classes of value (an empty search, a length's sign) where a measurement parts them (*The defects answered before
+  h15*); the measurement harness keys a spelling's literal operands as it names them (`CosmosFunctionSpelling.Fixed`),
+  over the witnesses of a string of no band, and a spelling a target has not run claims nothing there. A result's class
   (`REPEAT` within or past 10,000 code points) is no operand's, and waits for a result key (`TODO.md`).
 - **The column bridge reads each operand by its own rows.** It keys a call as S's image rule keys it, every operand the
   rows name by its ordinal and by `Every` (owed: `CosmosFunctionSpellings.Disagreeing`, *The column bridge*), so a

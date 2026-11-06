@@ -495,14 +495,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Each arithmetic operator by a typed name, as Calcite computes it over a value read as that type and as the
         /// service writes it; <c>/</c> twice, by two and by zero.
         /// </summary>
-        internal static readonly (string Function, string Calcite, string Service)[] Arithmetic =
+        internal static readonly CosmosFunctionSpelling[] Arithmetic =
         [
             .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL(19, 2)", "DOUBLE" }
                let x = $"CAST(s AS {type})"
                let name = type.Split('(')[0]
                from f in new[] { ("+", $"{x} + CAST(1 AS {type})", "s + 1"), ("-", $"{x} - CAST(1 AS {type})", "s - 1"), ("*", $"{x} * CAST(2 AS {type})", "s * 2"),
                                  ("/", $"{x} / CAST(2 AS {type})", "s / 2"), ("/", $"{x} / CAST(0 AS {type})", "s / 0"), ("%", $"MOD({x}, CAST(2 AS {type}))", "s % 2") }
-               select (f.Item1 + ":" + name, f.Item2, f.Item3),
+               select new CosmosFunctionSpelling(f.Item1 + ":" + name, FunctionKey.Every, f.Item2, f.Item3),
         ];
 
         /// <summary>The witnesses of the arithmetic keys: numbers at 2^31 - 1, 2^53 and 2^63 - 1, near 1e308, negative and fractional; and a value of each other kind.</summary>

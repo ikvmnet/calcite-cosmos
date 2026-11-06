@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 ("TRIM LEADING", [" ", var s]) => JsonValues.Of(s.TrimStart(' ')),
                 ("TRIM TRAILING", [" ", var s]) => JsonValues.Of(s.TrimEnd(' ')),
                 ("REVERSE", [var s]) when NoSurrogate(s) => JsonValues.Of(new string([.. s.Reverse()])),
-                ("CONCAT" or "||", _) => JsonValues.Of(string.Concat(texts)),
+                ("CONCAT" or "||" or StringCalls.NullAsEmpty, _) => JsonValues.Of(string.Concat(texts)),
                 _ => null,
             };
         }

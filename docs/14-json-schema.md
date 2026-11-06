@@ -373,10 +373,12 @@ does a statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A co
 every input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is
 proved of nothing. `POSITION`, `CONCAT`, `||` and `REVERSE` push over any string. Three ask something
 other than a character, where the service answers otherwise than Calcite: `REPLACE` needs its search
-proved to hold something, a literal that does or a path whose `enum` lists no empty string; `REPEAT` a literal
+proved to hold something, a literal that does or a path whose `enum` lists no empty string, and on Azure
+its search and replacement to be such literals of ASCII, as measured there so far; `REPEAT` a literal
 count, and a subject short enough that the result stays within Azure's 10,000 code points, which only an
 `enum`, a `const` or a literal proves yet (`maxLength` is not read); and a `SUBSTRING`, `LEFT` or `RIGHT`
-pushes with literal bounds alone, a start below one written with Calcite's clip to the string (Appendix B.2).
+pushes with literal bounds alone, a start below one written with Calcite's clip to the string and a
+`SUBSTRING`'s length at least 1 on Azure, at least 0 on the emulator (Appendix B.2).
 
 **How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
 whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one

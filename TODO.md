@@ -3067,13 +3067,23 @@ across documents* and *A join of a container to itself* is the record.
   said it (`CosmosFunctionSpellings.Mapped`) is gone. Witnesses holding cased letters in each band (U+10428/U+10400,
   U+FF21/U+FF41), measured, let the rows say `Same` where a target maps as Java does. Both emulator images map them as
   Java does (2026-11-04, the defects step); Azure's is run 2's.
-- **Four wrong answers held before h15** — *before h15, each by its group's proper fix.* `RenderingDefectTests` holds each
-  to still answer wrong (DESIGN.md, *The defects held before h15*): `RETURNING DOUBLE` against a literal cast to fewer
-  decimals read untruncated (G8, the comparand's casts as terms); the PostgreSQL and Oracle `CONCAT` loaded as `CONCAT`
-  (G6, a name and rows of their own); `REPLACE` of a search holding U+0000, hidden today by `Spell`'s literal refusal
-  (F2, operand keys); `REPLACE` of a replacement that is no string, measured on the emulator alone (F2). A fix strikes
-  its name from `Held`. F2's key shape landed at f12; the `REPLACE` cases strike once rows name its search (ordinal 1,
-  `nul` and empty or not) and replacement (ordinal 2, each kind), measured on both targets.
+- **Azure's operand keys are run 1's literals alone** — *small, run 2's.* Since fix6 the rows key `REPLACE`'s search and
+  replacement and `SUBSTRING`'s length (DESIGN.md, *The defects answered before h15*), measured on the emulator over
+  every kind and band, and on Azure only as run 1's spellings hold them: a search and a replacement that are strings of
+  no band and not empty, a length from 1. So under `Production` a `REPLACE` whose search or replacement is empty, of any
+  band or read from a path, and a `SUBSTRING` of length 0, which the column bridge pushed before, are computed in process
+  until run 2 runs `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims on the probe account and
+  `CosmosAxioms` records what it answers; among them a replacement holding U+0000, which
+  `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
+  (`CosmosRexTranslatorTests.Functions` holds both). Those spellings hold the literals the emulator stores escaped too:
+  on Azure a literal U+0000 or U+FDD0 in `CONCAT`, `||` or `REPEAT` is keyed with a stored one, which run 1's stored
+  witnesses alone measured; it matters once `Spell`'s literal refusal goes (G1).
+- **The comparand's casts are read in C# until G8** — *G8's, before h15.* `Comparand` reads a literal a cast truncated
+  only against `RETURNING DECIMAL` (`truncates: reading is SqlValue.Typed { Type: "DECIMAL" }`, the audit's narrow guard
+  for its item 2, fix6), and `converts` lists the readings that take a folded constant, as `PredicateAtom`'s decimal
+  parse is the reading that knows a literal moves: two C# lists deciding one claim. G8 reads the cast chain as terms,
+  with rows saying which readers take a constant and which read a truncation and rules for the constant, the moved
+  constant and the raise (`reports/audit-3a/loader-comparand-constant-cast.md`), and the guard goes.
 - **The foundation's F3 rows wait on their groups** — *each group's, G1 to G8.* f345 reads the prose rows' cells into S
   (DESIGN.md, *The foundation's cells, roles and case mapping*), and no rule reads them but `parts`: G1 reads `moves`,
   `storedas` and `truncates`, and restricts `PartingBands`, the sendable gate's, to the comparators each set's string
@@ -3086,12 +3096,12 @@ across documents* and *A join of a container to itself* is the record.
   stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and the raw columns' absent-path entries,
   which `CosmosAxiomRows.ReadColumns` does not read, since its keys hold a stored null and no absent path (G5).
-- **No row names a refinement, a band of a service outcome or a class of value** — *small, the rows' half of F1 and F2.*
-  f12 gave the keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`,
-  `escape`, `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`. Each needs a measured cell before it moves an
-  image: `Contains/String/nul` under Azure, `REPLACE` and `CONCAT` over U+FFFD and U+FDD0 apart from the high band, a
-  window over an unpaired surrogate, `SUBSTRING`'s start below or at least 1 and its length below 0, a count's sign.
-  Run 2's findings land as these cells.
+- **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
+  keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
+  `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`, which `REPLACE`'s search and `SUBSTRING`'s length name
+  since fix6. Each other needs a measured cell before it moves an image: `Contains/String/nul` under Azure, `REPLACE` and
+  `CONCAT` over U+FFFD and U+FDD0 apart from the high band, a window over an unpaired surrogate, `SUBSTRING`'s start
+  below or at least 1, a count's sign. Run 2's findings land as these cells.
 - **A claim carries the five classes, not their refinements** — *small.* The pattern reader computes which refinements
   a pattern excludes, but a claim states only the five, read closed (`JsonValues.Closed`), so a pattern holding high
   characters but not U+FFFD is stated as holding U+FFFD. A claim carrying refinements gives it back once a row reads one.

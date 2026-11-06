@@ -13,6 +13,7 @@ using Eggnog;
 using FluentAssertions;
 
 using org.apache.calcite.rex;
+using org.apache.calcite.sql;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 
@@ -26,32 +27,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The wrong answers the 3A audit found waiting for h15 (audit plan §1), each shown through S's own judgement: S proves a
-    /// form over what the loader reads, and on a document Calcite in process, or IrEval where the reading is Calcite's,
-    /// keeps a row the form does not, or drops one it keeps, the service's answer CosmosEval's or, where CosmosEval does not
-    /// model the operand, the one measured. A held defect must still be found, so that its proper fix shows here as a name
-    /// to strike from <see cref="Held"/>; struck, its case asserts nothing is found (<c>DESIGN.md</c>, <i>The defects held
-    /// before h15</i>).
+    /// The wrong answers the 3A audit found waiting for h15 (audit plan §1, items 1 to 6), each through S's own judgement,
+    /// answered right by its group's form: CONCAT's own name and rows (G6), REPLACE's search and replacement and a window's
+    /// length keyed by operand (F2), the case mapping's rows (F5), the emulator's stored escapes as its rows (F2), and a
+    /// literal a cast truncated read against <c>RETURNING DECIMAL</c> alone (the loader's stopgap until G8). S proves no form
+    /// over what the loader reads that keeps another row than Calcite in process on a document, or IrEval where the reading
+    /// is Calcite's, the service's answer CosmosEval's or, where CosmosEval does not model the operand, the one measured;
+    /// and each case is declined under every set asked (<c>DESIGN.md</c>, <i>The defects answered before h15</i>).
     /// </summary>
     public sealed class RenderingDefectTests
     {
 
         static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
 
-        static readonly JsonDocumentPath S = JsonDocumentPath.Root.Property("s"), T = JsonDocumentPath.Root.Property("t"), N = JsonDocumentPath.Root.Property("n");
+        static readonly JsonDocumentPath S = JsonDocumentPath.Root.Property("s"), T = JsonDocumentPath.Root.Property("t");
 
         static readonly RenderingSet[] AllSets = [RenderingSet.Production, RenderingSet.Emulator, RenderingSet.Portable];
 
         static readonly PathValues Strings = PathValues.OfKinds(ValueSet.Of(StringType));
-
-        /// <summary>The defects held to still fail, each until the proper fix the audit names for it lands.</summary>
-        static readonly IReadOnlySet<string> Held = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "ReturningDoubleReadsATruncatedLiteral",
-            "ConcatThatReadsNullAsEmptyIsReadAsConcat",
-            "ReplaceOfASearchHoldingNul",
-            "ReplaceOfAReplacementThatIsNoString",
-        };
 
         /// <summary>One defect: the predicate S reads, how its paths are imported, the sets asked, the documents judged, and the service where CosmosEval does not say.</summary>
         sealed record Defect(SqlPredicate Read, Func<J.Obj, Truths?> Calcite, Func<JsonDocumentPath, (PathValues Values, JsonCharacterBand Chars)> Import,
@@ -60,7 +53,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static Defect FromRex(RexNode rex, Func<JsonDocumentPath, (PathValues, JsonCharacterBand)> import, RenderingSet[] sets, J.Obj[] documents, Func<J.Obj, ServiceOutcomes?>? measured = null) =>
             new(Loading.Read(rex), CalciteInProcess.Compile(rex, Fields, Readings) ?? throw new InvalidOperationException($"{rex} does not compile alone"), import, sets, documents, measured);
 
+        /// <summary>
+        /// A place written as Spell would write it without its literal refusal (G1), which gives a literal holding U+0000 or
+        /// U+FDD0 no place yet: compared with a string, Calcite's truth IrEval's.
+        /// </summary>
+        static Defect Written(string function, SqlValue[] operands, string compared, RenderingSet[] sets, J.Obj[] documents, Func<J.Obj, ServiceOutcomes?> measured)
+        {
+            var spelled = function == "REPLACE" ? "REPLACE" : "CONCAT";
+            var call = new SqlValue.Call(function, operands) with { Type = "VARCHAR", Spelled = $"{spelled}({string.Join(", ", operands.Select(o => o is SqlValue.Text t ? SqlValue.Spell(t.Path) : o is SqlValue.Literal l ? l.Value : throw new ArgumentException(o.ToString())))})" };
+            var read = new SqlPredicate.Compare("=", call, SqlValue.Of(compared));
+            return new(read, d => RenderingSoundnessTests.Tally.Calcite(read, d, new World(0)) is [var truth, ..] ? truth : null, _ => (Strings, JsonCharacterBand.None), sets, documents, measured);
+        }
+
         static RexNode Lit(string value) => Rex.makeLiteral(value);
+
+        static RexNode Unicode(string value) => Rex.makeLiteral(new org.apache.calcite.util.NlsString(value, "UTF-16LE", SqlCollation.IMPLICIT),
+            RenderingRexBuilderTests.Types.createTypeWithCharsetAndCollation(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.VARCHAR, value.Length), java.nio.charset.Charset.forName("UTF-16LE"), SqlCollation.IMPLICIT), false);
+
+        static RexNode Int(int value) => Rex.makeExactLiteral(new java.math.BigDecimal(value));
 
         static RexNode Eq(RexNode left, RexNode right) => Rex.makeCall(SqlStdOperatorTable.EQUALS, left, right);
 
@@ -69,16 +79,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly IReadOnlyDictionary<string, Func<Defect>> Defects = new Dictionary<string, Func<Defect>>(StringComparer.Ordinal)
         {
-            // Item 2. JSON_VALUE(... RETURNING DOUBLE) = CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE): the loader reads the
-            // literal Calcite truncates to 2 as 2.5 (`truncates: reading is SqlValue.Typed`), so 2.0 is dropped and 2.5 kept.
+            // Item 1. A window of a negative length, which Calcite raises over and the service answers "" for: the length is
+            // keyed below 0, where the emulator's rows part and Azure's are unmeasured, from 1 and from before the string.
+            ["SubstringOfANegativeLength"] = () => FromRex(
+                Rex.makeCall(SqlStdOperatorTable.OR,
+                    Eq(Rex.makeCall(SqlStdOperatorTable.SUBSTRING, JsonValue("s", SqlTypeName.VARCHAR), Int(1), Int(-1)), Lit("")),
+                    Eq(Rex.makeCall(SqlStdOperatorTable.SUBSTRING, JsonValue("s", SqlTypeName.VARCHAR), Int(0), Int(-1)), Lit(""))),
+                _ => (Strings, JsonCharacterBand.None), AllSets,
+                [Doc(("s", new J.Str("abc"))), Doc(("s", new J.Str("")))]),
+
+            // Item 2. JSON_VALUE(... RETURNING DOUBLE) = CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE): the loader read the
+            // literal Calcite truncates to 2 as 2.5, so 2.0 was dropped and 2.5 kept; RETURNING DECIMAL alone reads it now.
             ["ReturningDoubleReadsATruncatedLiteral"] = () => FromRex(
                 Eq(JsonValue("n", SqlTypeName.DOUBLE), Rex.makeCast(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.DOUBLE),
                     Rex.makeCast(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.DECIMAL, 19, 0), Rex.makeExactLiteral(new java.math.BigDecimal("2.5"))))),
                 _ => (PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType)), JsonCharacterBand.None), AllSets,
                 [Doc(("n", new J.Num(2.0m))), Doc(("n", new J.Num(2.5m))), Doc(("n", new J.Num(3.0m)))]),
 
-            // Item 3. The PostgreSQL and Oracle CONCAT, which read a null as empty, are loaded as CONCAT, whose rows answer
-            // Same over a null: CONCAT(s, '!') = '!' drops the absent and null s Calcite keeps.
+            // Item 3. The PostgreSQL, SQL Server and Oracle CONCAT, which read a null as empty, were loaded as CONCAT, whose
+            // rows answer Same over a null: CONCAT(s, '!') = '!' dropped the absent and null s Calcite keeps. Their own rows
+            // say Undefined.
             ["ConcatThatReadsNullAsEmptyIsReadAsConcat"] = () => FromRex(
                 Rex.makeCall(SqlStdOperatorTable.OR,
                     Eq(Rex.makeCall(SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, JsonValue("s", SqlTypeName.VARCHAR), Lit("!")), Lit("!")),
@@ -87,18 +107,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [Doc(), Doc(("s", new J.Null())), Doc(("s", new J.Str("a")))]),
 
             // Item 4. REPLACE keyed on its subject alone: a search holding U+0000 replaces every unit on both targets
-            // (Service.NulEndsWhatReplaceAndContainsRead on Azure; measured here on EN20261019 and EN20260907). The loader
-            // gives the call no place while Spell refuses a literal holding U+0000, so the place is written as Spell
-            // would write it without that refusal, which G1 moves into S.
-            ["ReplaceOfASearchHoldingNul"] = () =>
-            {
-                var call = new SqlValue.Call("REPLACE", [new SqlValue.Text(S), SqlValue.Of("\0"), SqlValue.Of("x")])
-                    with { Type = "VARCHAR", Spelled = $"REPLACE({SqlValue.Spell(S)}, {Of("\0")}, {Of("x")})" };
-                var read = new SqlPredicate.Compare("=", call, SqlValue.Of("abc"));
-                return new(read, d => RenderingSoundnessTests.Tally.Calcite(read, d, new World(0)) is [var truth, ..] ? truth : null,
-                    _ => (Strings, JsonCharacterBand.None), [RenderingSet.Production, RenderingSet.Emulator], [Doc(("s", new J.Str("abc")))],
-                    d => IrEval.At(d, S) is J.Str s ? new string('x', s.Value.Length) == "abc" ? ServiceOutcomes.True : ServiceOutcomes.False : null);
-            },
+            // (Service.NulEndsWhatReplaceAndContainsRead on Azure; measured on EN20261019 and EN20260907). The search is keyed.
+            ["ReplaceOfASearchHoldingNul"] = () => Written("REPLACE", [new SqlValue.Text(S), SqlValue.Of("\0"), SqlValue.Of("x")], "abc",
+                [RenderingSet.Production, RenderingSet.Emulator], [Doc(("s", new J.Str("abc")))],
+                d => IrEval.At(d, S) is J.Str s ? new string('x', s.Value.Length) == "abc" ? ServiceOutcomes.True : ServiceOutcomes.False : null),
 
             // Found beside item 6. REPLACE keyed on its subject alone: a replacement that is a number is undefined at the
             // service (measured on EN20261019 and EN20260907), where Calcite replaces with the number's text.
@@ -107,30 +119,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 path => path == S ? (Strings, JsonCharacterBand.None) : (PathValues.OfKinds(ValueSet.Of(IntegerType)), JsonCharacterBand.None), [RenderingSet.Emulator],
                 [Doc(("s", new J.Str("a")), ("t", new J.Num(5)))],
                 d => IrEval.At(d, T) is J.Num ? ServiceOutcomes.Undefined : null),
+
+            // Item 5. A case mapping over a surrogate, and LOWER over the high band, whose rows said Same where no witness held
+            // a letter the mapping changes: Java's maps U+10428 and U+10400, and U+FF21 to U+FF41. The rows part (F5).
+            ["CaseMappingOverASurrogate"] = () => FromRex(
+                Rex.makeCall(SqlStdOperatorTable.OR,
+                    Eq(Rex.makeCall(SqlStdOperatorTable.UPPER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("\U00010400")),
+                    Eq(Rex.makeCall(SqlStdOperatorTable.LOWER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("\U00010428"))),
+                _ => (Strings, JsonCharacterBand.Surrogates), AllSets,
+                [Doc(("s", new J.Str("\U00010428"))), Doc(("s", new J.Str("\U00010400")))]),
+            ["LowerOverTheHighBand"] = () => FromRex(
+                Eq(Rex.makeCall(SqlStdOperatorTable.LOWER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("ａ")),
+                _ => (Strings, JsonCharacterBand.HighBmp), AllSets,
+                [Doc(("s", new J.Str("Ａ"))), Doc(("s", new J.Str("ａ")))]),
+
+            // Item 6. What the emulator makes of a literal it stores escaped: a U+0000 made there fails the statement (Postgres
+            // 22P05), and a U+FDD0 before a 0 is read back as U+0000. The emulator's rows say so.
+            ["ConcatOfANulTheEmulatorMakes"] = () => Written("CONCAT", [new SqlValue.Text(S), SqlValue.Of("\0")], "a\0",
+                [RenderingSet.Emulator], [Doc(("s", new J.Str("a")))],
+                d => IrEval.At(d, S) is J.Str ? ServiceOutcomes.Fails : null),
+            ["ReplacementByAnEscapeTheEmulatorMisreads"] = () => Written("REPLACE", [new SqlValue.Text(S), SqlValue.Of("a"), SqlValue.Of("﷐")], "﷐0",
+                [RenderingSet.Emulator], [Doc(("s", new J.Str("a0")))],
+                d => IrEval.At(d, S) is J.Str { Value: "a0" } ? ServiceOutcomes.False : null),
         };
 
         public static TheoryData<string> Names => [.. Defects.Keys];
 
         /// <summary>
-        /// Each defect S proves wrong while it is held, and nothing wrong once its fix lands: a proof whose form keeps
-        /// another row than Calcite on a document, under any set asked, through both theories.
+        /// Each defect answers as Calcite: no proof whose form keeps another row than Calcite on a document, under any set
+        /// asked, through both theories; and none at all, each declined where its rows part, are unmeasured, or the loader
+        /// reads no constant.
         /// </summary>
         [Theory]
         [MemberData(nameof(Names))]
-        public void AHeldDefectStillAnswersWrong(string name)
+        public void EachDefectAnswersAsCalcite(string name)
         {
-            var found = Wrong(Defects[name]());
-            TestContext.Current.TestOutputHelper?.WriteLine(string.Join(Environment.NewLine, found));
-            if (Held.Contains(name))
-                found.Should().NotBeEmpty($"{name} is held to still answer wrong until its fix lands, which strikes it from Held");
-            else
-                found.Should().BeEmpty();
+            var (found, proven) = Judge(Defects[name]());
+            TestContext.Current.TestOutputHelper?.WriteLine(string.Join(Environment.NewLine, found.Concat(proven)));
+            found.Should().BeEmpty();
+            proven.Should().BeEmpty($"{name} is declined under every set asked");
         }
 
-        /// <summary>Every row S's proven form keeps otherwise than Calcite, on every target each set serves.</summary>
-        static List<string> Wrong(Defect defect)
+        /// <summary>Every row S's proven form keeps otherwise than Calcite, on every target each set serves, and every form proven.</summary>
+        static (List<string> Found, List<string> Proven) Judge(Defect defect)
         {
-            var found = new List<string>();
+            var (found, proven) = (new List<string>(), new List<string>());
             var places = defect.Read.Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
             foreach (var theory in new[] { ProbeTheory, SwitchedTheory })
                 foreach (var set in defect.Sets)
@@ -148,6 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     if (bundle.ReadBest(term) is not { Kind: RenderingVerdictKind.Proven, Best: { } best })
                         continue;
 
+                    proven.Add($"{set}: {best.Text}");
                     foreach (var document in defect.Documents)
                         foreach (var target in Measured.Serves[set])
                         {
@@ -161,7 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             GC.KeepAlive(ProbeTheory);
             GC.KeepAlive(SwitchedTheory);
-            return found;
+            return (found, proven);
         }
 
     }

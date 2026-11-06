@@ -927,50 +927,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Each function by the name its rule reads it by, as Calcite and as the service write it over <c>s</c>, the one
-        /// lower-case <c>s</c> in either; the other operands are adversarial on the emulator, a <c>0</c> or a <c>1</c> its
-        /// escapes' second units hold, and a function spelled twice answers the worse of the two.
+        /// lower-case <c>s</c> in either, keyed at the operand <c>s</c> stands for; the other operands are adversarial on the
+        /// emulator, a <c>0</c> or a <c>1</c> its escapes' second units hold, each keyed as the literal it is where the row
+        /// names it, and a function spelled twice answers the worse of the two. The concatenation that reads a null as the
+        /// empty string is Calcite's <c>CONCAT</c> under PostgreSQL's library and Oracle's, the service's spelling CONCAT's.
         /// </summary>
-        internal static readonly (string Function, string Calcite, string Service)[] Functions =
+        /// <remarks>
+        /// Added on 2026-11-06: the two concatenations that read a null as empty, whose service spelling is
+        /// <c>CONCAT</c>'s, so that run 1's lines of it judge them on Azure too; and the spellings after the trims, a search,
+        /// a replacement, a window's length and the literals the emulator stores escaped, each keyed as it is, which the
+        /// probe account has not run and so claim nothing on Azure
+        /// (<c>CosmosAxiomsTests.EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures</c>).
+        /// </remarks>
+        internal static readonly CosmosFunctionSpelling[] Functions =
         [
-            ("CHAR_LENGTH", "CHAR_LENGTH(s)", "LENGTH(s)"),
-            ("CHARACTER_LENGTH", "CHARACTER_LENGTH(s)", "LENGTH(s)"),
-            ("SUBSTRING", "SUBSTRING(s FROM 2 FOR 2)", "SUBSTRING(s, 1, 2)"),
-            ("LEFT", "LEFT(s, 2)", "LEFT(s, 2)"),
-            ("RIGHT", "RIGHT(s, 2)", "RIGHT(s, 2)"),
-            ("UPPER", "UPPER(s)", "UPPER(s)"),
-            ("LOWER", "LOWER(s)", "LOWER(s)"),
-            ("REPLACE", "REPLACE(s, '0', 'x')", "REPLACE(s, \"0\", \"x\")"),
-            ("REPLACE", "REPLACE(s, '1', 'x')", "REPLACE(s, \"1\", \"x\")"),
-            ("POSITION", "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1"),
-            ("POSITION", "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1"),
-            ("REVERSE", "REVERSE(s)", "REVERSE(s)"),
-            ("||", "s || 'z'", "CONCAT(s, \"z\")"),
-            ("CONCAT", "CONCAT(s, 'z')", "CONCAT(s, \"z\")"),
-            ("REPEAT", "REPEAT(s, 2)", "REPLICATE(s, 2)"),
-            ("TRIM BOTH", "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
-            ("TRIM LEADING", "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
-            ("TRIM TRAILING", "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
+            new("CHAR_LENGTH", 0, "CHAR_LENGTH(s)", "LENGTH(s)"),
+            new("CHARACTER_LENGTH", 0, "CHARACTER_LENGTH(s)", "LENGTH(s)"),
+            new("SUBSTRING", 0, "SUBSTRING(s FROM 2 FOR 2)", "SUBSTRING(s, 1, 2)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.AtLeastOne)]),
+            new("LEFT", 0, "LEFT(s, 2)", "LEFT(s, 2)"),
+            new("RIGHT", 0, "RIGHT(s, 2)", "RIGHT(s, 2)"),
+            new("UPPER", 0, "UPPER(s)", "UPPER(s)"),
+            new("LOWER", 0, "LOWER(s)", "LOWER(s)"),
+            new("REPLACE", 0, "REPLACE(s, '0', 'x')", "REPLACE(s, \"0\", \"x\")", Fixed: [Search, Replacement]),
+            new("REPLACE", 0, "REPLACE(s, '1', 'x')", "REPLACE(s, \"1\", \"x\")", Fixed: [Search, Replacement]),
+            new("POSITION", 1, "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1"),
+            new("POSITION", 1, "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1"),
+            new("REVERSE", 0, "REVERSE(s)", "REVERSE(s)"),
+            new("||", FunctionKey.Every, "s || 'z'", "CONCAT(s, \"z\")"),
+            new("CONCAT", FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")"),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "postgresql"),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "oracle"),
+            new("REPEAT", 0, "REPEAT(s, 2)", "REPLICATE(s, 2)"),
+            new("TRIM BOTH", 1, "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
+            new("TRIM LEADING", 1, "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
+            new("TRIM TRAILING", 1, "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
+            new("REPLACE", 1, "REPLACE('a0b1c', s, 'x')", "REPLACE(\"a0b1c\", s, \"x\")"),
+            new("REPLACE", 2, "REPLACE('a0b1c', 'b', s)", "REPLACE(\"a0b1c\", \"b\", s)"),
+            new("REPLACE", null, "REPLACE(s, U&'\\0000', 'x')", "REPLACE(s, \"\\u0000\", \"x\")", Fixed: [Search with { Band = JsonCharacterBand.Nul }]),
+            new("REPLACE", null, "REPLACE(s, 'a', U&'\\0000')", "REPLACE(s, \"a\", \"\\u0000\")", Fixed: [Replacement with { Band = JsonCharacterBand.Nul }]),
+            new("REPLACE", null, "REPLACE(s, 'a', U&'\\FDD0')", "REPLACE(s, \"a\", \"\\uFDD0\")", Fixed: [Replacement with { Band = JsonCharacterBand.HighBmp }]),
+            new("SUBSTRING", null, "SUBSTRING(s FROM 2 FOR 0)", "SUBSTRING(s, 1, 0)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.Zero)]),
+            new("SUBSTRING", null, "SUBSTRING(s FROM 2 FOR -1)", "SUBSTRING(s, 1, -1)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.Negative)]),
+            new("||", null, "s || U&'\\0000'", "CONCAT(s, \"\\u0000\")", Fixed: [Joined("||", JsonCharacterBand.Nul)]),
+            new("CONCAT", null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", Fixed: [Joined("CONCAT", JsonCharacterBand.Nul)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.Nul)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.Nul)]),
+            new("||", null, "s || U&'\\FDD0' || '1'", "CONCAT(s, \"\\uFDD0\", \"1\")", Fixed: [Joined("||", JsonCharacterBand.HighBmp)]),
+            new("CONCAT", null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", Fixed: [Joined("CONCAT", JsonCharacterBand.HighBmp)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(CONCAT(s, U&'\\FDD0'), '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
+            new("REPEAT", null, "REPEAT(U&'\\0000', 2)", "REPLICATE(\"\\u0000\", 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.Nul, FunctionValueClass.NonEmpty)]),
+            new("REPEAT", null, "REPEAT(U&'\\FDD0' || '0', 2)", "REPLICATE(CONCAT(\"\\uFDD0\", \"0\"), 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp, FunctionValueClass.NonEmpty)]),
         ];
+
+        static FunctionKey Key(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value) => FunctionKey.Of(function, ordinal, kind, band, value);
+
+        /// <summary>The search <c>REPLACE</c>'s first spellings hold, a <c>0</c> or a <c>1</c>, and their replacement, <c>x</c>: strings of no band, not empty.</summary>
+        static FunctionKey Search => Key("REPLACE", 1, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty);
+
+        static FunctionKey Replacement => Search with { Ordinal = 2 };
+
+        /// <summary>A concatenation's literal of one band, keyed as every operand is.</summary>
+        static FunctionKey Joined(string function, JsonCharacterBand band) => Key(function, FunctionKey.Every, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
 
         /// <summary>
         /// The witnesses of each key: three strings of each band, holding that band's characters and ASCII alone, at either
         /// end and inside, beside a <c>0</c> or a <c>1</c>; and a value of each other kind.
         /// </summary>
-        internal static readonly (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] FunctionWitnesses =
+        internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] FunctionWitnesses =
         [
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.None, [Json("a0b1c"), Json("b"), Json("")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b0\U0001F600"), Json("\U0001F600"), Json("\U0001F600x1")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("ab0ﬀ"), Json("﷐b1﷐"), Json("ﬀ")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("aéb0ß"), Json("İb1"), Json("ß")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Trimmed, [Json("\tab0\u000B"), Json("\u000Cb1\r"), Json("\n")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String, JsonCharacterBand.Nul, [Json("a\u0000b0\u0000"), Json("\u0000"), Json("\u00001")]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Number, JsonCharacterBand.None, ["30", "0.5"]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.True, JsonCharacterBand.None, ["true"]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.False, JsonCharacterBand.None, ["false"]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Null, JsonCharacterBand.None, ["null"]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Absent, JsonCharacterBand.None, [null]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Object, JsonCharacterBand.None, ["{\"x\":\"a\"}"]),
-            (Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.Array, JsonCharacterBand.None, ["[\"a\"]"]),
+            (CosmosValueClass.String, JsonCharacterBand.None, [Json("a0b1c"), Json("b"), Json("")]),
+            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b0\U0001F600"), Json("\U0001F600"), Json("\U0001F600x1")]),
+            (CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("ab0ﬀ"), Json("﷐b1﷐"), Json("ﬀ")]),
+            (CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("aéb0ß"), Json("İb1"), Json("ß")]),
+            (CosmosValueClass.String, JsonCharacterBand.Trimmed, [Json("\tab0\u000B"), Json("\u000Cb1\r"), Json("\n")]),
+            (CosmosValueClass.String, JsonCharacterBand.Nul, [Json("a\u0000b0\u0000"), Json("\u0000"), Json("\u00001")]),
+            (CosmosValueClass.Number, JsonCharacterBand.None, ["30", "0.5"]),
+            (CosmosValueClass.True, JsonCharacterBand.None, ["true"]),
+            (CosmosValueClass.False, JsonCharacterBand.None, ["false"]),
+            (CosmosValueClass.Null, JsonCharacterBand.None, ["null"]),
+            (CosmosValueClass.Absent, JsonCharacterBand.None, [null]),
+            (CosmosValueClass.Object, JsonCharacterBand.None, ["{\"x\":\"a\"}"]),
+            (CosmosValueClass.Array, JsonCharacterBand.None, ["[\"a\"]"]),
         ];
 
         static string Json(string text) => Newtonsoft.Json.JsonConvert.ToString(text);

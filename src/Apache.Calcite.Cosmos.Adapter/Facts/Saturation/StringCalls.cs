@@ -40,6 +40,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal static class StringCalls
     {
 
+        /// <summary>
+        /// The name the loader reads a concatenation that reads a null as the empty string by, PostgreSQL's and SQL Server's
+        /// <c>CONCAT</c> and Oracle's two-argument one, which share the name <c>CONCAT</c> and not its meaning
+        /// (<c>CosmosPredicateLoader.NameOf</c>).
+        /// </summary>
+        public const string NullAsEmpty = "CONCAT NULL AS EMPTY";
+
         /// <summary>A pair's units cut apart: a surrogate may be left unpaired.</summary>
         static readonly JsonClassMap Cut = new(SurrogateBand, UnpairedClass);
 
@@ -59,6 +66,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         [
             Row("||", [FunctionKey.Every]),
             Row("CONCAT", [FunctionKey.Every]),
+            Row(NullAsEmpty, [FunctionKey.Every]),
             Row("CASE", [FunctionKey.Every]),
             Row("UPPER", [0], Upper),
             Row("LOWER", [0]),

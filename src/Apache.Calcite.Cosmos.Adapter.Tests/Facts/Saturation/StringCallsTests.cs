@@ -112,6 +112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 ["||"] = (2, o => org.apache.calcite.runtime.SqlFunctions.concat(o[0], o[1])),
                 ["CONCAT"] = (3, o => org.apache.calcite.runtime.SqlFunctions.concatMulti(o)),
+                [StringCalls.NullAsEmpty] = (3, o => org.apache.calcite.runtime.SqlFunctions.concatMultiWithNull(o)),
                 ["UPPER"] = (1, o => org.apache.calcite.runtime.SqlFunctions.upper(o[0])),
                 ["LOWER"] = (1, o => org.apache.calcite.runtime.SqlFunctions.lower(o[0])),
                 ["SUBSTRING"] = (1, o => org.apache.calcite.runtime.SqlFunctions.substring(o[0], 1, 2)),
@@ -127,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             };
 
             StringCalls.Rows.Select(r => r.Function).Should().BeEquivalentTo(called.Keys.Append("CASE"));
-            StringCalls.Rows.Where(r => r.Function is "||" or "CONCAT" or "CASE").Should().OnlyContain(r => r.Draws.Contains(FunctionKey.Every));
+            StringCalls.Rows.Where(r => r.Function is "||" or "CONCAT" or StringCalls.NullAsEmpty or "CASE").Should().OnlyContain(r => r.Draws.Contains(FunctionKey.Every));
             foreach (var (function, draws, _) in StringCalls.Rows.Where(r => called.ContainsKey(r.Function)))
                 for (var operand = 0; operand < called[function].Strings; operand++)
                 {

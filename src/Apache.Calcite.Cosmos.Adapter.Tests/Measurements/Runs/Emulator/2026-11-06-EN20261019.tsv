@@ -1,0 +1,292 @@
+# The emulator rows measured on 2026-11-06, each line as its pinning test logged it (CosmosWitnessProbe), run against
+# mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview, release EN20261019 (image db53613dae19): the
+# spellings Service.StringFunctionAnswersByBand gained that day, a search, a replacement and a window's length keyed as
+# each is, and the literals the emulator stores escaped. An answer is the projection, ! where the statement fails over
+# the witness alone. Release EN20260907 (image 2db1f9e7) answered every line alike.
+release	row	expression	witness	answer
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	"a0x1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	""	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a😀b0😀"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"😀"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"😀x1"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ab0ﬀ"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"﷐b1﷐"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ﬀ"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"aéb0ß"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"İb1"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ß"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\tab0\u000b"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\fb1\r"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\n"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a\u0000b0\u0000"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u0000"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a0b1c"	"a0a0b1c1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"b"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	""	"a01c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a😀b0😀"	"a0a😀b0😀1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"😀"	"a0😀1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"😀x1"	"a0😀x11c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ab0ﬀ"	"a0ab0ﬀ1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"﷐b1﷐"	"a0﷐b1﷐1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ﬀ"	"a0ﬀ1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"aéb0ß"	"a0aéb0ß1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"İb1"	"a0İb11c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ß"	"a0ß1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\tab0\u000b"	"a0\tab0\u000b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\fb1\r"	"a0\fb1\r1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\n"	"a0\n1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a\u0000b0\u0000"	"a0a\u0000b0\u00001c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\u0000"	"a0\u00001c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\u00001"	"a0\u000011c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a0b1c"	"xxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"b"	"x"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	""	""
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a😀b0😀"	"xxxxxxxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"😀"	"xxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"😀x1"	"xxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ab0ﬀ"	"xxxxxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"﷐b1﷐"	"xxxxxxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ﬀ"	"xxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"aéb0ß"	"xxxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"İb1"	"xxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ß"	"xx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\tab0\u000b"	"xxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\fb1\r"	"xxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\n"	"x"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a\u0000b0\u0000"	"xxxxxxxxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\u0000"	"xxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\u00001"	"xxxxx"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a0b1c"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"b"	"b"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	""	""
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a😀b0😀"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"😀"	"😀"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"😀x1"	"😀x1"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ab0ﬀ"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"﷐b1﷐"	"﷐b1﷐"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ﬀ"	"ﬀ"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"aéb0ß"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"İb1"	"İb1"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ß"	"ß"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\tab0\u000b"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\fb1\r"	"\fb1\r"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\n"	"\n"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a\u0000b0\u0000"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\u0000"	"\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\u00001"	"\u00001"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a0b1c"	"\u0000b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"b"	"b"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	""	""
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a😀b0😀"	"﷐😀b0😀"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"😀"	"😀"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"😀x1"	"😀x1"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ab0ﬀ"	"﷐b0ﬀ"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"﷐b1﷐"	"﷐b1﷐"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ﬀ"	"ﬀ"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"aéb0ß"	"﷐éb0ß"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"İb1"	"İb1"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ß"	"ß"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\tab0\u000b"	"\t﷐b0\u000b"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\fb1\r"	"\fb1\r"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\n"	"\n"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a\u0000b0\u0000"	"﷐\u0000b0\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\u0000"	"\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\u00001"	"\u00001"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a0b1c"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"b"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	""	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a😀b0😀"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"😀"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"😀x1"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ab0ﬀ"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"﷐b1﷐"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ﬀ"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"aéb0ß"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"İb1"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ß"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\tab0\u000b"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\fb1\r"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\n"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a\u0000b0\u0000"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\u0000"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\u00001"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a0b1c"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"b"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	""	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a😀b0😀"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"😀"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"😀x1"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ab0ﬀ"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"﷐b1﷐"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ﬀ"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"aéb0ß"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"İb1"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ß"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\tab0\u000b"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\fb1\r"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\n"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a\u0000b0\u0000"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\u0000"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\u00001"	""
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a0b1c"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"b"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	""	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a😀b0😀"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"😀"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"😀x1"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ab0ﬀ"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"﷐b1﷐"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ﬀ"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"aéb0ß"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"İb1"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ß"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\tab0\u000b"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\fb1\r"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\n"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a\u0000b0\u0000"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\u0000"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\u00001"	!
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a0b1c"	"a0b1c﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"b"	"b﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	""	"﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a😀b0😀"	"a😀b0😀﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"😀"	"😀﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"😀x1"	"😀x1﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ab0ﬀ"	"ab0ﬀ﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"﷐b1﷐"	"﷐b1﷐﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ﬀ"	"ﬀ﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"aéb0ß"	"aéb0ß﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"İb1"	"İb1﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ß"	"ß﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\tab0\u000b"	"\tab0\u000b﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\fb1\r"	"\fb1\r﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\n"	"\n﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a\u0000b0\u0000"	"a\u0000b0\u0000﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\u0000"	"\u0000﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\u00001"	"\u00001﷐"
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	0.5	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	true	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	false	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	null	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	absent	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	{"x":"a"}	undefined
+EN20261019	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	["a"]	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a0b1c"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"b"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	""	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a😀b0😀"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"😀"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"😀x1"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ab0ﬀ"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"﷐b1﷐"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ﬀ"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"aéb0ß"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"İb1"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ß"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\tab0\u000b"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\fb1\r"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\n"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a\u0000b0\u0000"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\u0000"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\u00001"	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	30	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	0.5	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	true	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	false	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	null	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	absent	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	{"x":"a"}	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	["a"]	!
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a0b1c"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"b"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	""	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a😀b0😀"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"😀"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"😀x1"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ab0ﬀ"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"﷐b1﷐"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ﬀ"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"aéb0ß"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"İb1"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ß"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\tab0\u000b"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\fb1\r"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\n"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a\u0000b0\u0000"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\u0000"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\u00001"	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	30	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	0.5	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	true	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	false	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	null	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	absent	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	{"x":"a"}	"\u0000\u0000"
+EN20261019	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	["a"]	"\u0000\u0000"

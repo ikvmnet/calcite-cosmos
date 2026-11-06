@@ -33,11 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static readonly CosmosFunctionAnswer[] Severity = [CosmosFunctionAnswer.Fails, CosmosFunctionAnswer.Differs, CosmosFunctionAnswer.Undefined, CosmosFunctionAnswer.Same];
 
         /// <summary>
-        /// Each key's answer, <c>function/kind/band</c>, over every function spelled as Calcite and as the service write
-        /// it, the one lower-case <c>s</c> in each standing for the value.
+        /// Each key's answer (<see cref="FunctionKey"/>, a witness's atom its class of value) over every function spelled as
+        /// Calcite and as the service write it, the one lower-case <c>s</c> in each standing for the value.
         /// </summary>
-        public static async Task<IReadOnlyDictionary<string, CosmosFunctionAnswer>> Measure(Container container, string? unavailable, string row,
-            IReadOnlyList<(string Function, string Calcite, string Service)> functions, IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys)
+        public static async Task<IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer>> Measure(Container container, string? unavailable, string row,
+            IReadOnlyList<CosmosFunctionSpelling> functions, IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys)
         {
             var measured = Judge(row, functions, keys, await CosmosWitnessProbe.Project(container, unavailable, row, [.. keys.SelectMany(k => k.Witnesses)], Spellings(functions)));
 
@@ -55,39 +55,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static readonly object Answers = new();
 
         /// <summary>The service's spellings of the functions, <c>c.v</c> for the value, each once: what the probe projects.</summary>
-        public static string[] Spellings(IReadOnlyList<(string Function, string Calcite, string Service)> functions) =>
-            [.. functions.Select(f => f.Service.Replace("s", "c.v", StringComparison.Ordinal)).Distinct()];
+        public static string[] Spellings(IReadOnlyList<CosmosFunctionSpelling> functions) =>
+            [.. functions.Select(Spelled).Distinct()];
+
+        /// <summary>The service's spelling of one, <c>c.v</c> for the value, as a line of a record names it.</summary>
+        public static string Spelled(CosmosFunctionSpelling function) => function.Service.Replace("s", "c.v", StringComparison.Ordinal);
 
         /// <summary>
         /// Each key's answer from what the service projected, by spelling (<see cref="Spellings"/>) and witness, against
-        /// Calcite in process: a probe's, or a run record's lines read again.
+        /// Calcite in process under each spelling's libraries: a probe's, or a run record's lines read again. A witness keys
+        /// its operand by each atom of its kind it is in (<see cref="FunctionValueClasses"/>), and a spelling's literals are
+        /// keyed as it names them (<see cref="CosmosFunctionSpelling.Fixed"/>), over the witnesses of a string of no band.
         /// </summary>
-        public static IReadOnlyDictionary<string, CosmosFunctionAnswer> Judge(string row, IReadOnlyList<(string Function, string Calcite, string Service)> functions,
+        public static IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> Judge(string row, IReadOnlyList<CosmosFunctionSpelling> functions,
             IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys, string[][] asked)
         {
             string?[] witnesses = [.. keys.SelectMany(k => k.Witnesses)];
             var spellings = Spellings(functions);
-            var service = functions.Select(f => asked[Array.IndexOf(spellings, f.Service.Replace("s", "c.v", StringComparison.Ordinal))]).ToArray();
-
-            using DbConnection connection = MaterialisedTable.Open("all");
             var table = MaterialisedTable.Of(witnesses.Select(w => w is null ? "{}" : $"{{\"v\":{w}}}"));
-            var measured = new SortedDictionary<string, CosmosFunctionAnswer>(StringComparer.Ordinal);
-            for (var f = 0; f < functions.Count; f++)
-                foreach (var reader in CosmosAxioms.Get(row).Readers!)
+            var connections = new Dictionary<string, DbConnection>(StringComparer.Ordinal);
+            var measured = new SortedDictionary<FunctionKey, CosmosFunctionAnswer>();
+            try
+            {
+                foreach (var function in functions)
                 {
-                    var calcite = table.Values(connection, functions[f].Calcite.Replace("s", Read(reader), StringComparison.Ordinal));
-                    var w = 0;
-                    foreach (var (kind, band, of) in keys)
+                    var service = asked[Array.IndexOf(spellings, Spelled(function))];
+                    if (connections.TryGetValue(function.Library, out var connection) == false)
+                        connections[function.Library] = connection = MaterialisedTable.Open(function.Library);
+
+                    foreach (var reader in CosmosAxioms.Get(row).Readers!)
                     {
-                        var answer = Answer(of.Select((_, i) => (service[f][w + i], calcite[w + i])));
-                        w += of.Length;
-                        var key = $"{functions[f].Function}/{kind}/{band}";
-                        measured[key] = measured.TryGetValue(key, out var other) ? Worse(other, answer) : answer;
+                        var calcite = table.Values(connection, function.Calcite.Replace("s", Read(reader), StringComparison.Ordinal));
+                        var w = 0;
+                        foreach (var (kind, band, of) in keys)
+                        {
+                            var pairs = of.Select((witness, i) => (Witness: witness, Service: service[w + i], Calcite: calcite[w + i])).ToList();
+                            w += of.Length;
+                            if (function.Ordinal is long ordinal)
+                                foreach (var atom in FunctionValueClasses.AtomsOf(kind))
+                                    if (pairs.Where(p => Holds(atom, kind, p.Witness)).Select(p => (p.Service, p.Calcite)).ToList() is { Count: > 0 } held)
+                                        Note(measured, FunctionKey.Of(function.Function, ordinal, kind, band, atom), Answer(held));
+
+                            if (kind == CosmosValueClass.String && band == JsonCharacterBand.None)
+                                foreach (var key in function.Fixed ?? [])
+                                    Note(measured, key, Answer(pairs.Select(p => (p.Service, p.Calcite))));
+                        }
                     }
                 }
+            }
+            finally
+            {
+                foreach (var connection in connections.Values)
+                    connection.Dispose();
+            }
 
             return measured;
         }
+
+        static void Note(SortedDictionary<FunctionKey, CosmosFunctionAnswer> measured, FunctionKey key, CosmosFunctionAnswer answer) =>
+            measured[key] = measured.TryGetValue(key, out var other) ? Worse(other, answer) : answer;
+
+        /// <summary>Whether a witness, as JSON, is of an atom of its kind (<see cref="FunctionValueClasses.Holds"/>).</summary>
+        static bool Holds(FunctionValueClass atom, CosmosValueClass kind, string? witness) => kind switch
+        {
+            CosmosValueClass.String => FunctionValueClasses.Holds(atom, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of(Newtonsoft.Json.JsonConvert.DeserializeObject<string>(witness!)!)),
+            CosmosValueClass.Number => FunctionValueClasses.Holds(atom, decimal.TryParse(witness, NumberStyles.Float, CultureInfo.InvariantCulture, out var exact)
+                ? Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of(exact)
+                : Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of(double.Parse(witness!, NumberStyles.Float, CultureInfo.InvariantCulture))),
+            _ => true,
+        };
 
         /// <summary>
         /// Calcite's reading of <c>v</c> through a reader the row names: the text accessor, a typed one, or a cast of either.
@@ -101,21 +137,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         };
 
         /// <summary>
-        /// The keys a row records worse than measured, and those it records better: a release answering better than the
-        /// row is within it, one answering worse fails it.
+        /// The keys a row records better than measured, those measured that no row covers, and the rows no measured key falls
+        /// under: a row covers each atom its class holds, as S reads it, and a release answering better than the row is within
+        /// it, one answering worse fails it.
         /// </summary>
-        public static IEnumerable<string> Unsound(IReadOnlyDictionary<string, CosmosFunctionAnswer> measured, IEnumerable<CosmosFunctionOutcome> recorded, CosmosAxiomTarget on)
+        public static IEnumerable<string> Unsound(IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> measured, IEnumerable<CosmosFunctionOutcome> recorded, CosmosAxiomTarget on)
         {
-            var row = recorded.Where(o => (o.On & on) != 0).ToDictionary(o => $"{o.Function}/{o.Operand}/{o.Band}", o => o.Answer, StringComparer.Ordinal);
+            var rows = recorded.Where(o => (o.On & on) != 0).Select(o => (Key: FunctionKey.Of(o.Function, o.Subject, o.Operand, o.Band, o.Value), o.Answer)).ToList();
+            var covered = new HashSet<FunctionKey>();
             foreach (var (key, answer) in measured)
-                if (row.TryGetValue(key, out var claimed) == false)
+            {
+                var covering = rows.Where(r => Covers(r.Key, key)).ToList();
+                if (covering.Count == 0)
                     yield return $"{key}={answer} is not recorded";
-                else if (Worse(claimed, answer) != claimed)
-                    yield return $"{key}={answer}, recorded {claimed}";
 
-            foreach (var key in row.Keys.Where(k => measured.ContainsKey(k) == false))
-                yield return $"{key} is recorded and not measured";
+                foreach (var (row, claimed) in covering)
+                {
+                    covered.Add(row);
+                    if (Worse(claimed, answer) != claimed)
+                        yield return $"{key}={answer}, recorded {claimed} at {row}";
+                }
+            }
+
+            foreach (var (row, _) in rows.Where(r => covered.Contains(r.Key) == false))
+                yield return $"{row} is recorded and not measured";
         }
+
+        /// <summary>Whether a row's key covers a measured atom's: one function, operand, kind and band, the row's class holding the atom.</summary>
+        static bool Covers(FunctionKey row, FunctionKey atom) =>
+            row with { Value = atom.Value } == atom && FunctionValueClasses.Holding.Contains((atom.Kind, row.Value, atom.Value));
 
         /// <summary>The worse of two answers.</summary>
         public static CosmosFunctionAnswer Worse(CosmosFunctionAnswer a, CosmosFunctionAnswer b) =>

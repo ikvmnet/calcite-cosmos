@@ -55,6 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ["REPLACE"] = ("REPLACE", 3, 3),
             ["CONCAT"] = ("CONCAT", 2, int.MaxValue),
             ["||"] = ("CONCAT", 2, int.MaxValue),
+            // The concatenation that reads a null as the empty string, by the name the loader reads it by: spelled as CONCAT,
+            // its own rows saying where the two answer alike.
+            [Apache.Calcite.Cosmos.Facts.Saturation.StringCalls.NullAsEmpty] = ("CONCAT", 2, int.MaxValue),
             ["ABS"] = ("ABS", 1, 1),
             ["EXP"] = ("EXP", 1, 1),
             ["LN"] = ("LOG", 1, 1),
@@ -225,11 +228,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// The rows' name of a call: its operator's, a trim with its flag as the loader names it, or <c>null</c> for a
-        /// trim whose flag is no literal.
+        /// The rows' name of a call as the loader names it (<see cref="CosmosPredicateLoader.NameOf"/>): its operator's, a trim
+        /// with its flag, or <c>null</c> for a trim whose flag is no literal.
         /// </summary>
         public static string? KeyOf(RexCall call) =>
-            call.getKind().name() != "TRIM" ? call.getOperator().getName()
+            call.getKind().name() != "TRIM" ? CosmosPredicateLoader.NameOf(call.getOperator())
             : call.getOperands().size() == 3 && call.getOperands().get(0) is RexLiteral { } flag && flag.getValue() is org.apache.calcite.sql.fun.SqlTrimFunction.Flag f ? "TRIM " + f.name()
             : null;
 
@@ -246,9 +249,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// What a call's spelling asks of its operands' characters beyond the rows, under a set (<see cref="CosmosRendering.StoresSpelled"/>).
         /// </summary>
         /// <remarks>
-        /// The rows describe the subject alone. Azure's search reads to its first U+0000; and under the emulator, which stores
-        /// U+0000 and U+FDD0 escaped, a replacement's search and replacement, a concatenation's operands, a repetition's
-        /// subject and a pattern's subject are asked to hold neither (#246). Carried as legality: no row says them.
+        /// Azure's search reads to its first U+0000; and under the emulator, which stores U+0000 and U+FDD0 escaped, a
+        /// replacement's search and replacement, a concatenation's operands, a repetition's subject and a pattern's subject
+        /// are asked to hold neither (#246). The rows say the functions' for S, keyed by operand (F2), a target that measured
+        /// none answering it unmeasured; the bridge keeps this copy until it asks S's image (G6).
         /// </remarks>
         public static IEnumerable<Refusal> Refusals(RexCall call, RenderingSet set)
         {
@@ -315,7 +319,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// The service's spelling of a loader call over its operands' spellings, or <c>null</c> where it has none: a
         /// computed place's <c>Spelling</c> in S. The literal operands a spelling's legality reads (a window's start, a
-        /// trim's character, a repetition's count, a search) are asked here, and a parameter is never one.
+        /// trim's character, a repetition's count) are asked here, and a parameter is never one; what a search or a window's
+        /// length answers is the rows'.
         /// </summary>
         /// <param name="call">The loader's call.</param>
         /// <param name="spell">An operand's spelling, or <c>null</c> where it has none.</param>
@@ -341,9 +346,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case "SUBSTRING" when operands.Length == 3 && Integral(1) >= 1:
                     return SubstringFrom(operands[0], operands[1], operands[2]);
                 // A window from before the string, clipped as Calcite clips it, is the service's window from 0
-                // (Calcite.SubstringClipsAWindowBeforeTheString, Service.SubstringOfANegativeStartIsEmpty); a negative
-                // length Calcite raises over is not spelled.
-                case "SUBSTRING" when operands.Length == 3 && Integral(1) <= 0 && Integral(2) >= 0:
+                // (Calcite.SubstringClipsAWindowBeforeTheString, Service.SubstringOfANegativeStartIsEmpty). A length below 0,
+                // which Calcite raises over, is its rows' (Service.StringFunctionAnswersByBand), as every length is.
+                case "SUBSTRING" when operands.Length == 3 && Integral(1) <= 0:
                     return SubstringClipped(operands[0], operands[1], operands[2]);
                 case "POSITION" when operands.Length == 2:
                     return Position(operands[0], operands[1]);
@@ -352,7 +357,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // A positive count reads Azure's length bound, a result key no row holds yet (h14b).
                 case "REPEAT" when operands.Length == 2 && Integral(1) == 0:
                     return $"REPLICATE({operands[0]}, {operands[1]})";
-                case "REPLACE" when operands.Length == 3 && Text(1) is { Length: > 0 }:
+                // An empty search, which the service answers undefined, is the rows' (Service.StringFunctionAnswersByBand).
+                case "REPLACE" when operands.Length == 3:
                     return $"REPLACE({operands[0]}, {operands[1]}, {operands[2]})";
                 case "REPEAT" or "REPLACE" or "SUBSTRING" or "POSITION":
                     return null;

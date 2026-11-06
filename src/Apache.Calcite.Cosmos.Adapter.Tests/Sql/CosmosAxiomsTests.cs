@@ -469,7 +469,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     && (meant & ~AnswerMeanings.Measured.Of(line.Answer)) == ServiceOutcomes.None)) == false).Should().BeEmpty("no evidence a run read so is dropped");
 
             // A row measured by the witness probe claims Azure only where the probe account's record holds every line its
-            // emulator record holds, each answered alike but where the row says the two part.
+            // emulator record holds of each expression it ran, each answered alike but where the row says the two part; an
+            // expression it has not run claims nothing there (EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures).
             var emulator = EmulatorRecords().Where(l => l.Release == "EN20261019").ToLookup(l => l.Row);
             var azure = AzureWitnessRecords().ToLookup(l => l.Row);
             var claiming = CosmosAxioms.All.Where(a => a.MeasuredOn.HasFlag(CosmosAxiomTarget.Azure) && emulator.Contains(a.Id)).Select(a => a.Id).ToList();
@@ -477,7 +478,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var row in claiming)
             {
                 var asked = azure[row].ToDictionary(l => (l.Expression, l.Witness, Kept(l.Answer)), l => l.Answer);
-                emulator[row].Select(l => (l.Expression, l.Witness, Kept(l.Answer))).Except(asked.Keys).Should().BeEmpty($"{row}: the probe account ran every line the emulator did");
+                var ran = azure[row].Select(l => l.Expression).ToHashSet(StringComparer.Ordinal);
+                emulator[row].Where(l => ran.Contains(l.Expression)).Select(l => (l.Expression, l.Witness, Kept(l.Answer))).Except(asked.Keys)
+                    .Should().BeEmpty($"{row}: the probe account ran every line the emulator did of each expression it ran");
                 emulator[row].Where(l => asked.TryGetValue((l.Expression, l.Witness, Kept(l.Answer)), out var a) && a != l.Answer && Parted(row, l.Expression, l.Witness) == false)
                     .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer} on the emulator, {asked[(l.Expression, l.Witness, Kept(l.Answer))]} on Azure").Should().BeEmpty($"{row} answers alike but where it says the targets part");
             }
@@ -507,7 +510,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures()
         {
-            var measured = new (string Row, IReadOnlyList<(string Function, string Calcite, string Service)> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
+            var measured = new (string Row, IReadOnlyList<CosmosFunctionSpelling> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
             {
                 ("Service.StringFunctionAnswersByBand", CosmosStringFunctionMeasurementTests.Functions, CosmosStringFunctionMeasurementTests.FunctionWitnesses),
                 ("Service.IntegerArithmeticIsExactWithinLong", CosmosJsonTypeMeasurementTests.Arithmetic, CosmosJsonTypeMeasurementTests.ArithmeticWitnesses),
@@ -519,9 +522,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var lines = AzureWitnessRecords().Where(l => Kept(l.Answer) == false).ToDictionary(l => (l.Row, l.Expression, l.Witness), l => l.Answer);
             foreach (var (row, functions, keys) in measured)
             {
-                var asked = CosmosFunctionComparison.Spellings(functions)
+                // A spelling the probe account has not run measures nothing there, and its keys claim nothing on Azure.
+                var ran = functions.Where(f => keys.SelectMany(k => k.Witnesses).All(w => lines.ContainsKey((row, CosmosFunctionComparison.Spelled(f), w ?? "absent")))).ToList();
+                var asked = CosmosFunctionComparison.Spellings(ran)
                     .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
-                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, functions, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!, CosmosAxiomTarget.Azure)
+                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, ran, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!, CosmosAxiomTarget.Azure)
                     .Should().BeEmpty(row);
             }
         }

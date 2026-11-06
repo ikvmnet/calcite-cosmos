@@ -283,7 +283,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// The census's string-function pushes under the emulator (h05, <c>coverage-J1-where.tsv</c>), each over a path
         /// imported an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
         /// service's window from 0 (differential 488); but none over a path that may hold a number, and no window of a
-        /// negative length, which Calcite raises over.
+        /// negative length, which Calcite raises over: its place is written, and its length keyed below 0, where the
+        /// emulator's rows part and Azure's are unmeasured.
         /// </summary>
         [Fact]
         public void TheCensusStringPushesAreProvenOverAsciiStrings()
@@ -313,7 +314,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, window.Spelled!, Of("a")), from0.Places.ToDictionary(SqlValue.Spell), "c", new CosmosParameterList(),
                 computed: new Dictionary<string, SqlValue.Call> { [window.Spelled!] = window })
                 .Should().Be("(SUBSTRING(c.a, (@p0 < 1 ? 0 : (@p0 - 1)), (@p0 < 1 ? (((@p0 + @p1) < 1) ? 0 : ((@p0 + @p1) - 1)) : @p1)) = @p2)", "the translator's clip");
-            Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(-1)), Lit("a"))).Computed.Should().BeEmpty();
+            var negative = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(-1)), Lit("a")));
+            negative.Computed.Should().ContainSingle();
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+                Generate(negative, set, Strings, JsonCharacterBand.None).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, $"a negative length under {set}");
         }
 
         /// <summary>

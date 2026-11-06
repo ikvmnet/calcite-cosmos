@@ -71,16 +71,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Every name a call of an operator may be read by as a function of values: its own, and as <c>Computed</c>
-        /// spells a <c>TRIM</c> by its flag, a cast from text to text and a <c>CASE</c>.
+        /// Every name a call of an operator may be read by as a function of values: its own (<see cref="NameOf"/>), and as
+        /// <c>Computed</c> spells a <c>TRIM</c> by its flag, a cast from text to text and a <c>CASE</c>.
         /// </summary>
         internal static IEnumerable<string> Spellings(SqlOperator op) => op.getKind().name() switch
         {
             nameof(SqlKind.__Enum.TRIM) => [op.getName(), .. new[] { org.apache.calcite.sql.fun.SqlTrimFunction.Flag.BOTH, org.apache.calcite.sql.fun.SqlTrimFunction.Flag.LEADING, org.apache.calcite.sql.fun.SqlTrimFunction.Flag.TRAILING }.Select(f => "TRIM " + f.name())],
             nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST) => [op.getName(), "CAST"],
             nameof(SqlKind.__Enum.CASE) => [op.getName(), "CASE"],
-            _ => [op.getName()],
+            _ => [NameOf(op)],
         };
+
+        /// <summary>
+        /// The name a call of an operator is read by: its own, but the concatenation that reads a null as the empty string,
+        /// PostgreSQL's and SQL Server's <c>CONCAT</c> and Oracle's two-argument one, which share <c>CONCAT</c>'s name and
+        /// not its meaning, by a name of its own found by its kind (<see cref="Cosmos.Facts.Saturation.StringCalls.NullAsEmpty"/>),
+        /// so that rows of its own answer for it.
+        /// </summary>
+        internal static string NameOf(SqlOperator op) =>
+            op.getKind().name() is nameof(SqlKind.__Enum.CONCAT_WITH_NULL) or nameof(SqlKind.__Enum.CONCAT2) ? Cosmos.Facts.Saturation.StringCalls.NullAsEmpty : op.getName();
 
         /// <summary>
         /// One binding being read: the paths its fields address, how each is read, and the numbering of what is opaque,
@@ -439,7 +448,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 // RETURNING DOUBLE is a conversion too; read only for S until its switch (h15), F's terms unchanged.
                 var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" } || _places && reading is SqlValue.Typed { Type: "DOUBLE" };
-                if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
+                // Only RETURNING DECIMAL reads a literal a cast truncated, as PredicateAtom's decimal parse rescales it; RETURNING
+                // DOUBLE compares the double exactly. A stopgap (audit item 2), deleted when G8 reads the casts as terms in S.
+                if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed { Type: "DECIMAL" }) is java.math.BigDecimal number)
                     return Number(number);
 
                 return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : null;
@@ -711,7 +722,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         break;
 
                     default:
-                        function = call.getOperator().getName();
+                        function = NameOf(call.getOperator());
                         read = operands;
                         break;
                 }

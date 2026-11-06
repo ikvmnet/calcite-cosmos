@@ -17,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// What S reads off a call's gathered operands (<see cref="RenderingImage"/>, h10): the keys each row class falls under,
-    /// the subject alone of a two-operand call, a repeated operand once an ordinal, a nested place, a (D) function's image,
+    /// the operands the rows name alone, a repeated operand once an ordinal, a nested place, a (D) function's image,
     /// and a gathering that is no import an ordinal falling under no row. It decides nothing.
     /// </summary>
     public sealed class RenderingImageTests
@@ -55,12 +55,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             });
         }
 
-        /// <summary>A two-operand call's rows describe its subject: <c>REPLACE</c>'s search and replacement fall under no key, <c>POSITION</c>'s needle neither.</summary>
+        /// <summary>
+        /// An operand is keyed where a row names it, and only there: <c>REPLACE</c>'s search and replacement, which rows name
+        /// (F2), each by its own ordinal, its band and its atom; <c>POSITION</c>'s needle, which none names, by none.
+        /// </summary>
         [Fact]
-        public void ATwoOperandCallIsKeyedByItsSubject()
+        public void AnOperandIsKeyedOnlyWhereARowNamesIt()
         {
+            static FunctionKey Operand(long ordinal, JsonCharacterBand band) => FunctionKey.Of("REPLACE", ordinal, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
             Keys("REPLACE", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of("a\u0000")), Literal(2, Of("b"))))
-                .Should().BeEquivalentTo(Strings("REPLACE", 0, JsonCharacterBand.None));
+                .Should().BeEquivalentTo(Strings("REPLACE", 0, JsonCharacterBand.None).Add(Operand(1, JsonCharacterBand.None)).Add(Operand(1, JsonCharacterBand.Nul)).Add(Operand(2, JsonCharacterBand.None)));
             Keys("POSITION", Gathered(Literal(0, Of("é")), Text(1, ValueSet.Of(StringType))))
                 .Should().BeEquivalentTo(Strings("POSITION", 1, JsonCharacterBand.None));
         }

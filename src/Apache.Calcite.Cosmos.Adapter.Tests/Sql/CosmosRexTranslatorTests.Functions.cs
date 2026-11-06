@@ -65,10 +65,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosRexTranslator Undeclared() => new(_rex, _fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             /// <summary>A translator whose container declares these claims of <c>c.s</c>, outright, as S imports them.</summary>
-            CosmosRexTranslator Declaring(params JsonClaim[] claims)
+            CosmosRexTranslator Declaring(params JsonClaim[] claims) => Declaring(CosmosServiceTarget.Azure, claims);
+
+            /// <summary>A translator whose container, on this target, declares these claims of <c>c.s</c>.</summary>
+            CosmosRexTranslator Declaring(CosmosServiceTarget target, params JsonClaim[] claims)
             {
                 var container = TestReasoning.Bind(new CosmosContainerMetadata("functions")
-                    .WithFacts(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), claim)))));
+                    .WithFacts(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), claim))))).WithServiceTarget(target);
                 return new(_rex, _fields, new CosmosParameterList(), container.Facts.Declared, null, container);
             }
 
@@ -397,7 +400,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>A translator whose container declares <c>c.s</c> to be one of these strings.</summary>
-            CosmosRexTranslator OneOf(params string[] values) => Declaring(new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
+            CosmosRexTranslator OneOf(params string[] values) => OneOf(CosmosServiceTarget.Azure, values);
+
+            /// <summary>A translator whose container, on this target, declares <c>c.s</c> to be one of these strings.</summary>
+            CosmosRexTranslator OneOf(CosmosServiceTarget target, params string[] values) => Declaring(target, new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
 
             /// <remarks>
             /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
@@ -422,7 +428,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
             /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
-            /// parameter may be empty until it is bound.
+            /// parameter may be empty until it is bound. Azure's answers were measured with a literal search alone, so a
+            /// path's is computed in process there until run 2 measures one (TODO.md); the emulator's were measured with both.
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereTheSearchHoldsSomething()
@@ -430,14 +437,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue();
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")).Should().BeFalse("an empty search");
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Param(), Lit("b")).Should().BeFalse("a parameter may be empty");
-                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
-                Pushes(OneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("Azure's answers were measured with a literal search alone");
             }
 
             /// <remarks>
             /// Azure's <c>REPLACE</c> reads its subject only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves
             /// <c>a</c>U+0000<c>b</c> as it is — and a search holding one replaces every byte; a replacement holding one is
-            /// written as it is. So the subject and the search are asked to hold none, and the replacement nothing.
+            /// written as it is. So the subject and the search are asked to hold none. The replacement's U+0000 was measured
+            /// through a parameter, which no witness line records, so its key is unmeasured on Azure until run 2 (TODO.md).
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereNeitherTheSubjectNorTheSearchHoldsNul()
@@ -445,7 +454,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 const JsonCharacterBand Z = JsonCharacterBand.Nul;
 
                 Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue("the subject holds no U+0000");
-                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeTrue("the replacement is written as it is");
+                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeFalse("no witness line records a replacement holding U+0000 on Azure");
                 Pushes(Translator(Z), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("the subject may hold U+0000");
                 Pushes(Strings(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("nothing is known of the subject's characters");
                 Pushes(Translator(JsonCharacterBand.None), SqlStdOperatorTable.REPLACE, Str(), Lit("\0"), Lit("b")).Should().BeFalse("the search holds U+0000");

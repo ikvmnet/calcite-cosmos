@@ -26,8 +26,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     /// The translator's column gate over a string function, the bridge reading the function rows as S's image rule reads
     /// them until G6 asks S's image (<see cref="CosmosFunctionSpellings.Disagreeing"/>, <see cref="CosmosFunctionSpellings.Refusals"/>):
     /// each band a target's rows part over is refused there, every kind and class of value an operand may hold is keyed,
-    /// and what the rows do not carry (#246's stored escapes, a case mapping outside ASCII) is legality
-    /// (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
+    /// each operand the rows name among them, a search, a replacement and a window's length (F2), and #246's stored escapes
+    /// are the emulator's rows as well as the legality the bridge keeps (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
     /// </summary>
     public class CosmosFunctionRowsGateTests
     {
@@ -102,7 +102,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             (SqlLibraryOperators.RIGHT, [Str(), Int(2)]),
         ];
 
-        /// <summary>The call each string key of <c>Service.StringFunctionAnswersByBand</c> was measured by, over <c>c.s</c>.</summary>
+        /// <summary>The calls each string key of <c>Service.StringFunctionAnswersByBand</c> was measured by, with <c>c.s</c> the operand it keys.</summary>
+        RexNode[] Measured(string function, long subject) => (function, subject) switch
+        {
+            ("REPLACE", 1) => [Call(SqlStdOperatorTable.REPLACE, Lit("a0b1c"), Str(), Lit("x"))],
+            ("REPLACE", 2) => [Call(SqlStdOperatorTable.REPLACE, Lit("a0b1c"), Lit("b"), Str())],
+            (Apache.Calcite.Cosmos.Facts.Saturation.StringCalls.NullAsEmpty, _) => [Call(SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("z")), Call(SqlLibraryOperators.CONCAT2, Str(), Lit("z"))],
+            _ => Measured(function),
+        };
+
+        /// <summary>The call each string key of a function's subject was measured by, over <c>c.s</c>.</summary>
         RexNode[] Measured(string function) => function switch
         {
             "CHAR_LENGTH" => [Call(SqlStdOperatorTable.CHAR_LENGTH, Str())],
@@ -125,19 +134,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         };
 
         /// <summary>
-        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>) is
-        /// refused there, read off the rows: <c>POSITION</c> over a surrogate among them, which the emulator's
-        /// <c>INDEX_OF</c> counts as one code point where Calcite counts two units, pushed before h10.
+        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>), at
+        /// each operand the rows key, is refused there, read off the rows: <c>POSITION</c> over a surrogate among them, which
+        /// the emulator's <c>INDEX_OF</c> counts as one code point where Calcite counts two units, pushed before h10, and a
+        /// search that may be empty, which the service answers undefined.
         /// </summary>
         [Fact]
         public void EveryBandTheEmulatorPartsOverIsRefusedThere()
         {
             var parted = from o in CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
                          where o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
-                         select (o.Function, o.Band);
+                         select (o.Function, o.Subject, o.Band);
             parted.Should().NotBeEmpty();
-            foreach (var (function, band) in parted)
-                foreach (var call in Measured(function))
+            foreach (var (function, subject, band) in parted)
+                foreach (var call in Measured(function, subject))
                 {
                     var pushed = Translator(Emulator, band).TryTranslate(call, out _);
                     pushed.Should().BeFalse($"{function} over {band} under the emulator");
@@ -183,7 +193,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// D12, D13: the emulator's <c>REPLACE</c> works on the stored units, a search beginning <c>1</c> meeting U+FDD0's
         /// second unit, and a replacement holding U+0000 fails the statement: so it asks all three operands to hold neither.
-        /// Azure asks the subject and the search to hold no U+0000, and the replacement nothing.
+        /// Azure asks the subject to hold no U+0000, and the search and the replacement to be what run 1 measured them as, a
+        /// string of no band and not empty, until run 2 measures the rest; an empty search is undefined at both.
         /// </summary>
         [Fact]
         public void AReplacementAsksEachOperandUnderTheEmulator()
@@ -191,11 +202,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Pushes(Azure, H | N | W, SqlStdOperatorTable.REPLACE, Str(), Lit("1"), Lit("b")).Should().BeTrue();
             Pushes(Emulator, H, SqlStdOperatorTable.REPLACE, Str(), Lit("1"), Lit("b")).Should().BeFalse("the subject may hold U+FDD0");
             Pushes(Emulator, N | W, SqlStdOperatorTable.REPLACE, Str(), Lit("1"), Lit("b")).Should().BeTrue("the subject holds neither");
+            foreach (var target in new[] { Azure, Emulator })
+            {
+                Pushes(target, N, SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")).Should().BeFalse($"{target}: an empty search is undefined at the service");
+                Pushes(target, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("x")).Should().BeFalse($"{target}: a search that may be empty");
+            }
 
-            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("Azure writes the replacement as it is");
+            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("Azure measured a replacement only as the literal x");
             Pushes(Emulator, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+0000 fails the statement");
             Pushes(Emulator, H, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+FDD0 mixes its spelling into the stored one");
             Pushes(Emulator, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A window's length is keyed by its sign (F2): from 1 alike on both targets; 0 alike on the emulator and unmeasured
+        /// on Azure until run 2; below 0, which Calcite raises over, parting on the emulator and unmeasured on Azure.
+        /// </summary>
+        [Fact]
+        public void AWindowsLengthIsKeyedByItsSign()
+        {
+            foreach (var target in new[] { Azure, Emulator })
+            {
+                Pushes(target, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(2)).Should().BeTrue($"{target}: a length from 1");
+                Pushes(target, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(-1)).Should().BeFalse($"{target}: a length below 0");
+            }
+
+            Pushes(Emulator, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("the emulator answers a length of 0 as Calcite does");
+            Pushes(Azure, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeFalse("Azure has not measured a length of 0");
         }
 
         /// <summary>
@@ -367,9 +400,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// A call over a call is asked of the rows of each, whatever the loader makes a place of: a replacement whose
-        /// literal holds U+FDD0 or a surrogate pair, which the loader spells no place of, and six reversals, past the four
-        /// it nests places to, are gathered with their images as any nested call is, and push where those were measured
-        /// alike, as they did before the bridge read S's rows; the emulator, which stores U+FDD0 escaped, refuses that one.
+        /// literal holds a surrogate pair, which the loader spells no place of, and six reversals, past the four it nests
+        /// places to, are gathered with their images as any nested call is, and push where those were measured alike; a
+        /// replacement holding U+FDD0, which the emulator stores escaped, is refused there, and on Azure, which measured a
+        /// replacement only as the literal <c>x</c>, a replacement of either band is.
         /// </summary>
         [Fact]
         public void ACallOverACallIsAskedWhateverTheLoaderMakesAPlaceOf()
@@ -380,14 +414,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 reversed = Call(SqlLibraryOperators.REVERSE, reversed);
 
             foreach (var target in new[] { Azure, Emulator })
-            {
-                Translator(target, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue($"{target}: the reversal of a replacement by a pair");
                 Translator(target, JsonCharacterBand.None).TryTranslate(reversed, out _).Should().BeTrue($"{target}: six reversals");
-            }
 
-            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeTrue();
-            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlStdOperatorTable.CONCAT, Str(), Replace("\uFDD0")), out _).Should().BeTrue();
+            Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue("the reversal of a replacement by a pair");
             Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("the emulator stores U+FDD0 escaped");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeFalse("Azure measured no replacement by a pair");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("nor one of the high band");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("b")), out _).Should().BeTrue("a replacement of no band, as measured");
         }
 
         /// <summary>
