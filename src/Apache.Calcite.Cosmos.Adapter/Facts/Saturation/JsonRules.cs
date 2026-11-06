@@ -75,6 +75,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             StoredAs = graph.DefineFunction<ValueSet<JsonClassMap>>("storedAs", ValueLattice.Union<JsonClassMap>());
             CallDraws = graph.DefineFunction<string, ValueSet<long>>("callDraws", ValueLattice.Union<long>());
             CallMaps = graph.DefineFunction<string, ValueSet<JsonClassMap>>("callMaps", ValueLattice.Union<JsonClassMap>());
+            CastsToText = graph.DefineFunction<string, ValueSet<string>>("castsToText", ValueLattice.Union<string>());
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
@@ -227,6 +228,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// the root's, assumed once a function, which the union holds.
         /// </summary>
         public Function<string, ValueSet<JsonClassMap>> CallMaps { get; }
+
+        /// <summary>
+        /// The kinds of value a cast to each SQL type writes as text holding the value's own characters
+        /// (<see cref="StringCalls"/>): a string itself, and a number's or a boolean's digits, signs and letters, which hold
+        /// no class. The root's, assumed once a type, which the union holds; a type with no row casts nothing to text here.
+        /// </summary>
+        public Function<string, ValueSet<string>> CastsToText { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing

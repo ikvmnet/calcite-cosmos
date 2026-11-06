@@ -3710,8 +3710,10 @@ parameter, or a call — the operator's name and its operands, a `TRIM`'s flag s
 arms. The fact set answers what classes it may hold (`JsonFactSet.CharactersOf(SqlValue)`): a path its `chars`, a
 literal its own, and a call what the theory derives in a context made for the question beneath the licensed one, which
 mentions the paths the call reads, makes its term and runs the rules of a value's characters
-(`PredicateRules.Characters`). There a reading of a path holds the path's `chars`, the cast to text of the value a path
-holds them where the path holds scalars alone, and a call of a function `StringCalls` names draws from each operand it
+(`PredicateRules.Characters`). There a reading of a path holds the path's `chars`, the value read through its column
+(rawtyped) too, the cast to text of the value a path holds them where the path holds a kind the cast's row names
+(`StringCalls.TextCasts`, the root's `castsToText`: `VARCHAR` and `CHAR`, of scalars alone), and a call of a function
+`StringCalls` names draws from each operand it
 reads the image of that operand's classes: its own for a concatenation, a window, a reversal, a repetition, a trim, a
 replacement's subject and replacement and a conditional's arms; for `UPPER` also N where it was given H, Java's full
 mapping taking U+FB13 to Armenian letters below U+D800, the one class any case mapping adds over every code point. A
@@ -6558,7 +6560,9 @@ rooted there only in a flow a test armed, keyed apart, and production armed noth
 below).
 
 **It changes no verdict, fact set or plan.** The root's view is still the declaration's own fact set (`ViewOf` compares
-the root's scope by reference), so the translator's round-1 facts are unchanged. A stratum's row for an atom's path
+the root's scope by reference), so the translator's round-1 facts are unchanged. That fact set reads its `possible`
+rows off `D0` (`JsonScopeTables`' source of `possible`), which only the column bridge asks (`JsonFactSet.TryPossible`),
+so a round-1 conjunct's bridge reads the row S imports. A stratum's row for an atom's path
 starts from `D0`'s instead of `Anything`, and `D0`'s, read from tables the stratum inherits, is no narrower than the
 stratum's, so the meet is the stratum's own. The plan digests with statements rooted at the context and at `D0` are
 byte-equal.
@@ -8341,28 +8345,41 @@ gathered as S's place rule gathers them (`CosmosRexTranslator.Gathered`, through
 by `RenderingImage.Keys` — each kind each operand may hold, by its ordinal and by `Every`, each band, each value
 class's atoms, through readers the rows were measured through — and refused unless every key is covered by a row
 (`FunctionValueClasses.Holding`) and every row covering it answers `Same` on every target the set serves
-(`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from, no table of its own). An
-operand S gathers nothing of — a parameter, a `CASE`, a call it reads no place of — leaves the call no image, as S's
-image asks one import an operand (`Gathered` returns none short of the call's arity). Before, it read the `Any` row of
-each operand alone and asked an operand of another kind as a string, so it could push what S's image rule declines
-(latent item 9); one plan moved, a window whose start is a position, `SUBSTRING(a FROM POSITION('x' IN a) FOR 2)`,
-read through `typed:INTEGER`, which no row of `SUBSTRING` was measured through. No other corpus plan holds what the
-bridge now keeps in process: a bound that is a parameter or read off a path (a `SUBSTRING`, `LEFT` or `RIGHT` start or
-count), and a fold of a raw reading no row was read through, the cast to `ANY` naming the raw value under a rendering
-and a `VARIANT` column cast to text, which makes a number null where the service's fold is undefined. What an
-operand may hold is read off the stratum the translation was licensed, F's `possible` and `chars` there, and off the
-declaration's root (`JsonFactTheory.PossibleOf`, `D0`'s row, where S imports from) where the stratum holds no
-`possible` of the path. S's own gathering reads the root's alone (`ArmImport` narrows only beneath an `OR`'s arm, and
-`ImportedChars` has no stratum), so beneath a conjunct that narrows a path the bridge keeps a push S's rule declines:
-read over the root alone it moved three more, `UPPER(s) = 'ABC'` beneath `s IN ('aBc', 'axb')`, `UPPER(category) IS
-NULL` beneath `category IN ('true', '1.0E30')`, and on Azure `UPPER(category) > 'bikes'` beneath `category IS NULL`,
-each sound over its stratum's facts. F has no character rule for a raw reading through its column (`raw:VARCHAR`), so
-S keys a call nested over one by every band; the bridge reads a nested call's characters off the reading without
-places, whose raw readings F's rules read, and G6 needs that rule. Until the probe account's run 1 Azure had no
-function rows and the bridge read declared verdicts for it (what `CosmosStringFunctions` asked); since h14b both
-targets read their rows, Azure's measured. Under the emulator this refuses `POSITION` over a surrogate, the correctness
-fix h06 recorded, and `LENGTH` under both (Calcite's library operator, whose rows are owed). It is a bridge: G6
-replaces it by asking S's image of each call the translator writes, and it goes at h37, when S writes the column.
+(`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from, no table of its own), and
+unless the rows name the function's subjects and readers, which the image rule joins. An operand S gathers nothing of —
+a parameter, a `CASE`, a call whose own keys disagree — leaves the call no image, as S's image asks one import an
+operand (`Gathered` returns none short of the call's arity). A nested call is gathered through its own type, with its
+image over its own operands, whatever the loader makes a place of: the loader's place gate (`RowFunctions`, `Spell`'s
+literal filter, four deep) is G6's to move and none of the bridge's, so a replacement whose literal holds U+FDD0 or a
+surrogate, beneath a reversal or a concatenation, and six reversals push where their rows agree, as they did before the
+bridge read S's rows (the fix round of owed); S, behind that gate, has no place for them, which G6 meets. Before owed
+it read the `Any` row of each operand alone and asked an operand of another kind as a string, so it could push what
+S's image rule declines (latent item 9); one plan moved, a window whose start is a position, `SUBSTRING(a FROM
+POSITION('x' IN a) FOR 2)`, read through `typed:INTEGER`, which no row of `SUBSTRING` was measured through. No other
+corpus plan holds what the bridge now keeps in process: a bound that is a parameter or read off a path (a `SUBSTRING`,
+`LEFT` or `RIGHT` start or count), and a fold of a raw reading no row was read through, the cast to `ANY` naming the
+raw value under a rendering and a `VARIANT` column cast to text, which makes a number null where the service's fold is
+undefined. Until the probe account's run 1 Azure had no function rows and the bridge read declared verdicts for it
+(what `CosmosStringFunctions` asked); since h14b both targets read their rows, Azure's measured. Under the emulator
+this refuses `POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` under both (Calcite's library
+operator, whose rows are owed). It is a bridge: G6 replaces it by asking S's image of each call the translator writes,
+and it goes at h37, when S writes the column.
+
+**What the bridge reads is one node of F's,** as S's importer reads one (`RenderingImporter`): the facts the
+translation was licensed, the node its conjunct is rendered beneath, each path's `possible` and `chars` there (the top
+and every class where it holds none), and a nested call's characters as F derives them of the call the places loader
+reads. At a statement's root that node is the declaration's own fact set, whose `possible` rows are `D0`'s, the rows S
+imports (*The declaration's `possible` rows: `D0`*); beneath it a stratum inherits them and narrows them, and nothing
+chooses between two nodes. F's characters read a raw reading through its column as the value it is, and its cast to
+text as the cast of that value, so a call the places loader reads holds its operands' characters, which S's computed
+places import too where they once keyed every band. S's admission still imports a computed atom's operands from the
+statement's root (`ArmImport` narrows only beneath an `OR`'s arm, and `ImportedChars` has no stratum), so beneath a
+conjunct that narrows a path the bridge pushes what S's admission does not yet prove: three corpus plans, `UPPER(s) =
+'ABC'` beneath `s IN ('aBc', 'axb')`, `UPPER(category) IS NULL` beneath `category IN ('true', '1.0E30')`, and on Azure
+`UPPER(category) > 'bikes'` beneath `category IS NULL`, each sound over its node's facts and each what S's image rule
+proves over that node's import (`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`).
+Before G6 asks S's image of each call, S's admission imports a computed atom's operands where its conjunct is rendered,
+as it states a one-path atom there (`TODO.md`).
 
 **What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
 `Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
@@ -8865,7 +8882,9 @@ class, so every class test that asked before answers as before.
   the root of F's graph holds as `callMaps`, beside `callDraws`, the operands each function draws from by the loader's
   ordinals, `FunctionKey.Every` for a concatenation's and a conditional's every one (owed); the drawing rules join both
   by the call's name, the guard that a call draws nothing from an operand reading the same row, and no C# names a
-  function or an operand. The walk over a call's operands is its shape alone, an analysis of its terms. The service's stores are a
+  function or an operand. The walk over a call's operands is its shape alone, an analysis of its terms. Which casts write
+  a value as text, and of which kinds, are rows too (`castsToText`, the fix round of owed), where a C# test named
+  `VARCHAR` and `CHAR` and the scalars. The service's stores are a
   `Service` row's cells, `CosmosAxiom.StoredAs` (`surrogate` stored as `high` and as `replacement`, a lone surrogate
   being stored as U+FFFD), read by `CosmosAxiomRows.ReadStored` alike from every target, since F has none, and handed
   by the schema's generations to each graph's root as `storedAs`; the stored rule takes what was written and every row

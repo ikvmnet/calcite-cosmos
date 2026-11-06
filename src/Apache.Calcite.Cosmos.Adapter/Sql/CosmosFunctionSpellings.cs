@@ -192,7 +192,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// measured where a row of the function covers it, the row's class holding the key's atom
         /// (<see cref="FunctionValueClasses.Holding"/>), and agrees where every row covering it answers <c>Same</c> on every
         /// target the set serves, a target that measured none of them answering it unmeasured. A function no row names has
-        /// no key measured. Nothing is read beside the definition the schema's S is built from.
+        /// no key measured, and one whose rows name no operand it was measured over, or no reader, has none S's image rule
+        /// reads (<c>FunctionSubjects</c>, <c>MeasuredReaders</c>). Nothing is read beside the definition the schema's S is
+        /// built from.
         /// </para>
         /// <para>
         /// <b>The bridge G6 replaces</b>, which asks S's image of each call the translator writes (TODO.md).
@@ -206,10 +208,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
             var reads = definition.FunctionReads.Where(f => f.Function == function).Select(f => ValueSet.From(f.Readers)).ToList();
-            if (rows.Count == 0 || reads.Count == 0)
+            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
+            if (rows.Count == 0 || reads.Count == 0 || subjects.IsEmpty)
                 return "what it computes has not been measured";
 
-            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
             foreach (var key in RenderingImage.Keys(function, gathered, subjects, reads.Aggregate((a, b) => a.Intersect(b))).AsEnumerable())
             {
                 FunctionKey[] covering = [.. rows.Keys.Select(r => r.Key).Distinct().Where(r => r with { Value = key.Value } == key && FunctionValueClasses.Holding.Contains((key.Kind, r.Value, key.Value)))];

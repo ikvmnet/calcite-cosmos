@@ -351,9 +351,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds the
-        /// path's, a literal its own, and a call what it draws from its operands, by the rows of <see cref="StringCalls"/>
-        /// the root holds (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>). A parameter and a call of a
-        /// function no row names hold anything: no row is stated of them.
+        /// path's, through its column too, as does its cast to text where the path holds a kind the cast's row names
+        /// (<see cref="JsonRules.CastsToText"/>); a literal its own; and a call what it draws from its operands, by the rows
+        /// of <see cref="StringCalls"/> the root holds (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>).
+        /// A parameter and a call of a function no row names hold anything: no row is stated of them.
         /// </summary>
         /// <remarks>
         /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
@@ -380,14 +381,34 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
+
+            // The value read through the column a loading that reads places names is the same value (rawtyped): what S's
+            // computed places and the translator's bridge ask of a call over one. F's statements never write one.
+            Characters.DefineRule("the value a path holds, read through its column, holds the path's characters", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
+                var n = r.Var<string>("n");
+                r.When(v.Is(ir.RawIn.Of(p, n)), c.Is(json.Chars.Of(p)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+
+            // Which casts write a value as text, and of which kinds, are the root's rows (StringCalls.TextCasts): a scalar's
+            // text holds its own characters, an object's the JSON of everything in it, which nothing here bounds.
             Characters.DefineRule("the cast to text of a scalar a path holds holds the path's characters", r =>
             {
-                // A number, a boolean or a string cast to text is digits, letters and signs or the string itself; an object
-                // or an array is the JSON text of everything in it, which nothing here bounds.
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
-                var (t, c, k) = r.Vars<string, ValueSet<string>, ValueSet<string>>("t", "c", "k");
-                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
-                r.Where(t, k, (target, types) => target is "VARCHAR" or "CHAR" && types.IsSubsetOf(JsonValues.Scalars));
+                var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+            Characters.DefineRule("the cast to text of a scalar a path holds, read through its column, holds the path's characters", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
+                var n = r.Var<string>("n");
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.RawIn.Of(p, n)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("a literal holds its own characters", r =>

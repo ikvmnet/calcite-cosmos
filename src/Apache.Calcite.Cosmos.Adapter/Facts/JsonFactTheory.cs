@@ -215,39 +215,12 @@ namespace Apache.Calcite.Cosmos.Facts
         public bool IsEmpty => _rules.Length == 0;
 
         /// <summary>
-        /// Gets what the declaration states of every document: its own context, which every statement's lies beneath.
+        /// Gets what the declaration states of every document: its own context, which every statement's lies beneath, and
+        /// what each path may hold where a statement's S imports it at the root (<c>RenderingImporter.Import</c>), <c>D0</c>'s
+        /// <c>possible</c> rows, or the context's where <c>D0</c> states nothing (<see cref="JsonFactSet.TryPossible"/>).
         /// </summary>
         /// <exception cref="ArgumentException">The theory states something and is bound to no schema's generations.</exception>
         internal JsonFactSet Declared => _rules.Length == 0 ? JsonFactSet.Empty : Compile().Outright;
-
-        /// <summary>
-        /// Returns what a path may hold where a statement's S imports it (<c>RenderingImporter.Import</c>), at the root the
-        /// declaration's licence chooses, <c>D0</c> or the context where <c>D0</c> states nothing: its <c>possible</c> row, or
-        /// the top where it holds none, the declaration states nothing or the engine fails. Read with <c>TryGet</c>, which
-        /// interns nothing.
-        /// </summary>
-        /// <param name="path">The path.</param>
-        /// <returns>What it may hold.</returns>
-        /// <exception cref="ArgumentException">The theory states something and is bound to no schema's generations.</exception>
-        internal PathValues PossibleOf(JsonDocumentPath path)
-        {
-            if (_rules.Length == 0)
-                return PathValues.Anything;
-
-            var compiled = Compile();
-            try
-            {
-                if ((compiled.DeclaredPossible() ?? compiled.Schema) is not Scope root)
-                    return PathValues.Anything;
-
-                var rules = PredicateRules.Of(compiled.Generation.Contexts);
-                return root.TryGet(rules.Possible.Of(JsonFactEncoding.Path(path).ToTerm(rules.Json)), out var possible) ? possible : PathValues.Anything;
-            }
-            catch (Exception e) when (IsEngineFailure(e))
-            {
-                return PathValues.Anything;
-            }
-        }
 
         /// <summary>
         /// Returns this declaration compiled into the current generation, for the predicate oracle, which puts contexts of
@@ -318,6 +291,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 Generation = generation;
 
                 var contexts = generation.Contexts;
+                var d0 = new Lazy<Scope?>(() => OpenDeclaredPossible(theory, contexts), LazyThreadSafetyMode.ExecutionAndPublication);
+                DeclaredPossible = () => d0.Value;
 
                 try
                 {
@@ -328,9 +303,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     // A path the declaration says nothing of is told to it when first asked, beneath its frozen context,
                     // and the child is kept as long as the context is: what the rules derive of it holds of every
                     // document, as what the context holds does. Without a split, as a query's child: the declaration's own
-                    // run lifted what its cases prove of the paths it states.
+                    // run lifted what its cases prove of the paths it states. Its possible rows are D0's.
                     Outright = new JsonFactSet(
-                        new JsonScopeTables(contexts.Rules, schema, owned: false, mention: path => contexts.Mentioning(schema, JsonFactEncoding.Path(path), contexts.Saturation, Told)),
+                        new JsonScopeTables(contexts.Rules, schema, owned: false, mention: path => contexts.Mentioning(schema, JsonFactEncoding.Path(path), contexts.Saturation, Told),
+                            possible: DeclaredPossible),
                         theory._vocabulary);
                 }
                 catch (Exception e) when (IsEngineFailure(e))
@@ -338,9 +314,6 @@ namespace Apache.Calcite.Cosmos.Facts
                     // A declaration the engine cannot compile states nothing; every question is answered no.
                     Outright = JsonFactSet.Empty;
                 }
-
-                var d0 = new Lazy<Scope?>(() => OpenDeclaredPossible(theory, contexts), LazyThreadSafetyMode.ExecutionAndPublication);
-                DeclaredPossible = () => d0.Value;
             }
 
             /// <summary>

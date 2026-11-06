@@ -61,9 +61,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Constructor<JPath, Val> Raw { get; }
 
         /// <summary>
-        /// The value the service holds at a path, read through the column the loader knows it is in (rawtyped): S's alone,
-        /// written where a loading reads places, and read by S's own rule (<c>RenderingTheory</c>), so the facts graph's
-        /// budget holds no rule for it and F never writes one.
+        /// The value the service holds at a path, read through the column the loader knows it is in (rawtyped): written
+        /// where a loading reads places, so never in F's statements; read by S's own rule (<c>RenderingTheory</c>), and by
+        /// F's rules of a value's characters, where S's computed places and the translator's bridge ask F of a call over one.
         /// </summary>
         public Constructor<JPath, string, Val> RawIn { get; }
 

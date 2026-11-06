@@ -86,6 +86,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         RexNode Lit(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, System.Math.Max(1, value.Length)));
 
+        RexNode Unicode(string value) => _rex.makeLiteral(new org.apache.calcite.util.NlsString(value, "UTF-16LE", SqlCollation.IMPLICIT),
+            _types.createTypeWithCharsetAndCollation(_types.createSqlType(SqlTypeName.VARCHAR, value.Length), java.nio.charset.Charset.forName("UTF-16LE"), SqlCollation.IMPLICIT), false);
+
         RexNode Int(int value) => _rex.makeExactLiteral(new java.math.BigDecimal(value));
 
         RexNode Call(SqlOperator op, params RexNode[] operands) => _rex.makeCall(op, operands);
@@ -360,6 +363,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.SUBSTRING, Str(), Call(SqlStdOperatorTable.POSITION, Lit("x"), Str()), Int(2)).Should().BeFalse();
             Pushes(Emulator, JsonCharacterBand.None, SqlStdOperatorTable.SUBSTRING, Str(), Int(1), Int(2)).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A call over a call is asked of the rows of each, whatever the loader makes a place of: a replacement whose
+        /// literal holds U+FDD0 or a surrogate pair, which the loader spells no place of, and six reversals, past the four
+        /// it nests places to, are gathered with their images as any nested call is, and push where those were measured
+        /// alike, as they did before the bridge read S's rows; the emulator, which stores U+FDD0 escaped, refuses that one.
+        /// </summary>
+        [Fact]
+        public void ACallOverACallIsAskedWhateverTheLoaderMakesAPlaceOf()
+        {
+            RexNode Replace(string replacement) => Call(SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Unicode(replacement));
+            var reversed = Str();
+            for (var i = 0; i < 6; i++)
+                reversed = Call(SqlLibraryOperators.REVERSE, reversed);
+
+            foreach (var target in new[] { Azure, Emulator })
+            {
+                Translator(target, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue($"{target}: the reversal of a replacement by a pair");
+                Translator(target, JsonCharacterBand.None).TryTranslate(reversed, out _).Should().BeTrue($"{target}: six reversals");
+            }
+
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeTrue();
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlStdOperatorTable.CONCAT, Str(), Replace("\uFDD0")), out _).Should().BeTrue();
+            Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("the emulator stores U+FDD0 escaped");
+        }
+
+        /// <summary>
+        /// A function whose rows name no operand they were measured over has no key S's image rule reads, which joins the
+        /// rows' subjects (<c>FunctionSubjects</c>): refused, as S gives its place no image
+        /// (<see cref="Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.RenderingValuedTests.APlaceWhoseRowsNameNoSubjectHasNoImage"/>),
+        /// where the bridge once found no key to ask and passed it.
+        /// </summary>
+        [Fact]
+        public void AFunctionWhoseRowsNameNoSubjectIsRefused()
+        {
+            var registry = CosmosRendering.Definition;
+            var bare = registry with { FunctionSubjects = [.. registry.FunctionSubjects.Where(f => f.Function != "LOWER")] };
+            var lower = Call(SqlStdOperatorTable.LOWER, Str());
+
+            Translator(Emulator, JsonCharacterBand.None, rows: registry).TryTranslate(lower, out _).Should().BeTrue();
+            Translator(Emulator, JsonCharacterBand.None, rows: bare).TryTranslate(lower, out _).Should().BeFalse("no row of LOWER names its subject");
+            Translator(Azure, JsonCharacterBand.None, rows: bare).TryTranslate(lower, out _).Should().BeFalse();
         }
 
     }

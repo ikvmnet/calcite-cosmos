@@ -78,6 +78,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// The declaration's own facts, what a statement's root renders under, read each path's <c>possible</c> row off
+        /// <c>D0</c>, where S imports a statement's paths from at its root: the one node the translator's bridge reads there
+        /// (<c>CosmosRexTranslator.Gathered</c>). A path <c>D0</c> made no term for has none, and is the top, as the importer
+        /// reads it; a declaration that states nothing holds none.
+        /// </summary>
+        [Fact]
+        public void TheDeclarationsOwnFactsReadEachPathsPossibleRowOffD0()
+        {
+            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            Theory().In(generations).Declared.TryPossible(JsonDocumentPath.Root.Property("a"), out _).Should().BeFalse();
+            var read = 0;
+
+            foreach (var (name, theory) in Declarations(generations))
+            {
+                var declaration = theory.Declaration()!;
+                var rules = PredicateRules.Of(declaration.Generation.Contexts);
+                var d0 = declaration.DeclaredPossible()!;
+
+                foreach (var path in theory.MentionedPaths)
+                {
+                    d0.TryGet(rules.Possible.Of(JsonFactEncoding.Path(path).ToTerm(rules.Json)), out var declared).Should().BeTrue($"{name}: D0 declares {SqlValue.Spell(path)}");
+                    theory.Declared.TryPossible(path, out var possible).Should().BeTrue($"{name} at {SqlValue.Spell(path)}");
+                    possible.Should().Be(declared, $"{name} at {SqlValue.Spell(path)}");
+                    read++;
+                }
+
+                theory.Declared.TryPossible(JsonDocumentPath.Root.Property("nothing declares this"), out var top).Should().BeFalse(name);
+                top.Should().Be(PathValues.Anything, name);
+            }
+
+            read.Should().BePositive();
+        }
+
+        /// <summary>
         /// Sixteen threads asking for one declaration's <c>D0</c> at once get one context, built once: the declaration's
         /// context has one child.
         /// </summary>

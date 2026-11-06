@@ -564,27 +564,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// nothing of an operand: S's image asks one import an operand, its arity.
         /// </summary>
         /// <remarks>
-        /// Each operand read as the loader that reads places reads it, S's, and imported as S imports one, from what F
-        /// holds of it where the call is written: a literal as its own cell; a reading of a path through its reader, with
-        /// the path's <c>possible</c> and <c>chars</c>; a nested call through its type's reader, with its image over its own
-        /// operands, where its own keys agree, and the characters F derives of the call. Read off this translation's facts,
-        /// the stratum it was licensed (<see cref="Facts"/>), and where the stratum holds no <c>possible</c> of the path, off
-        /// the root S imports from (<see cref="JsonFactTheory.PossibleOf"/>): every row the stratum narrows is within the
-        /// root's. An operand S gathers nothing of — a parameter, a <c>CASE</c>, a call it reads no place of — leaves the call
-        /// no image, as the gathering's count short of the call's arity leaves S's.
+        /// Each operand read as the loader that reads places reads it, S's, and imported as S's importer imports one
+        /// (<c>RenderingImporter</c>), from one node of F: the facts this translation was licensed (<see cref="Facts"/>), the
+        /// node its conjunct is rendered beneath, whose <c>possible</c> rows at a statement's root are <c>D0</c>'s. A literal
+        /// is its own cell; a reading of a path is read through its reader, with the path's <c>possible</c> and <c>chars</c>,
+        /// the top and every class where the node holds none; a nested call through its type's reader, with its image over
+        /// its own operands where its own keys agree, and the characters F derives of the call as read. Whatever the loader
+        /// makes a place of, every call the rows name is asked so, however deep or whatever literal it holds. An operand S
+        /// gathers nothing of — a parameter, a <c>CASE</c>, a call whose keys disagree — leaves the call no image, as the
+        /// gathering's count short of the call's arity leaves S's.
         /// </remarks>
         /// <param name="call">The call.</param>
         /// <returns>The imports, or <c>null</c>.</returns>
         Eggnog.ValueSet<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>? Gathered(RexCall call)
         {
-            if (Places.ReadValue(call) is not SqlValue.Call place || Values.ReadValue(call) is not SqlValue.Call read || read.Operands.Count != place.Operands.Count)
+            if (Places.ReadValue(call) is not SqlValue.Call place)
                 return null;
 
             // The loader leaves out what is no operand of the function, a trim's leading flag, so its ordinals start past it.
             var shift = call.getOperands().size() - place.Operands.Count;
             var imports = new List<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>();
             for (var i = 0; i < place.Operands.Count; i++)
-                if (Imported(i, Operand(call, i + shift), place.Operands[i], read.Operands[i]) is { } import)
+                if (Imported(i, Operand(call, i + shift), place.Operands[i]) is { } import)
                     imports.Add(import);
                 else
                     return null;
@@ -593,36 +594,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// An operand's import as S's place rule gathers it (<see cref="Gathered"/>), or <c>null</c> where S gathers none; a
-        /// nested call's characters F's of the reading without places, whose raw readings F's character rules read.
+        /// An operand's import as S's place rule gathers it (<see cref="Gathered"/>), or <c>null</c> where S gathers none. A
+        /// nested call's type is its own, the one the loader types a place with.
         /// </summary>
-        Apache.Calcite.Cosmos.Facts.Rendering.PathImport? Imported(long ordinal, RexNode node, SqlValue place, SqlValue read)
+        Apache.Calcite.Cosmos.Facts.Rendering.PathImport? Imported(long ordinal, RexNode node, SqlValue place)
         {
             switch (place)
             {
                 case SqlValue.Literal literal:
                     return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Literal(ordinal, literal.Value);
 
-                case SqlValue.Call { Type: string type } inner when StripRedundantTextCast(node) is RexCall nested && Gathered(nested) is { } gathered
+                case SqlValue.Call inner when StripRedundantTextCast(node) is RexCall nested && nested.getType()?.getSqlTypeName()?.getName() is string type
+                    && Gathered(nested) is { } gathered
                     && Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.KeyFunction(inner.Function, type) is var function
                     && CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) is null:
                     return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, Apache.Calcite.Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type),
-                        Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.Of(function, type, gathered), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(read)));
+                        Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.Of(function, type, gathered), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)));
 
                 case { PathRead: { } path } when Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(place) is string reader:
-                    var possible = _facts.TryPossible(path, out var held) ? held : Declaration?.PossibleOf(path) ?? Apache.Calcite.Cosmos.Facts.Saturation.PathValues.Anything;
+                    _facts.TryPossible(path, out var possible);
                     return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, reader, possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
 
                 default:
                     return null;
             }
         }
-
-        /// <summary>
-        /// Gets the declaration S imports a statement's paths from at its root, the container's, where a schema's reasoning
-        /// binds it; <c>null</c> otherwise, which imports every path as the top.
-        /// </summary>
-        JsonFactTheory? Declaration => _container?.Facts is { Generations: not null } theory ? theory : null;
 
         /// <summary>
         /// Gets the definition the statement's S is built from, whose function rows the column bridge reads: its container's

@@ -38,6 +38,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly Func<JsonDocumentPath, Scope?>? _mention;
         readonly object? _keep;
         readonly ConcurrentDictionary<JsonDocumentPath, Lazy<Scope>>? _told;
+        readonly Func<Scope?>? _possible;
         readonly ConcurrentDictionary<SqlValue, (bool Found, ValueSet<string> Classes)> _values = new();
 
         /// <summary>
@@ -51,7 +52,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// is told of a path.</param>
         /// <param name="keep">What the context lives as long as, kept alive for as long as anything reads these tables: the
         /// lease of the statement it belongs to; or <c>null</c>.</param>
-        public JsonScopeTables(JsonRules rules, Scope scope, bool owned, Func<JsonDocumentPath, Scope?>? mention = null, object? keep = null)
+        /// <param name="possible">Where the context's <c>possible</c> rows are read, where they are not its own: the
+        /// declaration's <c>D0</c>, a frozen child of its context, or <c>null</c> where it has none and the context is read;
+        /// <c>null</c> to read the context.</param>
+        public JsonScopeTables(JsonRules rules, Scope scope, bool owned, Func<JsonDocumentPath, Scope?>? mention = null, object? keep = null, Func<Scope?>? possible = null)
         {
             _rules = rules;
             _scope = scope;
@@ -59,6 +63,7 @@ namespace Apache.Calcite.Cosmos.Facts
             _mention = owned ? null : mention;
             _keep = keep;
             _told = _mention is null ? null : new ConcurrentDictionary<JsonDocumentPath, Lazy<Scope>>();
+            _possible = possible;
         }
 
         /// <inheritdoc />
@@ -95,7 +100,21 @@ namespace Apache.Calcite.Cosmos.Facts
         public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => TryGet(path, r => r.Chars, out bands);
 
         /// <inheritdoc />
-        public override bool TryPossible(JsonDocumentPath path, out PathValues values) => TryGet(path, r => PredicateRules.Of(r).Possible, out values);
+        /// <remarks>
+        /// The declaration's own tables read <c>D0</c>'s row with <c>TryGet</c>, which interns nothing: a path <c>D0</c> made no
+        /// term for has none, and is the top, as the importer reads it (<c>RenderingImporter</c>).
+        /// </remarks>
+        public override bool TryPossible(JsonDocumentPath path, out PathValues values)
+        {
+            if (_possible is null)
+                return TryGet(path, r => PredicateRules.Of(r).Possible, out values);
+
+            var (found, read) = Read((false, PathValues.Anything), (scope, r) =>
+                (_possible() ?? scope).TryGet(PredicateRules.Of(r).Possible.Of(Term(path, r)), out var held) ? (true, held) : (false, PathValues.Anything));
+
+            values = read;
+            return found;
+        }
 
         /// <inheritdoc />
         /// <remarks>

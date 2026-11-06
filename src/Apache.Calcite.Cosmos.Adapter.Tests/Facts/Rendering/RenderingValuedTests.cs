@@ -160,6 +160,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A definition whose rows name no operand of a function they were measured over gives its place no image: the image
+        /// rule joins the rows' subjects. The translator's bridge refuses the call alike
+        /// (<see cref="Sql.CosmosFunctionRowsGateTests.AFunctionWhoseRowsNameNoSubjectIsRefused"/>).
+        /// </summary>
+        [Fact]
+        public void APlaceWhoseRowsNameNoSubjectHasNoImage()
+        {
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            var bare = RenderingTheory.Define(Measured with { FunctionSubjects = [.. Measured.FunctionSubjects.Where(f => f.Function != "LOWER")] });
+            Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, bare).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+            GC.KeepAlive(bare);
+        }
+
+        /// <summary>
+        /// The shapes of the three plans the translator's bridge pushes over the node their conjunct is rendered beneath,
+        /// under Production: differential 477, <c>UPPER(s) = 'ABC'</c> beneath <c>s IN ('aBc', 'axb')</c>; partitions 240,
+        /// <c>UPPER(category) IS NULL</c> beneath <c>category IN ('true', '1.0E30')</c>; and partitions 2763,
+        /// <c>UPPER(category) &gt; 'bikes'</c> beneath <c>category IS NULL</c>. Imported as that node holds the path, the
+        /// place has its image and the conjunct is proven; imported as a string of any class, as the statement's root may
+        /// hold it, 477's place has none. S's admission imports a computed atom's operands from the root, narrowed beneath an
+        /// arm alone, so it imports them where the conjunct is rendered before G6 asks S's image of each call the bridge
+        /// writes (TODO.md).
+        /// </summary>
+        [Fact]
+        public void AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage()
+        {
+            RexNode Upper() => Rex.makeCall(SqlStdOperatorTable.UPPER, Name);
+            var upper = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Upper(), Lit("ABC")));
+            var narrowed = PathValues.Meet(Strings, PathValues.OneOf(ValueSet.Of(Of("aBc"), Of("axb"))));
+
+            Generate(upper, RenderingSet.Production, narrowed, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "477");
+            Generate(upper, RenderingSet.Production, Strings, JsonCharacterBand.Any).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven);
+
+            var unknown = Loading.Read(Rex.makeCall(SqlStdOperatorTable.IS_NULL, Upper()));
+            var listed = PathValues.Meet(Strings, PathValues.OneOf(ValueSet.Of(Of("true"), Of("1.0E30"))));
+            Generate(unknown, RenderingSet.Production, listed, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "240");
+
+            var above = Loading.Read(Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Upper(), Lit("bikes")));
+            var missing = PathValues.OfKinds(ValueSet.Of(NullType, PathValues.AbsentKind));
+            Generate(above, RenderingSet.Production, missing, JsonCharacterBand.None).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "2763");
+        }
+
+        /// <summary>
         /// The rows' classes of value are S's to read (F2): rows of a key split by classes cover the atoms those hold and no
         /// more, and a row covering an atom that disagrees keeps the place from its image whatever row of every value agrees.
         /// </summary>

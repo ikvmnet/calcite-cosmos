@@ -118,15 +118,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         /// <summary>
         /// A cast to text of the value a path holds is the path's characters where it holds scalars alone: a number or a
-        /// boolean renders in ASCII, and an object as the JSON of whatever it holds.
+        /// boolean renders in ASCII, and an object as the JSON of whatever it holds. Which casts write text, and of which
+        /// kinds, are the root's rows (<c>StringCalls.TextCasts</c>): a cast to a type no row names is given nothing.
         /// </summary>
         [Fact]
         public void TheCastToTextOfAScalarHoldsThePathsCharacters()
         {
             var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(A));
+            var scalars = Holding(S, JsonCharacterBand.None, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true)));
 
-            Holding(S, JsonCharacterBand.None, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true))).CharactersOf(cast).Should().Be(Closed(S));
+            scalars.CharactersOf(cast).Should().Be(Closed(S));
+            scalars.CharactersOf(new SqlValue.Cast("CHAR", new SqlValue.Raw(A))).Should().Be(Closed(S));
+            scalars.CharactersOf(Call("REVERSE", new SqlValue.Cast("INTEGER", new SqlValue.Raw(A)))).Should().Be(JsonCharacterBand.Any, "no row says a cast to INTEGER writes text");
             Holding(S, JsonCharacterBand.None).CharactersOf(cast).Should().Be(JsonCharacterBand.Any, "the path may hold an object");
+        }
+
+        /// <summary>
+        /// The value a path holds read through its column, as a loading that reads places reads a declared field (rawtyped),
+        /// is that value: it holds the path's characters, and so does its cast to text, so a call over it draws them as a
+        /// call over the value read plainly does. What S's computed places and the translator's bridge ask of such a call.
+        /// </summary>
+        [Fact]
+        public void AValueReadThroughItsColumnHoldsThePathsCharacters()
+        {
+            var facts = Holding(S, N | W, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+            var column = new SqlValue.Raw(A) { Column = "VARCHAR" };
+
+            facts.CharactersOf(Call("REVERSE", column)).Should().Be(Closed(S));
+            facts.CharactersOf(Call("UPPER", column)).Should().Be(facts.CharactersOf(Call("UPPER", new SqlValue.Raw(A))));
+            facts.CharactersOf(new SqlValue.Cast("VARCHAR", column)).Should().Be(Closed(S));
+            facts.CharactersOf(Call("||", column, new SqlValue.Raw(B) { Column = "VARIANT" })).Should().Be(Closed(S | N | W));
+            facts.CharactersOf(new SqlValue.Cast("VARCHAR", new SqlValue.Raw(B) { Column = "VARIANT" })).Should().Be(JsonCharacterBand.Any, "b may hold an object");
         }
 
         /// <summary>

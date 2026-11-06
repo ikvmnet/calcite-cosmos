@@ -2986,17 +2986,30 @@ across documents* and *A join of a container to itself* is the record.
   (`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from): the call's operands
   gathered as S's place rule gathers them, keyed as S keys them (`RenderingImage.Keys`: each kind each operand may hold,
   by its ordinal and by `Every`, each band, each value class's atoms, through readers the rows were measured through),
-  and every key covered by a row and answered `Same` by every covering row on every target the set serves (owed,
-  latent item 9). It reads what the stratum the translation was licensed holds of each operand, and the declaration's
-  root import where the stratum holds no `possible` of the path, so it pushes what S's image rule pushes over that
-  stratum's facts. An operand S gathers nothing of, a parameter or a `CASE`, leaves the call no image, as S's count
-  short of the arity does. What it does not yet do: apply S's outer place gate (the spelling and the depth of four), or
-  read a nested call without the places loader's type. G6 replaces it by asking S's image of each call the translator
-  writes, and finds two gaps in S first. S's place gathering imports the root (`ArmImport` narrows only beneath an
-  `OR`'s arm, `ImportedChars` has no stratum), so it would decline three pushes the bridge keeps over their stratum's
-  facts (DESIGN.md, *The column bridge*: 477, 240, and 2763 on Azure) until it imports the stratum's. And F has no
-  character rule for a raw reading through its column, so S keys a call nested over one by every band, where the bridge
-  reads F's characters of the reading without places. It goes when S writes the column (h37).
+  every key covered by a row and answered `Same` by every covering row on every target the set serves, and the rows
+  naming the function's subjects and readers (owed, latent item 9, and its fix round). It reads one node of F's, the one
+  its conjunct is rendered beneath, whose `possible` rows at a statement's root are `D0`'s: each operand's `possible`
+  and `chars` there, and a nested call's characters as F derives them of the call the places loader reads, F's
+  characters reading a raw reading through its column. An operand S gathers nothing of, a parameter or a `CASE`, leaves
+  the call no image, as S's count short of the arity does; a nested call is gathered through its own type whatever the
+  loader makes a place of. G6 replaces it by asking S's image of each call the translator writes, and meets two
+  differences first, each a push the bridge keeps that S as built would not prove:
+  - S's admission imports a computed atom's operands from the statement's root (`ArmImport` narrows only beneath an
+    `OR`'s arm, `ImportedChars` has no stratum), so it would decline three corpus pushes the bridge keeps over the node
+    their conjunct is rendered beneath (DESIGN.md, *The column bridge*: 477, 240, and 2763 on Azure), which S's image
+    rule proves over that node's import (`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`).
+    Before h15 S states a computed atom's operands where its conjunct is rendered, as it states a one-path atom there:
+    a stratum of its own for a later round's computed atom, whose `ArmImport` and characters are that node's.
+  - The loader's place gate (`RowFunctions`, `Spell`'s literal filter, four deep; G6's sites) gives S no place for a
+    call it refuses, so S has no image of a nested call whose literal holds U+0000, U+FDD0 or a surrogate, or of one
+    more than four deep, where the bridge pushes it when its rows agree; no corpus plan holds one. G6 moves the gate
+    into rows and S's schedule, and lists what the depth it keeps still declines.
+  It goes when S writes the column (h37).
+- **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
+  `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`
+  holds when its own IKVM caches refresh, so outputs drift apart. On 2026-11-05 build 341 (`20261105.194231`) replaced
+  336, and under it the corpus's `Composite.CatalogueReport` fails validation (`UNNEST(StringToArray(JSON_QUERY(…)))`,
+  line 7, column 57). 3A's byte-equal digests run over 336 until it is pinned or 1.43.0 is released.
 - **The string functions over a raw reading or a bound read off a path** — *rows owed, the owner's to schedule.* No row
   measured a string function through the cast to `ANY` (the split rule's spelling of a fold under a rendering), a
   `VARIANT` column cast to text (the partition key's `UPPER(c."$.category")`), or a count read through `typed:INTEGER`

@@ -195,7 +195,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns what a path may hold, as one value, where the context holds it: what it proved of the path's kinds, its
         /// domain, its bounds and its presence, met by the predicate rules (<c>possible</c>), what S imports a path as
         /// (<c>RenderingImporter</c>). A context holds one of a path an atom of its own reads or the declaration states a fact
-        /// of, beneath <c>D0</c>; the declaration's own facts hold none (<see cref="JsonFactTheory.PossibleOf"/> reads <c>D0</c>'s).
+        /// of, beneath <c>D0</c>; the declaration's own facts read <c>D0</c>'s, where S imports a statement's paths from at its
+        /// root (<see cref="JsonFactTheory.Declared"/>).
         /// </summary>
         /// <param name="path">The path.</param>
         /// <param name="values">What it may hold, or the top.</param>

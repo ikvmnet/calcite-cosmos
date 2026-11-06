@@ -78,6 +78,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             (function, ValueSet.From(draws), ValueSet.From(maps));
 
         /// <summary>
+        /// The SQL types a cast to which writes a value as text, and the kinds of value it writes holding the value's own
+        /// characters: a scalar, a string itself and a number's or a boolean's digits, signs and letters, which hold no class,
+        /// where an object or an array is the JSON text of everything in it, which nothing here bounds. The root's data,
+        /// assumed once a type (<c>JsonRules.CastsToText</c>).
+        /// </summary>
+        public static IReadOnlyList<(string Target, ValueSet<string> Kinds)> TextCasts { get; } =
+        [
+            ("VARCHAR", Scalars),
+            ("CHAR", Scalars),
+        ];
+
+        /// <summary>
         /// Returns the classes a function's value may hold characters of, drawn from an operand holding characters of
         /// these under its rows, beside those it draws from the operands after it.
         /// </summary>
