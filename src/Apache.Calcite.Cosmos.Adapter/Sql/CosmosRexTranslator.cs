@@ -545,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || _paths.TryResolvePath(call, out _))
                 return;
 
-            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(function)
+            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
                 && (Gathered(call) is { } gathered ? CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) : "an operand is no literal, path or call S gathers") is string why)
                 throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
 
@@ -606,10 +606,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 case SqlValue.Call inner when StripRedundantTextCast(node) is RexCall nested && nested.getType()?.getSqlTypeName()?.getName() is string type
                     && Gathered(nested) is { } gathered
-                    && Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.KeyFunction(inner.Function, type) is var function
-                    && CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) is null:
+                    && Rendering.CallKey(inner.Function, type) is string function
+                    && CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) is null
+                    && CosmosFunctionSpellings.Image(Rendering, function, type, gathered) is { } image:
                     return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, Apache.Calcite.Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type),
-                        Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.Of(function, type, gathered), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)));
+                        image, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)));
 
                 case { PathRead: { } path } when Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(place) is string reader:
                     _facts.TryPossible(path, out var possible);
@@ -4188,7 +4189,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // The raw path under a string operator, once its coercion to VARCHAR is unwrapped -- a
             // VARIANT partition-key column carries one where an ANY value did not; see StripTextCoercion.
-            if (TryCaseFoldOperand(subject, out var upper) is RexNode value && TryCaseInsensitiveMatch(pattern, upper, out var function, out var text))
+            if (TryCaseFoldOperand(subject, out var upper) is RexNode value
+                && TryCaseInsensitiveMatch(pattern, upper, CosmosFunctionSpellings.Parting(Rendering, Set, upper ? "UPPER" : "LOWER"), out var function, out var text))
             {
                 builder.Append(function).Append('(');
                 Write(builder, StripTextCoercion(value));
@@ -4245,7 +4247,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// known: Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c> and a ligature to its letters,
         /// which no case-insensitive comparison of the stored text can reproduce. Outside ASCII the
         /// plain form stands, folding at the service under its own rules as it did. That the text
-        /// is ASCII is <see cref="CosmosFunctionSpellings.FoldsAlike"/>'s to say; that the value folded
+        /// is free of every band the fold's rows part over is <see cref="CosmosFunctionSpellings.FoldsAlike"/>'s to say, ASCII as they
+        /// stand (<see cref="CosmosFunctionSpellings.Parting"/>); that the value folded
         /// is, <see cref="RequireStringFunctionsAgree"/>'s, which asks it of the fold before this is
         /// reached: measured, the stored text matters as much as the pattern's, <c>ß</c> folding to
         /// <c>SS</c> in Calcite and to nothing under the service's flag.
@@ -4253,10 +4256,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="pattern">The literal pattern.</param>
         /// <param name="upper">Whether the fold under the pattern is to upper case.</param>
+        /// <param name="parting">The bands the fold's rows part over on a target the set serves.</param>
         /// <param name="function">On success, the service function.</param>
         /// <param name="text">On success, the text to match, with the wildcards removed.</param>
         /// <returns><c>true</c> if the pattern is one of the three shapes.</returns>
-        static bool TryCaseInsensitiveMatch(string pattern, bool upper, out string function, out string text)
+        static bool TryCaseInsensitiveMatch(string pattern, bool upper, Apache.Calcite.Cosmos.Facts.JsonCharacterBand parting, out string function, out string text)
         {
             function = "";
             text = "";
@@ -4273,7 +4277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var core = pattern.Substring(start, end - start);
 
-            if (CosmosFunctionSpellings.FoldsAlike(core) == false)
+            if (CosmosFunctionSpellings.FoldsAlike(core, parting) == false)
                 return false;
 
             foreach (var c in core)
@@ -4524,15 +4528,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteRrf(builder, call);
                     return;
 
-                // Renamed, and asked first what the service answers of their operands.
+                // Renamed, and asked first what the service answers of its count. What REPLACE's search and a concatenation
+                // that reads a null as the empty string answer are their rows', which the column gate reads (G6).
                 case "REPEAT":
                     RequireARepetitionTheServiceAnswers(call);
-                    break;
-                case "REPLACE":
-                    RequireASearchForSomething(call);
-                    break;
-                case "CONCAT" or "||":
-                    RequireTheConcatenationThatIsNullOverANull(call);
                     break;
             }
 
@@ -4543,9 +4542,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (count < mapping.MinArgs || count > mapping.MaxArgs)
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
 
-            // A string function the table maps that nothing has said what it asks of its operands' characters: computed in
-            // process until something does (CosmosFunctionSpellings.HasVerdict).
-            if (call.getType()?.getSqlTypeName() is SqlTypeName type && (type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR) && CosmosFunctionSpellings.HasVerdict(name) == false)
+            // A string function the table maps that no row names, measured, declared or the service's own: computed in process
+            // until a row does (CosmosFunctionSpellings.Named, G6).
+            if (call.getType()?.getSqlTypeName() is SqlTypeName type && (type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR) && CosmosFunctionSpellings.Named(Rendering, name) == false)
                 throw new CosmosTranslationException($"{name} is computed in process: what it asks of its operands' characters for the service to answer as Calcite does has not been measured.");
 
             // REPLACE's search is matched against the subject, a compared position (_spelled); its replacement is not.
@@ -4567,38 +4566,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (call.getOperands().size() != 2 || IntegralLiteral(Operand(call, 1)) is not long count
                 || CosmosFunctionSpellings.RepeatsAsCalcite(count, LengthsOf(Operand(call, 0)).Most) == false)
                 throw new CosmosTranslationException($"REPEAT is computed in process: the service's REPLICATE is undefined for a negative count and past {CosmosFunctionSpellings.RepetitionLimit} code points, where Calcite's repeats, and nothing proves the count a literal that keeps it within them.");
-        }
-
-        /// <summary>
-        /// Refuses a <c>REPLACE</c> whose search may be empty.
-        /// </summary>
-        /// <remarks>
-        /// The service's <c>REPLACE</c> of an empty search is undefined, and Calcite's is the subject: measured,
-        /// <c>REPLACE(s, '', '-')</c> answered NULL on every row. So the search has to be proved to hold something — a
-        /// literal that does, or a path whose strings the facts bound to a length of one or more
-        /// (<see cref="CosmosFunctionSpellings.SearchesSomething"/>). A parameter may be empty until it is bound.
-        /// </remarks>
-        void RequireASearchForSomething(RexCall call)
-        {
-            if (call.getOperands().size() != 3 || CosmosFunctionSpellings.SearchesSomething(LengthsOf(Operand(call, 1)).Least) == false)
-                throw new CosmosTranslationException("REPLACE is computed in process: the service's REPLACE of an empty search is undefined, where Calcite's is the subject, and nothing proves the search holds something.");
-        }
-
-        /// <summary>
-        /// Refuses a concatenation that reads a null as the empty string.
-        /// </summary>
-        /// <remarks>
-        /// The service's <c>CONCAT</c> is undefined over a null, as SQL's <c>||</c> and the MySQL <c>CONCAT</c> are null.
-        /// PostgreSQL's and SQL Server's <c>CONCAT</c>, and Oracle's two-argument one, read a null as the empty string, and
-        /// carry the same name: measured, under the <c>pg</c> and <c>oracle</c> libraries a <c>CONCAT</c> of a string and
-        /// a path absent from the document answered NULL where Calcite answers the string. So the operator is matched, not
-        /// its name.
-        /// </remarks>
-        void RequireTheConcatenationThatIsNullOverANull(RexCall call)
-        {
-            var op = call.getOperator();
-            if (ReferenceEquals(op, SqlStdOperatorTable.CONCAT) == false && ReferenceEquals(op, SqlLibraryOperators.CONCAT_FUNCTION) == false)
-                throw new CosmosTranslationException($"{op.getName()} is computed in process: it reads a null as the empty string, and the service's CONCAT is undefined over one.");
         }
 
         /// <summary>

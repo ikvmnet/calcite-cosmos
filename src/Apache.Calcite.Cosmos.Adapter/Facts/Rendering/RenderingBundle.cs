@@ -29,6 +29,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Dictionary<long, IReadOnlyList<SqlPredicate>> _strata = [];
         readonly Dictionary<SqlValue.Call, ConstructorTerm<Val>> _computed = [];
         readonly Dictionary<(long Stratum, JsonDocumentPath Path), PathValues> _arms = [];
+        readonly Dictionary<(long Stratum, JsonDocumentPath Path), ValueSet<string>> _armChars = [];
+        readonly Dictionary<ImportSource, long> _rounds = [];
+        readonly Dictionary<SqlPredicate, long> _roundOf = [];
         readonly Dictionary<string, ValueSet<string>> _chars = new(StringComparer.Ordinal);
         readonly Dictionary<string, ValueSet<string>> _names = new(StringComparer.Ordinal);
         ImportSource? _source;
@@ -288,13 +291,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 throw new InvalidOperationException($"The bundle imports from {_source}, and one bundle holds one source's facts.");
 
             _source = source;
-            _imported.TryAdd(path, values);
+            var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
+
+            // A differing second import is the importer's fault, not the engine's, and throws: the table joins a computed
+            // place's images (G6), so the bundle holds a path to one import itself. An equal one is written once.
+            if (_imported.TryGetValue(path, out var held))
+            {
+                if (held != values)
+                    throw new FactConflictException(_theory.Imported, new object[] { term }, held, values);
+
+                if (_chars[SqlValue.Spell(path)] is var heldChars && heldChars.Equals(classes) == false)
+                    throw new FactConflictException(_theory.ImportedChars, new object[] { term }, heldChars, classes);
+
+                return;
+            }
+
+            _imported.Add(path, values);
             _chars.TryAdd(SqlValue.Spell(path), classes);
             var names = NamesOf(path);
             _names.TryAdd(SqlValue.Spell(path), names);
-            var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
-
-            // A differing second import is the importer's fault, not the engine's, and throws.
             try
             {
                 if (Failure is null)
@@ -354,6 +369,50 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
+        /// States what a later round's computed atom's operands may hold where its conjunct was rendered (G6): a stratum of its
+        /// own, one a node, numbered below the root so no arm's is it, beneath which each operand path's import and characters
+        /// are that node's, the root's for one it reads no row of. The atom is read beneath it, as an arm's atom is beneath
+        /// the arm (<see cref="RenderingTheory.StratumId"/>). Before the run only.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The bundle has run; the source is no later round of the import's statements; the atom is no computed atom, is
+        /// read beneath an arm, reads a path the bundle did not import, or was stated beneath another round's node.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">A value admits what the import does not.</exception>
+        public void AssumeComputed(ImportSource source, SqlPredicate atom, IReadOnlyList<(JsonDocumentPath Path, PathValues? Values, ValueSet<string>? Chars)> operands)
+        {
+            if (_run is not null)
+                throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
+
+            if (_source is null || _source.Statement.Split('+').Contains(source.Statement) == false || source.Stratum is not null || source.Round <= _source.Round)
+                throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
+
+            if (IsComputed(atom) == false || atom.Computed.Any() == false || atom is SqlPredicate.Beneath)
+                throw new InvalidOperationException($"{atom} is no atom over a computed place read where its conjunct is.");
+
+            foreach (var (path, values, _) in operands)
+                if (_imported.TryGetValue(path, out var imported) == false)
+                    throw new InvalidOperationException($"{atom} reads {SqlValue.Spell(path)}, which the bundle did not import.");
+                else if (values is not null && PathValues.Meet(values, imported) != values)
+                    throw new InvalidOperationException($"{atom}'s stratum says {values} of {SqlValue.Spell(path)}, which the import {imported} does not admit.");
+
+            if (_rounds.TryGetValue(source, out var stratum) == false)
+                _rounds.Add(source, stratum = -(_rounds.Count + 1));
+
+            if (_roundOf.TryGetValue(atom, out var stated) && stated != stratum)
+                throw new InvalidOperationException($"{atom} is stated beneath two strata.");
+
+            _roundOf[atom] = stratum;
+            foreach (var (path, values, chars) in operands)
+            {
+                if (values is not null)
+                    _arms.TryAdd((stratum, path), values);
+                if (chars is not null)
+                    _armChars.TryAdd((stratum, path), chars);
+            }
+        }
+
+        /// <summary>
         /// Claims a written form for a conjunct at the root, and states the members of every junction in it as written, and
         /// of every conjunction what it is a join of, as the service may read a range across them.
         /// </summary>
@@ -406,8 +465,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// What the host writes for the computed places at the run (h10): each atom's stratum, each imported path's import
-        /// beneath every stratum (the arm's where F read one, else the root's, a superset), and each literal operand as its
-        /// own single cell; and of each pair (h11), its spelling and its places' characters, once both are known.
+        /// and characters beneath every stratum (the arm's or the round's where F read one, else the root's, a superset), each
+        /// computed place's characters likewise (G6), and each literal operand as its own single cell; and of each pair (h11),
+        /// its spelling and its places' characters, once both are known.
         /// </summary>
         IEnumerable<Fact> Places()
         {
@@ -421,16 +481,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     yield return _theory.NameChars.Of(pair).Is(_names.GetValueOrDefault(ls, JsonValues.NoBand).Union(_names.GetValueOrDefault(rs, JsonValues.NoBand)));
                 }
 
-            var strata = _strata.Keys.Prepend(0L).ToList();
+            var strata = _strata.Keys.Prepend(0L).Concat(_rounds.Values).ToList();
             foreach (var atom in _atoms.Keys.Where(IsComputed))
-                yield return _theory.StratumId.Of(Write(atom)).Is(atom is SqlPredicate.Beneath b ? b.Stratum : 0L);
+                yield return _theory.StratumId.Of(Write(atom)).Is(_roundOf.TryGetValue(atom, out var round) ? round : atom is SqlPredicate.Beneath b ? b.Stratum : 0L);
 
             foreach (var (path, values) in _imported)
             {
                 var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
+                var chars = _chars[SqlValue.Spell(path)];
                 foreach (var stratum in strata)
+                {
                     yield return _theory.ArmImport.Of(stratum, term).Is(stratum == 0 ? values : _arms.GetValueOrDefault((stratum, path), values));
+                    yield return _theory.ArmChars.Of(stratum, term).Is(stratum == 0 ? chars : _armChars.GetValueOrDefault((stratum, path), chars));
+                }
             }
+
+            foreach (var (call, term) in _computed)
+                if (call.Spelled is { } spelled && _chars.TryGetValue(spelled, out var chars))
+                    foreach (var stratum in strata)
+                        yield return _theory.ArmChars.Of(stratum, _theory.Valued.Of(term)).Is(chars);
 
             foreach (var (call, term) in _computed)
                 for (var i = 0; i < call.Operands.Count; i++)

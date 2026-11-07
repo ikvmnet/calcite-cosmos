@@ -159,7 +159,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var banded = CosmosAxioms.All.First(a => a.Outcomes is not null) with
             {
                 Outcomes = [new CosmosOutcome(CosmosServiceTest.Contains, Class.String, CosmosAxiomTarget.Azure, "string=true", Band: JsonCharacterBand.Nul)],
-                FunctionOutcomes = [new CosmosFunctionOutcome("REPLACE", 1, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Undefined, FunctionValueClass.Empty)],
+                FunctionOutcomes = [new CosmosFunctionOutcome("REPLACE", 1, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Undefined, CalciteYield.Value, FunctionValueClass.Empty)],
             };
             CosmosAxiomRows.Read([banded]).Select(r => r.Key).Should().Equal(MeasuredKey.Of(CosmosServiceTest.Contains, Class.String, Class.String, JsonCharacterBand.Nul));
             CosmosAxiomRows.ReadFunctions([banded]).Select(r => r.Key).Should().Equal(FunctionKey.Of("REPLACE", 1, Class.String, JsonCharacterBand.None, FunctionValueClass.Empty));
@@ -175,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var row = CosmosAxioms.All.First(a => a.FunctionOutcomes is not null);
             CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All).Select(r => r.Function).Should().OnlyHaveUniqueItems("no two axioms of the registry compute one function");
-            var outcome = new CosmosFunctionOutcome("F", 0, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Emulator, CosmosFunctionAnswer.Same);
+            var outcome = new CosmosFunctionOutcome("F", 0, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Emulator, CosmosFunctionAnswer.Same, CalciteYield.Value);
             var (one, two) = (row with { FunctionOutcomes = [outcome, outcome with { Band = JsonCharacterBand.Nul }], Readers = ["a", "b"] }, row with { FunctionOutcomes = [outcome], Readers = ["b"] });
             CosmosAxiomRows.ReadFunctionReads([one, two]).Select(r => (r.Function, string.Join(",", r.Readers))).Should().Equal(("F", "a,b"), ("F", "b"));
         }
@@ -558,7 +558,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 (evidence.MeasuredOn & o.On).Should().Be(o.On, $"{o} claims only where {o.Evidence} was measured");
                 (PinningTest(evidence)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(evidence.Id, evidence.PinnedBy);
                 axiom.FunctionOutcomes!.Where(other => other.Evidence is null && (other.On & o.On) != 0
-                    && FunctionKey.Of(other.Function, other.Subject, other.Operand, other.Band, other.Value) == FunctionKey.Of(o.Function, o.Subject, o.Operand, o.Band, o.Value))
+                    && FunctionKey.Of(other.Name, other.Subject, other.Operand, other.Band, other.Value) == FunctionKey.Of(o.Name, o.Subject, o.Operand, o.Band, o.Value))
                     .Should().BeEmpty($"{o} is the key's one row on its targets");
             }
         }

@@ -95,21 +95,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// statement over on the emulator, <see cref="CosmosFunctionAnswer.Differs"/> over the bands named for it and the
         /// same over the rest of a string's, one outcome for both where the two agree; undefined over a number and a boolean,
         /// and over a null, an absent path, an object and an array what it answers there, the same unless it reads them as
-        /// a value, on both.
+        /// a value, on both. Calcite's call is a value over a string, and over a number and a boolean, which its text
+        /// accessor reads as text; over the rest it is null, unless it reads them as a value (<paramref name="nullYields"/>).
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, long subject, JsonCharacterBand differs, JsonCharacterBand azure,
-            JsonCharacterBand fails = JsonCharacterBand.None, CosmosFunctionAnswer overNull = CosmosFunctionAnswer.Same) =>
+            JsonCharacterBand fails = JsonCharacterBand.None, CosmosFunctionAnswer overNull = CosmosFunctionAnswer.Same, CalciteYield nullYields = CalciteYield.Null) =>
         [
             .. from band in Bands
                let emulator = Over(band, differs, fails)
                let onAzure = Over(band, azure, JsonCharacterBand.None)
-               from outcome in emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator)]
-                   : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure) }
+               from outcome in emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator, CalciteYield.Value)]
+                   : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator, CalciteYield.Value), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure, CalciteYield.Value) }
                select outcome,
             .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Value),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, overNull),
+               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, overNull, nullYields),
         ];
 
         /// <summary>
@@ -119,14 +120,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> Operand(string function, long ordinal, CosmosFunctionAnswer empty, JsonCharacterBand differs, JsonCharacterBand fails) =>
         [
-            new(function, ordinal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.NonEmpty),
-            new(function, ordinal, Class.String, JsonCharacterBand.None, Emulator, empty, FunctionValueClass.Empty),
+            new(function, ordinal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
+            new(function, ordinal, Class.String, JsonCharacterBand.None, Emulator, empty, CalciteYield.Value, FunctionValueClass.Empty),
             .. from band in Bands.Skip(1)
-               select new CosmosFunctionOutcome(function, ordinal, Class.String, band, Emulator, Over(band, differs, fails)),
+               select new CosmosFunctionOutcome(function, ordinal, Class.String, band, Emulator, Over(band, differs, fails), CalciteYield.Value),
             .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined, CalciteYield.Value),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same, CalciteYield.Null),
         ];
 
         /// <summary>
@@ -136,9 +137,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> Joined(string function) =>
         [
-            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.NonEmpty),
-            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, FunctionValueClass.NonEmpty),
-            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.HighBmp, Emulator, CosmosFunctionAnswer.Differs, FunctionValueClass.NonEmpty),
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, CalciteYield.Value, FunctionValueClass.NonEmpty),
+            new(function, FunctionKey.Literal, Class.String, JsonCharacterBand.HighBmp, Emulator, CosmosFunctionAnswer.Differs, CalciteYield.Value, FunctionValueClass.NonEmpty),
         ];
 
         static CosmosFunctionAnswer Over(JsonCharacterBand band, JsonCharacterBand differs, JsonCharacterBand fails) =>
@@ -148,16 +149,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : CosmosFunctionAnswer.Same;
 
         /// <summary>
-        /// A typed arithmetic operator's keys, the two targets alike: what it answers over a number, undefined over a string
-        /// and a boolean, the same over a null, an absent path, an object and an array.
+        /// A typed arithmetic operator's keys at its type, the two targets alike: what it answers over a number, undefined
+        /// over a string and a boolean, the same over a null, an absent path, an object and an array. Calcite's call is a
+        /// value over a number and null over the rest, its typed reading of a string or a boolean among them.
         /// </summary>
-        static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, CosmosFunctionAnswer overNumbers) =>
+        static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, string type, CosmosFunctionAnswer overNumbers) =>
         [
-            new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Both, overNumbers),
+            new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Both, overNumbers, CalciteYield.Value, Type: type),
             .. from kind in new[] { Class.String, Class.True }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Null, Type: type),
             .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same),
+               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Null, Type: type),
         ];
 
         /// <summary>The row of an id.</summary>
@@ -333,7 +335,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 [
                     .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }
                        from op in new[] { ("+", CosmosFunctionAnswer.Differs), ("-", CosmosFunctionAnswer.Differs), ("*", CosmosFunctionAnswer.Fails), ("/", CosmosFunctionAnswer.Fails), ("%", CosmosFunctionAnswer.Differs) }
-                       from outcome in Arithmetic(op.Item1 + ":" + type, op.Item2)
+                       from outcome in Arithmetic(op.Item1, type, op.Item2)
                        select outcome,
                 ]),
             new("Service.OutOfDomainArithmeticFailsTheStatement",
@@ -735,10 +737,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // A window's length by its sign (F2): from 1 on both targets; 0, the empty string as Calcite's, on both, Azure's
                     // the window from 0 of length 0 the clip writes (Service.SubstringOfANegativeStartIsEmpty); and below 0, which
                     // Calcite raises over, on the emulator.
-                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.AtLeastOne),
-                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same, FunctionValueClass.Zero),
-                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, FunctionValueClass.Zero, Evidence: "Service.SubstringOfANegativeStartIsEmpty"),
-                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Differs, FunctionValueClass.Negative),
+                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.AtLeastOne),
+                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.Zero),
+                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.Zero, Evidence: "Service.SubstringOfANegativeStartIsEmpty"),
+                    new("SUBSTRING", 2, Class.Number, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Differs, CalciteYield.Value, FunctionValueClass.Negative),
                     .. StringFunction("REVERSE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.None),
                     .. StringFunction("TRIM BOTH", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
                     .. StringFunction("TRIM LEADING", 1, JsonCharacterBand.Trimmed, JsonCharacterBand.Trimmed),
@@ -750,7 +752,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // CONCAT's spelling.
                     .. StringFunction("||", FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
                     .. StringFunction("CONCAT", FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
-                    .. StringFunction(StringCalls.NullAsEmpty, FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul, CosmosFunctionAnswer.Undefined),
+                    .. StringFunction(StringCalls.NullAsEmpty, FunctionKey.Every, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul, CosmosFunctionAnswer.Undefined, CalciteYield.Value),
                     .. StringFunction("REPEAT", 0, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
                     // A literal operand, keyed apart (FunctionKey.Literal): the rows above were measured over a stored operand
                     // beside a literal held fixed, z and a count of 2, each a row of its own here, and the literals the emulator
@@ -759,11 +761,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. Joined("||"),
                     .. Joined("CONCAT"),
                     .. Joined(StringCalls.NullAsEmpty),
-                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.AtLeastOne),
-                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, FunctionValueClass.Zero, Evidence: "Service.ReplicateStopsAtTenThousandCodePoints"),
-                    new("REPEAT", FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, FunctionValueClass.NonEmpty),
+                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.AtLeastOne),
+                    new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.Zero, Evidence: "Service.ReplicateStopsAtTenThousandCodePoints"),
+                    new("REPEAT", FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, CalciteYield.Value, FunctionValueClass.NonEmpty),
                     // POSITION's needle, keyed as the operand it is, measured as the 0 and the 1 its spellings hold.
-                    new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, FunctionValueClass.NonEmpty),
+                    new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
                 ]),
             new("Calcite.StringCountsAreInUnits",
                 "CHAR_LENGTH, SUBSTRING and POSITION count UTF-16 units: a, U+1F600, b is 4 long, and SUBSTRING FROM 2 FOR 1 of it is the lone lead surrogate.",

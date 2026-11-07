@@ -39,8 +39,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// of each set and leaf: the spelling a set is sent, its parting bands and unsendable classes, the paths it may write,
         /// and what a leaf reads beside its table (G1); what reads each settled key and how it reads a whole number, and what
         /// a class is to the gate (G2); a pair's readings, its table and the rows that license it, and what each reading's
-        /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); and each set's table
-        /// as the leaves read it. No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
+        /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); each set's table
+        /// as the leaves read it; and what a computed call is keyed by, what Calcite answers over each key and the service
+        /// alone defines, and the images a call's rows license (G6). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -117,6 +118,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a function key some target measured covers each atom its class holds",
                     "a function key a target of the set answers otherwise than Same disagrees there",
+                    "a function key Calcite answers a value or null over covers each atom its class holds",
+                    "a function key the service defines covers each atom its class holds",
                 ],
                 ["raw"] =
                 [
@@ -279,8 +282,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["image"] =
                 [
-                    "a place's import beneath a stratum is its call's image, once every operand is in and every key agrees",
+                    "a place's import beneath a stratum is its call's image, a value of its type, once every operand is in and every key agrees and is one Calcite answers a value over",
+                    "a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key agrees and Calcite answers null over one",
+                    "a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key is one the service defines",
                     "a place's import is its import beneath the root",
+                    "a computed place's import joins its image beneath each stratum an atom over it is read at",
                 ],
                 ["assume"] =
                 [
@@ -288,10 +294,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["pair"] =
                 [
+                    "a call of an operator its rows name at a type is keyed by that name at its type",
+                    "a call of an operator its rows name alone is keyed by its name",
+                    "an operand read at an ordinal its function's rows name no key of lets its call be absent",
+                    "a literal operand at an ordinal its function's rows name no key of, nor any literal of, lets its call be absent",
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(125);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(134);
         }
 
         /// <summary>

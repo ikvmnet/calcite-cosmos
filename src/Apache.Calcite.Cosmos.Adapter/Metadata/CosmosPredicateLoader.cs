@@ -768,20 +768,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 var computed = new SqlValue.Call(function, values);
 
-                // A call the function rows name, read whole, is a place of its own in S (h10): its type and its spelling
-                // ride on it, no part of its identity. Until h15's switch only a loading that reads places types one.
+                // A call read whole that the service can spell is a place of its own in S (h10): its type and its spelling
+                // ride on it, no part of its identity. Whether its rows name it, and how deep S images it, are S's (G6).
+                // Until h15's switch only a loading that reads places types one.
                 if (_places == false || partial || call.getType()?.getSqlTypeName()?.getName() is not string type
-                    || Sql.CosmosFunctionSpellings.RowFunctions.Contains(Cosmos.Facts.Rendering.RenderingImage.KeyFunction(function, type)) == false
-                    || Sql.CosmosFunctionSpellings.Spell(computed, PlaceSpelling) is not string spelled || Depth(computed) > PlaceDepth)
+                    || Sql.CosmosFunctionSpellings.Spell(computed, PlaceSpelling) is not string spelled)
                     return computed;
 
                 return computed with { Type = type, Spelled = spelled };
             }
-
-            /// <summary>The deepest nesting of computed places S gathers, one outer pass a level (h10, R7): a deeper call has no place.</summary>
-            const int PlaceDepth = 4;
-
-            static int Depth(SqlValue value) => value is SqlValue.Call call ? 1 + call.Operands.Select(o => o is SqlValue.Call { Type: not null } ? Depth(o) : 0).DefaultIfEmpty(0).Max() : 0;
 
             /// <summary>An operand's spelling in a computed place's: a path's, a literal's own, a nested place's; none for the rest.</summary>
             static string? PlaceSpelling(SqlValue operand) => operand switch

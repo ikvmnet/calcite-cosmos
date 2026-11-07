@@ -241,6 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 Functions = [.. Measured.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, answer)],
                 FunctionSubjects = [.. Measured.FunctionSubjects, ("LEFT", 1L)],
+                FunctionYields = [.. Measured.FunctionYields, (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), CalciteYield.Value)],
             });
             var (agrees, differs) = (Counted(CosmosFunctionAnswer.Same), Counted(CosmosFunctionAnswer.Differs));
 
@@ -345,6 +346,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var atom in tagged)
                 bundle.Scope.TryGet(theory.Assumed.Of(bundle.Write(atom)), out PathValues assumed).Should().BeTrue($"{atom} is assumed beneath its stratum");
             bundle.ReadBest(term).Kind.Should().Be(RenderingVerdictKind.Proven);
+        }
+
+        /// <summary>
+        /// A later round's computed atom is read where its conjunct was rendered (G6): a stratum of the round's own, beneath
+        /// which its operands' imports and characters are that node's. A case mapping compared over a path the root may hold
+        /// any character of has no image, the case mapping beyond ASCII parting from Calcite's; where the round's node holds
+        /// it ASCII the image is there, and the comparison proven, under each set.
+        /// </summary>
+        [Fact]
+        public void ALaterRoundsComputedAtomIsReadBeneathItsRound()
+        {
+            var upper = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.UPPER, Name), Lit("ABC")));
+            RenderingVerdictKind Asked(RenderingSet set, bool beneath)
+            {
+                using var bundle = ProbeTheory.Open(set);
+                var term = bundle.Write(upper);
+                foreach (var path in upper.Places)
+                    bundle.Import(Source, path, Strings, JsonValues.AllBands);
+                foreach (var call in bundle.ComputedCalls)
+                    bundle.ImportComputed(call, JsonValues.AllBands);
+                if (beneath)
+                    bundle.AssumeComputed(Source with { Round = Source.Round + 1 }, upper, [(NamePath, Strings, NoBand)]);
+
+                bundle.Generate(term);
+                bundle.RunGenerate(RenderingBundle.WidthOf([upper])).StopReason.Should().Be(RunStopReason.Completed);
+                bundle.Failure.Should().BeNull();
+                return bundle.ReadBest(term).Kind;
+            }
+
+            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator })
+            {
+                Asked(set, beneath: false).Should().NotBe(RenderingVerdictKind.Proven, $"the root's path may hold a character beyond ASCII under {set}");
+                Asked(set, beneath: true).Should().Be(RenderingVerdictKind.Proven, $"the round's node holds it ASCII under {set}");
+            }
         }
 
     }

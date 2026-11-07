@@ -5,6 +5,7 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
 
@@ -137,13 +138,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             [Geography.Sql.GeographyOperatorTable.ClrStGeogIsValid.getName()] = ("ST_ISVALID", 1, 1),
         };
 
-        /// <summary>
-        /// The classes outside ASCII, where the service's simple case folding and Calcite's full one are not known to agree:
-        /// what a case-insensitive match asks its text to be free of (<see cref="FoldsAlike"/>). A case mapping's own rows
-        /// say it of UPPER and LOWER, each parting over every band beyond ASCII (<c>Service.StringFunctionAnswersByBand</c>, F5).
-        /// </summary>
-        public const JsonCharacterBand CaseMapped = JsonCharacterBand.BeyondAscii;
-
         /// <summary>The two characters the emulator stores escaped, U+0000 and U+FDD0, the second read as the high band.</summary>
         const JsonCharacterBand Escaped = JsonCharacterBand.Nul | JsonCharacterBand.HighBmp;
 
@@ -166,65 +160,116 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
 
         /// <summary>
-        /// The string functions the column gate holds to their rows on every target the set serves, whether a row names them
-        /// or not: one no row names, <c>LENGTH</c> (Calcite's library function, keyed by its own name), is refused.
-        /// </summary>
-        public static readonly IReadOnlySet<string> Gated = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "CHAR_LENGTH", "CHARACTER_LENGTH", "LENGTH", "SUBSTRING", "LEFT", "RIGHT", "UPPER", "LOWER", "TRIM BOTH", "TRIM LEADING", "TRIM TRAILING",
-            "REPLACE", "POSITION", "REVERSE", "CONCAT", "||", "REPEAT",
-        };
-
-        /// <summary>The rows' names of the functions some target measured: what the loader reads as a computed place (h10).</summary>
-        public static readonly IReadOnlySet<string> RowFunctions = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All).Select(r => r.Key.Function).ToHashSet(StringComparer.Ordinal);
-
-        /// <summary>The functions whose result is the service's own, which Calcite has no body for: what the service computes is what it means.</summary>
-        public static readonly IReadOnlySet<string> Declared = new HashSet<string>(StringComparer.Ordinal) { "ToString" };
-
-        /// <summary>
-        /// Why the function rows do not agree on a call's operands under a set, or <c>null</c> where they do: the rows S's
-        /// image rule reads (<c>RenderingTheory.DefineValued</c>), read as it reads them.
+        /// Why the function rows do not agree on a call's operands under a set, or <c>null</c> where they do: S's image rules
+        /// (<c>RenderingTheory.DefineValued</c>), read as they read the rows.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>S's keys over S's rows.</b> The keys are S's own (<see cref="RenderingImage.Keys"/>), under the operands the
-        /// rows name and the readers they were measured through, met across the axioms that name the function. A key is
-        /// measured where a row of the function covers it, the row's class holding the key's atom
-        /// (<see cref="FunctionValueClasses.Holding"/>), and agrees where every row covering it answers <c>Same</c> on every
-        /// target the set serves, a target that measured none of them answering it unmeasured. A function no row names has
-        /// no key measured, and one whose rows name no operand it was measured over, or no reader, has none S's image rule
-        /// reads (<c>FunctionSubjects</c>, <c>MeasuredReaders</c>). Nothing is read beside the definition the schema's S is
-        /// built from.
+        /// rows name. A call the service defines alone, every key one a row answers <see cref="CosmosFunctionAnswer.Defined"/>,
+        /// agrees whatever its operands are read through (the D class). Any other is read as S's measured image rules read
+        /// it: one import an ordinal, each read through a reader its rows were measured through, met across the axioms that
+        /// name the function, or exactly (<see cref="RenderingDefinition.LiteralReaders"/>); a key measured where a row of the
+        /// function covers it, the row's class holding the key's atom (<see cref="FunctionValueClasses.Holding"/>); and
+        /// agreeing where every row covering it answers <c>Same</c> on every target the set serves, a target that measured
+        /// none of them answering it unmeasured. Nothing is read beside the definition the schema's S is built from.
         /// </para>
         /// <para>
-        /// <b>The bridge G6 replaces</b>, which asks S's image of each call the translator writes (TODO.md).
+        /// <b>A replica of S's conditions, a bridge</b>: the column gate asks this until it asks S's image of each call it
+        /// writes, and goes at h37 (TODO.md).
         /// </para>
         /// </remarks>
         /// <param name="definition">The definition the schema's S is built from.</param>
         /// <param name="set">The set the statement is sent under.</param>
-        /// <param name="function">The rows' name of the call (<see cref="RenderingImage.KeyFunction"/>).</param>
+        /// <param name="function">The name the call's rows are filed under (<see cref="RenderingDefinition.CallKey"/>).</param>
         /// <param name="gathered">The call's operands as S's place rule gathers them, one import an ordinal of the loader's.</param>
         public static string? Disagreeing(RenderingDefinition definition, RenderingSet set, string function, ValueSet<PathImport> gathered)
         {
             var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
-            var reads = definition.FunctionReads.Where(f => f.Function == function).Select(f => ValueSet.From(f.Readers)).ToList();
             var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
+            var imports = gathered.AsEnumerable().ToList();
+            if (imports.Select(i => i.Ordinal).Distinct().Count() != imports.Count)
+                return "an operand is gathered twice";
+
+            var keys = RenderingImage.Keys(function, gathered, subjects, ValueSet.From(definition.LiteralReaders)).AsEnumerable().ToList();
+            if (IsDefined(rows, keys))
+                return null;
+
+            var reads = definition.FunctionReads.Where(f => f.Function == function).Select(f => ValueSet.From(f.Readers)).ToList();
             if (rows.Count == 0 || reads.Count == 0 || subjects.IsEmpty)
                 return "what it computes has not been measured";
 
-            foreach (var key in RenderingImage.Keys(function, gathered, subjects, reads.Aggregate((a, b) => a.Intersect(b))).AsEnumerable())
+            var readers = reads.Aggregate((a, b) => a.Intersect(b)).Union(ValueSet.From(definition.LiteralReaders));
+            if (imports.FirstOrDefault(i => readers.Contains(i.Reader) == false) is { } unread)
+                return $"its operand {unread.Ordinal} is read through {unread.Reader}, which its rows were not measured through";
+
+            foreach (var key in keys)
             {
-                FunctionKey[] covering = [.. rows.Keys.Select(r => r.Key).Distinct().Where(r => r with { Value = key.Value } == key && FunctionValueClasses.Holding.Contains((key.Kind, r.Value, key.Value)))];
-                if (covering.Length == 0)
-                    return key == RenderingImage.Malformed ? "an operand is no value S gathers, or is read through no reader its rows were measured through" : $"no row measured {key}";
+                var covering = Covering(rows.Keys.Select(r => r.Key).Distinct(), key).ToList();
+                if (covering.Count == 0)
+                    return $"no row measured {key}";
 
                 foreach (var row in covering)
                     foreach (var target in definition.Serves[set])
-                        if ((rows.TryGetValue((row, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) is var held && held != CosmosFunctionAnswer.Same)
+                        if ((rows.TryGetValue((row, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) is var held && held is not (CosmosFunctionAnswer.Same or CosmosFunctionAnswer.Defined))
                             return $"{target} answers {row} {held}";
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// A call's image on its gathered operands where its keys agree (<see cref="Disagreeing"/>), as S's image rules write
+        /// it: a call the service defines alone, every kind of its type and absent; one Calcite answers null over some key
+        /// of, its type's kinds and absent; otherwise the point where C# evaluates it as Calcite does, or its type's kinds,
+        /// and absent where an operand sits at an ordinal its rows key nothing of. <c>null</c> where a key's yield is no row's.
+        /// A replica of S's rules, the column gate's until h37.
+        /// </summary>
+        public static PathValues? Image(RenderingDefinition definition, string function, string type, ValueSet<PathImport> gathered)
+        {
+            var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
+            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
+            var keys = RenderingImage.Keys(function, gathered, subjects, ValueSet.From(definition.LiteralReaders)).AsEnumerable().ToList();
+            var kinds = ValueSet.From(definition.TypeKinds.Where(t => t.Type == type).Select(t => t.Kind));
+            if (IsDefined(rows, keys))
+                return PathValues.OfKinds(kinds.Add(PathValues.AbsentKind));
+
+            var yields = definition.FunctionYields.Where(y => y.Key.Function == function).ToList();
+            var stated = keys.Select(k => Covering(yields.Select(y => y.Key), k).SelectMany(r => yields.Where(y => y.Key == r).Select(y => y.Yields)).ToList()).ToList();
+            if (stated.Any(s => s.Count == 0))
+                return null;
+
+            if (stated.Any(s => s.Contains(CalciteYield.Null)))
+                return PathValues.OfKinds(kinds.Add(PathValues.AbsentKind));
+
+            var held = gathered.AsEnumerable().Any(i => subjects.Intersect(FunctionKey.OrdinalsKeying(i.Ordinal, i.Reader, ValueSet.From(definition.LiteralReaders))).IsEmpty);
+            return RenderingImage.Of(function, gathered, PathValues.OfKinds(held ? kinds.Add(PathValues.AbsentKind) : kinds));
+        }
+
+        /// <summary>The rows' keys that cover a key: of its function, operand, kind and band, their class holding its atom.</summary>
+        static IEnumerable<FunctionKey> Covering(IEnumerable<FunctionKey> rows, FunctionKey key) =>
+            rows.Distinct().Where(r => r with { Value = key.Value } == key && FunctionValueClasses.Holding.Contains((key.Kind, r.Value, key.Value)));
+
+        /// <summary>Whether a call is one the service defines alone: its rows answer <see cref="CosmosFunctionAnswer.Defined"/>, and cover every key of it so.</summary>
+        static bool IsDefined(Dictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> rows, List<FunctionKey> keys)
+        {
+            var defined = rows.Where(r => r.Value == CosmosFunctionAnswer.Defined).Select(r => r.Key.Key).Distinct().ToList();
+            return defined.Count > 0 && keys.All(k => Covering(defined, k).Any());
+        }
+
+        /// <summary>
+        /// The bands a function's rows over a string operand answer otherwise than Calcite on some target a set serves, a
+        /// target that measured none of them answering it unmeasured: for a case mapping, what a case-insensitive match
+        /// asks its text to be free of (<see cref="FoldsAlike"/>, F5).
+        /// </summary>
+        public static JsonCharacterBand Parting(RenderingDefinition definition, RenderingSet set, string function)
+        {
+            var answers = definition.Functions.Where(f => f.Key.Function == function && f.Key.Kind == CosmosValueClass.String && f.Key.Band != JsonCharacterBand.None)
+                .ToDictionary(f => (f.Key, f.Target), f => f.Answer);
+            return (from key in answers.Keys.Select(k => k.Key).Distinct()
+                    from target in definition.Serves[set].AsEnumerable()
+                    where (answers.TryGetValue((key, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) != CosmosFunctionAnswer.Same
+                    select key.Band).Aggregate(JsonCharacterBand.None, (a, b) => a | b);
         }
 
         /// <summary>
@@ -236,14 +281,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : call.getOperands().size() == 3 && call.getOperands().get(0) is RexLiteral { } flag && flag.getValue() is org.apache.calcite.sql.fun.SqlTrimFunction.Flag f ? "TRIM " + f.name()
             : null;
 
-        /// <summary>Whether the column gate holds a function to a verdict: rows name it, or it is a string function gated.</summary>
-        public static bool Named(string function) => RowFunctions.Contains(function) || Gated.Contains(function);
-
         /// <summary>
-        /// Determines whether a string function written by name has a verdict: rows the column gate reads, or a result that
-        /// is the service's own.
+        /// Whether the column gate holds a function to its rows: rows of the definition are filed under its name, measured,
+        /// declared unmeasured, or defined by the service alone (<see cref="CosmosAxiomRows.Declared"/>, G6).
         /// </summary>
-        public static bool HasVerdict(string name) => Named(name) || Declared.Contains(name);
+        public static bool Named(RenderingDefinition definition, string function) => definition.FunctionNames.Any(n => n.Name == function);
 
         /// <summary>
         /// What a call's spelling asks of its operands' characters beyond the rows, under a set (<see cref="CosmosRendering.StoresSpelled"/>).
@@ -389,12 +431,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static bool RepeatsAsCalcite(long count, long? most) =>
             count == 0 || count > 0 && most is long length && length <= RepetitionLimit / count;
 
-        /// <summary>
-        /// Whether the service's <c>REPLACE</c> answers Calcite's for a search at least so many units long: of an empty
-        /// search it is undefined (<c>Service.ReplaceOfAnEmptySearchIsUndefined</c>).
-        /// </summary>
-        public static bool SearchesSomething(long? least) => least >= 1;
-
         /// <summary>Whether a <c>LIKE</c> pattern is a prefix match, its one wildcard a trailing <c>%</c>, written as <c>STARTSWITH</c>.</summary>
         static bool IsPrefix(string pattern) =>
             pattern.EndsWith('%') && pattern.IndexOfAny(['%', '_']) == pattern.Length - 1;
@@ -417,9 +453,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return start > 0 && end < pattern.Length && end > start && pattern.IndexOfAny(['%', '_'], start, end - start) < 0;
         }
 
-        /// <summary>Whether a text the case-insensitive match is handed folds alike at both ends: ASCII, read as the theory reads characters.</summary>
-        public static bool FoldsAlike(string text) =>
-            (JsonFactEncoding.Characters(text) & CaseMapped) == JsonCharacterBand.None;
+        /// <summary>
+        /// Whether a text the case-insensitive match is handed folds alike at both ends: free of every band its case
+        /// mapping's rows part over (<see cref="Parting"/>), read as the theory reads characters.
+        /// </summary>
+        public static bool FoldsAlike(string text, JsonCharacterBand parting) =>
+            (JsonFactEncoding.Characters(text) & parting) == JsonCharacterBand.None;
 
     }
 

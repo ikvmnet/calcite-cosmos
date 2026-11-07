@@ -189,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// A question: its conjuncts and the junctions of those given beside them as roots, imported from the root, each
         /// conjunct's atoms stated beneath its stratum but an atom two conjuncts share, since one may be what the other's
-        /// stratum assumes.
+        /// stratum assumes; its computed atoms likewise, each path its call reads stated there (G6).
         /// </summary>
         Question QuestionOf(string site, CosmosStatementScope scope, IReadOnlyDictionary<int, Stratum?> strata, IEnumerable<IReadOnlyCollection<int>?> junctions)
         {
@@ -197,9 +197,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var joined = junctions.Select(j => j is null ? null : Junction(j)).ToList();
             var roots = conjuncts.Select(i => Conjuncts[i]).Concat(joined.OfType<SqlPredicate>()).DistinctBy(r => r.Digest).ToList();
             var shared = SharedAtoms(conjuncts.Select(i => Conjuncts[i]));
+            shared.UnionWith(SharedComputedAtoms(conjuncts.Select(i => Conjuncts[i])));
             var digest = _statement.RenderingStatement.Digest;
             var (root, rules) = scope.ContextFor(OracleLicence.Declaration);
-            var stated = conjuncts.Where(i => strata[i] is not null).SelectMany(i => AtomsOf(Conjuncts[i]).Distinct().Where(a => shared.Contains(a) == false)
+            var stated = conjuncts.Where(i => strata[i] is not null).SelectMany(i => AtomsOf(Conjuncts[i]).Concat(ComputedAtomsOf(Conjuncts[i])).Distinct().Where(a => shared.Contains(a) == false)
                 .Select(a => new Stated(i, a, strata[i]!, new ImportSource(digest, "render round " + strata[i]!.Round, strata[i]!.Round)))).ToList();
             _opaques ??= string.Join(";", _statement.RenderingStatement.Opaques.OrderBy(o => o.Key).Select(o => o.Key + "=" + o.Value));
             var signature = string.Join(",", conjuncts.Select(i => Conjuncts[i].Digest + "@" + strata[i]?.Key)) + "\n" + string.Join(",", joined.Select(j => j?.Digest ?? "-")) + "\n" + _opaques;
@@ -209,6 +210,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>The atoms of a conjunct that read one path: what a cell of it is cut for, and what a stratum is stated beneath.</summary>
         internal static IEnumerable<SqlPredicate> AtomsOf(SqlPredicate conjunct) =>
             conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque) && t.Paths.Count() == 1);
+
+        /// <summary>
+        /// The atoms of a conjunct over a computed place (<see cref="RenderingBundle.IsComputed"/>, <see cref="SqlPredicate.Computed"/>):
+        /// each stated beneath its stratum with every path its call reads, where S gathers the call's operands (G6).
+        /// </summary>
+        internal static IEnumerable<SqlPredicate> ComputedAtomsOf(SqlPredicate conjunct) =>
+            conjunct.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque or SqlPredicate.Beneath) && RenderingBundle.IsComputed(t) && t.Computed.Any());
+
+        /// <summary>The computed atoms two conjuncts share, which neither's stratum is stated beneath, as <see cref="SharedAtoms"/>.</summary>
+        internal static IEnumerable<SqlPredicate> SharedComputedAtoms(IEnumerable<SqlPredicate> conjuncts) =>
+            conjuncts.SelectMany(c => ComputedAtomsOf(c).Distinct()).GroupBy(a => a).Where(g => g.Count() > 1).Select(g => g.Key);
 
         /// <summary>The atoms two conjuncts share, which neither's stratum is stated beneath, since one may be what the other's assumes: production's rule and check mode's.</summary>
         internal static HashSet<SqlPredicate> SharedAtoms(IEnumerable<SqlPredicate> conjuncts) =>

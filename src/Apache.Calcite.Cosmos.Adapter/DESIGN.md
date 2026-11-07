@@ -8297,8 +8297,10 @@ first. #246's refusals stand as they are, and nothing under `Production` would c
 **What a place is.** A call the function rows name, read whole at a known SQL type by a loading that reads places, is a
 path of its own in S: `Valued(v)`, a term over the call, read through its type's reader (`typed:VARCHAR`, `typed:INTEGER`).
 The loader stamps the call with `Type` and `Spelled`, the service's call over its operands' spellings
-(`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a window starting before 1,
-a `REPEAT` of any count but 0, a call nested past depth 4, gets no place and stays what it was. An atom may then read a
+(`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a window whose start is
+no whole literal, a `REPEAT` of any count but 0 (a result key no row holds), a literal the SDK will not send, gets no
+place and stays what it was. Whether the rows name the call and how deep S images it are S's (G6): the loader's gate
+(`RowFunctions`, four deep) is gone, and a call no row names is a place with no key, so no image. An atom may then read a
 place where it read a path: a comparison with a literal, `IN`, `IS NULL`, so the gate, templates, strictness and
 weakening run on it unchanged. F is handed the same atoms and reads them as it read any atom over a value it has no
 reader for, the paths it imports (`SqlPredicate.Paths`) unchanged; S imports `Places`, which add the operands' paths.
@@ -8306,13 +8308,25 @@ reader for, the paths it imports (`SqlPredicate.Paths`) unchanged; S imports `Pl
 **Its import is its image, once every key agrees.** The bundle writes each call's `SqlType`, its reading of its place
 (`reads(v, Valued(v), typed:T)`), `Arity` and one `CallArgAt` an ordinal, `ArmImport(s, p)` for every operand path beneath every stratum it opened (the arm's own import, else the
 root's, a superset), a literal operand's own single cell, and the place's characters from F's `ValueChars` for the call
-at the root. Four rulesets then run after the first stratum, as one fixpoint, so a nested call is gathered once its
-inner place is written: `place` gathers the operands' imports beneath each stratum, one a `PathImport` an ordinal;
+at the root. The call's key and whether an operand lets it be absent are the first group's (`pair`, G6): *a call of an
+operator its rows name at a type is keyed by that name at its type*, *… alone is keyed by its name* (`RowName`,
+`RowNamedAlone`, `CallKey`), and *an operand read at an ordinal its function's rows name no key of lets its call be
+absent*, with its literal twin (`HeldAbsent`), complete before any place is gathered, in a ruleset the group already
+runs, since a ruleset of its own there costs a round a saturation and a stage of its own one, and the type-test
+conjunct's check runs 94 of its 96. Three rulesets then run after the first stratum, as one fixpoint bounded only by
+the run's iterations, so a nested call is gathered once its inner place is written: `place` gathers the operands' imports beneath each stratum, one a `PathImport` an ordinal;
 `image` reads the keys those fall under (`RenderingImage.Keys`: each kind the operand the rows describe may hold, a
 string by each band its characters may hold and by none), and writes the place's import, the call's image, only where
 the gathering is complete (the count guard), every key is one some target measured, and none is a key some target the
 set serves answers otherwise than `Same` (`DisagreeingKeys`, derived at the build from the rows, which S's load makes
-total by writing `Unmeasured` for each pair no row holds); at stratum 0 that is the place's `Imported`; `assume` assumes
+total by writing `Unmeasured` for each pair no row holds); at stratum 0 that is the place's `Imported`. A later round's
+atom over a place is stated where its conjunct is rendered, as a one-path atom is (G6): the importer reads each path its
+call reads at that round's node and the bundle opens a stratum of its own for it (`RenderingBundle.AssumeComputed`,
+numbered below 0), whose `ArmImport` and `ArmChars` are that node's, and *a computed place's import joins its image
+beneath each stratum an atom over it is read at* (`Imported` a lattice of `PathValues.Join` since G6, the bundle holding
+a path's one import itself), so the leaf reads the image where the root's wider import has none, as over Azure's `UPPER`
+in 477, 240 and 2763, whose operand the root holds wider than their round's node (the census, which asks each atom at
+the root, reads them as before); `assume` assumes
 an atom over a place as the place's image beneath the atom's stratum, so an arm over a computed value sets its off-arm
 cells aside as an arm over a path does. A place with no image has no import, and S proves nothing over it.
 
@@ -8366,9 +8380,9 @@ class's atoms, through readers the rows were measured through — and refused un
 unless the rows name the function's subjects and readers, which the image rule joins. An operand S gathers nothing of —
 a parameter, a `CASE`, a call whose own keys disagree — leaves the call no image, as S's image asks one import an
 operand (`Gathered` returns none short of the call's arity). A nested call is gathered through its own type, with its
-image over its own operands, whatever the loader makes a place of: the loader's place gate (`RowFunctions`, four deep)
-is G6's to move and none of the bridge's, so six reversals push where their rows agree, as they did before the bridge
-read S's rows (the fix round of owed); S, behind that gate, has no place for them, which G6 meets. `Spell`'s literal
+image over its own operands, and since G6 S has a place for each of them too, the loader's gate (`RowFunctions`, four
+deep) gone: six reversals push where their rows agree, as they did before the bridge read S's rows (the fix round of
+owed). `Spell`'s literal
 filter, which refused a place to a literal holding U+0000, U+FDD0 or any surrogate, is legality alone since G1: it
 refuses a literal holding an unpaired surrogate, which the SDK will not send, and what any other literal makes is the
 function rows'. Before owed

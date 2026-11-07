@@ -28,9 +28,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
-            Functions = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All),
+            Functions = CosmosAxiomRows.ReadFunctions(FunctionOutcomes),
             FunctionReads = CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All),
-            FunctionSubjects = CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All),
+            FunctionSubjects = CosmosAxiomRows.ReadFunctionSubjects(FunctionOutcomes),
+            FunctionNames = CosmosAxiomRows.ReadFunctionNames(FunctionOutcomes),
+            FunctionYields = CosmosAxiomRows.ReadFunctionYields(FunctionOutcomes),
+            TypeKinds = ReadTypeKinds(),
             Columns = CosmosAxiomRows.ReadColumns(CosmosAxioms.All),
             Parts = CosmosAxiomRows.ReadParts(CosmosAxioms.All),
             Moves = CosmosAxiomRows.ReadMoves(CosmosAxioms.All),
@@ -52,6 +55,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
         });
+
+        /// <summary>The function rows S reads: the axioms', and those declared beside them (<see cref="CosmosAxiomRows.Declared"/>, G6).</summary>
+        static IEnumerable<CosmosFunctionOutcome> FunctionOutcomes => [.. CosmosAxiomRows.OutcomesOf(CosmosAxioms.All), .. CosmosAxiomRows.Declared];
+
+        /// <summary>
+        /// The kinds of value each SQL type a computed place may be of holds (G6): a character type a string, an integer
+        /// type a whole number, any other numeric type any number, a boolean type a boolean, by the families Calcite's type
+        /// system names. Read off it once, by the definition, a constant of it; a type none names holds no kind S images.
+        /// </summary>
+        internal static IReadOnlyList<(string Type, string Kind)> ReadTypeKinds() =>
+            [.. from type in SqlTypeName.ALL_TYPES.toArray().Cast<SqlTypeName>()
+                from kind in SqlTypeName.CHAR_TYPES.contains(type) ? [JsonValues.StringType]
+                    : SqlTypeName.INT_TYPES.contains(type) ? [JsonValues.IntegerType]
+                    : SqlTypeName.NUMERIC_TYPES.contains(type) ? [.. JsonValues.Numbers.AsEnumerable()]
+                    : SqlTypeName.BOOLEAN_TYPES.contains(type) ? new[] { JsonValues.BooleanType }
+                    : []
+                orderby type.getName(), kind
+                select (type.getName(), kind)];
 
         /// <summary>
         /// The kind each reading S cuts compares as (<see cref="ReaderEdgesTable"/>, G3): the family Calcite's type system

@@ -1,5 +1,7 @@
 using System;
 
+using Eggnog;
+
 namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
@@ -28,6 +30,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The key, as a rule computes one.</summary>
         public static FunctionKey Of(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value = FunctionValueClass.Any) =>
             new(function, ordinal, kind, band, value);
+
+        /// <summary>
+        /// The operands an operand at an ordinal read through a reader is keyed at (F2): <see cref="Every"/> and its ordinal,
+        /// and <see cref="Literal"/> where the reader is one of S's literal readers. Key assembly; which of them a function's
+        /// rows name is the rows'.
+        /// </summary>
+        public static ValueSet<long> OrdinalsKeying(long ordinal, string reader, ValueSet<string> literals) =>
+            literals.Contains(reader) ? ValueSet.Of(Every, ordinal, Literal) : ValueSet.Of(Every, ordinal);
 
         /// <summary>The key's function, as a rule reads it.</summary>
         public static string FunctionOf(FunctionKey key) => key.Function;

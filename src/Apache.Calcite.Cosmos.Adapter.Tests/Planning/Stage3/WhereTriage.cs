@@ -174,9 +174,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
             // Run 1 gave every row h14 waited on an Azure target (h14b): what stays Unproven is classed alike under both sets.
 
+            // The loader types every call the service spells since G6, and S keys one only where its rows name it: a place
+            // whose call no row names is classed as it was while the loader left it opaque.
+            bool Unnamed() => holds.Any(h => h.Split(':', 3) is ["place", var function, var type] && CosmosRendering.Definition.CallKey(function, type) is null);
+
             if (Has("parameter"))
                 return (Declined, "a parameter (3B)");
-            if (Has("opaque"))
+            if (Has("opaque") || Unnamed())
             {
                 if (Rexes("LIKE(") && rex.Contains('['))
                     return (Declined, "N12: LIKE with a bracket");

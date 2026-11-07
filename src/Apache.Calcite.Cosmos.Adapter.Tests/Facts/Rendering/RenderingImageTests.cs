@@ -17,8 +17,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// What S reads off a call's gathered operands (<see cref="RenderingImage"/>, h10): the keys each row class falls under,
-    /// the operands the rows name alone, a repeated operand once an ordinal, a nested place, a (D) function's image,
-    /// and a gathering that is no import an ordinal falling under no row. It decides nothing.
+    /// the operands the rows name alone, and the call at a point; and what S's rules read beside them (G6), the ordinals
+    /// and readers of a gathering, the name a call is keyed by, and the images the column gate's replica gives. It decides
+    /// nothing.
     /// </summary>
     public sealed class RenderingImageTests
     {
@@ -34,13 +35,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static ValueSet<FunctionKey> Strings(string function, long ordinal, params JsonCharacterBand[] bands) =>
             ValueSet.From(from band in bands from atom in new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty } select FunctionKey.Of(function, ordinal, CosmosValueClass.String, band, atom));
 
-        /// <summary>The keys of a call under the subjects and readers its rows carry.</summary>
-        static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered)
-        {
-            var subjects = ValueSet.From(ProbeRows.Measured.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
-            var (_, readers) = ProbeRows.Measured.FunctionReads.Single(f => f.Function == function);
-            return RenderingImage.Keys(function, gathered, subjects, ValueSet.From(readers));
-        }
+        /// <summary>The keys of a call under the subjects its rows carry.</summary>
+        static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered) =>
+            Keys(function, gathered, ValueSet.From(ProbeRows.Measured.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject)));
+
+        /// <summary>The keys of a call under the subjects given, a literal read through the registry's literal readers.</summary>
+        static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, ValueSet<long> subjects) =>
+            RenderingImage.Keys(function, gathered, subjects, ValueSet.From(ProbeRows.Measured.LiteralReaders));
 
         /// <summary>A string falls under its kind with no band and with each band its characters may hold; every other kind under its class.</summary>
         [Fact]
@@ -89,9 +90,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var gathered = Gathered(Text(0, ValueSet.Of(StringType), JsonCharacterBand.HighBmp | JsonCharacterBand.Replacement), Literal(1, Of("a\uD83D")), Literal(2, Of("b")));
             static FunctionKey Search(JsonCharacterBand band) => FunctionKey.Of("REPLACE", 1, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
-            RenderingImage.Keys("REPLACE", gathered, ValueSet.Of(0L, 1L), ValueSet.Of(PredicateAtom.TextReader)).Should().BeEquivalentTo(
+            Keys("REPLACE", gathered, ValueSet.Of(0L, 1L)).Should().BeEquivalentTo(
                 Strings("REPLACE", 0, JsonCharacterBand.None, JsonCharacterBand.HighBmp).Add(Search(JsonCharacterBand.None)).Add(Search(JsonCharacterBand.Surrogates)));
-            RenderingImage.Keys("||", Gathered(Literal(0, Of("a")), Literal(1, Of("b"))), ValueSet.Of(FunctionKey.Every), ValueSet<string>.Empty)
+            Keys("||", Gathered(Literal(0, Of("a")), Literal(1, Of("b"))), ValueSet.Of(FunctionKey.Every))
                 .Should().Equal(ValueSet.Of(FunctionKey.Of("||", FunctionKey.Every, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty)));
         }
 
@@ -104,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void ACellIsKeyedByTheAtomsItsValuesAreIn()
         {
             static ValueSet<FunctionValueClass> Atoms(PathImport import, CosmosValueClass kind) =>
-                ValueSet.From(RenderingImage.Keys("F", Gathered(import), ValueSet.Of(0L), ValueSet.Of(PredicateAtom.TextReader)).AsEnumerable()
+                ValueSet.From(Keys("F", Gathered(import), ValueSet.Of(0L)).AsEnumerable()
                     .Where(k => k.Kind == kind && k.Band == JsonCharacterBand.None).Select(k => k.Value));
 
             Atoms(Literal(0, Of("")), CosmosValueClass.String).Should().Equal(ValueSet.Of(FunctionValueClass.Empty));
@@ -129,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var approximate in new[] { Of(1e30), Of(-1e30), Of(1e-30) })
             {
                 IsExactNumber(approximate).Should().BeFalse(approximate);
-                ValueSet.From(RenderingImage.Keys("F", Gathered(Literal(0, approximate)), ValueSet.Of(0L), ValueSet<string>.Empty).AsEnumerable().Select(k => k.Value))
+                ValueSet.From(Keys("F", Gathered(Literal(0, approximate)), ValueSet.Of(0L)).AsEnumerable().Select(k => k.Value))
                     .Should().Equal(every, approximate);
                 foreach (var (_, @class, _) in FunctionValueClasses.Holding.Where(h => h.Kind == CosmosValueClass.Number))
                     FunctionValueClasses.Holds(@class, approximate).Should().BeTrue($"{@class} of {approximate}");
@@ -150,49 +151,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                             FunctionValueClasses.Holding.Any(h => h.Kind == kind && h.Class == @class && FunctionValueClasses.Holds(h.Atom, value)), $"{@class} of {value}");
         }
 
-        /// <summary>A repeated operand is gathered once an ordinal, so <c>x || x</c> is two imports; a gathering missing or doubling an ordinal is malformed.</summary>
+        /// <summary>
+        /// A repeated operand is gathered once an ordinal, so <c>x || x</c> is two imports at two ordinals; a gathering
+        /// doubling an ordinal holds fewer ordinals than imports, which S's image rules read as no gathering of the call's
+        /// arity (G6), and a kind no class names is keyed as it is, a key no row holds.
+        /// </summary>
         [Fact]
         public void ARepeatedOperandIsOneImportAnOrdinal()
         {
             var x = ValueSet.Of(StringType);
-            Keys("||", Gathered(Text(0, x), Text(1, x))).Should().NotContain(RenderingImage.Malformed);
-            Keys("||", Gathered(Text(0, x), Text(2, x))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
-            Keys("||", Gathered(Text(0, x), Text(0, ValueSet.Of(StringType, NullType)))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
+            PathImport.OrdinalsOf(Gathered(Text(0, x), Text(1, x))).Should().Equal(ValueSet.Of(0L, 1L));
+            PathImport.OrdinalsOf(Gathered(Text(0, x), Text(0, ValueSet.Of(StringType, NullType)))).Should().Equal(ValueSet.Of(0L), "two imports at one ordinal are no gathering of two operands");
+            Keys("F", Gathered(Text(0, ValueSet.Of("date"))), ValueSet.Of(0L)).Should().Equal(ValueSet.Of(FunctionKey.Of("F", 0, CosmosValueClass.None, JsonCharacterBand.None)));
         }
 
-        /// <summary>A nested place is read through its type's reader, a text place as text; a raw reading was measured by no row.</summary>
+        /// <summary>
+        /// A nested place is read through its type's reader, a text place as text, which the rows were measured through; a
+        /// raw reading was measured by none, and its reader lies beyond what S's image rules license (G6). A call is keyed by
+        /// the name its rows give it at its type, an arithmetic operator's with its type, and none where they name none.
+        /// </summary>
         [Fact]
         public void ANestedPlaceIsReadThroughItsType()
         {
             var inner = PathImport.Of(0, PredicateAtom.TypedReader("VARCHAR"), PathValues.OfKinds(ValueSet.Of(StringType)), ClassSet(JsonCharacterBand.None));
             Keys("LOWER", Gathered(inner)).Should().Equal(Strings("LOWER", 0, JsonCharacterBand.None));
-            Keys("LOWER", Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).Should().Equal(ValueSet.Of(RenderingImage.Malformed));
-            RenderingImage.KeyFunction("+", "INTEGER").Should().Be("+:INTEGER");
-            RenderingImage.KeyFunction("LOWER", "VARCHAR").Should().Be("LOWER");
+            var (_, readers) = ProbeRows.Measured.FunctionReads.Single(f => f.Function == "LOWER");
+            var licensed = ValueSet.From(readers).Union(ValueSet.From(ProbeRows.Measured.LiteralReaders));
+            PathImport.ReadersOf(Gathered(inner, Literal(1, Of("a")))).AsEnumerable().All(licensed.Contains).Should().BeTrue();
+            PathImport.ReadersOf(Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).AsEnumerable().All(licensed.Contains).Should().BeFalse();
+            ProbeRows.Measured.CallKey("+", "INTEGER").Should().Be("+:INTEGER");
+            ProbeRows.Measured.CallKey("LOWER", "VARCHAR").Should().Be("LOWER");
+            ProbeRows.Measured.CallKey("+", "SMALLINT").Should().BeNull("no row measured + at SMALLINT");
+            ProbeRows.Measured.CallKey("ABS", "INTEGER").Should().BeNull();
         }
 
         /// <summary>
-        /// The image is the call evaluated on single values C# computes as Calcite does, and elsewhere every value of the
-        /// result's type, with absent wherever an operand may be other than a string: never narrower than the call.
+        /// The image is the call evaluated on single values C# computes as Calcite does, and elsewhere the kinds S's rule
+        /// gave it: never narrower than the call.
         /// </summary>
         [Fact]
-        public void TheImageIsTheCallOnPointsAndItsTypeElsewhere()
+        public void TheImageIsTheCallOnPointsAndItsKindsElsewhere()
         {
-            RenderingImage.Of("LOWER", "VARCHAR", Gathered(Literal(0, Of("AbC")))).Should().Be(PathImport.CellOf(Of("abc")));
-            RenderingImage.Of("UPPER", "VARCHAR", Gathered(Literal(0, Of("straße")))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)), "Java's full mapping is not C#'s outside ASCII");
-            RenderingImage.Of("CHAR_LENGTH", "INTEGER", Gathered(Literal(0, Of("a\U0001F600")))).Should().Be(PathImport.CellOf(Of(3m)), "Calcite counts UTF-16 units");
-            RenderingImage.Of("TRIM BOTH", "VARCHAR", Gathered(Literal(0, Of(" ")), Literal(1, Of(" a\t ")))).Should().Be(PathImport.CellOf(Of("a\t")));
-            RenderingImage.Of("LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)));
-            RenderingImage.Of("LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, PathValues.AbsentKind)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
+            var strings = PathValues.OfKinds(ValueSet.Of(StringType));
+            RenderingImage.Of("LOWER", Gathered(Literal(0, Of("AbC"))), strings).Should().Be(PathImport.CellOf(Of("abc")));
+            RenderingImage.Of("UPPER", Gathered(Literal(0, Of("straße"))), strings).Should().Be(strings, "Java's full mapping is not C#'s outside ASCII");
+            RenderingImage.Of("CHAR_LENGTH", Gathered(Literal(0, Of("a\U0001F600"))), PathValues.OfKinds(ValueSet.Of(IntegerType))).Should().Be(PathImport.CellOf(Of(3m)), "Calcite counts UTF-16 units");
+            RenderingImage.Of("TRIM BOTH", Gathered(Literal(0, Of(" ")), Literal(1, Of(" a\t "))), strings).Should().Be(PathImport.CellOf(Of("a\t")));
+            RenderingImage.Of("LOWER", Gathered(Text(0, ValueSet.Of(StringType))), strings).Should().Be(strings);
         }
 
-        /// <summary>A (D) function's image is every kind of its result type and undefined, never narrower.</summary>
+        /// <summary>
+        /// The images S's rules give, as the column gate's replica reads them off the rows (G6): a call the service defines
+        /// alone is every kind of its type and undefined; one Calcite answers null over some key of holds absent beside its
+        /// type's kinds, as an operand no row keys lets it; and one whose keys all yield a value is its type's kinds.
+        /// </summary>
         [Fact]
-        public void ADeclaredFunctionsImageIsItsResultTypeAndUndefined()
+        public void TheImageIsItsTypesKindsAndAbsentWhereTheRowsSaySo()
         {
-            RenderingImage.Of("ToString", "VARCHAR", Gathered(Text(0, ValueSet.Of(IntegerType, FractionType)))).Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
-            RenderingImage.Of("+:INTEGER", "INTEGER", Gathered(PathImport.Of(0, PredicateAtom.TypedReader("INTEGER"), PathValues.OfKinds(ValueSet.Of(IntegerType)), NoBand), Literal(1, Of(1m))))
+            var measured = ProbeRows.Measured;
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "ToString", "VARCHAR", Gathered(Text(0, ValueSet.Of(IntegerType, FractionType))))
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "+:INTEGER", "INTEGER", Gathered(PathImport.Of(0, PredicateAtom.TypedReader("INTEGER"), PathValues.OfKinds(ValueSet.Of(IntegerType)), NoBand), Literal(1, Of(1m))))
                 .Should().Be(PathValues.OfKinds(ValueSet.Of(IntegerType)));
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType))))
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)));
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, PathValues.AbsentKind))))
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), "Calcite's LOWER is null over an absent path");
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LEFT", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of(2m))))
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), "no row keys LEFT's count");
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, StringCalls.NullAsEmpty, "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, NullType)), Literal(1, Of("z"))))
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)), "the concatenation that reads a null as empty is a string over one");
         }
 
     }

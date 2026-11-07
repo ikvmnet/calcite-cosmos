@@ -53,6 +53,41 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(string Function, long Subject)> FunctionSubjects { get; init; } = [];
 
         /// <summary>
+        /// The names each function's rows are filed under, by the operator they are of and the SQL type they are keyed by,
+        /// none where the rows are the function's alone (<c>CosmosAxiomRows.ReadFunctionNames</c>, G6): S's <c>rowname</c>
+        /// and <c>rownamedalone</c>, from which its rule keys a call.
+        /// </summary>
+        public IReadOnlyList<(string Operator, string? Type, string Name)> FunctionNames { get; init; } = [];
+
+        /// <summary>
+        /// What Calcite answers over each function key, a value or null, as its row states (<c>CosmosAxiomRows.ReadFunctionYields</c>,
+        /// G6): what S's image holds of a call whose keys agree.
+        /// </summary>
+        public IReadOnlyList<(FunctionKey Key, CalciteYield Yields)> FunctionYields { get; init; } = [];
+
+        /// <summary>
+        /// The kinds of value each SQL type holds (<c>CosmosRendering.ReadTypeKinds</c>, G6), a constant of Calcite's type
+        /// system: what a computed place of the type may hold where it is a value. None in a definition that names none,
+        /// where no call is imaged but at a point.
+        /// </summary>
+        public IReadOnlyList<(string Type, string Kind)> TypeKinds { get; init; } = [];
+
+        /// <summary>
+        /// The readers of a literal operand, its own cell (G6): read exactly whatever function reads it, so S licenses it
+        /// beside the readers a function's rows were measured through, and keyed as a literal where the rows key one apart.
+        /// </summary>
+        public IReadOnlyList<string> LiteralReaders { get; init; } = [PathImport.LiteralReader];
+
+        /// <summary>
+        /// The name a call of an operator at a SQL type is keyed by, as S's rule reads <see cref="FunctionNames"/>: its name at
+        /// the type where the rows name one, its own where they name it alone, <c>null</c> where they name neither. A read
+        /// of the rows, for the translator's bridge and the tests; S keys its own calls by its rule.
+        /// </summary>
+        public string? CallKey(string op, string? type) =>
+            FunctionNames.FirstOrDefault(n => n.Operator == op && n.Type is not null && n.Type == type).Name
+            ?? FunctionNames.FirstOrDefault(n => n.Operator == op && n.Type is null).Name;
+
+        /// <summary>
         /// What each raw column answers on each key (<c>CosmosAxiomRows.ReadColumns</c>), whose union S's rule takes (h12).
         /// None in a definition that names none, where a raw reading's cells read anything and a raise.
         /// </summary>

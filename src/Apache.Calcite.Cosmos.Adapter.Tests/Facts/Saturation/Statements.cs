@@ -339,8 +339,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 _ => null,
             };
 
-            return Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.RowFunctions.Contains(Apache.Calcite.Cosmos.Facts.Rendering.RenderingImage.KeyFunction(call.Function, type))
-                && Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Spell(call, Spelling) is string spelled ? call with { Type = type, Spelled = spelled } : null;
+            return Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Spell(call, Spelling) is string spelled ? call with { Type = type, Spelled = spelled } : null;
         }
 
         static string Op(Random random) => random.Next(10) switch

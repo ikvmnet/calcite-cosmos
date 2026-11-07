@@ -143,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         public static IEnumerable<string> Unsound(IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> measured, IEnumerable<CosmosFunctionOutcome> recorded, CosmosAxiomTarget on)
         {
-            var rows = recorded.Where(o => (o.On & on) != 0).Select(o => (Key: FunctionKey.Of(o.Function, o.Subject, o.Operand, o.Band, o.Value), o.Answer)).ToList();
+            var rows = recorded.Where(o => (o.On & on) != 0).Select(o => (Key: FunctionKey.Of(o.Name, o.Subject, o.Operand, o.Band, o.Value), o.Answer)).ToList();
             var covered = new HashSet<FunctionKey>();
             foreach (var (key, answer) in measured)
             {

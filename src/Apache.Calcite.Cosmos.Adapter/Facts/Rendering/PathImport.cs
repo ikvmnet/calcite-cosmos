@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -25,6 +26,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>One value, there and nothing else.</summary>
         public static PathValues CellOf(string value) => PathValues.Meet(PathValues.OneOf(ValueSet.Of(value)), PathValues.OfKinds(ValueSet.Of(JsonValues.TypeOf(value))));
+
+        /// <summary>The ordinals a gathering holds an import at, as a rule reads them: one each where it is complete (G6).</summary>
+        public static ValueSet<long> OrdinalsOf(ValueSet<PathImport> gathered) => ValueSet.From(gathered.AsEnumerable().Select(i => i.Ordinal));
+
+        /// <summary>The readers a gathering's imports are read through, as a rule reads them (G6).</summary>
+        public static ValueSet<string> ReadersOf(ValueSet<PathImport> gathered) => ValueSet.From(gathered.AsEnumerable().Select(i => i.Reader));
 
         /// <summary>By ordinal, then by everything else spelled, so a set holds each distinct import once.</summary>
         public int CompareTo(PathImport? other) =>

@@ -49,7 +49,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// absence. A node that keeps no document imports nothing. Beside an atom <paramref name="beneath"/> names, what its
         /// path may hold where its conjunct was rendered, a stratum beneath this node, read by that atom's cells alone: no
         /// fact of it is met with the import's, and the cells it admits nothing of are set aside
-        /// (<see cref="RenderingBundle.Assume"/>).
+        /// (<see cref="RenderingBundle.Assume"/>). A later round's computed atom has every path its call reads stated so, with
+        /// its characters, a stratum of the round's own that S gathers the call's operands beneath
+        /// (<see cref="RenderingBundle.AssumeComputed"/>, G6).
         /// </summary>
         /// <param name="bundle">The bundle, not yet run; <c>null</c> for the report alone.</param>
         /// <param name="source">The node's statement, licence and round.</param>
@@ -93,7 +95,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 spelled.Add(JsonSerializer.Serialize<object?[]>([call.Spelled, call.Type, chars.AsEnumerable()]));
             }
             foreach (var (atom, origin, stratum, read) in beneath ?? [])
-                if (atom.Places.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false, readings) is { Values: { } narrower } beneathIt)
+                if (RenderingBundle.IsComputed(atom) && atom.Computed.Any() && origin.Stratum is null && atom is not SqlPredicate.Beneath)
+                {
+                    if (stratum is not { IsContradictory: false } || read is null)
+                        continue;
+
+                    // Each path the call reads as the round's node holds it, the root's import of a table it holds no row of.
+                    var operands = atom.Places.OrderBy(SqlValue.Spell, StringComparer.Ordinal).Select(p => (Path: p, Read: ReadOf(stratum, read, p, true, readings))).ToList();
+                    bundle?.AssumeComputed(origin with { Node = stratum }, atom, [.. operands.Select(o => (o.Path, o.Read.Values, o.Read.Chars))]);
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath [" + string.Join(",", operands.Select(o => o.Read.Spelled)) + "]");
+                }
+                else if (atom.Places.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false, readings) is { Values: { } narrower } beneathIt)
                 {
                     bundle?.Assume(origin with { Node = stratum }, atom, narrower);
                     stated.Add((atom, narrower));

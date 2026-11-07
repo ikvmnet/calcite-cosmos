@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -36,12 +37,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// constant raw facts (<c>DESIGN.md</c>, <i>The rows the next families read, and function rows</i>). It merges nothing either.
         /// </summary>
         public static IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> ReadFunctions(IEnumerable<CosmosAxiom> axioms) =>
+            ReadFunctions(OutcomesOf(axioms));
+
+        /// <summary>One row per key per target of each function outcome given: the axioms' and the declared rows' alike.</summary>
+        public static IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> ReadFunctions(IEnumerable<CosmosFunctionOutcome> outcomes) =>
         [
-            .. from axiom in axioms
-               from outcome in axiom.FunctionOutcomes ?? []
+            .. from outcome in outcomes
                from target in Targets
                where outcome.On.HasFlag(target.Flag)
-               select (FunctionKey.Of(outcome.Function, outcome.Subject, outcome.Operand, outcome.Band, outcome.Value), target.Target, outcome.Answer),
+               select (KeyOf(outcome), target.Target, outcome.Answer),
+        ];
+
+        /// <summary>
+        /// One row per key of each function outcome, with what Calcite answers over it, a value or null (G6), S's
+        /// <c>functionyield</c>: what a call's image holds where its keys agree, as the row states it. It merges nothing.
+        /// </summary>
+        public static IReadOnlyList<(FunctionKey Key, CalciteYield Yields)> ReadFunctionYields(IEnumerable<CosmosFunctionOutcome> outcomes) =>
+            [.. (from outcome in outcomes select (KeyOf(outcome), outcome.Yields)).Distinct()];
+
+        /// <summary>
+        /// One row per name a function's rows are filed under, with the operator it is of and the SQL type it is keyed by,
+        /// none where the rows are the function's alone (G6), S's <c>rowname</c> and <c>rownamedalone</c>: which name a call
+        /// is keyed by is S's rule over these, never a list of the operators keyed by type.
+        /// </summary>
+        public static IReadOnlyList<(string Operator, string? Type, string Name)> ReadFunctionNames(IEnumerable<CosmosFunctionOutcome> outcomes) =>
+            [.. (from outcome in outcomes select (outcome.Function, outcome.Type, outcome.Name)).Distinct()];
+
+        /// <summary>Every function outcome of the axioms given.</summary>
+        public static IEnumerable<CosmosFunctionOutcome> OutcomesOf(IEnumerable<CosmosAxiom> axioms) => axioms.SelectMany(a => a.FunctionOutcomes ?? []);
+
+        static FunctionKey KeyOf(CosmosFunctionOutcome outcome) => FunctionKey.Of(outcome.Name, outcome.Subject, outcome.Operand, outcome.Band, outcome.Value);
+
+        /// <summary>
+        /// The function rows declared rather than measured (G6), read beside the axioms' wherever theirs are, as
+        /// <see cref="Owed"/>'s cells are: S's image and the translator's column gate read them alike.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A function no run measured that a gate holds to its rows</b>, Calcite's library <c>LENGTH</c>: each key
+        /// <see cref="CosmosFunctionAnswer.Unmeasured"/> on both targets, so that it is read as unmeasured rather than as
+        /// unnamed, and no reader it was measured through, so that no image and no column is written of it. Its spelling is
+        /// the service's <c>LENGTH</c>, which counts what <c>CHAR_LENGTH</c>'s rows say it counts; what Calcite's counts in
+        /// each library has not been measured beside it.
+        /// </para>
+        /// <para>
+        /// <b>A function the service defines alone</b>, the D class, <c>ToString</c>: one of this adapter's own operators,
+        /// which Calcite has no body for, so what the service answers is what it means. Each key is
+        /// <see cref="CosmosFunctionAnswer.Defined"/> on both targets over every kind and band, and Calcite's call null over
+        /// any, the service's undefined being its answer too: S images it as every kind of its type and absent, whatever
+        /// it reads its operand through, and the gate passes it (F3).
+        /// </para>
+        /// </remarks>
+        public static IReadOnlyList<CosmosFunctionOutcome> Declared { get; } =
+        [
+            .. from kind in new[] { CosmosValueClass.String, CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
+                   CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
+               select new CosmosFunctionOutcome("LENGTH", FunctionKey.Every, kind, JsonCharacterBand.None, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
+                   CosmosFunctionAnswer.Unmeasured, CalciteYield.Null),
+            .. from kind in new[] { CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
+                   CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
+               select new CosmosFunctionOutcome("ToString", FunctionKey.Every, kind, JsonCharacterBand.None, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
+                   CosmosFunctionAnswer.Defined, CalciteYield.Null),
+            .. from band in JsonValues.CharacterClasses.Where(c => c.Flag == c.Within).Select(c => c.Flag).Prepend(JsonCharacterBand.None)
+               select new CosmosFunctionOutcome("ToString", FunctionKey.Every, CosmosValueClass.String, band, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
+                   CosmosFunctionAnswer.Defined, CalciteYield.Null),
         ];
 
         /// <summary>
@@ -174,12 +233,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// One row per operand a function outcome is of, each as its row names it (F2): S's union gathers a function's, so
         /// no reader picks one. It merges nothing either.
         /// </summary>
-        public static IReadOnlyList<(string Function, long Subject)> ReadFunctionSubjects(IEnumerable<CosmosAxiom> axioms) =>
-        [
-            .. (from axiom in axioms
-                from outcome in axiom.FunctionOutcomes ?? []
-                select (outcome.Function, outcome.Subject)).Distinct(),
-        ];
+        public static IReadOnlyList<(string Function, long Subject)> ReadFunctionSubjects(IEnumerable<CosmosAxiom> axioms) => ReadFunctionSubjects(OutcomesOf(axioms));
+
+        /// <summary>One row per operand each function outcome given is of, by the name its rows are filed under.</summary>
+        public static IReadOnlyList<(string Function, long Subject)> ReadFunctionSubjects(IEnumerable<CosmosFunctionOutcome> outcomes) =>
+            [.. (from outcome in outcomes select (outcome.Name, outcome.Subject)).Distinct()];
 
         /// <summary>
         /// One row per function an axiom's rows compute: the readers its witnesses were read through, which S reads as
@@ -204,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             [
                 .. from axiom in all
                    let readers = axiom.Readers ?? []
-                   from function in (axiom.FunctionOutcomes ?? []).Select(o => o.Function).Distinct()
+                   from function in (axiom.FunctionOutcomes ?? []).Select(o => o.Name).Distinct()
                    select (function, (IReadOnlyList<string>)(readers.Contains(PredicateAtom.TextReader) ? [.. readers, .. asText] : readers)),
             ];
         }

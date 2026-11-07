@@ -3003,19 +3003,17 @@ across documents* and *A join of a container to itself* is the record.
   and `chars` there, and a nested call's characters as F derives them of the call the places loader reads, F's
   characters reading a raw reading through its column. An operand S gathers nothing of, a parameter or a `CASE`, leaves
   the call no image, as S's count short of the arity does; a nested call is gathered through its own type whatever the
-  loader makes a place of. G6 replaces it by asking S's image of each call the translator writes, and meets two
-  differences first, each a push the bridge keeps that S as built would not prove:
-  - S's admission imports a computed atom's operands from the statement's root (`ArmImport` narrows only beneath an
-    `OR`'s arm, `ImportedChars` has no stratum), so it would decline three corpus pushes the bridge keeps over the node
-    their conjunct is rendered beneath (DESIGN.md, *The column bridge*: 477, 240, and 2763 on Azure), which S's image
-    rule proves over that node's import (`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`).
-    Before h15 S states a computed atom's operands where its conjunct is rendered, as it states a one-path atom there:
-    a stratum of its own for a later round's computed atom, whose `ArmImport` and characters are that node's.
-  - The loader's place gate (`RowFunctions`, four deep; G6's site) gives S no place for a call more than four deep,
-    where the bridge pushes it when its rows agree; no corpus plan holds one. G6 moves the gate into rows and S's
-    schedule, and lists what the depth it keeps still declines. `Spell`'s literal filter is legality alone since G1,
-    refusing a literal holding an unpaired surrogate, which the SDK will not send; one holding U+0000, U+FDD0 or a pair
-    is a place S's image rule reads through the function rows.
+  loader makes a place of. G6 replaces it by asking S's image of each call the translator writes, and met two
+  differences first (g6), each a push the bridge kept that S as built would not prove:
+  - S's admission imported a computed atom's operands from the statement's root, so it declined three corpus pushes
+    the bridge keeps over the node their conjunct is rendered beneath (477, 240, and 2763 on Azure). S now states a
+    later round's computed atom beneath a stratum of its own, whose `ArmImport` and characters are that node's
+    (`RenderingBundle.AssumeComputed`, `RenderingValuedTests.ALaterRoundsComputedAtomIsReadBeneathItsRound`).
+  - The loader's place gate (`RowFunctions`, four deep) is gone: whether the rows name a call is S's `CallKey`, and how
+    deep S images one is its fixpoint's, bounded by the run's iterations (64 and 8 a leaf in check mode), not by a
+    depth. `Spell` keeps its spelling table and legality: a literal holding an unpaired surrogate, which the SDK will
+    not send, a window whose start is no whole literal, and a `REPEAT` of any count but 0, whose result bound no row
+    holds (a result key owed to the rows).
   It goes when S writes the column (h37).
 - **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
   `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`

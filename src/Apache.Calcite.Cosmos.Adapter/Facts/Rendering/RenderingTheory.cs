@@ -105,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Spelling = Graph.DefineFunction<JPath, string>("spelling");
             Conjunct = Graph.DefineRelation<ServiceForm, ServiceForm>("conjunct");
             Under = Graph.DefineRelation<RenderingSet>("under");
-            Imported = Graph.DefineFunction<JPath, PathValues>("imported");
+            Imported = Graph.DefineFunction<JPath, PathValues>("imported", new ValueLattice<PathValues>("joined imports", PathValues.Join));
             Assumed = Graph.DefineFunction<Pred, PathValues>("assumed");
             ImportedChars = Graph.DefineFunction<JPath, ValueSet<string>>("importedchars");
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
@@ -173,6 +173,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Arity = Graph.DefineFunction<Val, long>("arity");
             CallArgAt = Graph.DefineRelation<Val, long, Val>("callargat");
             ArmImport = Graph.DefineFunction<long, JPath, PathValues>("armimport");
+            ArmChars = Graph.DefineFunction<long, JPath, ValueSet<string>>("armchars");
             StratumId = Graph.DefineFunction<Pred, long>("stratumid");
             Gathered = Graph.DefineFunction<long, Val, ValueSet<PathImport>>("gathered", ValueLattice.Union<PathImport>());
             FunctionAnswer = Graph.DefineFunction<FunctionKey, RenderingTarget, CosmosFunctionAnswer>("functionanswer");
@@ -181,6 +182,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             MeasuredReaders = Graph.DefineFunction<string, ValueSet<string>>("measuredreaders", ValueLattice.Intersect<string>());
             ValueClassHolds = Graph.DefineRelation<CosmosValueClass, FunctionValueClass, FunctionValueClass>("valueclassholds");
             DisagreeingKeys = Graph.DefineFunction<RenderingSet, string, ValueSet<FunctionKey>>("disagreeingkeys", ValueLattice.Union<FunctionKey>());
+            RowName = Graph.DefineFunction<string, string, string>("rowname");
+            RowNamedAlone = Graph.DefineRelation<string>("rownamedalone");
+            CallKey = Graph.DefineFunction<Val, string>("callkey");
+            FunctionYield = Graph.DefineFunction<FunctionKey, CalciteYield>("functionyield");
+            YieldKeys = Graph.DefineFunction<string, CalciteYield, ValueSet<FunctionKey>>("yieldkeys", ValueLattice.Union<FunctionKey>());
+            DefinedKeys = Graph.DefineFunction<string, ValueSet<FunctionKey>>("definedkeys", ValueLattice.Union<FunctionKey>());
+            TypeKinds = Graph.DefineFunction<string, ValueSet<string>>("typekinds", ValueLattice.Union<string>());
+            LiteralReaders = Graph.DefineFunction<ValueSet<string>>("literalreaders", ValueLattice.Union<string>());
+            HeldAbsent = Graph.DefineFunction<Val, ValueSet<string>>("heldabsent", ValueLattice.Union<string>());
 
             // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
             RawColumn = Graph.DefineFunction<RawKey, string, Truths>("rawcolumn");
@@ -259,13 +269,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineChoice(best, weaken);
             DefineCase(at, twovalued, best, weaken);
 
+            // The IR's readings, run with its analysis: a comparison of two readings as its pair's atom, and a call as the
+            // name its rows are filed under (G6), each complete before any place is gathered. One ruleset, as a ruleset's
+            // every round in a saturation counts against a run's iterations.
+            var pair = Graph.DefineRuleset("pair");
             var place = Graph.DefineRuleset("place");
             var image = Graph.DefineRuleset("image");
             var assume = Graph.DefineRuleset("assume");
-            DefineValued(disagree, place, image, assume);
-            var pair = Graph.DefineRuleset("pair");
+            DefineValued(disagree, pair, place, image, assume);
             DefinePair(pair, place);
-            // A nested call is gathered once its inner place is written: each nesting level is one outer pass.
+            // A nested call is gathered once its inner place is written: each nesting level is one outer pass, to the fixpoint,
+            // so how deep S images is the run's iteration budget's (RenderingBundle.PlaceIterations), not a depth the loader
+            // cuts (G6): a call nested past it leaves the run incomplete, and its conjunct declined.
             var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
 
             // What reads a key, a failing side and a pair read Final complete; an entry reads all three complete (G2-G4).
@@ -334,7 +349,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A place's import beneath a stratum, 0 the root's: the host's for a path, the image rule's for a computed place.</summary>
         public Function<long, JPath, PathValues> ArmImport { get; }
 
-        /// <summary>The stratum an atom over a computed place is read beneath, 0 at the root; written by the bundle.</summary>
+        /// <summary>
+        /// The classes a place's characters may hold beneath a stratum, written by the bundle: the node's a later round's
+        /// computed atom was rendered beneath read, the root's elsewhere, a superset (G6).
+        /// </summary>
+        public Function<long, JPath, ValueSet<string>> ArmChars { get; }
+
+        /// <summary>
+        /// The stratum an atom over a computed place is read beneath, 0 at the root, an arm's, or a later round's own where its
+        /// conjunct was rendered beneath that round's node (G6); written by the bundle.
+        /// </summary>
         public Function<Pred, long> StratumId { get; }
 
         /// <summary>A call's operands' imports beneath a stratum, one an ordinal once complete.</summary>
@@ -364,8 +388,41 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The atoms a class of value holds of a kind of operand (<see cref="FunctionValueClasses.Holding"/>): constant data.</summary>
         public Relation<CosmosValueClass, FunctionValueClass, FunctionValueClass> ValueClassHolds { get; }
 
-        /// <summary>The keys of a function some target a set serves answers otherwise than Calcite, derived at the build.</summary>
+        /// <summary>
+        /// The keys of a function some target a set serves answers otherwise than Calcite, derived at the build; a key the
+        /// service defines (<see cref="CosmosFunctionAnswer.Defined"/>) disagrees nowhere.
+        /// </summary>
         public Function<RenderingSet, string, ValueSet<FunctionKey>> DisagreeingKeys { get; }
+
+        /// <summary>The name an operator's rows are filed under at a SQL type, <c>+:INTEGER</c> (<c>rowname</c>, G6): constant data.</summary>
+        public Function<string, string, string> RowName { get; }
+
+        /// <summary>An operator whose rows are filed under its own name, whatever its type (<c>rownamedalone</c>, G6): constant data.</summary>
+        public Relation<string> RowNamedAlone { get; }
+
+        /// <summary>The name a call's rows are filed under, S's rule over <see cref="RowName"/> and <see cref="RowNamedAlone"/> (G6).</summary>
+        public Function<Val, string> CallKey { get; }
+
+        /// <summary>What Calcite answers over a function key, a value or null, as its row states (G6): constant data.</summary>
+        public Function<FunctionKey, CalciteYield> FunctionYield { get; }
+
+        /// <summary>The keys of a function Calcite answers a value, or null, over, each read as the atoms its class holds (G6).</summary>
+        public Function<string, CalciteYield, ValueSet<FunctionKey>> YieldKeys { get; }
+
+        /// <summary>The keys of a function the service defines alone (the D class), each read as the atoms its class holds (G6).</summary>
+        public Function<string, ValueSet<FunctionKey>> DefinedKeys { get; }
+
+        /// <summary>The kinds of value a SQL type holds, a constant of Calcite's type system (G6): constant data.</summary>
+        public Function<string, ValueSet<string>> TypeKinds { get; }
+
+        /// <summary>The readers of a literal operand, read exactly and keyed apart where the rows key a literal (G6): constant data.</summary>
+        public Function<ValueSet<string>> LiteralReaders { get; }
+
+        /// <summary>
+        /// Absent, where a call has an operand at an ordinal its function's rows name no key of (G6): no row says what
+        /// Calcite answers over it, so the call's image holds absent beside its type's kinds. Empty otherwise.
+        /// </summary>
+        public Function<Val, ValueSet<string>> HeldAbsent { get; }
 
         /// <summary>What one raw column answers on a key (<c>CosmosAxiomRows.ReadColumns</c>), each row raw.</summary>
         public Function<RawKey, string, Truths> RawColumn { get; }
@@ -587,8 +644,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<JPath, string> Spelling { get; }
         public Relation<ServiceForm, ServiceForm> Conjunct { get; }
         public Relation<RenderingSet> Under { get; }
+        /// <summary>
+        /// What a place may hold wherever an atom reads it: a path's, the host's import, written once; a computed place's,
+        /// the join of its images beneath the root and each stratum an atom over it is read at (G6), so a later round's atom
+        /// is cut from its place's image there where the root has none. Each atom sets aside the cells its stratum does not
+        /// admit (<see cref="Assumed"/>).
+        /// </summary>
         public Function<JPath, PathValues> Imported { get; }
         public Function<Pred, PathValues> Assumed { get; }
+
         public Function<JPath, ValueSet<string>> ImportedChars { get; }
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
 
@@ -726,6 +790,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterEnum<TemplateId>();
             values.RegisterEnum<CosmosFunctionAnswer>();
             values.RegisterEnum<FunctionValueClass>();
+            values.RegisterEnum<CalciteYield>();
             values.Register<ServiceForm>("service form");
             values.Register<Priced>("priced");
             values.Register<RenderingRexGrammar.Value>("rex grammar");
@@ -1868,7 +1933,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // as the bundle writes it; beneath each stratum its operands' imports are gathered, and once every one is in and every key they fall under
         // agrees on every target the set serves, the place's import there is the call's image, and an atom over it is
         // assumed as that. RenderingImage reads keys and evaluates; it decides nothing.
-        void DefineValued(Ruleset disagree, Ruleset place, Ruleset image, Ruleset assume)
+        void DefineValued(Ruleset disagree, Ruleset reading, Ruleset place, Ruleset image, Ruleset assume)
         {
             // A row covers, and disagrees on, each atom its class holds: a union, so a call's atom is the image rule's once
             // some row covers it and none disagrees, whether the row names a class or every value (F2).
@@ -1888,10 +1953,78 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (ans, d) = r.Vars<CosmosFunctionAnswer, ValueSet<RenderingTarget>>("ans", "d");
                 var kd = r.Var<CosmosValueClass>("kd");
                 var (c, a) = r.Vars<FunctionValueClass, FunctionValueClass>("c", "a");
-                r.When(ans.Is(FunctionAnswer.Of(key, x)), d.Is(Serves.Of(st)), kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
+                r.When(ans.Is(FunctionAnswer.Of(key, x)), ans.IsNot(CosmosFunctionAnswer.Same), ans.IsNot(CosmosFunctionAnswer.Defined), d.Is(Serves.Of(st)),
+                    kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
-                r.Where(RenderingPrimitives.IsNotSame.Of(ans));
                 r.Then(DisagreeingKeys.Of(st, Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(Compute.Of(key, a, FunctionKey.WithValue))));
+            });
+
+            // What Calcite answers over a key, a value or null, as its row states, and the keys the service defines alone,
+            // each over the atoms its class holds as the measured keys are (G6).
+            disagree.DefineRule("a function key Calcite answers a value or null over covers each atom its class holds", r =>
+            {
+                var key = r.Var<FunctionKey>("key");
+                var y = r.Var<CalciteYield>("y");
+                var kd = r.Var<CosmosValueClass>("kd");
+                var (c, a) = r.Vars<FunctionValueClass, FunctionValueClass>("c", "a");
+                r.When(y.Is(FunctionYield.Of(key)), kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
+                r.Then(YieldKeys.Of(Compute.Of(key, FunctionKey.FunctionOf), y).Is(Primitives.Singleton<FunctionKey>().Of(Compute.Of(key, a, FunctionKey.WithValue))));
+            });
+
+            disagree.DefineRule("a function key the service defines covers each atom its class holds", r =>
+            {
+                var (key, x) = r.Vars<FunctionKey, RenderingTarget>("key", "x");
+                var kd = r.Var<CosmosValueClass>("kd");
+                var (c, a) = r.Vars<FunctionValueClass, FunctionValueClass>("c", "a");
+                var ans = r.Var<CosmosFunctionAnswer>("ans");
+                r.When(ans.Is(FunctionAnswer.Of(key, x)), ans.Is(CosmosFunctionAnswer.Defined), kd.Is(Compute.Of(key, FunctionKey.KindOf)), c.Is(Compute.Of(key, FunctionKey.ValueOf)), ValueClassHolds.Of(kd, c, a));
+                r.Then(DefinedKeys.Of(Compute.Of(key, FunctionKey.FunctionOf)).Is(Primitives.Singleton<FunctionKey>().Of(Compute.Of(key, a, FunctionKey.WithValue))));
+            });
+
+            // Which name a call's rows are filed under is the rows': its operator's at its type where they name one, its own
+            // where they name it alone (G6), each call's key and absence complete before any place is gathered.
+            reading.DefineRule("a call of an operator its rows name at a type is keyed by that name at its type", r =>
+            {
+                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var (n, t, kn) = r.Vars<string, string, string>("n", "t", "kn");
+                r.When(v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(RowName.Of(n, t)));
+                r.Then(CallKey.Of(v).Is(kn), HeldAbsent.Of(v).Is(ValueSet<string>.Empty));
+            });
+
+            reading.DefineRule("a call of an operator its rows name alone is keyed by its name", r =>
+            {
+                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var (n, t) = r.Vars<string, string>("n", "t");
+                r.When(v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), RowNamedAlone.Of(n));
+                r.Then(CallKey.Of(v).Is(n), HeldAbsent.Of(v).Is(ValueSet<string>.Empty));
+            });
+
+            // An operand no row of its function keys - a window's start, a trim's character, a repetition's stored count -
+            // says nothing of what Calcite answers over it, so the call may be null over it: absent beside its type's kinds
+            // (G6). A literal is keyed where the rows key one apart. Read off the call's operands as the host writes them,
+            // complete before any place is gathered.
+            reading.DefineRule("an operand read at an ordinal its function's rows name no key of lets its call be absent", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var p = r.Var<JPath>("p");
+                var (k, kn) = r.Vars<string, string>("k", "kn");
+                var i = r.Var<long>("i");
+                var sub = r.Var<ValueSet<long>>("sub");
+                r.When(kn.Is(CallKey.Of(v)), sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k));
+                r.Where(Primitives.IsEmpty<long>().Of(Primitives.Intersect<long>().Of(sub, Primitives.Insert<long>().Of(Primitives.Singleton<long>().Of(i), FunctionKey.Every))));
+                r.Then(HeldAbsent.Of(v).Is(ValueSet.Of(PathValues.AbsentKind)));
+            });
+
+            reading.DefineRule("a literal operand at an ordinal its function's rows name no key of, nor any literal of, lets its call be absent", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (c, kn) = r.Vars<string, string>("c", "kn");
+                var i = r.Var<long>("i");
+                var sub = r.Var<ValueSet<long>>("sub");
+                r.When(kn.Is(CallKey.Of(v)), sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), w.Is(Ir.Literal.Of(c)));
+                var keying = Primitives.Insert<long>().Of(Primitives.Insert<long>().Of(Primitives.Singleton<long>().Of(i), FunctionKey.Every), FunctionKey.Literal);
+                r.Where(Primitives.IsEmpty<long>().Of(Primitives.Intersect<long>().Of(sub, keying)));
+                r.Then(HeldAbsent.Of(v).Is(ValueSet.Of(PathValues.AbsentKind)));
             });
 
             place.DefineRule("a call's operands' imports are gathered beneath each stratum, one an ordinal", r =>
@@ -1901,27 +2034,69 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (kq, k) = r.Vars<string, string>("kq", "k");
                 var (i, s) = r.Vars<long, long>("i", "s");
                 var (x, ch) = r.Vars<PathValues, ValueSet<string>>("x", "ch");
-                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), x.Is(ArmImport.Of(s, p)), ch.Is(ImportedChars.Of(p)));
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), x.Is(ArmImport.Of(s, p)), ch.Is(ArmChars.Of(s, p)));
                 r.Then(Gathered.Of(s, v).Is(Primitives.Singleton<PathImport>().Of(Compute.Of(i, k, x, ch, PathImport.Of))));
             });
 
-            image.DefineRule("a place's import beneath a stratum is its call's image, once every operand is in and every key agrees", r =>
+            // The two images of a measured call, apart on whether Calcite answers null over some key its operands fall under:
+            // a value of its type over every one, the point where C# evaluates it as Calcite does, or absent beside. Each
+            // reads the gathering complete, one import an ordinal, each read through a reader its rows were measured through or
+            // exactly, and every key measured and agreeing on every target the set serves (G6).
+            void Measured(RuleBuilder r, bool absent)
             {
-                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var v = r.Var<Val>("v");
                 var q = r.Var<JPath>("q");
-                var (kq, n, t, kn) = r.Vars<string, string, string, string>("kq", "n", "t", "kn");
+                var (kq, t, kn) = r.Vars<string, string, string>("kq", "t", "kn");
                 var (s, m) = r.Vars<long, long>("s", "m");
                 var g = r.Var<ValueSet<PathImport>>("g");
                 var st = r.Var<RenderingSet>("st");
                 var (z, d, ks) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>, ValueSet<FunctionKey>>("z", "d", "ks");
-                var img = r.Var<PathValues>("img");
-                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), v.Is(Ir.Call.Of(n, args)), t.Is(SqlType.Of(v)), kn.Is(Compute.Of(n, t, RenderingImage.KeyFunction)),
-                    g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)), m.Is(Primitives.Count<PathImport>().Of(g)), Under.Of(st), z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)));
-                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), MeasuredReaders.Of(kn), RenderingImage.Keys)));
+                var (vk, nk) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>>("vk", "nk");
+                var (rd, ex, tk, ha) = r.Vars<ValueSet<string>, ValueSet<string>, ValueSet<string>, ValueSet<string>>("rd", "ex", "tk", "ha");
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), kn.Is(CallKey.Of(v)), t.Is(SqlType.Of(v)), g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)),
+                    m.Is(Primitives.Count<PathImport>().Of(g)), m.Is(Primitives.Count<long>().Of(Compute.Of(g, PathImport.OrdinalsOf))), Under.Of(st),
+                    z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)), rd.Is(MeasuredReaders.Of(kn)), ex.Is(LiteralReaders.Of()));
+                r.When(vk.Is(YieldKeys.Of(kn, CalciteYield.Value)), nk.Is(YieldKeys.Of(kn, CalciteYield.Null)), tk.Is(TypeKinds.Of(t)), ha.Is(HeldAbsent.Of(v)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(g, PathImport.ReadersOf), Primitives.Union<string>().Of(rd, ex)));
+                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), ex, RenderingImage.Keys)));
                 r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
                 r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
-                r.When(img.Is(Compute.Of(kn, t, g, RenderingImage.Of)));
-                r.Then(ArmImport.Of(s, q).Is(img));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, Primitives.Union<FunctionKey>().Of(vk, nk)));
+                var kinds = Primitives.Union<string>().Of(tk, ha);
+                if (absent)
+                {
+                    r.Where(RenderingPrimitives.Overlaps.Of(ks, nk));
+                    r.Then(ArmImport.Of(s, q).Is(Compute.Of(Primitives.Insert<string>().Of(kinds, PathValues.AbsentKind), PathValues.OfKinds)));
+                }
+                else
+                {
+                    r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, nk)));
+                    r.Then(ArmImport.Of(s, q).Is(Compute.Of(kn, g, Compute.Of(kinds, PathValues.OfKinds), RenderingImage.Of)));
+                }
+            }
+
+            image.DefineRule("a place's import beneath a stratum is its call's image, a value of its type, once every operand is in and every key agrees and is one Calcite answers a value over",
+                r => Measured(r, absent: false));
+            image.DefineRule("a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key agrees and Calcite answers null over one",
+                r => Measured(r, absent: true));
+
+            // A call the service defines alone (the D class) is what the service answers, Calcite having no body for it:
+            // every kind of its type and absent, whatever its operands are read through, once each key they fall under is
+            // one it defines (F3, G6).
+            image.DefineRule("a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key is one the service defines", r =>
+            {
+                var v = r.Var<Val>("v");
+                var q = r.Var<JPath>("q");
+                var (kq, t, kn) = r.Vars<string, string, string>("kq", "t", "kn");
+                var (s, m) = r.Vars<long, long>("s", "m");
+                var g = r.Var<ValueSet<PathImport>>("g");
+                var (dk, ks) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>>("dk", "ks");
+                var tk = r.Var<ValueSet<string>>("tk");
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), kn.Is(CallKey.Of(v)), t.Is(SqlType.Of(v)), g.Is(Gathered.Of(s, v)), m.Is(Arity.Of(v)),
+                    m.Is(Primitives.Count<PathImport>().Of(g)), m.Is(Primitives.Count<long>().Of(Compute.Of(g, PathImport.OrdinalsOf))), dk.Is(DefinedKeys.Of(kn)), tk.Is(TypeKinds.Of(t)));
+                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), LiteralReaders.Of(), RenderingImage.Keys)));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, dk));
+                r.Then(ArmImport.Of(s, q).Is(Compute.Of(Primitives.Insert<string>().Of(tk, PathValues.AbsentKind), PathValues.OfKinds)));
             });
 
             // A path's is the host's import already, written again equal; a computed place's and a pair's are this rule's, and
@@ -1931,6 +2106,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var q = r.Var<JPath>("q");
                 var x = r.Var<PathValues>("x");
                 r.When(x.Is(ArmImport.Of(0L, q)));
+                r.Then(Imported.Of(q).Is(x), NullWhereAbsent.Of(q));
+            });
+
+            // A later round's atom is read beneath a stratum of the round's own, where its place may have an image the root
+            // has none of (G6): the place's import joins it, with the absence beside it a root image would have.
+            image.DefineRule("a computed place's import joins its image beneath each stratum an atom over it is read at", r =>
+            {
+                var e = r.Var<Pred>("e");
+                var (q, a) = (r.Var<JPath>("q"), r.Var<PredicateAtom>("a"));
+                var v = r.Var<Val>("v");
+                var s = r.Var<long>("s");
+                var x = r.Var<PathValues>("x");
+                r.When(Ir.Atom.Of(e, q, a), q.Is(Valued.Of(v)), s.Is(StratumId.Of(e)), x.Is(ArmImport.Of(s, q)));
                 r.Then(Imported.Of(q).Is(x), NullWhereAbsent.Of(q));
             });
 
@@ -2405,6 +2593,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (function, readers) in definition.FunctionReads)
                     w.Assume(MeasuredReaders.Of(function).Is(ValueSet.From(readers)));
+
+                foreach (var (op, type, name) in definition.FunctionNames)
+                    w.Assume(type is null ? RowNamedAlone.Of(op) : RowName.Of(op, type).Is(name));
+
+                foreach (var (key, yields) in definition.FunctionYields)
+                    w.Assume(FunctionYield.Of(key).Is(yields));
+
+                foreach (var function in keys.Select(k => k.Function).Distinct())
+                    foreach (var yields in Enum.GetValues<CalciteYield>())
+                        w.Assume(YieldKeys.Of(function, yields).Is(ValueSet<FunctionKey>.Empty));
+
+                foreach (var (type, kind) in definition.TypeKinds)
+                    w.Assume(TypeKinds.Of(type).Is(ValueSet.Of(kind)));
+
+                w.Assume(LiteralReaders.Of().Is(ValueSet.From(definition.LiteralReaders)));
 
                 foreach (var set in definition.Serves.Keys)
                     foreach (var function in keys.Select(k => k.Function).Distinct())
