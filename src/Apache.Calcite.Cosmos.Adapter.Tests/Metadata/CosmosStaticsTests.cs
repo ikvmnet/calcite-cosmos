@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.StatementTerms.Node", ["Nothing"], StaticFact, "the empty set"),
 
             ("Facts.Rendering.AgreementRows", ["Allowing", "Classes", "Refuting"], StaticFact, "S's agreement boxes"),
-            ("Facts.Rendering.AnswerMeanings", ["Matching", "Measured", "Ordering"], StaticFact, "what each answer was measured to mean, and the comparators and matchers it names"),
+            ("Facts.Rendering.AnswerMeanings", ["Matching", "Measured", "NumberOrders", "StringOrders"], StaticFact, "what each answer was measured to mean, and the comparators and matchers it names"),
             ("Facts.Rendering.CosmosValueClasses", ["Kinds"], StaticFact, "the classes a cell may be of"),
             ("Facts.Rendering.FunctionValueClasses", ["Holding"], StaticFact, "the atoms each class of value a function row may be keyed by holds"),
             ("Facts.Rendering.LeafReads", ["None"], StaticFact, "the empty reads, immutable"),
@@ -180,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.RenderingCost", ["None"], StaticFact, "a sentinel"),
             ("Facts.Rendering.RenderingGraph", ["DefaultRetry"], Infra, "a setting"),
             ("Facts.Rendering.RenderingOracle", ["DefaultWait"], Infra, "a setting"),
-            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsJoinOf", "FormIsLeaf", "FormJoins", "FormLeansOn", "FormRegroups", "HoldsNoBoolean", "IsNotSame", "OutcomesWithin", "PlacesBeyond", "PlacesWithin", "PricedIsReal", "RexWritable", "SameForm", "SetNonempty", "SpellingSplits", "StringComparison", "StringOrdering", "TruthsWithin", "WholeDigitsFit"], StaticFact, "pure functions S's rules call"),
+            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsGrouped", "FormIsJoinOf", "FormIsLeaf", "FormJoins", "FormLeansOn", "FormRegroups", "HoldsNoBoolean", "IsNotSame", "OutcomesWithin", "PlacesBeyond", "PlacesWithin", "PricedIsReal", "RexWritable", "SameForm", "SetNonempty", "SpellingSplits", "StringComparison", "StringOrdering", "TruthsWithin", "WholeDigitsFit"], StaticFact, "pure functions S's rules call"),
             ("Facts.Rendering.RenderingImage", ["Malformed", "Typed"], StaticFact, "a sentinel key, and the operators keyed by type"),
             ("Facts.Rendering.RenderingRexGrammar", ["Guarded", "TypeTests", "Written"], StaticFact, "what a Rex writes"),
             ("Facts.Rendering.RenderingRexGrammar.Value", ["Unguarded"], StaticFact, "an empty set of guarded paths"),

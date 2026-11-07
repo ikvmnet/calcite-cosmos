@@ -251,6 +251,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a case whose else absorbs at its position is its condition joined with its then-arm",
                     "a case whose else is the opposite constant, over a two-valued condition, is its condition's form joined with its then-arm",
                     "a junction holding its connective's unit agrees as Kleene's logic folds it",
+                    "a junction holding its own connective or a part twice agrees as its connective's laws regroup it",
                     "a case's best is the service ternary of its condition's Pos best and its arms' bests, the narrow else over a two-valued condition",
                     "a case's best is the service ternary of its condition's Pos best and its arms' bests, the wide else",
                     "a truth value is exact as the constant its position reads it as",
@@ -286,7 +287,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(123);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(124);
         }
 
         /// <summary>

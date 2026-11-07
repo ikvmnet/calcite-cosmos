@@ -310,20 +310,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static readonly ServiceForm Unjoined = OpaqueOf("unjoined", ValueSet<string>.Empty);
 
         /// <summary>
-        /// Two forms joined by a connective as they stand: a junction of its own flattened into its members and one of each
-        /// part kept in the arms' order, as <see cref="Joined"/> does, but nothing folded: a constant stays a member, which
-        /// S's rule folds where a row says how (<see cref="Unit"/>, G4). Only takes forms apart and puts them together; whether
-        /// the join holds is the rule's. Total, as a rule body's calls must be: no junction joins by anything else, and an
-        /// opaque sentinel says so.
+        /// Two forms joined by a connective as they stand, a junction of the two: nothing flattened, rid of copies or folded. A
+        /// junction of its own connective, a part twice and a constant stay as they are, which S's rules regroup and fold where
+        /// the set's licence and Kleene's rows say how (<see cref="Regrouped"/>, <see cref="Unit"/>, G4). Only puts the forms
+        /// together; whether the join holds is the rule's. Total, as a rule body's calls must be: no junction joins by
+        /// anything else, and an opaque sentinel says so.
         /// </summary>
-        public static ServiceForm Paired(CosmosServiceTest connective, ServiceForm left, ServiceForm right)
+        public static ServiceForm Paired(CosmosServiceTest connective, ServiceForm left, ServiceForm right) =>
+            connective is CosmosServiceTest.And or CosmosServiceTest.Or ? JunctionOf(connective, [left, right]) : Unjoined;
+
+        /// <summary>
+        /// A junction as its connective's associativity and idempotence regroup it: each member of its own connective
+        /// flattened into its members, one of each part kept in order, the one part where one is left. Only takes the form
+        /// apart and puts it together; whether the laws hold is the set's licence and the rule's
+        /// (<see cref="RenderingPrimitives.FormIsGrouped"/>, G4). Total: anything but a junction is the sentinel.
+        /// </summary>
+        public static ServiceForm Regrouped(ServiceForm junction)
         {
-            if (connective is not (CosmosServiceTest.And or CosmosServiceTest.Or))
+            if (junction.Kind is not (ServiceFormKind.And or ServiceFormKind.Or))
                 return Unjoined;
 
-            var kind = connective == CosmosServiceTest.And ? ServiceFormKind.And : ServiceFormKind.Or;
-            var parts = new[] { left, right }.SelectMany(arm => arm.Kind == kind ? arm.Flat : [arm]).Distinct().ToArray();
-            return parts.Length == 1 ? parts[0] : JunctionOf(connective, parts);
+            var parts = junction.Flat.Distinct().ToArray();
+            return parts.Length == 1 ? parts[0] : JunctionOf(junction.Test, parts);
         }
 
         /// <summary>

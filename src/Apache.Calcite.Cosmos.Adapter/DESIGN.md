@@ -9110,9 +9110,9 @@ complete an earlier stratum, is read as not:
 lost their arms for `StoredCodePoint`, U+0000, the high band and the surrogates, and `ByCodePoint` its reading of a lone
 surrogate as U+FFFD: it compares a lone surrogate by its unit and a pair as the code point it encodes, as the service
 orders what it holds. What a matcher matches of two concrete strings is `ServiceLeaf.Matches`, and whether its spelling
-splits a concrete pattern `ServiceLeaf.Splits`, the stored spelling's evaluations beside `Compare`'s; which comparator a
-cell is evaluated under, a string's or a number's, is the evaluator's own dispatch, and which comparators an entry names
-is the answers' roles (F4). `RenderingLeafReadsTests` holds what S hands a comparison, an affix and a pair under each
+splits a concrete pattern `ServiceLeaf.Splits`, the stored spelling's evaluations beside `Compare`'s; which comparators
+read a cell, a string's or a number's, is the answers' roles, keyed by the order's class (F4, G2's `readby`).
+`RenderingLeafReadsTests` holds what S hands a comparison, an affix and a pair under each
 target's set and the portable one, a planted matcher that rewrites under a set sent as written, and which names each set
 may write.
 
@@ -9160,25 +9160,33 @@ g234 moves into S what the audit's G2, G3 and G4 named: which answers read a key
 what a cell's class is to the gate, what licenses and keys a comparison of two paths and what makes two readings a
 pair, what a side that may fail answers, what a constant rests on, and how a junction holding a constant folds. Each is
 rules over rows; C# keeps the readers, the writer and the evaluators of one atom on concrete cells. Eighteen rules are
-added, ten for G2, five for G3 and three for G4, against the audit's two to six, two to three and one to three; no
-count bounds them (S is 123, `RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`). The digests are byte-equal.
+added, ten for G2, five for G3 and three for G4, against the audit's two to six, two to three and one to three, and the
+fix round a nineteenth, G4's regrouping; no count bounds them (S is 124,
+`RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`). The digests are byte-equal.
 
 **The strata.** Settle runs `roles`, `failing` and `pairs` after `tabulate`, each reading `final` complete, and
 `entries` after them, which makes each set's table and pair table once all three are; `matched`, `licence` and `sets`
 follow as before. Check and Generate run `classes` and `gate` in strata of their own, since the gate reads complete the
 rows a candidate's classes rest on (`RenderingOrderTests`).
 
-**What reads a key (G2).** `AnswerMeanings.ReadBy` is host data: every comparator reads an order's entry, the matchers
-(the two code point orders) each affix's and `LIKE`'s. *A key every target its set serves measured is settled* writes
-`final` and seeds the key's `readers` and `readings` empty. *The answers of a key's role read it, where it names one and
-no comparator of another* gives `readers` as `final ∩ readby(test)`, where that is not empty and every comparator among
-the answers is of the test's role: an affix entry naming UTF-16 beside a matcher reads nothing, as `Unmatched` said.
+**What reads a key (G2).** `AnswerMeanings.ReadBy` is host data, keyed by test and operand class: the code point, UTF-16
+and stored code point orders read the order of strings' entry, `numeric` and `numericpointedasdouble` the order of
+numbers', and the matchers (the two code point orders) each affix's and `LIKE`'s over a string. *A key every target its
+set serves measured is settled* writes `final` and seeds the key's `readers` and `readings` empty. *The answers of a
+key's role read it, where it names one and no comparator of another* gives `readers` as
+`final ∩ readby(test, operand)`, where that is not empty and every comparator among the answers is of that role: an
+affix entry naming UTF-16 beside a matcher reads nothing, as `Unmatched` said, and so does an order entry naming a
+comparator of another kind's order, as the parent's `Place` declined one, so its leaf answers anything
+(`ServiceLeafTests.AComparatorOfAnotherKindPlacesNothing`). g234 keyed `readby` by the test alone, and the leaf then
+evaluated whatever comparator an order row named on either kind's cells, a string under a number's by code point and a
+fraction under a string's by its double; no registry row named one, and the fix round's key moved no plan.
 *A reader of a key reads a whole number as its rows say* joins `wholereads`. *A settled key is an entry of its set's
 table* moves to `entries` and carries both (`MeasuredEntry.Readers`, `Readings`), where the table rule computed
 `Placing`, `Matching` and `Unmatched` in its head. The leaf reads an entry through `ServiceTable.Read`, which answers
 none where S found no reader, and places or matches a cell by each reader. `Within`, `Affix` and `Paired` name no
 comparator, and `Place` and `Sides` choose the evaluation by the cell, a string or a number, not by the comparator's
-name.
+name: S hands a cell its own kind's comparators alone. `Compare` and `Matches` evaluate their own comparators and
+matchers, each arm one, and raise over any other, which S never hands.
 
 **A whole number as its comparator reads one (G2).** `Service.IntegersOrderExactly` carries
 `wholereads(comparator, value|double)` (`CosmosWholeReading`, `CosmosAxiomRows.ReadWholeReadings`), and
@@ -9241,8 +9249,13 @@ system names the reading's type (`CosmosRendering.ReadReaderKinds`), the text's 
 cast's target. A raw reading has none. The atom carries each side's `readerorder` (`PredicateAtom.OrderedBy`). The
 loader's `KindOf` is gone, and its `Bare` reads a truth by the Rex's `BOOLEAN` type. `PredicateAtom.OnPair` places a
 pair by the order the cell parts its strings by only where both readings' orders hold `itself` and both sides hold
-strings, and on the diagonal only where the reading's order holds `reflexive`. It read `ReadsStrings`, the text
-accessor's alone, and placed every diagonal. Three Calcite rows are measured in process for it
+strings, and on the diagonal only where the reading's order holds `reflexive`. It read `ReadsStrings`, the `Text`
+reading's, and placed every diagonal. `Reading.Parse` reads five readers as `Text`: the text, typed `VARCHAR` and
+`CHAR`, and a cast of the text to `VARCHAR` or `CHAR` (a cast of the raw value to `CHAR` too, read with its structures,
+which `ReadsStrings` refused). The `itself` rows hold the first three. The loader writes none of the casts, reading a
+cast of the text to an unbounded `VARCHAR` as the text itself (`CosmosRexShapes.TryTextCastValue`) and no cast to
+`CHAR`, so the narrowing reaches no comparison it reads; a cast to `CHAR` may cut a string to its length, and a row of
+it waits on a measurement (`TODO.md`). Three Calcite rows are measured in process for it
 (`CalciteReaderOrderMeasurementTests`):
 - `Calcite.TextPlacesCompareAsTheirStrings`: `itself` of typed `VARCHAR` and `CHAR`, nothing padded;
 - `Calcite.EqualValuesReadAlikeCompareEqual`: `reflexive` of every reading S pairs that holds no NaN;
@@ -9264,11 +9277,19 @@ rests on the rows that measured that truth's constant (`measuredcites(Constant, 
 `MeasuredTruths` and `ConstantProof` built in C#. The else rules assemble a case's junction from `absorbingelse` and
 `oppositeelse`, which now carry the junction and whether the condition is negated (`ServiceForm.Signed`,
 `ServiceForm.Paired`). Before, `AbsorbingElse` and `OppositeElse` chose them in C#, and `Joined` folded a constant
-member away. `Paired` folds nothing. *A junction holding its connective's unit agrees as Kleene's logic folds it* reads
-`units` (`KleeneTables.Units`: TRUE is `AND`'s identity and `OR`'s absorbing element, FALSE the reverse). Under a set
-that licenses `Constant` and composes through the connective, it gives the folded form (`ServiceForm.Unit`) the
-junction's agreement, and the best keeps the cheaper. `Joined` still folds a constant member where the junction and
-weakening rules build one, since the audit named only the else rules; its folding is the same law `units` states.
+member away. `Paired` is the two forms' junction as they stand: nothing flattened, rid of copies or folded. Two rules
+take it from there, and the best keeps the cheapest form they agree on:
+- *A junction holding its connective's unit agrees as Kleene's logic folds it* reads `units` (`KleeneTables.Units`:
+  TRUE is `AND`'s identity and `OR`'s absorbing element, FALSE the reverse). Under a set that licenses `Constant` and
+  composes through the connective, it gives the folded form (`ServiceForm.Unit`) the junction's agreement.
+- *A junction holding its own connective or a part twice agrees as its connective's laws regroup it* gives the junction
+  flattened, one of each part kept in order (`ServiceForm.Regrouped`, guarded by `form-is-grouped`), its agreement,
+  under a set composing through the connective, whose licence is what the evaluate rule takes associativity and
+  idempotence from (`form-regroups`). The fix round added it: g234's `Paired` flattened and dropped copies in C#. It
+  gives what that did, so no plan moved (`RenderingCaseTests.AnAbsorbingElseRegroupsWhatItJoins`).
+
+`Joined` still folds a constant member, flattens and drops copies where the junction and weakening rules build one,
+since the audit named only the else rules; its laws are the ones `units` and the regroup rule state.
 
 **What stays C#.** `ServiceLeaf` evaluates one atom on concrete cells: it compares two strings, places a number by the
 flags its readings give, matches a pattern and reads a key. `ServiceCompound` reads a key for each pair of operand

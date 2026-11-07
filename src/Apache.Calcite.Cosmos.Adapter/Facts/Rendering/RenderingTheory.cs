@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Licensed = Graph.DefineFunction<RenderingSet, ValueSet<CosmosServiceTest>>("licensed", ValueLattice.Union<CosmosServiceTest>());
             Identity = Graph.DefineFunction<CosmosServiceTest, ValueSet<CellClass>>("identity");
             Opposite = Graph.DefineRelation<RenderPosition, RenderPosition>("opposite");
-            ReadBy = Graph.DefineFunction<CosmosServiceTest, ValueSet<CosmosAnswer>>("readby", ValueLattice.Union<CosmosAnswer>());
+            ReadBy = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, ValueSet<CosmosAnswer>>("readby", ValueLattice.Union<CosmosAnswer>());
             WholeReads = Graph.DefineRelation<CosmosAnswer, string>("wholereads");
             Readers = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>>("readers", ValueLattice.Union<CosmosAnswer>());
             Readings = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<(CosmosAnswer, string)>>("readings", ValueLattice.Union<(CosmosAnswer, string)>());
@@ -495,17 +495,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<RenderPosition, RenderPosition> Opposite { get; }
 
         /// <summary>
-        /// Which answers read each test's entry over its operand (<see cref="AnswerMeanings.ReadBy"/>, G2): every comparator an
-        /// order's, the matchers an affix's or a <c>LIKE</c>'s. Host data the roles rule reads.
+        /// Which answers read each test's entry over each operand class (<see cref="AnswerMeanings.ReadBy"/>, G2): a string
+        /// order's comparators the order of strings', a number order's the order of numbers', the matchers an affix's or a
+        /// <c>LIKE</c>'s over a string. Host data the roles rule reads.
         /// </summary>
-        public Function<CosmosServiceTest, ValueSet<CosmosAnswer>> ReadBy { get; }
+        public Function<CosmosServiceTest, CosmosValueClass, ValueSet<CosmosAnswer>> ReadBy { get; }
 
         /// <summary>How each comparator reads a whole number within int64, <c>value</c> or <c>double</c>, a row's (G2).</summary>
         public Relation<CosmosAnswer, string> WholeReads { get; }
 
         /// <summary>
-        /// The answers that read a settled key, each placing or matching a cell: those of its test's role, where it names one
-        /// and no comparator of another beside them; none otherwise, from the start (G2).
+        /// The answers that read a settled key, each placing or matching a cell: those of its test's role over its operand,
+        /// where it names one and no comparator of another beside them; none otherwise, from the start (G2).
         /// </summary>
         public Function<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>> Readers { get; }
 
@@ -868,16 +869,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        // What reads each settled key (G2): those of its answers whose role is the key's test's, where it names one and no
-        // comparator of another role beside them, and how each reads a whole number; the key, with them, an entry of its
-        // set's table once both are complete.
+        // What reads each settled key (G2): those of its answers whose role is the key's test's over its operand, where it
+        // names one and no comparator of another role beside them, and how each reads a whole number; the key, with them, an
+        // entry of its set's table once both are complete. A comparator a row names for another kind's order is of another
+        // role, so the key has no reader and its leaf answers anything.
         void DefineRoles(Ruleset roles, Ruleset entries)
         {
             roles.DefineRule("the answers of a key's role read it, where it names one and no comparator of another", r =>
             {
                 var (k, s, t) = r.Vars<MeasuredKey, RenderingSet, CosmosServiceTest>("k", "s", "t");
                 var (v, w, mn) = r.Vars<ValueSet<CosmosAnswer>, ValueSet<CosmosAnswer>, AnswerMeanings>("v", "w", "mn");
-                r.When(v.Is(Final.Of(k, s)), t.Is(Compute.Of(k, x => x.Test)), w.Is(ReadBy.Of(t)), mn.Is(Means.Of()));
+                var c = r.Var<CosmosValueClass>("c");
+                r.When(v.Is(Final.Of(k, s)), t.Is(Compute.Of(k, x => x.Test)), c.Is(Compute.Of(k, x => x.Operand)), w.Is(ReadBy.Of(t, c)), mn.Is(Means.Of()));
                 var read = Primitives.Intersect<CosmosAnswer>().Of(v, w);
                 r.Where(Primitives.Greater.Of(Primitives.Count<CosmosAnswer>().Of(read), 0L));
                 r.Where(Primitives.IsSubsetOf<CosmosAnswer>().Of(Primitives.Intersect<CosmosAnswer>().Of(v, Compute.Of(mn, x => x.Comparators)), w));
@@ -1983,7 +1986,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             // Where the condition is not TRUE its exact Pos form is not true either, so the junction leaves the row as the
             // absorbing else does, whatever the service answers there: no two-valuedness is read. Which junction, of the
-            // condition negated or not, is the row's (G4), and a constant it holds Kleene's units rule's to fold.
+            // condition negated or not, is the row's (G4), a constant it holds Kleene's units rule's to fold, and a junction of its
+            // own connective or a part twice the regroup rule's.
             best.DefineRule("a case whose else absorbs at its position is its condition joined with its then-arm", r =>
             {
                 var (e, c, a, k) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "k");
@@ -2036,6 +2040,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(RenderingPrimitives.FormHolds.Of(f, Compute.Of(kc, ServiceForm.ConstantOf)));
                 r.Where(Primitives.Contains<CosmosServiceTest>().Of(lk, CosmosServiceTest.Constant));
                 r.When(g.Is(Compute.Of(f, kc, u, ServiceForm.Unit)));
+                Composes(r, j, null);
+                r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)));
+            });
+
+            // A junction holding a junction of its own connective, or a part twice, under a set whose rows license the connective,
+            // is what its associativity and idempotence regroup it to: flattened, one of each part kept (G4). The else rules join
+            // as the arms stand, and this regroups. Both agree, and the best keeps the cheaper.
+            best.DefineRule("a junction holding its own connective or a part twice agrees as its connective's laws regroup it", r =>
+            {
+                var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
+                var (j, pf) = r.Vars<CosmosServiceTest, Proof>("j", "pf");
+                r.When(At.Of(e, pos), pf.Is(Agrees.Of(e, pos, f, Verdict.Equal)));
+                r.Where(RenderingPrimitives.FormIsGrouped.Of(f));
+                r.When(j.Is(Compute.Of(f, x => x.Test)), g.Is(Compute.Of(f, ServiceForm.Regrouped)));
                 Composes(r, j, null);
                 r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)));
             });
@@ -2296,8 +2314,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 // What reads each test's entry, how a comparator reads a whole number (G2); what a failing side stands for (G4);
                 // the kinds a pair's side holds, and each set's pair table, empty until a row reads one (G3).
-                foreach (var (test, answer) in definition.Means.ReadBy.AsEnumerable())
-                    w.Assume(ReadBy.Of(test).Is(ValueSet.Of(answer)));
+                foreach (var (test, operand, answer) in definition.Means.ReadBy.AsEnumerable())
+                    w.Assume(ReadBy.Of(test, operand).Is(ValueSet.Of(answer)));
 
                 foreach (var (comparator, reading) in definition.WholeReadings)
                     w.Assume(WholeReads.Of(comparator, reading));

@@ -321,6 +321,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Placed().Should().Be(ServiceOutcomes.True | ServiceOutcomes.False, "read neither way, it lies anywhere");
         }
 
+        /// <summary>
+        /// An order entry naming a comparator of another kind's order has no reader, S's roles rule reading each order's
+        /// comparators by its operand's class (<see cref="AnswerMeanings.ReadBy"/>, G2), so its leaf answers anything: a
+        /// string under a number's comparator and a number under a string's are placed by neither. The table is S's own,
+        /// over the registry's rows with each order's swapped for the other kind's comparator on both targets.
+        /// </summary>
+        [Fact]
+        public void AComparatorOfAnotherKindPlacesNothing()
+        {
+            var (half, two) = (Of(1.5m), Of(2m));
+            var swapped = new[] { (Kind: CosmosValueClass.String, Comparator: CosmosAnswer.Numeric), (Kind: CosmosValueClass.Number, Comparator: CosmosAnswer.CodePoint) };
+            var rows = ProbeRows.Rows.Where(row => row.Key.Test != CosmosServiceTest.Order)
+                .Concat(from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
+                        from order in swapped
+                        select new MeasuredOutcome("Service.Planted", MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None), target, order.Comparator));
+            var theory = RenderingTheory.Define(ProbeRows.Planted([.. rows]));
+            var set = RenderingCheckRun.AssertedSet;
+            var table = ServiceTable.Of(theory.Theory.Get(theory.Table.Of(set)), theory.Theory.Get(theory.Placed.Of()), theory.Theory.Get(theory.PairTable.Of(set)));
+            foreach (var order in swapped)
+            {
+                table.TryGet(MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None), out var entry).Should().BeTrue(order.Kind.ToString());
+                entry!.Answers.Should().Equal([order.Comparator]);
+                entry.Readers.Should().BeEmpty(order.Kind.ToString());
+            }
+
+            var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
+            var numbers = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(FractionType, IntegerType)), NoBand, ValueSet.Of(new CutPoint(half, CutKind.Literal), new CutPoint(two, CutKind.Literal)));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), strings, table, LeafReads.None).Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest);
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, two), numbers, table, LeafReads.None).Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest);
+            GC.KeepAlive(theory);
+        }
+
         /// <summary>A key the table misses is named among the rows, and answers everything where it is read.</summary>
         [Fact]
         public void MissingKeysAreNamed()

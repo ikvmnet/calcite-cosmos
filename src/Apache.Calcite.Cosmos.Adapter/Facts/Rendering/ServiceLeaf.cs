@@ -119,7 +119,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// A comparison with a literal of the cell's type: by the side or sides each comparator S found reads the type's order
-        /// entry places the cell on (<see cref="MeasuredEntry.Readers"/>), each by its own readings of a whole number.
+        /// entry places the cell on (<see cref="MeasuredEntry.Readers"/>), each by its own readings of a whole number. S hands
+        /// a type's entry only the comparators of that type's order (<see cref="AnswerMeanings.ReadBy"/>), so a string is
+        /// placed by a comparator of strings and a number by one of numbers, and an entry naming another kind's has none.
         /// </summary>
         static ServiceOutcomes Within(ServiceForm leaf, PathCell cell, CosmosValueClass operand, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
@@ -262,24 +264,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// (<see cref="ByCodePoint"/>). Under the emulator's, the stored value against the literal as the statement sends it,
         /// each in the stored spelling with both escapes (<see cref="EmulatorStoredText.Of"/>): what it compares, measured
         /// (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). The strings are taken as they are: what a target stores of
-        /// one written otherwise is S's (<see cref="LeafReads.Unkept"/>).
+        /// one written otherwise is S's (<see cref="LeafReads.Unkept"/>). Each comparator's own evaluation; one of another
+        /// kind is none, and S hands none (<see cref="AnswerMeanings.ReadBy"/>).
         /// </summary>
         internal static int Compare(CosmosAnswer comparator, string a, string b) => comparator switch
         {
+            CosmosAnswer.CodePoint => ByCodePoint(a, b),
             CosmosAnswer.Utf16 => string.CompareOrdinal(a, b),
             CosmosAnswer.StoredCodePoint => ByCodePoint(EmulatorStoredText.Of(a), EmulatorStoredText.Of(b)),
-            _ => ByCodePoint(a, b),
+            _ => throw new ArgumentOutOfRangeException(nameof(comparator), comparator, "No comparator of strings: S's roles hand a string's order none other."),
         };
 
         /// <summary>
         /// Whether a string matches a pattern of runs under a matcher, one the test's entry names: by code point, as by UTF-16
         /// unit over well-formed text (<see cref="AffixPattern.Matches"/>); under the emulator's, the string's stored spelling
         /// against the pattern's, which is what it matches (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). The matcher's
-        /// own evaluation on two concrete strings, as <see cref="Compare"/> is the comparator's.
+        /// own evaluation on two concrete strings, as <see cref="Compare"/> is the comparator's; an answer that is no matcher
+        /// has none, and S hands none (<see cref="AnswerMeanings.ReadBy"/>).
         /// </summary>
-        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => matcher == CosmosAnswer.StoredCodePoint
-            ? AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern))
-            : AffixPattern.Matches(text, pattern);
+        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => matcher switch
+        {
+            CosmosAnswer.CodePoint => AffixPattern.Matches(text, pattern),
+            CosmosAnswer.StoredCodePoint => AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern)),
+            _ => throw new ArgumentOutOfRangeException(nameof(matcher), matcher, "No matcher: S's roles hand an affix's entry none other."),
+        };
 
         /// <summary>
         /// Whether a matcher's spelling splits a pattern of runs, so that a range's affix cut, of strings as written, does not

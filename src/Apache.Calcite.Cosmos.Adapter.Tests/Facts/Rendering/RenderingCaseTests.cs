@@ -100,6 +100,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The else rules join the condition and the then-arm as they stand, and S's regroup rule flattens a junction of the
+        /// connective's own and keeps one of each part, under a set licensing the connective (G4): <c>CASE WHEN c THEN a AND
+        /// b ELSE FALSE</c> is <c>c AND a AND b</c>, and <c>CASE WHEN a THEN a ELSE FALSE</c> is <c>a</c>'s own best.
+        /// </summary>
+        [Fact]
+        public void AnAbsorbingElseRegroupsWhatItJoins()
+        {
+            var flat = Generate(Case(Nullable, And(Kind, Eq(Text(NPath), "x")), False), RenderingSet.Production);
+            flat.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
+            flat.Best!.Kind.Should().Be(ServiceFormKind.And);
+            flat.Best.Members.Should().HaveCount(3).And.OnlyContain(m => m.Kind != ServiceFormKind.And, flat.Best.Text);
+
+            var once = Generate(Case(Kind, Kind, False), RenderingSet.Production);
+            once.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
+            once.Best.Should().Be(Generate(Kind, RenderingSet.Production).Best);
+        }
+
+        /// <summary>
         /// The opposite constant needs a two-valued condition. <c>NOT ((label = 'bikes') IS TRUE)</c> keeps the rows the
         /// label is null on, which <c>label = 'bikes'</c> written bare would not (the soundness critic's counterexample):
         /// under <c>Production</c>, the probe account having measured the ternary (S1), its form keeps the ternary.

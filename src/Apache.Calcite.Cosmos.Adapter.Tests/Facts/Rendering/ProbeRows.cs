@@ -117,13 +117,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A key's entry as S's rules settle it from the measured meanings: its outcomes; the answers of the key's role that
-        /// read it, where it names one and no comparator of another role beside them; and how each reads a whole number.
+        /// A key's entry as S's rules settle it from the measured meanings: its outcomes; the answers of the key's role over
+        /// its operand that read it, where it names one and no comparator of another role beside them; and how each reads a
+        /// whole number.
         /// </summary>
         static MeasuredEntry EntryOf(MeasuredKey key, ValueSet<CosmosAnswer> answers, ValueSet<string> evidence)
         {
             var means = AnswerMeanings.Measured;
-            var readBy = ValueSet.From(means.ReadBy.AsEnumerable().Where(read => read.Test == key.Test).Select(read => read.Answer));
+            var readBy = ValueSet.From(means.ReadBy.AsEnumerable().Where(read => read.Test == key.Test && read.Operand == key.Operand).Select(read => read.Answer));
             var read = ValueSet.From(answers.Where(readBy.Contains));
             var readers = read.IsEmpty == false && answers.Where(means.Comparators.Contains).All(readBy.Contains) ? read : ValueSet<CosmosAnswer>.Empty;
             var readings = ValueSet.From(Measured.WholeReadings.Where(reading => readers.Contains(reading.Comparator)).Select(reading => (reading.Comparator, reading.Reading)));
