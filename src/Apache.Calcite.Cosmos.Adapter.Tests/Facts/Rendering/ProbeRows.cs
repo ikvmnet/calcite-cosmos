@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -100,36 +101,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
 
         /// <summary>
-        /// A plant's table: one entry a key, holding every answer its rows give and every row's id, with the readers S's roles
-        /// rules settle of them; the key of a side that may fail where the rows hold every key it stands for, as S's failing
-        /// rules derive it; and the classes its rows order placed, as S's rule derives them.
+        /// A plant's table as S settles it, never as a test computes one: S defined from the rows given (<see cref="Planted"/>)
+        /// and viewed under a set (<see cref="RenderingTheory.View"/>). One entry a key every target the set serves measured,
+        /// holding their answers and rows, with the readers S's roles rules find; the key of a side that may fail where the
+        /// set settled every key it stands for, by S's failing rules; the classes the rows order placed; and the pair table.
         /// </summary>
-        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows)
+        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows, RenderingSet set = RenderingSet.Emulator) => TableOf(Planted([.. rows]), set);
+
+        /// <summary>The table S settles under a set from a definition (<see cref="TableOf(IEnumerable{MeasuredOutcome}, RenderingSet)"/>), empty where it settled no key.</summary>
+        public static ServiceTable TableOf(RenderingDefinition definition, RenderingSet set)
         {
-            var all = rows.ToList();
-            var keys = all.GroupBy(row => row.Key).ToDictionary(key => key.Key, key => (Answers: ValueSet.From(key.Select(row => row.Answer)), Evidence: ValueSet.From(key.Select(row => row.AxiomId))));
-            var failing = from stands in KleeneTables.Failing.GroupBy(pair => pair.Failing, pair => pair.Stands)
-                          where stands.All(keys.ContainsKey)
-                          select MeasuredEntry.Of(stands.Key, ValueSet.From(stands.SelectMany(k => keys[k].Answers.AsEnumerable()).Append(CosmosAnswer.Fails)),
-                              ValueSet.From(stands.SelectMany(k => keys[k].Evidence.AsEnumerable())), AnswerMeanings.Measured);
-            return ServiceTable.Of(ValueSet.From(keys.Select(key => EntryOf(key.Key, key.Value.Answers, key.Value.Evidence)).Concat(failing)),
-                ValueSet.From(all.Where(row => row.Key.Test == CosmosServiceTest.Order).Select(row => row.Key.Operand)));
+            var theory = RenderingTheory.Define(definition);
+            var table = ViewOf(theory, set) ?? ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, theory.Theory.Get(theory.Placed.Of()));
+            GC.KeepAlive(theory);
+            return table;
         }
 
-        /// <summary>
-        /// A key's entry as S's rules settle it from the measured meanings: its outcomes; the answers of the key's role over
-        /// its operand that read it, where it names one and no comparator of another role beside them; and how each reads a
-        /// whole number.
-        /// </summary>
-        static MeasuredEntry EntryOf(MeasuredKey key, ValueSet<CosmosAnswer> answers, ValueSet<string> evidence)
+        /// <summary>Every set's table S settles from the rows given, where it settled any key.</summary>
+        public static IReadOnlyList<ServiceTable> TablesOf(IEnumerable<MeasuredOutcome> rows)
         {
-            var means = AnswerMeanings.Measured;
-            var readBy = ValueSet.From(means.ReadBy.AsEnumerable().Where(read => read.Test == key.Test && read.Operand == key.Operand).Select(read => read.Answer));
-            var read = ValueSet.From(answers.Where(readBy.Contains));
-            var readers = read.IsEmpty == false && answers.Where(means.Comparators.Contains).All(readBy.Contains) ? read : ValueSet<CosmosAnswer>.Empty;
-            var readings = ValueSet.From(Measured.WholeReadings.Where(reading => readers.Contains(reading.Comparator)).Select(reading => (reading.Comparator, reading.Reading)));
-            return MeasuredEntry.Read(MeasuredEntry.Of(key, answers, evidence, means), readers, readings);
+            var definition = Planted([.. rows]);
+            var theory = RenderingTheory.Define(definition);
+            var tables = definition.Serves.Keys.Select(set => ViewOf(theory, set)).OfType<ServiceTable>().ToList();
+            GC.KeepAlive(theory);
+            return tables;
         }
+
+        static ServiceTable? ViewOf(RenderingTheory theory, RenderingSet set) => theory.Theory.TryGet(theory.View.Of(set), out var view) ? view : null;
+
+        /// <summary>
+        /// Rows giving each key the answers listed, read under <see cref="RenderingSet.Portable"/>, which serves both targets: S
+        /// holds one answer a key on a target, so a key of two answers gives the emulator its first and Azure its second, and
+        /// a key of one answer both.
+        /// </summary>
+        public static IEnumerable<MeasuredOutcome> Portable(IEnumerable<(MeasuredKey Key, CosmosAnswer Answer)> answers) =>
+            from key in answers.GroupBy(each => each.Key, each => each.Answer)
+            let given = key.Distinct().ToList()
+            from target in given.Count <= 2 ? new[] { RenderingTarget.Emulator, RenderingTarget.Azure } : throw new ArgumentException($"{key.Key} is given {given.Count} answers, more than the two targets hold", nameof(answers))
+            select new MeasuredOutcome("Service.Planted", key.Key, target, given[target == RenderingTarget.Emulator ? 0 : given.Count - 1]);
 
         /// <summary>
         /// Checks a form claimed for a conjunct in a bundle of its own, every path imported as anything unless given, and

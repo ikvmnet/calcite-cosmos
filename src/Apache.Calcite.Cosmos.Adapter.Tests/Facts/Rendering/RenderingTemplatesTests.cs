@@ -186,7 +186,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A join flattens a member of its connective, keeps one of each part in the arms' order, and folds Kleene's
-        /// constants at either position; its parts are the arms'; and a leaf's fold joins its implied set in order.
+        /// constants at either position, which the weakening's assembly reads; a best's junction is the arms as they stand
+        /// (<see cref="ServiceForm.Paired"/>), which S's regroup rule rewrites to the join wherever no constant is in it, its
+        /// price below the pair's: fewer nodes where a copy goes, fewer groups where a junction is flattened (G4). A leaf's
+        /// fold joins its implied set in order.
         /// </summary>
         [Fact]
         public void JoinedFlattensKeepsOnePerPartAndFoldsConstants()
@@ -203,14 +206,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             })
             {
                 ServiceForm.Joined(connective, l, m).Should().Be(joined, $"{l} {connective} {m}");
-                if (joined.Kind != ServiceFormKind.Constant && l.Kind != ServiceFormKind.Constant && m.Kind != ServiceFormKind.Constant)
-                    RenderingPrimitives.FormIsJoinOf.Function(joined, l, m).Should().BeTrue($"{joined} joins {l} and {m}");
+                var paired = ServiceForm.Paired(connective, l, m);
+                paired.Members.Should().Equal([l, m], "a best's junction is the arms as they stand");
+                if (new[] { joined, l, m }.Any(f => f.Subforms.Any(s => s.Kind == ServiceFormKind.Constant)))
+                    continue;
+
+                var grouped = RenderingPrimitives.FormIsGrouped.Function(paired);
+                (grouped ? ServiceForm.Regrouped(paired) : paired).Should().Be(joined, $"{paired} regrouped");
+                if (grouped)
+                    Priced.Of(joined).CompareTo(Priced.Of(paired)).Should().BeNegative($"{joined} is priced below {paired}");
             }
 
             ServiceForm.Joined(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction joins");
-            RenderingPrimitives.FormIsJoinOf.Function(All(a, b), a, c).Should().BeFalse();
-            RenderingPrimitives.FormIsJoinOf.Function(All(a, b, c), All(a, b), a).Should().BeFalse();
-            RenderingPrimitives.FormIsJoinOf.Function(Any(a, b), All(a, b), a).Should().BeFalse("an AND is no part of an OR's flattening");
+            ServiceForm.Paired(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction pairs");
+
+            // Flattened, a junction has as many nodes and one group fewer; with a copy gone, fewer nodes too.
+            var (nested, flat) = (All(a, All(b, c)), All(a, b, c));
+            (nested.Nodes, nested.Groups, flat.Nodes, flat.Groups).Should().Be((5, 2, 5, 1));
+            Priced.Of(flat).CompareTo(Priced.Of(nested)).Should().BeNegative("of one size, the flatter is kept, whatever its text");
+            Priced.Of(All(b, All(c, a))).CompareTo(Priced.Of(All(b, c, a))).Should().BePositive();
 
             var implied = ValueSet.Of(b, a, All(a, ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), b));
             ServiceForm.Folded(implied, RenderPosition.Pos).Should().Be(ServiceForm.Joined(and, ServiceForm.Joined(and, implied[0], implied[1]), implied[2]));

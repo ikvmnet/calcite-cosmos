@@ -58,11 +58,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The filters that hold of the value they are handed however it moves on: <c>priced-is-real</c>, since a price
-        /// only lowers and <c>None</c> is the top, and <c>form-is-join-of</c> and <c>same-form</c>, which judge the forms at
-        /// hand and conclude nothing of the value they were read from: what <c>same-form</c> admits rests on the agreements
-        /// read beside it at both positions, each sound alone.
+        /// only lowers and <c>None</c> is the top, and <c>same-form</c>, which judges the forms at hand and concludes nothing
+        /// of the value they were read from: what it admits rests on the agreements read beside it at both positions, each
+        /// sound alone.
         /// </summary>
-        static readonly string[] Monotone = ["priced-is-real", "form-is-join-of", "same-form"];
+        static readonly string[] Monotone = ["priced-is-real", "same-form"];
 
         [Fact]
         public void TheScheduleReadsNoUniversalOverADomainThatMoves() => Violations(ProbeRows.ProbeTheory).Should().BeEmpty();

@@ -109,6 +109,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(CosmosAnswer Comparator, string Reading)> WholeReadings { get; init; } = [];
 
+        /// <summary>
+        /// What the leaf primitive evaluates each role's cells by, its test over its operand class beside each answer
+        /// (<see cref="ServiceLeaf.Evaluates"/>): S's roles rule hands a key a reader only among them, so an answer the
+        /// meanings give a role and the leaf cannot evaluate reads nothing. A plant that replaces the leaf names its own.
+        /// </summary>
+        public ValueSet<(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAnswer Answer)> Evaluates { get; init; } = ServiceLeaf.Evaluates;
+
         /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<c>CosmosAxiomRows.ReadBoxes</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<(string Kind, string Box)> Boxes { get; init; } = [];
 

@@ -93,18 +93,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             narrower.Should().BeEmpty();
         }
 
-        /// <summary>Whatever the rows, a cell answers something: the probe's, and random tables cut from them and garbled.</summary>
+        /// <summary>
+        /// Whatever the rows, a cell answers something: every set's table S settles from the probe's, and from random tables
+        /// cut from them and garbled, a key's rows on a target garbled alike since S holds one answer a key on a target.
+        /// </summary>
         [Fact]
         public void NeverEmpty()
         {
             var random = new Random(20_261_020);
-            var rows = ProbeRows.Rows.Append(Row(CosmosServiceTest.Order, CosmosValueClass.Number, CosmosValueClass.None, CosmosAnswer.Numeric))
-                .Concat(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.Select(side => Row(CosmosServiceTest.Less, CosmosValueClass.Number, side, CosmosAnswer.True))).ToList();
+            var rows = ProbeRows.Rows;
             var answers = Enum.GetValues<CosmosAnswer>();
 
-            var tables = new List<ServiceTable> { ProbeRows.Table, ProbeRows.TableOf(rows) };
+            var tables = new List<ServiceTable> { ProbeRows.Table };
+            tables.AddRange(ProbeRows.TablesOf(rows));
             for (var trial = 0; trial < 40; trial++)
-                tables.Add(ProbeRows.TableOf(rows.Where(_ => random.Next(4) > 0).Select(row => random.Next(3) > 0 ? row : row with { Answer = answers[random.Next(answers.Length)] })));
+            {
+                var cut = rows.GroupBy(row => (row.Key, row.Target)).Where(_ => random.Next(4) > 0)
+                    .Select(key => (Rows: key, Answer: random.Next(3) > 0 ? (CosmosAnswer?)null : answers[random.Next(answers.Length)])).ToList();
+                tables.AddRange(ProbeRows.TablesOf(cut.SelectMany(key => key.Answer is CosmosAnswer answer ? key.Rows.Select(row => row with { Answer = answer }) : key.Rows)));
+            }
 
             var empty = from table in tables
                         from leaf in Leaves()
@@ -273,7 +280,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(less, new PathCell.Strings(null, fdd0, ValueSet<string>.Empty, ClassSet(Closed(JsonCharacterBand.HighBmp))).Text).Should().Be(ServiceOutcomes.True);
         }
 
-        /// <summary>An entry of two answers means both; an order of two comparators places a cell by each.</summary>
+        /// <summary>
+        /// An entry of two answers means both; an order of two comparators places a cell by each. Each key's two answers are
+        /// planted a target apiece and read under the set serving both (<see cref="ProbeRows.Portable"/>).
+        /// </summary>
         [Fact]
         public void AMultiValuedEntryAnswersTheUnion()
         {
@@ -287,16 +297,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(vector, new PathCell.Strings(null, Emoji, ValueSet<string>.Empty, AllBands).Text).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
 
             // What an order entry answers beside its comparators stands beside every cell it places.
-            var failing = ProbeRows.TableOf(new[] { CosmosAnswer.CodePoint, CosmosAnswer.Fails }.Select(a => Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, a))
-                .Concat(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.Select(side => Row(CosmosServiceTest.Less, CosmosValueClass.String, side, CosmosAnswer.True))));
+            var failing = ProbeRows.TableOf(ProbeRows.Portable(new[] { CosmosAnswer.CodePoint, CosmosAnswer.Fails }.Select(a => (MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None), a))
+                .Concat(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.Select(side => (MeasuredKey.Of(CosmosServiceTest.Less, CosmosValueClass.String, side), CosmosAnswer.True)))), RenderingSet.Portable);
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, failing, LeafReads.None).Outcomes
                 .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.Fails));
         }
 
         /// <summary>
         /// A whole number within int64 is placed as its order's entry says each comparator reads one (G2, S's roles rules
-        /// over <c>Service.IntegersOrderExactly</c>'s readings): 2^60 + 1 against 2^60, its double, lies above by its value
-        /// and at it by its double; read both ways it lies at either, and read neither way anywhere.
+        /// over <c>Service.IntegersOrderExactly</c>'s readings, planted here): 2^60 + 1 against 2^60, its double, lies above
+        /// by its value and at it by its double; read both ways it lies at either, and read neither way anywhere.
         /// </summary>
         [Fact]
         public void AWholeNumberIsPlacedAsItsComparatorReadsOne()
@@ -309,9 +319,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             ServiceOutcomes Placed(params string[] readings)
             {
-                var entries = ProbeRows.TableOf(rows).Entries.AsEnumerable()
-                    .Select(e => e.Key.Test == CosmosServiceTest.Order ? MeasuredEntry.Read(e, e.Readers, ValueSet.From(readings.Select(r => (CosmosAnswer.Numeric, r)))) : e);
-                var table = ServiceTable.Of(ValueSet.From(entries), ProbeRows.Placed);
+                var table = ProbeRows.TableOf(ProbeRows.Planted([.. rows]) with { WholeReadings = [.. readings.Select(r => (CosmosAnswer.Numeric, r))] }, RenderingSet.Emulator);
                 return At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, rounded), cells, table, LeafReads.None), big);
             }
 
@@ -336,9 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
                         from order in swapped
                         select new MeasuredOutcome("Service.Planted", MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None), target, order.Comparator));
-            var theory = RenderingTheory.Define(ProbeRows.Planted([.. rows]));
-            var set = RenderingCheckRun.AssertedSet;
-            var table = ServiceTable.Of(theory.Theory.Get(theory.Table.Of(set)), theory.Theory.Get(theory.Placed.Of()), theory.Theory.Get(theory.PairTable.Of(set)));
+            var table = ProbeRows.TableOf(rows, RenderingCheckRun.AssertedSet);
             foreach (var order in swapped)
             {
                 table.TryGet(MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None), out var entry).Should().BeTrue(order.Kind.ToString());
@@ -350,7 +356,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var numbers = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(FractionType, IntegerType)), NoBand, ValueSet.Of(new CutPoint(half, CutKind.Literal), new CutPoint(two, CutKind.Literal)));
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), strings, table, LeafReads.None).Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest);
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, two), numbers, table, LeafReads.None).Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest);
-            GC.KeepAlive(theory);
+        }
+
+        /// <summary>
+        /// A comparator the meanings give a role the leaf has no evaluation of reads nothing, S's roles rule reading each key
+        /// by the answers the leaf evaluates (<see cref="ServiceLeaf.Evaluates"/>, G2), so its leaf answers anything and never
+        /// raises: a number's comparator the meanings give the order of strings, and the UTF-16 order where the leaf is
+        /// planted without it. The measured meanings give no answer a role the leaf does not evaluate.
+        /// </summary>
+        [Fact]
+        public void AComparatorTheLeafCannotEvaluateReadsNothing()
+        {
+            ProbeRows.Measured.Means.ReadBy.AsEnumerable().Should().BeSubsetOf(ServiceLeaf.Evaluates.AsEnumerable());
+
+            var order = MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None);
+            var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(High, CutKind.Literal), new CutPoint(Emoji, CutKind.Literal)));
+            IEnumerable<MeasuredOutcome> Ordered(CosmosAnswer comparator) => new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }
+                .Select(side => Row(CosmosServiceTest.Less, CosmosValueClass.String, side, side == CosmosValueClass.Below ? CosmosAnswer.True : CosmosAnswer.False))
+                .Append(Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, comparator));
+
+            var means = ProbeRows.Measured.Means;
+            var unevaluated = new[]
+            {
+                ProbeRows.Planted([.. Ordered(CosmosAnswer.Numeric)]) with { Means = means with { ReadBy = ValueSet.From(means.ReadBy.AsEnumerable().Append((CosmosServiceTest.Order, CosmosValueClass.String, CosmosAnswer.Numeric))) } },
+                ProbeRows.Planted([.. Ordered(CosmosAnswer.Utf16)]) with { Evaluates = ValueSet.From(ServiceLeaf.Evaluates.AsEnumerable().Where(e => e != (CosmosServiceTest.Order, CosmosValueClass.String, CosmosAnswer.Utf16))) },
+            };
+            foreach (var definition in unevaluated)
+            {
+                var table = ProbeRows.TableOf(definition, RenderingSet.Emulator);
+                table.TryGet(order, out var entry).Should().BeTrue();
+                entry!.Readers.Should().BeEmpty(entry.Answers.ToString());
+                ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), strings, table, LeafReads.None).Outcomes.Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest);
+            }
+
+            ProbeRows.TableOf(Ordered(CosmosAnswer.Utf16)).TryGet(order, out var read).Should().BeTrue();
+            read!.Readers.Should().Equal([CosmosAnswer.Utf16], "the leaf evaluates the UTF-16 order");
         }
 
         /// <summary>A key the table misses is named among the rows, and answers everything where it is read.</summary>
@@ -371,15 +411,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, Empty, LeafReads.None).Rows.Should().Contain("missing:Order/String/None");
         }
 
-        /// <summary>A table of <c>&lt;</c> against a string, ordered by the comparators, below the literal answering the rest.</summary>
+        /// <summary>
+        /// S's table of <c>&lt;</c> against a string, ordered by the comparators, below the literal answering the rest; a key's
+        /// two answers are planted a target apiece (<see cref="ProbeRows.Portable"/>).
+        /// </summary>
         static ServiceTable Less(params CosmosAnswer[] comparatorsThenBelow)
         {
             var comparators = comparatorsThenBelow.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.StoredCodePoint).ToList();
-            var below = comparatorsThenBelow.Except(comparators).ToList();
-            return ProbeRows.TableOf(comparators.Select(c => Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, c))
-                .Concat(below.Select(a => Row(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Below, a)))
-                .Append(Row(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Equal, CosmosAnswer.False))
-                .Append(Row(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Above, CosmosAnswer.False)));
+            var (order, below) = (MeasuredKey.Of(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None), MeasuredKey.Of(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Below));
+            return ProbeRows.TableOf(ProbeRows.Portable(comparators.Select(c => (order, c))
+                .Concat(comparatorsThenBelow.Except(comparators).Select(a => (below, a)))
+                .Append((MeasuredKey.Of(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Equal), CosmosAnswer.False))
+                .Append((MeasuredKey.Of(CosmosServiceTest.Less, CosmosValueClass.String, CosmosValueClass.Above), CosmosAnswer.False))), RenderingSet.Portable);
         }
 
     }

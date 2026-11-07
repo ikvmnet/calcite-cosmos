@@ -7,8 +7,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// An exact form's price, the value <c>bestexact</c>'s <c>Min</c> keeps one of: the form's nodes, the shortest SQL a
-    /// static size can honestly claim, and its text, so the order is total and one value survives whatever order rows
-    /// arrive in. No registry row ranks a filter form by what it costs the service, so nothing above the size is held.
+    /// static size can honestly claim; then its groups, the parentheses its junctions print, so that of two forms of one
+    /// size the flatter is kept, a junction S's regroup rule flattens never kept over what it flattens to (G4); and its
+    /// text, so the order is total and one value survives whatever order rows arrive in. No registry row ranks a filter
+    /// form by what it costs the service, so nothing above the size is held.
     /// </summary>
     /// <remarks>
     /// <see cref="None"/> is the one price with no form: no exact form found, greater than every real price, so that a
@@ -39,7 +41,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return Form is null ? 1 : -1;
 
             var order = Nodes.CompareTo(other.Nodes);
-            return order != 0 || Form is null ? order : Form.CompareTo(other.Form);
+            if (order != 0 || Form is null)
+                return order;
+
+            return Form.Groups.CompareTo(other.Form!.Groups) is var groups and not 0 ? groups : Form.CompareTo(other.Form);
         }
 
     }

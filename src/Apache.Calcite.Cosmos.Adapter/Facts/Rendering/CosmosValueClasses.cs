@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
@@ -39,6 +42,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             "false" => CosmosValueClass.False,
             _ => CosmosValueClass.Undefined,
         };
+
+        /// <summary>
+        /// Each class a constant is of, beside the constant: TRUE's <c>true</c>, FALSE's <c>false</c>, as <see cref="Of(string)"/>
+        /// reads each boolean. What S's truth-value rule sends a truth value of the class as; UNKNOWN's class has none.
+        /// </summary>
+        public static IReadOnlyList<(CosmosValueClass Class, bool Constant)> Constants { get; } = [.. new[] { true, false }.Select(b => (Of(JsonValues.Of(b)), b))];
 
         /// <summary>The class of a cell; none for a cell of no one class.</summary>
         public static CosmosValueClass? Of(PathCell cell) => cell switch

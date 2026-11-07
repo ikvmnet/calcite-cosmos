@@ -100,17 +100,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The else rules join the condition and the then-arm as they stand, and S's regroup rule flattens a junction of the
-        /// connective's own and keeps one of each part, under a set licensing the connective (G4): <c>CASE WHEN c THEN a AND
-        /// b ELSE FALSE</c> is <c>c AND a AND b</c>, and <c>CASE WHEN a THEN a ELSE FALSE</c> is <c>a</c>'s own best.
+        /// The else and junction rules join as the arms stand, and S's regroup rule flattens a junction of the connective's
+        /// own and keeps one of each part, under a set licensing the connective (G4); the price keeps the flattened, of as
+        /// many nodes in fewer groups, whatever its text sorts as (<see cref="Priced"/>): <c>CASE WHEN c THEN a AND b ELSE
+        /// FALSE</c> is <c>c AND a AND b</c>, with parts that sort before a parenthesis or after it, and so is the junction
+        /// of the three, its arms paired as they stand; and <c>CASE WHEN a THEN a ELSE FALSE</c> is <c>a</c>'s own best.
         /// </summary>
         [Fact]
         public void AnAbsorbingElseRegroupsWhatItJoins()
         {
-            var flat = Generate(Case(Nullable, And(Kind, Eq(Text(NPath), "x")), False), RenderingSet.Production);
-            flat.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);
-            flat.Best!.Kind.Should().Be(ServiceFormKind.And);
-            flat.Best.Members.Should().HaveCount(3).And.OnlyContain(m => m.Kind != ServiceFormKind.And, flat.Best.Text);
+            var typed = And(TwoValued, new SqlPredicate.TypeTest("IS_STRING", Raw(NPath)));
+            foreach (var root in new[] { Case(Nullable, And(Kind, Eq(Text(NPath), "x")), False), Case(Nullable, typed, False), Case(And(Kind, Nullable), typed, False), And(Nullable, typed) })
+            {
+                var flat = Generate(root, RenderingSet.Production);
+                flat.Answer.Kind.Should().Be(RenderingVerdictKind.Proven, root.ToString());
+                flat.Best!.Kind.Should().Be(ServiceFormKind.And, root.ToString());
+                flat.Best.Members.Should().HaveCountGreaterThanOrEqualTo(3).And.OnlyContain(m => m.Kind != ServiceFormKind.And, flat.Best.Text);
+            }
 
             var once = Generate(Case(Kind, Kind, False), RenderingSet.Production);
             once.Answer.Kind.Should().Be(RenderingVerdictKind.Proven);

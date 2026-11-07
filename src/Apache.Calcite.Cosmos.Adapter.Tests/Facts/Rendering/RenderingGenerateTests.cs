@@ -133,8 +133,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A junction's best is <c>Joined</c> of its arms' bests, in the IR's order, flattened: a conjunction's and a
-        /// disjunction's of one path.
+        /// A junction's best is its arms' bests joined as they stand, in the IR's order (<see cref="ServiceForm.Paired"/>),
+        /// and S's regroup rule flattens it, the price keeping the flatter (G4): a conjunction's and a disjunction's of one
+        /// path.
         /// </summary>
         [Fact]
         public void AJunctionsBestIsTheJoinOfItsArmsBests()
@@ -144,8 +145,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var (junction, connective, i) in new[] { (and, Op.And, 0), (or, Op.Or, 1) })
             {
                 var arms = junction is SqlPredicate.And a ? a.Arms : ((SqlPredicate.Or)junction).Arms;
-                var joined = ServiceForm.Joined(connective, generated.Best(arms[0])!.Form!, generated.Best(arms[1])!.Form!);
-                generated.Answers[i].Best.Should().Be(joined);
+                var paired = ServiceForm.Paired(connective, generated.Best(arms[0])!.Form!, generated.Best(arms[1])!.Form!);
+                generated.Answers[i].Best.Should().Be(RenderingPrimitives.FormIsGrouped.Function(paired) ? ServiceForm.Regrouped(paired) : paired);
             }
 
             generated.Answers[0].Best!.Members.Should().HaveCount(5, "the restricted form's members are spliced in");
@@ -167,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var answers = generated.Answers;
             answers.Select(a => a.Kind).Should().Equal(RenderingVerdictKind.Proven, RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven, RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven);
             var arms = ((SqlPredicate.And)through).Arms;
-            answers[3].Best.Should().Be(ServiceForm.Joined(Op.And, generated.Best(arms[0])!.Form!, generated.Best(arms[1])!.Form!));
+            answers[3].Best.Should().Be(ServiceForm.Regrouped(ServiceForm.Paired(Op.And, generated.Best(arms[0])!.Form!, generated.Best(arms[1])!.Form!)));
             answers[4].Best.Should().BeNull();
         }
 

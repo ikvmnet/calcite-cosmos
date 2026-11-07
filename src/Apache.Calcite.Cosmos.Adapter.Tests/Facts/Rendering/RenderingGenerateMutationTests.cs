@@ -369,7 +369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Where(RenderingPrimitives.PricedIsReal.Of(bx));
                 r.Where(RenderingPrimitives.PricedIsReal.Of(by));
                 r.When(l.Is(Compute.Of(bx, Priced.FormOf)), m.Is(Compute.Of(by, Priced.FormOf)), px.Is(t.Agrees.Of(x, RenderPosition.Pos, l, Verdict.Equal)),
-                    py.Is(t.Agrees.Of(y, RenderPosition.Pos, m, Verdict.Equal)), h.Is(Compute.Of(j, l, m, ServiceForm.Joined)));
+                    py.Is(t.Agrees.Of(y, RenderPosition.Pos, m, Verdict.Equal)), h.Is(Compute.Of(j, l, m, ServiceForm.Paired)));
                 r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
             });
         }

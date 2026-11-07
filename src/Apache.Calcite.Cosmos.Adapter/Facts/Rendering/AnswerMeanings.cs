@@ -26,9 +26,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="NonBooleanRows">The rows a whole condition over a value that is no boolean rests on.</param>
     /// <param name="ReadBy">The answers that read each test's entry over each operand class: a string order's comparators the
     /// order of strings', a number order's the order of numbers', the matchers an affix's or a <c>LIKE</c>'s over a string.
-    /// S's roles rule hands a key those of its answers that read its test over its operand, where it names one and no
-    /// comparator beside them, so that a comparator a row names for another kind's order reads nothing
-    /// (<see cref="MeasuredEntry.Readers"/>, G2).</param>
+    /// S's roles rule hands a key those of its answers that read its test over its operand and the leaf evaluates
+    /// (<see cref="ServiceLeaf.Evaluates"/>), where it names one and no comparator beside them, so that a comparator a row
+    /// names for another kind's order, or one the leaf has no evaluation of, reads nothing (<see cref="MeasuredEntry.Readers"/>, G2).</param>
     internal sealed record AnswerMeanings(ServiceOutcomes True, ServiceOutcomes False, ServiceOutcomes Undefined, ServiceOutcomes NotKept, ServiceOutcomes Fails,
         ServiceOutcomes NonBoolean, ValueSet<CosmosAnswer> Comparators, ValueSet<CosmosAnswer> Matchers, ServiceOutcomes Stands, ValueSet<string> NonBooleanRows,
         ValueSet<(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAnswer Answer)> ReadBy)
@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ValueSet.Of("Service.BarePathKeepsOnlyTrue", "Service.NotOverAPathKeepsOnlyFalse"),
             ValueSet.From(StringOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.String, Answer: c))
                 .Concat(NumberOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.Number, Answer: c)))
-                .Concat(from test in new[] { CosmosServiceTest.StartsWith, CosmosServiceTest.EndsWith, CosmosServiceTest.Contains, CosmosServiceTest.Like }
+                .Concat(from test in ServiceForm.Affixes.AsEnumerable()
                         from matcher in Matching.AsEnumerable()
                         select (Test: test, Operand: CosmosValueClass.String, Answer: matcher))));
 

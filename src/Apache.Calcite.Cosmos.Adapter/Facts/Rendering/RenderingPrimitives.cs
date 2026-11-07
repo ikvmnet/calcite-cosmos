@@ -92,10 +92,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormDecomposes { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-decomposes", (f, l, m) =>
             ServiceForm.Decomposes(f, l, m) || ServiceForm.Decomposes(f, m, l));
 
-        /// <summary>A form's flat parts, as a set, are the two forms': each side's own where it is a junction of the form's connective.</summary>
-        public static Primitive<ServiceForm, ServiceForm, ServiceForm, bool> FormIsJoinOf { get; } = Primitive.Create<ServiceForm, ServiceForm, ServiceForm, bool>("form-is-join-of", (h, l, m) =>
-            FlatParts(h, h.Kind).ToHashSet().SetEquals(FlatParts(l, h.Kind).Concat(FlatParts(m, h.Kind))));
-
         /// <summary>A price is of a form: an exact form was found.</summary>
         public static Primitive<Priced, bool> PricedIsReal { get; } = Primitive.Create<Priced, bool>("priced-is-real", p => p.Form is not null);
 
@@ -153,9 +149,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The places a number has after its point, its trailing zeros apart.</summary>
         static int Places(decimal value) => (value / 1.000000000000000000000000000000000m).Scale;
-
-        static IEnumerable<ServiceForm> FlatParts(ServiceForm form, ServiceFormKind kind) =>
-            form.Kind == kind && kind is ServiceFormKind.And or ServiceFormKind.Or ? form.Flat : [form];
 
     }
 

@@ -259,35 +259,68 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static CosmosValueClass Side(int order) => order < 0 ? CosmosValueClass.Below : order > 0 ? CosmosValueClass.Above : CosmosValueClass.Equal;
 
         /// <summary>
-        /// Two strings under a comparator of strings, the one the harness holds the service's order to: by UTF-16 unit, or by
-        /// code point, a pair the one it encodes and a lone surrogate its own unit, the order of the bytes the service holds
-        /// (<see cref="ByCodePoint"/>). Under the emulator's, the stored value against the literal as the statement sends it,
-        /// each in the stored spelling with both escapes (<see cref="EmulatorStoredText.Of"/>): what it compares, measured
-        /// (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). The strings are taken as they are: what a target stores of
-        /// one written otherwise is S's (<see cref="LeafReads.Unkept"/>). Each comparator's own evaluation; one of another
-        /// kind is none, and S hands none (<see cref="AnswerMeanings.ReadBy"/>).
+        /// Each comparator of strings the leaf evaluates, by an evaluation of its own, the one the harness holds the service's
+        /// order to: by UTF-16 unit, or by code point, a pair the one it encodes and a lone surrogate its own unit, the order of
+        /// the bytes the service holds (<see cref="ByCodePoint"/>). Under the emulator's, the stored value against the literal
+        /// as the statement sends it, each in the stored spelling with both escapes (<see cref="EmulatorStoredText.Of"/>): what
+        /// it compares, measured (<c>Service.EmulatorComparesTheSpellingItIsSent</c>).
         /// </summary>
-        internal static int Compare(CosmosAnswer comparator, string a, string b) => comparator switch
+        static readonly IReadOnlyDictionary<CosmosAnswer, Func<string, string, int>> Comparisons = new Dictionary<CosmosAnswer, Func<string, string, int>>
         {
-            CosmosAnswer.CodePoint => ByCodePoint(a, b),
-            CosmosAnswer.Utf16 => string.CompareOrdinal(a, b),
-            CosmosAnswer.StoredCodePoint => ByCodePoint(EmulatorStoredText.Of(a), EmulatorStoredText.Of(b)),
-            _ => throw new ArgumentOutOfRangeException(nameof(comparator), comparator, "No comparator of strings: S's roles hand a string's order none other."),
+            [CosmosAnswer.CodePoint] = ByCodePoint,
+            [CosmosAnswer.Utf16] = string.CompareOrdinal,
+            [CosmosAnswer.StoredCodePoint] = (a, b) => ByCodePoint(EmulatorStoredText.Of(a), EmulatorStoredText.Of(b)),
         };
 
         /// <summary>
-        /// Whether a string matches a pattern of runs under a matcher, one the test's entry names: by code point, as by UTF-16
-        /// unit over well-formed text (<see cref="AffixPattern.Matches"/>); under the emulator's, the string's stored spelling
-        /// against the pattern's, which is what it matches (<c>Service.EmulatorComparesTheSpellingItIsSent</c>). The matcher's
-        /// own evaluation on two concrete strings, as <see cref="Compare"/> is the comparator's; an answer that is no matcher
-        /// has none, and S hands none (<see cref="AnswerMeanings.ReadBy"/>).
+        /// Each matcher the leaf evaluates, by an evaluation of its own: by code point, as by UTF-16 unit over well-formed text
+        /// (<see cref="AffixPattern.Matches"/>); under the emulator's, the string's stored spelling against the pattern's, which
+        /// is what it matches (<c>Service.EmulatorComparesTheSpellingItIsSent</c>).
         /// </summary>
-        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => matcher switch
+        static readonly IReadOnlyDictionary<CosmosAnswer, Func<string, string, bool>> Matchings = new Dictionary<CosmosAnswer, Func<string, string, bool>>
         {
-            CosmosAnswer.CodePoint => AffixPattern.Matches(text, pattern),
-            CosmosAnswer.StoredCodePoint => AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern)),
-            _ => throw new ArgumentOutOfRangeException(nameof(matcher), matcher, "No matcher: S's roles hand an affix's entry none other."),
+            [CosmosAnswer.CodePoint] = AffixPattern.Matches,
+            [CosmosAnswer.StoredCodePoint] = (text, pattern) => AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern)),
         };
+
+        /// <summary>
+        /// The comparators of numbers the leaf evaluates (<see cref="Numeric"/>): those that compare a number beyond int64, and
+        /// one with a fraction, as its double (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), a whole number within it as
+        /// the readings S hands say.
+        /// </summary>
+        static readonly ValueSet<CosmosAnswer> NumberOrders = ValueSet.Of(CosmosAnswer.Numeric, CosmosAnswer.NumericPointedAsDouble);
+
+        /// <summary>
+        /// What the leaf evaluates each role's cells by, the role's test over its operand class beside each answer: a string
+        /// order's by <see cref="Compare"/>, a number order's by <see cref="Numeric"/>, an affix's and a <c>LIKE</c>'s by
+        /// <see cref="Matches"/>, each an answer the table names of its own. S's roles rule hands a key a reader only among
+        /// them (<see cref="RenderingDefinition.Evaluates"/>, G2), so an answer the meanings give a role and the leaf no
+        /// evaluation reads nothing, and its leaf answers anything.
+        /// </summary>
+        public static ValueSet<(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAnswer Answer)> Evaluates { get; } =
+            ValueSet.From(Comparisons.Keys.Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.String, Answer: c))
+                .Concat(NumberOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.Number, Answer: c)))
+                .Concat(from test in ServiceForm.Affixes.AsEnumerable()
+                        from matcher in Matchings.Keys
+                        select (Test: test, Operand: CosmosValueClass.String, Answer: matcher)));
+
+        /// <summary>
+        /// Two strings under a comparator of strings, its own evaluation (<see cref="Comparisons"/>). The strings are taken as
+        /// they are: what a target stores of one written otherwise is S's (<see cref="LeafReads.Unkept"/>). One the leaf does
+        /// not evaluate S never hands (<see cref="Evaluates"/>).
+        /// </summary>
+        internal static int Compare(CosmosAnswer comparator, string a, string b) => Comparisons.TryGetValue(comparator, out var compare)
+            ? compare(a, b)
+            : throw new ArgumentOutOfRangeException(nameof(comparator), comparator, "No comparator of strings the leaf evaluates: S's roles hand none other.");
+
+        /// <summary>
+        /// Whether a string matches a pattern of runs under a matcher the test's entry names, its own evaluation on two
+        /// concrete strings (<see cref="Matchings"/>), as <see cref="Compare"/> is the comparator's. One the leaf does not
+        /// evaluate S never hands (<see cref="Evaluates"/>).
+        /// </summary>
+        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => Matchings.TryGetValue(matcher, out var matches)
+            ? matches(text, pattern)
+            : throw new ArgumentOutOfRangeException(nameof(matcher), matcher, "No matcher the leaf evaluates: S's roles hand an affix's entry none other.");
 
         /// <summary>
         /// Whether a matcher's spelling splits a pattern of runs, so that a range's affix cut, of strings as written, does not
@@ -326,9 +359,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// S handed its order's entry (<see cref="MeasuredEntry.Readings"/>, <c>Service.IntegersOrderExactly</c>): by its value,
         /// by its double, both where a target that holds one written with a point as a double reads it, the cell keeping no
         /// spelling, and anywhere by neither (G2); a literal sent as a double is placed against only where that double is it.
+        /// A comparator of numbers the leaf does not evaluate S never hands (<see cref="NumberOrders"/>, <see cref="Evaluates"/>).
         /// </summary>
         static CosmosValueClass[]? Numeric(PathCell cell, decimal c, CosmosAnswer comparator, ValueSet<(CosmosAnswer, string)> readings) =>
-            cell.SidesOf(c, readings.Contains((comparator, "value")), readings.Contains((comparator, "double"))) is not { } sides ? null
+            NumberOrders.Contains(comparator) == false
+                ? throw new ArgumentOutOfRangeException(nameof(comparator), comparator, "No comparator of numbers the leaf evaluates: S's roles hand none other.")
+            : cell.SidesOf(c, readings.Contains((comparator, "value")), readings.Contains((comparator, "double"))) is not { } sides ? null
             : sides.Contains(null) ? [CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above] : [.. sides.Select(s => Side(s!.Value)).Distinct()];
 
     }

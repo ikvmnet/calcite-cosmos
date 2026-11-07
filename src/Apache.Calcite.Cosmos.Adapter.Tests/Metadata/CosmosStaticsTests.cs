@@ -168,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             ("Facts.Rendering.AgreementRows", ["Allowing", "Classes", "Refuting"], StaticFact, "S's agreement boxes"),
             ("Facts.Rendering.AnswerMeanings", ["Matching", "Measured", "NumberOrders", "StringOrders"], StaticFact, "what each answer was measured to mean, and the comparators and matchers it names"),
-            ("Facts.Rendering.CosmosValueClasses", ["Kinds"], StaticFact, "the classes a cell may be of"),
+            ("Facts.Rendering.CosmosValueClasses", ["Constants", "Kinds"], StaticFact, "the classes a cell may be of, and the constant each boolean class is sent as"),
             ("Facts.Rendering.FunctionValueClasses", ["Holding"], StaticFact, "the atoms each class of value a function row may be keyed by holds"),
             ("Facts.Rendering.LeafReads", ["None"], StaticFact, "the empty reads, immutable"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "Failing", "Identity", "Operands", "Opposite", "OppositeElse", "Rows", "Units"], StaticFact, "Kleene logic as rows"),
@@ -180,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.RenderingCost", ["None"], StaticFact, "a sentinel"),
             ("Facts.Rendering.RenderingGraph", ["DefaultRetry"], Infra, "a setting"),
             ("Facts.Rendering.RenderingOracle", ["DefaultWait"], Infra, "a setting"),
-            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsGrouped", "FormIsJoinOf", "FormIsLeaf", "FormJoins", "FormLeansOn", "FormRegroups", "HoldsNoBoolean", "IsNotSame", "OutcomesWithin", "PlacesBeyond", "PlacesWithin", "PricedIsReal", "RexWritable", "SameForm", "SetNonempty", "SpellingSplits", "StringComparison", "StringOrdering", "TruthsWithin", "WholeDigitsFit"], StaticFact, "pure functions S's rules call"),
+            ("Facts.Rendering.RenderingPrimitives", ["BestIsImplied", "BestIsNotImplied", "FormDecomposes", "FormHeads", "FormHolds", "FormIsCompound", "FormIsGrouped", "FormIsLeaf", "FormJoins", "FormLeansOn", "FormRegroups", "HoldsNoBoolean", "IsNotSame", "OutcomesWithin", "PlacesBeyond", "PlacesWithin", "PricedIsReal", "RexWritable", "SameForm", "SetNonempty", "SpellingSplits", "StringComparison", "StringOrdering", "TruthsWithin", "WholeDigitsFit"], StaticFact, "pure functions S's rules call"),
             ("Facts.Rendering.RenderingImage", ["Malformed", "Typed"], StaticFact, "a sentinel key, and the operators keyed by type"),
             ("Facts.Rendering.RenderingRexGrammar", ["Guarded", "TypeTests", "Written"], StaticFact, "what a Rex writes"),
             ("Facts.Rendering.RenderingRexGrammar.Value", ["Unguarded"], StaticFact, "an empty set of guarded paths"),
@@ -188,8 +188,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.RenderingTemplateRows", ["Fits", "FromTheSwitch", "Templates"], StaticFact, "the templates, the shapes each fits, and those production asks from the switch"),
             ("Facts.Rendering.RenderingTemplates", ["Unspelled"], StaticFact, "a sentinel"),
             ("Facts.Rendering.PlaceSpellings", ["Relaxed"], Infra, "serializer options"),
-            ("Facts.Rendering.ServiceForm", ["Leaf", "Unjoined", "Unspanned"], StaticFact, "sentinels"),
-            ("Facts.Rendering.ServiceTable", ["Views"], PlanScoped, "keyed weakly on a generation's interned table, then on the classes it places and on its pair table: an index of them, a function of the definition"),
+            ("Facts.Rendering.ServiceForm", ["Affixes", "Leaf", "Unjoined", "Unspanned"], StaticFact, "sentinels, and the tests an affix asks"),
+            ("Facts.Rendering.ServiceLeaf", ["Comparisons", "Evaluates", "Matchings", "NumberOrders"], StaticFact, "each comparator's and matcher's own evaluation, and the answers the leaf evaluates each role by"),
 
             ("Facts.Saturation.JsonContexts", ["Armed", "Reporting"], TestArm, "the reports a measurement asks for its flow"),
             ("Facts.Saturation.JsonPathSpec", ["Every", "Root"], StaticFact, "the root and the every-element step"),
@@ -244,7 +244,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.Convert.CosmosConverters.Announced", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.CosmosConstraintCompiler.Cache", nameof(AConstraintRememberedUnderALongLivedFactoryKeepsNoTable)),
             ("Facts.Rendering.RenderingAnswerMemo.Digests", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
-            ("Facts.Rendering.ServiceTable.Views", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
             ("Facts.Saturation.PredicateRules.Defined", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
         ];
 

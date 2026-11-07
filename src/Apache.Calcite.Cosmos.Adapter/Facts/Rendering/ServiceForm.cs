@@ -42,6 +42,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 ServiceFormKind.Choose => members.Sum(m => m.Nodes) + 2,
                 _ => 1,
             };
+            Groups = members.Sum(m => m.Groups) + (kind is ServiceFormKind.And or ServiceFormKind.Or ? 1 : 0);
         }
 
         public ServiceFormKind Kind { get; }
@@ -88,6 +89,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Its size, the price of an exact form: a leaf 1, a <c>NOT</c> one more than its operand, a junction its members and the connectives between them.</summary>
         public int Nodes { get; }
 
+        /// <summary>
+        /// Its junctions, each a group the printer writes in parentheses: of two forms of one size the one with fewer prints
+        /// the shorter SQL, so the price keeps a junction its connective's laws flatten below the junction it flattens.
+        /// </summary>
+        public int Groups { get; }
+
         /// <summary>The form and every form within it, through any connective: unlike <see cref="Parts"/>, which keeps to its own.</summary>
         public IEnumerable<ServiceForm> Subforms => Members.SelectMany(m => m.Subforms).Prepend(this);
 
@@ -105,10 +112,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// A path matched against a string (h07): <c>STARTSWITH</c>, <c>ENDSWITH</c> or <c>CONTAINS</c> of the argument, case
         /// sensitive, or <c>LIKE</c> of a pattern, as asked; whether it says what an atom asks is the gate's.
         /// </summary>
-        public static ServiceForm AffixOf(CosmosServiceTest test, string path, string argument) => test is CosmosServiceTest.StartsWith or CosmosServiceTest.EndsWith or CosmosServiceTest.Contains or CosmosServiceTest.Like
+        public static ServiceForm AffixOf(CosmosServiceTest test, string path, string argument) => Affixes.Contains(test)
             ? new(ServiceFormKind.Affix, test, path, JsonValues.Of(argument), ValueSet.Of(JsonValues.Of(argument)), ValueSet.Of(path), Leaf,
                 test == CosmosServiceTest.Like ? "(" + path + " LIKE " + SqlValue.Quote(JsonValues.Of(argument)) + ")" : NameOf(test) + "(" + path + ", " + SqlValue.Quote(JsonValues.Of(argument)) + ")")
             : throw new ArgumentOutOfRangeException(nameof(test), test, null);
+
+        /// <summary>The tests an affix form asks: <c>STARTSWITH</c>, <c>ENDSWITH</c>, <c>CONTAINS</c> and <c>LIKE</c>.</summary>
+        public static ValueSet<CosmosServiceTest> Affixes { get; } = ValueSet.Of(CosmosServiceTest.StartsWith, CosmosServiceTest.EndsWith, CosmosServiceTest.Contains, CosmosServiceTest.Like);
 
         /// <summary>An affix's pattern of runs and <c>%</c> (<see cref="AffixPattern.Of"/>); <c>null</c> for any other form, and for an argument no pattern says.</summary>
         public string? Pattern => Kind == ServiceFormKind.Affix ? AffixPattern.Of(Test, JsonValues.StringOf(Literal!)) : null;
@@ -169,9 +179,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A form negated where a row says so (<see cref="Negated"/>), and as it is otherwise: the else rows' sign of a condition.</summary>
         public static ServiceForm Signed(bool negated, ServiceForm form) => negated ? Negated(form) : form;
-
-        /// <summary>The constant a truth value of the IR is sent as: TRUE as <c>true</c>, FALSE as <c>false</c>; the rule asks no other.</summary>
-        public static ServiceForm TruthAt(RenderPosition pos, string truth) => ConstantOf(truth == "true");
 
         /// <summary>Text the reader could not read, over the paths it names: the service's answer on it is not known.</summary>
         public static ServiceForm OpaqueOf(string text, ValueSet<string> paths) =>
@@ -284,8 +291,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Two forms joined by a connective: a junction of its own flattened into its members, one of each part kept in the
         /// arms' order, and Kleene's constants folded whatever the position, the identity left out and the absorbing one
-        /// the whole. Only takes forms apart and puts them together; whether the join holds is the licence's. Total, as a
-        /// rule body's calls must be: no junction joins by anything else, and an opaque sentinel says so.
+        /// the whole. The weakening's assembly alone: a weakening has no lattice, one form a node, so it cannot leave the
+        /// paired form and its regrouping both to a rule (<c>TODO.md</c>, the weakening's assembly); a best is joined by
+        /// <see cref="Paired"/>, and S's rules regroup and fold it. Total, as a rule body's calls must be: no junction joins
+        /// by anything else, and an opaque sentinel says so.
         /// </summary>
         public static ServiceForm Joined(CosmosServiceTest connective, ServiceForm left, ServiceForm right)
         {

@@ -3108,6 +3108,14 @@ across documents* and *A join of a container to itself* is the record.
   which reads an `OR` of equalities as an `IN` over literals alone, so over the places reading an `OR` of cast numbers
   stays a disjunction of atoms. A raw reading, and a typed one no row names, compared with a cast number is a comparison
   with no atom over the places reading, where the fold left it opaque.
+- **The weakening's assembly is C#'s** — *small, and it needs a lattice over weakenings.* `ServiceForm.Joined` flattens a
+  member of its own connective, keeps one of each part and folds a constant where the junction weakening rule,
+  `ServiceForm.Folded` and `RenderingWeakening.OfCase` assemble a weakening. A best is `Paired` and S's regroup and units
+  rules rewrite it, the price keeping the regrouped (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*). A
+  weakening cannot be, since `weakening` has no lattice: one form a node, so a node given the paired weakening and the
+  regrouped one faults the bundle. A lattice that keeps the regrouped of two weakenings, as `Priced` does of two bests,
+  lets the weakening rules write `Paired`, the two rules regroup and fold it, and `Joined` go, with the weakenings as
+  they were.
 - **The foundation's F3 rows wait on their groups** — *each group's, G2 to G8.* f345 reads the prose rows' cells into S
   (DESIGN.md, *The foundation's cells, roles and case mapping*); G1's rules read `parts`, `moves`, `storedas` and
   `truncates`, each set's parting bands are its own comparators', and the leaf, the lifts and `StoresSpelled` read what

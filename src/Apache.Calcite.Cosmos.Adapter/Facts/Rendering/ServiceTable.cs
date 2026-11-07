@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Runtime.CompilerServices;
 
 using Eggnog;
 
@@ -12,13 +11,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <summary>
     /// A set's table as the evaluation primitives read it: its entries, indexed by key; the classes S placed by their order's
     /// readers (<see cref="RenderingTheory.Placed"/>); and the keys S read a comparison of two paths by, in a table of their
-    /// own (G3); equal by content, since Eggnog interns a value by its equality.
+    /// own (G3); equal by content, since Eggnog interns a value by its equality. S views each set's once it is settled
+    /// (<see cref="RenderingTheory.View"/>), and the theory holds it.
     /// </summary>
     internal sealed class ServiceTable : IEquatable<ServiceTable>
     {
-
-        /// <summary>The view of each set of entries beside each set of placed classes and each pair table, built once.</summary>
-        static readonly ConditionalWeakTable<ValueSet<MeasuredEntry>, ConditionalWeakTable<ValueSet<CosmosValueClass>, ConditionalWeakTable<ValueSet<MeasuredEntry>, ServiceTable>>> Views = new();
 
         readonly Dictionary<MeasuredKey, MeasuredEntry> _index;
         readonly Dictionary<MeasuredKey, MeasuredEntry> _pairs;
@@ -42,8 +39,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public ValueSet<MeasuredEntry> Pairs { get; }
 
         /// <summary>The view of a set's entries, the placed classes and the pair table; two entries for one key throw.</summary>
-        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed, ValueSet<MeasuredEntry> pairs) =>
-            Views.GetValue(entries, _ => new()).GetValue(placed, _ => new()).GetValue(pairs, q => new ServiceTable(entries, placed, q));
+        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed, ValueSet<MeasuredEntry> pairs) => new(entries, placed, pairs);
 
         /// <summary>The view of a set's entries and the placed classes, with no pair read.</summary>
         public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed) => Of(entries, placed, ValueSet<MeasuredEntry>.Empty);

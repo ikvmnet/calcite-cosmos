@@ -39,8 +39,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// of each set and leaf: the spelling a set is sent, its parting bands and unsendable classes, the paths it may write,
         /// and what a leaf reads beside its table (G1); what reads each settled key and how it reads a whole number, and what
         /// a class is to the gate (G2); a pair's readings, its table and the rows that license it, and what each reading's
-        /// order holds (G3); and a failing side's key and a junction holding its connective's unit (G4). No count bounds
-        /// them: what the rules cost is judged at the end-of-plan evaluation.
+        /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); and each set's table
+        /// as the leaves read it. No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["roles"] =
                 [
-                    "the answers of a key's role read it, where it names one and no comparator of another",
+                    "the answers of a key's role the leaf evaluates read it, where it names one and no comparator of another",
                     "a reader of a key reads a whole number as its rows say",
                 ],
                 ["failing"] =
@@ -142,6 +142,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a settled key is an entry of its set's table",
                     "a failing side's key whose every key the set settled is an entry of its table, failing beside them",
                     "a pair key the rows read is an entry of its set's pair table",
+                ],
+                ["view"] =
+                [
+                    "a set's settled table is viewed as its leaves read it",
                 ],
                 ["tag"] =
                 [
@@ -287,7 +291,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(124);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(125);
         }
 
         /// <summary>

@@ -6970,7 +6970,9 @@ each part in the arms' order, and folds Kleene's constants at either position; `
 one `NOT`; `ServiceForm.Folded` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
 `Neg`, the identity for none, and prunes nothing: flattening and one part each make a presence test vanish into a
 guarded form that holds it. Whether a leaf takes its best or this fold is two rules (`best-is-implied` and its
-negation), and `form-is-join-of` holds a composed form to exactly its arms' parts, as a set.
+negation). `Joined` is the weakening's alone: a weakening has no lattice, so one node cannot hold the paired form and
+what S's rules regroup it to (TODO.md, *The weakening's assembly is C#'s*). A best is joined bare, by `Paired`, and
+regrouped by rules (*Bests*, below).
 
 **What holds it.** `RenderingTemplatesTests`: totality over every atom the inputs load, a synthetic atom of every shape
 and a parameter; every pair the rows ask spells a form; the translator's spelling, over every one-atom conjunct the check
@@ -6996,8 +6998,11 @@ answer.
    operand is strict in, through `callarg`. A predicate `over` a strict value is null where the path is absent, so
    neither TRUE nor FALSE there: it implies `IS_DEFINED(p)` at `Pos` and `NOT IS_DEFINED(p)` at `Neg`, which a `NOT`
    above turns back into presence.
-4. *Bests.* A junction's best is `Joined` of its arms' bests, held by `form-is-join-of` under the connective's licence,
-   with an Equal agreement whose proof joins theirs, so the conflict rule and the proof lines carry over. A negation's
+4. *Bests.* A junction's best is `Paired` of its arms' bests, the bare junction of the two as they stand, under the
+   connective's licence, with an Equal agreement whose proof joins theirs, so the conflict rule and the proof lines carry
+   over. S's regroup rule flattens a member of the connective's own and keeps one of each part, and its units rule folds
+   a constant; each gives a form the price keeps over the paired one, fewer nodes where a copy or a constant goes and,
+   where only a junction is flattened, as many nodes in fewer groups (`Priced`, G4). A negation's
    best is its operand's at the opposite position, stripped of a `NOT`; so `NOT (x IS NULL)` is written in `IS NOT
    NULL`'s spelling, and a double `NOT` collapses.
 5. *Weakenings.* A leaf takes its best where that best is one of its implied forms (`best-is-implied`), and otherwise
@@ -7021,9 +7026,9 @@ rows from no weakening.
 complete when `best` starts, so each junction's best is computed once, from final arms, bottom up. `best` still reads a
 value its own stratum writes, and that is sound: a price only lowers and `priced-is-real` only turns true, so every value
 it composed from is an exact form. `weaken` runs last and reads every best and implied set complete, so exactly one of
-the two leaf rules fires for a leaf. A junction's best joins its arms' bests. Joining dedupes shared parts, so a dearer
-arm form that shares more with its sibling could join cheaper. That is not searched: the text may differ, the rows
-never do.
+the two leaf rules fires for a leaf. A junction's best pairs its arms' bests and the regroup rule drops the parts they
+share, so a dearer arm form that shares more with its sibling could join cheaper. That is not searched: the text may
+differ, the rows never do.
 
 **The round's junction is one more root.** `Through(k)` and `Before(k)` are written beside the conjuncts and share
 their terms, so the `best` rule proves the `WHERE`'s `AND`. A conjunct with no exact form leaves the junction with none,
@@ -7048,7 +7053,7 @@ The grammar is the Rex builder's own and loads from `RenderingRexGrammar` as one
 
 **The order test reads generate mode too.** It reads the three schedules. Beyond the universals, every other filter
 reads complete values, except those that hold of the value they are handed however it moves: `priced-is-real` and
-`form-is-join-of`. A function's value matched against a constant must be complete: `Is(false)` on a `Max<bool>` reads
+`same-form`. A function's value matched against a constant must be complete: `Is(false)` on a `Max<bool>` reads
 "not yet true". So `best-is-implied` and its negation read finished sets, and the lift reads a vacuity the gate
 finished a stratum before. One plant shows each refusal.
 
@@ -9161,23 +9166,31 @@ what a cell's class is to the gate, what licenses and keys a comparison of two p
 pair, what a side that may fail answers, what a constant rests on, and how a junction holding a constant folds. Each is
 rules over rows; C# keeps the readers, the writer and the evaluators of one atom on concrete cells. Eighteen rules are
 added, ten for G2, five for G3 and three for G4, against the audit's two to six, two to three and one to three, and the
-fix round a nineteenth, G4's regrouping; no count bounds them (S is 124,
+fix round a nineteenth, G4's regrouping, and the second a twentieth, each set's view; no count bounds them (S is 125,
 `RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`). The digests are byte-equal.
 
 **The strata.** Settle runs `roles`, `failing` and `pairs` after `tabulate`, each reading `final` complete, and
-`entries` after them, which makes each set's table and pair table once all three are; `matched`, `licence` and `sets`
-follow as before. Check and Generate run `classes` and `gate` in strata of their own, since the gate reads complete the
-rows a candidate's classes rest on (`RenderingOrderTests`).
+`entries` after them, which makes each set's table and pair table once all three are. `view` follows: *a set's
+settled table is viewed as its leaves read it* gives `view(s)`, its entries, the classes placed and its pair table as
+one `ServiceTable`, which the evaluate rules hand the leaf and the compound. The view is the theory's, so it hangs off
+the schema; g234 built one in each evaluate rule's head and cached it in a process-wide table keyed by the entries,
+which the second check named. `matched`, `licence` and `sets` follow as before. Check and Generate run `classes` and
+`gate` in strata of their own, since the gate reads complete the rows a candidate's classes rest on
+(`RenderingOrderTests`).
 
 **What reads a key (G2).** `AnswerMeanings.ReadBy` is host data, keyed by test and operand class: the code point, UTF-16
 and stored code point orders read the order of strings' entry, `numeric` and `numericpointedasdouble` the order of
 numbers', and the matchers (the two code point orders) each affix's and `LIKE`'s over a string. *A key every target its
 set serves measured is settled* writes `final` and seeds the key's `readers` and `readings` empty. *The answers of a
-key's role read it, where it names one and no comparator of another* gives `readers` as
-`final ∩ readby(test, operand)`, where that is not empty and every comparator among the answers is of that role: an
-affix entry naming UTF-16 beside a matcher reads nothing, as `Unmatched` said, and so does an order entry naming a
-comparator of another kind's order, as the parent's `Place` declined one, so its leaf answers anything
-(`ServiceLeafTests.AComparatorOfAnotherKindPlacesNothing`). g234 keyed `readby` by the test alone, and the leaf then
+key's role the leaf evaluates read it, where it names one and no comparator of another* gives `readers` as
+`final ∩ readby(test, operand) ∩ evaluates(test, operand)`, where that is not empty and every comparator among the
+answers is of that role: an affix entry naming UTF-16 beside a matcher reads nothing, as `Unmatched` said, and so does
+an order entry naming a comparator of another kind's order, as the parent's `Place` declined one, so its leaf answers
+anything (`ServiceLeafTests.AComparatorOfAnotherKindPlacesNothing`). `evaluates` is what the leaf has an evaluation of,
+read off its own tables (`ServiceLeaf.Evaluates`: `Comparisons`, `Matchings` and the number orders), so a comparator the
+meanings give a role and the leaf has none for is of no role and reads nothing, where the leaf raised and faulted the
+saturation (`ServiceLeafTests.AComparatorTheLeafCannotEvaluateReadsNothing`, fix round 2). The measured meanings give
+none. g234 keyed `readby` by the test alone, and the leaf then
 evaluated whatever comparator an order row named on either kind's cells, a string under a number's by code point and a
 fraction under a string's by its double; no registry row named one, and the fix round's key moved no plan.
 *A reader of a key reads a whole number as its rows say* joins `wholereads`. *A settled key is an entry of its set's
@@ -9185,8 +9198,8 @@ table* moves to `entries` and carries both (`MeasuredEntry.Readers`, `Readings`)
 `Placing`, `Matching` and `Unmatched` in its head. The leaf reads an entry through `ServiceTable.Read`, which answers
 none where S found no reader, and places or matches a cell by each reader. `Within`, `Affix` and `Paired` name no
 comparator, and `Place` and `Sides` choose the evaluation by the cell, a string or a number, not by the comparator's
-name: S hands a cell its own kind's comparators alone. `Compare` and `Matches` evaluate their own comparators and
-matchers, each arm one, and raise over any other, which S never hands.
+name: S hands a cell its own kind's comparators alone. `Compare` and `Matches` evaluate a comparator or matcher by its
+entry in those tables and raise over any other, which S never hands.
 
 **A whole number as its comparator reads one (G2).** `Service.IntegersOrderExactly` carries
 `wholereads(comparator, value|double)` (`CosmosWholeReading`, `CosmosAxiomRows.ReadWholeReadings`), and
@@ -9274,22 +9287,34 @@ reads `Failing` as an operand's class, as it reads any key.
 
 **A constant's truth and a junction's unit (G4).** *A truth value is exact as the constant its position reads it as*
 rests on the rows that measured that truth's constant (`measuredcites(Constant, class, s)`), where it carried
-`MeasuredTruths` and `ConstantProof` built in C#. The else rules assemble a case's junction from `absorbingelse` and
-`oppositeelse`, which now carry the junction and whether the condition is negated (`ServiceForm.Signed`,
-`ServiceForm.Paired`). Before, `AbsorbingElse` and `OppositeElse` chose them in C#, and `Joined` folded a constant
-member away. `Paired` is the two forms' junction as they stand: nothing flattened, rid of copies or folded. Two rules
-take it from there, and the best keeps the cheapest form they agree on:
+`MeasuredTruths` and `ConstantProof` built in C#, and sends the constant its class is (`constants`,
+`CosmosValueClasses.Constants`: TRUE's class the constant TRUE, FALSE's FALSE), where `ServiceForm.TruthAt` wrote FALSE
+for any truth not TRUE. UNKNOWN is no constant: no row, so no form is exact for it. The else rules assemble a case's
+junction from `absorbingelse` and `oppositeelse`, which now carry the junction and whether the condition is negated
+(`ServiceForm.Signed`, `ServiceForm.Paired`). Before, `AbsorbingElse` and `OppositeElse` chose them in C#, and
+`Joined` folded a constant member away. `Paired` is the two forms' junction as they stand: nothing flattened, rid of
+copies or folded. Two rules take it from there, and the best keeps the cheapest form they agree on:
 - *A junction holding its connective's unit agrees as Kleene's logic folds it* reads `units` (`KleeneTables.Units`:
   TRUE is `AND`'s identity and `OR`'s absorbing element, FALSE the reverse). Under a set that licenses `Constant` and
   composes through the connective, it gives the folded form (`ServiceForm.Unit`) the junction's agreement.
 - *A junction holding its own connective or a part twice agrees as its connective's laws regroup it* gives the junction
   flattened, one of each part kept in order (`ServiceForm.Regrouped`, guarded by `form-is-grouped`), its agreement,
   under a set composing through the connective, whose licence is what the evaluate rule takes associativity and
-  idempotence from (`form-regroups`). The fix round added it: g234's `Paired` flattened and dropped copies in C#. It
-  gives what that did, so no plan moved (`RenderingCaseTests.AnAbsorbingElseRegroupsWhatItJoins`).
+  idempotence from (`form-regroups`). The fix round added it: g234's `Paired` flattened and dropped copies in C#.
 
-`Joined` still folds a constant member, flattens and drops copies where the junction and weakening rules build one,
-since the audit named only the else rules; its laws are the ones `units` and the regroup rule state.
+A form the regroup rule flattens without dropping a copy has as many nodes as the nested one, and the price ranked the
+two by text, so the fix round kept whichever sorted first: the flattened where its parts' text began `(`, the nested
+where it began a letter, as a type test's does. The fix round's claim that the price keeps the regrouped held only of
+the parts its test used. The second fix round ranks two forms of one size by their groups, a junction's parentheses
+each (`ServiceForm.Groups`, `Priced`), so the regrouped is kept whatever its text, and the test reads parts that sort
+either side of a parenthesis.
+
+The junction rule joins its arms' bests by `Paired` too, since fix round 2, where it joined them by `Joined` under
+`form-is-join-of`, which is gone. `Joined` flattened, dropped copies and folded constants in C#, and the second check
+named it. The regroup and units rules give what it gave, and with the price ranking groups the bests, and the plans,
+are what they were. `Joined` stays the weakening's alone (`ServiceForm.Folded`, the junction weakening rule,
+`RenderingWeakening.OfCase`): `weakening` has no lattice, one form a node, so a rule cannot give a node both the paired
+weakening and the regrouped one and keep one (`TODO.md`, *The weakening's assembly is C#'s*).
 
 **What stays C#.** `ServiceLeaf` evaluates one atom on concrete cells: it compares two strings, places a number by the
 flags its readings give, matches a pattern and reads a key. `ServiceCompound` reads a key for each pair of operand
