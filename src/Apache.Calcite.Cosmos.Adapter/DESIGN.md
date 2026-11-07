@@ -8421,8 +8421,10 @@ count at 76. The order test reads it as it reads `imported`, the host's for path
 
 **What a pair is.** A comparison whose both sides read a place, `name < other` or `LOWER(name) = other`, is an atom of
 `Paired(p, q)`, a term made in the rule's head over the two places, read by `PredicateAtom.CompareReadings` (reader,
-test, and the right side's reader as `Against`). A loading that reads places reads one where both sides are of one kind (text,
-a number, a truth), so Calcite compares them as written; two raw readings stay opaque. F gets the comparison only
+test, and the right side's reader as `Against`). A loading that reads places reads any two readings compared, and S's
+pair rule makes an atom of them where both are of one kind, so Calcite compares them as written: a raw reading has no
+kind and is no pair, and since G3 the kind is a row of Calcite's type system and the loader names none (*Answer roles,
+pairs and failure, S's (G2, G3, G4)*). F gets the comparison only
 through such a loading, from h15, and makes no atom of it then, so it learns from it what it learned from the opaque
 term; `ReadExactly` says so.
 
@@ -8435,17 +8437,21 @@ where the cells meet). A path against itself is the diagonal, each cell paired w
 h32's grouping keys read). Anything but two strings is paired with no order.
 
 **What each side answers.** Calcite's: raises where either reading raises, UNKNOWN where either reads null, and where
-both read a value the comparison of the order, but only on the diagonal or where both readings read strings as
-themselves (text, not a raw value nor `CHAR`'s padding); otherwise TRUE or FALSE, which proves nothing. The service's
+both read a value the comparison of the order, but only where both readings read strings as themselves, or on the
+diagonal where equal values read alike compare equal; otherwise TRUE or FALSE, which proves nothing. Which readings do
+either is a row of each since G3 (`readerorder`), where h11 placed every diagonal and read strings as themselves of the
+text accessor alone. The service's
 (`ServiceLeaf.Paired`): within one type the literal comparison's rows, the side read from the set's `Order` comparator,
 two string points compared directly, and every side where the comparator parts the cells' bands (U+0000 stored on the
 emulator, a surrogate against a character above U+DFFF by code point); across types the row
 of the left's class against the right's, or, where the right is no literal a row keys (null, absent, a structure), the
-mirrored test's row the other way round. All of it rests on `Service.TwoPathsCompareAsAPathAndALiteral`, measured on the
+mirrored test's row the other way round; since G3 the union of both, S's pair table. All of it rests on
+`Service.TwoPathsCompareAsAPathAndALiteral`, measured on the
 emulator over 15 values at `v` against 8 at `w` (an absent path, U+0000, U+FFFF and a surrogate pair among them), six
 comparators each way round, each also against the right's value as a literal where the two differ in kind or the right
-is no string: EN20261019 and EN20260907 answer its 1,890 lines alike. The leaf reads its one key (`ComparePaths`) before
-anything else, so where a set holds no such row a pair is anything and proves nothing; every set holds it since the
+is no string: EN20261019 and EN20260907 answer its 1,890 lines alike. The leaf read its one key (`ComparePaths`) before
+anything else, and since G3 the key is a licence S reads, so where a set holds no such row no pair is evaluated and it
+proves nothing; every set holds it since the
 probe account measured the same witnesses (run 1), Azure ordering a string holding U+0000 by code point where the
 emulator orders what it stores, which the set's comparator already says.
 
@@ -8989,9 +8995,10 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
   union over every comparator.
 - `Service.IntegersOrderExactly`: `Order/Number` per target, `numeric` on Azure and `numericpointedasdouble` on the
   emulator (`CosmosAnswer.NumericPointedAsDouble`: a whole number written with a point ordered as the double the
-  emulator holds it as, `Service.IntegralNumbersReadBackAsHeld`). The leaf places a whole number in int64 both ways
-  under either, as it did under the one answer, until G2 gives Azure's its own reading; the order witnesses are
-  integers, which both order alike, so the harness cannot tell them apart yet (`TODO.md`).
+  emulator holds it as, `Service.IntegralNumbersReadBackAsHeld`). The leaf placed a whole number in int64 both ways
+  under either, as it did under the one answer; since G2 each comparator's way is a `wholereads` row, and Azure's still
+  reads both, a stopgap: the order witnesses are integers, which both order alike, so the harness cannot tell them apart
+  yet (`TODO.md`).
 - `Service.NulEndsWhatReplaceAndContainsRead`: `truncates(azure, contains, onerun, nul)` and the `LIKE` of one run Azure
   answers as a `CONTAINS`; `REPLACE`'s is its function row's. `Service.LoneSurrogateIsStoredAsReplacement` is read again
   by the target that measured it (`CosmosAxiomRows.ReadStoredOn`, S's `storedas`), beside F's target-free `storedAs`.
@@ -9003,8 +9010,8 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
   classes its witnesses of a string held (the trimmed class and U+0000), beyond which the parse is unmeasured.
 - `Calcite.CastToBooleanParses`, `Calcite.CastOfTheAccessorParsesTheRendering` and `Calcite.CastOfARawValueToText`:
   `measuredcast(target, reader, row)`, each citing its row.
-- `Calcite.JsonValueRendersScalarsAsText`: `readerorder(text) ∋ itself`, the text reader's string being the string. No
-  row says `reflexive` of any reading yet: a double's NaN makes it a measurement.
+- `Calcite.JsonValueRendersScalarsAsText`: `readerorder(text) ∋ itself`, the text reader's string being the string. G3
+  measured the rest: `itself` of typed `VARCHAR` and `CHAR`, and `reflexive` of every reading S pairs that holds no NaN.
 - `Calcite.TypeTestsAreTheirBodies`: `testkinds(test)`, the classes each type test is true of in process, read off its
   vector.
 - `Calcite.RawNullIsSqlNull`: each column's own entries for a stored null and an absent path, read and cast alike, SQL
@@ -9012,9 +9019,10 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
   waits on G5.
 - `CosmosFunctionAnswer.Defined`, the D class's answer, apart from `Undefined`; no row states it yet (G6).
 
-G1's rules read `moves`, `storedas` and `truncates` (*Character bands and the stored spelling, S's (G1)*); no rule
-reads the rest until its group's does: G2 the pointed number, G3 `pairreads` and `readerorder`, G7 `calcitereads`, `calcitebands` and `testkinds`, G8 `boxof`, `seesthrough`,
-`structureonly` and `measuredcast` (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
+G1's rules read `moves`, `storedas` and `truncates` (*Character bands and the stored spelling, S's (G1)*), and G3's
+`pairreads` and `readerorder` (*Answer roles, pairs and failure, S's (G2, G3, G4)*); no rule reads the rest until its
+group's does: G7 `calcitereads`, `calcitebands` and `testkinds`, G8 `boxof`, `seesthrough`, `structureonly` and
+`measuredcast` (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
 fact of S as the definition carries it.
 
 **What each answer is to the leaf (F4).** `AnswerMeanings` holds the roles beside the outcomes: `Comparators` (every
@@ -9026,7 +9034,8 @@ leaf reads those sets, where it named the answers in three lists and an affix's 
 `AnswerMeanings.Whole` and its rows, where it held both as a mask and a sentinel. Which classes are placed by their
 order's comparators is S's too: the rule *a class some row orders is placed by its comparators* derives `placed` from
 the outcome rows (strings and numbers), of every set alike, so a set whose table holds no order of a placed class still
-asks for one and is named missing it; it reaches the leaf with the table (`ServiceTable.Placed`).
+asks for one and is named missing it; it reaches the leaf with the table (`ServiceTable.Placed`). G2 replaces the three
+sets with the answers that read a key and how each reads a whole number, and the mask `Whole` with a rule over a class.
 
 **The case mapping (F5).** `UPPER` and `LOWER` part over every band beyond ASCII on both targets in
 `Service.StringFunctionAnswersByBand`. `UPPER` was measured parting over the first band and the high one and `LOWER`
@@ -9144,6 +9153,128 @@ same as Calcite's, and reading them so would move the emulator's digests, a chan
 (`truncates`, `rewrites`, G1). Their stored branch reads `StoresSpelled` as S derives it. One is wider than S: it
 refuses a containment `LIKE` over a path that may hold U+0000 on the emulator too, which no row says, and reading the
 rows would push such a `LIKE` there and move the digests.
+
+### Answer roles, pairs and failure, S's (G2, G3, G4)
+
+g234 moves into S what the audit's G2, G3 and G4 named: which answers read a key and how each reads a whole number,
+what a cell's class is to the gate, what licenses and keys a comparison of two paths and what makes two readings a
+pair, what a side that may fail answers, what a constant rests on, and how a junction holding a constant folds. Each is
+rules over rows; C# keeps the readers, the writer and the evaluators of one atom on concrete cells. Eighteen rules are
+added, ten for G2, five for G3 and three for G4, against the audit's two to six, two to three and one to three; no
+count bounds them (S is 123, `RenderingTheoryTests.TheTheorysRulesAreHeldByFamily`). The digests are byte-equal.
+
+**The strata.** Settle runs `roles`, `failing` and `pairs` after `tabulate`, each reading `final` complete, and
+`entries` after them, which makes each set's table and pair table once all three are; `matched`, `licence` and `sets`
+follow as before. Check and Generate run `classes` and `gate` in strata of their own, since the gate reads complete the
+rows a candidate's classes rest on (`RenderingOrderTests`).
+
+**What reads a key (G2).** `AnswerMeanings.ReadBy` is host data: every comparator reads an order's entry, the matchers
+(the two code point orders) each affix's and `LIKE`'s. *A key every target its set serves measured is settled* writes
+`final` and seeds the key's `readers` and `readings` empty. *The answers of a key's role read it, where it names one and
+no comparator of another* gives `readers` as `final ∩ readby(test)`, where that is not empty and every comparator among
+the answers is of the test's role: an affix entry naming UTF-16 beside a matcher reads nothing, as `Unmatched` said.
+*A reader of a key reads a whole number as its rows say* joins `wholereads`. *A settled key is an entry of its set's
+table* moves to `entries` and carries both (`MeasuredEntry.Readers`, `Readings`), where the table rule computed
+`Placing`, `Matching` and `Unmatched` in its head. The leaf reads an entry through `ServiceTable.Read`, which answers
+none where S found no reader, and places or matches a cell by each reader. `Within`, `Affix` and `Paired` name no
+comparator, and `Place` and `Sides` choose the evaluation by the cell, a string or a number, not by the comparator's
+name.
+
+**A whole number as its comparator reads one (G2).** `Service.IntegersOrderExactly` carries
+`wholereads(comparator, value|double)` (`CosmosWholeReading`, `CosmosAxiomRows.ReadWholeReadings`), and
+`ServiceLeaf.Numeric` hands `PathCell.SidesOf` the two flags the entry's readings give. A whole number within int64 is
+placed by its value, by its double, by both, or anywhere where neither (`SidesOf`'s last arm, which no row reaches). The
+emulator's `numericpointedasdouble` reads both, since it holds a whole number written with a point as its double and a
+cell keeps no spelling. Azure's `numeric` reads both too. That is the parent's behaviour, and it is a stopgap. Azure
+holds such a number as the int64 it is, but S read that way alone moved what it sends:
+- under Production it wrote a comparison past 2^53 that the Rex builder's round trip refuses, the translator claiming
+  `Equal` of typed `BIGINT` there, where the column reads a number written with a point by its double
+  (`RenderingRexBuilderTests.EveryPushedWeakeningRoundTrips`);
+- under the emulator's set the generate simulation sent 375 differential conjuncts exactly against the parent's 377.
+
+The proper reading lands with witnesses that part the two orders, which the probe account's next run measures, and
+with h15's Rex builder (`TODO.md`, the two numeric orders).
+
+**What a class is to the gate (G2).** `CellOutcomes.Of` pairs the two sides' answers as they are. It marks a class
+whose service value is no boolean (`CellClass.NonBoolean`), and a class only a document an earlier round drops holds
+(`CellClass.Outside`). It used to read the first through `AnswerMeanings.Whole` and give the second the policy's truths
+in C#. The rules now:
+- *A class of a value that is no boolean reads as a whole condition over one reads* derives `readas` through
+  `AnswerMeanings.Read` (the outcomes that stand, and `NonBoolean` where any other may). *A class of a boolean reads as
+  it is.* The allowed, refuting and identity rules read `readas`.
+- *A candidate a cell of which holds no boolean rests on the rows that read a whole condition over one* adds
+  `NonBooleanRows` to its proof and refutation (`rests`).
+- A class set aside is allowed within a box admitting its outcomes, is raise-only, and is never a counterexample. Two
+  rules read `tolerated` as the parent's C# did: only where the policy sets a raise aside, so a policy that sets none
+  aside sets no cell aside either (`TheRaiseOnlyClassesAreTheOnesThePolicySetsAside`).
+- The identity and two-valuedness read `identityclasses` and `unknownclasses`, derived per class inside, where a
+  primitive (`NoCalciteUnknown`) read the classes' truths.
+
+`AgreementRows.Classes` holds the 900 classes the two flags make.
+
+**A pair's licence (G3).** The licence the leaf read first, `ComparePaths/None/None` holding TRUE, is a Kleene row now
+(`KleeneTables`, on both service targets). The expected and matched rules read it as any connective's, so `licensed(s)`
+holds `ComparePaths` where the set's rows measured it so. `RenderingPrimitives.FormLeansOn` says which tests a form's
+evaluation takes for granted: a comparison of two paths takes `ComparePaths`. The evaluate rule evaluates a leaf only
+under a set that licenses each. *A leaf rests on the rows that license each test it leans on* hands the rows that
+measured it beside the table (`licencerows`, `LeafReads.Licences`), from `measuredcites`, which the matched rule
+gathers by test and operand. Under a set that licenses no pair, S evaluates no pair leaf, where the leaf answered every
+outcome: neither proves anything. Every registry set licenses it.
+
+**A pair's readings and its table (G3).** Three rules read each set's pair table off `pairreads` (F3):
+- *a pair reads as its left against a literal of its right's value*;
+- *a pair reads as its right against a literal of its left's value, the comparator mirrored*;
+- *a pair with a side absent reads as the row of one* (`(ComparePaths, Absent, None)`, either side).
+
+Each writes the answers and rows of every reading the set settled, for every two kinds of value a side may hold
+(`kind`, `CosmosValueClasses.Kinds`), into `pairanswers` and `pairevidence`, which are unions. *A pair key the rows read
+is an entry of its set's pair table* makes `pairtable(s)`, which reaches the leaf with the table (`ServiceTable.Pairs`,
+`PairOutcomes`). The union replaces the precedence `Paired` chose by (the direct row where measured, the mirrored
+otherwise) and its `Mirror`. Wherever a set settled both ways round, the shipped rows answer alike
+(`RenderingPairTests.BothWaysRoundAnswerAlikeWhereverASetSettledThem`); were they to differ, the pair would read both,
+proving less, never more. Two values of one class S placed are still placed by its order's readers, on concrete cells.
+
+**What makes two readings a pair (G3).** The loader reads any two readings compared where places are read
+(`CosmosPredicateLoader.Comparison`), and S's pair rule decides: *a comparison of two readings of one kind is an atom of
+their pair, with what each reading's order holds*. Both readings must be of one `readerkind`: the family Calcite's type
+system names the reading's type (`CosmosRendering.ReadReaderKinds`), the text's `VARCHAR`, a typed reading's type, a
+cast's target. A raw reading has none. The atom carries each side's `readerorder` (`PredicateAtom.OrderedBy`). The
+loader's `KindOf` is gone, and its `Bare` reads a truth by the Rex's `BOOLEAN` type. `PredicateAtom.OnPair` places a
+pair by the order the cell parts its strings by only where both readings' orders hold `itself` and both sides hold
+strings, and on the diagonal only where the reading's order holds `reflexive`. It read `ReadsStrings`, the text
+accessor's alone, and placed every diagonal. Three Calcite rows are measured in process for it
+(`CalciteReaderOrderMeasurementTests`):
+- `Calcite.TextPlacesCompareAsTheirStrings`: `itself` of typed `VARCHAR` and `CHAR`, nothing padded;
+- `Calcite.EqualValuesReadAlikeCompareEqual`: `reflexive` of every reading S pairs that holds no NaN;
+- `Calcite.ANaNComparesAsNothingAlike`: why a double's reading, `FLOAT`, `REAL` and the text cast to `DOUBLE`, has no
+  `reflexive` row. `CAST(x AS DOUBLE) = CAST(x AS DOUBLE)` is FALSE over `'NaN'`, and the parent's diagonal proved it
+  equal to the service's comparison of the path with itself, a soundness defect that no production plan reached, since
+  Production reads no pair until h15.
+
+**A failing side (G4).** A side that may fail stands for every truth it could have given, and fails the connective
+beside them (decision 2). `ServiceCompound` folded that in C#. `KleeneTables.Failing` is now the rows: each key a side
+that may fail is keyed by (`CosmosValueClass.Failing`, either junction's either side or both, and a negation's
+operand), beside each key it stands for. *A failing side's key answers what each key it stands for answers* gathers
+them. *A failing side's key whose every key the set settled is an entry of its table, failing beside them* adds the
+failure, so a set that settled only some has no entry, and the key answers anything and is named missing. The compound
+reads `Failing` as an operand's class, as it reads any key.
+
+**A constant's truth and a junction's unit (G4).** *A truth value is exact as the constant its position reads it as*
+rests on the rows that measured that truth's constant (`measuredcites(Constant, class, s)`), where it carried
+`MeasuredTruths` and `ConstantProof` built in C#. The else rules assemble a case's junction from `absorbingelse` and
+`oppositeelse`, which now carry the junction and whether the condition is negated (`ServiceForm.Signed`,
+`ServiceForm.Paired`). Before, `AbsorbingElse` and `OppositeElse` chose them in C#, and `Joined` folded a constant
+member away. `Paired` folds nothing. *A junction holding its connective's unit agrees as Kleene's logic folds it* reads
+`units` (`KleeneTables.Units`: TRUE is `AND`'s identity and `OR`'s absorbing element, FALSE the reverse). Under a set
+that licenses `Constant` and composes through the connective, it gives the folded form (`ServiceForm.Unit`) the
+junction's agreement, and the best keeps the cheaper. `Joined` still folds a constant member where the junction and
+weakening rules build one, since the audit named only the else rules; its folding is the same law `units` states.
+
+**What stays C#.** `ServiceLeaf` evaluates one atom on concrete cells: it compares two strings, places a number by the
+flags its readings give, matches a pattern and reads a key. `ServiceCompound` reads a key for each pair of operand
+classes. `PathCell.SidesOf` and `PredicateAtom.OnPair` evaluate on cells by what S hands them. `AnswerMeanings.Read`
+applies the meanings to a class a rule hands it. `CosmosRendering.ReadReaderKinds` reads Calcite's type system once,
+an input.
 
 ## Differential testing
 

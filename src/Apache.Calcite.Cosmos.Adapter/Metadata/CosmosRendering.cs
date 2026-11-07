@@ -7,6 +7,8 @@ using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
+using org.apache.calcite.sql.type;
+
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
@@ -37,6 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Rewrites = CosmosAxiomRows.ReadRewrites(CosmosAxioms.All),
             Unsent = CosmosAxiomRows.ReadUnsent(CosmosAxioms.All),
             PairReadings = CosmosAxiomRows.ReadPairReadings(CosmosAxioms.All),
+            WholeReadings = CosmosAxiomRows.ReadWholeReadings(CosmosAxioms.All),
             Boxes = CosmosAxiomRows.ReadBoxes(CosmosAxioms.All),
             SeesThrough = CosmosAxiomRows.ReadSeesThrough(CosmosAxioms.All),
             StructureOnly = CosmosAxiomRows.ReadStructureOnly(CosmosAxioms.All),
@@ -45,9 +48,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Casts = CosmosAxiomRows.ReadCasts(CosmosAxioms.All),
             Comparands = CosmosAxiomRows.ReadComparands(CosmosAxioms.All),
             ReaderOrders = CosmosAxiomRows.ReadReaderOrders(CosmosAxioms.All),
+            ReaderKinds = ReadReaderKinds(),
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
         });
+
+        /// <summary>
+        /// The kind each reading S cuts compares as (<see cref="ReaderEdgesTable"/>, G3): the family Calcite's type system
+        /// names the type the reading is of — the accessor's text <c>VARCHAR</c> (<c>Calcite.JsonValueRendersScalarsAsText</c>),
+        /// a typed reading's its type, a cast's its target. A raw value is of no type, and has none. Read off Calcite once, by
+        /// the definition, a constant of its type system.
+        /// </summary>
+        internal static IReadOnlyList<(string Reader, string Kind)> ReadReaderKinds() =>
+            [.. from reader in ReaderEdgesTable.Rows.Keys
+                let type = TypeOf(PredicateAtom.Outermost(reader))
+                where type is not null
+                let family = SqlTypeName.get(type)?.getFamily()
+                where family is not null
+                orderby reader
+                select (reader, family.name())];
+
+        /// <summary>The SQL type a reading is of, by its name: the text's <c>VARCHAR</c>, <c>typed:T</c>'s and <c>cast:T</c>'s <c>T</c>; none for a raw value.</summary>
+        static string? TypeOf(string outermost) => outermost == PredicateAtom.TextReader ? "VARCHAR"
+            : outermost.StartsWith("typed:", StringComparison.Ordinal) ? outermost.Substring("typed:".Length)
+            : outermost.StartsWith("cast:", StringComparison.Ordinal) ? outermost.Substring("cast:".Length)
+            : null;
 
         /// <summary>The registry's S, read on first use, the first build's thread in production: what every schema's generations, and the tests, are defined from.</summary>
         public static RenderingDefinition Definition => Defined.Value;

@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
-                || a.Rewrites is not null || a.Unsent is not null))
+                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -239,7 +239,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadCalciteBands(all).Should().BeEquivalentTo(new[] { (parse, Class.String, JsonValues.TrimmedClass), (parse, Class.String, JsonValues.NulClass) });
             CosmosAxiomRows.ReadCasts(all).Should().HaveCount(5).And.Contain(("BOOLEAN", PredicateAtom.TextReader, "Calcite.CastToBooleanParses"))
                 .And.Contain(("DOUBLE", PredicateAtom.TextReader, "Calcite.CastOfTheAccessorParsesTheRendering")).And.Contain(("VARCHAR", PredicateAtom.RawReader, "Calcite.CastOfARawValueToText"));
-            CosmosAxiomRows.ReadReaderOrders(all).Should().Equal((PredicateAtom.TextReader, CosmosReaderOrder.Itself));
+            var orders = CosmosAxiomRows.ReadReaderOrders(all);
+            orders.Where(o => o.Claim == CosmosReaderOrder.Itself).Select(o => o.Reader).Should().BeEquivalentTo(PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TypedReader("CHAR"));
+            orders.Where(o => o.Claim == CosmosReaderOrder.Reflexive).Should().HaveCount(16).And.Contain((PredicateAtom.InColumn(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader), "ANY"), CosmosReaderOrder.Reflexive))
+                .And.NotContain(o => o.Reader == PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader) || o.Reader == PredicateAtom.TypedReader("DOUBLE") || o.Reader == PredicateAtom.TypedReader("FLOAT")
+                    || o.Reader == PredicateAtom.TypedReader("REAL"), "a double may hold a NaN, which compares as nothing alike");
 
             var kinds = CosmosAxiomRows.ReadTestKinds(all);
             kinds.Where(k => k.Test == Test.IsString).Select(k => k.Kind).Should().Equal(Class.String);

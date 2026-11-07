@@ -293,6 +293,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.Fails));
         }
 
+        /// <summary>
+        /// A whole number within int64 is placed as its order's entry says each comparator reads one (G2, S's roles rules
+        /// over <c>Service.IntegersOrderExactly</c>'s readings): 2^60 + 1 against 2^60, its double, lies above by its value
+        /// and at it by its double; read both ways it lies at either, and read neither way anywhere.
+        /// </summary>
+        [Fact]
+        public void AWholeNumberIsPlacedAsItsComparatorReadsOne()
+        {
+            var (big, rounded) = (Of(1152921504606846977m), Of(1152921504606846976m));
+            var cells = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(IntegerType)), NoBand, ValueSet.Of(new CutPoint(big, CutKind.Literal), new CutPoint(rounded, CutKind.Literal)));
+            var rows = new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }
+                .Select(side => Row(CosmosServiceTest.Equal, CosmosValueClass.Number, side, side == CosmosValueClass.Equal ? CosmosAnswer.True : CosmosAnswer.False))
+                .Append(Row(CosmosServiceTest.Order, CosmosValueClass.Number, CosmosValueClass.None, CosmosAnswer.Numeric));
+
+            ServiceOutcomes Placed(params string[] readings)
+            {
+                var entries = ProbeRows.TableOf(rows).Entries.AsEnumerable()
+                    .Select(e => e.Key.Test == CosmosServiceTest.Order ? MeasuredEntry.Read(e, e.Readers, ValueSet.From(readings.Select(r => (CosmosAnswer.Numeric, r)))) : e);
+                var table = ServiceTable.Of(ValueSet.From(entries), ProbeRows.Placed);
+                return At(ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Equal, S, rounded), cells, table, LeafReads.None), big);
+            }
+
+            Placed("value").Should().Be(ServiceOutcomes.False, "by its value it is above 2^60");
+            Placed("double").Should().Be(ServiceOutcomes.True, "its double is 2^60");
+            Placed("value", "double").Should().Be(ServiceOutcomes.True | ServiceOutcomes.False);
+            Placed().Should().Be(ServiceOutcomes.True | ServiceOutcomes.False, "read neither way, it lies anywhere");
+        }
+
         /// <summary>A key the table misses is named among the rows, and answers everything where it is read.</summary>
         [Fact]
         public void MissingKeysAreNamed()

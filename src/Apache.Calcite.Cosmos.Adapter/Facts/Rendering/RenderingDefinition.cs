@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, RawTruths, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> Pair,
+        Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> Pair,
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
         IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
@@ -96,8 +96,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(RenderingTarget Target, string Class)> Unsent { get; init; } = [];
 
-        /// <summary>How a comparison of two paths reads against a literal (<c>CosmosAxiomRows.ReadPairReadings</c>, F3); no rule reads it yet (G3).</summary>
+        /// <summary>
+        /// How a comparison of two paths reads against a literal (<c>CosmosAxiomRows.ReadPairReadings</c>, F3), which S's pairs
+        /// rules read each set's pair table off (G3). None in a definition that names none, where a pair reads no key.
+        /// </summary>
         public IReadOnlyList<(CosmosServiceTest Test, bool Swapped, CosmosServiceTest Reads)> PairReadings { get; init; } = [];
+
+        /// <summary>
+        /// How each comparator reads a whole number within int64, <c>value</c> or <c>double</c> (<c>CosmosAxiomRows.ReadWholeReadings</c>,
+        /// G2), which S's roles rule hands each order entry's readers. None in a definition that names none, where a whole
+        /// number lies anywhere.
+        /// </summary>
+        public IReadOnlyList<(CosmosAnswer Comparator, string Reading)> WholeReadings { get; init; } = [];
 
         /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<c>CosmosAxiomRows.ReadBoxes</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<(string Kind, string Box)> Boxes { get; init; } = [];
@@ -124,8 +134,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(string Reading, bool Moved, string Row)> Comparands { get; init; } = [];
 
-        /// <summary>What each reading's order holds in process (<c>CosmosAxiomRows.ReadReaderOrders</c>, F3); no rule reads it yet (G3).</summary>
+        /// <summary>
+        /// What each reading's order holds in process (<c>CosmosAxiomRows.ReadReaderOrders</c>, F3), which S's pair rule hands
+        /// a comparison of two readings (G3). None in a definition that names none, where no pair is placed by its order.
+        /// </summary>
         public IReadOnlyList<(string Reader, string Claim)> ReaderOrders { get; init; } = [];
+
+        /// <summary>
+        /// The kind each reading compares as, the family of the Calcite type it is of (<c>CosmosRendering</c>, G3): two
+        /// readings compared are an atom of S's pair rule where both are of one kind. None in a definition that names none,
+        /// where no comparison of two readings is an atom.
+        /// </summary>
+        public IReadOnlyList<(string Reader, string Kind)> ReaderKinds { get; init; } = [];
 
         /// <summary>The classes each one-place test is true of in process (<c>CosmosAxiomRows.ReadTestKinds</c>, F3); no rule reads it yet (G7).</summary>
         public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind)> TestKinds { get; init; } = [];

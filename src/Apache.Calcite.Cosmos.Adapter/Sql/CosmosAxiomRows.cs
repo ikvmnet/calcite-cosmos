@@ -89,6 +89,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 select (target.Target, @class)).Distinct(),
         ];
 
+        /// <summary>One row per way a comparator reads a whole number within int64 (G2), S's <c>wholereads</c>. It merges nothing.</summary>
+        public static IReadOnlyList<(CosmosAnswer Comparator, string Reading)> ReadWholeReadings(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from reading in axiom.WholeReadings ?? [] select (reading.Comparator, reading.Reading)).Distinct()];
+
         /// <summary>One row per band a comparator moves in order (F3), S's <c>moves</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadMoves(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from move in axiom.Moves ?? [] select (move.Comparator, move.Band)).Distinct()];

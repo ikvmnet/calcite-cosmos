@@ -96,14 +96,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The plant after F1: a stratum grows a set of classes and reads it with <c>set-subset</c>, so the universal may
-        /// fire before the set is whole.
+        /// fire before the set is whole. The gate's own stratum grows it, the cells' classes being complete before the gate
+        /// runs (G2).
         /// </summary>
         [Fact]
         public void AUniversalOverASetItsOwnStratumGrowsIsRefused()
         {
             var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var seen = theory.Graph.DefineFunction<Pred, ValueSet<CellClass>>("seen", ValueLattice.Union<CellClass>());
-            theory.Graph.Rulesets.Single(r => r.Name == "classes").DefineRule("planted: a cell's class is seen", r =>
+            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: a cell's class is seen", r =>
             {
                 var (e, f, o) = r.Vars<Pred, ServiceForm, CellOutcomes>("e", "f", "o");
                 r.When(o.Is(theory.Outcomes.Of(e, f)));

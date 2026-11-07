@@ -170,15 +170,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var (e, c, a, k) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "k");
                 var kw = r.Var<Pred>("kw");
-                var (pos, kv) = r.Vars<RenderPosition, string>("pos", "kv");
+                var (pos, kv, j, ng) = r.Vars<RenderPosition, string, CosmosServiceTest, bool>("pos", "kv", "j", "ng");
                 var (bc, ba) = r.Vars<Priced, Priced>("bc", "ba");
-                var (cf, af, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("cf", "af", "h");
+                var (cf, af, nc, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("cf", "af", "nc", "h");
                 var (pc, pa) = r.Vars<Proof, Proof>("pc", "pa");
-                r.When(t.At.Of(e, pos), e.Is(t.Chosen.Of(c, a, k, kw)), k.Is(t.Ir.Truth.Of(kv)), t.AbsorbingElse.Of(pos, kv), bc.Is(t.BestExact.Of(c, pos)), ba.Is(t.BestExact.Of(a, pos)));
+                r.When(t.At.Of(e, pos), e.Is(t.Chosen.Of(c, a, k, kw)), k.Is(t.Ir.Truth.Of(kv)), t.AbsorbingElse.Of(pos, kv, j, ng), bc.Is(t.BestExact.Of(c, pos)), ba.Is(t.BestExact.Of(a, pos)));
                 r.Where(RenderingPrimitives.PricedIsReal.Of(bc));
                 r.Where(RenderingPrimitives.PricedIsReal.Of(ba));
                 r.When(cf.Is(Compute.Of(bc, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), pc.Is(t.Agrees.Of(c, pos, cf, Verdict.Equal)), pa.Is(t.Agrees.Of(a, pos, af, Verdict.Equal)),
-                    h.Is(Compute.Of(pos, cf, af, ServiceForm.AbsorbingElse)));
+                    nc.Is(Compute.Of(ng, cf, ServiceForm.Signed)), h.Is(Compute.Of(j, nc, af, ServiceForm.Paired)));
                 r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(pc, pa, Proof.Join)), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
             });
             best.DefineRule("planted M17: a case's ternary reads its condition's form at the case's own position", r =>
@@ -205,28 +205,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>M31: the opposite-else rule without its <c>TwoValued</c> premise, one form still exact at both positions.</summary>
         static void OppositeWithoutTwoValued(RenderingTheory t) => Opposite(t, "planted M31: a case whose else is the opposite constant is its condition's form joined with its then-arm, two-valued or not",
-            (r, pos, kv) => r.When(t.OppositeElse.Of(pos, kv)));
+            (r, pos, kv, j, ng) => r.When(t.OppositeElse.Of(pos, kv, j, ng)));
 
         /// <summary>M32: an unknown else read as the opposite constant at <c>Neg</c>, FALSE there, over a two-valued condition.</summary>
         static void UnknownAsTheOppositeAtNeg(RenderingTheory t) => Opposite(t, "planted M32: an unknown else at Neg is the opposite constant",
-            (r, pos, kv) =>
+            (r, pos, kv, j, ng) =>
             {
                 r.Where(pos, p => p == RenderPosition.Neg);
                 r.Where(kv, v => v == "unknown");
+                r.When(t.OppositeElse.Of(RenderPosition.Neg, "false", j, ng));
             }, twoValued: true);
 
         /// <summary>The opposite-else rule as built but for what reads the else: the condition's one form exact at both positions joined with the then-arm.</summary>
-        static void Opposite(RenderingTheory t, string name, Action<RuleBuilder, Var<RenderPosition>, Var<string>> reads, bool twoValued = false) =>
+        static void Opposite(RenderingTheory t, string name, Action<RuleBuilder, Var<RenderPosition>, Var<string>, Var<CosmosServiceTest>, Var<bool>> reads, bool twoValued = false) =>
             t.Graph.Rulesets.Single(r => r.Name == "best").DefineRule(name, r =>
             {
                 var (e, c, a, k) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "k");
                 var kw = r.Var<Pred>("kw");
-                var (pos, kv) = r.Vars<RenderPosition, string>("pos", "kv");
+                var (pos, kv, j, ng) = r.Vars<RenderPosition, string, CosmosServiceTest, bool>("pos", "kv", "j", "ng");
                 var (bp, bn, ba) = r.Vars<Priced, Priced, Priced>("bp", "bn", "ba");
-                var (cf, af, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("cf", "af", "h");
+                var (cf, af, nc, h) = r.Vars<ServiceForm, ServiceForm, ServiceForm, ServiceForm>("cf", "af", "nc", "h");
                 var (pc, pn, pa) = r.Vars<Proof, Proof, Proof>("pc", "pn", "pa");
                 r.When(t.At.Of(e, pos), e.Is(t.Chosen.Of(c, a, k, kw)), k.Is(t.Ir.Truth.Of(kv)));
-                reads(r, pos, kv);
+                reads(r, pos, kv, j, ng);
                 if (twoValued)
                     r.When(t.TwoValued.Of(c));
                 r.When(bp.Is(t.BestExact.Of(c, RenderPosition.Pos)), bn.Is(t.BestExact.Of(c, RenderPosition.Neg)), ba.Is(t.BestExact.Of(a, pos)));
@@ -234,7 +235,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Where(RenderingPrimitives.PricedIsReal.Of(ba));
                 r.Where(RenderingPrimitives.SameForm.Of(bp, bn));
                 r.When(cf.Is(Compute.Of(bp, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), pc.Is(t.Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)),
-                    pn.Is(t.Agrees.Of(c, RenderPosition.Neg, cf, Verdict.Equal)), pa.Is(t.Agrees.Of(a, pos, af, Verdict.Equal)), h.Is(Compute.Of(pos, cf, af, ServiceForm.OppositeElse)));
+                    pn.Is(t.Agrees.Of(c, RenderPosition.Neg, cf, Verdict.Equal)), pa.Is(t.Agrees.Of(a, pos, af, Verdict.Equal)),
+                    nc.Is(Compute.Of(ng, cf, ServiceForm.Signed)), h.Is(Compute.Of(j, nc, af, ServiceForm.Paired)));
                 r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, pn, Proof.Join), pa, Proof.Join)), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
             });
 

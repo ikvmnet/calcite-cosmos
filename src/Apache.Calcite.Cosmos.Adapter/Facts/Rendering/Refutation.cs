@@ -39,8 +39,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static Refutation Negated(Refutation operand) => operand with
         {
-            Class = new(PredicateAtom.Swap(operand.Class.Calcite), (operand.Class.Service & (ServiceOutcomes.Undefined | ServiceOutcomes.Fails))
-                | ((operand.Class.Service & ServiceOutcomes.True) != 0 ? ServiceOutcomes.False : 0) | ((operand.Class.Service & ServiceOutcomes.False) != 0 ? ServiceOutcomes.True : 0)),
+            Class = operand.Class with
+            {
+                Calcite = PredicateAtom.Swap(operand.Class.Calcite),
+                Service = (operand.Class.Service & (ServiceOutcomes.Undefined | ServiceOutcomes.Fails))
+                    | ((operand.Class.Service & ServiceOutcomes.True) != 0 ? ServiceOutcomes.False : 0) | ((operand.Class.Service & ServiceOutcomes.False) != 0 ? ServiceOutcomes.True : 0),
+            },
         };
 
         /// <inheritdoc />

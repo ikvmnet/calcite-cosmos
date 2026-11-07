@@ -8,12 +8,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// One connective over two concrete outcome vectors of one partition, cell by cell, by the connective's rows: each
-    /// pair of the sides' outcomes, or a value that is no boolean by its class, through the row the pair keys.
+    /// pair of the sides' outcomes, a value that is no boolean by its class and a side that may fail by
+    /// <see cref="CosmosValueClass.Failing"/>, through the row the pair keys.
     /// </summary>
     /// <remarks>
-    /// <b>A side that may fail may fail the compound</b>, where the service evaluates it (decision 2); and no row says the
-    /// service evaluates a side the other decides alone, so beside its failure it stands for every truth it could have
-    /// given. A key the table does not hold answers every outcome and is named.
+    /// What a failing side answers is the entry S's failing rules settled of the connective's rows (decision 2,
+    /// <see cref="KleeneTables.Failing"/>, G4): the compound reads it as it reads any key. A key the table does not hold
+    /// answers every outcome and is named.
     /// </remarks>
     internal static class ServiceCompound
     {
@@ -32,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             for (var i = 0; i < first.Outcomes.Count; i++)
             {
                 var (a, b) = (first.Outcomes[i], rest.Outcomes[i]);
-                var result = (a.Outcomes | b.Outcomes) & ServiceOutcomes.Fails;
+                var result = ServiceOutcomes.None;
                 foreach (var x in Operands(a))
                 {
                     if (compound.Kind == ServiceFormKind.Not)
@@ -49,13 +50,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// What a side is keyed by: the class of a value that is no boolean, or each truth it may give; and every truth
-        /// where it may fail.
+        /// What a side is keyed by: the class of a value that is no boolean, or each truth it may give; and
+        /// <see cref="CosmosValueClass.Failing"/> where it may fail.
         /// </summary>
         static IEnumerable<CosmosValueClass> Operands(CellOutcome side)
         {
-            var truths = (side.Outcomes & ServiceOutcomes.Fails) != 0 ? ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined
-                : side.NonBoolean == CosmosValueClass.None ? side.Outcomes : ServiceOutcomes.None;
+            var truths = side.NonBoolean == CosmosValueClass.None ? side.Outcomes : ServiceOutcomes.None;
             if (side.NonBoolean != CosmosValueClass.None)
                 yield return side.NonBoolean;
             if ((truths & ServiceOutcomes.True) != 0)
@@ -64,6 +64,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 yield return CosmosValueClass.False;
             if ((truths & ServiceOutcomes.Undefined) != 0)
                 yield return CosmosValueClass.Undefined;
+            if ((side.Outcomes & ServiceOutcomes.Fails) != 0)
+                yield return CosmosValueClass.Failing;
         }
 
     }

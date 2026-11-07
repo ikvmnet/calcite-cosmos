@@ -3197,24 +3197,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
-        /// fold renders as the native function directly. What it folds is the value the service holds
-        /// there cast to text, whose characters are the path's only where it holds a scalar: an object
-        /// cast to text is the JSON of what it holds, which no pattern bounds. So the path is declared a
-        /// string beside its characters, and declared only its characters it is folded in process.
+        /// Over a path the row model types <c>ANY</c> the fold reads the value the service holds there
+        /// cast to text, whose characters are the path's only where it holds a scalar: an object cast
+        /// to text is the JSON of what it holds, which no pattern bounds. No row measured a string
+        /// function over a <c>VARIANT</c> column cast to text, so S has no image of the call, and the
+        /// fold and the pattern run in process however the path is declared, a string of ASCII among
+        /// them: no <c>ENDSWITH</c> goes down. A witness read through the cast gives it rows (TODO.md,
+        /// the string functions over a raw reading).
         /// </summary>
         [Fact]
-        public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
+        public void ACaseFoldedSuffixOverARawPathIsFoldedInProcess()
         {
-            _table = new CosmosTable(AsciiStringProducts);
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
-
-            Render(best).Should().Contain("ENDSWITH(c.category, @p0, true)").And.NotContain("IS_STRING");
-
-            _table = new CosmosTable(AsciiProducts);
-            var unproved = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
-            Render(FindCosmos(unproved)).Should().NotContain("ENDSWITH", "the path may hold an object");
-            Plan(unproved).Should().Contain("ClrCursorFilter");
+            foreach (var products in new[] { AsciiStringProducts, AsciiProducts })
+            {
+                _table = new CosmosTable(products);
+                var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+                Render(FindCosmos(best)).Should().NotContain("ENDSWITH").And.NotContain("UPPER(");
+                Plan(best).Should().Contain("ClrCursorFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
+            }
         }
 
         /// <summary>

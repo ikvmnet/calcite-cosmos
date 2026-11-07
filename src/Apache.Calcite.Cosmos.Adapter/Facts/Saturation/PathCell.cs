@@ -152,9 +152,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// Where the cell's numbers lie against a number as a box holds it: a whole number within a long by its value, its
-        /// double, or both, as the caller's row reads one, and any other by its double, by value. A side for each reading,
-        /// <c>null</c> where not every number lies one way; none for a cell of no number; and <c>null</c> for a number
-        /// neither a long nor a double, which no box holds as itself.
+        /// double, or both, as the caller's row reads one, anywhere by neither, and any other by its double, by value. A side
+        /// for each reading, <c>null</c> where not every number lies one way; none for a cell of no number; and <c>null</c>
+        /// for a number neither a long nor a double, which no box holds as itself.
         /// </summary>
         public int?[]? SidesOf(decimal c, bool byValue, bool byDouble)
         {
@@ -164,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (IsLong(c) == false && DoubleBound.Compare(d, c) != 0)
                 return null;
 
-            int?[] Whole(int? exact, int? rounded) => (byValue, byDouble) switch { (true, true) => [exact, rounded], (true, false) => [exact], _ => [rounded] };
+            int?[] Whole(int? exact, int? rounded) => (byValue, byDouble) switch { (true, true) => [exact, rounded], (true, false) => [exact], (false, true) => [rounded], _ => [null] };
             return this switch
             {
                 Point { Value: var v } when TryNumberOf(v, out var x) && IsLong(x) => Whole(x.CompareTo(c), new Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)),

@@ -15,8 +15,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// The logic composition rests on, as host data: what Kleene's connectives answer on every operand a target can be
     /// handed — the service values, among them the six classes of one that is no boolean, Calcite truths alone — which a
     /// set's measured connective rows must match for S to compose through that connective; the class of a cell on which an
-    /// atom leaves a junction to its sibling, exactly; the position beneath a negation; and a range of one path answering
-    /// as its two orderings do, which a set must have measured before S reads one whose bounds part the orders pointwise.
+    /// atom leaves a junction to its sibling, exactly; the position beneath a negation; a range of one path answering
+    /// as its two orderings do, which a set must have measured before S reads one whose bounds part the orders pointwise;
+    /// two paths compared as a path and a literal, which a set must have measured before S reads a pair (G3); the truths a
+    /// side that may fail stands for (G4); and the constants each junction holds as its identity or its absorbing element,
+    /// and the shape a case with a constant else takes at each position (G4).
     /// </summary>
     internal static class KleeneTables
     {
@@ -30,17 +33,49 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [.. Over(RenderingTarget.Emulator, Operands), .. Over(RenderingTarget.Azure, Operands), .. Over(RenderingTarget.Calcite, Booleans),
              .. Pointwise(RenderingTarget.Emulator), .. Pointwise(RenderingTarget.Azure),
              .. Ternary(RenderingTarget.Emulator, Operands), .. Ternary(RenderingTarget.Azure, Operands), .. Ternary(RenderingTarget.Calcite, Booleans),
-             .. Constants(RenderingTarget.Emulator), .. Constants(RenderingTarget.Azure)];
+             .. Constants(RenderingTarget.Emulator), .. Constants(RenderingTarget.Azure),
+             .. Pairing(RenderingTarget.Emulator), .. Pairing(RenderingTarget.Azure)];
+
+        /// <summary>
+        /// Each key a connective's side that may fail is keyed by (<see cref="Failing"/>), beside each key it stands for: the
+        /// side stands for every truth it could have given, and fails the connective beside them (decision 2). A side of either
+        /// junction, either side or both, over every operand the other may be; a negation's operand.
+        /// </summary>
+        public static IReadOnlyList<(MeasuredKey Failing, MeasuredKey Stands)> Failing { get; } =
+            [.. from c in new[] { And, Or }
+                from y in Operands.Append(CosmosValueClass.Failing)
+                from x in Booleans
+                from b in y == CosmosValueClass.Failing ? Booleans : new[] { y }
+                select (MeasuredKey.Of(c, CosmosValueClass.Failing, y), MeasuredKey.Of(c, x, b)),
+             .. from c in new[] { And, Or }
+                from x in Operands
+                from y in Booleans
+                select (MeasuredKey.Of(c, x, CosmosValueClass.Failing), MeasuredKey.Of(c, x, y)),
+             .. from x in Booleans
+                select (MeasuredKey.Of(Not, None, CosmosValueClass.Failing), MeasuredKey.Of(Not, None, x))];
 
         /// <summary>
         /// Each position and truth value an else-arm leaves its case's rows at as a condition that is not TRUE does under a
-        /// junction (spec §5.1): FALSE and UNKNOWN keep no row at <c>Pos</c>, TRUE and UNKNOWN none beneath a <c>NOT</c>.
+        /// junction (spec §5.1): FALSE and UNKNOWN keep no row at <c>Pos</c>, TRUE and UNKNOWN none beneath a <c>NOT</c>;
+        /// with the shape the case then is, its condition joined with its then-arm: <c>c AND a</c> at <c>Pos</c>,
+        /// <c>NOT c OR a</c> at <c>Neg</c> (the connective, and whether the condition is negated).
         /// </summary>
-        public static IReadOnlyList<(RenderPosition, string)> AbsorbingElse { get; } =
-            [(RenderPosition.Pos, "false"), (RenderPosition.Pos, "unknown"), (RenderPosition.Neg, "true"), (RenderPosition.Neg, "unknown")];
+        public static IReadOnlyList<(RenderPosition, string, CosmosServiceTest, bool)> AbsorbingElse { get; } =
+            [(RenderPosition.Pos, "false", And, false), (RenderPosition.Pos, "unknown", And, false), (RenderPosition.Neg, "true", Or, true), (RenderPosition.Neg, "unknown", Or, true)];
 
-        /// <summary>Each position and truth value an else-arm keeps every row at that a condition not TRUE leaves: TRUE at <c>Pos</c>, FALSE beneath a <c>NOT</c>.</summary>
-        public static IReadOnlyList<(RenderPosition, string)> OppositeElse { get; } = [(RenderPosition.Pos, "true"), (RenderPosition.Neg, "false")];
+        /// <summary>
+        /// Each position and truth value an else-arm keeps every row at that a condition not TRUE leaves: TRUE at <c>Pos</c>,
+        /// FALSE beneath a <c>NOT</c>; with the shape the case then is over a two-valued condition: <c>NOT c OR a</c> at
+        /// <c>Pos</c>, <c>c AND a</c> at <c>Neg</c>.
+        /// </summary>
+        public static IReadOnlyList<(RenderPosition, string, CosmosServiceTest, bool)> OppositeElse { get; } = [(RenderPosition.Pos, "true", Or, true), (RenderPosition.Neg, "false", And, false)];
+
+        /// <summary>
+        /// Kleene's constants of each junction: TRUE is <c>AND</c>'s identity and <c>OR</c>'s absorbing element, FALSE the
+        /// reverse; a junction holding its identity is the rest, one holding its absorbing element is that constant.
+        /// </summary>
+        public static IReadOnlyList<(CosmosServiceTest Connective, bool Constant, bool Absorbs)> Units { get; } =
+            [(And, true, false), (Or, false, false), (And, false, true), (Or, true, true)];
 
         /// <summary>The class of a cell on which a side leaves each junction to its sibling.</summary>
         public static IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity { get; } = new Dictionary<CosmosServiceTest, ValueSet<CellClass>>
@@ -72,6 +107,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Ternary(RenderingTarget target, CosmosValueClass[] operands) =>
             operands.Select(x => (target, MeasuredKey.Of(Choose, None, x), x == True ? CosmosAnswer.True : CosmosAnswer.False));
+
+        /// <summary>
+        /// Two paths compared answer as the left compared with the right's value written as a literal, the comparator mirrored
+        /// where the right is no literal (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>): the answer a set's rows must give
+        /// for S to read a pair by its readings (G3).
+        /// </summary>
+        static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Pairing(RenderingTarget target) =>
+            [(target, MeasuredKey.Of(ComparePaths, None, None), CosmosAnswer.True)];
 
         /// <summary>A constant written as a condition is its own truth over every kind of value a path holds, and none.</summary>
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Constants(RenderingTarget target) =>

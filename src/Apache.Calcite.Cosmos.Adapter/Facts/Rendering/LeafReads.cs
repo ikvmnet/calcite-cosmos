@@ -23,6 +23,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="Departs">The pairs of bands the comparators of a pair's set rank apart from Calcite's order, where a pair's
     /// two places may hold them (<c>parts</c>).</param>
     /// <param name="Moved">The bands the comparators of a pair's set move, where its places may hold them (<c>moves</c>).</param>
+    /// <remarks>Beside them, the rows that license what the leaf leans on (<see cref="Licences"/>, G3).</remarks>
     internal sealed record LeafReads(ValueSet<string> Parted, ValueSet<string> Unplaced, ValueSet<string> Unkept, ValueSet<string> Unread,
         ValueSet<string> Uncut, ValueSet<string> Blind, ValueSet<(string Band, string Other)> Departs, ValueSet<string> Moved)
     {
@@ -39,13 +40,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static LeafReads Matches(ValueSet<string> unread, ValueSet<string> uncut, ValueSet<string> blind) =>
             None with { Unread = unread, Uncut = uncut, Blind = blind };
 
+        /// <summary>
+        /// The rows that license each test the leaf leans on, a comparison of two paths its pair licence's, which S's rule found
+        /// the set's rows hold (G3): cited beside the table's, and none for a leaf that leans on none.
+        /// </summary>
+        public ValueSet<string> Licences { get; init; } = ValueSet<string>.Empty;
+
         /// <summary>What a comparison of two paths reads: the bands departing and moved.</summary>
         public static LeafReads Pairs(ValueSet<(string Band, string Other)> departs, ValueSet<string> moved) =>
             None with { Departs = departs, Moved = moved };
 
+        /// <summary>What a comparison of two paths reads, with the rows that license it.</summary>
+        public static LeafReads Pairs(ValueSet<(string Band, string Other)> departs, ValueSet<string> moved, ValueSet<string> licences) =>
+            None with { Departs = departs, Moved = moved, Licences = licences };
+
         /// <summary>The three together, as the evaluation rule hands them (a <c>Compute</c> takes four operands).</summary>
         public static LeafReads Of(LeafReads places, LeafReads matches, LeafReads pairs) =>
-            places with { Unread = matches.Unread, Uncut = matches.Uncut, Blind = matches.Blind, Departs = pairs.Departs, Moved = pairs.Moved };
+            places with { Unread = matches.Unread, Uncut = matches.Uncut, Blind = matches.Blind, Departs = pairs.Departs, Moved = pairs.Moved, Licences = pairs.Licences };
 
     }
 

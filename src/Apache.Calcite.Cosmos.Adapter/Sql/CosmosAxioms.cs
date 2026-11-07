@@ -360,8 +360,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.JsonValueRendersScalarsAsText",
                 "JSON_VALUE without RETURNING is declared VARCHAR and answers every scalar as its text: 30 as '30', true as 'true', 1e30 as '1.0E30', a large integer with every digit.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.TheBareAccessorRendersEveryScalarAsText",
-                // The text accessor reads a string as the string (F3); whether two equal values read compare equal waits on a
-                // measured row of its own, a double's NaN among them (TODO.md).
+                // The text accessor reads a string as the string (F3, G3); that two equal values read so compare equal is
+                // Calcite.EqualValuesReadAlikeCompareEqual's.
                 ReaderOrders: [new(PredicateAtom.TextReader, CosmosReaderOrder.Itself)]),
             new("Calcite.JsonValueReadsStructureAsNull",
                 "JSON_VALUE without RETURNING answers SQL null for an object, an array, a JSON null and an absent path.",
@@ -453,6 +453,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.TextOrderIsByCodeUnit",
                 "Text compares by UTF-16 code unit, as String.compareTo does: U+E000 and U+FFFD above U+1F600, which code point order puts above both, and 'true' and 'false' above 'bikes', '30' below.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
+            new("Calcite.TextPlacesCompareAsTheirStrings",
+                "A computed text place, UPPER or SUBSTRING of the accessor, and a VARCHAR or CHAR value compare as the strings they hold, by UTF-16 code unit as the accessor's text does: U+E000 and U+FFFD above U+1F600, 'B' below 'B ', '30' below 'BIKES'.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.ATextPlaceComparesAsTheStringItHolds",
+                // A typed text reading reads a string as the string (G3), as the accessor does.
+                ReaderOrders: [new(PredicateAtom.TypedReader("VARCHAR"), CosmosReaderOrder.Itself), new(PredicateAtom.TypedReader("CHAR"), CosmosReaderOrder.Itself)]),
+            new("Calcite.EqualValuesReadAlikeCompareEqual",
+                "Two equal values read alike compare equal, = <= >= TRUE and <> < > FALSE, wherever the reading reads a value: the accessor's text; a boolean's and an integer's or DECIMAL's column or RETURNING, a CHAR's and a computed text place's; the text cast to BOOLEAN, INTEGER or BIGINT; a raw value cast to VARCHAR through a VARIANT, an ANY and a VARCHAR column. A double's reading is not so, a NaN being equal to nothing (Calcite.ANaNComparesAsNothingAlike).",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.EqualValuesReadAlikeCompareEqual",
+                // Each reading S pairs that holds no NaN (G3); FLOAT, REAL, DOUBLE and the cast of the text to DOUBLE have no row.
+                ReaderOrders: [.. new string[]
+                {
+                    PredicateAtom.TextReader, PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader),
+                    PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TypedReader("CHAR"),
+                    PredicateAtom.TypedReader("TINYINT"), PredicateAtom.TypedReader("SMALLINT"), PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("BIGINT"),
+                    PredicateAtom.TypedReader("DECIMAL"), PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader), PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader),
+                    PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader),
+                }.Concat(PredicateAtom.RawColumns.Select(column => PredicateAtom.InColumn(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader), column)))
+                .Select(reader => new CosmosReaderOrder(reader, CosmosReaderOrder.Reflexive))]),
+            new("Calcite.ANaNComparesAsNothingAlike",
+                "A double that is NaN, the text 'NaN' cast to DOUBLE, SQRT or POWER of a negative over any numeric reading, 0/0 over a FLOAT, REAL or DOUBLE column, compares as nothing alike, itself included: = < <= > >= FALSE and <> TRUE.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.ANaNComparesAsNothingAlike"),
             new("Calcite.ConnectivesAreKleene",
                 "AND, OR and NOT are Kleene's over TRUE, FALSE and UNKNOWN, in either order; an operand that raises raises AND beside FALSE and OR beside TRUE, in either order, both operands of a nullable connective being evaluated.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteConnectiveMeasurementTests.TheConnectivesAreKleenesAndEvaluateBothOperands",
@@ -842,7 +863,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Order, Class.Number, Azure, "none=numeric"),
                     new(Test.Order, Class.Number, Emulator, "none=numericpointedasdouble"),
                     new(Test.Equal, Class.Number, Both, "below=false equal=true above=false"),
-                ]),
+                ],
+                // How each comparator reads a whole number within int64 (G2), which a cell, keeping no spelling, places each way
+                // a row names: the emulator's as itself and, written with a point, as its double. Azure's is read both ways too,
+                // as the record tells it, whose witnesses are integers both comparators order alike; as the int64 it is alone
+                // it waits on witnesses that part the two and on the Rex builder's writing of a comparison past 2^53 (TODO.md,
+                // the two numeric orders).
+                WholeReadings: [new(CosmosAnswer.Numeric, "value"), new(CosmosAnswer.Numeric, "double"), new(CosmosAnswer.NumericPointedAsDouble, "value"), new(CosmosAnswer.NumericPointedAsDouble, "double")]),
             new("Service.OrderByOverAnExcludedPathFails",
                 "ORDER BY over a path the indexing policy excludes is a 400, _etag among them under the default policy; a filter and MIN or MAX over it still answer.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.AnOrderByOverAnExcludedPathFails"),

@@ -54,9 +54,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// What S generates for a predicate under a set, each path imported as these values and characters; the rows the run
         /// left, and the most cells a partition holds.
         /// </summary>
-        static (RenderingAnswer Answer, RenderingRun Run, long Rows, int Cells) Generate(SqlPredicate root, RenderingSet set, PathValues values, ValueSet<string> chars)
+        static (RenderingAnswer Answer, RenderingRun Run, long Rows, int Cells) Generate(SqlPredicate root, RenderingSet set, PathValues values, ValueSet<string> chars, RenderingTheory? theory = null)
         {
-            using var bundle = ProbeTheory.Open(set);
+            var defined = theory ?? ProbeTheory;
+            using var bundle = defined.Open(set);
             var term = bundle.Write(root);
             foreach (var path in root.Places)
                 bundle.Import(Source, path, values, chars);
@@ -64,13 +65,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             bundle.Generate(term);
             var run = bundle.RunGenerate(RenderingBundle.WidthOf([root]));
             bundle.Failure.Should().BeNull();
-            var cells = bundle.Scope.Rows(ProbeTheory.Partition).Select(row => ((CellPartition)row.Output!).Cells.Count).DefaultIfEmpty().Max();
+            var cells = bundle.Scope.Rows(defined.Partition).Select(row => ((CellPartition)row.Output!).Cells.Count).DefaultIfEmpty().Max();
             return (bundle.ReadBest(term), run, bundle.Rows, cells);
         }
 
+        /// <summary>The atoms S found of a predicate under the emulator, each path imported as these values over ASCII.</summary>
+        static int Atoms(SqlPredicate root, PathValues values)
+        {
+            using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+            var term = bundle.Write(root);
+            foreach (var path in root.Places)
+                bundle.Import(Source, path, values, Ascii);
+
+            bundle.Generate(term);
+            bundle.RunGenerate(RenderingBundle.WidthOf([root]));
+            bundle.Failure.Should().BeNull();
+            return bundle.Scope.Rows(ProbeTheory.Ir.Atom).Count();
+        }
+
         /// <summary>
-        /// Two readings of one kind compared are read as such outside the legacy reading; the legacy reading S reads until
-        /// h15 keeps them opaque, and two raw readings are no pair. A pair's atom is assumed by the rule, and S owns none.
+        /// Two readings compared are read as such outside the legacy reading; the legacy reading S reads until h15 keeps them
+        /// opaque. Whether two readings are a pair is S's, two raw readings among them (<see cref="APairIsReadByItsReadingsKindsAndOrders"/>).
+        /// A pair's atom is assumed by the rule, and S owns none.
         /// </summary>
         [Fact]
         public void TheLoaderReadsTwoReadingsOutsideTheLegacyReading()
@@ -79,7 +95,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Loading.Read(rex).Should().Be(Pair(PredicateAtom.Less, NamePath, OtherPath));
             Loading.Read(rex).Places.Should().Equal(NamePath, OtherPath);
             Legacy.Read(rex).Should().BeOfType<SqlPredicate.Opaque>();
-            Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("name", SqlTypeName.ANY), JsonValue("other", SqlTypeName.ANY))).Should().BeOfType<SqlPredicate.Opaque>();
+            Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("name", SqlTypeName.ANY), JsonValue("other", SqlTypeName.ANY))).Should().BeOfType<SqlPredicate.Compare>()
+                .Which.Places.Should().Equal(NamePath, OtherPath);
             RenderingBundle.IsComputed(Pair(PredicateAtom.Equal, NamePath, OtherPath)).Should().BeTrue("a pair's atom is assumed by the rule");
             RenderingFamily.Owns(Pair(PredicateAtom.Equal, NamePath, OtherPath)).Should().BeFalse("S owns no pair until the switch");
         }
@@ -148,6 +165,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Generate(ordered, RenderingSet.Emulator, Strings, ClassSet(JsonCharacterBand.Nul)).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, $"{op}: U+0000 stored above U+0001");
                 TestContext.Current.TestOutputHelper?.WriteLine($"{op}: rows a bundle {rows} over ASCII ({cells} cells), {most} over every band ({product} cells), of {RenderingBundle.RowLimit}");
             }
+        }
+
+        /// <summary>
+        /// What makes two readings a pair is S's (G3): each reading's kind, its type's family in Calcite, and what its order
+        /// holds. A raw reading has no kind and a number read against text is two kinds, so S makes no atom of either and
+        /// neither is proven; a text place against another is an atom of their pair. A cast of the text to <c>DOUBLE</c>
+        /// reads <c>'NaN'</c> as a NaN, which compares as nothing alike, itself included (<c>Calcite.ANaNComparesAsNothingAlike</c>),
+        /// so not even its diagonal is placed, and over strings no comparison of it with itself is proven where the text's
+        /// own is; were its order to hold equal values read alike equal, the diagonal would be proven, and wrong on
+        /// <c>'NaN'</c>.
+        /// </summary>
+        [Fact]
+        public void APairIsReadByItsReadingsKindsAndOrders()
+        {
+            var raw = new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Raw(NamePath), new SqlValue.Raw(OtherPath));
+            var across = new SqlPredicate.Compare(PredicateAtom.Less, new SqlValue.Typed(NamePath, "INTEGER"), new SqlValue.Text(OtherPath));
+            foreach (var none in new[] { raw, across })
+            {
+                Atoms(none, PathValues.Anything).Should().Be(0, $"{none} is no pair");
+                Generate(none, RenderingSet.Emulator, PathValues.Anything, Ascii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, none.ToString());
+            }
+
+            Atoms(Pair(PredicateAtom.Less, NamePath, OtherPath), Strings).Should().Be(1);
+
+            var cast = new SqlValue.Cast("DOUBLE", new SqlValue.Text(NamePath));
+            var reflexive = RenderingTheory.Define(Measured with { ReaderOrders = [.. Measured.ReaderOrders, (PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader), PredicateAtom.Reflexive)] });
+            foreach (var op in new[] { PredicateAtom.Equal, PredicateAtom.LessOrEqual })
+            {
+                var diagonal = new SqlPredicate.Compare(op, cast, cast);
+                Atoms(diagonal, Strings).Should().Be(1);
+                Generate(diagonal, RenderingSet.Emulator, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, $"{op}: 'NaN' read as a double is not itself");
+                Generate(diagonal, RenderingSet.Emulator, Strings, Ascii, reflexive).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}, the order planted reflexive");
+                Generate(Pair(op, NamePath, NamePath), RenderingSet.Emulator, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, op);
+            }
+        }
+
+        /// <summary>
+        /// A pair's key reads the union of what each way of reading it the set settled answers (G3): the left against a
+        /// literal of the right's value, the right against the left's with the comparator mirrored, and a side absent. The
+        /// union is what the row choice was, the direct row where measured and the mirrored otherwise, since wherever a set
+        /// settled both ways round the shipped rows answer alike; were one to answer otherwise, the pair would read both and
+        /// prove less, never more.
+        /// </summary>
+        [Fact]
+        public void BothWaysRoundAnswerAlikeWhereverASetSettledThem()
+        {
+            var kinds = Enum.GetValues<CosmosValueClass>();
+            var both = 0;
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production, RenderingSet.Portable })
+                foreach (var (test, _, reads) in Measured.PairReadings.Where(r => r.Swapped == false))
+                    foreach (var (_, _, mirrored) in Measured.PairReadings.Where(r => r.Swapped && r.Test == test))
+                        foreach (var left in kinds)
+                            foreach (var right in kinds)
+                                if (ProbeTheory.Theory.TryGet(ProbeTheory.Final.Of(MeasuredKey.Of(reads, right, left), set), out ValueSet<CosmosAnswer> direct)
+                                    && ProbeTheory.Theory.TryGet(ProbeTheory.Final.Of(MeasuredKey.Of(mirrored, left, right), set), out ValueSet<CosmosAnswer> other))
+                                {
+                                    both++;
+                                    direct.AsEnumerable().Should().Equal(other.AsEnumerable(), $"{test} of {left} and {right} under {set}");
+                                }
+
+            both.Should().BeGreaterThan(0);
         }
 
         /// <summary>

@@ -25,9 +25,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         const ServiceOutcomes u = ServiceOutcomes.Undefined;
         const ServiceOutcomes E = ServiceOutcomes.Fails;
 
-        /// <summary>Every class: each non-empty set of Calcite's truths beside each non-empty set of outcomes, 225 in all.</summary>
+        /// <summary>
+        /// Every class: each non-empty set of Calcite's truths beside each non-empty set of outcomes, of a value that is a
+        /// boolean or not, on a cell inside or set aside, 900 in all.
+        /// </summary>
         public static ValueSet<CellClass> Classes { get; } = ValueSet.From(
-            from c in Enumerable.Range(1, 15) from s in Enumerable.Range(1, 15) select new CellClass((Truths)c, (ServiceOutcomes)s));
+            from c in Enumerable.Range(1, 15) from s in Enumerable.Range(1, 15) from w in new[] { false, true } from o in new[] { false, true }
+            select new CellClass((Truths)c, (ServiceOutcomes)s, w, o));
 
         /// <summary>The boxes a class must lie in for a verdict to hold on its cells, at each position.</summary>
         public static IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing { get; } =

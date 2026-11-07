@@ -2721,11 +2721,17 @@ across documents* and *A join of a container to itself* is the record.
   Jackson reads a number not written as an integer as a double, and the clause parses the text Calcite renders it as:
   29.9999999999999982 reads as 30. `NumberCast.Holds` compares the value exactly, so the coarse reading answers FALSE
   where Calcite answers TRUE; the cells read the rendering.
-- **The two numeric orders are evaluated as one** — *small, G2's, with a measurement for the next probe-account run.*
-  `Service.IntegersOrderExactly` names each target's comparator apart since f345 (F3): `numeric` on Azure,
-  `numericpointedasdouble` on the emulator, which holds a whole number written with a point as its double. `ServiceLeaf`
-  still places a whole number in int64 both as itself and as its double under either, since the theory spells it alike
-  written with a point (`reports/verify-bytes.md`); G2 gives each its own placing. The harness cannot tell the two
+- **The two numeric orders are evaluated as one** — *small, with a measurement for the next probe-account run, and
+  h15's.* `Service.IntegersOrderExactly` names each target's comparator apart since f345 (F3): `numeric` on Azure,
+  `numericpointedasdouble` on the emulator, which holds a whole number written with a point as its double. Since G2
+  each comparator's reading of a whole number within int64 is a `wholereads` row, by its value, its double or both,
+  which the leaf places a cell by (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*). Azure's row reads
+  both, as the emulator's does, since the theory spells a whole number alike written with a point
+  (`reports/verify-bytes.md`): a stopgap. Read as its value alone, S moved: under Production it wrote `v = A` past 2^53
+  where the translator's Rex claims `Equal` of a typed `BIGINT`, which reads a number written with a point by its double
+  (`RenderingRexBuilderTests.EveryPushedWeakeningRoundTrips` refused it), and under the emulator's set the generate
+  simulation sent 375 differential conjuncts exactly, not 377. It goes when the witnesses below are measured and h15's
+  builder writes such a comparison as S proves it. The harness cannot tell the two
   apart: its order witnesses are integers, which both order alike, so the emulator's record reads `Numeric`, which
   `CosmosOutcomeHarness.Check` accepts as Azure's answer, and naming the pointed comparator there would make every
   integer witness answer two. Witnesses that do tell them apart, 2^54 + 1 beside 18014398509481986.0, which the
@@ -2904,7 +2910,8 @@ across documents* and *A join of a container to itself* is the record.
   reads them. No push of the census holds one; the triage classes one as closable for this where one appears, and the
   same test reads each.
 - **A column compared with a text reading is no pair** — *small.* The pair reads two readings of one kind; a raw column
-  against a text (`<=($1, JSON_VALUE($0, '$.e'))`, the order differential's) has none, and stays opaque: 3 real pushes
+  against a text (`<=($1, JSON_VALUE($0, '$.e'))`, the order differential's) has none, and S's pair rule makes no atom
+  of it (`readerkind`, G3; the loader kept it opaque before): 3 real pushes
   under `Emulator`. The owner overrode the 3, and `MOD`'s one (`c.k % 3`), by name under the emulator rule (2026-11-03):
   a *stopgap* that ends when a `Production` push of either shape appears, which then needs the pair of two kinds or the
   function row.
@@ -3020,7 +3027,9 @@ across documents* and *A join of a container to itself* is the record.
   `VARIANT` column cast to text (the partition key's `UPPER(c."$.category")`), or a count read through `typed:INTEGER`
   or a cast of the text to a number (a `SUBSTRING`, `LEFT` or `RIGHT` start or count from a column or a `POSITION`),
   so S has no image of such a call and the bridge, reading S's rows, keeps it in process: the corpus held one, 487, and
-  docs/ says so (Chapter 7.3, Appendix B.2). A witness read through each, beside the text, gives it rows.
+  docs/ says so (Chapter 7.3, Appendix B.2). `CosmosPlannerTests.ACaseFoldedSuffixOverARawPathIsFoldedInProcess` holds
+  the second, restated at g234 from `ACaseFoldedSuffixOverARawPathNeedsNoGuard`, which expected the `ENDSWITH` and had
+  failed since owed. A witness read through each, beside the text, gives it rows.
 - **3A crosses its size checkpoint** — *note, Q13; the owner's at the pull request's opening.* Production (`Adapter`
   `.cs`) against `origin/main` is +3,429 / −773, net +2,656 at the review answers, of which the census's branch-only
   hooks are +76 / −3: +2,583 net to stay. The review's cuts (the ternary's evaluator, the critical points, the result
@@ -3102,11 +3111,11 @@ across documents* and *A join of a container to itself* is the record.
 - **The foundation's F3 rows wait on their groups** — *each group's, G2 to G8.* f345 reads the prose rows' cells into S
   (DESIGN.md, *The foundation's cells, roles and case mapping*); G1's rules read `parts`, `moves`, `storedas` and
   `truncates`, each set's parting bands are its own comparators', and the leaf, the lifts and `StoresSpelled` read what
-  S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3 reads `pairreads` and `readerorder`, G7
-  `calcitereads`, `calcitebands` and `testkinds` (where `PredicateAtom.TypeTests` holds a C# copy of the last), G8
-  `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`, which no row states yet.
-  Rows still owed: `readerorder ∋ reflexive` for any reading, which a double's NaN makes a measurement; the emulator's
-  stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
+  S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3's rules read `pairreads` and
+  `readerorder`, whose `reflexive` and typed `itself` rows g234 measured (DESIGN.md, *Answer roles, pairs and failure,
+  S's (G2, G3, G4)*). G7 reads `calcitereads`, `calcitebands` and `testkinds` (where `PredicateAtom.TypeTests` holds a
+  C# copy of the last), G8 `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`,
+  which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and the raw columns' absent-path entries,
   which `CosmosAxiomRows.ReadColumns` does not read, since its keys hold a stored null and no absent path (G5).
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the

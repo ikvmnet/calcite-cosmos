@@ -57,6 +57,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A string an affix or a pattern does not match.</summary>
         Missing,
 
+        /// <summary>
+        /// A connective's side that may fail the statement, as an operand: it stands for every truth it could have given, beside
+        /// the failure (decision 2), which the rows S derives for it say (<see cref="KleeneTables.Failing"/>).
+        /// </summary>
+        Failing,
+
     }
 
 }

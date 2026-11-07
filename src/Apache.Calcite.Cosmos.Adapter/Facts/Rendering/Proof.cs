@@ -19,6 +19,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A proof on one atom's cells: the rows both sides read, and the agreement's.</summary>
         public static Proof Of(CellOutcomes outcomes, ValueSet<string> cites) => new(outcomes.Rows.Union(cites), outcomes.Cells.Count);
 
+        /// <summary>A proof on no cell, resting on rows alone: a constant's, on the rows S found measured it.</summary>
+        public static Proof Rests(ValueSet<string> rows) => new(rows, 0);
+
         /// <summary>A proof of a junction from its sides'.</summary>
         public static Proof Join(Proof a, Proof b) => new(a.Rows.Union(b.Rows), a.Cells + b.Cells);
 

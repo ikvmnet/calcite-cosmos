@@ -34,8 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// S as measured from the rows given, with nothing the host names but the registry's rows of characters, which the
-        /// parted, sets and spell rules read (<see cref="RenderingDefinition.Parts"/> and its neighbours, F3 and G1): the
-        /// definition a test that plants rows starts from.
+        /// parted, sets and spell rules read (<see cref="RenderingDefinition.Parts"/> and its neighbours, F3 and G1), and of
+        /// readings, which the roles and pair rules read (<see cref="RenderingDefinition.WholeReadings"/> and its neighbours,
+        /// G2 and G3): the definition a test that plants rows starts from.
         /// </summary>
         public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows) with
         {
@@ -45,6 +46,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Truncations = Measured.Truncations,
             Rewrites = Measured.Rewrites,
             Unsent = Measured.Unsent,
+            WholeReadings = Measured.WholeReadings,
+            PairReadings = Measured.PairReadings,
+            ReaderOrders = Measured.ReaderOrders,
+            ReaderKinds = Measured.ReaderKinds,
         };
 
         /// <summary>S defined from the registry, once a run.</summary>
@@ -64,8 +69,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The raw columns' truths S's rule joins from the registry's row (h12), which a raw reading's cells read.</summary>
         public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
 
-        /// <summary>The table S settles for the set CI asserts under.</summary>
-        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed);
+        /// <summary>The table S settles for the set CI asserts under, with its pair table.</summary>
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed,
+            ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)));
 
         /// <summary>The classes S places by their order's comparators, derived from the registry's rows.</summary>
         public static ValueSet<CosmosValueClass> Placed => ProbeTheory.Theory.Get(ProbeTheory.Placed.Of());
@@ -94,23 +100,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
 
         /// <summary>
-        /// A plant's table: one entry a key, holding every answer its rows give and every row's id, with the roles S's rule
-        /// settles of them, and the classes its rows order placed, as S's rules derive both.
+        /// A plant's table: one entry a key, holding every answer its rows give and every row's id, with the readers S's roles
+        /// rules settle of them; the key of a side that may fail where the rows hold every key it stands for, as S's failing
+        /// rules derive it; and the classes its rows order placed, as S's rule derives them.
         /// </summary>
         public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows)
         {
             var all = rows.ToList();
-            return ServiceTable.Of(ValueSet.From(all.GroupBy(row => row.Key).Select(key => EntryOf(key.Key, ValueSet.From(key.Select(row => row.Answer)), ValueSet.From(key.Select(row => row.AxiomId))))),
+            var keys = all.GroupBy(row => row.Key).ToDictionary(key => key.Key, key => (Answers: ValueSet.From(key.Select(row => row.Answer)), Evidence: ValueSet.From(key.Select(row => row.AxiomId))));
+            var failing = from stands in KleeneTables.Failing.GroupBy(pair => pair.Failing, pair => pair.Stands)
+                          where stands.All(keys.ContainsKey)
+                          select MeasuredEntry.Of(stands.Key, ValueSet.From(stands.SelectMany(k => keys[k].Answers.AsEnumerable()).Append(CosmosAnswer.Fails)),
+                              ValueSet.From(stands.SelectMany(k => keys[k].Evidence.AsEnumerable())), AnswerMeanings.Measured);
+            return ServiceTable.Of(ValueSet.From(keys.Select(key => EntryOf(key.Key, key.Value.Answers, key.Value.Evidence)).Concat(failing)),
                 ValueSet.From(all.Where(row => row.Key.Test == CosmosServiceTest.Order).Select(row => row.Key.Operand)));
         }
 
-        /// <summary>A key's entry as S's rule settles it from the measured meanings: its outcomes, and its answers' roles.</summary>
+        /// <summary>
+        /// A key's entry as S's rules settle it from the measured meanings: its outcomes; the answers of the key's role that
+        /// read it, where it names one and no comparator of another role beside them; and how each reads a whole number.
+        /// </summary>
         static MeasuredEntry EntryOf(MeasuredKey key, ValueSet<CosmosAnswer> answers, ValueSet<string> evidence)
         {
             var means = AnswerMeanings.Measured;
-            var placing = ValueSet.From(answers.Where(means.Comparators.Contains));
-            return MeasuredEntry.Placed(MeasuredEntry.Of(key, answers, evidence, means), placing, ValueSet.From(answers.Where(means.Matchers.Contains)),
-                ValueSet.From(placing.Where(a => means.Matchers.Contains(a) == false)));
+            var readBy = ValueSet.From(means.ReadBy.AsEnumerable().Where(read => read.Test == key.Test).Select(read => read.Answer));
+            var read = ValueSet.From(answers.Where(readBy.Contains));
+            var readers = read.IsEmpty == false && answers.Where(means.Comparators.Contains).All(readBy.Contains) ? read : ValueSet<CosmosAnswer>.Empty;
+            var readings = ValueSet.From(Measured.WholeReadings.Where(reading => readers.Contains(reading.Comparator)).Select(reading => (reading.Comparator, reading.Reading)));
+            return MeasuredEntry.Read(MeasuredEntry.Of(key, answers, evidence, means), readers, readings);
         }
 
         /// <summary>

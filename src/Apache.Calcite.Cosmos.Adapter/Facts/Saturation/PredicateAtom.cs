@@ -144,8 +144,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public static PredicateAtom CompareReadings(string reader, string op, string against) => new(reader, op, null, null, false) { Against = against };
 
+        /// <summary>
+        /// A comparison of two readings with what each reading's order holds in process, as S's rows say and its pair rule
+        /// hands them (<c>readerorder</c>, G3): <see cref="Itself"/>, <see cref="Reflexive"/>, or neither.
+        /// </summary>
+        public static PredicateAtom OrderedBy(PredicateAtom atom, ValueSet<string> left, ValueSet<string> right) => atom with { LeftOrders = left, RightOrders = right };
+
         /// <summary>The right reading of a comparison of two readings; <c>null</c> for every other atom.</summary>
         public string? Against { get; init; }
+
+        /// <summary>What the left reading's order holds in process, of a comparison of two readings; none for every other atom.</summary>
+        public ValueSet<string> LeftOrders { get; init; } = ValueSet<string>.Empty;
+
+        /// <summary>What the right reading's order holds in process, of a comparison of two readings; none for every other atom.</summary>
+        public ValueSet<string> RightOrders { get; init; } = ValueSet<string>.Empty;
+
+        /// <summary>A reading's order holds this where the reading of a string is the string, so two read so compare as the strings do.</summary>
+        public const string Itself = "itself";
+
+        /// <summary>A reading's order holds this where two equal values read so compare equal.</summary>
+        public const string Reflexive = "reflexive";
 
         /// <summary>A membership in a set of literals.</summary>
         public static PredicateAtom In(string reader, ValueSet<string> points) => new(reader, InTest, null, points, false);
@@ -357,8 +375,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// A comparison of two readings on a cell of their pair: raising where either read raises, UNKNOWN where either reads
-        /// null, and where both read a value, the order the cell parts them by where both readings read their strings as
-        /// themselves, or where one place is read alike on its diagonal; TRUE or FALSE otherwise.
+        /// null, and where both read a value, the order the cell parts them by where both readings' orders hold that each
+        /// reads a string as itself and the cell holds strings on both sides, or where one reading reads two values the cell
+        /// holds equal and its order holds that equal values read so compare equal (<see cref="LeftOrders"/>,
+        /// <see cref="RightOrders"/>, which S's rows say, G3); TRUE or FALSE otherwise.
         /// </summary>
         Truths OnPair(PathCell.Pair pair, RawTruths columns)
         {
@@ -370,9 +390,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if ((l & Truths.False) == 0 || (r & Truths.False) == 0)
                 return truths;
 
-            var placed = pair.Order is int order && (Reader == Against && order == 0 || left.ReadsStrings(pair.Left) && right.ReadsStrings(pair.Right));
+            var placed = pair.Order is int order && (Reader == Against && order == 0 && LeftOrders.Contains(Reflexive)
+                || LeftOrders.Contains(Itself) && RightOrders.Contains(Itself) && HoldsStrings(pair.Left) && HoldsStrings(pair.Right));
             return truths | (placed ? Ordered(Test, pair.Order!.Value) : Truths.True | Truths.False);
         }
+
+        /// <summary>A cell of strings, or a point holding one.</summary>
+        static bool HoldsStrings(PathCell cell) => cell is PathCell.Strings || cell is PathCell.Point { Value: var v } && IsString(v);
 
         static Truths Ordered(string op, int order) => (op switch
         {
@@ -655,9 +679,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>The rows the cell methods rest on.</summary>
             public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
 
-            /// <summary>Whether the reading reads a cell's strings as themselves, which order by UTF-16 unit: none but the text's.</summary>
-            public virtual bool ReadsStrings(PathCell cell) => false;
-
             // A reading's answers on a cell: by default, its answers on the state the cell lies in.
             public virtual Truths EqualOn(PathCell cell, string literal) => Equal(cell.Coarse, literal);
 
@@ -841,12 +862,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.JsonValueReadsStructureAsNull", "Calcite.TextOrderIsByCodeUnit");
 
                 public override ValueSet<string> Rests => Rows;
-
-                /// <summary>
-                /// The accessor's rendering of a string is itself (<c>Calcite.JsonValueRendersScalarsAsText</c>), which text orders
-                /// by UTF-16 unit; a cast of a raw value is read by its columns, not so.
-                /// </summary>
-                public override bool ReadsStrings(PathCell cell) => _structures == false && (cell is PathCell.Strings || cell is PathCell.Point { Value: var v } && IsString(v));
 
                 /// <summary>An interval of strings holds the literal or not; anything else answers as its state.</summary>
                 public override Truths EqualOn(PathCell cell, string literal) =>

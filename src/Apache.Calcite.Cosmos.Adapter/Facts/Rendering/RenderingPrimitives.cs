@@ -31,6 +31,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A set of classes holds one: the existential over cells.</summary>
         public static Primitive<ValueSet<CellClass>, bool> SetNonempty { get; } = Primitive.Create<ValueSet<CellClass>, bool>("set-nonempty", s => s.IsEmpty == false);
 
+        /// <summary>A cell of the outcomes holds a value that is no boolean: the existential over cells, which S's rule rests on the rows that read one (G2).</summary>
+        public static Primitive<CellOutcomes, bool> HoldsNoBoolean { get; } = Primitive.Create<CellOutcomes, bool>("holds-no-boolean", o => o.HoldsNoBoolean);
+
         /// <summary>A form tests one path, and has no parts.</summary>
         public static Primitive<ServiceForm, bool> FormIsLeaf { get; } = Primitive.Create<ServiceForm, bool>("form-is-leaf", f => f.Members.Count == 0);
 
@@ -40,9 +43,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Two prices name one form: one form exact at two positions.</summary>
         public static Primitive<Priced, Priced, bool> SameForm { get; } = Primitive.Create<Priced, Priced, bool>("same-form", (a, b) => a.Form is { } f && f.Equals(b.Form));
 
-        /// <summary>No class of a set is one Calcite answers UNKNOWN on: the universal over an atom's cells, two-valuedness.</summary>
-        public static Primitive<ValueSet<CellClass>, bool> NoCalciteUnknown { get; } = Primitive.Create<ValueSet<CellClass>, bool>("no-calcite-unknown", s =>
-            s.AsEnumerable().All(k => (k.Calcite & Truths.Unknown) == Truths.None));
+        /// <summary>
+        /// The tests whose licence a leaf's evaluation takes for granted: a comparison of two paths read as a path against a
+        /// literal leans on <see cref="CosmosServiceTest.ComparePaths"/>'s (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>,
+        /// G3); none for any other form. What licenses one is S's.
+        /// </summary>
+        public static Primitive<ServiceForm, ValueSet<CosmosServiceTest>> FormLeansOn { get; } = Primitive.Create<ServiceForm, ValueSet<CosmosServiceTest>>("form-leans-on", f =>
+            f.Kind == ServiceFormKind.ComparePaths ? ValueSet.Of(CosmosServiceTest.ComparePaths) : ValueSet<CosmosServiceTest>.Empty);
 
         /// <summary>
         /// The connective whose laws evaluating a form by its first part and its rest takes for granted: a junction's own

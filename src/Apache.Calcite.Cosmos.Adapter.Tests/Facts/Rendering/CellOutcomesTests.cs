@@ -42,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
             var cuts = CutPoints.Of(Atom, form, ReaderEdgesTable.Rows[PredicateAtom.TextReader]);
-            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None), AnswerMeanings.Measured, Truths.Raises);
+            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None));
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);
@@ -77,15 +77,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A value that is no boolean reads as the meanings say where its row keeps it not, and what the row keeps, and a
-        /// failure, stand: a row that kept a number would refute what a narrowing to undefined would let pass.
+        /// A value that is no boolean is marked so on its class, its outcomes as the service gives them; the class S's rule
+        /// reads it as (<see cref="AnswerMeanings.Read"/>) reads as the meanings say where its row keeps it not, and what the
+        /// row keeps, and a failure, stand: a row that kept a number would refute what a narrowing to undefined would let pass.
         /// </summary>
         [Fact]
         public void AValueThatIsNoBooleanKeepsWhatItsRowKeeps()
         {
             var cells = PathCell.Split(Label, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands, ValueSet<CutPoint>.Empty);
             var vector = new OutcomeVector(cells, cells.Cells.Select(_ => new CellOutcome(t | f | E, CosmosValueClass.Number)).ToList(), ValueSet<string>.Empty);
-            CellOutcomes.Of(Atom, ProbeRows.Columns, vector, AnswerMeanings.Measured, Truths.Raises).Classes.Should().OnlyContain(k => k.Service == (t | u | E));
+            var outcomes = CellOutcomes.Of(Atom, ProbeRows.Columns, vector);
+            outcomes.Classes.Should().OnlyContain(k => k.NonBoolean && k.Service == (t | f | E));
+            outcomes.Classes.AsEnumerable().Select(AnswerMeanings.Measured.Read).Should().OnlyContain(k => k.NonBoolean == false && k.Service == (t | u | E));
         }
 
     }

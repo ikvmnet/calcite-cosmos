@@ -37,8 +37,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// place is the bundle's), h11's pair, h12's raw columns' union, a raw value read through its column (rawtyped), the
         /// atoms a function row covers (F2), what a number Calcite wrote cast denotes (G8), and what the rows of characters make
         /// of each set and leaf: the spelling a set is sent, its parting bands and unsendable classes, the paths it may write,
-        /// and what a leaf reads beside its table (G1). No count bounds them: what the rules cost is judged at the end-of-plan
-        /// evaluation.
+        /// and what a leaf reads beside its table (G1); what reads each settled key and how it reads a whole number, and what
+        /// a class is to the gate (G2); a pair's readings, its table and the rows that license it, and what each reading's
+        /// order holds (G3); and a failing side's key and a junction holding its connective's unit (G4). No count bounds
+        /// them: what the rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -73,8 +75,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["allowed"] =
                 [
+                    "a class of a value that is no boolean reads as a whole condition over one reads",
+                    "a class of a boolean reads as it is",
                     "a class within an allowing box is allowed",
+                    "a class set aside is allowed within a box admitting its outcomes",
                     "a class whose every truth of Calcite's the policy sets aside is one Calcite raises on alone",
+                    "a class set aside is one Calcite raises on alone",
+                    "a class inside that reads as a connective's identity is one",
+                    "a class inside whose truths of Calcite's hold UNKNOWN is one Calcite answers unknown on",
                 ],
                 ["refutes"] =
                 [
@@ -83,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["tabulate"] =
                 [
                     "a class some row orders is placed by its comparators",
-                    "a settled key is an entry of its set's table",
+                    "a key every target its set serves measured is settled",
                     "a comparator whose spelling rewrites a band rewrites",
                 ],
                 ["sets"] =
@@ -113,6 +121,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["raw"] =
                 [
                     "a raw reading's truths on a key are the union of its columns', and a column's reading's its own",
+                ],
+                ["roles"] =
+                [
+                    "the answers of a key's role read it, where it names one and no comparator of another",
+                    "a reader of a key reads a whole number as its rows say",
+                ],
+                ["failing"] =
+                [
+                    "a failing side's key answers what each key it stands for answers",
+                ],
+                ["pairs"] =
+                [
+                    "a pair reads as its left against a literal of its right's value",
+                    "a pair reads as its right against a literal of its left's value, the comparator mirrored",
+                    "a pair with a side absent reads as the row of one",
+                ],
+                ["entries"] =
+                [
+                    "a settled key is an entry of its set's table",
+                    "a failing side's key whose every key the set settled is an entry of its table, failing beside them",
+                    "a pair key the rows read is an entry of its set's pair table",
                 ],
                 ["tag"] =
                 [
@@ -148,6 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["parted"] =
                 [
+                    "a leaf rests on the rows that license each test it leans on",
                     "a string literal parts the orders over a path whose strings may hold the other band",
                     "two string orderings of one path in a written conjunction, one of whose literals parts the orders there, need Range",
                     "a band the set's string comparator moves parts every string literal over a path whose strings may hold it",
@@ -172,6 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["classes"] =
                 [
                     "Calcite's atom and the form are paired on every cell",
+                    "a candidate a cell of which holds no boolean rests on the rows that read a whole condition over one",
                 ],
                 ["gate"] =
                 [
@@ -219,6 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a negation's best is its operand's best at the opposite position, negated",
                     "a case whose else absorbs at its position is its condition joined with its then-arm",
                     "a case whose else is the opposite constant, over a two-valued condition, is its condition's form joined with its then-arm",
+                    "a junction holding its connective's unit agrees as Kleene's logic folds it",
                     "a case's best is the service ternary of its condition's Pos best and its arms' bests, the narrow else over a two-valued condition",
                     "a case's best is the service ternary of its condition's Pos best and its arms' bests, the wide else",
                     "a truth value is exact as the constant its position reads it as",
@@ -251,17 +283,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["pair"] =
                 [
-                    "a comparison of two readings is an atom of their pair",
+                    "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(105);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(123);
         }
 
-        /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
+        /// <summary>
+        /// The classes Calcite raises on alone follow the policy: what it sets aside, and a class of a cell set aside, which is
+        /// read as a raise; and nothing where it sets none.
+        /// </summary>
         [Fact]
         public void TheRaiseOnlyClassesAreTheOnesThePolicySetsAside()
         {
-            ProbeTheory.Theory.Get(ProbeTheory.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises));
+            ProbeTheory.Theory.Get(ProbeTheory.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises || k.Outside));
             var strict = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows) with { Tolerated = Truths.None });
             strict.Theory.Get(strict.RaiseOnly.Of()).Should().BeEmpty();
         }

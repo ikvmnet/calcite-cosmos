@@ -167,19 +167,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ServiceForm ChosenOf(ServiceForm condition, ServiceForm then, ServiceForm otherwise) =>
             Compound(ServiceFormKind.Choose, CosmosServiceTest.Choose, [condition, then, otherwise], "(" + condition.Text + " ? " + then.Text + " : " + otherwise.Text + ")");
 
-        /// <summary>
-        /// A case whose else absorbs at its position as its condition's form and its then-arm's: <c>c AND a</c> at
-        /// <c>Pos</c>, <c>NOT c OR a</c> at <c>Neg</c> (spec §5.1). Assembles; whether it holds is the rule's.
-        /// </summary>
-        public static ServiceForm AbsorbingElse(RenderPosition pos, ServiceForm condition, ServiceForm then) => pos == RenderPosition.Pos
-            ? Joined(CosmosServiceTest.And, condition, then) : Joined(CosmosServiceTest.Or, Negated(condition), then);
-
-        /// <summary>
-        /// A case whose else is the constant opposite its position's as its condition's form and its then-arm's:
-        /// <c>NOT c OR a</c> at <c>Pos</c>, <c>c AND a</c> at <c>Neg</c> (spec §5.1). Assembles; whether it holds is the rule's.
-        /// </summary>
-        public static ServiceForm OppositeElse(RenderPosition pos, ServiceForm condition, ServiceForm then) => pos == RenderPosition.Pos
-            ? Joined(CosmosServiceTest.Or, Negated(condition), then) : Joined(CosmosServiceTest.And, condition, then);
+        /// <summary>A form negated where a row says so (<see cref="Negated"/>), and as it is otherwise: the else rows' sign of a condition.</summary>
+        public static ServiceForm Signed(bool negated, ServiceForm form) => negated ? Negated(form) : form;
 
         /// <summary>The constant a truth value of the IR is sent as: TRUE as <c>true</c>, FALSE as <c>false</c>; the rule asks no other.</summary>
         public static ServiceForm TruthAt(RenderPosition pos, string truth) => ConstantOf(truth == "true");
@@ -319,6 +308,39 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         static readonly ServiceForm Unjoined = OpaqueOf("unjoined", ValueSet<string>.Empty);
+
+        /// <summary>
+        /// Two forms joined by a connective as they stand: a junction of its own flattened into its members and one of each
+        /// part kept in the arms' order, as <see cref="Joined"/> does, but nothing folded: a constant stays a member, which
+        /// S's rule folds where a row says how (<see cref="Unit"/>, G4). Only takes forms apart and puts them together; whether
+        /// the join holds is the rule's. Total, as a rule body's calls must be: no junction joins by anything else, and an
+        /// opaque sentinel says so.
+        /// </summary>
+        public static ServiceForm Paired(CosmosServiceTest connective, ServiceForm left, ServiceForm right)
+        {
+            if (connective is not (CosmosServiceTest.And or CosmosServiceTest.Or))
+                return Unjoined;
+
+            var kind = connective == CosmosServiceTest.And ? ServiceFormKind.And : ServiceFormKind.Or;
+            var parts = new[] { left, right }.SelectMany(arm => arm.Kind == kind ? arm.Flat : [arm]).Distinct().ToArray();
+            return parts.Length == 1 ? parts[0] : JunctionOf(connective, parts);
+        }
+
+        /// <summary>
+        /// A junction holding a constant as a row of Kleene's says it folds (<see cref="KleeneTables.Units"/>, G4): the
+        /// constant where it absorbs the junction; otherwise the junction without it, the constant where nothing is left and the
+        /// one member where one is. Only takes the form apart and puts it together; which constant does what is the row's, and
+        /// whether the junction holds it the rule's. Total: anything but a junction is the sentinel.
+        /// </summary>
+        public static ServiceForm Unit(ServiceForm junction, bool constant, bool absorbs)
+        {
+            if (junction.Kind is not (ServiceFormKind.And or ServiceFormKind.Or))
+                return Unjoined;
+
+            var unit = ConstantOf(constant);
+            var rest = junction.Members.Where(m => m.Equals(unit) == false).ToArray();
+            return absorbs ? unit : rest.Length switch { 0 => unit, 1 => rest[0], _ => JunctionOf(junction.Test, rest) };
+        }
 
         /// <summary>
         /// Forms folded into one by the connective a position keeps rows by, <c>AND</c> at <c>Pos</c>, where each keeps

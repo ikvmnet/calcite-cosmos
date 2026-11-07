@@ -270,7 +270,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// as (<c>Calcite.TruthTestsAreCases</c>). Only S's tests read it until its switch (h15), F's terms unchanged.
             /// </summary>
             SqlPredicate? Bare(RexNode node) =>
-                _places && Value(node) is { } truth && IsPlace(truth) && KindOf(truth) == "truth"
+                _places && node.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN && Value(node) is { } truth && IsPlace(truth)
                     ? new SqlPredicate.Compare(SqlPredicate.Compare.Equal, truth, Literal((RexLiteral)RexBuilderHolder.Value.makeLiteral(true))!)
                     : null;
 
@@ -386,7 +386,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads a comparison between a reading of a path and a literal or a parameter, either way round, with the
-            /// reading on the left; and, where places are read, two readings of one kind compared (h11).
+            /// reading on the left; and, where places are read, two readings compared (h11), whose kinds S's pair rule reads
+            /// (G3).
             /// </summary>
             SqlPredicate? Comparison(RexCall call, string op)
             {
@@ -399,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
-                if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second) && KindOf(first) is { } kind && KindOf(second) == kind)
+                if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second))
                     return new SqlPredicate.Compare(op, first, second);
 
                 // A text boxed as a VARIANT equals a boxed string as the text does (Calcite.VariantEqualsOnlyItsOwnBox).
@@ -413,15 +414,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 return null;
             }
-
-            /// <summary>What two readings compare as: text, a number or a truth; a raw reading as nothing, which is not paired.</summary>
-            static string? KindOf(SqlValue reading) => reading switch
-            {
-                SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" } or SqlValue.Call { Type: "VARCHAR" or "CHAR" } => "text",
-                SqlValue.Typed { Type: "BOOLEAN" } or SqlValue.Cast { Target: "BOOLEAN" } or SqlValue.Call { Type: "BOOLEAN" } => "truth",
-                SqlValue.Typed or SqlValue.Cast or SqlValue.Call { Type: not null } => "number",
-                _ => null,
-            };
 
             /// <summary>
             /// Reads what a reading is compared with: a parameter, a literal, and a number Calcite wrote cast — where places are
