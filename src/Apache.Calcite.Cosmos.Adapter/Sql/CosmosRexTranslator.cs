@@ -157,8 +157,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// field not covered is read as its declared type, which is what a scan's fields are.
         /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, JsonFactSet facts, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, JsonFactSet facts, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null) :
+            this(rexBuilder, fields, parameters, facts, ownRow, container, readings, images: null)
         {
+
+        }
+
+        /// <inheritdoc cref="CosmosRexTranslator(RexBuilder, IReadOnlyList{CosmosPath}, CosmosParameterList, JsonFactSet, org.apache.calcite.rel.core.CorrelationId, Metadata.CosmosContainerMetadata, IReadOnlyList{CosmosReading})"/>
+        /// <param name="images">
+        /// The S a translator whose container has no reasoning asks of each call the function rows name (G6), a test's; none
+        /// leaves every such call in process. A schema's translator asks its schema's.
+        /// </param>
+        internal CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, JsonFactSet facts, org.apache.calcite.rel.core.CorrelationId? ownRow, Metadata.CosmosContainerMetadata? container, IReadOnlyList<CosmosReading>? readings,
+            Apache.Calcite.Cosmos.Facts.Rendering.RenderingOracle? images)
+        {
+            _images = images;
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
@@ -518,16 +531,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What each function computes is the function rows', read as S's image rule reads them</b>
-        /// (<see cref="CosmosFunctionSpellings.Disagreeing"/>): the call's operands gathered as S gathers them
-        /// (<see cref="Gathered"/>) fall under S's keys, by each kind each operand the rows name may hold, its bands and the
-        /// atoms its values may be in, and every key must be covered by a row and answered <c>Same</c> by every row covering
-        /// it on every target the set serves (<see cref="Set"/>), over the definition the schema's S is built from
-        /// (<see cref="Rendering"/>). What the rows do not carry is the spelling's legality
-        /// (<see cref="CosmosFunctionSpellings.Refusals"/>), read off the facts the translation was licensed
-        /// (<see cref="Facts"/>, <see cref="Unproved"/>). A bridge, which G6 replaces by asking S's image of each call, and
-        /// which goes at h37 (TODO.md). Refused, the function stays in process, which is what happens over a path nothing is
-        /// declared of.
+        /// <b>What each function computes is S's image of it</b> (G6, <see cref="Unimaged"/>): the call read as S reads a
+        /// place, its operands as the facts the translation was licensed hold them (<see cref="Facts"/>), asked of the
+        /// schema's S under the set the statement is sent under (<see cref="Set"/>); a call S gives no image, or that no S
+        /// was asked of, stays in process. What the rows do not carry is the spelling's legality
+        /// (<see cref="CosmosFunctionSpellings.Refusals"/>), read off the same facts (<see cref="Unproved"/>). A bridge, which
+        /// goes at h37 (TODO.md), when S writes the column. Refused, the function stays in process, which is what happens over
+        /// a path nothing is declared of.
         /// </para>
         /// <para>
         /// <b>Asked once, of the whole expression, before anything is written</b>, as a rendering is
@@ -546,7 +556,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
 
             if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
-                && (Gathered(call) is { } gathered ? CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) : "an operand is no literal, path or call S gathers") is string why)
+                && Unimaged(call) is string why)
                 throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
 
             foreach (var rule in CosmosFunctionSpellings.Refusals(call, Set))
@@ -559,71 +569,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Returns a call's operands as S's place rule gathers them (<c>RenderingTheory.DefineValued</c>), one import an
-        /// ordinal of the loader's, or <c>null</c> where the loader does not read the call as a call of values or S gathers
-        /// nothing of an operand: S's image asks one import an operand, its arity.
+        /// Why S gives a call no image, or <c>null</c> where it gives one (G6): the call read as the loader that reads places
+        /// reads it, each path and call in it as this translation's facts hold them, at the node its conjunct is rendered
+        /// beneath, whose <c>possible</c> rows at a statement's root are <c>D0</c>'s (<see cref="Apache.Calcite.Cosmos.Facts.Rendering.RenderingOracle.ImageOf"/>).
         /// </summary>
-        /// <remarks>
-        /// Each operand read as the loader that reads places reads it, S's, and imported as S's importer imports one
-        /// (<c>RenderingImporter</c>), from one node of F: the facts this translation was licensed (<see cref="Facts"/>), the
-        /// node its conjunct is rendered beneath, whose <c>possible</c> rows at a statement's root are <c>D0</c>'s. A literal
-        /// is its own cell; a reading of a path is read through its reader, with the path's <c>possible</c> and <c>chars</c>,
-        /// the top and every class where the node holds none; a nested call through its type's reader, with its image over
-        /// its own operands where its own keys agree, and the characters F derives of the call as read. Whatever the loader
-        /// makes a place of, every call the rows name is asked so, however deep or whatever literal it holds. An operand S
-        /// gathers nothing of — a parameter, a <c>CASE</c>, a call whose keys disagree — leaves the call no image, as the
-        /// gathering's count short of the call's arity leaves S's.
-        /// </remarks>
-        /// <param name="call">The call.</param>
-        /// <returns>The imports, or <c>null</c>.</returns>
-        Eggnog.ValueSet<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>? Gathered(RexCall call)
+        string? Unimaged(RexCall call)
         {
             if (Places.ReadValue(call) is not SqlValue.Call place)
-                return null;
+                return "it is no call S reads";
 
-            // The loader leaves out what is no operand of the function, a trim's leading flag, so its ordinals start past it.
-            var shift = call.getOperands().size() - place.Operands.Count;
-            var imports = new List<Apache.Calcite.Cosmos.Facts.Rendering.PathImport>();
-            for (var i = 0; i < place.Operands.Count; i++)
-                if (Imported(i, Operand(call, i + shift), place.Operands[i]) is { } import)
-                    imports.Add(import);
-                else
-                    return null;
+            if (Images is not { } images)
+                return "no S is asked of it, the translation's schema having none or a test having turned it off";
 
-            return Eggnog.ValueSet.From(imports);
-        }
-
-        /// <summary>
-        /// An operand's import as S's place rule gathers it (<see cref="Gathered"/>), or <c>null</c> where S gathers none. A
-        /// nested call's type is its own, the one the loader types a place with.
-        /// </summary>
-        Apache.Calcite.Cosmos.Facts.Rendering.PathImport? Imported(long ordinal, RexNode node, SqlValue place)
-        {
-            switch (place)
+            return images.ImageOf(Set, place, path =>
             {
-                case SqlValue.Literal literal:
-                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Literal(ordinal, literal.Value);
-
-                case SqlValue.Call inner when StripRedundantTextCast(node) is RexCall nested && nested.getType()?.getSqlTypeName()?.getName() is string type
-                    && Gathered(nested) is { } gathered
-                    && Rendering.CallKey(inner.Function, type) is string function
-                    && CosmosFunctionSpellings.Disagreeing(Rendering, Set, function, gathered) is null
-                    && CosmosFunctionSpellings.Image(Rendering, function, type, gathered) is { } image:
-                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, Apache.Calcite.Cosmos.Facts.Saturation.PredicateAtom.TypedReader(type),
-                        image, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)));
-
-                case { PathRead: { } path } when Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(place) is string reader:
-                    _facts.TryPossible(path, out var possible);
-                    return Apache.Calcite.Cosmos.Facts.Rendering.PathImport.Of(ordinal, reader, possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
-
-                default:
-                    return null;
-            }
+                _facts.TryPossible(path, out var possible);
+                return (possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
+            }, inner => Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)), out var why) is null ? why : null;
         }
 
         /// <summary>
-        /// Gets the definition the statement's S is built from, whose function rows the column bridge reads: its container's
-        /// reasoning's (<see cref="Metadata.CosmosReasoning.Definition"/>), or the registry's for a translator built without one.
+        /// Gets the S the column bridge asks (<see cref="Unimaged"/>): its schema's, none where a test turned S off for it,
+        /// since no plan there starts a build, and for a translator whose container has no reasoning, the one it was made with.
+        /// </summary>
+        Apache.Calcite.Cosmos.Facts.Rendering.RenderingOracle? Images => _container?.Reasoning is { } reasoning ? (reasoning.RenderingOff ? null : reasoning.Rendering) : _images;
+
+        readonly Apache.Calcite.Cosmos.Facts.Rendering.RenderingOracle? _images;
+
+        /// <summary>
+        /// Gets the definition the statement's S is built from, whose function rows the bridge's name and legality read: its
+        /// container's reasoning's (<see cref="Metadata.CosmosReasoning.Definition"/>), or the registry's for a translator built
+        /// without one.
         /// </summary>
         Apache.Calcite.Cosmos.Facts.Rendering.RenderingDefinition Rendering => _container?.Reasoning?.Definition ?? Metadata.CosmosRendering.Definition;
 

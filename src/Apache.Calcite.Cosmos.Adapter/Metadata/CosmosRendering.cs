@@ -62,11 +62,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// The kinds of value each SQL type a computed place may be of holds (G6): a character type a string, an integer
         /// type a whole number, any other numeric type any number, a boolean type a boolean, by the families Calcite's type
-        /// system names. Read off it once, by the definition, a constant of it; a type none names holds no kind S images.
+        /// system names, and <c>ANY</c>, the type of this adapter's own operators over a document's value, every kind there is.
+        /// Read off it once, by the definition, a constant of it; a type none names holds no kind S images.
         /// </summary>
         internal static IReadOnlyList<(string Type, string Kind)> ReadTypeKinds() =>
-            [.. from type in SqlTypeName.ALL_TYPES.toArray().Cast<SqlTypeName>()
-                from kind in SqlTypeName.CHAR_TYPES.contains(type) ? [JsonValues.StringType]
+            [.. from type in SqlTypeName.ALL_TYPES.toArray().Cast<SqlTypeName>().Append(SqlTypeName.ANY).Distinct()
+                from kind in type == SqlTypeName.ANY ? [.. JsonValues.AllTypes.AsEnumerable()]
+                    : SqlTypeName.CHAR_TYPES.contains(type) ? [JsonValues.StringType]
                     : SqlTypeName.INT_TYPES.contains(type) ? [JsonValues.IntegerType]
                     : SqlTypeName.NUMERIC_TYPES.contains(type) ? [.. JsonValues.Numbers.AsEnumerable()]
                     : SqlTypeName.BOOLEAN_TYPES.contains(type) ? new[] { JsonValues.BooleanType }

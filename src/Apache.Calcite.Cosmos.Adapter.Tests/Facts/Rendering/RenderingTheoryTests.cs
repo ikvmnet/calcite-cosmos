@@ -287,6 +287,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key is one the service defines",
                     "a place's import is its import beneath the root",
                     "a computed place's import joins its image beneath each stratum an atom over it is read at",
+                    "a place's import beneath a stratum is its type's kinds and absent where the service defines every key any operands may fall under",
                 ],
                 ["assume"] =
                 [
@@ -301,7 +302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(134);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(135);
         }
 
         /// <summary>

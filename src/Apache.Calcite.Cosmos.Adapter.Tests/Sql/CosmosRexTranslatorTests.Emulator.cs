@@ -34,13 +34,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosRexTranslator Translator(CosmosServiceTarget target)
             {
                 _t._parameters = new CosmosParameterList();
-                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, JsonFactSet.Empty, null, Container(target));
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, JsonFactSet.Empty, null, Container(target));
             }
 
             CosmosRexTranslator Translator(CosmosServiceTarget target, JsonFactSet facts)
             {
                 _t._parameters = new CosmosParameterList();
-                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
             }
 
             /// <summary>A translator over a container declaring strings of these classes at field 0's path, the facts S imports.</summary>
@@ -49,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 _t._parameters = new CosmosParameterList();
                 var container = TestReasoning.Bind(new CosmosContainerMetadata("products")
                     .WithFacts(StringsOf(characters).Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim))))).WithServiceTarget(target);
-                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, container.Facts.Declared, null, container);
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, container.Facts.Declared, null, container);
             }
 
             RexNode Name => _t.Ref(0, SqlTypeName.VARCHAR);

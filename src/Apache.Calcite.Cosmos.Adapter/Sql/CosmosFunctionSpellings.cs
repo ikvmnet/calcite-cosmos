@@ -160,104 +160,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
 
         /// <summary>
-        /// Why the function rows do not agree on a call's operands under a set, or <c>null</c> where they do: S's image rules
-        /// (<c>RenderingTheory.DefineValued</c>), read as they read the rows.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>S's keys over S's rows.</b> The keys are S's own (<see cref="RenderingImage.Keys"/>), under the operands the
-        /// rows name. A call the service defines alone, every key one a row answers <see cref="CosmosFunctionAnswer.Defined"/>,
-        /// agrees whatever its operands are read through (the D class). Any other is read as S's measured image rules read
-        /// it: one import an ordinal, each read through a reader its rows were measured through, met across the axioms that
-        /// name the function, or exactly (<see cref="RenderingDefinition.LiteralReaders"/>); a key measured where a row of the
-        /// function covers it, the row's class holding the key's atom (<see cref="FunctionValueClasses.Holding"/>); and
-        /// agreeing where every row covering it answers <c>Same</c> on every target the set serves, a target that measured
-        /// none of them answering it unmeasured. Nothing is read beside the definition the schema's S is built from.
-        /// </para>
-        /// <para>
-        /// <b>A replica of S's conditions, a bridge</b>: the column gate asks this until it asks S's image of each call it
-        /// writes, and goes at h37 (TODO.md).
-        /// </para>
-        /// </remarks>
-        /// <param name="definition">The definition the schema's S is built from.</param>
-        /// <param name="set">The set the statement is sent under.</param>
-        /// <param name="function">The name the call's rows are filed under (<see cref="RenderingDefinition.CallKey"/>).</param>
-        /// <param name="gathered">The call's operands as S's place rule gathers them, one import an ordinal of the loader's.</param>
-        public static string? Disagreeing(RenderingDefinition definition, RenderingSet set, string function, ValueSet<PathImport> gathered)
-        {
-            var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
-            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
-            var imports = gathered.AsEnumerable().ToList();
-            if (imports.Select(i => i.Ordinal).Distinct().Count() != imports.Count)
-                return "an operand is gathered twice";
-
-            var keys = RenderingImage.Keys(function, gathered, subjects, ValueSet.From(definition.LiteralReaders)).AsEnumerable().ToList();
-            if (IsDefined(rows, keys))
-                return null;
-
-            var reads = definition.FunctionReads.Where(f => f.Function == function).Select(f => ValueSet.From(f.Readers)).ToList();
-            if (rows.Count == 0 || reads.Count == 0 || subjects.IsEmpty)
-                return "what it computes has not been measured";
-
-            var readers = reads.Aggregate((a, b) => a.Intersect(b)).Union(ValueSet.From(definition.LiteralReaders));
-            if (imports.FirstOrDefault(i => readers.Contains(i.Reader) == false) is { } unread)
-                return $"its operand {unread.Ordinal} is read through {unread.Reader}, which its rows were not measured through";
-
-            foreach (var key in keys)
-            {
-                var covering = Covering(rows.Keys.Select(r => r.Key).Distinct(), key).ToList();
-                if (covering.Count == 0)
-                    return $"no row measured {key}";
-
-                foreach (var row in covering)
-                    foreach (var target in definition.Serves[set])
-                        if ((rows.TryGetValue((row, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) is var held && held is not (CosmosFunctionAnswer.Same or CosmosFunctionAnswer.Defined))
-                            return $"{target} answers {row} {held}";
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// A call's image on its gathered operands where its keys agree (<see cref="Disagreeing"/>), as S's image rules write
-        /// it: a call the service defines alone, every kind of its type and absent; one Calcite answers null over some key
-        /// of, its type's kinds and absent; otherwise the point where C# evaluates it as Calcite does, or its type's kinds,
-        /// and absent where an operand sits at an ordinal its rows key nothing of. <c>null</c> where a key's yield is no row's.
-        /// A replica of S's rules, the column gate's until h37.
-        /// </summary>
-        public static PathValues? Image(RenderingDefinition definition, string function, string type, ValueSet<PathImport> gathered)
-        {
-            var rows = definition.Functions.Where(f => f.Key.Function == function).ToDictionary(f => (f.Key, f.Target), f => f.Answer);
-            var subjects = ValueSet.From(definition.FunctionSubjects.Where(f => f.Function == function).Select(f => f.Subject));
-            var keys = RenderingImage.Keys(function, gathered, subjects, ValueSet.From(definition.LiteralReaders)).AsEnumerable().ToList();
-            var kinds = ValueSet.From(definition.TypeKinds.Where(t => t.Type == type).Select(t => t.Kind));
-            if (IsDefined(rows, keys))
-                return PathValues.OfKinds(kinds.Add(PathValues.AbsentKind));
-
-            var yields = definition.FunctionYields.Where(y => y.Key.Function == function).ToList();
-            var stated = keys.Select(k => Covering(yields.Select(y => y.Key), k).SelectMany(r => yields.Where(y => y.Key == r).Select(y => y.Yields)).ToList()).ToList();
-            if (stated.Any(s => s.Count == 0))
-                return null;
-
-            if (stated.Any(s => s.Contains(CalciteYield.Null)))
-                return PathValues.OfKinds(kinds.Add(PathValues.AbsentKind));
-
-            var held = gathered.AsEnumerable().Any(i => subjects.Intersect(FunctionKey.OrdinalsKeying(i.Ordinal, i.Reader, ValueSet.From(definition.LiteralReaders))).IsEmpty);
-            return RenderingImage.Of(function, gathered, PathValues.OfKinds(held ? kinds.Add(PathValues.AbsentKind) : kinds));
-        }
-
-        /// <summary>The rows' keys that cover a key: of its function, operand, kind and band, their class holding its atom.</summary>
-        static IEnumerable<FunctionKey> Covering(IEnumerable<FunctionKey> rows, FunctionKey key) =>
-            rows.Distinct().Where(r => r with { Value = key.Value } == key && FunctionValueClasses.Holding.Contains((key.Kind, r.Value, key.Value)));
-
-        /// <summary>Whether a call is one the service defines alone: its rows answer <see cref="CosmosFunctionAnswer.Defined"/>, and cover every key of it so.</summary>
-        static bool IsDefined(Dictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> rows, List<FunctionKey> keys)
-        {
-            var defined = rows.Where(r => r.Value == CosmosFunctionAnswer.Defined).Select(r => r.Key.Key).Distinct().ToList();
-            return defined.Count > 0 && keys.All(k => Covering(defined, k).Any());
-        }
-
-        /// <summary>
         /// The bands a function's rows over a string operand answer otherwise than Calcite on some target a set serves, a
         /// target that measured none of them answering it unmeasured: for a case mapping, what a case-insensitive match
         /// asks its text to be free of (<see cref="FoldsAlike"/>, F5).
@@ -294,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Azure's search reads to its first U+0000; and under the emulator, which stores U+0000 and U+FDD0 escaped, a
         /// replacement's search and replacement, a concatenation's operands, a repetition's subject and a pattern's subject
         /// are asked to hold neither (#246). The rows say the functions' for S, keyed by operand (F2), a target that measured
-        /// none answering it unmeasured; the bridge keeps this copy until it asks S's image (G6).
+        /// none answering it unmeasured; the bridge keeps this copy beside S's image until h37.
         /// </remarks>
         public static IEnumerable<Refusal> Refusals(RexCall call, RenderingSet set)
         {

@@ -8362,41 +8362,34 @@ which `CosmosFunctionComparison` asks Calcite through, a key's answer the worst 
 reads both into S as constant raw facts, `functionsubject` and `measuredreaders` (since f12 `functionsubjects`, every
 operand the rows name, and `measuredreaders` an intersection of each axiom's), which the image rule reads beside the keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
 read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
-`CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column bridge reads the same rows, subjects
-and readers, off the definition its schema's S is built from (`CosmosFunctionSpellings.Disagreeing`, *The column
-bridge*), and the one function it gates that no row names, `LENGTH`, is refused on every operand and every target
-(`CosmosFunctionSpellings.Gated`). The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+`CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column bridge asks S's image of each call
+since G6 (*The column bridge asks S's image*), and the one function no run measured, `LENGTH`, is declared unmeasured
+(`CosmosAxiomRows.Declared`), so S images it on no operand and no target. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
 measured. Until f345 the case mapping beyond ASCII was one too, under every set, since the rows' witnesses for the
 surrogate and high bands (an emoji, `ﬀ`) hold no letter the mapping changes while Java's changes U+10428, U+10400 and
 U+FF21; the rows part there themselves now (F5). A refusal is never weakened to a row.
 
-**The column bridge.** `RequireStringFunctionsAgree` reads every row S's image rule reads (owed): the call's operands
-gathered as S's place rule gathers them (`CosmosRexTranslator.Gathered`, through the loader that reads places), keyed
-by `RenderingImage.Keys` — each kind each operand may hold, by its ordinal and by `Every`, each band, each value
-class's atoms, through readers the rows were measured through — and refused unless every key is covered by a row
-(`FunctionValueClasses.Holding`) and every row covering it answers `Same` on every target the set serves
-(`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from, no table of its own), and
-unless the rows name the function's subjects and readers, which the image rule joins. An operand S gathers nothing of —
-a parameter, a `CASE`, a call whose own keys disagree — leaves the call no image, as S's image asks one import an
-operand (`Gathered` returns none short of the call's arity). A nested call is gathered through its own type, with its
-image over its own operands, and since G6 S has a place for each of them too, the loader's gate (`RowFunctions`, four
-deep) gone: six reversals push where their rows agree, as they did before the bridge read S's rows (the fix round of
-owed). `Spell`'s literal
-filter, which refused a place to a literal holding U+0000, U+FDD0 or any surrogate, is legality alone since G1: it
-refuses a literal holding an unpaired surrogate, which the SDK will not send, and what any other literal makes is the
-function rows'. Before owed
-it read the `Any` row of each operand alone and asked an operand of another kind as a string, so it could push what
-S's image rule declines (latent item 9); one plan moved, a window whose start is a position, `SUBSTRING(a FROM
-POSITION('x' IN a) FOR 2)`, read through `typed:INTEGER`, which no row of `SUBSTRING` was measured through. No other
-corpus plan holds what the bridge now keeps in process: a bound that is a parameter or read off a path (a `SUBSTRING`,
-`LEFT` or `RIGHT` start or count), and a fold of a raw reading no row was read through, the cast to `ANY` naming the
-raw value under a rendering and a `VARIANT` column cast to text, which makes a number null where the service's fold is
-undefined. Until the probe account's run 1 Azure had no function rows and the bridge read declared verdicts for it
-(what `CosmosStringFunctions` asked); since h14b both targets read their rows, Azure's measured. Under the emulator
-this refuses `POSITION` over a surrogate, the correctness fix h06 recorded, and `LENGTH` under both (Calcite's library
-operator, whose rows are owed). It is a bridge: G6 replaces it by asking S's image of each call the translator writes,
-and it goes at h37, when S writes the column.
+**The column bridge asks S's image (G6).** `RequireStringFunctionsAgree` asks the schema's S of each call the function
+rows name (`CosmosRexTranslator.Unimaged`, `RenderingOracle.ImageOf`): the call read as the loader that reads places
+reads it, written as `IS_DEFINED` over it in a bundle of its own, each path and call in it imported as the translation's
+facts hold them, at the node its conjunct is rendered beneath (`D0`'s `possible` rows at a statement's root), run in check
+mode, and the place's `Imported` read (`RenderingBundle.ImageOf`, a completed run's alone). A call S gives no image stays
+in process, with S's reason; so does one where no S is asked, a translator whose schema turned S off, since no plan there
+starts a build, and one built without a schema, which a test hands an S of its own (`TranslatorRendering`). The answer is
+remembered by the oracle, the schema's, under the theory, the set and the import, a decline never. Until owed it read the
+`Any` row of each operand alone and could push what S's image rule declines (latent item 9); from owed to G6 it read S's
+rows through a C# copy of S's conditions (`CosmosFunctionSpellings.Disagreeing` and `Image`), which G6 deletes, and the
+three differences a copy can hide were S's to close first: the three Azure `UPPER` pushes beneath a later round, the
+loader's gate (*A computed value is a place*), and two met when the bridge first asked S. A call the service defines
+alone, `ToString`, was imaged only where its operands were gathered, and its operand is a raw value of type `ANY` that
+the IR reads through no reader, nor did `ANY` name any kind: *a place's import beneath a stratum is its type's kinds and
+absent where the service defines every key any operands may fall under* reads no gathering
+(`RenderingImage.AnyKeys`), and `ANY` holds every kind (`CosmosRendering.ReadTypeKinds`). And a `REPEAT` of a positive
+count, which the copy pushed over a subject whose length the facts bound, has no place in S, its result's bound (10,000
+code points on Azure) a key no row holds, so it is computed in process (latent item 9, closed); no corpus plan held one,
+and every digest is unchanged. The legality the rows do not carry stays the bridge's (`CosmosFunctionSpellings.Refusals`).
+It goes at h37, when S writes the column.
 
 **What the bridge reads is one node of F's,** as S's importer reads one (`RenderingImporter`): the facts the
 translation was licensed, the node its conjunct is rendered beneath, each path's `possible` and `chars` there (the top

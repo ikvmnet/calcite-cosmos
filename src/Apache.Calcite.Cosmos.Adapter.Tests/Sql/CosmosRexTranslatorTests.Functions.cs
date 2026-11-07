@@ -418,16 +418,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             /// <remarks>
             /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
-            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal,
-            /// and a positive one asks the subject's length to keep the repetition within the limit: a literal's own, or what
-            /// the facts bound a path's strings to — here a domain's, whose longest is three units, which bound three code
-            /// points or fewer. A count of 0 is the empty string at both ends. A literal subject is keyed apart from a stored
-            /// one (<c>FunctionKey.Literal</c>), which no run sent, so it stays in process whatever its length.
+            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal 0,
+            /// the empty string at both ends: a positive one is the result's bound, a key no row holds, so S has no place for
+            /// it however short the facts bound the subject (G6; the bridge's copy of S's rules pushed one within the limit).
+            /// A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), which no run sent, so it stays
+            /// in process whatever its length.
             /// </remarks>
             [Fact]
             public void ARepetitionPushesWhereTheCountKeepsItWithinWhatTheServiceRepeats()
             {
-                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("3,333 times three is 9,999");
+                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeFalse("no row holds the result's bound, though 3,333 times three is 9,999");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("3,334 times three is 10,002");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(-1)).Should().BeFalse("REPLICATE is undefined for a negative count");
                 Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");

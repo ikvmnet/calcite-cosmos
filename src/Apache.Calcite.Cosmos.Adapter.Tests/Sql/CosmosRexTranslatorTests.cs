@@ -43,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         CosmosRexTranslator Translator(JsonFactSet facts)
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters, facts);
+            return TranslatorRendering.Translator(_rex, _fields, _parameters, facts);
         }
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         CosmosRexTranslator TranslatorOverARendering(JsonFactSet facts)
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters, facts, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
+            return TranslatorRendering.Translator(_rex, _fields, _parameters, facts, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
         }
 
         /// <summary>
@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             _parameters = new CosmosParameterList();
             var container = TestReasoning.Bind(new CosmosContainerMetadata("names").WithFacts(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim)))));
-            return new CosmosRexTranslator(_rex, _fields, _parameters, container.Facts.Declared, null, container, readings);
+            return TranslatorRendering.Translator(_rex, _fields, _parameters, container.Facts.Declared, null, container, readings);
         }
 
         /// <summary>That field 0's path holds strings, of characters of these classes alone.</summary>
@@ -798,14 +798,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <remarks>
         /// The one string function whose name differs: SQL repeats with <c>REPEAT</c> and Cosmos
-        /// with <c>REPLICATE</c>, same arguments in the same order — over a string whose length the
-        /// facts bound, the service's repeating no further than 10,000 code points.
+        /// with <c>REPLICATE</c>, same arguments in the same order. A count of 0 is S's image; a positive one
+        /// is computed in process, the service repeating no further than 10,000 code points, a result bound no
+        /// row holds, so S has no place for it whatever the facts bound the string to (G6, TODO.md).
         /// </remarks>
         [Fact]
         public void RepeatBecomesReplicate()
         {
-            Declared(new JsonClaim.OneOf(new JsonScalar[] { "bikes", "cars" })).Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
-                .Should().Be("REPLICATE(c.name, @p0)");
+            var bounded = Declared(new JsonClaim.OneOf(new JsonScalar[] { "bikes", "cars" }));
+            bounded.Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(0))).Should().Be("REPLICATE(c.name, @p0)");
+            CanTranslate(bounded, Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2))).Should().BeFalse("no row holds the result's bound");
         }
 
         /// <remarks>

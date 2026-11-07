@@ -40,6 +40,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         readonly RenderingGraph _graph;
         readonly TimeSpan _wait;
+        readonly int _remembered;
         readonly Func<int, int> _limit;
         readonly Func<RenderingQuestionKey, RenderingQuestionKey> _keyOf;
         long _hits, _bundles, _declines;
@@ -52,6 +53,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public RenderingOracle(RenderingGraph graph, int remembered = 4096, TimeSpan? wait = null, Func<int, int>? limit = null, Func<RenderingQuestionKey, RenderingQuestionKey>? keyOf = null)
         {
             _graph = graph;
+            _remembered = remembered;
             Memo = new RenderingAnswerMemo(remembered);
             _wait = wait ?? DefaultWait;
             _limit = limit ?? RenderingBundle.GenerateLimit;
@@ -206,6 +208,71 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return Failed(e);
             }
         }
+
+        /// <summary>
+        /// S's image of a call (G6): the call written as <c>IS_DEFINED</c> over it, each path it reads and each call within it
+        /// imported as the asker's facts hold them, run, and its place's import read. What the translator's column bridge asks
+        /// of each call it writes, until S writes the column (h37). Remembered under the theory, the set and the import, as a
+        /// bundle's answer is, a decline never; <c>null</c> where S gives the call no image, with why.
+        /// </summary>
+        /// <param name="set">The set the statement is planned under.</param>
+        /// <param name="call">The call as the loader that reads places reads it, typed and spelled where it is a place.</param>
+        /// <param name="read">What the asker's facts hold of a path: its values, and the classes its characters may be in.</param>
+        /// <param name="chars">The classes the asker's facts hold a call's characters may be in.</param>
+        /// <param name="why">Why there is no image, or <c>null</c>.</param>
+        public PathValues? ImageOf(RenderingSet set, SqlValue.Call call, Func<JsonDocumentPath, (PathValues Values, ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, ValueSet<string>> chars, out string? why)
+        {
+            var atom = new SqlPredicate.IsDefined(call);
+            var paths = atom.Places.Select(p => (Path: p, Read: read(p))).ToList();
+            var calls = atom.Computed.Select(c => (Call: c, Chars: chars(c))).ToList();
+            if (_graph.TryCurrent(_wait, out var theory) == false)
+            {
+                why = "S is unavailable: " + (_graph.Failure?.Message ?? "no generation within " + _wait);
+                return null;
+            }
+
+            var key = string.Join("|", (IEnumerable<string>)[set.ToString(), RenderingAnswerMemo.DigestOf(theory), call.Type ?? "-", call.Spelled ?? "-", atom.Digest,
+                .. paths.Select(p => RenderingImporter.Spell(p.Path, p.Read.Values, p.Read.Chars)), .. calls.Select(c => c.Call.Spelled + ":" + string.Join(",", c.Chars.AsEnumerable()))]);
+            if (_images.TryGetValue(key, out var known))
+                return (why = known.Why) is null ? known.Image : null;
+
+            (PathValues? Image, string? Why) answer;
+            try
+            {
+                using var bundle = theory.Open(set);
+                bundle.Write(atom);
+                var source = new ImportSource(atom.Digest, "column", 0);
+                foreach (var (path, (values, classes)) in paths)
+                    bundle.Import(source, path, values, classes);
+                foreach (var (computed, classes) in calls)
+                    bundle.ImportComputed(computed, classes);
+
+                var run = bundle.Run();
+                answer = bundle.ImageOf(call) is { } image ? (image, null)
+                    : bundle.Failure is { } failure ? (null, "S declined: " + failure.GetType().Name + ": " + failure.Message)
+                    : run.StopReason != RunStopReason.Completed ? (null, "S's run stopped: " + run.StopReason)
+                    : (null, "S gives it no image over what the facts hold of its operands");
+            }
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
+            {
+                answer = (null, "S declined: " + e.GetType().Name + ": " + e.Message);
+            }
+
+            // A decline is the run's, never the call's: only an answer S read is remembered, and the memo starts over when full.
+            if (answer.Image is not null || answer.Why!.StartsWith("S gives", StringComparison.Ordinal))
+            {
+                if (_images.Count >= _remembered)
+                    _images.Clear();
+
+                _images.TryAdd(key, answer);
+            }
+
+            why = answer.Why;
+            return answer.Image;
+        }
+
+        readonly ConcurrentDictionary<string, (PathValues? Image, string? Why)> _images = new(StringComparer.Ordinal);
 
         static RenderingBundleAnswer Declined(IReadOnlyList<SqlPredicate> roots, string reason, string why) => new(roots.DistinctBy(r => r.Digest)
             .ToDictionary(r => r.Digest, _ => new RenderingAnswer(RenderingVerdictKind.Unproven, null, null, null, "declined: " + reason + ": " + why)), reason, null, RenderingCost.None with { Declines = 1 });

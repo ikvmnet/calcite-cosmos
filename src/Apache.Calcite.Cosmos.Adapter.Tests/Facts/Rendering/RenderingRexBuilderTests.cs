@@ -425,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                             }
 
                             implied++;
-                            var (found, written, mine, _) = RoundTrip(form, pos, build, p => new CosmosRexTranslator(Rex, Fields, p, JsonFactSet.Empty, null, null, Readings), loading,
+                            var (found, written, mine, _) = RoundTrip(form, pos, build, p => Apache.Calcite.Cosmos.Adapter.Tests.Sql.TranslatorRendering.Translator(Rex, Fields, p, JsonFactSet.Empty, null, null, Readings), loading,
                                 (f, ir, at, verdict) => Claimed(f, ir, at, verdict, set, chars), ir => ir.Digest == atom.Digest);
                             (own, exact, cased) = (own + mine, exact + (form.Text == written?.Text ? 1 : 0), cased + (IsCased(form) ? 1 : 0));
                             if (IsCased(form) && written is null && found.Count == 0)

@@ -2083,6 +2083,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // A call the service defines alone (the D class) is what the service answers, Calcite having no body for it:
             // every kind of its type and absent, whatever its operands are read through, once each key they fall under is
             // one it defines (F3, G6).
+            // Whatever the IR reads its operands through, or reads none: a call the service defines over every key any operand
+            // may fall under, the D class (F3), is the service's alone, so its image needs no gathering (G6).
+            image.DefineRule("a place's import beneath a stratum is its type's kinds and absent where the service defines every key any operands may fall under", r =>
+            {
+                var v = r.Var<Val>("v");
+                var q = r.Var<JPath>("q");
+                var (kq, t, kn) = r.Vars<string, string, string>("kq", "t", "kn");
+                var (s, m) = r.Vars<long, long>("s", "m");
+                var ch = r.Var<ValueSet<string>>("ch");
+                var (dk, ks) = r.Vars<ValueSet<FunctionKey>, ValueSet<FunctionKey>>("dk", "ks");
+                var tk = r.Var<ValueSet<string>>("tk");
+                r.When(Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), kn.Is(CallKey.Of(v)), t.Is(SqlType.Of(v)), m.Is(Arity.Of(v)), ch.Is(ArmChars.Of(s, q)),
+                    dk.Is(DefinedKeys.Of(kn)), tk.Is(TypeKinds.Of(t)));
+                r.When(ks.Is(Compute.Of(kn, m, FunctionSubjects.Of(kn), LiteralReaders.Of(), RenderingImage.AnyKeys)));
+                r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, dk));
+                r.Then(ArmImport.Of(s, q).Is(Compute.Of(Primitives.Insert<string>().Of(tk, PathValues.AbsentKind), PathValues.OfKinds)));
+            });
             image.DefineRule("a place's import beneath a stratum is its type's kinds and absent, once every operand is in and every key is one the service defines", r =>
             {
                 var v = r.Var<Val>("v");

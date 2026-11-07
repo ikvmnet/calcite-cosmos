@@ -78,8 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// What the schema's S is defined from: the registry's (<see cref="CosmosRendering.Definition"/>), fixed in the
-        /// assembly, or a test's with rows of its own. The translator's column bridge reads its function rows, the rows S's
-        /// image rule reads, until G6 asks S's image instead (TODO.md).
+        /// assembly, or a test's with rows of its own. The translator's column bridge reads its function names and legality off
+        /// it, and asks the S built from it of each call (G6, TODO.md).
         /// </summary>
         internal RenderingDefinition Definition => _definition ?? CosmosRendering.Definition;
 

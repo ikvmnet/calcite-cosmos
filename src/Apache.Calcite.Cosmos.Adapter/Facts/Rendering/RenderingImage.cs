@@ -39,6 +39,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                           select key);
 
         /// <summary>
+        /// The keys any operands of a call of an arity may fall under (G6): each read as anything, every kind and band, keyed as
+        /// <see cref="Keys"/> keys a gathered one. Key assembly: whether the service defines every one is S's rule.
+        /// </summary>
+        public static ValueSet<FunctionKey> AnyKeys(string function, long arity, ValueSet<long> subjects, ValueSet<string> literals) =>
+            Keys(function, ValueSet.From(Enumerable.Range(0, (int)arity).Select(i => PathImport.Of(i, "", PathValues.Anything, JsonValues.AllBands))), subjects, literals);
+
+        /// <summary>
         /// The call's image on its operands, where its keys say it is a value of its type: the call evaluated where every
         /// operand is one value C# computes as Calcite does (ASCII, or no surrogate), and the kinds S's rule gave it
         /// elsewhere. Never narrower than the call.

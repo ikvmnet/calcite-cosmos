@@ -145,6 +145,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// S's image of a call, what the translator's column bridge asks of each call it writes (G6): one whose keys agree and
+        /// all yield a value is its type's kinds, with absent beside them where its operand may be absent, Calcite's case
+        /// mapping being null over an absent path; one whose keys may disagree, Azure's case mapping beyond ASCII, has none.
+        /// </summary>
+        [Fact]
+        public void TheImageIsItsTypesKindsAndAbsentWhereTheRowsSaySo()
+        {
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            PathValues? Image(RenderingSet set, PathValues values, JsonCharacterBand chars)
+            {
+                using var bundle = ProbeTheory.Open(set);
+                bundle.Write(lower);
+                foreach (var path in lower.Places)
+                    bundle.Import(Source, path, values, ClassSet(chars));
+                foreach (var call in bundle.ComputedCalls)
+                    bundle.ImportComputed(call, ClassSet(chars));
+
+                bundle.Run().StopReason.Should().Be(RunStopReason.Completed);
+                bundle.Failure.Should().BeNull();
+                return bundle.ImageOf(PlaceOf(lower));
+            }
+
+            Image(RenderingSet.Emulator, Strings, JsonCharacterBand.None).Should().Be(Strings);
+            Image(RenderingSet.Emulator, PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), JsonCharacterBand.None)
+                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), "Calcite's LOWER is null over an absent path");
+            Image(RenderingSet.Production, Strings, JsonCharacterBand.NonAscii).Should().BeNull("Azure's LOWER parts over a character outside ASCII");
+        }
+
+        /// <summary>
         /// A typed call reads its place whatever the definition holds, but a definition that holds no row for it gives the
         /// place no import: the image rule reads the measured keys, so what the registry proves (<see
         /// cref="ACaseMappingOverAsciiRoundTrips"/>) is not proven.
@@ -179,9 +208,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <c>UPPER(category) IS NULL</c> beneath <c>category IN ('true', '1.0E30')</c>; and partitions 2763,
         /// <c>UPPER(category) &gt; 'bikes'</c> beneath <c>category IS NULL</c>. Imported as that node holds the path, the
         /// place has its image and the conjunct is proven; imported as a string of any class, as the statement's root may
-        /// hold it, 477's place has none. S's admission imports a computed atom's operands from the root, narrowed beneath an
-        /// arm alone, so it imports them where the conjunct is rendered before G6 asks S's image of each call the bridge
-        /// writes (TODO.md).
+        /// hold it, 477's place has none. Since G6 S's admission states a later round's computed atom beneath that round's node
+        /// (<see cref="ALaterRoundsComputedAtomIsReadBeneathItsRound"/>), and the bridge asks S's image over the node its
+        /// conjunct is rendered beneath.
         /// </summary>
         [Fact]
         public void AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage()

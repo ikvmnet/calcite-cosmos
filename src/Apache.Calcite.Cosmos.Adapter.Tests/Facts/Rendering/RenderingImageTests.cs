@@ -200,29 +200,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingImage.Of("LOWER", Gathered(Text(0, ValueSet.Of(StringType))), strings).Should().Be(strings);
         }
 
-        /// <summary>
-        /// The images S's rules give, as the column gate's replica reads them off the rows (G6): a call the service defines
-        /// alone is every kind of its type and undefined; one Calcite answers null over some key of holds absent beside its
-        /// type's kinds, as an operand no row keys lets it; and one whose keys all yield a value is its type's kinds.
-        /// </summary>
-        [Fact]
-        public void TheImageIsItsTypesKindsAndAbsentWhereTheRowsSaySo()
-        {
-            var measured = ProbeRows.Measured;
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "ToString", "VARCHAR", Gathered(Text(0, ValueSet.Of(IntegerType, FractionType))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)));
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "+:INTEGER", "INTEGER", Gathered(PathImport.Of(0, PredicateAtom.TypedReader("INTEGER"), PathValues.OfKinds(ValueSet.Of(IntegerType)), NoBand), Literal(1, Of(1m))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(IntegerType)));
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)));
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LOWER", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, PathValues.AbsentKind))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), "Calcite's LOWER is null over an absent path");
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, "LEFT", "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType)), Literal(1, Of(2m))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType, PathValues.AbsentKind)), "no row keys LEFT's count");
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosFunctionSpellings.Image(measured, StringCalls.NullAsEmpty, "VARCHAR", Gathered(Text(0, ValueSet.Of(StringType, NullType)), Literal(1, Of("z"))))
-                .Should().Be(PathValues.OfKinds(ValueSet.Of(StringType)), "the concatenation that reads a null as empty is a string over one");
-        }
-
     }
 
 }

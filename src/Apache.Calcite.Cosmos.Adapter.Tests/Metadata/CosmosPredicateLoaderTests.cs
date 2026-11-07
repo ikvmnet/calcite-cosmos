@@ -206,7 +206,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// A schema's own <c>IS_DEFINED</c>, Calcite's wrapping of the declaration <see cref="CosmosSchemaFunctions"/> holds, is
         /// the operator's test where S reads; a function merely named so, or a declaration of it this table does not hold, is
-        /// opaque, as is the schema's in F's reading until h15.
+        /// no test, but a call S's rows key nothing of, so a place with no image (G6); the schema's is opaque in F's reading
+        /// until h15.
         /// </summary>
         [Fact]
         public void ASchemasOwnIsDefinedIsTheTestWhereSReads()
@@ -223,10 +224,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Load(schema).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
 
             var unheld = Call(Wrapped(new CosmosSchemaFunction(CosmosOperators.IsDefined, 1)), JsonValue("label"));
-            LoadPlaces(unheld).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("a declaration this table does not hold is no schema's own");
+            LoadPlaces(unheld).Conjuncts.Should().ContainSingle().Which.Should().NotBeOfType<SqlPredicate.IsDefined>("a declaration this table does not hold is no schema's own");
             var named = new org.apache.calcite.sql.SqlFunction("IS_DEFINED", org.apache.calcite.sql.SqlKind.OTHER_FUNCTION, ReturnTypes.BOOLEAN, null, OperandTypes.ANY,
                 org.apache.calcite.sql.SqlFunctionCategory.USER_DEFINED_FUNCTION);
-            LoadPlaces(Call(named, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("a function merely named IS_DEFINED may mean anything");
+            LoadPlaces(Call(named, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().NotBeOfType<SqlPredicate.IsDefined>("a function merely named IS_DEFINED may mean anything");
             LoadPlaces(Call(CosmosOperators.IsString, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.TypeTest>();
         }
 

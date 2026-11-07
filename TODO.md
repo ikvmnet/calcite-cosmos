@@ -2992,28 +2992,18 @@ across documents* and *A join of a container to itself* is the record.
   The rules still asked for — the two compound two-valuedness rules (above), h09's lift asking S of the pair's arm
   (above), an `evaluate` rule for the ternary if an untaken arm's failure must fail it — are built when a push needs
   them.
-- **The string functions' column bridge** — *bridge, replaced at G6 and deleted at h37.*
-  `CosmosRexTranslator.RequireStringFunctionsAgree` reads every function row S's image rule reads
-  (`CosmosFunctionSpellings.Disagreeing`, over the definition the schema's S is built from): the call's operands
-  gathered as S's place rule gathers them, keyed as S keys them (`RenderingImage.Keys`: each kind each operand may hold,
-  by its ordinal and by `Every`, each band, each value class's atoms, through readers the rows were measured through),
-  every key covered by a row and answered `Same` by every covering row on every target the set serves, and the rows
-  naming the function's subjects and readers (owed, latent item 9, and its fix round). It reads one node of F's, the one
-  its conjunct is rendered beneath, whose `possible` rows at a statement's root are `D0`'s: each operand's `possible`
-  and `chars` there, and a nested call's characters as F derives them of the call the places loader reads, F's
-  characters reading a raw reading through its column. An operand S gathers nothing of, a parameter or a `CASE`, leaves
-  the call no image, as S's count short of the arity does; a nested call is gathered through its own type whatever the
-  loader makes a place of. G6 replaces it by asking S's image of each call the translator writes, and met two
-  differences first (g6), each a push the bridge kept that S as built would not prove:
-  - S's admission imported a computed atom's operands from the statement's root, so it declined three corpus pushes
-    the bridge keeps over the node their conjunct is rendered beneath (477, 240, and 2763 on Azure). S now states a
-    later round's computed atom beneath a stratum of its own, whose `ArmImport` and characters are that node's
-    (`RenderingBundle.AssumeComputed`, `RenderingValuedTests.ALaterRoundsComputedAtomIsReadBeneathItsRound`).
-  - The loader's place gate (`RowFunctions`, four deep) is gone: whether the rows name a call is S's `CallKey`, and how
-    deep S images one is its fixpoint's, bounded by the run's iterations (64 and 8 a leaf in check mode), not by a
-    depth. `Spell` keeps its spelling table and legality: a literal holding an unpaired surrogate, which the SDK will
-    not send, a window whose start is no whole literal, and a `REPEAT` of any count but 0, whose result bound no row
-    holds (a result key owed to the rows).
+- **The string functions' column bridge** — *bridge, deleted at h37.* Since G6 `CosmosRexTranslator.RequireStringFunctionsAgree`
+  asks the schema's S of each call the function rows name (`RenderingOracle.ImageOf`, DESIGN.md, *The column bridge asks
+  S's image*): the call as the loader that reads places reads it, its paths and calls imported as the translation's facts
+  hold them, and the place's import read; no image, or no S asked (S turned off, a translator with no schema), keeps it
+  in process. The legality the rows do not carry stays the bridge's (`CosmosFunctionSpellings.Refusals`). What S does
+  not yet image that a user may miss:
+  - A `REPEAT` of a positive count: the service repeats no further than 10,000 code points on Azure, a bound of the
+    result no row holds, so S has no place for it whatever F bounds the subject's length to (the copy G6 deleted pushed
+    one over a subject the facts bound short). The proper fix is a result key in the rows (F2's) and S's import of a
+    string's length bounds (`JsonFactSet.LengthsOf`), measured on Azure; no corpus plan holds one.
+  - A call more deeply nested than the run's iterations reach (64 and 8 a leaf in check mode, the bridge's bundle one
+    leaf): S's fixpoint has no depth of its own, so such a call's image is the run's to finish; none in the corpus.
   It goes when S writes the column (h37).
 - **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
   `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`

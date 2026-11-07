@@ -155,6 +155,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyCollection<SqlValue.Call> ComputedCalls => _computed.Keys;
 
         /// <summary>
+        /// A computed place's import once a run completed, its call's image (G6); <c>null</c> where the bundle wrote no place
+        /// for the call, S gave it no image, or the run may not be read.
+        /// </summary>
+        public PathValues? ImageOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.Imported.Of(_theory.Valued.Of(term)), out var image) ? image : null)
+            : null;
+
+        /// <summary>
         /// Imports a computed place's characters: F's for the call at the root (<c>ValueChars</c>), a superset beneath any
         /// stratum. A call the bundle wrote no place for is ignored.
         /// </summary>

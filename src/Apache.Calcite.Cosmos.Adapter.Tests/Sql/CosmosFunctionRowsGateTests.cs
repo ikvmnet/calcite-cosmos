@@ -23,8 +23,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
     /// <summary>
-    /// The translator's column gate over a string function, the bridge reading the function rows as S's image rule reads
-    /// them until G6 asks S's image (<see cref="CosmosFunctionSpellings.Disagreeing"/>, <see cref="CosmosFunctionSpellings.Refusals"/>):
+    /// The translator's column gate over a string function, the bridge asking S's image of each call the rows name (G6)
+    /// and keeping the spelling's legality (<see cref="CosmosFunctionSpellings.Refusals"/>):
     /// each band a target's rows part over is refused there, every kind and class of value an operand may hold is keyed,
     /// each operand the rows name among them, a search, a replacement and a window's length (F2), and #246's stored escapes
     /// are the emulator's rows as well as the legality the bridge keeps (<c>reports/emu-nul/spec.md</c>, §4.4, D8 to D13).
@@ -61,10 +61,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         CosmosRexTranslator Translator(CosmosServiceTarget target, JsonCharacterBand? characters, CosmosParameterList? parameters = null, RenderingDefinition? rows = null, bool typed = true)
         {
             var declared = new CosmosContainerMetadata("strings").WithFacts(StringsOf(characters, typed));
-            var container = (rows is null
-                ? Declared.GetOrAdd((characters, typed), _ => TestReasoning.Bind(declared))
-                : declared.WithReasoning(new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), definition: rows))).WithServiceTarget(target);
+            var container = (rows is null ? Declared.GetOrAdd((characters, typed), _ => TestReasoning.Bind(declared)) : declared.WithReasoning(Built(rows))).WithServiceTarget(target);
             return new(_rex, _fields, parameters ?? new CosmosParameterList(), container.Facts.Declared, null, container);
+        }
+
+        /// <summary>A reasoning whose S is defined from these rows, its build awaited, since the bridge asks it of each call (G6).</summary>
+        static CosmosReasoning Built(RenderingDefinition rows)
+        {
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), definition: rows);
+            reasoning.Rendering.Ready.Wait();
+            return reasoning;
         }
 
         /// <summary>Each declaration's container, bound to the shared reasoning once, so that each compiles once.</summary>
@@ -311,8 +317,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void AFunctionNoRowNamesIsRefusedEverywhere()
         {
-            CosmosFunctionSpellings.Disagreeing(CosmosRendering.Definition, RenderingSet.Emulator, "LENGTH", ValueSet<PathImport>.Empty).Should().NotBeNull();
-            CosmosFunctionSpellings.Disagreeing(CosmosRendering.Definition, RenderingSet.Production, "LENGTH", ValueSet<PathImport>.Empty).Should().NotBeNull();
             CosmosFunctionSpellings.Named(CosmosRendering.Definition, "LENGTH").Should().BeTrue("its declared rows name it, so it is refused rather than passed unasked");
             var length = SqlLibraryOperators.LENGTH;
             Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
@@ -386,6 +390,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 Functions = [.. registry.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, CosmosFunctionAnswer.Same)],
                 FunctionSubjects = [.. registry.FunctionSubjects, ("LEFT", 1L)],
+                FunctionYields = [.. registry.FunctionYields, (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), CalciteYield.Value)],
             };
             Over(counted, Emulator, left).Should().BeTrue("the count is keyed as the number it is, and its row agrees");
             Over(counted, Azure, left).Should().BeTrue();
