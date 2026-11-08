@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
                 r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
                 r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
-                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true).Values is { } preimage && held.All(preimage.Contains));
+                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, FactsReadings.Rows).Values is { } preimage && held.All(preimage.Contains));
                 r.Then(rules.AlwaysTrue.Of(e));
             })));
 
@@ -275,8 +275,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
                 r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
-                r.Where(k, atom => atom.Kept(true).Values is not null);
-                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true).Values!))));
+                r.Where(k, atom => atom.Kept(true, FactsReadings.Rows).Values is not null);
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, FactsReadings.Rows).Values!))));
             })), "fact");
 
         /// <summary>

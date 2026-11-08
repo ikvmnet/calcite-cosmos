@@ -9094,15 +9094,15 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
 - `Calcite.JsonValueRendersScalarsAsText`: `readerorder(text) ∋ itself`, the text reader's string being the string. G3
   measured the rest: `itself` of typed `VARCHAR` and `CHAR`, and `reflexive` of every reading S pairs that holds no NaN.
 - `Calcite.TypeTestsAreTheirBodies`: `testkinds(test)`, the classes each type test is true of in process, read off its
-  vector; since G7 by the test's name and JSON kind as well, in F's root and S's, which the shared vocabulary's
-  type-test rule reads.
+  vector; since G7 the readings vocabulary's rule keys them by the test's name and JSON kind, in F's root and S's, for
+  the shared vocabulary's type-test rule.
 - `Calcite.RawNullIsSqlNull`: each column's own entries for a stored null and an absent path, read and cast alike, SQL
   null in each. `ReadColumns` reads both entries since G5, an absent path its own class.
 - `CosmosFunctionAnswer.Defined`, the D class's answer, apart from `Undefined`; no row states it yet (G6).
 
 G1's rules read `moves`, `storedas` and `truncates` (*Character bands and the stored spelling, S's (G1)*), G3's
 `pairreads` and `readerorder` (*Answer roles, pairs and failure, S's (G2, G3, G4)*), and G7's `calcitereads`,
-`calcitebands` and `testkinds` (*Calcite's readings as S's rows (G7)*); no rule reads the rest until its group's does:
+`calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*); no rule reads the rest until its group's does:
 G8 `boxof`, `seesthrough`, `structureonly` and `measuredcast` (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
 fact of S as the definition carries it.
 
@@ -9437,48 +9437,64 @@ beside a literal that is no string, which no row measures, answers `Unanswered` 
 and a raise; and an object beside an array is across types where the parent read both as one structure type, which no
 literal reaches. Digests, the census and population D are byte-equal.
 
-### Calcite's readings as S's rows (G7)
+### Calcite's readings as rows (G7)
 
-S's half of G7: what Calcite's side of a cell makes of a reading is evaluated as S's rows of the reading say, where
-`PredicateAtom` chose the evaluation by the reader's name.
+What Calcite's side of a cell makes of a reading is evaluated as the reading's rows say, on S and on the facts graph
+alike, where `PredicateAtom` chose the evaluation by the reader's name.
+
+**One vocabulary, both graphs.** `ReadingVocabulary` defines the tables and their ten rules once. S defines them in
+`Settle`'s first stage (`reads`); the facts graph in its root's `readings` ruleset, run to saturation before the root
+freezes. Both read the same rows (`CalciteRows`, `CosmosAxiomRows.ReadCalcite`: S's through the definition, the facts
+graph's through `CosmosReasoning.Rows`), and both hold the one value `readerrows` (`ReadingTable`): S's pairing rule
+binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establish and Decide rules beside each atom for
+`On` and `Kept`. So a cell and the facts graph read an atom's readings in one table, class by class. The rules say:
+- a reading reads each class as its rows say (`calcitereads`), and rests on each row that names it (`calciterows`);
+- a parse of a class is decided over the character classes its witnesses held (`calcitebands`), class by class;
+- a reading a row reads as another (`calcitereadas`) is read as it over each class both read alike. The alias is a fact
+  of a reading and a class, so a cell looks it up; over a class with none the reading is evaluated by its own rows;
+- a test answers over a class what the truth table says the class's read means (`readtruths`, `KleeneTables.Reads`),
+  and a comparison of a class read as itself, rendered or parsed is the cell's to decide (`readcompares`,
+  `KleeneTables.Compares`);
+- a test a row says is its operand's (`calcitethrough`) answers over each class what its operand's read of it means,
+  beside its own, and rests on its operand's rows;
+- `LIKE` reads each unit of its pattern as its row says (`likeunits`);
+- a type test is TRUE, by its name, of the JSON kinds of each class its row says (`testclasses`, `testnames`,
+  `classkinds`, into `testkinds`), and rests on that row.
 
 **What moved.**
-- *`typed:VARCHAR`.* `Reading.Parse` read `typed:VARCHAR` and `typed:CHAR` as the text by name. Their rows now say it
-  (`Calcite.TextPlacesCompareAsTheirStrings`: a string itself, a stored null and an absent path null, the last two
-  measured beside the order), and the `readas` rule *a reading whose every row reads a class as the text's do is read
-  as the text over the classes it names* says so. A cell of a class no row of theirs names is anything and a raise.
-- *The `LIKE` readers.* `OnCell` decided `LIKE` over the text, a cast to `VARCHAR` or `CHAR`, a raw value and
-  `typed:VARCHAR` by name, and `LikeOn` matched a boolean, a number and a structure as rendered through the text and a
-  cast to `VARCHAR`, by name. Now `LIKE` is decided where the reading's rows read a string as itself, and a class is
-  matched as its rendering where they read it so. The cast of a raw value through `ANY` reads a number, a boolean and a
-  structure as rendered (`renders`), which its row said in prose and the cells encoded as itself; the cast rule is two,
-  itself and rendered, each compared on the cell, and `readtruths` holds the null test of a rendered value FALSE. The
-  cast of the text to `VARCHAR` or `CHAR`, which the loader never writes, has no rows, so no `LIKE` (`TODO.md`).
-- *`BooleanCast`.* It reads each class as `Calcite.CastToBooleanParses` says, an object and an array null now beside
-  the rest (measured), and decides a string's parse only over the character classes its witnesses held
-  (`calcitebands`: the trimmed class and U+0000, with their refinements), where a C# test said ASCII; over ASCII the two
-  agree, a line terminator being trimmed. Java's trim and the ASCII-case compare are the one evaluation. Its null test
-  over a class read as a raise or parsed is FALSE or a raise, the operand's beside the cast's, which is how Calcite
-  takes a cast's null test alone and no row states: the evaluator keeps it. The facts graph, whose terms hold the cast
-  only from h15, reads a copy of the row (`BooleanCast.Facts`) until it reads S's (`TODO.md`).
-- *`TypeTests`.* `PredicateAtom.TypeTests` was a C# copy of `Calcite.TypeTestsAreTheirBodies`. The shared vocabulary's
-  type-test rule reads `testkinds`, by the test's name and JSON kind, which S's root holds from the definition and F's
-  from `JsonRows`, the adapter reading the registry once (`CosmosReasoning.Rows`); a test no row names is no atom.
+- *`typed:VARCHAR` and `typed:CHAR`.* `Reading.Parse` read them as the text by name. `Calcite.TextPlacesCompareAsTheirStrings`
+  says so now (`ReadAs`), and that `LIKE` matches each as the string it holds, nothing padded (measured beside the
+  order). The alias holds over a string, a stored null and an absent path, the classes both read alike; over any other
+  class neither the row nor the alias says anything, so the reading is unread there (`Reading.Unread`: anything and a
+  raise). The facts graph had lost these readings with G7's first half, an undisclosed widening; it reads them again,
+  from the same table. They rest on the row that licenses the alias beside the text's.
+- *The `LIKE` gate, both halves.* `OnCell` and `On`'s `Matched` decide `LIKE` where the reading's rows read a string as
+  itself, and `Kept` keeps, for every reading, a row whose read value is not null. `MatchesText`, the reader test in
+  `Matched` and `Covers` are gone.
+- *`LIKE`'s units.* `Calcite.LikeReadsItsPatternsUnits` (`CalciteLikeMeasurementTests`, in process) says `%` is any
+  run, line terminators among them; `_` one code point, a surrogate pair one, that is no Java line terminator; and every
+  other unit itself, a backslash, a bracket and a dot among them, there being no escape unless one is written. `Like`
+  matches a pattern unit by unit as the table says, so `_` and `\` are decided, and a pattern holding a unit no row reads
+  is not. `AffixPattern.Matches` no longer folds that undecided answer: every pattern it is asked of is runs and `%`.
+- *`BooleanCast`.* Its rows are the table's, its answers `readtruths` and the comparisons the cell decides, its rests
+  its rows'; `BooleanCast.Facts`, the facts graph's copy, and the answer switches are gone. The null test of the cast
+  standing alone is its operand's: a row says so now (`Through` on `Calcite.CastToBooleanParses`; `IS NULL` of the cast
+  of `'yes'` and of `1` is FALSE, measured), and the rule answers it from the text's read of the class. A comparison
+  with a parameter answers as a cell reads one, anything wherever that null test finds a value.
+- *Type tests.* `testkinds` is the vocabulary's rule over the rows read once (`ReadTestKinds`, each citing its row),
+  keyed by the name the service spells the test by: NOT's and CASE's choice, one-place rows keyed by an outcome, key
+  none, the service spelling them by no name. A type-test atom rests on the row it was read from. The bare template fits
+  every type test the vocabulary read kinds of (`RenderingTemplates.TypeTestShape`) and writes it by its name
+  (`ServiceForm.TestNamed`), so a test added to the rows is fitted and written with no list to change.
 - *`OnPair`.* Each side is evaluated as its rows say. A pair's cell holding one string twice is placed by equality only
   where the reading's order is `reflexive`, which no double's reading is (`Calcite.ANaNComparesAsNothingAlike`), so two
   `'NaN'`s on two paths read as doubles may be FALSE (`RenderingPairTests`).
 - *RawPlan.* Whole against compared is G5's `RawAnswer`, per key, not a per-atom table (*Raw columns as cells*).
 
-**How a cell reads them.** Three `reads` rules, in `Settle`'s first stage, join each row into `readerrows`, every
-reading's rows as one value (`ReadingTable`): what a reading reads each class as (`calcitereads`), a raw column's through
-its column and through every column (`rawreads`), and the character classes a parse is decided over (`calcitebands`).
-The `readas` rule asks its subset in the next stage, of `readerreads` gathered complete. The pairing rule binds
-`readerrows` beside `rawunion` and hands both to `CellOutcomes.Of`, so `OnCell` evaluates a reading by the reading its rows
-say it is read as, or its own, with its rows: the reader names nothing.
-
-**What did not move.** `LIKE`'s units: `Like` still leaves a pattern holding `_` or `\` undecided in C#, since no
-Calcite row measures `LIKE` (`TODO.md`). `LikeOn`'s number and structure misses are evaluation, as the audit found. The
-facts graph's `On` and `Kept` read the readings as before. Digests, the census and population D are byte-equal.
+**What did not move.** `AffixPattern.Canonical` and `Plain` still refuse a pattern holding `_`, `\`, `[` or `]`: they
+are the service writer's representation of a pattern of runs, and what the service makes of `_` is the licence's
+question (post2, h15), not Calcite's reading (`TODO.md`). `LikeOn`'s number and structure misses are evaluation, as the
+audit found. Digests, the census and population D are byte-equal.
 
 ## Differential testing
 

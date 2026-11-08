@@ -35,8 +35,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         const string Bigint = "typed:BIGINT";
 
-        /// <summary>The grid's readers and a raw value and its cast to text through each column (rawtyped).</summary>
-        static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, "cast:INTEGER:raw", "cast:DOUBLE:raw", "cast:BIGINT:text",
+        /// <summary>The typed readings a computed text place is read by, which read a string as the text does (<c>Calcite.TextPlacesCompareAsTheirStrings</c>).</summary>
+        static readonly string[] TextPlaces = [PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TypedReader("CHAR")];
+
+        /// <summary>The grid's readers, the typed text places, and a raw value and its cast to text through each column (rawtyped).</summary>
+        static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, "cast:INTEGER:raw", "cast:DOUBLE:raw", "cast:BIGINT:text", .. TextPlaces,
             .. from column in PredicateAtom.RawColumns from reader in new[] { PredicateAtom.RawReader, "cast:VARCHAR:raw" } select PredicateAtom.InColumn(reader, column)];
 
         /// <summary>Literals where a number's double, its parse and a type's limits part cells.</summary>
@@ -135,8 +138,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var leftOut = PredicateAtom.IsRaw(atom.Reader) || atom.Reader.StartsWith("typed:", StringComparison.Ordinal) ? Truths.Raises : Truths.None;
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows) & ~atom.On(cell.Coarse) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
-                        wider.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows) & ~atom.On(cell.Coarse, FactsReadings.Rows) & ~leftOut & ~(Rounded(atom, cell) ? Truths.True | Truths.False | Truths.Unknown : 0)) != 0)
+                        wider.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows)} on {cell}, and {atom.On(cell.Coarse, FactsReadings.Rows)} on its state");
             }
 
             wider.Should().BeEmpty();
@@ -159,8 +162,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 readers.Add(atom.Reader);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
                 {
-                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows) & ~atom.On(cell.Coarse) & (Truths.True | Truths.False)) != 0)
-                        inexact.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows)} on {cell}, and {atom.On(cell.Coarse)} on its state");
+                    if ((atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows) & ~atom.On(cell.Coarse, FactsReadings.Rows) & (Truths.True | Truths.False)) != 0)
+                        inexact.Add($"{atom} answers {atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows)} on {cell}, and {atom.On(cell.Coarse, FactsReadings.Rows)} on its state");
 
                     foreach (var value in Inside(cell))
                         foreach (var (typed, raw) in Modes(atom))
@@ -174,7 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             }
 
                             asked++;
-                            if (truth is Truths.True or Truths.False && PopulationD.Admits(atom.Kept(truth == Truths.True), value) == false)
+                            if (truth is Truths.True or Truths.False && PopulationD.Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows), value) == false)
                                 inexact.Add($"{atom} is {truth} of {PathCellTests.Show(value)} read {typed} {raw}, which a row it keeps {truth} cannot be");
                         }
                 }
@@ -267,12 +270,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// The grid's atoms the loader builds, each literal of the kind its reading is compared with; and beside the numeric
         /// readings, the boundaries, which the coarse readings compare exactly where a double does not; and the type tests
-        /// of the raw value, and <c>LIKE</c> of the text and of the cast of the raw value to text.
+        /// of the raw value, and <c>LIKE</c> of the text, of the typed text places and of the cast of the raw value to text.
         /// </summary>
         static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) => PredicateAtomTests.Grid(Readers)
-            .Concat(from row in CosmosReasoning.Rows.TestKinds.GroupBy(r => r.Test) where row.Key != "IS_DEFINED"
-                    select PredicateAtom.TypeTest(PredicateAtom.RawReader, row.Key, ValueSet.From(row.Select(r => r.Kind))))
-            .Concat(from reader in Readers.Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR"))
+            .Concat(from row in FactsReadings.TestKinds where row.Test != "IS_DEFINED" select PredicateAtom.TypeTest(PredicateAtom.RawReader, row.Test, row.Kinds))
+            .Concat(from reader in Readers.Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR") || TextPlaces.Contains(r))
                     from pattern in Patterns select PredicateAtom.Affix(reader, PredicateAtom.LikeTest, pattern))
             .Concat(boundaries ? from reader in Readers from literal in PredicateAtom.Columnless(reader) == "cast:VARCHAR:raw" ? Rendered : Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
             .Where(atom => Literals(atom).All(literal => atom.Reader switch
@@ -280,7 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             // A VARCHAR column is raw beside a string alone: the loader casts it beside anything else.
             "raw:VARCHAR" => IsString(literal),
             _ when PredicateAtom.IsRaw(atom.Reader) => true,
-            _ when PredicateAtom.Columnless(atom.Reader) is PredicateAtom.TextReader or "cast:VARCHAR:raw" => IsString(literal),
+            _ when PredicateAtom.Columnless(atom.Reader) is PredicateAtom.TextReader or "cast:VARCHAR:raw" || TextPlaces.Contains(atom.Reader) => IsString(literal),
             "typed:BOOLEAN" or "cast:BOOLEAN:text" => TypeOf(literal) == BooleanType,
             _ => IsNumber(literal),
         }));
@@ -322,7 +324,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     .Where(raw => raw != IrEval.RawAs.Varchar || Literals(atom).All(IsString))
                     .Select(raw => (IrEval.TypedAs.Returning, (IrEval.RawAs?)raw));
 
-            if (atom.Reader.StartsWith("typed:", StringComparison.Ordinal) && atom.Reader != "typed:DECIMAL")
+            if (atom.Reader.StartsWith("typed:", StringComparison.Ordinal) && atom.Reader != "typed:DECIMAL" && TextPlaces.Contains(atom.Reader) == false)
                 return new[] { (IrEval.TypedAs.Returning, (IrEval.RawAs?)null), (IrEval.TypedAs.Column, null) };
 
             return new[] { (IrEval.TypedAs.Returning, (IrEval.RawAs?)null) };

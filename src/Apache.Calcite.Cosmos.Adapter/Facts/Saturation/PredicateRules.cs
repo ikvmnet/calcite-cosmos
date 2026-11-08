@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 namespace Apache.Calcite.Cosmos.Facts.Saturation
@@ -277,44 +279,50 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Establish.DefineRule("an atom that takes a truth value only where its path is there says it is there", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).IsPresent);
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).IsPresent);
                 r.Then(json.Present.Of(p));
             });
             Establish.DefineRule("an atom that takes a truth value says what types its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Types.Count < JsonValues.AllTypes.Count);
-                r.Then(json.Types.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Types)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Types.Count < JsonValues.AllTypes.Count);
+                r.Then(json.Types.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Types)));
             });
             Establish.DefineRule("an atom that takes a truth value says what values its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Values is not null);
-                r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Values!)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Values is not null);
+                r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Values!)));
             });
             Establish.DefineRule("an atom that takes a truth value says how small a number its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Lower is not null);
-                r.Then(json.Lo.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Lower!.Value)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Lower is not null);
+                r.Then(json.Lo.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Lower!.Value)));
             });
             Establish.DefineRule("an atom that takes a truth value says how large a number its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Upper is not null);
-                r.Then(json.Hi.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Upper!.Value)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Upper is not null);
+                r.Then(json.Hi.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Upper!.Value)));
             });
             Establish.DefineRule("an atom that takes a truth value says which of its points its path does not hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
                 var v = r.Var<string>("v");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a), Point.Of(e, v));
-                r.Where(a, t, v, (atom, truth, point) => atom.Kept(truth).Excluded.Contains(point));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), Point.Of(e, v), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, v, w, (atom, truth, point, table) => atom.Kept(truth, table).Excluded.Contains(point));
                 r.Then(json.Ne.Of(p, v));
             });
 
@@ -536,22 +544,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Decide.DefineRule("an atom true of everything its path may hold is always true", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.AlwaysTrue(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.AlwaysTrue(values, table));
                 r.Then(AlwaysTrue.Of(e));
             });
             Decide.DefineRule("an atom false of everything its path may hold is always false", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.AlwaysFalse(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.AlwaysFalse(values, table));
                 r.Then(AlwaysFalse.Of(e));
             });
             Decide.DefineRule("an atom true of nothing its path may hold is never true", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.NeverTrue(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.NeverTrue(values, table));
                 r.Then(NeverTrue.Of(e));
             });
 

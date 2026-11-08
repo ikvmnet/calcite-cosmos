@@ -47,6 +47,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <c>Service</c> order row's (<see cref="CosmosAxiomRows.ReadWholeReadings"/>, G2).</param>
     /// <param name="Folds">Which tests' case-insensitive forms match as the test over a fold, a <c>Service</c> row's
     /// (<see cref="CosmosAxiomRows.ReadFolds"/>, G6).</param>
+    /// <param name="ReadAs">The readings a <c>Calcite</c> row says are read as another over each class both read alike
+    /// (<see cref="CosmosAxiomRows.ReadCalciteReadAs"/>, G7).</param>
+    /// <param name="Through">The tests of a reading a <c>Calcite</c> row says are its operand's (<see cref="CosmosAxiomRows.ReadCalciteThrough"/>, G7).</param>
+    /// <param name="LikeUnits">What <c>LIKE</c> reads each unit of its pattern as, a <c>Calcite</c> row's (<see cref="CosmosAxiomRows.ReadLikeUnits"/>, G7).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
@@ -55,6 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
         IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null,
         IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null,
-        IReadOnlyList<CosmosFold>? Folds = null);
+        IReadOnlyList<CosmosFold>? Folds = null, IReadOnlyList<CosmosCalciteReadAs>? ReadAs = null, IReadOnlyList<CosmosCalciteThrough>? Through = null,
+        IReadOnlyList<CosmosLikeUnit>? LikeUnits = null);
 
 }

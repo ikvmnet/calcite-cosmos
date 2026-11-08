@@ -38,8 +38,32 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static string? Canonical(string pattern) => Plain(pattern.Replace("%", "", StringComparison.Ordinal))
             ? string.Join("%", pattern.Split('%').Where((run, i) => i == 0 || run.Length > 0 || i == pattern.Split('%').Length - 1)) : null;
 
-        /// <summary>Whether a pattern of runs matches a text, by UTF-16 unit (<see cref="PredicateAtom.Like"/>).</summary>
-        public static bool Matches(string text, string pattern) => PredicateAtom.Like(text, pattern) == true;
+        /// <summary>
+        /// Whether a pattern of runs matches a text, by UTF-16 unit: its first run a prefix, its last a suffix, and each
+        /// between found in order after the one before. Every pattern here is of runs and <c>%</c> alone (<see cref="Canonical"/>),
+        /// so the match is total.
+        /// </summary>
+        public static bool Matches(string text, string pattern)
+        {
+            var runs = Runs(pattern);
+            if (runs.Length == 1)
+                return string.Equals(text, pattern, StringComparison.Ordinal);
+
+            if (text.Length < runs[0].Length + runs[^1].Length || text.StartsWith(runs[0], StringComparison.Ordinal) == false || text.EndsWith(runs[^1], StringComparison.Ordinal) == false)
+                return false;
+
+            var (at, end) = (runs[0].Length, text.Length - runs[^1].Length);
+            foreach (var run in runs[1..^1])
+            {
+                var found = text.IndexOf(run, at, end - at, StringComparison.Ordinal);
+                if (found < 0)
+                    return false;
+
+                at = found + run.Length;
+            }
+
+            return true;
+        }
 
         /// <summary>Whether a pattern matches every string: <c>%</c>.</summary>
         public static bool Universal(string pattern) => pattern == "%";

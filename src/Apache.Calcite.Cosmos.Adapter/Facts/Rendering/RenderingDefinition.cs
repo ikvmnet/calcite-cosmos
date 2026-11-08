@@ -182,6 +182,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The character classes a reading's witnesses of a kind held (<c>CosmosAxiomRows.ReadCalciteBands</c>, F3): what S's readings decide a parse over (G7).</summary>
         public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> CalciteBands { get; init; } = [];
 
+        /// <summary>Each <c>Calcite</c> row naming a reading, beside it (<c>CosmosAxiomRows.ReadCalciteRows</c>): what the reading's answers rest on (G7).</summary>
+        public IReadOnlyList<(string Reader, string Row)> CalciteCites { get; init; } = [];
+
+        /// <summary>The readings a <c>Calcite</c> row says are read as another over each class both read alike (<c>CosmosAxiomRows.ReadCalciteReadAs</c>, G7).</summary>
+        public IReadOnlyList<(string Reader, string As)> CalciteReadAs { get; init; } = [];
+
+        /// <summary>The tests of a reading a <c>Calcite</c> row says are its operand's (<c>CosmosAxiomRows.ReadCalciteThrough</c>, G7).</summary>
+        public IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> CalciteThrough { get; init; } = [];
+
+        /// <summary>What <c>LIKE</c> reads each unit of its pattern as, each citing its row (<c>CosmosAxiomRows.ReadLikeUnits</c>, G7).</summary>
+        public IReadOnlyList<(string Unit, string Reads, string Except, string Row)> LikeUnits { get; init; } = [];
+
+        /// <summary>The comparisons a cell decides of a value read so (<see cref="KleeneTables.Compares"/>): the readings vocabulary's <c>readcompares</c> (G7).</summary>
+        public IReadOnlyList<(CosmosServiceTest Test, string Read)> ReadCompares { get; init; } = KleeneTables.Compares;
+
+        /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
+        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds);
+
         /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<(string Target, string Reader, string Row)> Casts { get; init; } = [];
 
@@ -206,10 +224,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(string Reader, string Kind)> ReaderKinds { get; init; } = [];
 
         /// <summary>
-        /// The classes each one-place test is true of in process (<c>CosmosAxiomRows.ReadTestKinds</c>, F3), which S's root holds
-        /// as each type test's JSON kinds by its name (<see cref="CosmosValueClasses.TypeTests"/>), the vocabulary's to read (G7).
+        /// The classes each one-place test is true of in process, each citing its row (<c>CosmosAxiomRows.ReadTestKinds</c>, F3),
+        /// which the readings vocabulary holds as each type test's JSON kinds by its name, the predicate vocabulary's to read (G7).
         /// </summary>
-        public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind)> TestKinds { get; init; } = [];
+        public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> TestKinds { get; init; } = [];
 
         /// <summary>
         /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges,

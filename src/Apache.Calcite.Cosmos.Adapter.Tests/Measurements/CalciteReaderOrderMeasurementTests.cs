@@ -80,6 +80,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     ("{}", new string?[] { "\"\\uE000\"", "\"\\uD83D\\uDE00\"" }), ("{}", new string?[] { "\"B\"", "\"B \"" }), ("{}", new string?[] { "\"30\"", "\"BIKES\"" }),
                 }).Ask(connection, "\"a\" < \"b\"", "\"a\" = \"b\"", "\"a\" > \"b\"").Should().Equal(["FTT", "FFF", "TFF"], type.getName());
 
+            // LIKE matches each as the string it holds, as it does the accessor's text: a run of any units, nothing padded.
+            documents.Ask(connection, $"{Text("b")} LIKE 'B%'", $"{Text("b")} LIKE 'B'", $"{Text("a")} LIKE '%0'", $"{Text("b")} LIKE '%'")
+                .Should().Equal(["FFTTT", "FFFFF", "FFFTF", "TTTTT"], "the accessor's text");
+            foreach (var type in new[] { SqlTypeName.CHAR, SqlTypeName.VARCHAR })
+                new MaterialisedTable([("a", type), ("b", type)], new[]
+                {
+                    ("{}", new string?[] { "\"\\uE000\"", "\"\\uD83D\\uDE00\"" }), ("{}", new string?[] { "\"B\"", "\"B \"" }), ("{}", new string?[] { "\"30\"", "\"BIKES\"" }),
+                }).Ask(connection, "\"b\" LIKE 'B%'", "\"b\" LIKE 'B'", "\"a\" LIKE '%0'", "\"b\" LIKE '%'").Should().Equal(["FTT", "FFF", "FFT", "TTT"], type.getName());
+
             // A stored null and an absent path are null to each: TRUE to IS NULL and UNKNOWN to a comparison.
             var nothing = MaterialisedTable.Of(new[] { "{\"a\":null,\"b\":\"B\"}", "{\"b\":\"B\"}" });
             foreach (var reading in new Func<string, string>[] { p => $"UPPER({Text(p)})", p => $"SUBSTRING({Text(p)} FROM 1)" })
@@ -87,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             foreach (var type in new[] { SqlTypeName.CHAR, SqlTypeName.VARCHAR })
                 new MaterialisedTable([("a", type), ("b", type)], new[] { ("{}", new string?[] { "null", "\"B\"" }), ("{}", new string?[] { null, "\"B\"" }) })
-                    .Ask(connection, "\"a\" IS NULL", "\"a\" = \"b\"", "\"a\" < \"b\"").Should().Equal(["TT", "UU", "UU"], type.getName());
+                    .Ask(connection, "\"a\" IS NULL", "\"a\" = \"b\"", "\"a\" < \"b\"", "\"a\" LIKE '%'").Should().Equal(["TT", "UU", "UU", "UU"], type.getName());
         }
 
         /// <summary>

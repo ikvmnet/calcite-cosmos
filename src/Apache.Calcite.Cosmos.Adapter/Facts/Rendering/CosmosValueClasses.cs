@@ -56,13 +56,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             (CosmosValueClass.Absent, PathValues.AbsentKind),
         ];
 
-        /// <summary>
-        /// Each one-place test's rows as the vocabulary's type-test rule reads them (G7): its name in the service's SQL beside
-        /// each JSON kind of each class it is true of; a connective, which the service spells by no name, has none.
-        /// </summary>
-        public static IReadOnlyList<(string Test, string Kind)> TypeTests(IEnumerable<(CosmosServiceTest Test, CosmosValueClass Kind)> rows) =>
-            [.. (from row in rows let name = ServiceForm.SpellingOf(row.Test) where name is not null from kind in JsonKinds where kind.Class == row.Kind select (name, kind.Kind)).Distinct()];
-
         /// <summary>The class of a truth value of the IR as its literal spells it: <c>true</c>, <c>false</c>, and any other undefined.</summary>
         public static CosmosValueClass OfTruth(string truth) => truth switch
         {

@@ -30,16 +30,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// What a test answers of a value a reading reads as SQL null, raises on, or reads as a value, where what it reads
-        /// decides it (G5): <c>IS NULL</c> TRUE of a null and FALSE of a value, a comparison UNKNOWN beside a null, and any test
-        /// raising where the read does. A comparison of a value it reads is the reading's own, which no row here says.
+        /// decides it (G5): <c>IS NULL</c> TRUE of a null and FALSE of a value, FALSE or a raise of a parse, a comparison
+        /// UNKNOWN beside a null, and any test raising where the read does. A comparison of a value it reads is the cell's to
+        /// decide (<see cref="Compares"/>), which no row here says.
         /// </summary>
         public static IReadOnlyList<(CosmosServiceTest Test, string Read, Truths Truths)> Reads { get; } =
         [
             (CosmosServiceTest.IsNull, CalciteRead.Itself, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Renders, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Null, Truths.True),
-            (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises),
+            (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises), (CosmosServiceTest.IsNull, CalciteRead.Parses, Truths.False | Truths.Raises),
             .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
                from read in new[] { (CalciteRead.Null, Truths.Unknown), (CalciteRead.Raises, Truths.Raises) }
                select (test, read.Item1, read.Item2),
+        ];
+
+        /// <summary>
+        /// The comparisons a cell decides of a value a reading reads as itself, renders or parses (G7): the value read, a
+        /// literal's or a parameter's comparand, answers them, so no truth of the read alone does.
+        /// </summary>
+        public static IReadOnlyList<(CosmosServiceTest Test, string Read)> Compares { get; } =
+        [
+            .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
+               from read in new[] { CalciteRead.Itself, CalciteRead.Renders, CalciteRead.Parses }
+               select (test, read),
         ];
 
         /// <summary>Kleene's answer on each key, for each target that may be handed its operands.</summary>

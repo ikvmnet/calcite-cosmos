@@ -34,12 +34,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             ArgumentNullException.ThrowIfNull(rows);
             root.Assume(Rules.StoredAs.Of().Is(ValueSet.From(rows.Stored)));
-            foreach (var (test, kind) in rows.TestKinds)
-                root.Assume(Rules.TestKinds.Of(test).Is(ValueSet.Of(kind)));
             foreach (var (function, draws, maps) in StringCalls.Rows)
                 root.Assume(Rules.CallDraws.Of(function).Is(draws), Rules.CallMaps.Of(function).Is(maps));
             foreach (var (target, kinds) in StringCalls.TextCasts)
                 root.Assume(Rules.CastsToText.Of(target).Is(kinds));
+
+            // What Calcite makes of each reading, as S's rules say from the same rows (G7), settled before the root freezes.
+            root.Assume([.. Rules.Readings.Facts(rows.Calcite, Rendering.KleeneTables.Reads, Rendering.KleeneTables.Compares)]);
+            root.Run(Schedule.Saturate(Rules.ReadingRules));
 
             root.Run(Saturation);
             root.Freeze();

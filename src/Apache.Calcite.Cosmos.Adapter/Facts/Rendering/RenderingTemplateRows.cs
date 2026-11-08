@@ -39,10 +39,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId> { KindRestrictedNumber, Window, TextAlternatives, Affix, AffixRendered };
 
-        /// <summary>The type tests a bare template writes, by name: each the service tests a kind by but <c>IS_DEFINED</c>. Before <see cref="Fits"/>, which reads it.</summary>
-        static readonly string[] TypeTests = [.. new[] { CosmosServiceTest.IsNull, CosmosServiceTest.IsString, CosmosServiceTest.IsNumber, CosmosServiceTest.IsBool,
-            CosmosServiceTest.IsObject, CosmosServiceTest.IsArray, CosmosServiceTest.IsPrimitive }.Select(ServiceForm.NameOf)];
-
         /// <summary>Each template and the shapes it fits.</summary>
         public static IReadOnlyList<(TemplateId, string Shape)> Fits { get; } = [.. Rows().Distinct()];
 
@@ -58,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 from reader in over from test in tests from kind in kinds select (id, reader + "/" + test + "/" + kind);
 
             return Fit(Bare, readers, comparisons, literals).Concat(Fit(Bare, readers, [PredicateAtom.InTest], [PointsKind]))
-                .Concat(Fit(Bare, readers, [PredicateAtom.DefinedTest, .. TypeTests], [NoOperand]))
+                .Concat(Fit(Bare, readers, [PredicateAtom.DefinedTest, TypeTestShape], [NoOperand]))
                 .Concat(Fit(Restricted, readers, [PredicateAtom.NotEqual], literals))
                 .Concat(Fit(Completed, readers, equalOrOrdering, literals)).Concat(Fit(Completed, readers, [PredicateAtom.InTest], [PointsKind]))
                 .Concat(Fit(NullTest, readers, [PredicateAtom.NullTest], [NoOperand]))

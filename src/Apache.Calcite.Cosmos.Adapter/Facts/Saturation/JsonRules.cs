@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
@@ -84,6 +86,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
 
+            // What Calcite makes of each reading, S's vocabulary too, settled once at the root (G7), over the values S registers.
+            graph.Values.RegisterEnum<CosmosValueClass>();
+            graph.Values.RegisterEnum<CosmosServiceTest>();
+            graph.Values.RegisterEnum<Truths>();
+            graph.Values.Register<ReadingTable>("reading table");
+            Readings = new ReadingVocabulary(graph, TestKinds);
+            ReadingRules = graph.DefineRuleset("readings");
+            Readings.Define(ReadingRules);
+
             DefineValues();
             DefineNumbers();
             DefineStrings();
@@ -103,6 +114,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>Gets the rules of JSON Schema: local to the JSON Schema context, so they hold in it and beneath it.</summary>
         public Ruleset JsonSchema { get; }
+
+        /// <summary>
+        /// What Calcite makes of each reading, as rules over its rows (G7): S's vocabulary, whose table the atom rules read, so
+        /// the facts graph reads an atom's readings as S's cells do.
+        /// </summary>
+        public ReadingVocabulary Readings { get; }
+
+        /// <summary>Gets the readings vocabulary's rules, which the root runs once over its rows.</summary>
+        public Ruleset ReadingRules { get; }
 
         /// <summary>Gets the terms of a path, which the rendering graph defines too; forwarded below.</summary>
         public PathVocabulary Paths { get; }

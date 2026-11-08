@@ -383,6 +383,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Text t:
                     return Rendering(At(document, t.Path)) is string rendered ? new SqlDatum.Text(rendered) : SqlDatum.Null;
 
+                // RETURNING VARCHAR and CHAR read a string as itself, unpadded, and a null and an absent path as null
+                // (Calcite.TextPlacesCompareAsTheirStrings); what they make of any other class was not measured, a coin.
+                case SqlValue.Typed { Type: "VARCHAR" or "CHAR" } t when typed == TypedAs.Returning:
+                    return At(document, t.Path) switch
+                    {
+                        null or J.Null => SqlDatum.Null,
+                        J.Str s => new SqlDatum.Text(s.Value),
+                        var other => world.Unread(t.Type + " " + Documents.Json(document)),
+                    };
+
                 case SqlValue.Typed t:
                     return typed == TypedAs.Column ? Column(At(document, t.Path), t.Type) : Returning(At(document, t.Path), t.Type);
 

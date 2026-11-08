@@ -213,6 +213,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> ReadCalciteBands(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from reading in axiom.CalciteReadings ?? [] from band in reading.Bands ?? [] select (reading.Reader, reading.Kind, band)).Distinct()];
 
+        /// <summary>
+        /// One row per reading a <c>Calcite</c> row names, by its readings, the readings it reads as another and the tests it
+        /// takes through, beside the row (G7): what a reading's answers rest on, <c>calciterows</c>.
+        /// </summary>
+        public static IReadOnlyList<(string Reader, string Row)> ReadCalciteRows(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. (from axiom in axioms
+                from reader in (axiom.CalciteReadings ?? []).Select(r => r.Reader).Concat((axiom.ReadAs ?? []).Select(r => r.Reader)).Concat((axiom.Through ?? []).Select(r => r.Reader))
+                select (reader, axiom.Id)).Distinct(),
+        ];
+
+        /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
+        public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
+            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms));
+
+        /// <summary>One row per unit of a pattern a <c>Calcite</c> row says <c>LIKE</c> reads, with what it reads it as, citing the row (G7), <c>likeunits</c>.</summary>
+        public static IReadOnlyList<(string Unit, string Reads, string Except, string Row)> ReadLikeUnits(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from unit in axiom.LikeUnits ?? [] select (unit.Unit, unit.Reads, unit.Except ?? "", axiom.Id)).Distinct()];
+
+        /// <summary>One row per reading a <c>Calcite</c> row says is read as another over each class both read alike (G7), <c>calcitereadas</c>.</summary>
+        public static IReadOnlyList<(string Reader, string As)> ReadCalciteReadAs(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from read in axiom.ReadAs ?? [] select (read.Reader, read.As)).Distinct()];
+
+        /// <summary>One row per test of a reading a <c>Calcite</c> row says is its operand's (G7), <c>calcitethrough</c>.</summary>
+        public static IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> ReadCalciteThrough(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from through in axiom.Through ?? [] select (through.Reader, through.Test, through.Operand)).Distinct()];
+
         /// <summary>One row per cast a <c>Calcite</c> row measured, by its target and the reading cast, citing the row (F3), S's <c>measuredcast</c>.</summary>
         public static IReadOnlyList<(string Target, string Reader, string Row)> ReadCasts(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from cast in axiom.Casts ?? [] select (cast.Target, cast.Reader, axiom.Id)).Distinct()];
@@ -229,10 +256,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             [.. (from axiom in axioms from order in axiom.ReaderOrders ?? [] select (order.Reader, order.Claim)).Distinct()];
 
         /// <summary>
-        /// One row per class a one-place test a <c>Calcite</c> row measured is true of (F3), S's <c>testkinds</c>: what a type
-        /// test is in process, its body's row (<c>Calcite.TypeTestsAreTheirBodies</c>), each cell answered as the vector says.
+        /// One row per class a one-place test a <c>Calcite</c> row measured is TRUE of, citing the row (F3): what a type test
+        /// is in process, its body's row (<c>Calcite.TypeTestsAreTheirBodies</c>), and a connective keyed by its operand's
+        /// outcome, NOT's and CASE's choice, each cell answered as the vector says. The readings vocabulary keys the classes
+        /// by the name the service spells a test by, so a test it spells by none keys no <c>testkinds</c> (G7).
         /// </summary>
-        public static IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind)> ReadTestKinds(IEnumerable<CosmosAxiom> axioms) =>
+        public static IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> ReadTestKinds(IEnumerable<CosmosAxiom> axioms) =>
         [
             .. (from axiom in axioms
                 where axiom.MeasuredOn == CosmosAxiomTarget.Calcite
@@ -240,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 where outcome.Formula is null && outcome.Operand == CosmosValueClass.None
                 from cell in outcome.Cells
                 where cell.Answer == CosmosAnswer.True
-                select (outcome.Test, cell.Cell)).Distinct(),
+                select (outcome.Test, cell.Cell, axiom.Id)).Distinct(),
         ];
 
         /// <summary>

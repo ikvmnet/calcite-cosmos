@@ -24,6 +24,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public const string ParameterShape = "parameter";
 
         /// <summary>
+        /// A type test's test, a shape's middle part, whichever test it is: one the vocabulary read kinds of (<c>testkinds</c>),
+        /// which the service writes by the test's name.
+        /// </summary>
+        public const string TypeTestShape = "type test";
+
+        /// <summary>
         /// An operand's kinds, a shape's last part: a string, one Calcite renders a boolean as, one spelling a number, a
         /// number, a boolean, an <c>IN</c>'s points, none.
         /// </summary>
@@ -35,10 +41,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static readonly ServiceForm Unspelled = ServiceForm.OpaqueOf("unspelled", ValueSet<string>.Empty);
 
         /// <summary>
-        /// An atom's shape, read off it: its reader, a raw column apart since a template only proposes, its test and its
-        /// operand's kind; <see cref="ParameterShape"/> for a parameter.
+        /// An atom's shape, read off it: its reader, a raw column apart since a template only proposes, its test, any type
+        /// test's <see cref="TypeTestShape"/>, and its operand's kind; <see cref="ParameterShape"/> for a parameter.
         /// </summary>
-        public static string ShapeOf(PredicateAtom atom) => atom.Parameter ? ParameterShape : PredicateAtom.Columnless(atom.Reader) + "/" + atom.Test + "/" + KindOf(atom);
+        public static string ShapeOf(PredicateAtom atom) => atom.Parameter ? ParameterShape
+            : PredicateAtom.Columnless(atom.Reader) + "/" + (atom.Kinds is null ? atom.Test : TypeTestShape) + "/" + KindOf(atom);
 
         static string KindOf(PredicateAtom atom) => atom.Against is { } right ? ReadingKind + PredicateAtom.Columnless(right)
             : atom.Test == PredicateAtom.InTest ? PointsKind : atom.Operand is { } literal ? KindOf(literal) : NoOperand;
@@ -103,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             PredicateAtom.InTest => Any(Points(atom).Select(p => ServiceForm.CompareOf(Equal, path, p))),
             PredicateAtom.DefinedTest => ServiceForm.TestOf(IsDefined, path),
-            _ when TypeTestOf(atom.Test) is { } test => ServiceForm.TestOf(test, path),
+            _ when atom.Kinds is not null && ServiceForm.TestNamed(atom.Test) is { } test => ServiceForm.TestOf(test, path),
             _ => Op(atom.Test) is { } op && atom.Operand is { } literal ? ServiceForm.CompareOf(op, path, literal) : null,
         };
 
@@ -117,19 +124,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>
         static ServiceForm[] Alternatives(ServiceForm core, string literal, string path) =>
             [core, ServiceForm.CompareOf(Equal, path, JsonValues.Of(JsonValues.StringOf(literal) == "true"))];
-
-        /// <summary>The service's own test of a type test's name: each answers what Calcite's body does (<c>Service.TypeTestBodiesMatchTheService</c>).</summary>
-        static CosmosServiceTest? TypeTestOf(string test) => test switch
-        {
-            "IS_NULL" => IsNull,
-            "IS_STRING" => IsString,
-            "IS_NUMBER" => IsNumber,
-            "IS_BOOL" => IsBool,
-            "IS_OBJECT" => IsObject,
-            "IS_ARRAY" => IsArray,
-            "IS_PRIMITIVE" => IsPrimitive,
-            _ => null,
-        };
 
         static CosmosServiceTest? Op(string test) => test switch
         {

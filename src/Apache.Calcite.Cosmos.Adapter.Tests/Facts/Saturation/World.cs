@@ -89,6 +89,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             };
         }
 
+        /// <summary>
+        /// What a reading nobody has measured over a value's class reads it as in this world: a SQL null, a raise, or one
+        /// of the strings, a coin tossed.
+        /// </summary>
+        public SqlDatum Unread(string question)
+        {
+            Tossed++;
+            var pick = (int)(Hash("unread " + question) % (ulong)(Strings.Length + 2));
+            return pick == 0 ? SqlDatum.Null : pick == 1 ? SqlDatum.Raise : new SqlDatum.Text(Strings[pick - 2]);
+        }
+
         ulong Hash(string question)
         {
             // FNV-1a over the seed and the question, so that a world is the same in every process.

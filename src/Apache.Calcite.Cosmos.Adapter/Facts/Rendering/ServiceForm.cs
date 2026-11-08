@@ -126,6 +126,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
         public static string NameOf(CosmosServiceTest test) => SpellingOf(test) ?? throw new ArgumentOutOfRangeException(nameof(test), test, null);
 
+        /// <summary>The test the service spells by a name (<see cref="SpellingOf"/>); <c>null</c> for a name it spells none by.</summary>
+        public static CosmosServiceTest? TestNamed(string name) =>
+            Enum.GetValues<CosmosServiceTest>().Where(test => SpellingOf(test) == name).Select(test => (CosmosServiceTest?)test).FirstOrDefault();
+
         /// <summary>A test's name in the service's SQL; <c>null</c> for one the service spells by no name: a comparison or a connective.</summary>
         public static string? SpellingOf(CosmosServiceTest test) => test switch
         {

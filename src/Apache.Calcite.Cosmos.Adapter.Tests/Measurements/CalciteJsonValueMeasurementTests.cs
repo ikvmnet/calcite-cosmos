@@ -645,6 +645,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Ask($"CAST(JSON_VALUE({Document("\"fal\\u017Fe\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("the case is ASCII's: a long s is no s");
             Ask($"CAST(JSON_VALUE({Document("\"yes\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("and any other text raises");
             Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("a number raises");
+
+            // Standing alone, the null test of the cast is its operand's: FALSE over a string and a number it raises on.
+            Ask($"CAST(JSON_VALUE({Document("\"yes\"")}, '$.v') AS BOOLEAN) IS NULL").Value.Should().Be("False", "the null test is the accessor's");
+            Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN) IS NULL").Value.Should().Be("False", "over a number too");
         }
 
         /// <summary>

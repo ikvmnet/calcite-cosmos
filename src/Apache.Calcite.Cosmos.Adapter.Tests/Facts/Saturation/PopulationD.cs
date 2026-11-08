@@ -482,16 +482,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     {
                         var value = IrEval.At(document, path);
                         var truth = Truth(term, document);
-                        var over = atom.On(State(value));
+                        var over = atom.On(State(value), FactsReadings.Rows);
                         if ((over & truth) == 0)
                         {
                             _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} answers only {over}");
                             break;
                         }
 
-                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True), value) == false)
+                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows), value) == false)
                         {
-                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True)}");
+                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True, FactsReadings.Rows)}");
                             break;
                         }
                     }

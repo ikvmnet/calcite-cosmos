@@ -42,7 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); each set's table
         /// as the leaves read it; and what a computed call is keyed by, what Calcite answers over each key and the service
         /// alone defines, the images a call's rows license, and the case-insensitive affix a LIKE over a fold is written as
-        /// (G6). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
+        /// (G6); and what Calcite makes of each reading, <c>LIKE</c>'s units and what each type test is TRUE of, the readings
+        /// vocabulary's, which the facts graph runs too (G7). No count bounds them: what the rules cost is judged at the
+        /// end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -142,13 +144,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["readas"] =
                 [
                     "a raw column refining the text over every class the text reads is read as it over a function measured through the text",
-                    "a reading whose every row reads a class as the text's do is read as the text over the classes it names",
                 ],
                 ["reads"] =
                 [
                     "a reading reads each class as its rows say",
-                    "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
+                    "a reading rests on each row that names it",
                     "a reading's parse of a class is decided over the character classes its witnesses held",
+                    "a reading a row reads as another is read as it over each class both read alike",
+                    "a reading's test of a class answers what the truth table says its read of the class means",
+                    "a reading's comparison of a class read as the value read decides it is decided on the cell",
+                    "a reading whose test a row says is its operand's answers over each class what its operand's read of it means, beside its own",
+                    "LIKE reads each unit of its pattern as its row says",
+                    "a type test is TRUE, by its name, of the JSON kinds of each class its row says",
+                    "a reading whose test is its operand's rests on its operand's rows",
+                    "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
                 ],
                 ["roles"] =
                 [
@@ -333,7 +342,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(156);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(163);
         }
 
         /// <summary>
@@ -463,8 +472,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
             foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))
                 s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
-            foreach (var g in CosmosValueClasses.TypeTests(d.TestKinds).GroupBy(r => r.Test))
-                s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind));
+            foreach (var g in d.TestKinds.Where(r => ServiceForm.SpellingOf(r.Test) is not null).GroupBy(r => ServiceForm.SpellingOf(r.Test)!))
+                s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.SelectMany(r => CosmosValueClasses.JsonKinds.Where(k => k.Class == r.Kind).Select(k => k.Kind)).Distinct());
         }
 
         /// <summary>

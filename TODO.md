@@ -3109,20 +3109,24 @@ across documents* and *A join of a container to itself* is the record.
   `truncates`, each set's parting bands are its own comparators', and the leaf, the lifts and `StoresSpelled` read what
   S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3's rules read `pairreads` and
   `readerorder`, whose `reflexive` and typed `itself` rows g234 measured (DESIGN.md, *Answer roles, pairs and failure,
-  S's (G2, G3, G4)*), and G7's `calcitereads`, `calcitebands` and `testkinds` (*Calcite's readings as S's rows (G7)*).
+  S's (G2, G3, G4)*), and G7's `calcitereads`, `calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*).
   G8 reads `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`, which no row
   states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
-- **`LIKE`'s units and the facts graph's readings are C#'s** — *small, G7's rest.* S evaluates each reading by its rows
-  (DESIGN.md, *Calcite's readings as S's rows (G7)*), but `PredicateAtom.Like` leaves a pattern holding `_` or `\`
-  undecided by a C# list, where no Calcite row measures `LIKE`: Calcite reads `_` as one code point that is no line
-  terminator and may read `\` as an escape. A measurement of `LIKE`'s units and a row of them S's readings carry would
-  let a rule say which units the matcher decides. And the facts graph reads its readings by name: `Reading.Parse`, F's
-  `MatchesText`, and `BooleanCast.Facts`, a copy of `Calcite.CastToBooleanParses` for the cast F's terms hold from h15.
-  The rest of G7 makes the `Reading` hierarchy data for both.
+- **The service writer's pattern refuses `_`, `\`, `[` and `]`** — *small, h15's licence.* Calcite's units are a row
+  (`Calcite.LikeReadsItsPatternsUnits`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell and the facts graph
+  decide `_` and `\`. `AffixPattern.Canonical` and `Plain`, the service writer's pattern of runs, still refuse those
+  units and the brackets: what the service's `LIKE` makes of each is unmeasured, and a pushed `_` is the licence's
+  question (post2). A row of the service's units per target, as `likeunits` holds Calcite's, would let the writer's
+  pattern read them as Calcite's are read.
+- **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
+  reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
+  text's, a raw value's, a typed one's or a cast's, is the spelling's; and `Raw.EqualOn` beside a null literal, and
+  `RawText.EqualOn` and `OrderOn` beside a literal that is no string, take the coarse answer beside G5's rows. An
+  evaluator that is a function of the rows alone, with the casts owed above as rows, finishes G7.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
   keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
   `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`, which `REPLACE`'s search and `SUBSTRING`'s length name
