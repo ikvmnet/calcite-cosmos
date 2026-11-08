@@ -176,8 +176,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A value cast to <c>VARIANT</c> is the box it is where S reads (G8), by the SQL type of what it holds, a reading or a
-        /// literal, compared and tested for null as written: what each comparison of it means is S's rules' over
+        /// A value cast to <c>VARIANT</c> is the box it is where S reads (G8), by the SQL type of what it holds, a reading, a
+        /// literal or a parameter, compared and tested for null as written: what each comparison of it means is S's rules' over
         /// <c>Calcite.VariantEqualsOnlyItsOwnBox</c>' rows, which read no atom of its order. F's terms stay as they were until h15.
         /// </summary>
         [Fact]
@@ -192,6 +192,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Which.Should().Be(Cmp(text, "<", bikes), "whether a VARIANT's order reads what it holds is the row's to say, and it says not");
             LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeLiteral(true), false))).Conjuncts.Should().ContainSingle()
                 .Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("BOOLEAN", Lit(true))));
+            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeDynamicParam(Sql(SqlTypeName.VARCHAR), 0)))).Conjuncts
+                .Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("VARCHAR", new SqlValue.Parameter(0, "VARCHAR"))),
+                    "a box is a comparand whatever it holds, what it equals the box rules' to say");
             Load(equal).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
         }
 

@@ -30,12 +30,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>What is read</b> is what a guard is written in: <c>=</c>, <c>&lt;&gt;</c>, the orderings, <c>IN</c> (a
     /// <c>SEARCH</c> expanded, read back as one membership), <c>IS [NOT] NULL</c>, <c>AND</c>, <c>OR</c> and <c>NOT</c>,
     /// over a reading of a path on one side and a literal or a parameter on the other; the service's type tests over a
-    /// reading of a path; <c>LIKE</c> with a literal pattern holding no bracket; and a boolean <c>CASE</c>, with the truth
-    /// tests, <c>COALESCE(p, FALSE)</c> and <c>IS NULL</c> over a predicate read as the cases Calcite defines them as
+    /// reading of a path; <c>LIKE</c> with a literal pattern; and a boolean <c>CASE</c>, with the truth tests,
+    /// <c>COALESCE(p, FALSE)</c> and <c>IS NULL</c> over a predicate read as the cases Calcite defines them as
     /// (<c>Calcite.TruthTestsAreCases</c>, <c>Calcite.CoalesceIsACase</c>). Anything else is
     /// <see cref="SqlPredicate.Opaque"/>, which proves nothing and decides nothing: loading less loses facts, and can only
-    /// lose a pushdown. <c>LIKE</c> with <c>ESCAPE</c>, a computed pattern or a bracket stays opaque: the service reads a
-    /// bracket as a range (<c>Service.LikeReadsBracketsAsARange</c>), and nothing is read of what no form can say.
+    /// lose a pushdown. <c>LIKE</c> with <c>ESCAPE</c> or a computed pattern stays opaque. A loading that reads places
+    /// (<see cref="Loading"/>) reads <c>LIKE</c> of any place, a bracket a unit of its pattern like any, what each side
+    /// reads it as their rows' (<c>likeunits</c>, <c>likereads</c>, G7/G8); F's reading until h15 reads it of the text
+    /// alone, against a pattern holding no bracket, which the service reads as a range
+    /// (<c>Service.LikeReadsBracketsAsARange</c>).
     /// </para>
     /// <para>
     /// <b>A literal is a JSON scalar</b>, converted once, as the translator would send it (<see cref="JsonScalar"/>), and a
@@ -112,11 +115,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <c>LIKE</c>, type test or element, each opaque as before, for the rendering graph until its switch.
             /// </param>
             /// <param name="places">
-            /// Reads, outside the legacy reading, a call the function rows name as a computed place (h10) and two readings
-            /// of one kind compared as a pair (h11); a number compared with <c>RETURNING DOUBLE</c> and a null test of a plain
-            /// <c>JSON_QUERY</c>, a text boxed as a <c>VARIANT</c>, and a truth reading as a whole condition (h14); the text cast to
-            /// <c>BOOLEAN</c> and a schema's own <c>IS_DEFINED</c> (the owner's decisions, 2026-11-03). Only S's tests read them until its switch (h15), which lists the IR
-            /// moves they make: F's terms and memo keys stay as they were, each such call and comparison opaque to F.
+            /// Reads, outside the legacy reading, a call the service can spell as a computed place (h10, G6) and two places
+            /// compared as a pair (h11, G3); a number compared with <c>RETURNING DOUBLE</c>, a null test of a plain
+            /// <c>JSON_QUERY</c> and a truth reading as a whole condition (h14); the text cast to <c>BOOLEAN</c> and a schema's
+            /// own <c>IS_DEFINED</c> (the owner's decisions, 2026-11-03); and, as written (G8), a value of any kind cast to
+            /// <c>VARIANT</c> as its box, a null literal as SQL's null of its type, a one-place test of the reading as it stands
+            /// and <c>LIKE</c> of any place against a pattern a bracket may be in. Only S's tests read them until its switch
+            /// (h15), which lists the IR moves they make: F's terms and memo keys stay as they were, each such call and
+            /// comparison opaque to F.
             /// </param>
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, bool legacy = false, bool places = false)
             {
@@ -410,8 +416,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// (<c>PredicateAtom</c>). F's terms stay so until it reads places (h15), and with them the casts as S does.
             /// </para>
             /// <para>
-            /// Anything else is a literal as written, or one boxed for a <c>VARIANT</c> comparison: where places are read, the
-            /// box as it stands (<see cref="SqlValue.Box"/>), what it equals S's box rules' (G8); elsewhere the literal.
+            /// Anything else is a literal as written, SQL's null where places are read (<see cref="NullOf"/>), or a value cast
+            /// to <c>VARIANT</c>: where places are read, the box as it stands (<see cref="SqlValue.Box"/>) whatever it holds, a
+            /// literal, a parameter or a call, what it equals S's box rules' (G8), which read a reading's and a literal's box
+            /// alone; elsewhere a literal boxed for the comparison is the literal.
             /// </para>
             /// </remarks>
             SqlValue? Comparand(RexNode node, SqlValue reading)
@@ -420,7 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return Value(node);
 
                 if (_places)
-                    return node is RexLiteral literal ? Literal(literal) ?? NullOf(literal) : Value(node) is SqlValue.Box { Value: SqlValue.Literal } boxed ? boxed : CastNumber(node);
+                    return node is RexLiteral literal ? Literal(literal) ?? NullOf(literal) : Value(node) is SqlValue.Box boxed ? boxed : CastNumber(node);
 
                 var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
                 if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
@@ -756,8 +764,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// An operand's spelling in a computed place's: a path's, a literal's own, a nested place's, and a box's what it
-            /// holds, the service holding no box; none for the rest. Whether S images a call over a box is its image rules',
-            /// which read no path of a box (G8).
+            /// holds, the service holding no box; none for the rest. Whether S images a call over a box is its image rules'
+            /// (G8): those that gather an operand gather none from a box, which reads no path, and the D class's, which reads
+            /// no operand, images it as the call over what the box holds, whose spelling it shares.
             /// </summary>
             static string? PlaceSpelling(SqlValue operand) => operand switch
             {

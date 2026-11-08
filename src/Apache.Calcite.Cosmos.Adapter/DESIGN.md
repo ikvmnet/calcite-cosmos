@@ -9042,19 +9042,26 @@ it stands, and S's rules read the row as a cell.
   was not the text, a cast to text, a `VARCHAR` column or a computed text place.
 
 `Compares`' arm refusing a `null` literal against a raw value is gone: a `Literal` reads no SQL null, so it never
-fired. Before h15 F's reading keeps each branch, its IR being the digests': the raw value in a test, the bracket
-refused, the literal unboxed, a `JSON_QUERY`'s null test and a comparison with SQL's null opaque. `RenderingFamily`'s
-legality reads through a box (`Unboxed`), so S owns what it owned until G10 deletes it at h15. A call over a box is
-spelled over what the box holds, the service holding no box, and is a place whose image S's rules decline, a box
-reading no path, where the loader declined it (`PlaceSpelling`).
+fired. `Comparand` takes a box as it stands whatever it holds, a parameter or a call as well as a literal, where it
+took a literal's box alone: what a box equals is the box rules', which read a reading's and a literal's. Before h15
+F's reading keeps each branch, its IR being the digests': the raw value in a test, the bracket refused, the literal
+unboxed, a `JSON_QUERY`'s null test and a comparison with SQL's null opaque. `RenderingFamily`'s legality reads
+through a box (`Unboxed`), so S owns what it owned until G10 deletes it at h15. A call over a box is spelled over what
+the box holds, the service holding no box and the translator writing a box as what it holds, where the loader
+declined it (`PlaceSpelling`). Its image is S's image rules': those that gather an operand gather none from a box,
+which reads no path, so they decline it; the D class's, which reads no operand, images it as it does the call over
+what the box holds, whose spelling, imported characters (`RenderingImporter` keys them by spelling) and accessor
+(`AccessorsOf` keeps a spelling's first node) it shares. The D class's image is every kind of its type and absent,
+what the service answers whatever its operands are, so the two calls being one in the service is all it says.
 
 `Structure`, `JSON_QUERY` under a null test read as a structure test, stays C#'s until h15, and moves then without a
 merge, which S's tripwire forbids and the plan's rewrite would have been: the `JSON_QUERY` a reader of its own,
-`query(path)` in the shared vocabulary so that F gains it when it reads places, whose answers are its row's
-`calcitereads` (an object and an array rendered, every other class null) in place of the unread `structureonly`, read
-by a reading only rows define; and the structure test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))`, its own template, which the
-gate proves from the rows as any form. Built in G8's fix, it was no refactor: it proves the translator's text for the
-four census rows of `IS [NOT] NULL(JSON_QUERY(label))`, each of whose positive and negative checks the type tests left
+`query(path)` in the shared vocabulary so that F gains it when it reads places, whose answers are the row's, its
+`structureonly` stated as the reading's `calcitereads` (an object and an array rendered, every other class null) and
+read by a reading only rows define; and the structure test under the null test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))`
+for `IS NULL`, its own template, which the gate proves from the rows as any form. Built in G8's fix, it was no
+refactor: it proves the translator's text for the four census rows of `IS [NOT] NULL(JSON_QUERY(label))`
+(`coverage-FG.tsv` lines 62, 102, 222 and 274), each of whose positive and negative checks the type tests left
 Unproven, its best form unchanged and the digests, which read no places, byte-equal. So it waits for h15, whose census
 may move (`TODO.md`).
 
