@@ -579,7 +579,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
                            CAST(g AS VARCHAR) AS "tag",
                            COUNT(*) AS "n",
                            SUM(JSON_VALUE(o."DOC", '$.total' RETURNING DOUBLE)) AS "spend"
-                    FROM products AS p, UNNEST(StringToArray(JSON_QUERY(p."DOC", '$.tags'))) AS g
+                    FROM products AS p CROSS JOIN UNNEST(StringToArray(JSON_QUERY(p."DOC", '$.tags'))) AS g
                     JOIN orders AS o ON o."id" = p."id"
                     WHERE p."$.category" IN ('bikes', 'shoes')
                       AND JSON_VALUE(p."DOC", '$.price' RETURNING DOUBLE) > 20.0
