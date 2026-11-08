@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a membership is an atom of what it reads",
                     "a null test is an atom of what it reads",
                     "a definedness test is an atom of what it reads",
-                    "a type test is an atom of what it reads",
+                    "a type test is an atom of what it reads, TRUE of the kinds its row says",
                     "an affix test with a literal pattern is an atom of what it reads",
                 ],
                 ["measure"] =
@@ -130,6 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a raw reading's comparison over a class its column reads as null or raises on is what that read means to it",
                     "a raw reading's comparison of a value with a literal of its type is the comparison as the type, which the cell decides",
                     "a raw reading's comparison of a value with a literal of another type is what its column answers across types",
+                    "a cast of a raw value compares a value it reads as itself as itself, which the cell decides",
                     "a cast of a raw value compares the text it renders a value as, which the cell decides",
                     "a raw reading's comparison its column does not compile fails the statement",
                     "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
@@ -141,6 +142,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["readas"] =
                 [
                     "a raw column refining the text over every class the text reads is read as it over a function measured through the text",
+                    "a reading whose every row reads a class as the text's do is read as the text over the classes it names",
+                ],
+                ["reads"] =
+                [
+                    "a reading reads each class as its rows say",
+                    "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
+                    "a reading's parse of a class is decided over the character classes its witnesses held",
                 ],
                 ["roles"] =
                 [
@@ -325,7 +333,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(151);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(156);
         }
 
         /// <summary>
@@ -455,7 +463,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
             foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))
                 s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
-            foreach (var g in d.TestKinds.GroupBy(r => r.Test))
+            foreach (var g in CosmosValueClasses.TypeTests(d.TestKinds).GroupBy(r => r.Test))
                 s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind));
         }
 

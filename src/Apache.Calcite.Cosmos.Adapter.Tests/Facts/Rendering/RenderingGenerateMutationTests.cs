@@ -375,14 +375,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>M6: text equal to <c>'true'</c> read as FALSE of the boolean true, which Calcite renders so.</summary>
-        static Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> pair) =>
-            (atom, columns, vector) => pair(atom, columns, vector) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
+        static Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> pair) =>
+            (atom, columns, vector, readings) => pair(atom, columns, vector, readings) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
                 ? Reclassed(outcomes, cell => cell is PathCell.Point { Value: var v } && v == JsonValues.Of(true), k => k with { Calcite = Truths.False })
                 : outcomes;
 
         /// <summary>M7 and M10: a reading Calcite's own (the text accessor's rendering, a <c>RETURNING DECIMAL</c>) read as the raw value.</summary>
-        static Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> ReadAsRaw(Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> pair, string reader) =>
-            (atom, columns, vector) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, columns, vector);
+        static Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> ReadAsRaw(Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> pair, string reader) =>
+            (atom, columns, vector, readings) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, columns, vector, readings);
 
         /// <summary>M8 and M9: the service's comparison of a boolean with a string, for the operators given, answered by the boolean's rendering.</summary>
         static Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> leaf, Op[] ops) =>

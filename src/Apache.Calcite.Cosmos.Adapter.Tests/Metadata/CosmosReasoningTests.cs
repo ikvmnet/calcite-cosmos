@@ -160,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             output?.WriteLine($"process warmed in {warmed.ElapsedMilliseconds} ms");
 
             var (full, asked) = Measure(new CosmosReasoning(), questions: null, output);
-            var (one, _) = Measure(new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition), remembered: 1)), asked, output);
+            var (one, _) = Measure(new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Rows), new RenderingOracle(new RenderingGraph(() => CosmosRendering.Definition), remembered: 1)), asked, output);
             var memo = full - one;
             output?.WriteLine($"S's memo of 4,096 answers: {memo / 1024.0 / 1024.0:F1} MB, {memo / 4096.0 / 1024.0:F2} KB an answer; S's graph's growth over {asked:N0} questions: {one / 1024.0 / 1024.0:F1} MB");
         }

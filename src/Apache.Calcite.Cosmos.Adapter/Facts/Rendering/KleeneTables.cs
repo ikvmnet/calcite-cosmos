@@ -35,7 +35,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static IReadOnlyList<(CosmosServiceTest Test, string Read, Truths Truths)> Reads { get; } =
         [
-            (CosmosServiceTest.IsNull, CalciteRead.Itself, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Null, Truths.True), (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises),
+            (CosmosServiceTest.IsNull, CalciteRead.Itself, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Renders, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Null, Truths.True),
+            (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises),
             .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
                from read in new[] { (CalciteRead.Null, Truths.Unknown), (CalciteRead.Raises, Truths.Raises) }
                select (test, read.Item1, read.Item2),

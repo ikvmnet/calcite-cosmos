@@ -174,7 +174,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// reads <c>'NaN'</c> as a NaN, which compares as nothing alike, itself included (<c>Calcite.ANaNComparesAsNothingAlike</c>),
         /// so not even its diagonal is placed, and over strings no comparison of it with itself is proven where the text's
         /// own is; were its order to hold equal values read alike equal, the diagonal would be proven, and wrong on
-        /// <c>'NaN'</c>.
+        /// <c>'NaN'</c>. Nor is the comparison of two paths read so, where a cell holds the one string on both: S's rows give
+        /// the reading no order, so a cell holding <c>'NaN'</c> twice may be FALSE (G7).
         /// </summary>
         [Fact]
         public void APairIsReadByItsReadingsKindsAndOrders()
@@ -198,7 +199,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Generate(diagonal, RenderingSet.Emulator, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Unproven, $"{op}: 'NaN' read as a double is not itself");
                 Generate(diagonal, RenderingSet.Emulator, Strings, Ascii, reflexive).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{op}, the order planted reflexive");
                 Generate(Pair(op, NamePath, NamePath), RenderingSet.Emulator, Strings, Ascii).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, op);
+
+                var apart = new SqlPredicate.Compare(op, cast, new SqlValue.Cast("DOUBLE", new SqlValue.Text(OtherPath)));
+                Generate(apart, RenderingSet.Emulator, Strings, Ascii).Answer.Kind.Should().NotBe(RenderingVerdictKind.Proven, $"{op}: 'NaN' on two paths read as doubles is unequal");
             }
+
+            // On a cell of one string on both sides, a reading S's rows give no order is not placed: 'NaN' twice may be FALSE.
+            var doubled = PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader);
+            var orders = ProbeTheory.Theory.Get(ProbeTheory.ReaderOrder.Of(doubled));
+            orders.Contains(PredicateAtom.Reflexive).Should().BeFalse("Calcite.ANaNComparesAsNothingAlike gives a double's reading no reflexive order");
+            var nan = new PathCell.Pair(new PathCell.Point(Of("NaN")), new PathCell.Point(Of("NaN")), 0);
+            PredicateAtom.OrderedBy(PredicateAtom.CompareReadings(doubled, PredicateAtom.Equal, doubled), orders, orders).OnCell(nan, Columns, ReaderRows)
+                .Should().HaveFlag(Truths.False, "two NaNs compare as nothing alike");
         }
 
         /// <summary>

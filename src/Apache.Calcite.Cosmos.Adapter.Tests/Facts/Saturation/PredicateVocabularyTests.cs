@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var graph = new EGraph();
             var paths = new PathVocabulary(graph);
-            var ir = new PredicateVocabulary(graph);
+            var ir = new PredicateVocabulary(graph, graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis }));
             var junctions = new List<(bool Truth, int Arms)>();
             var writer = new PredicateWriter(ir, path => JsonFactEncoding.Path(path).ToTerm(paths), (_, truth, arms) =>
             {

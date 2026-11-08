@@ -69,9 +69,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var planted = RenderingTheory.Define(ProbeRows.Measured with
             {
-                Pair = (atom, columns, vector) =>
+                Pair = (atom, columns, vector, readings) =>
                 {
-                    var real = CellOutcomes.Of(atom, columns, vector);
+                    var real = CellOutcomes.Of(atom, columns, vector, readings);
                     var cells = ValueSet.From(real.Cells.Select(c => atom.Reader == "typed:BIGINT" && IntSized(c.Cell) ? c with { Class = c.Class with { Calcite = Truths.Raises } } : c));
                     return real with { Cells = cells, Classes = ValueSet.From(cells.Select(c => c.Class)) };
                 },
@@ -127,9 +127,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var moved = ProbeRows.Measured.Comparands.Where(r => r.Moved).ToList();
             moved.Should().NotBeEmpty();
             foreach (var (reading, _, row) in moved)
-                PredicateAtom.Compare(reading, "=", Of(2.5m)).OnCell(new PathCell.Point(Of(2m)), ProbeRows.Columns).Should().HaveFlag(Truths.True, $"{row} says {reading} takes a moved number");
+                PredicateAtom.Compare(reading, "=", Of(2.5m)).OnCell(new PathCell.Point(Of(2m)), ProbeRows.Columns, ProbeRows.ReaderRows).Should().HaveFlag(Truths.True, $"{row} says {reading} takes a moved number");
 
-            PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), "=", Of(2.5m)).OnCell(new PathCell.Point(Of(2m)), ProbeRows.Columns).Should().NotHaveFlag(Truths.True,
+            PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), "=", Of(2.5m)).OnCell(new PathCell.Point(Of(2m)), ProbeRows.Columns, ProbeRows.ReaderRows).Should().NotHaveFlag(Truths.True,
                 "RETURNING DOUBLE reads no move, and no row says it takes one");
         }
 

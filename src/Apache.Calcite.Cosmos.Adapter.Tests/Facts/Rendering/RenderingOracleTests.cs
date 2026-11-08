@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheKeyHoldsEveryValueTheImportReads()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object))).In(generations);
             var (first, second) = (Eq(Text(P("a")), "x"), Ne(Text(P("a")), "y"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { first, second, Eq(Text(P("o", "b")), "z") }), (i, _) => i == 0);
@@ -282,7 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public async Task AHitCostsMicroseconds()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var oracle = Oracle();
             var built = Stopwatch.GetTimestamp();
             await oracle.Ready;

@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// definition, its graph not yet built, which prints each generation's warm-up answer as it is built.
         /// </summary>
         public CosmosReasoning() :
-            this(new JsonFactGenerations(Stored))
+            this(new JsonFactGenerations(Rows))
         {
 
         }
@@ -48,6 +48,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// facts fixed in the assembly, which every schema's generations hand their graphs.
         /// </summary>
         internal static readonly IReadOnlyList<JsonClassMap> Stored = Sql.CosmosAxiomRows.ReadStored(Sql.CosmosAxioms.All);
+
+        /// <summary>
+        /// The measured rows every schema's generations hand their graphs' roots: <see cref="Stored"/>, and what each type test
+        /// is TRUE of in process (<see cref="Sql.CosmosAxiomRows.ReadTestKinds"/>, G7), facts fixed in the assembly.
+        /// </summary>
+        internal static readonly JsonRows Rows = new(Stored, CosmosValueClasses.TypeTests(Sql.CosmosAxiomRows.ReadTestKinds(Sql.CosmosAxioms.All)));
 
         /// <summary>
         /// Initializes a new instance over the given generations, and the given oracle and probe where there are: a test's,

@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var truths = new[] { IrEval.TypedAs.Returning, IrEval.TypedAs.Column }.Select(mode => IrEval.Truth(predicate, document, new World(0), mode)).ToList();
 
             truths.Should().Equal(Truths.True, Truths.True);
-            atom.OnCell(new PathCell.Point(Of(stored)), Rendering.ProbeRows.Columns).Should().Be(Truths.True);
+            atom.OnCell(new PathCell.Point(Of(stored)), Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows).Should().Be(Truths.True);
             ((double)stored == (double)literal ? Truths.True : Truths.False).Should().Be(Truths.False, "the plant answers what the evaluator refutes");
         }
 

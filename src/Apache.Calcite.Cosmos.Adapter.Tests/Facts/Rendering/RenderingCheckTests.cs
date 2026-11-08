@@ -183,7 +183,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ACheckIsImportedFromWhatAssumesNoConjunctItHolds()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present)).In(generations);
             var (category, kind) = (Eq(Raw(CategoryPath), "bikes"), Eq(Raw(KindPath), "a"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { category, kind }), (i, _) => i == 0);
@@ -209,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ALaterRoundIsReadBesideTheFactsItWasRenderedFrom()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))).In(generations);
             var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { kind, label }),

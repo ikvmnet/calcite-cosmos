@@ -392,7 +392,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "An array RETURNING answers null over an array, an object, a null and an absent path, and raises over a scalar.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 15), "Measurements.CalciteJsonValueMeasurementTests.AnArrayReturningAnswersNullForAnArrayAndThrowsForAScalar"),
             new("Calcite.CastToBooleanParses",
-                "A cast of the accessor to BOOLEAN parses the rendering: a stored boolean reads as itself, a null and an absent path as null, a string spelling a boolean parses, trimmed of every character up to U+0020 as String.trim trims and in any ASCII case, and any other string and a number raise.",
+                "A cast of the accessor to BOOLEAN parses the rendering: a stored boolean reads as itself, a null, an absent path, an object and an array as null, a string spelling a boolean parses, trimmed of every character up to U+0020 as String.trim trims and in any ASCII case, and any other string and a number raise.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 3), "Measurements.CalciteJsonValueMeasurementTests.ACastToBooleanParsesTheRendering",
                 // A string parses, measured over ASCII, the trimmed class and U+0000; beyond them it is unmeasured (F3).
                 CalciteReadings:
@@ -401,6 +401,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.False, CosmosCalciteReading.Itself),
                     new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.Null, CosmosCalciteReading.Null),
                     new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.Absent, CosmosCalciteReading.Null),
+                    new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.Object, CosmosCalciteReading.Null),
+                    new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.Array, CosmosCalciteReading.Null),
                     new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.String, CosmosCalciteReading.Parses, [JsonValues.TrimmedClass, JsonValues.NulClass]),
                     new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), Class.Number, CosmosCalciteReading.Raises),
                 ],
@@ -452,12 +454,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 24), "Measurements.CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn",
                 Casts: [new("VARCHAR", PredicateAtom.RawReader)],
                 // The cast through each column (G5): the text it renders compared as a string, beside a string, every comparison
-                // compiling; a VARIANT's number and boolean null and its structure raising, a VARCHAR column's anything but a string.
+                // compiling; a string itself, an ANY's number, boolean and structure rendered (G7), a VARIANT's number and boolean
+                // null and its structure raising, a VARCHAR column's anything but a string.
                 Columns:
                 [
                     new("VARIANT", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
                         false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
-                    new("ANY", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null),
+                    new("ANY", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Renders, CalciteRead.Renders, CalciteRead.Renders, CalciteRead.Null, CalciteRead.Null),
                         false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
                     new("VARCHAR", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
                         false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
@@ -478,10 +481,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "Text compares by UTF-16 code unit, as String.compareTo does: U+E000 and U+FFFD above U+1F600, which code point order puts above both, and 'true' and 'false' above 'bikes', '30' below.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
             new("Calcite.TextPlacesCompareAsTheirStrings",
-                "A computed text place, UPPER or SUBSTRING of the accessor, and a VARCHAR or CHAR value compare as the strings they hold, by UTF-16 code unit as the accessor's text does: U+E000 and U+FFFD above U+1F600, 'B' below 'B ', '30' below 'BIKES'.",
-                CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.ATextPlaceComparesAsTheStringItHolds",
-                // A typed text reading reads a string as the string (G3), as the accessor does.
-                ReaderOrders: [new(PredicateAtom.TypedReader("VARCHAR"), CosmosReaderOrder.Itself), new(PredicateAtom.TypedReader("CHAR"), CosmosReaderOrder.Itself)]),
+                "A computed text place, UPPER or SUBSTRING of the accessor, and a VARCHAR or CHAR value compare as the strings they hold, by UTF-16 code unit as the accessor's text does: U+E000 and U+FFFD above U+1F600, 'B' below 'B ', '30' below 'BIKES'; each is null over a null and an absent path.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Measurements.CalciteReaderOrderMeasurementTests.ATextPlaceComparesAsTheStringItHolds",
+                // A typed text reading reads a string as the string (G3), as the accessor does; and a null and an absent path as
+                // null (G7), so every row of it reads a class as the accessor's do.
+                ReaderOrders: [new(PredicateAtom.TypedReader("VARCHAR"), CosmosReaderOrder.Itself), new(PredicateAtom.TypedReader("CHAR"), CosmosReaderOrder.Itself)],
+                CalciteReadings:
+                [
+                    .. from type in new[] { "VARCHAR", "CHAR" }
+                       from read in new[] { (Class.String, CosmosCalciteReading.Itself), (Class.Null, CosmosCalciteReading.Null), (Class.Absent, CosmosCalciteReading.Null) }
+                       select new CosmosCalciteReading(PredicateAtom.TypedReader(type), read.Item1, read.Item2),
+                ]),
             new("Calcite.EqualValuesReadAlikeCompareEqual",
                 "Two equal values read alike compare equal, = <= >= TRUE and <> < > FALSE, wherever the reading reads a value: the accessor's text; a boolean's and an integer's or DECIMAL's column or RETURNING, a CHAR's and a computed text place's; the text cast to BOOLEAN, INTEGER or BIGINT; a raw value cast to VARCHAR through a VARIANT, an ANY and a VARCHAR column. A double's reading is not so, a NaN being equal to nothing (Calcite.ANaNComparesAsNothingAlike).",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.EqualValuesReadAlikeCompareEqual",

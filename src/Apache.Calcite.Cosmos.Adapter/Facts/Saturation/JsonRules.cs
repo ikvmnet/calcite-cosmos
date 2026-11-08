@@ -76,6 +76,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             CallDraws = graph.DefineFunction<string, ValueSet<long>>("callDraws", ValueLattice.Union<long>());
             CallMaps = graph.DefineFunction<string, ValueSet<JsonClassMap>>("callMaps", ValueLattice.Union<JsonClassMap>());
             CastsToText = graph.DefineFunction<string, ValueSet<string>>("castsToText", ValueLattice.Union<string>());
+            // Read beside the terms by the vocabulary's type-test rule, which may read only terms and analyses (G7).
+            TestKinds = graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
@@ -235,6 +237,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// no class. The root's, assumed once a type, which the union holds; a type with no row casts nothing to text here.
         /// </summary>
         public Function<string, ValueSet<string>> CastsToText { get; }
+
+        /// <summary>
+        /// The JSON kinds each type test is TRUE of in process, by its name (<c>Calcite.TypeTestsAreTheirBodies</c>, G7): the
+        /// root's, assumed once a test, which the union holds, and which <see cref="PredicateVocabulary"/>'s type-test rule
+        /// reads. A test with no row is no atom.
+        /// </summary>
+        public Function<string, ValueSet<string>> TestKinds { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing

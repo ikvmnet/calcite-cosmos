@@ -71,6 +71,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>The raw columns' truths S's rule joins from the registry's row (h12), which a raw reading's cells read.</summary>
         public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
 
+        /// <summary>Every reading's rows S's rules join from the registry's (G7), which Calcite's side of a cell evaluates a reading by.</summary>
+        public static ReadingTable ReaderRows => ProbeTheory.Theory.Get(ProbeTheory.ReaderRows.Of());
+
         /// <summary>The table S settles for the set CI asserts under, with its pair table.</summary>
         public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed,
             ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)));

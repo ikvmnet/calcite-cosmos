@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class CharactersTests
     {
 
-        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         static readonly ValueSet<string> Surrogate = ValueSet.Of(SurrogateBand);
 

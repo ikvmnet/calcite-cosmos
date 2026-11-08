@@ -11,8 +11,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class PredicateVocabulary
     {
 
-        public PredicateVocabulary(EGraph graph)
+        /// <param name="graph">The graph.</param>
+        /// <param name="testKinds">
+        /// The JSON kinds each type test is TRUE of, by its name: the graph's own rows, an analysis assumed at its root, which
+        /// the type-test rule reads (<c>Calcite.TypeTestsAreTheirBodies</c>, G7).
+        /// </param>
+        public PredicateVocabulary(EGraph graph, Function<string, ValueSet<string>> testKinds)
         {
+            TestKinds = testKinds;
             graph.DefineSort<Val>("Val");
             graph.DefineSort<Pred>("Pred");
             graph.DefineSort<Args>("Args");
@@ -123,6 +129,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>An <c>IS_*</c> test but <c>IS_DEFINED</c>: its name, and the value it tests.</summary>
         public Constructor<string, Val, Pred> TypeTest { get; }
 
+        /// <summary>The JSON kinds each type test is TRUE of, by its name: the graph's rows, which the type-test rule reads.</summary>
+        public Function<string, ValueSet<string>> TestKinds { get; }
+
         /// <summary>
         /// A <c>CASE</c> over predicates: its condition, then-arm and else-arm. No rule of the facts graph reads one, so it
         /// learns of one what it learns of an opaque term.
@@ -215,12 +224,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
             });
-            Analyse.DefineRule("a type test is an atom of what it reads", r =>
+            Analyse.DefineRule("a type test is an atom of what it reads, TRUE of the kinds its row says", r =>
             {
                 var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
                 var (t, k) = r.Vars<string, string>("t", "k");
-                r.When(e.Is(TypeTest.Of(t, v)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, t, PredicateAtom.TypeTest)));
+                var ks = r.Var<ValueSet<string>>("ks");
+                r.When(e.Is(TypeTest.Of(t, v)), Reads.Of(v, p, k), ks.Is(TestKinds.Of(t)));
+                r.Then(Atom.Of(e, p, Compute.Of(k, t, ks, PredicateAtom.TypeTest)));
             });
             Analyse.DefineRule("an affix test with a literal pattern is an atom of what it reads", r =>
             {

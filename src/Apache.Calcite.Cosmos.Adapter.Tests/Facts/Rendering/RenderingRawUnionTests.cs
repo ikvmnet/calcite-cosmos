@@ -70,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var columns = ProbeRows.Columns;
             var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
-            Truths On(PredicateAtom atom, PathCell cell) => atom.OnCell(cell, columns);
+            Truths On(PredicateAtom atom, PathCell cell) => atom.OnCell(cell, columns, ProbeRows.ReaderRows);
             PathCell thirty = new PathCell.Point(Of(30m)), yes = new PathCell.Point(Of(true));
 
             On(PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")), new PathCell.Point(Of("b"))).Should().Be(T);
@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AColumnsReadingReadsItsColumnAlone()
         {
             var columns = ProbeRows.Columns;
-            Truths On(PredicateAtom atom, PathCell cell) => atom.OnCell(cell, columns);
+            Truths On(PredicateAtom atom, PathCell cell) => atom.OnCell(cell, columns, ProbeRows.ReaderRows);
             string Raw(string column) => PredicateAtom.RawIn(column);
             string Cast(string column) => PredicateAtom.CastReader("VARCHAR", Raw(column));
             PathCell thirty = new PathCell.Point(Of(30m)), b = new PathCell.Point(Of("b"));
@@ -122,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var theory = RenderingTheory.Define(ProbeRows.Measured with { Columns = RawColumnRows.None });
             var empty = theory.Theory.Get(theory.RawUnion.Of());
             empty.Should().Be(RawTruths.Empty);
-            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty).Should().Be(T | F | U | R);
+            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty, ReadingTable.Empty).Should().Be(T | F | U | R);
             GC.KeepAlive(theory);
         }
 

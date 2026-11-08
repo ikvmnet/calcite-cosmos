@@ -45,6 +45,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             (CosmosValueClass.Object, ObjectType), (CosmosValueClass.Array, ArrayType), (CosmosValueClass.Null, NullType),
         ];
 
+        /// <summary>
+        /// The JSON kinds of each class of value, as the facts graph's paths hold them: a number an integer or a fraction, a
+        /// boolean of either truth a boolean, an absent path its own.
+        /// </summary>
+        public static IReadOnlyList<(CosmosValueClass Class, string Kind)> JsonKinds { get; } =
+        [
+            (CosmosValueClass.String, StringType), (CosmosValueClass.Number, IntegerType), (CosmosValueClass.Number, FractionType), (CosmosValueClass.True, BooleanType),
+            (CosmosValueClass.False, BooleanType), (CosmosValueClass.Object, ObjectType), (CosmosValueClass.Array, ArrayType), (CosmosValueClass.Null, NullType),
+            (CosmosValueClass.Absent, PathValues.AbsentKind),
+        ];
+
+        /// <summary>
+        /// Each one-place test's rows as the vocabulary's type-test rule reads them (G7): its name in the service's SQL beside
+        /// each JSON kind of each class it is true of; a connective, which the service spells by no name, has none.
+        /// </summary>
+        public static IReadOnlyList<(string Test, string Kind)> TypeTests(IEnumerable<(CosmosServiceTest Test, CosmosValueClass Kind)> rows) =>
+            [.. (from row in rows let name = ServiceForm.SpellingOf(row.Test) where name is not null from kind in JsonKinds where kind.Class == row.Kind select (name, kind.Kind)).Distinct()];
+
         /// <summary>The class of a truth value of the IR as its literal spells it: <c>true</c>, <c>false</c>, and any other undefined.</summary>
         public static CosmosValueClass OfTruth(string truth) => truth switch
         {

@@ -42,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
             var cuts = CutPoints.Of(Atom, form, ReaderEdgesTable.Rows[PredicateAtom.TextReader]);
-            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None));
+            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None), ProbeRows.ReaderRows);
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);
@@ -62,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (guarded.Cells.Count, bare.Cells.Count).Should().Be((11, 11));
             guarded.Rows.Concat(bare.Rows).Should().NotContain(row => row.StartsWith("missing:"), "the probe's rows hold every key the two forms read");
-            guarded.Rows.Should().Contain(Atom.Rests);
+            guarded.Rows.Should().Contain(Atom.RestsOn(ProbeRows.ReaderRows));
         }
 
         [Fact]
@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var cells = PathCell.Split(Label, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands, ValueSet<CutPoint>.Empty);
             var vector = new OutcomeVector(cells, cells.Cells.Select(_ => new CellOutcome(t | f | E, CosmosValueClass.Number)).ToList(), ValueSet<string>.Empty);
-            var outcomes = CellOutcomes.Of(Atom, ProbeRows.Columns, vector);
+            var outcomes = CellOutcomes.Of(Atom, ProbeRows.Columns, vector, ProbeRows.ReaderRows);
             outcomes.Classes.Should().OnlyContain(k => k.NonBoolean && k.Service == (t | f | E));
             outcomes.Classes.AsEnumerable().Select(AnswerMeanings.Measured.Read).Should().OnlyContain(k => k.NonBoolean == false && k.Service == (t | u | E));
         }

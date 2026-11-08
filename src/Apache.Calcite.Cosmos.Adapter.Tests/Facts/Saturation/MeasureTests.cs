@@ -25,7 +25,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class MeasureTests
     {
 
-        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         /// <summary>The figures, written beside the test assembly as <c>measure.txt</c>: the runner keeps a passing test's output.</summary>
         static void Report(string line)

@@ -56,27 +56,27 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
-        /// <param name="stored">What the service stores of a string written in a class, its measured rows, which each
-        /// generation's root holds (<see cref="JsonContexts"/>).</param>
+        /// <param name="rows">The measured rows each generation's root holds (<see cref="JsonContexts"/>): what the service
+        /// stores of a string written in a class, and what each type test is TRUE of.</param>
         /// <param name="internedLimit">How many values a generation interns before it is retired.</param>
         /// <param name="usedLimit">The share of its graph's ids or epochs a generation uses before it is retired.</param>
-        public JsonFactGenerations(IReadOnlyCollection<JsonClassMap> stored, long internedLimit = DefaultInternedLimit, double usedLimit = DefaultUsedLimit)
+        public JsonFactGenerations(JsonRows rows, long internedLimit = DefaultInternedLimit, double usedLimit = DefaultUsedLimit)
         {
-            ArgumentNullException.ThrowIfNull(stored);
+            ArgumentNullException.ThrowIfNull(rows);
             if (internedLimit < 1)
                 throw new ArgumentOutOfRangeException(nameof(internedLimit));
             if (usedLimit is not (> 0 and <= 1))
                 throw new ArgumentOutOfRangeException(nameof(usedLimit));
 
-            Stored = stored;
+            Rows = rows;
             _internedLimit = internedLimit;
             _usedLimit = usedLimit;
         }
 
         /// <summary>
-        /// Gets what the service stores of a string written in a class: the rows each generation's root holds.
+        /// Gets the measured rows each generation's root holds.
         /// </summary>
-        public IReadOnlyCollection<JsonClassMap> Stored { get; }
+        public JsonRows Rows { get; }
 
         /// <summary>
         /// Gets how many generations have been started, for diagnostics and tests.
@@ -120,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 Owner = owner;
                 Number = number;
-                Contexts = new JsonContexts(owner.Stored);
+                Contexts = new JsonContexts(owner.Rows);
             }
 
             /// <summary>

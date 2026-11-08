@@ -124,7 +124,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public string? Pattern => Kind == ServiceFormKind.Affix ? AffixPattern.Of(Test, JsonValues.StringOf(Literal!)) : null;
 
         /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
-        public static string NameOf(CosmosServiceTest test) => test switch
+        public static string NameOf(CosmosServiceTest test) => SpellingOf(test) ?? throw new ArgumentOutOfRangeException(nameof(test), test, null);
+
+        /// <summary>A test's name in the service's SQL; <c>null</c> for one the service spells by no name: a comparison or a connective.</summary>
+        public static string? SpellingOf(CosmosServiceTest test) => test switch
         {
             CosmosServiceTest.IsDefined => "IS_DEFINED",
             CosmosServiceTest.IsNull => "IS_NULL",
@@ -137,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosServiceTest.StartsWith => "STARTSWITH",
             CosmosServiceTest.EndsWith => "ENDSWITH",
             CosmosServiceTest.Contains => "CONTAINS",
-            _ => throw new ArgumentOutOfRangeException(nameof(test), test, null),
+            _ => null,
         };
 
         /// <summary>A comparison's operator in the service's SQL, which a form's text and the printer both spell it by.</summary>

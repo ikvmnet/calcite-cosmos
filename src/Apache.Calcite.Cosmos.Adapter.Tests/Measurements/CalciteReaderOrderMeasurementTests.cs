@@ -54,7 +54,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// A computed text place and a <c>VARCHAR</c> or <c>CHAR</c> value compare as the strings they hold, by UTF-16 unit as
         /// the accessor's text does (<c>Calcite.TextOrderIsByCodeUnit</c>): U+E000 and U+FFFD above U+1F600, <c>B</c> below
-        /// <c>B </c>, nothing padded.
+        /// <c>B </c>, nothing padded. Each is null over a stored null and an absent path, as the accessor is, so S reads
+        /// it as the accessor over the classes its rows name (G7).
         /// </summary>
         [Fact, CosmosPins("Calcite.TextPlacesCompareAsTheirStrings")]
         public void ATextPlaceComparesAsTheStringItHolds()
@@ -78,6 +79,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 {
                     ("{}", new string?[] { "\"\\uE000\"", "\"\\uD83D\\uDE00\"" }), ("{}", new string?[] { "\"B\"", "\"B \"" }), ("{}", new string?[] { "\"30\"", "\"BIKES\"" }),
                 }).Ask(connection, "\"a\" < \"b\"", "\"a\" = \"b\"", "\"a\" > \"b\"").Should().Equal(["FTT", "FFF", "TFF"], type.getName());
+
+            // A stored null and an absent path are null to each: TRUE to IS NULL and UNKNOWN to a comparison.
+            var nothing = MaterialisedTable.Of(new[] { "{\"a\":null,\"b\":\"B\"}", "{\"b\":\"B\"}" });
+            foreach (var reading in new Func<string, string>[] { p => $"UPPER({Text(p)})", p => $"SUBSTRING({Text(p)} FROM 1)" })
+                nothing.Ask(connection, $"{reading("a")} IS NULL", $"{reading("a")} = {reading("b")}", $"{reading("a")} < {reading("b")}").Should().Equal(["TT", "UU", "UU"], reading("v"));
+
+            foreach (var type in new[] { SqlTypeName.CHAR, SqlTypeName.VARCHAR })
+                new MaterialisedTable([("a", type), ("b", type)], new[] { ("{}", new string?[] { "null", "\"B\"" }), ("{}", new string?[] { null, "\"B\"" }) })
+                    .Ask(connection, "\"a\" IS NULL", "\"a\" = \"b\"", "\"a\" < \"b\"").Should().Equal(["TT", "UU", "UU"], type.getName());
         }
 
         /// <summary>

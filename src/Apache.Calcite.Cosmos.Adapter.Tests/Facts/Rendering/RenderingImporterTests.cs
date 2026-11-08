@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheImportEqualsTheNodesPossible()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var (held, narrowed, mentioned) = (0, 0, 0);
 
             void Compare(CosmosStatementScope scope, int conjunct)
@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ASecondImportOfOnePathThrows()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Declaration(generations);
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { Eq(Text(P("a")), "x") }));
             var (d0, rules) = scope.ContextFor(OracleLicence.RenderConjunct(0));
@@ -128,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 FluentActions.Invoking(() => RenderingImporter.Import(bundle, Source with { Round = 2 }, null, null, null, [KindPath])).Should().Throw<InvalidOperationException>();
             }
 
-            var theory = Declaration(new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue));
+            var theory = Declaration(new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue));
             var declaration = theory.Declaration()!;
             var rules = PredicateRules.Of(declaration.Generation.Contexts);
             using var twice = ProbeTheory.Open(RenderingCheckRun.AssertedSet);
@@ -178,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ADefaultedPathIsOpenOrConstrainedAsTheDeclarationSays()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Declaration(generations);
             var paths = new[] { P("a"), P("o", "b"), P("x"), P("x", "y"), P("c"), P("c", "d") };
             var statement = new PredicateStatement(paths.Select(p => new SqlPredicate.IsDefined(Raw(p))).ToArray());

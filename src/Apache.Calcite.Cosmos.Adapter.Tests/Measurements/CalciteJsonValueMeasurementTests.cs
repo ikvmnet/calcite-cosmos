@@ -634,6 +634,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 answer => answer.Value == null && answer.Threw == null, "a JSON null is null");
             Ask("CAST(JSON_VALUE('{}', '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
                 answer => answer.Value == null && answer.Threw == null, "and so is an absent path");
+            foreach (var structure in new[] { "{\"a\":true}", "[true]" })
+                Ask($"CAST(JSON_VALUE({Document(structure)}, '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                    answer => answer.Value == null && answer.Threw == null, "and an object and an array, which the accessor reads as null");
 
             // What a declaration rules out.
             Ask($"CAST(JSON_VALUE({Document("\"TRUE\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "a string spelling a boolean is parsed, in any case");

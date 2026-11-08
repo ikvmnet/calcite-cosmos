@@ -100,7 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         internal static Tally Run(int trials, IReadOnlyList<RenderingTheory> theories, IReadOnlyList<RenderingSet> sets)
         {
-            var (tally, generations, clock) = (new Tally(), new JsonFactGenerations(CosmosReasoning.Stored), Stopwatch.StartNew());
+            var (tally, generations, clock) = (new Tally(), new JsonFactGenerations(CosmosReasoning.Rows), Stopwatch.StartNew());
             for (var trial = 0; trial < trials; trial++)
             {
                 var seed = PredicateSoundnessTests.Seed + trial;

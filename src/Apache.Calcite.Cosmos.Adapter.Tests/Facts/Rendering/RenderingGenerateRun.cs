@@ -57,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             (_graph, _sets, ReadExactly, RenderedFrom, Signature) = (graph ?? RenderingCheckRun.Measured, [.. sets ?? Sets], readExactly, renderedFrom, signature);
             Oracle = new RenderingOracle(_graph, remembered: 1 << 20, wait: Timeout.InfiniteTimeSpan);
-            Reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), Oracle, this);
+            Reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Rows), Oracle, this);
         }
 
         /// <summary>The run's schema's oracle, over the run's graph: one bundle code path, production's.</summary>

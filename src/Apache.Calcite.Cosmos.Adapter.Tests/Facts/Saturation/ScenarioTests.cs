@@ -21,7 +21,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class ScenarioTests
     {
 
-        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         /// <summary>Opens a context holding the facts, mentioning the predicate's path, and decides the predicate.</summary>
         static Truth Decide(JsonAtom atom, params JsonFact[] facts)

@@ -62,18 +62,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         public const string LikeTest = "LIKE";
 
-        /// <summary>The kinds each type test is TRUE of, absence never (<c>Calcite.TypeTestsAreTheirBodies</c>), by its name.</summary>
-        public static readonly IReadOnlyDictionary<string, ValueSet<string>> TypeTests = new Dictionary<string, ValueSet<string>>(StringComparer.Ordinal)
-        {
-            ["IS_NULL"] = ValueSet.Of(NullType),
-            ["IS_STRING"] = ValueSet.Of(StringType),
-            ["IS_NUMBER"] = Numbers,
-            ["IS_BOOL"] = ValueSet.Of(BooleanType),
-            ["IS_OBJECT"] = ValueSet.Of(ObjectType),
-            ["IS_ARRAY"] = ValueSet.Of(ArrayType),
-            ["IS_PRIMITIVE"] = Scalars,
-        };
-
         public const string TextReader = "text";
         public const string RawReader = "raw";
 
@@ -179,9 +167,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// A type test of the path the reader reads: what it asks is the document's kind, whatever the reading, as
-        /// <see cref="IsDefined"/>'s is.
+        /// <see cref="IsDefined"/>'s is; TRUE of the kinds its row says (<c>testkinds</c>, G7), absence never.
         /// </summary>
-        public static PredicateAtom TypeTest(string reader, string test) => new(reader, test, null, null, false);
+        public static PredicateAtom TypeTest(string reader, string test, ValueSet<string> kinds) => new(reader, test, null, null, false) { Kinds = kinds };
+
+        /// <summary>The JSON kinds a type test is TRUE of, as its row says (<c>Calcite.TypeTestsAreTheirBodies</c>); none for every other atom.</summary>
+        public ValueSet<string>? Kinds { get; init; }
 
         /// <summary>
         /// A match of the text read against a literal pattern: <c>LIKE</c>, TRUE or FALSE where the reading is not null and
@@ -233,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Test == DefinedTest)
                 return truth ? PathValues.AnythingThere : PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind));
 
-            if (TypeTests.TryGetValue(Test, out var kinds))
+            if (Kinds is { } kinds)
                 return PathValues.OfKinds(truth ? kinds : ValueSet.From(PathValues.AllKinds.Except(kinds)));
 
             if (Reads is not Reading reading)
@@ -298,7 +289,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Test == DefinedTest)
                 return state is State.Absent ? Truths.False : state is State.Unknown ? Truths.True | Truths.False : Truths.True;
 
-            if (TypeTests.TryGetValue(Test, out var kinds))
+            if (Kinds is { } kinds)
                 return state switch
                 {
                     State.Absent => Truths.False,
@@ -338,18 +329,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// The truth values the atom may take on one cell of a path's import: <see cref="On"/>'s, through the reading's cell
-        /// methods. The rendering check's Calcite side, which the facts graph never reads (<c>DESIGN.md</c>).
+        /// methods. The rendering check's Calcite side, which the facts graph never reads (<c>DESIGN.md</c>). The reading is
+        /// evaluated as S's rows say (<paramref name="readings"/>, G7): as itself, or as the reading they say it is read as
+        /// over the classes they name, and anything and a raise over any other; <c>LIKE</c> where they read a string as
+        /// itself.
         /// </summary>
-        internal Truths OnCell(PathCell cell, RawTruths columns)
+        internal Truths OnCell(PathCell cell, RawTruths columns, ReadingTable readings)
         {
             if (Against is not null)
-                return cell is PathCell.Pair pair ? OnPair(pair, columns) : Truths.Any;
+                return cell is PathCell.Pair pair ? OnPair(pair, columns, readings) : Truths.Any;
 
-            if (Test == DefinedTest || TypeTests.ContainsKey(Test) || Reads is not Reading reading || cell is PathCell.Unknown)
+            var rows = readings[Reader];
+            if (Test == DefinedTest || Kinds is not null || Evaluator(Reader, rows) is not Reading reading || cell is PathCell.Unknown)
                 return On(cell.Coarse);
 
+            if (Covers(rows, cell) == false)
+                return Truths.Any | Truths.Raises;
+
             if (Test == LikeTest)
-                return MatchesText || IsRaw(Reader) || Reader is "typed:VARCHAR" ? LikeOn(cell, reading.NullOn(cell, columns)) : Truths.Any;
+                return rows.ReadsAs(CosmosValueClass.String, CalciteRead.Itself) ? LikeOn(cell, reading.NullOn(cell, columns), rows) : Truths.Any;
 
             // A comparison with a parameter reads the value as the null test does: it raises where that read does, and is
             // anything where that read finds a value.
@@ -380,10 +378,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// holds equal and its order holds that equal values read so compare equal (<see cref="LeftOrders"/>,
         /// <see cref="RightOrders"/>, which S's rows say, G3); TRUE or FALSE otherwise.
         /// </summary>
-        Truths OnPair(PathCell.Pair pair, RawTruths columns)
+        Truths OnPair(PathCell.Pair pair, RawTruths columns, ReadingTable readings)
         {
-            if (Parsed.GetOrAdd(Reader, Reading.Parse) is not Reading left || Parsed.GetOrAdd(Against!, Reading.Parse) is not Reading right || pair.Left is PathCell.Unknown || pair.Right is PathCell.Unknown)
+            var (lr, rr) = (readings[Reader], readings[Against!]);
+            if (Evaluator(Reader, lr) is not Reading left || Evaluator(Against!, rr) is not Reading right || pair.Left is PathCell.Unknown || pair.Right is PathCell.Unknown)
                 return Truths.Any;
+
+            if (Covers(lr, pair.Left) == false || Covers(rr, pair.Right) == false)
+                return Truths.Any | Truths.Raises;
 
             var (l, r) = (left.NullOn(pair.Left, columns), right.NullOn(pair.Right, columns));
             var truths = ((l | r) & Truths.Raises) | (((l | r) & Truths.True) != 0 ? Truths.Unknown : 0);
@@ -408,10 +410,22 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             _ => order >= 0,
         }) ? Truths.True : Truths.False;
 
-        /// <summary>The <c>Calcite.*</c> rows the reading's answers on a cell rest on: a comparison of two readings, both's.</summary>
-        internal ValueSet<string> Rests => TypeTests.ContainsKey(Test) ? ValueSet.Of("Calcite.TypeTestsAreTheirBodies")
-            : Against is not null ? (Parsed.GetOrAdd(Reader, Reading.Parse)?.Rests ?? ValueSet<string>.Empty).Union(Parsed.GetOrAdd(Against, Reading.Parse)?.Rests ?? ValueSet<string>.Empty)
-            : Test != DefinedTest && Reads is Reading reading ? reading.Rests : ValueSet<string>.Empty;
+        /// <summary>
+        /// The <c>Calcite.*</c> rows the reading's answers on a cell rest on, the reading evaluated as S's rows say: a
+        /// comparison of two readings, both's.
+        /// </summary>
+        internal ValueSet<string> RestsOn(ReadingTable readings) => Kinds is not null ? ValueSet.Of("Calcite.TypeTestsAreTheirBodies")
+            : Against is not null ? (Evaluator(Reader, readings[Reader])?.Rests ?? ValueSet<string>.Empty).Union(Evaluator(Against, readings[Against])?.Rests ?? ValueSet<string>.Empty)
+            : Test != DefinedTest && Evaluator(Reader, readings[Reader]) is Reading reading ? reading.Rests : ValueSet<string>.Empty;
+
+        /// <summary>
+        /// The reading a reader is evaluated by on a cell: the one S's rows say it is read as, or its own, with the rows S
+        /// hands it (G7).
+        /// </summary>
+        static Reading? Evaluator(string reader, ReadingRows rows) => Parsed.GetOrAdd(rows.As ?? reader, Reading.Parse)?.With(rows);
+
+        /// <summary>Whether a reading read as another is read so on a cell: where its rows name the cell's class. A reading read as itself is everywhere.</summary>
+        static bool Covers(ReadingRows rows, PathCell cell) => rows.As is null || CosmosValueClasses.Of(cell) is { } kind && rows.Names(kind);
 
         /// <summary>Whether <c>LIKE</c> is asked of a reading that is text: the accessor's rendering, or a cast to text.</summary>
         bool MatchesText => Reader == TextReader || Reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal) || Reader.StartsWith("cast:CHAR:", StringComparison.Ordinal);
@@ -428,14 +442,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// <c>LIKE</c> on a cell, S's (h07): UNKNOWN where the null test finds null, raising where it raises, and where it
-        /// finds a value, the match. A string is read as itself by the accessor's rendering, a cast of it or of a raw value to
-        /// text, a raw value and a computed text place; a cell an affix cut by the pattern matches as cut, and every string
-        /// <c>%</c>. A boolean renders as <c>true</c> or <c>false</c> and a number in its grammar's units
-        /// (<see cref="Renderings.MayBeNumberUnit"/>) through the rendering and the cast of a raw value, so a pattern holding
-        /// another unit misses every number; a structure the cast of a raw value renders between its brackets
-        /// (<see cref="Renderings.MayRenderStructureLike"/>), the only reading that renders one. Anything else is either.
+        /// finds a value, the match. A string the reading's rows read as itself (G7) is matched; a cell an affix cut by the
+        /// pattern matches as cut, and every string <c>%</c>. A class the rows read as rendered is matched as its rendering:
+        /// a boolean as <c>true</c> or <c>false</c>, a number in its grammar's units (<see cref="Renderings.MayBeNumberUnit"/>),
+        /// so a pattern holding another unit misses every number, and a structure between its brackets
+        /// (<see cref="Renderings.MayRenderStructureLike"/>). Anything else is either.
         /// </summary>
-        Truths LikeOn(PathCell cell, Truths isNull)
+        Truths LikeOn(PathCell cell, Truths isNull, ReadingRows rows)
         {
             var truths = (isNull & Truths.Raises) | ((isNull & Truths.True) != 0 ? Truths.Unknown : 0);
             if ((isNull & Truths.False) == 0)
@@ -443,13 +456,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             var pattern = StringOf(Operand!);
             var canonical = AffixPattern.Canonical(pattern);
-            var renders = Reader is TextReader || Reader.StartsWith("cast:VARCHAR:", StringComparison.Ordinal);
-            var reads = renders || IsRaw(Reader) || Reader is "typed:VARCHAR";
+            var renders = CosmosValueClasses.Of(cell) is { } kind && rows.ReadsAs(kind, CalciteRead.Renders);
             static Truths Of(bool? match) => match is bool m ? m ? Truths.True : Truths.False : Truths.True | Truths.False;
             return truths | cell switch
             {
-                PathCell.Point { Value: var v } when reads && IsString(v) => Of(Like(StringOf(v), pattern)),
-                PathCell.Strings s when reads && canonical is not null => Of(AffixPattern.Universal(canonical) || s.Like?.Contains(canonical) == true ? true : s.NotLike?.Contains(canonical) == true ? false : null),
+                PathCell.Point { Value: var v } when IsString(v) => Of(Like(StringOf(v), pattern)),
+                PathCell.Strings s when canonical is not null => Of(AffixPattern.Universal(canonical) || s.Like?.Contains(canonical) == true ? true : s.NotLike?.Contains(canonical) == true ? false : null),
                 PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(Like(Renderings.BooleanText(v), pattern)),
                 PathCell.Point { Value: var v } when renders && IsNumber(v) && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
                 PathCell.Numbers when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
@@ -617,10 +629,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 if (IsRaw(reader))
                     return new Raw(reader);
 
-                // A computed text place (S's Valued) is read as the text it holds: its image holds strings alone, or none.
-                if (reader is "typed:VARCHAR" or "typed:CHAR")
-                    return new Text(structures: false);
-
                 if (reader.StartsWith("typed:", StringComparison.Ordinal))
                     return Typed.For(reader.Substring("typed:".Length));
 
@@ -641,7 +649,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         ("VARCHAR" or "CHAR", TextReader) => new Text(structures: false),
                         ("INTEGER" or "BIGINT" or "DOUBLE", _) when raw => new NumberCast(target, false),
                         ("INTEGER" or "BIGINT" or "DOUBLE", TextReader) => new NumberCast(target, true),
-                        ("BOOLEAN", TextReader) => new BooleanCast(),
+                        ("BOOLEAN", TextReader) => new BooleanCast(BooleanCast.Facts),
                         _ => null,
                     };
                 }
@@ -678,6 +686,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             /// <summary>The rows the cell methods rest on.</summary>
             public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
+
+            /// <summary>The reading as it reads S's rows of it (G7): itself, for a reading that reads none.</summary>
+            public virtual Reading With(ReadingRows rows) => this;
 
             // A reading's answers on a cell: by default, its answers on the state the cell lies in.
             public virtual Truths EqualOn(PathCell cell, string literal) => Equal(cell.Coarse, literal);
@@ -1200,28 +1211,60 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             /// <summary>
-            /// A cast of the text accessor to <c>BOOLEAN</c>, which parses the rendering (<c>Calcite.CastToBooleanParses</c>):
-            /// a stored boolean reads as itself, a null, an absent path and a structure as null, a string spelling a boolean as
-            /// that boolean, and anything else raises, a number among them.
+            /// A cast of the text accessor to <c>BOOLEAN</c>, which parses the rendering (<c>Calcite.CastToBooleanParses</c>),
+            /// as the reading's rows say (G7): each class read as itself, as null, as a raise or parsed, and a string's parse
+            /// decided only over the character classes its witnesses held; a class no row names is anything and a raise. The
+            /// parse itself, Java's trim and an ASCII-case compare with <c>true</c> and <c>false</c>, is the one evaluation.
             /// </summary>
             /// <remarks>
-            /// A string is decided only where it is ASCII: trimmed of every character up to U+0020, as Java's <c>String.trim</c>
-            /// trims, and read in any ASCII case, as measured (<c>IrEvalCalciteTests.TheCastOfTheTextToBooleanAgreesWithCalcite</c>);
+            /// A string is decided only within the classes measured: trimmed of every character up to U+0020, as Java's
+            /// <c>String.trim</c> trims, and read in any ASCII case (<c>IrEvalCalciteTests.TheCastOfTheTextToBooleanAgreesWithCalcite</c>);
             /// any other string may read as either boolean or raise, no case folding beyond ASCII having been measured but
-            /// <c>"falſe"</c>'s, which raises. A number's rendering spells no boolean, so it raises. A declaration that the
-            /// path holds a boolean is what leaves the cast the stored value.
+            /// <c>"falſe"</c>'s, which raises. A declaration that the path holds a boolean is what leaves the cast the stored value.
             /// </remarks>
-            sealed class BooleanCast : Reading
+            /// <param name="rows">S's rows of the reading, or the facts graph's copy of them (<see cref="Facts"/>).</param>
+            sealed class BooleanCast(ReadingRows rows) : Reading
             {
+
+                /// <summary>
+                /// The facts graph's reading of the cast, whose terms hold none until h15 (the loader reads it under
+                /// <c>places</c> alone): the row as the parent's evaluation read it, a copy F keeps until it reads S's rows
+                /// (<c>TODO.md</c>). S evaluates the cast by its own rows (<see cref="With"/>).
+                /// </summary>
+                public static readonly ReadingRows Facts = new(
+                    ValueSet.From(new[] { (CosmosValueClass.True, CalciteRead.Itself), (CosmosValueClass.False, CalciteRead.Itself), (CosmosValueClass.Null, CalciteRead.Null),
+                        (CosmosValueClass.Absent, CalciteRead.Null), (CosmosValueClass.Object, CalciteRead.Null), (CosmosValueClass.Array, CalciteRead.Null),
+                        (CosmosValueClass.String, CalciteRead.Parses), (CosmosValueClass.Number, CalciteRead.Raises) }.Select(r => new ClassRead(r.Item1, r.Item2))),
+                    ValueSet.Of(TrimmedClass, NulClass), null);
 
                 static readonly ValueSet<string> Parses = ValueSet.Of(BooleanType, StringType);
 
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.JsonValueReadsStructureAsNull", "Calcite.CastToBooleanParses");
 
+                /// <summary>The classes a stated set of measured classes holds, each with its refinements (<see cref="JsonValues.Closed"/>).</summary>
+                readonly ValueSet<string> _measured = ClassSet(Closed(ClassMask(rows.Bands)));
+
                 public override ValueSet<string> Rests => Rows;
 
-                /// <summary>The boolean a stored string parses as; <c>null</c> where it is not decided here.</summary>
-                static bool? Parsed(string text)
+                public override Reading With(ReadingRows rows) => new BooleanCast(rows);
+
+                /// <summary>The class a state is of; <c>null</c> for one of no one class.</summary>
+                static CosmosValueClass? ClassOf(State state) => state switch
+                {
+                    State.Absent => CosmosValueClass.Absent,
+                    State.Null => CosmosValueClass.Null,
+                    State.Structure { Type: var type } => CosmosValueClasses.OfKind(type),
+                    State.Scalar { Value: var v } => CosmosValueClasses.Of(v),
+                    State.AnyString => CosmosValueClass.String,
+                    State.AnyNumber => CosmosValueClass.Number,
+                    _ => null,
+                };
+
+                /// <summary>What the rows read a state's class as; none where no row names it.</summary>
+                ValueSet<string> Answers(State state) => ClassOf(state) is { } kind ? rows.AnswersOf(kind) : ValueSet<string>.Empty;
+
+                /// <summary>The boolean a stored string parses as; <c>null</c> where it spells none, or is not decided here.</summary>
+                bool? Parsed(string text)
                 {
                     if (Decided(text) == false)
                         return null;
@@ -1230,22 +1273,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     return string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase) ? true : string.Equals(trimmed, "false", StringComparison.OrdinalIgnoreCase) ? false : null;
                 }
 
-                /// <summary>Whether a stored string is decided to raise: ASCII, and spelling no boolean however trimmed and cased.</summary>
-                static bool Raises(string text) => Decided(text) && Parsed(text) is null;
+                /// <summary>Whether a stored string is decided to raise: within the classes measured, and spelling no boolean however trimmed and cased.</summary>
+                bool Raises(string text) => Decided(text) && Parsed(text) is null;
 
-                static bool Decided(string text) => text.All(c => c <= '\u007F');
+                /// <summary>Whether a string's parse was measured over every class its characters are in.</summary>
+                bool Decided(string text) => BandsOfText(text).AsEnumerable().All(_measured.Contains);
 
-                /// <summary>What a test of the value read answers on a state: of a boolean read, by <paramref name="boolean"/>; UNKNOWN of null; a raise.</summary>
-                static Truths Read(State state, Func<bool, Truths> boolean) => state switch
+                /// <summary>
+                /// What a test of the value read answers on a state, by what the rows read its class as: of a boolean read as
+                /// itself, by <paramref name="boolean"/>; UNKNOWN of null; a raise; a string's parse; anything and a raise of a
+                /// class no row names.
+                /// </summary>
+                Truths Read(State state, Func<bool, Truths> boolean)
                 {
-                    State.Absent or State.Null or State.Structure => U,
-                    State.Scalar { Value: var v } when TypeOf(v) == BooleanType => boolean(v == Of(true)),
-                    State.Scalar { Value: var v } when IsString(v) => Parsed(StringOf(v)) is bool b ? boolean(b) : Raises(StringOf(v)) ? R : boolean(true) | boolean(false) | R,
-                    State.Scalar { Value: var v } when IsNumber(v) => R,
-                    State.AnyNumber => R,
-                    State.AnyString => boolean(true) | boolean(false) | R,
-                    _ => Truths.Any | R,
-                };
+                    var answers = Answers(state);
+                    if (answers.Count == 0)
+                        return Truths.Any | R;
+
+                    var truths = Truths.None;
+                    foreach (var answer in answers.AsEnumerable())
+                        truths |= answer switch
+                        {
+                            CalciteRead.Null => U,
+                            CalciteRead.Raises => R,
+                            CalciteRead.Itself when state is State.Scalar { Value: var v } && TypeOf(v) == BooleanType => boolean(v == Of(true)),
+                            CalciteRead.Parses when state is State.Scalar { Value: var v } && IsString(v) =>
+                                Parsed(StringOf(v)) is bool b ? boolean(b) : Raises(StringOf(v)) ? R : boolean(true) | boolean(false) | R,
+                            CalciteRead.Parses when state is State.AnyString => boolean(true) | boolean(false) | R,
+                            _ => Truths.Any | R,
+                        };
+
+                    return truths;
+                }
 
                 public override Truths Equal(State state, string literal) =>
                     TypeOf(literal) == BooleanType ? Read(state, b => b == (literal == Of(true)) ? T : F) : Truths.Any | R;
@@ -1253,19 +1312,31 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 // Calcite orders FALSE before TRUE; nothing finer is said of an ordering than that a boolean read gives one.
                 public override Truths Order(State state, string op, string literal) => TypeOf(literal) == BooleanType ? Read(state, _ => T | F) : Truths.Any | R;
 
-                // Calcite takes the null test of a cast to its operand's where it stands alone, and not always beside others.
-                public override Truths Null(State state) => state switch
+                // Calcite takes the null test of a cast to its operand's where it stands alone, and not always beside others:
+                // over a class read as a raise or parsed, the operand's FALSE beside the cast's raise.
+                public override Truths Null(State state)
                 {
-                    State.Absent or State.Null or State.Structure => T,
-                    State.Scalar { Value: var v } when TypeOf(v) == BooleanType => F,
-                    State.Scalar or State.AnyString or State.AnyNumber => F | R,
-                    _ => Truths.Any | R,
-                };
+                    var answers = Answers(state);
+                    if (answers.Count == 0)
+                        return Truths.Any | R;
+
+                    var truths = Truths.None;
+                    foreach (var answer in answers.AsEnumerable())
+                        truths |= answer switch
+                        {
+                            CalciteRead.Null => T,
+                            CalciteRead.Itself => F,
+                            CalciteRead.Raises or CalciteRead.Parses => F | R,
+                            _ => Truths.Any | R,
+                        };
+
+                    return truths;
+                }
 
                 // Over what is no boolean a cell reads the parameter as the null test does (OnCell), which is its operand's:
                 // nothing finer than anything.
                 public override Truths Parameter(State state) =>
-                    state is State.Scalar { Value: var v } && TypeOf(v) == BooleanType || state is State.Absent or State.Null or State.Structure ? Read(state, _ => T | F | U) : Truths.Any | R;
+                    Answers(state).AsEnumerable().ToList() is { Count: > 0 } answers && answers.All(a => a is CalciteRead.Itself or CalciteRead.Null) ? Read(state, _ => T | F | U) : Truths.Any | R;
 
                 public override PathValues KeptEqual(string literal) => TypeOf(literal) == BooleanType
                     ? PathValues.Join(PathValues.Meet(PathValues.OfKinds(ValueSet.Of(BooleanType)), PathValues.OneOf(ValueSet.Of(literal))), PathValues.OfKinds(ValueSet.Of(StringType)))

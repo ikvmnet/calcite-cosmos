@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>A reasoning whose S is defined from these rows, its build awaited, since the bridge asks it of each call (G6).</summary>
         static CosmosReasoning Built(RenderingDefinition rows)
         {
-            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), definition: rows);
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Rows), definition: rows);
             reasoning.Rendering.Ready.Wait();
             return reasoning;
         }

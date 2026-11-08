@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             // The columns the cells' union reads are what this measures.
             Cast("VARIANT").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Null, CosmosCalciteReading.Raises));
-            Cast("ANY").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Itself));
+            Cast("ANY").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Renders));
             Cast("VARCHAR").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Raises));
 
             // Each compares the text it renders, beside a string, every comparison compiling: the VARIANT's ordering too.

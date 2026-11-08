@@ -428,7 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A statement planned in a schema whose oracle is the one given, under <c>Production</c>: what it sends, and how to implement it again.</summary>
         static (string Query, Func<string> Implement) Written(RenderingOracle oracle, string sql)
         {
-            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Stored), oracle);
+            var reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Rows), oracle);
             var statement = RenderingInputs.Differential("g10", [sql], [.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(reasoning))]).Single();
             var planned = statement.Plan();
 
@@ -449,7 +449,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G11_AConjunctReadBeneathItsOwnStratumIsFoundByLineOne()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var declaration = Theory(Outright(LabelPath, Present)).In(generations);
             var conjunct = Ne(Text(LabelPath), "bikes");
             var handed = new List<(StatementTerms.Node Node, PredicateRules Rules)>();
@@ -550,7 +550,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G14_ACompositeWhoseLaterArmFailsOnItsSetAsideCellsIsNotAdmitted()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var declaration = Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))).In(generations);
             var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
             var scope = new CosmosOracle(declaration, generations).Admit(new PredicateStatement([kind, label]),

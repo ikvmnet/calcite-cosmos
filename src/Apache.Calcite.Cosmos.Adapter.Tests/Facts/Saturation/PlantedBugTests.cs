@@ -135,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AStratumAdmittingAConjunctWithItsOwnFactsIsCaught()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows);
             Caught(theory => new CosmosOracle(theory, generations) { RenderedFrom = (terms, stratum, conjunct) => terms.Child(stratum, new[] { conjunct }) });
         }
 
@@ -147,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AGuardedCharactersClaimReadOfEveryKindIsCaught()
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows);
             Caught(theory => new CosmosOracle(new JsonFactTheory(theory.Rules.Select(rule =>
                 rule.Head.Claim is JsonClaim.Characters ? JsonFactRule.Unconditional(rule.Head) : rule)), generations), "fact");
         }
@@ -344,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static Func<JsonFactTheory, CosmosOracle> Planted(Action<PredicateRules> plant)
         {
-            var generations = new JsonFactGenerations(CosmosReasoning.Stored, long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             plant(PredicateRules.Of(generations.Current.Contexts));
             return theory => new CosmosOracle(theory, generations);
         }

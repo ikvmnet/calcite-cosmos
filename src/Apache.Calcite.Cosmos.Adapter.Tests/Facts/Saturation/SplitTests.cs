@@ -22,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class SplitTests
     {
 
-        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         static JsonFact.OneOf Is(JsonPathSpec path, params string[] values) => new(path, ValueSet.From(values.Select(Of)));
 

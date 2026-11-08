@@ -240,10 +240,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
-            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(14).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(22).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
                 .And.Contain((PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself)).And.Contain((PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders))
                 .And.Contain((PredicateAtom.TextReader, Class.Absent, CosmosCalciteReading.Null))
-                .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises));
+                .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises))
+                .And.Contain((parse, Class.Object, CosmosCalciteReading.Null)).And.Contain((PredicateAtom.TypedReader("VARCHAR"), Class.String, CosmosCalciteReading.Itself))
+                .And.Contain((PredicateAtom.TypedReader("CHAR"), Class.Absent, CosmosCalciteReading.Null));
             CosmosAxiomRows.ReadCalciteBands(all).Should().BeEquivalentTo(new[] { (parse, Class.String, JsonValues.TrimmedClass), (parse, Class.String, JsonValues.NulClass) });
             CosmosAxiomRows.ReadCasts(all).Should().HaveCount(5).And.Contain(("BOOLEAN", PredicateAtom.TextReader, "Calcite.CastToBooleanParses"))
                 .And.Contain(("DOUBLE", PredicateAtom.TextReader, "Calcite.CastOfTheAccessorParsesTheRendering")).And.Contain(("VARCHAR", PredicateAtom.RawReader, "Calcite.CastOfARawValueToText"));

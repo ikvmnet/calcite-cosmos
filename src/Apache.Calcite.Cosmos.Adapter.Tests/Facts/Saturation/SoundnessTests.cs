@@ -28,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class SoundnessTests
     {
 
-        static readonly JsonContexts Contexts = new(CosmosReasoning.Stored);
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         static readonly JsonPathSpec[] Concrete =
             new[]

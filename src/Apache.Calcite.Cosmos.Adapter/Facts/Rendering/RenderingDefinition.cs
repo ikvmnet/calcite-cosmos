@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, RawTruths, OutcomeVector, CellOutcomes> Pair,
+        Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> Pair,
         IReadOnlyList<(TemplateId, RenderPosition)> Templates, IReadOnlyList<(TemplateId, string Shape)> Fits,
         IReadOnlyList<(string Name, bool Strict)> StrictOperators, IReadOnlyList<string> StrictReaders)
     {
@@ -176,10 +176,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The functions that answer a structure alone (<c>CosmosAxiomRows.ReadStructureOnly</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<string> StructureOnly { get; init; } = [];
 
-        /// <summary>What a reading answers over each kind of stored value in process (<c>CosmosAxiomRows.ReadCalciteReadings</c>, F3); no rule reads it yet (G7).</summary>
+        /// <summary>What a reading answers over each kind of stored value in process (<c>CosmosAxiomRows.ReadCalciteReadings</c>, F3): S's readings (G7).</summary>
         public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> CalciteReadings { get; init; } = [];
 
-        /// <summary>The character classes a reading's witnesses of a kind held (<c>CosmosAxiomRows.ReadCalciteBands</c>, F3); no rule reads it yet (G7).</summary>
+        /// <summary>The character classes a reading's witnesses of a kind held (<c>CosmosAxiomRows.ReadCalciteBands</c>, F3): what S's readings decide a parse over (G7).</summary>
         public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> CalciteBands { get; init; } = [];
 
         /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
@@ -205,7 +205,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(string Reader, string Kind)> ReaderKinds { get; init; } = [];
 
-        /// <summary>The classes each one-place test is true of in process (<c>CosmosAxiomRows.ReadTestKinds</c>, F3); no rule reads it yet (G7).</summary>
+        /// <summary>
+        /// The classes each one-place test is true of in process (<c>CosmosAxiomRows.ReadTestKinds</c>, F3), which S's root holds
+        /// as each type test's JSON kinds by its name (<see cref="CosmosValueClasses.TypeTests"/>), the vocabulary's to read (G7).
+        /// </summary>
         public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind)> TestKinds { get; init; } = [];
 
         /// <summary>
