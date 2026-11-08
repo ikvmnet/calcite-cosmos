@@ -3121,20 +3121,22 @@ across documents* and *A join of a container to itself* is the record.
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
-- **`Structure` moves at h15, as a reading of its own** — *h15's; built and held back by G8's fix.* `JSON_QUERY` of a
+- **`Structure` moves at h15, as a reading of its own** — *h15's; built by G8's fix, and no refactor.* `JSON_QUERY` of a
   path under a null test is read as the type tests of the path by `CosmosPredicateLoader.Structure`, a branch standing
-  for `Calcite.JsonQueryAnswersStructureOnly` (`structureonly`, which no rule reads). It moves without a merge: the
-  `JSON_QUERY` a reader of its own, `query(path)` in the shared vocabulary with its test read as the raw value
-  (`testreads(query, raw)`), so F gains it with places; the row's answers its `calcitereads` (an object and an array
-  rendered, every other class null) in place of `structureonly`, read by a reading only rows define; and the structure
-  test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))`, its own template at both positions, the only one asked of it. G8's fix
-  built it whole, and it is no refactor: the digests are byte-equal (no places in them), but it moves four census rows,
-  `coverage-FG.tsv` lines 62 and 222 (`IS NOT NULL(JSON_QUERY(label))`, differential/249, Emulator and Production) and
-  102 and 274 (`IS NULL`, differential/248), each from `pos` and `neg` Unproven to Proven, `portable pos` likewise and
-  the reason from "S's own form; the text Unproven" to "the text and S's own form", beside its `ir`; every best form is
-  unchanged. The patch, which applies on G8's fix, is kept beside the step's notes
-  (`.claude/handoff/reports/stage3-3A/g8fix1/structure-h15.diff`); h15's task carries
-  the same instruction, to move it as a reading of its own and record the four rows.
+  for `Calcite.JsonQueryAnswersStructureOnly`. Its form is chosen: `JSON_QUERY` with no clause is a reader of its own,
+  `query(path)` in the shared vocabulary beside the test-read rules, its test read as the raw value
+  (`testreads(query, raw)`), so F gains it when it reads places at h15; its template, the only one asked of it, writes
+  the structure test under the null test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))` for `IS NULL`; and the gate proves that
+  form from the row as it proves any form, from the reading's rows, the row's `structureonly` stated as the `query`
+  reading's `calcitereads` (an object and an array rendered, every other class null). Not an alias the atom rules read
+  through, and never a rewrite, which S's tripwire refuses; F's half stays behind places until h15. Built so it is no
+  refactor. No digest line moves, the digests reading no places. The census moves four rows of `coverage-FG.tsv`,
+  lines 62 and 222 (`IS NOT NULL(JSON_QUERY(label))`, differential/249, Emulator and Production) and 102 and 274
+  (`IS NULL`, differential/248): `pos`, `neg` and `portable pos` each Unproven to Proven, the reason from "S's own
+  form; the text Unproven" to "the text and S's own form" and the `ir` with them, every best form unchanged. The
+  patch is that form and applies on G8's second fix (`.claude/handoff/reports/stage3-3A/g8fix1/structure-h15.diff`);
+  its arm in `RenderingFamily.Owns`, which keeps the null test the translator's as the type tests were, goes with
+  `Owns` at h15 (G10). h15's task carries the same instruction.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
@@ -3163,7 +3165,8 @@ across documents* and *A join of a container to itself* is the record.
   (`Cast`, `TryNumericCastOperand`, the `RETURNING DECIMAL` arm), which stand for `measuredcast`'s rows. Each changes F's
   terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15; both
   move with h15's switch, the guards to an element reading S's cells read and the casts to the cast rule reading
-  `measuredcast`.
+  `measuredcast`. This entry is all that carries them: the audit's plan lists neither before h15 (§3, item 5), and
+  h15's task names `Structure` alone of G8's sites.
 - **A comparison with SQL's null is read by S alone** — *h15's.* Where places are read the loader writes a null literal
   as `null(type)` and S's rule reads a comparison with it by an operator its `strictop` row says is null over a null
   operand as UNKNOWN wherever its reading is read (G8). F's root holds no `strictop`, so F reads it as the loader did,
