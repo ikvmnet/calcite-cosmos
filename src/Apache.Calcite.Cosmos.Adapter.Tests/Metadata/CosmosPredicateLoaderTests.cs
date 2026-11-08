@@ -192,7 +192,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Which.Should().Be(Cmp(text, "<", bikes), "whether a VARIANT's order reads what it holds is the row's to say, and it says not");
             LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeLiteral(true), false))).Conjuncts.Should().ContainSingle()
                 .Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("BOOLEAN", Lit(true))));
-            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeDynamicParam(Sql(SqlTypeName.VARCHAR), 0)))).Conjuncts
+            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeDynamicParam(Sql(SqlTypeName.VARCHAR), 0), false))).Conjuncts
                 .Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("VARCHAR", new SqlValue.Parameter(0, "VARCHAR"))),
                     "a box is a comparand whatever it holds, what it equals the box rules' to say");
             Load(equal).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
