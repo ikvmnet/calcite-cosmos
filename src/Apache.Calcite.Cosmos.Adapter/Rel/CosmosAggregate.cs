@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using Apache.Calcite.Cosmos.Adapter.Internal;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -97,20 +96,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var arguments = call.getArgList();
 
-            switch (JavaEnums.Of(call.getAggregation().getKind()))
+            switch (call.getAggregation().getKind().name())
             {
-                case SqlKind.__Enum.COUNT:
+                case nameof(SqlKind.__Enum.COUNT):
                     // COUNT(*) counts rows and agrees with SQL. COUNT(x) does not: Cosmos counts
                     // the JSON null where SQL excludes it. Admitting COUNT(x) over a non-nullable
                     // column — the value aggregates' reasoning — was probed and is dead code:
                     // Calcite rewrites that COUNT(x) to COUNT(*) before any rule sees it.
                     return arguments.size() == 0;
 
-                case SqlKind.__Enum.SUM:
+                case nameof(SqlKind.__Enum.SUM):
                     return arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
 
-                case SqlKind.__Enum.MIN:
-                case SqlKind.__Enum.MAX:
+                case nameof(SqlKind.__Enum.MIN):
+                case nameof(SqlKind.__Enum.MAX):
                     // An extreme is an order the service computes, and pushes where the order is Calcite's and the two
                     // skip the same values: asked once, of the facts the rows aggregated satisfy. See
                     // CosmosServiceOrder.Extreme, and ExtremeOf for the operand. One proved only around anchors is
@@ -118,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     return ExtremeVerdict(call, inputRowType, fields, readings, facts, CosmosRendering.SetFor(target)) is { } verdict
                         && (verdict.IsProved || verdict.IsAnchored && grouped == false);
 
-                case SqlKind.__Enum.AVG:
+                case nameof(SqlKind.__Enum.AVG):
                     // Cosmos AVG returns the exact mean; Calcite types an integer AVG as an integer
                     // with truncating division. The fraction cannot be materialized as the declared
                     // type — found by the differential suite, a fractional mean of _ts failing to
@@ -229,7 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         static CosmosOrderVerdict? ExtremeVerdict(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, Facts.Rendering.RenderingSet set)
         {
             var arguments = call.getArgList();
-            if (JavaEnums.Of(call.getAggregation().getKind()) is not (SqlKind.__Enum.MIN or SqlKind.__Enum.MAX) || arguments.size() != 1)
+            if (call.getAggregation().getKind().name() is not (nameof(SqlKind.__Enum.MIN) or nameof(SqlKind.__Enum.MAX)) || arguments.size() != 1)
                 return null;
 
             return ExtremeOf(((java.lang.Integer)arguments.get(0)).intValue(), inputRowType, fields, readings) is CosmosOrderOperand operand
@@ -260,13 +259,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static string FunctionName(AggregateCall call)
         {
-            return JavaEnums.Of(call.getAggregation().getKind()) switch
+            return call.getAggregation().getKind().name() switch
             {
-                SqlKind.__Enum.COUNT => "COUNT",
-                SqlKind.__Enum.SUM => "SUM",
-                SqlKind.__Enum.MIN => "MIN",
-                SqlKind.__Enum.MAX => "MAX",
-                SqlKind.__Enum.AVG => "AVG",
+                nameof(SqlKind.__Enum.COUNT) => "COUNT",
+                nameof(SqlKind.__Enum.SUM) => "SUM",
+                nameof(SqlKind.__Enum.MIN) => "MIN",
+                nameof(SqlKind.__Enum.MAX) => "MAX",
+                nameof(SqlKind.__Enum.AVG) => "AVG",
                 _ => throw new CosmosTranslationException($"Unsupported aggregate '{call.getAggregation().getName()}'."),
             };
         }
@@ -424,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 {
                     var argument = ((java.lang.Integer)call.getArgList().get(0)).intValue();
                     var path = fields[argument]!;
-                    var max = JavaEnums.Of(call.getAggregation().getKind()) == SqlKind.__Enum.MAX;
+                    var max = call.getAggregation().getKind().name() == nameof(SqlKind.__Enum.MAX);
                     var operand = ExtremeOf(argument, inputRowType, fields, inputReadings)!;
 
                     implementor.ExtremeAnchored(path.ToString(), new CosmosOrderExtreme(name, max, CosmosServiceOrder.ComparedAs(operand), verdict.Anchors[0], null,

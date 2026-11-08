@@ -1,5 +1,3 @@
-using Apache.Calcite.Cosmos.Adapter.Internal;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
@@ -134,12 +132,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         static bool IsSplittable(AggregateCall call)
         {
-            switch (JavaEnums.Of(call.getAggregation().getKind()))
+            switch (call.getAggregation().getKind().name())
             {
-                case SqlKind.__Enum.COUNT:
-                case SqlKind.__Enum.SUM:
-                case SqlKind.__Enum.MIN:
-                case SqlKind.__Enum.MAX:
+                case nameof(SqlKind.__Enum.COUNT):
+                case nameof(SqlKind.__Enum.SUM):
+                case nameof(SqlKind.__Enum.MIN):
+                case nameof(SqlKind.__Enum.MAX):
                     return true;
 
                 default:
@@ -204,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var argument = java.util.Collections.singletonList(java.lang.Integer.valueOf(ordinal));
 
-            if (JavaEnums.Of(call.getAggregation().getKind()) == SqlKind.__Enum.COUNT)
+            if (call.getAggregation().getKind().name() == nameof(SqlKind.__Enum.COUNT))
                 return AggregateCall.create(
                     SqlStdOperatorTable.SUM0,
                     false,

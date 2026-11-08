@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using Apache.Calcite.Cosmos.Adapter.Internal;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
@@ -870,21 +869,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             descending = false;
             nullsFirst = false;
 
-            switch (JavaEnums.Of(collation.getDirection()))
+            switch (collation.getDirection().name())
             {
-                case RelFieldCollation.Direction.__Enum.ASCENDING:
-                case RelFieldCollation.Direction.__Enum.STRICTLY_ASCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.ASCENDING):
+                case nameof(RelFieldCollation.Direction.__Enum.STRICTLY_ASCENDING):
                     break;
-                case RelFieldCollation.Direction.__Enum.DESCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.DESCENDING):
                     descending = true;
                     break;
-                case RelFieldCollation.Direction.__Enum.STRICTLY_DESCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.STRICTLY_DESCENDING):
                     return "a strictly descending key, which Calcite runs ascending";
                 default:
                     return "a clustered key, which orders nothing";
             }
 
-            nullsFirst = JavaEnums.Of(collation.nullDirection) == RelFieldCollation.NullDirection.__Enum.FIRST;
+            nullsFirst = collation.nullDirection.name() == nameof(RelFieldCollation.NullDirection.__Enum.FIRST);
             return null;
         }
 
