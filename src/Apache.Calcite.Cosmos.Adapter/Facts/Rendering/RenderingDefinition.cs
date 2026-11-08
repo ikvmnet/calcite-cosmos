@@ -167,13 +167,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public ValueSet<(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAnswer Answer)> Evaluates { get; init; } = ServiceLeaf.Evaluates;
 
-        /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<c>CosmosAxiomRows.ReadBoxes</c>, F3); no rule reads it yet (G8).</summary>
+        /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<c>CosmosAxiomRows.ReadBoxes</c>, F3), which S's box rules read (G8).</summary>
         public IReadOnlyList<(string Kind, string Box)> Boxes { get; init; } = [];
 
-        /// <summary>The comparisons that read the values inside one box (<c>CosmosAxiomRows.ReadSeesThrough</c>, F3); no rule reads it yet (G8).</summary>
+        /// <summary>The comparisons that read the values inside one box (<c>CosmosAxiomRows.ReadSeesThrough</c>, F3), which S's box rules read (G8).</summary>
         public IReadOnlyList<string> SeesThrough { get; init; } = [];
 
-        /// <summary>The functions that answer a structure alone (<c>CosmosAxiomRows.ReadStructureOnly</c>, F3); no rule reads it yet (G8).</summary>
+        /// <summary>The SQL types whose box is null where what it holds is (<c>CosmosAxiomRows.ReadNullThrough</c>, F3), which S's box rules read (G8).</summary>
+        public IReadOnlyList<string> NullThrough { get; init; } = [];
+
+        /// <summary>The functions that answer a structure alone (<c>CosmosAxiomRows.ReadStructureOnly</c>, F3); no rule reads it until h15.</summary>
         public IReadOnlyList<string> StructureOnly { get; init; } = [];
 
         /// <summary>What a reading answers over each kind of stored value in process (<c>CosmosAxiomRows.ReadCalciteReadings</c>, F3): S's readings (G7).</summary>

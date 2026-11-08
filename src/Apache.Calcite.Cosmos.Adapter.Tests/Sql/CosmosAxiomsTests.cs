@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
-                || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
+                || a.NullThrough is not null || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
                 || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
@@ -237,7 +237,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             CosmosAxiomRows.ReadBoxes(all).Should().HaveCount(9).And.Contain((PredicateAtom.TextReader, "VARCHAR")).And.Contain((JsonValues.IntegerType, "BIGINT"))
                 .And.Contain(("CHAR", "VARCHAR")).And.Contain((JsonValues.BooleanType, "BOOLEAN")).And.NotContain(b => b.Kind == "INTEGER", "an INTEGER is boxed apart from a stored integer");
-            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual, PredicateAtom.NullTest);
+            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
+            CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
                 (PredicateAtom.TypedReaders, PredicateAtom.RawReader) });
             CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");

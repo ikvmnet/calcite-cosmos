@@ -197,6 +197,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<string> ReadSeesThrough(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from op in axiom.SeesThrough ?? [] select op).Distinct()];
 
+        /// <summary>One row per SQL type whose box is null where what it holds is, each measured apart (G8), S's <c>boxnull</c>.</summary>
+        public static IReadOnlyList<string> ReadNullThrough(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from type in axiom.NullThrough ?? [] select type).Distinct()];
+
         /// <summary>One row per function that answers a structure alone (F3), S's <c>structureonly</c>.</summary>
         public static IReadOnlyList<string> ReadStructureOnly(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from function in axiom.StructureOnly ?? [] select function).Distinct()];

@@ -41,6 +41,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
             DecimalCast = graph.DefineConstructor<long, long, Val, Val>("decimal cast", options: term);
             Box = graph.DefineConstructor<string, Val, Val>("box", options: term);
+            Null = graph.DefineConstructor<string, Val>("sql null", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
             Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
@@ -100,6 +101,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <c>seesthrough</c>, G8). It reads no path: no rule here reads one.
         /// </summary>
         public Constructor<string, Val, Val> Box { get; }
+
+        /// <summary>
+        /// SQL's null, of a SQL type: written where a loading reads places, so never in F's statements until h15; a comparison
+        /// with it is read by S's rule over the operator's row (<c>strictop</c>, G8), and by no rule here.
+        /// </summary>
+        public Constructor<string, Val> Null { get; }
 
         /// <summary>A literal, in <see cref="JsonValues"/>' spelling.</summary>
         public Constructor<string, Val> Literal { get; }

@@ -136,6 +136,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlPredicate.Compare c when c.Left is SqlValue.Box || c.Right is SqlValue.Box:
                     return world.Choose(T | F | U, "box " + c + "@" + Documents.Json(document));
 
+                // A comparison with SQL's null (G8): UNKNOWN, raising where reading the other side raises.
+                case SqlPredicate.Compare { Right: SqlValue.Null } c:
+                    return IsRaw(c.Left) == false && Read(c.Left, document, world, typed) is SqlDatum.Raised ? R : U;
+
                 case SqlPredicate.Compare c when IsRaw(c.Left):
                     return RawCompare(c.Op, c.Left, c.Right, document, world, raw);
 
@@ -430,6 +434,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                 case SqlValue.Literal l:
                     return Datum(l.Value);
+
+                case SqlValue.Null:
+                    return SqlDatum.Null;
 
                 // A number Calcite wrote cast, as a loading that reads places reads one (G8): to DOUBLE the double nearest it.
                 case SqlValue.Cast { Target: "DOUBLE", PathRead: null } c:

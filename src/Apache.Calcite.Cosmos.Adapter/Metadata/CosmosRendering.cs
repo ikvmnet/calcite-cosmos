@@ -47,6 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             WholeReadings = CosmosAxiomRows.ReadWholeReadings(CosmosAxioms.All),
             Boxes = CosmosAxiomRows.ReadBoxes(CosmosAxioms.All),
             SeesThrough = CosmosAxiomRows.ReadSeesThrough(CosmosAxioms.All),
+            NullThrough = CosmosAxiomRows.ReadNullThrough(CosmosAxioms.All),
             StructureOnly = CosmosAxiomRows.ReadStructureOnly(CosmosAxioms.All),
             CalciteReadings = CosmosAxiomRows.ReadCalciteReadings(CosmosAxioms.All),
             CalciteBands = CosmosAxiomRows.ReadCalciteBands(CosmosAxioms.All),

@@ -67,6 +67,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // Read beside the terms by S's box rules in the vocabulary's ruleset (G8), which may read only terms and analyses.
             BoxOf = Graph.DefineRelation<string, string>("boxof", new TableOptions { Role = TableRole.Analysis });
             SeesThrough = Graph.DefineRelation<string>("seesthrough", new TableOptions { Role = TableRole.Analysis });
+            BoxNull = Graph.DefineRelation<string>("boxnull", new TableOptions { Role = TableRole.Analysis });
             StructureOnly = Graph.DefineRelation<string>("structureonly");
             // What Calcite makes of each reading, the facts graph's vocabulary too (G7).
             Calcite = new ReadingVocabulary(Graph, TestKinds, TestReads);
@@ -150,7 +151,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Fits = Graph.DefineRelation<TemplateId, string>("fits");
             PartingBands = Graph.DefineFunction<RenderingSet, ValueSet<string>>("partingbands", ValueLattice.Union<string>());
             RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
-            StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>());
+            // An analysis, which the vocabulary's ruleset reads of a comparison with SQL's null (G8).
+            StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>(), options: new TableOptions { Role = TableRole.Analysis });
             StrictReader = Graph.DefineRelation<string>("strictreader");
             BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
             Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
@@ -298,6 +300,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineProposal(at, spell);
             DefineLifts(lift, strict);
             DefineBoxes(strict);
+            DefineNullComparison();
             DefineChoice(best, weaken);
             DefineCase(at, twovalued, best, weaken);
 
@@ -656,7 +659,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The comparisons and tests that read the values inside one box, G8's: an analysis the box rules read.</summary>
         public Relation<string> SeesThrough { get; }
 
-        /// <summary>The functions that answer a structure alone, G8's.</summary>
+        /// <summary>The SQL types whose box is null where what it holds is, G8's: an analysis the box rules read.</summary>
+        public Relation<string> BoxNull { get; }
+
+        /// <summary>The functions that answer a structure alone, G8's, which no rule reads until h15.</summary>
         public Relation<string> StructureOnly { get; }
 
         /// <summary>What a reading answers over each kind of stored value in process, G7's.</summary>
@@ -1925,6 +1931,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        void DefineNullComparison()
+        {
+            // A comparison with SQL's null by an operator Calcite answers null for over a null operand is UNKNOWN wherever its
+            // reading is read, by the operator's row (strictop), not by the loader's refusal of the null literal (G8).
+            Ir.Analyse.DefineRule("a comparison with SQL's null, by an operator null over a null operand, is an atom of what it reads", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (op, t, k) = r.Vars<string, string, string>("op", "t", "k");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), w.Is(Ir.Null.Of(t)), StrictOp.Of(op).Is(true), Ir.Reads.Of(v, p, k));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, PredicateAtom.CompareNull)));
+            });
+        }
+
         // S's alone, in the vocabulary's ruleset (G8): a value cast to VARIANT, which the loader reads as the box it is where
         // it reads places. A VARIANT equals a value only in its own box (Calcite.VariantEqualsOnlyItsOwnBox): within one, the
         // comparisons its row says see through it read the values inside, and its null test is what it holds; boxes apart
@@ -1964,21 +1984,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
             });
 
-            Ir.Analyse.DefineRule("a null test that sees through a box is an atom of the reading it holds", r =>
+            // A box's null test is what it holds where its type's row says (boxnull), each type measured apart.
+            Ir.Analyse.DefineRule("a null test of a box of a type null where what it holds is is an atom of the reading it holds", r =>
             {
                 var (e, v, u) = r.Vars<Pred, Val, Val>("e", "v", "u");
-                var (t, k, b) = r.Vars<string, string, string>("t", "k", "b");
+                var (t, k) = r.Vars<string, string>("t", "k");
                 var p = r.Var<JPath>("p");
-                r.When(e.Is(Ir.IsNull.Of(v)), SeesThrough.Of(PredicateAtom.NullTest), v.Is(Ir.Box.Of(t, u)), Ir.Reads.Of(u, p, k), BoxOf.Of(k, b));
+                r.When(e.Is(Ir.IsNull.Of(v)), v.Is(Ir.Box.Of(t, u)), BoxNull.Of(t), Ir.Reads.Of(u, p, k));
                 r.Then(Ir.Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
             });
 
             // Null where what it holds is, by the same row, so a comparison of a box is strict where its reading is.
-            strict.DefineRule("a box whose null test sees through it is strict in what it holds is strict in", r =>
+            strict.DefineRule("a box of a type null where what it holds is is strict in what it holds is strict in", r =>
             {
                 var (v, u) = r.Vars<Val, Val>("v", "u");
                 var (t, p) = r.Vars<string, JPath>("t", "p");
-                r.When(v.Is(Ir.Box.Of(t, u)), SeesThrough.Of(PredicateAtom.NullTest), Strict.Of(u, p));
+                r.When(v.Is(Ir.Box.Of(t, u)), BoxNull.Of(t), Strict.Of(u, p));
                 r.Then(Strict.Of(v, p));
             });
         }
@@ -3007,6 +3028,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var op in definition.SeesThrough)
                     w.Assume(SeesThrough.Of(op));
 
+                foreach (var type in definition.NullThrough)
+                    w.Assume(BoxNull.Of(type));
                 foreach (var function in definition.StructureOnly)
                     w.Assume(StructureOnly.Of(function));
 

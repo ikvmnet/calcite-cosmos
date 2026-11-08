@@ -32,6 +32,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Boxes">The box each reading or kind of value is held in, cast to <c>VARIANT</c> (<see cref="CosmosAxiomRows.ReadBoxes"/>).</param>
     /// <param name="SeesThrough">The comparisons that read the values inside one box, by the names <c>PredicateAtom</c> spells
     /// them (<see cref="CosmosAxiomRows.ReadSeesThrough"/>).</param>
+    /// <param name="NullThrough">The SQL types whose box, cast to <c>VARIANT</c>, is null where what it holds is, each
+    /// measured apart (<see cref="CosmosAxiomRows.ReadNullThrough"/>).</param>
     /// <param name="StructureOnly">The functions that answer a structure alone, null for anything else, by the name the IR
     /// reads each by (<see cref="CosmosAxiomRows.ReadStructureOnly"/>).</param>
     /// <param name="CalciteReadings">What a reading answers over each kind of stored value in process, a <c>Calcite</c> row's
@@ -59,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
         IReadOnlyList<CosmosStoredClass>? StoredAs = null, IReadOnlyList<CosmosParting>? Parts = null, IReadOnlyList<CosmosMove>? Moves = null,
         IReadOnlyList<CosmosTruncation>? Truncations = null, IReadOnlyList<CosmosPairReading>? PairReadings = null, IReadOnlyList<CosmosBox>? Boxes = null,
-        IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
+        IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? NullThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
         IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null,
         IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null,
         IReadOnlyList<CosmosFold>? Folds = null, IReadOnlyList<CosmosCalciteReadAs>? ReadAs = null, IReadOnlyList<CosmosCalciteThrough>? Through = null,

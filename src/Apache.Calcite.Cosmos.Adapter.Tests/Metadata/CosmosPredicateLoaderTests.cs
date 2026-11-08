@@ -164,6 +164,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
+        /// A comparison with SQL's null is read as written where S reads (G8): what it answers is S's rule over the operator's
+        /// row (<c>strictop</c>), not a refusal of the null literal. F's terms stay as they were until h15.
+        /// </summary>
+        [Fact]
+        public void AComparisonWithANullIsReadAsWrittenWhereSReads()
+        {
+            var compared = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), _rex.makeNullLiteral(Sql(SqlTypeName.VARCHAR)));
+            LoadPlaces(compared).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(Text(Label), "=", new SqlValue.Null("VARCHAR")));
+            Load(compared).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
+        }
+
+        /// <summary>
         /// A value cast to <c>VARIANT</c> is the box it is where S reads (G8), by the SQL type of what it holds, a reading or a
         /// literal, compared and tested for null as written: what each comparison of it means is S's rules' over
         /// <c>Calcite.VariantEqualsOnlyItsOwnBox</c>' rows, which read no atom of its order. F's terms stay as they were until h15.

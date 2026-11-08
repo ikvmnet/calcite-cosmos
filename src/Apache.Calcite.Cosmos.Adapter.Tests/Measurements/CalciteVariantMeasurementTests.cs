@@ -203,6 +203,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var text = MaterialisedTable.Of(SqlTypeName.VARCHAR, Strings);
             text.Ask(connection, "CAST(\"v\" AS VARIANT) = CAST('bikes' AS VARIANT)", "CAST(\"v\" AS VARIANT) <> CAST('bikes ' AS VARIANT)", "CAST(\"v\" AS VARIANT) IS NULL")
                 .Should().Equal(text.Ask(connection, "\"v\" = 'bikes'", "\"v\" <> 'bikes '", "\"v\" IS NULL"));
+
+            // A box of each type the row names is null where what it holds is, each measured apart (boxnull, G8).
+            foreach (var (type, held) in new[] { (SqlTypeName.VARCHAR, "\"a\""), (SqlTypeName.BOOLEAN, "true"), (SqlTypeName.INTEGER, "7"), (SqlTypeName.BIGINT, "7"),
+                (SqlTypeName.DOUBLE, "2.5"), (SqlTypeName.DECIMAL, "2.5") })
+            {
+                CosmosAxioms.Get("Calcite.VariantEqualsOnlyItsOwnBox").NullThrough.Should().Contain(type.getName());
+                MaterialisedTable.Of(type, [held, null]).Ask(connection, "CAST(\"v\" AS VARIANT) IS NULL", "\"v\" IS NULL").Should().Equal("FT", "FT");
+            }
+
+            CosmosAxioms.Get("Calcite.VariantEqualsOnlyItsOwnBox").NullThrough.Should().HaveCount(6);
         }
 
         /// <summary>

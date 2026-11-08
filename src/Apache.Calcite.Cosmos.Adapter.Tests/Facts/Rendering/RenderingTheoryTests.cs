@@ -80,7 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading",
                     "a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value",
                     "a comparison that sees through a box, of a raw value in a column and a literal boxed as a value of its kind is, is an atom of the raw value",
-                    "a null test that sees through a box is an atom of the reading it holds",
+                    "a comparison with SQL's null, by an operator null over a null operand, is an atom of what it reads",
+                    "a null test of a box of a type null where what it holds is is an atom of the reading it holds",
                 ],
                 ["measure"] =
                 [
@@ -295,7 +296,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a reading Calcite answers null over an absent path is strict in its path",
                     "a call whose operator answers null for a null operand is strict in what an operand is strict in",
                     "a predicate over a strict value implies its path present",
-                    "a box whose null test sees through it is strict in what it holds is strict in",
+                    "a box of a type null where what it holds is is strict in what it holds is strict in",
                 ],
                 ["best"] =
                 [
@@ -354,7 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(174);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(175);
         }
 
         /// <summary>
@@ -463,7 +464,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (d, s) = (Measured, ProbeTheory);
             new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
-                d.SeesThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count,
+                d.SeesThrough.Count, d.NullThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count,
                 d.TestReads.Count }
                 .Should().OnlyContain(n => n > 0);
 
@@ -477,6 +478,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.PairReadings.Should().OnlyContain(r => s.Theory.Check(s.PairReads.Of(r.Test, r.Swapped, r.Reads)));
             d.Boxes.Should().OnlyContain(r => s.Theory.Check(s.BoxOf.Of(r.Kind, r.Box)));
             d.SeesThrough.Should().OnlyContain(r => s.Theory.Check(s.SeesThrough.Of(r)));
+            d.NullThrough.Should().OnlyContain(r => s.Theory.Check(s.BoxNull.Of(r)));
             d.StructureOnly.Should().OnlyContain(r => s.Theory.Check(s.StructureOnly.Of(r)));
             d.CalciteReadings.Should().OnlyContain(r => s.Theory.Check(s.CalciteReads.Of(r.Reader, r.Kind, r.Answer)));
             d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
@@ -496,7 +498,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// values of the literal's own kind are is the raw value's comparison, which its cells decide; an order, a literal in
         /// another box and an <c>INTEGER</c>, boxed apart from a stored integer's <c>BIGINT</c>, are no atom. A one-place test
         /// is an atom of what its body reads, by <c>Calcite.TypeTestsAreTheirBodies</c>' rows the raw value of a text, of a
-        /// raw value in a column and of a returning alike, and of no cast.
+        /// raw value in a column and of a returning alike, and of no cast. A box's null test is what it holds where its type's
+        /// row says so (<c>boxnull</c>), each type its own cell; and a comparison with SQL's null by an operator null over a null
+        /// operand (<c>strictop</c>) is an atom UNKNOWN wherever it is read.
         /// </summary>
         [Fact]
         public void ABoxAndATestAreReadByTheirRows()
@@ -525,6 +529,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             Atoms(new SqlPredicate.IsDefined(new SqlValue.Cast("VARCHAR", new SqlValue.Text(t)))).Should().BeEmpty("a cast is no accessor the body takes apart");
+
+            Atoms(new SqlPredicate.IsNull(new SqlValue.Box("INTEGER", new SqlValue.Typed(t, "INTEGER")))).Should().Equal(PredicateAtom.IsNull(PredicateAtom.TypedReader("INTEGER")));
+            Atoms(new SqlPredicate.IsNull(new SqlValue.Box("CHAR", new SqlValue.Text(t)))).Should().BeEmpty("no row says a CHAR's box is null where what it holds is");
+
+            var unknown = PredicateAtom.CompareNull(PredicateAtom.TextReader, "=");
+            Atoms(new SqlPredicate.Compare("=", new SqlValue.Text(t), new SqlValue.Null("VARCHAR"))).Should().Equal(unknown);
+            unknown.On(new PredicateAtom.State.Scalar(JsonValues.Of("bikes")), ReaderRows).Should().Be(Truths.Unknown);
+            unknown.Kept(true, ReaderRows).Should().Be(PathValues.OfKinds(ValueSet<string>.Empty), "it is never TRUE");
         }
 
         /// <summary>

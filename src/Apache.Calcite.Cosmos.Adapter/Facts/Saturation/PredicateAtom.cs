@@ -130,6 +130,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static PredicateAtom CompareParameter(string reader, string op) => new(reader, op, null, null, true);
 
         /// <summary>
+        /// A comparison with SQL's null by an operator its row says answers null over a null operand (<c>strictop</c>), as S's
+        /// rule reads it (G8): UNKNOWN wherever the reading is read, raising where reading it raises. F never makes one.
+        /// </summary>
+        public static PredicateAtom CompareNull(string reader, string op) => new(reader, op, null, null, false) { NullOperand = true };
+
+        /// <summary>Whether the value is compared with SQL's null (<see cref="CompareNull"/>); no other atom is.</summary>
+        public bool NullOperand { get; init; }
+
+        /// <summary>
         /// A comparison of two readings, over S's pair of their places (h11): the left read by <see cref="Reader"/>, the right
         /// by <paramref name="against"/>. F never makes one.
         /// </summary>
@@ -270,6 +279,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Parameter)
                 return reading.KeptParameter();
 
+            // Never TRUE nor FALSE: no document is kept either way.
+            if (NullOperand)
+                return PathValues.OfKinds(ValueSet<string>.Empty);
+
             switch (Test)
             {
                 case Equal:
@@ -345,6 +358,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (Parameter)
                 return reading.Parameter(state);
 
+            if (NullOperand)
+                return ComparedWithNull(reading.Null(state));
+
             switch (Test)
             {
                 case Equal:
@@ -384,6 +400,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             if (Parameter)
                 return reading.Parameter(cell.Coarse) | ComparedWhereNotNull(reading.NullOn(cell, columns));
+
+            if (NullOperand)
+                return ComparedWithNull(reading.NullOn(cell, columns));
 
             switch (Test)
             {
@@ -526,6 +545,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// What a comparison with a parameter answers where a null test answers so: it reads the value as the null test
         /// does, so raises where that read does, and is anything where that read finds a value.
         /// </summary>
+        /// <summary>A comparison with SQL's null by an operator null over a null operand: UNKNOWN, beside a raise where reading the value raises.</summary>
+        static Truths ComparedWithNull(Truths isNull) => (isNull & Truths.Raises) | Truths.Unknown;
+
         static Truths ComparedWhereNotNull(Truths isNull) =>
             (isNull & Truths.Raises) | ((isNull & Truths.False) != 0 ? Truths.True | Truths.False | Truths.Unknown : 0);
 

@@ -277,7 +277,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// Reads a plain <c>JSON_QUERY</c> of a path, under a null test, as the path holding a structure: it answers
             /// an object or an array and null for anything else (<c>Calcite.JsonQueryAnswersStructureOnly</c>). Only S's
-            /// tests read it until its switch (h15), F's terms unchanged.
+            /// tests read it until its switch (h15), F's terms unchanged. It moves at h15, as a reading of its own whose
+            /// template writes the structure test (<c>TODO.md</c>): read so before h15 it proves four census rows the
+            /// translator's text, which a refactor may not.
             /// </summary>
             SqlPredicate? Structure(RexNode node) =>
                 _places && CosmosRexShapes.IsPlainJsonQuery(node) && Document(node) is JsonDocumentPath { HasElement: false } path
@@ -375,10 +377,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var a = (RexNode)call.getOperands().get(0);
                 var b = (RexNode)call.getOperands().get(1);
 
-                if (Value(a) is { } left && IsPlace(left) && Comparand(b, left) is SqlValue right && (right is SqlValue.Box || Compares(left, right)))
+                if (Value(a) is { } left && IsPlace(left) && Comparand(b, left) is SqlValue right && (right is SqlValue.Box or SqlValue.Null || Compares(left, right)))
                     return new SqlPredicate.Compare(op, left, right);
 
-                if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && (other is SqlValue.Box || Compares(mirrored, other)))
+                if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && (other is SqlValue.Box or SqlValue.Null || Compares(mirrored, other)))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
                 if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second))
@@ -418,7 +420,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return Value(node);
 
                 if (_places)
-                    return node is RexLiteral literal ? Literal(literal) : Value(node) is SqlValue.Box { Value: SqlValue.Literal } boxed ? boxed : CastNumber(node);
+                    return node is RexLiteral literal ? Literal(literal) ?? NullOf(literal) : Value(node) is SqlValue.Box { Value: SqlValue.Literal } boxed ? boxed : CastNumber(node);
 
                 var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
                 if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
@@ -532,7 +534,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// no value the service compares as the number exists (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>).
             /// </summary>
             static SqlValue? Number(java.math.BigDecimal number) =>
-                CosmosRexLiterals.TryGetExactNumberValue(number) is object value && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false
+                CosmosRexLiterals.TryGetExactNumberValue(number) is object value && JsonScalar.TryFrom(value, out var scalar)
                     ? SqlValue.Of(scalar)
                     : null;
 
@@ -753,14 +755,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
-            /// An operand's spelling in a computed place's: a path's, a literal's own, a nested place's; none for a box, over which
-            /// no row reads a function, and none for the rest.
+            /// An operand's spelling in a computed place's: a path's, a literal's own, a nested place's, and a box's what it
+            /// holds, the service holding no box; none for the rest. Whether S images a call over a box is its image rules',
+            /// which read no path of a box (G8).
             /// </summary>
             static string? PlaceSpelling(SqlValue operand) => operand switch
             {
                 SqlValue.Call call => call.Spelled,
                 SqlValue.Literal literal => literal.Value,
-                SqlValue.Box => null,
+                SqlValue.Box box => PlaceSpelling(box.Value),
                 _ when operand.PathRead is JsonDocumentPath path => SqlValue.Spell(path),
                 _ => null,
             };
@@ -835,11 +838,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var operand = (RexNode)call.getOperands().get(0);
                 var target = call.getType()?.getSqlTypeName();
 
-                // A value cast to VARIANT, where places are read, is the box it is, of its SQL type (G8): a literal, or a reading
-                // of a path. Elsewhere, F's reading until h15, a literal boxed for a VARIANT comparison is the literal.
+                // A value cast to VARIANT, where places are read, is the box it is, of its SQL type, whatever value it holds
+                // (G8): what it equals and where it is null are S's box rules', which read a literal's and a reading's alone.
+                // Elsewhere, F's reading until h15, a literal boxed for a VARIANT comparison is the literal.
                 if (target == SqlTypeName.VARIANT && _places)
-                    return operand.getType()?.getSqlTypeName()?.getName() is string boxed && (operand is RexLiteral boxedLiteral ? Literal(boxedLiteral) : Value(operand)) is SqlValue held
-                        && (held is SqlValue.Literal || IsPlace(held))
+                    return operand.getType()?.getSqlTypeName()?.getName() is string boxed
+                        && (operand is RexLiteral boxedLiteral ? Literal(boxedLiteral) ?? NullOf(boxedLiteral) : Value(operand)) is SqlValue held
                         ? new SqlValue.Box(boxed, held) : null;
 
                 if (operand is RexLiteral literal)
@@ -895,6 +899,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return null;
                 }
             }
+
+            /// <summary>
+            /// SQL's null, as a literal of a type holding none is read where places are read (G8): what a comparison with it
+            /// answers is S's rule over the operator's row (<c>strictop</c>); <c>null</c> for a literal holding a value.
+            /// </summary>
+            static SqlValue? NullOf(RexLiteral literal) =>
+                literal.isNull() ? new SqlValue.Null(literal.getType()?.getSqlTypeName()?.getName() ?? SqlTypeName.NULL.getName()) : null;
 
             /// <summary>
             /// Resolves a node to the container-rooted document path it addresses, or <c>null</c>.
