@@ -2931,14 +2931,17 @@ across documents* and *A join of a container to itself* is the record.
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
   places are rooted at the container until 3D or 3E. The translator's code for both stays until then; the triage lists
   each by its text.
-- **A raw equality with a number is never exact over a number a `VARIANT` may hold** — *small.* S reads the raw
-  reading's raises on cells since g10, and decision D3's denominator rule is gone. A `VARIANT` is equal to a number boxed
-  with its own SQL type alone, and the loader reads `CAST(30 AS VARIANT)` as the literal 30, its box lost, so over a cell
-  holding 30 the equality is TRUE or FALSE. h07 was to read a typed reading's `CAST(x AS VARIANT)` with its box and
-  did not: the box has no place in the IR, and giving it one changes F's terms, so the cast stays opaque. A text's box
-  is read for S since h14 (equal to a boxed string as the text, null as the text), where it needs no box in the IR. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the
-  text-equality alternatives write, stay in O2's residue on their merits. Keeping a boxed literal's type in the IR would
-  decide them, and changes F's terms.
+- **A raw equality with a number boxed `INTEGER` is the box's miss, read by S and stripped by F** — *small, the miss
+  rule's and h15's.* Since G8 S reads `CAST(30 AS VARIANT)` as the box it is, and a raw value as held in the box of the
+  kind it holds (*Boxes, one-place tests and `LIKE`'s brackets are cells S's rules read (G8)*): a stored integer is boxed
+  `BIGINT` and the literal `INTEGER`, so the equality is `FALSE` over a stored 30 (`Calcite.VariantEqualsOnlyItsOwnBox`).
+  That is the box's miss below, a cell no rule reads, so S reads no atom of it and it stays Unproven rather than read
+  wrong. F reads the boxed literal as the literal until it reads places at h15 (*F reads G8's branches as the loader did
+  until h15*), so its atom is TRUE or FALSE over a cell holding 30 where Calcite answers `FALSE`; F's statements are the
+  digests', so that stays. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the text-equality
+  alternatives write, stay in O2's residue on their merits: the production reading of them is F's, which strips the box,
+  and the census, whose rows box a `CHAR` literal and a text alone, holds no number boxed. Under S each point is a
+  comparison with its own box, the number's the miss, so they wait on the miss rule, not on the box.
 - **Production asks the guarded comparison's templates only from the switch** — *bridge, deleted at h15.* C4n, C2 and
   `TextAlternatives` (h09) are left out of `CosmosRendering.Definition` (`RenderingTemplateRows.FromTheSwitch`): site W
   pushes a weakening only where the translator writes its Rex, which writes no `CASE`, so a weakening holding the guarded
@@ -3110,34 +3113,67 @@ across documents* and *A join of a container to itself* is the record.
   S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3's rules read `pairreads` and
   `readerorder`, whose `reflexive` and typed `itself` rows g234 measured (DESIGN.md, *Answer roles, pairs and failure,
   S's (G2, G3, G4)*), and G7's `calcitereads`, `calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*).
-  G8 reads `boxof` and `seesthrough`, and `testreads` beside them (*Boxes, one-place tests and `LIKE`'s brackets are
-  cells S's rules read (G8)*); `structureonly` waits on `Structure` (below) and `measuredcast` on the cast targets' move,
+  G8 reads `boxof`, `seesthrough`, `boxnull` and `testreads` (*Boxes, one-place tests and `LIKE`'s brackets are cells
+  S's rules read (G8)*); `structureonly` waits on `Structure`'s move at h15 (below), which restates it as `calcitereads`,
+  and `measuredcast` on the cast targets' (below),
   and G6 the D class's `Defined`, which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
-- **`Structure` is the loader's, not a cell's** — *the owner's call, before or at h15.* `JSON_QUERY` of a path under a
-  null test is read as a structure test of the path by `CosmosPredicateLoader.Structure`, a branch standing for
-  `Calcite.JsonQueryAnswersStructureOnly` (`structureonly`, which no rule reads). The plan moves it as a rewrite of the
-  null test to the structure test, and a rewrite is a merge, which S's no-merge tripwire refuses. Two moves keep S
-  merge-free: a reader of its own for `JSON_QUERY` with a template that writes the structure test, or an alias relation
-  that S's atom rules read through. Either changes the forms S proposes for it, so neither is a refactor before h15, and
-  which one the owner picks decides whether F gains the reader too.
+- **`Structure` moves at h15, as a reading of its own** — *h15's; built and held back by G8's fix.* `JSON_QUERY` of a
+  path under a null test is read as the type tests of the path by `CosmosPredicateLoader.Structure`, a branch standing
+  for `Calcite.JsonQueryAnswersStructureOnly` (`structureonly`, which no rule reads). It moves without a merge: the
+  `JSON_QUERY` a reader of its own, `query(path)` in the shared vocabulary with its test read as the raw value
+  (`testreads(query, raw)`), so F gains it with places; the row's answers its `calcitereads` (an object and an array
+  rendered, every other class null) in place of `structureonly`, read by a reading only rows define; and the structure
+  test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))`, its own template at both positions, the only one asked of it. G8's fix
+  built it whole, and it is no refactor: the digests are byte-equal (no places in them), but it moves four census rows,
+  `coverage-FG.tsv` lines 62 and 222 (`IS NOT NULL(JSON_QUERY(label))`, differential/249, Emulator and Production) and
+  102 and 274 (`IS NULL`, differential/248), each from `pos` and `neg` Unproven to Proven, `portable pos` likewise and
+  the reason from "S's own form; the text Unproven" to "the text and S's own form", beside its `ir`; every best form is
+  unchanged. The patch, which applies on G8's fix, is kept beside the step's notes
+  (`.claude/handoff/reports/stage3-3A/g8fix1/structure-h15.diff`); h15's task carries
+  the same instruction, to move it as a reading of its own and record the four rows.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
   `<>` and null where the value is. A rule that reads two `boxof` rows apart makes it one, beside a row for a returning's
   box, which none names.
-- **`testreads` is read off the implementor, not measured** — *small, a measurement.* The cell that a type test and
-  `IS_DEFINED` of the text, a raw value and a returning ask what the document holds at the path is what
-  `CosmosTypeTestImplementor`'s body does (G8), pinned by no run. A measurement of a test over a reading that reads
-  otherwise than the raw value, `IS_NUMBER` of the text over a stored 30 and `IS_STRING` of a `RETURNING DOUBLE` over a
-  stored `"30"`, pins it.
+- **`testreads` is read off the implementor, and a raw value's row is not even that** — *small, a measurement, and the
+  owner's to weigh before h15.* The cell that a type test and `IS_DEFINED` of the text and of a returning ask what the
+  document holds at the path is what `CosmosTypeTestImplementor`'s body does (G8), pinned by no run. A
+  measurement of a test over a reading that reads otherwise than the raw value, `IS_NUMBER` of the text over a stored 30
+  and `IS_STRING` of a `RETURNING DOUBLE` over a stored `"30"`, pins it. The raw value's row, `testreads(raw, raw)`, is
+  not the body's: the body takes apart a `JSON_VALUE` or `JSON_QUERY` whose path is a literal and raises over anything
+  else, so a test of a field bound to the raw value (`RawIn`), of an item chain or of a cast to `ANY` raises in process,
+  where the row reads the value at the path. It carries the reading the IR held before G8, `Raw(path)` in every
+  one-place test, and S's proofs over it are of what the push answers where Calcite raises, a refinement of a raise
+  rather than an agreement. A row saying the body raises there moves the census's `IS_DEFINED` of a promoted column
+  (`raw($["category"] VARIANT) is defined`, Proven), so it is no refactor before h15; the measurement is a test of a
+  field, an item and a cast to `ANY` in process, which the same row records.
+- **`IS_DEFINED` of a computed call has no atom** — *small, with the row above.* The bridge's presence test of a computed
+  place, `IS_DEFINED` over the call, is no atom since G8: no `testreads` row names a call's reading, and the body raises
+  over a call, so the row it wants is that raise (above). Before G8 the loader wrote nothing for it either; the digests
+  were byte-equal.
+- **The loader's element guards and cast targets are G8's sites no step schedules** — *h15's.* Two branches stand for
+  rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an accessor's
+  raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand for
+  `Calcite.ItemIsNullWhereNoElementIs` and the raw value of an element no row measured; and the numeric cast targets
+  (`Cast`, `TryNumericCastOperand`, the `RETURNING DECIMAL` arm), which stand for `measuredcast`'s rows. Each changes F's
+  terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15; both
+  move with h15's switch, the guards to an element reading S's cells read and the casts to the cast rule reading
+  `measuredcast`.
+- **A comparison with SQL's null is read by S alone** — *h15's.* Where places are read the loader writes a null literal
+  as `null(type)` and S's rule reads a comparison with it by an operator its `strictop` row says is null over a null
+  operand as UNKNOWN wherever its reading is read (G8). F's root holds no `strictop`, so F reads it as the loader did,
+  opaque; at h15 F reads places, and the rule and the rows move to the shared vocabulary.
 - **F reads G8's branches as the loader did until h15** — *h15's.* F's statements are the digests', so a loading without
-  places still writes `Raw(path)` in a one-place test, refuses a bracket in `LIKE` and a subject that is no text, and
-  reads a literal boxed for a `VARIANT` as the literal. At h15 F reads places, and the box rules, S's alone since they
-  read `boxof` and `seesthrough`, which only S's root holds, move to the shared vocabulary with those rows in F's root.
+  places still writes `Raw(path)` in a one-place test, refuses a bracket in `LIKE` and a subject that is no text, reads a
+  literal boxed for a `VARIANT` as the literal, leaves a null test of a `JSON_QUERY` and a comparison with SQL's null
+  opaque. At h15 F reads places, and the box rules and the null comparison's, S's alone since they read `boxof`,
+  `seesthrough`, `boxnull` and `strictop`, which only S's root holds, move to the shared vocabulary with those rows in
+  F's root; the `JSON_QUERY` reader moves into the shared vocabulary then (*`Structure` moves at h15*).
 - **The service's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, a measurement.* Each
   target's `LIKE` units are rows now (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell decides a
   pattern's `_` where both sides' rows say what it reads. `Service.LikeMatchesByCodePoint`'s witnesses hold a surrogate
