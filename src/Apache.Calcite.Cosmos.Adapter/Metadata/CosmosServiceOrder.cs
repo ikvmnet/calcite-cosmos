@@ -869,21 +869,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             descending = false;
             nullsFirst = false;
 
-            switch ((RelFieldCollation.Direction.__Enum)collation.getDirection().ordinal())
+            switch (collation.getDirection().name())
             {
-                case RelFieldCollation.Direction.__Enum.ASCENDING:
-                case RelFieldCollation.Direction.__Enum.STRICTLY_ASCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.ASCENDING):
+                case nameof(RelFieldCollation.Direction.__Enum.STRICTLY_ASCENDING):
                     break;
-                case RelFieldCollation.Direction.__Enum.DESCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.DESCENDING):
                     descending = true;
                     break;
-                case RelFieldCollation.Direction.__Enum.STRICTLY_DESCENDING:
+                case nameof(RelFieldCollation.Direction.__Enum.STRICTLY_DESCENDING):
                     return "a strictly descending key, which Calcite runs ascending";
                 default:
                     return "a clustered key, which orders nothing";
             }
 
-            nullsFirst = (RelFieldCollation.NullDirection.__Enum)collation.nullDirection.ordinal() == RelFieldCollation.NullDirection.__Enum.FIRST;
+            nullsFirst = collation.nullDirection.name() == nameof(RelFieldCollation.NullDirection.__Enum.FIRST);
             return null;
         }
 

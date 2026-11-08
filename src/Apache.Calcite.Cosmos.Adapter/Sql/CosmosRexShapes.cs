@@ -191,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return node;
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return node;
 
             var type = call.getType();
@@ -216,7 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return null;
 
             if (call.getOperands().size() != 1)
@@ -270,7 +270,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal static RexNode StripVariantCoercion(RexNode node)
         {
             if (node is RexCall call
-                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && (KindOf(call) == nameof(SqlKind.__Enum.CAST) || KindOf(call) == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT)
                 return Operand(call, 0);
@@ -317,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return null;
 
             if (call.getOperands().size() != 1)
@@ -372,7 +372,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var kind = KindOf(call);
 
-            return (kind == SqlKind.__Enum.CAST || kind == SqlKind.__Enum.SAFE_CAST)
+            return (kind == nameof(SqlKind.__Enum.CAST) || kind == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && call.getType()?.isNullable() == false
                 && Operand(call, 0).getType()?.isNullable() == true
@@ -406,10 +406,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Projects a call's <see cref="SqlKind"/> onto the CLR enumeration IKVM generates for it, so that dispatch is
-        /// compile-time checked rather than string-matched.
+        /// Returns a call's <see cref="SqlKind"/> by name, to compare with <c>nameof(SqlKind.__Enum.X)</c>. IKVM compiles that
+        /// enumeration's values from the ordinals of the Calcite this was built against, which a newer Calcite may have moved.
         /// </summary>
-        internal static SqlKind.__Enum KindOf(RexCall call) => (SqlKind.__Enum)call.getKind().ordinal();
+        internal static string KindOf(RexCall call) => call.getKind().name();
 
         /// <summary>
         /// Returns an operand as a <see cref="RexNode"/>. Calcite's operand lists are raw Java collections, which surface as

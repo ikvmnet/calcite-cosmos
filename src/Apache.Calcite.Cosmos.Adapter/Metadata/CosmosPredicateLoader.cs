@@ -316,7 +316,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var narrowest = int.MaxValue;
 
                 while (node is RexCall call &&
-                       (SqlKind.__Enum)call.getKind().ordinal() is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST &&
+                       call.getKind().name() is nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST) &&
                        call.getOperands().size() == 1)
                 {
                     if (call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL)
