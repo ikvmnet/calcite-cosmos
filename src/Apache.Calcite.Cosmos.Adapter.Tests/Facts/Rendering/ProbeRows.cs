@@ -45,6 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Moves = Measured.Moves,
             StoredAs = Measured.StoredAs,
             Truncations = Measured.Truncations,
+            Folds = Measured.Folds,
             Rewrites = Measured.Rewrites,
             Unsent = Measured.Unsent,
             WholeReadings = Measured.WholeReadings,

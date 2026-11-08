@@ -45,6 +45,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// (<see cref="CosmosAxiomRows.ReadUnsent"/>, G1).</param>
     /// <param name="WholeReadings">How a comparator reads a whole number within int64, by its value, its double or both, a
     /// <c>Service</c> order row's (<see cref="CosmosAxiomRows.ReadWholeReadings"/>, G2).</param>
+    /// <param name="Folds">Which tests' case-insensitive forms match as the test over a fold, a <c>Service</c> row's
+    /// (<see cref="CosmosAxiomRows.ReadFolds"/>, G6).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
@@ -52,6 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<CosmosTruncation>? Truncations = null, IReadOnlyList<CosmosPairReading>? PairReadings = null, IReadOnlyList<CosmosBox>? Boxes = null,
         IReadOnlyList<string>? SeesThrough = null, IReadOnlyList<string>? StructureOnly = null, IReadOnlyList<CosmosCalciteReading>? CalciteReadings = null,
         IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null,
-        IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null);
+        IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null,
+        IReadOnlyList<CosmosFold>? Folds = null);
 
 }

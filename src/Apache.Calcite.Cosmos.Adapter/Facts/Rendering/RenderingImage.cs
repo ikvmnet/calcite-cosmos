@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         const long Built = 1 << 16;
 
         /// <summary>A call on single values, where C#'s answer is provably Calcite's; <c>null</c> elsewhere.</summary>
-        static string? Evaluate(string function, IReadOnlyList<string> values)
+        internal static string? Evaluate(string function, IReadOnlyList<string> values)
         {
             // Calcite's repetition: a count below one is the empty string.
             if (function == "REPEAT" && values is [var repeated, var count] && JsonValues.IsString(repeated) && JsonValues.TryNumberOf(count, out var times) && times == decimal.Truncate(times))

@@ -40,6 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Moves = CosmosAxiomRows.ReadMoves(CosmosAxioms.All),
             StoredAs = CosmosAxiomRows.ReadStoredOn(CosmosAxioms.All),
             Truncations = CosmosAxiomRows.ReadTruncations(CosmosAxioms.All),
+            Folds = CosmosAxiomRows.ReadFolds(CosmosAxioms.All),
             Rewrites = CosmosAxiomRows.ReadRewrites(CosmosAxioms.All),
             Unsent = CosmosAxiomRows.ReadUnsent(CosmosAxioms.All),
             PairReadings = CosmosAxiomRows.ReadPairReadings(CosmosAxioms.All),
@@ -155,6 +156,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 opened?.Invoke(bundle, terms, import, run, elapsed);
             });
             CosmosRenderingCost.Add(new(roots, answer.Cost, candidates, System.GC.GetAllocatedBytesForCurrentThread() - bytes, before, oracle.Usage, clock?.Invoke() - started));
+            return answer;
+        }
+
+        /// <summary>
+        /// Asks S the image of a call the translator's column bridge writes (<see cref="RenderingOracle.ImageOf"/>), measured and
+        /// counted as every bridge question is (<see cref="Bridged"/>).
+        /// </summary>
+        /// <param name="countAs">The container a decline is counted under; none for a translator built without one.</param>
+        internal static RenderingBridgeAnswer ImageOf(RenderingOracle oracle, RenderingSet set, SqlValue.Call call, Func<JsonDocumentPath, (PathValues Values, Eggnog.ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, Eggnog.ValueSet<string>> chars, string? countAs) =>
+            Bridged(oracle, new SqlPredicate.IsDefined(call), () => oracle.ImageOf(set, call, read, chars), countAs);
+
+        /// <summary>
+        /// Asks S the case-insensitive affix a <c>LIKE</c> over a fold the translator writes answers as
+        /// (<see cref="RenderingOracle.FoldOf"/>), measured and counted as every bridge question is (<see cref="Bridged"/>).
+        /// </summary>
+        /// <param name="countAs">The container a decline is counted under; none for a translator built without one.</param>
+        internal static RenderingBridgeAnswer FoldOf(RenderingOracle oracle, RenderingSet set, SqlPredicate.Affix like, Func<JsonDocumentPath, (PathValues Values, Eggnog.ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, Eggnog.ValueSet<string>> chars, string? countAs) =>
+            Bridged(oracle, like, () => oracle.FoldOf(set, like, read, chars), countAs);
+
+        /// <summary>
+        /// One question of the translator's bridge, measured as <see cref="Ask"/> measures a bundle where the flow is (a bridge
+        /// sample, <see cref="RenderingCostSample.Bridge"/>), and a decline counted under the container on
+        /// <see cref="Client.CosmosInstrumentation.RenderingDeclines"/>, since what S declines changes what is sent as a declined
+        /// conjunct does: a call computed in process, a <c>LIKE</c> over a fold not rewritten.
+        /// </summary>
+        static RenderingBridgeAnswer Bridged(RenderingOracle oracle, SqlPredicate root, Func<RenderingBridgeAnswer> ask, string? countAs)
+        {
+            RenderingBridgeAnswer answer;
+            if (CosmosRenderingCost.Measuring == false)
+                answer = ask();
+            else
+            {
+                var (bytes, before, clock) = (System.GC.GetAllocatedBytesForCurrentThread(), oracle.Usage, CosmosRenderingCost.ThreadClock);
+                var started = clock?.Invoke();
+                answer = ask();
+                CosmosRenderingCost.Add(new([root], answer.Cost, 0, System.GC.GetAllocatedBytesForCurrentThread() - bytes, before, oracle.Usage, clock?.Invoke() - started, Bridge: true));
+            }
+
+            if (countAs is not null && answer.Declined is { } reason)
+                Client.CosmosInstrumentation.RenderingDeclines.Add(1, new KeyValuePair<string, object?>("cosmos.container", countAs), new KeyValuePair<string, object?>("cosmos.rendering.reason", reason));
+
             return answer;
         }
 

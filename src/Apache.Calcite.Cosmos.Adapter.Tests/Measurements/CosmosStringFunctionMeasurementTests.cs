@@ -403,20 +403,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// The service maps case by a simple mapping, and its case-insensitive match folds the same way: over ASCII it
-        /// agrees with Java's full mapping, and outside it ß and U+FB00 stay as they are where Calcite writes <c>SS</c>
-        /// and <c>FF</c>. Azure also leaves U+017F, U+0130 and U+212A, which the emulator maps; there the test skips,
-        /// having asserted what both share.
+        /// agrees with Java's full mapping, its <c>CONTAINS</c>, <c>STARTSWITH</c> and <c>ENDSWITH</c> alike, and outside it ß
+        /// and U+FB00 stay as they are where Calcite writes <c>SS</c> and <c>FF</c>. Azure also leaves U+017F, U+0130 and
+        /// U+212A, which the emulator maps; there the test skips, having asserted what both share.
         /// </summary>
+        /// <remarks>
+        /// The prefix's and the suffix's lines were added on 2026-11-07, beside S's <c>foldsas</c> rows
+        /// (<c>Service.AffixesMatchByCodePoint</c>); the probe account runs them at its next run.
+        /// </remarks>
         [Fact]
         public async Task CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii()
         {
             var strings = Strings_();
 
             var mapped = await Values(strings, "SELECT VALUE [c.id, [UPPER(c.s), LOWER(c.s)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"longs\", \"idot\", \"kelvin\")");
-            var matched = await Values(strings, "SELECT VALUE [c.id, [CONTAINS(c.s, \"SS\", true), STARTSWITH(c.s, \"ASS\", true), CONTAINS(c.s, \"ff\", true), ENDSWITH(c.s, \"KB\", true), CONTAINS(c.s, \"aB\", true)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"kelvin\")");
+            var matched = await Values(strings, "SELECT VALUE [c.id, [CONTAINS(c.s, \"SS\", true), STARTSWITH(c.s, \"ASS\", true), CONTAINS(c.s, \"ff\", true), ENDSWITH(c.s, \"KB\", true), CONTAINS(c.s, \"aB\", true), STARTSWITH(c.s, \"Ab\", true), ENDSWITH(c.s, \"bC\", true)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"kelvin\")");
 
             mapped["ascii"].EnumerateArray().Select(Text).Should().Equal("ABC", "abc");
             matched["ascii"][4].GetBoolean().Should().BeTrue("ASCII folds alike at both ends");
+            matched["ascii"][5].GetBoolean().Should().BeTrue("the prefix folds alike");
+            matched["ascii"][6].GetBoolean().Should().BeTrue("and the suffix");
 
             mapped["sharp"][0].GetString().Should().Be("AßB", "Java maps ß to SS, and the service leaves it");
             mapped["lig"][0].GetString().Should().Be("AﬀB", "Java maps U+FB00 to FF, and the service leaves it");

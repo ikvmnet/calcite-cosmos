@@ -72,13 +72,14 @@ each is sent as the weakening proved for it and rechecked.
 character range, SQL reads it literally. `LIKE … ESCAPE` is declined. And a pattern that is not a
 literal is declined, because only a literal can be checked for brackets.
 
-The case-insensitive rewrite applies when the pattern is one leading and one trailing `%` around plain
-text, the text is already in the case `UPPER` (or `LOWER`) produces, the text is ASCII, and so is what
-it folds: what is known of `x` — a `pattern` such as `^[ -~]*$`, an `enum`, a sibling `x IN (…)` —
-says it holds ASCII alone (Chapter 14.4), and no U+0000, at which Azure's `CONTAINS` stops reading.
-`LIKE 'abc%'` and `LIKE '%abc'` under `UPPER` become `STARTSWITH(x, 'ABC', true)` and
-`ENDSWITH(x, 'ABC', true)`, which read past a U+0000 and ask only ASCII. This is the shape an ORM
-writes for a case-insensitive "contains", and it is served by the index.
+The case-insensitive rewrite applies when the pattern is plain text after a `%`, before one, or between
+two — a run of `%` reads as one, so `'%%ABC%'` is `'%ABC%'` — the text is already in the case `UPPER`
+(or `LOWER`) produces, the text is ASCII, and so is what it folds: what is known of `x` — a `pattern`
+such as `^[ -~]*$`, an `enum`, a sibling `x IN (…)` — says it holds ASCII alone (Chapter 14.4), and no
+U+0000, at which Azure's `CONTAINS` stops reading. `LIKE 'ABC%'` and `LIKE '%ABC'` under `UPPER` become
+`STARTSWITH(x, 'ABC', true)` and `ENDSWITH(x, 'ABC', true)`, which read past a U+0000 and ask only
+ASCII. This is the shape an ORM writes for a case-insensitive "contains", and it is served by the index.
+Where the reasoning that decides it declines (Chapter 20.2), the rewrite is not made.
 
 A plain `LIKE` whose pattern is one run of text between two `%` is answered by the service as a
 `CONTAINS` too, and stops at the same U+0000: `'%b%'` does not find the `b` of `a`U+0000`b`. So that

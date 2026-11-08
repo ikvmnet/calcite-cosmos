@@ -194,6 +194,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             SpelledAlways = Graph.DefineRelation<string, long>("spelledalways");
             SpelledWhere = Graph.DefineRelation<string, long, long, FunctionValueClass>("spelledwhere");
             CallSpelling = Graph.DefineFunction<Val, long>("callspelling", ValueLattice.Min<long>());
+            FoldsAs = Graph.DefineRelation<RenderingTarget, CosmosServiceTest, string, string>("foldsas");
+            FoldTargets = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<RenderingTarget>>("foldtargets", ValueLattice.Union<RenderingTarget>());
+            FoldParts = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("foldparts", ValueLattice.Union<string>());
+            Folds = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("folds");
+            FoldedAs = Graph.DefineRelation<Pred, CosmosServiceTest, string, long>("foldedas");
 
             // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
             RawColumn = Graph.DefineFunction<RawKey, string, Truths>("rawcolumn");
@@ -281,10 +286,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var assume = Graph.DefineRuleset("assume");
             DefineValued(disagree, pair, place, image, assume);
             DefinePair(pair, place);
-            // A nested call is gathered once its inner place is written: each nesting level is one outer pass, to the fixpoint,
-            // so how deep S images is the run's iteration budget's (RenderingBundle.PlaceIterations), not a depth the loader
-            // cuts (G6): a call nested past it leaves the run incomplete, and its conjunct declined.
-            var places = Schedule.Saturate(Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
+            var fold = Graph.DefineRuleset("fold");
+            DefineFolds(measure, tabulate, fold);
+            // A nested call is gathered once its inner place is written, each nesting level one pass of the three strata, so S
+            // images a call PlaceDepth deep and no deeper (G6): one nested past it gets no image, and only its own conjunct is
+            // unproven, the run completing within its budget (RenderingBundle.PlaceIterations), where the loader cut it before.
+            var places = Schedule.Repeat(PlaceDepth, Schedule.Sequence(Schedule.Saturate(place), Schedule.Saturate(image), Schedule.Saturate(assume)));
 
             // What reads a key, a failing side and a pair read Final complete; an entry reads all three complete (G2-G4).
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected, disagree, raw), Schedule.Saturate(tabulate), Schedule.Saturate(roles, failing, pairs),
@@ -293,6 +300,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // complete, beside the lift; the case's best reads it complete.
             Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, pair, tag, structure, descend, disjoint), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes), Schedule.Saturate(gate), Schedule.Saturate(compose, conflict));
+            // A LIKE over a fold reads its place's image complete (G6), and only the translator's bridge asks it: in a stage
+            // of check mode the ruleset cost every check a round a pass, three of a type test's, past the count it was given.
+            Bridge = Schedule.Sequence(Check, Schedule.Saturate(fold));
             Generate = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, pair, tag, structure, at, spell), places, Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes), Schedule.Saturate(gate), Schedule.Saturate(lift, strict, twovalued), Schedule.Saturate(best, conflict),
                 Schedule.Saturate(weaken));
@@ -321,11 +331,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Schedule Check { get; }
 
         /// <summary>
+        /// The translator's bridge's schedule (G6): check mode's, then the case-insensitive affix a <c>LIKE</c> over a fold
+        /// is written as, which no check reads.
+        /// </summary>
+        public Schedule Bridge { get; }
+
+        /// <summary>
         /// Generate mode's schedule: positions down the tree and the templates' forms; the cells, the service and the gate
         /// on them as in check mode; what the gate agreed lifted, and presence through calls; the bests composed up the
         /// tree; one weakening a node, from complete inputs.
         /// </summary>
         public Schedule Generate { get; }
+
+        /// <summary>
+        /// How deep S images a nested call: the passes its place, image and assume strata take (G6's <c>Repeat(4, …)</c>), the
+        /// depth the loader cut a place at before; a bound on the work, which no row says, as the run's budget is.
+        /// </summary>
+        internal const int PlaceDepth = 4;
 
         // The theory's tables: the rows as measured and as settled per set, and the agreement. `final` and `table` hold a
         // key once every target its set serves has measured it.
@@ -490,6 +512,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>Which tests read a string only to a band's first character, for an argument of a shape, by target, G1's.</summary>
         public Relation<RenderingTarget, CosmosServiceTest, string, string> Truncates { get; }
+
+        /// <summary>
+        /// Which tests' case-insensitive forms match as the test over Calcite's fold by a function, by target, with each band
+        /// the row says nothing of (G6, <c>Service.AffixesMatchByCodePoint</c>'s).
+        /// </summary>
+        public Relation<RenderingTarget, CosmosServiceTest, string, string> FoldsAs { get; }
+
+        /// <summary>The targets a set serves that a test's case-insensitive form matches as the test over a fold on (G6).</summary>
+        public Function<RenderingSet, CosmosServiceTest, string, ValueSet<RenderingTarget>> FoldTargets { get; }
+
+        /// <summary>The bands a set's targets' rows of a test's case-insensitive form over a fold say nothing of (G6).</summary>
+        public Function<RenderingSet, CosmosServiceTest, string, ValueSet<string>> FoldParts { get; }
+
+        /// <summary>
+        /// A test's case-insensitive form matches as the test over a fold on every target a set serves, outside the bands
+        /// held (G6): settled from <see cref="FoldTargets"/> and <see cref="FoldParts"/> complete.
+        /// </summary>
+        public Function<RenderingSet, CosmosServiceTest, string, ValueSet<string>> Folds { get; }
+
+        /// <summary>
+        /// A <c>LIKE</c> over a fold answers as a test's case-insensitive form of an argument over the fold's operand at an
+        /// ordinal (G6): what the translator writes it as.
+        /// </summary>
+        public Relation<Pred, CosmosServiceTest, string, long> FoldedAs { get; }
 
         /// <summary>How a comparison of two paths reads against a literal, the sides swapped or not: the mirror law, G3's.</summary>
         public Relation<CosmosServiceTest, bool, CosmosServiceTest> PairReads { get; }
@@ -2198,6 +2244,55 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
+        // The service's case-insensitive STARTSWITH, ENDSWITH and CONTAINS match as the test over Calcite's UPPER or LOWER of
+        // both sides, outside the bands their rows say nothing of (Service.AffixesMatchByCodePoint's foldsas, G6): a set's
+        // fold is its every target's, settled at the frozen root, and a LIKE over a fold S images is that affix over the
+        // fold's subject, case-insensitive, where the pattern is the narrowest affix of an argument the fold leaves as it is
+        // and neither the subject nor the argument may hold a band the set's rows part at. Answering as the plain affix over
+        // the place does: whether that says what Calcite does is the gate's (DESIGN.md, "A case fold under `LIKE` is the
+        // service's case-insensitive match").
+        void DefineFolds(Ruleset measure, Ruleset tabulate, Ruleset fold)
+        {
+            measure.DefineRule("a target a set serves whose rows fold a test's case-insensitive form is the set's, with the bands its row parts at", r =>
+            {
+                var (x, s, t) = r.Vars<RenderingTarget, RenderingSet, CosmosServiceTest>("x", "s", "t");
+                var (f, b) = r.Vars<string, string>("f", "b");
+                var d = r.Var<ValueSet<RenderingTarget>>("d");
+                r.When(FoldsAs.Of(x, t, f, b), d.Is(Serves.Of(s)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
+                r.Then(FoldTargets.Of(s, t, f).Is(Primitives.Singleton<RenderingTarget>().Of(x)), FoldParts.Of(s, t, f).Is(Primitives.Singleton<string>().Of(b)));
+            });
+
+            tabulate.DefineRule("a fold every target its set serves has rows of is the set's, outside the bands any parts at", r =>
+            {
+                var (s, t, f) = r.Vars<RenderingSet, CosmosServiceTest, string>("s", "t", "f");
+                var (m, d) = r.Vars<ValueSet<RenderingTarget>, ValueSet<RenderingTarget>>("m", "d");
+                var b = r.Var<ValueSet<string>>("b");
+                r.When(m.Is(FoldTargets.Of(s, t, f)), d.Is(Serves.Of(s)), b.Is(FoldParts.Of(s, t, f)));
+                r.Where(Primitives.IsSubsetOf<RenderingTarget>().Of(d, m));
+                r.Then(Folds.Of(s, t, f).Is(b));
+            });
+
+            fold.DefineRule("a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (q, p) = r.Vars<JPath, JPath>("q", "p");
+                var (c, a, kn) = r.Vars<string, string, string>("c", "a", "kn");
+                var (kq, k) = r.Vars<string, string>("kq", "k");
+                var (i, s, t) = r.Vars<long, RenderingSet, CosmosServiceTest>("i", "s", "t");
+                var (b, ch) = r.Vars<ValueSet<string>, ValueSet<string>>("b", "ch");
+                var (sub, x) = r.Vars<ValueSet<long>, PathValues>("sub", "x");
+                r.When(e.Is(Ir.Affix.Of(PredicateAtom.LikeTest, v, c)), Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), x.Is(Imported.Of(q)), kn.Is(CallKey.Of(v)),
+                    sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), ch.Is(ImportedChars.Of(p)), Under.Of(s));
+                r.When(t.Is(Compute.Of(c, AffixPattern.WrittenTest)), a.Is(Compute.Of(c, AffixPattern.WrittenArgument)), b.Is(Folds.Of(s, t, kn)));
+                r.Where(Primitives.Contains<long>().Of(sub, i));
+                r.Where(RenderingPrimitives.FoldsToItself.Of(kn, a));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(b, ch)));
+                r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(b, Compute.Of(a, JsonValues.BandsOfText))));
+                r.Then(FoldedAs.Of(e, t, a, i));
+            });
+        }
+
         // Two readings compared (DESIGN.md, "A comparison of two readings"): an atom of their pair where both are of one
         // kind, which Calcite compares as written, with what each reading's order holds; whose import beneath a stratum is
         // the product of its places' there, each with its strings' classes. The bundle writes the pair's spelling and
@@ -2538,6 +2633,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (target, test, shape, band) in definition.Truncations)
                     w.Assume(Truncates.Of(target, test, shape, band));
+
+                foreach (var (target, test, function, band) in definition.Folds)
+                    w.Assume(FoldsAs.Of(target, test, function, band));
 
                 foreach (var (c, band) in definition.Rewrites)
                     w.Assume(Rewrites.Of(c, band));

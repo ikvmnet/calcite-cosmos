@@ -78,6 +78,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _ => (CosmosServiceTest.Like, pattern),
         };
 
+        /// <summary>
+        /// The test a <c>LIKE</c>'s pattern is written as (<see cref="Written"/>): <see cref="CosmosServiceTest.Equal"/> for one
+        /// of no <c>%</c>, and <see cref="CosmosServiceTest.Like"/> for one no pattern of runs says.
+        /// </summary>
+        public static CosmosServiceTest WrittenTest(string pattern) => Canonical(pattern) is not { } canonical ? CosmosServiceTest.Like
+            : Written(canonical) is var (test, _) ? test : CosmosServiceTest.Equal;
+
+        /// <summary>The argument a <c>LIKE</c>'s pattern is written with (<see cref="Written"/>): the pattern itself where no affix says it.</summary>
+        public static string WrittenArgument(string pattern) => Canonical(pattern) is { } canonical && Written(canonical) is var (_, argument) ? argument : pattern;
+
         /// <summary>Text holding no wildcard, escape or bracket, and no unpaired surrogate, which no statement sends.</summary>
         static bool Plain(string text) => text.IndexOfAny(['%', '_', '\\', '[', ']']) < 0 && JsonValues.IsEncodable(text);
 

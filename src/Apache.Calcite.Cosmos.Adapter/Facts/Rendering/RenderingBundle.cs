@@ -163,6 +163,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : null;
 
         /// <summary>
+        /// What S writes a <c>LIKE</c> over a fold as once a bridge run completed (<see cref="RunBridge"/>, its
+        /// <c>foldedas</c>, G6): the test whose case-insensitive form answers alike, its argument, and the ordinal of the
+        /// fold's operand it is asked over; <c>null</c> where S says none, or the run may not be read.
+        /// </summary>
+        /// <param name="like">The <c>LIKE</c> as the bundle wrote it.</param>
+        public (CosmosServiceTest Test, string Argument, long Operand)? FoldOf(Pred like) => _run is { StopReason: RunStopReason.Completed }
+            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0]))
+                .Select(row => ((CosmosServiceTest Test, string Argument, long Operand)?)((CosmosServiceTest)row.Keys[1], (string)row.Keys[2], (long)row.Keys[3])).SingleOrDefault())
+            : null;
+
+        /// <summary>
         /// The name S keys a computed place's call by once a run completed (its <c>callkey</c> rules over the rows' names,
         /// G6); <c>null</c> where the rows name none, the bundle wrote no place for the call, or the run may not be read.
         /// </summary>
@@ -459,7 +470,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Runs the check within count limits, never time, and the tripwire after it. A run the engine failed has no stop
         /// reason.
         /// </summary>
-        public RenderingRun Run(int iterationLimit = 64 + PlaceIterations) => Run(_theory.Check, iterationLimit);
+        public RenderingRun Run(int? iterationLimit = null) => Run(_theory.Check, iterationLimit ?? 64 + PlaceIterations + 8 * PastPlaceDepth(_atoms.Keys));
+
+        /// <summary>
+        /// Runs the translator's bridge's question as <see cref="Run(int?)"/> runs the check, one stage more
+        /// (<see cref="RenderingTheory.Bridge"/>, G6): what <see cref="FoldOf"/> reads.
+        /// </summary>
+        public RenderingRun RunBridge(int? iterationLimit = null) => Run(_theory.Bridge, iterationLimit ?? 64 + PlaceIterations + 8 * PastPlaceDepth(_atoms.Keys));
 
         /// <summary>
         /// Runs generate mode as <see cref="Run(int)"/> runs the check, within 80 iterations and 8 more for each unit of
@@ -480,13 +497,42 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>What the nested gathering of computed places may take: 16 an outer pass, four levels deep (h10, R7).</summary>
         internal const int PlaceIterations = 16 * 4;
 
-        /// <summary>A generate run's width: the roots' atoms, every <c>IN</c>'s points, and the arms of each root that is a junction.</summary>
+        /// <summary>
+        /// A generate run's width: the roots' atoms, every <c>IN</c>'s points, the arms of each root that is a junction, and
+        /// each level an atom's calls nest past S's place depth (<see cref="PastPlaceDepth"/>).
+        /// </summary>
         public static int WidthOf(IEnumerable<SqlPredicate> roots)
         {
             var all = roots.ToList();
             var atoms = all.SelectMany(r => r.Subterms).Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)).Distinct().ToList();
-            return atoms.Count + atoms.OfType<SqlPredicate.In>().Sum(i => i.Points.Count) + all.Sum(r => r switch { SqlPredicate.And a => a.Arms.Count, SqlPredicate.Or o => o.Arms.Count, _ => 0 });
+            return atoms.Count + atoms.OfType<SqlPredicate.In>().Sum(i => i.Points.Count) + all.Sum(r => r switch { SqlPredicate.And a => a.Arms.Count, SqlPredicate.Or o => o.Arms.Count, _ => 0 })
+                + PastPlaceDepth(atoms);
         }
+
+        /// <summary>
+        /// The levels the atoms' calls nest past <see cref="RenderingTheory.PlaceDepth"/>, each a unit of a run's width: S
+        /// images no place there, but reading each level of a term costs its analysis iterations still, so a call nested past
+        /// it leaves its own conjunct unproven within the run's budget rather than every answer of the bundle incomplete (G6).
+        /// </summary>
+        static int PastPlaceDepth(IEnumerable<SqlPredicate> atoms) => atoms.Sum(atom => Math.Max(0, atom.Subterms.SelectMany(term => term switch
+        {
+            SqlPredicate.Compare c => new[] { c.Left, c.Right },
+            SqlPredicate.In i => [i.Value],
+            SqlPredicate.IsNull n => [n.Value],
+            SqlPredicate.IsDefined d => [d.Value],
+            SqlPredicate.TypeTest t => [t.Value],
+            SqlPredicate.Affix a => [a.Value],
+            _ => Array.Empty<SqlValue>(),
+        }).Select(NestingOf).DefaultIfEmpty(0).Max() - RenderingTheory.PlaceDepth));
+
+        /// <summary>How deep a value's calls nest: a call one more than its deepest operand, a cast and a choice their values'.</summary>
+        static int NestingOf(SqlValue value) => value switch
+        {
+            SqlValue.Call call => 1 + call.Operands.Select(NestingOf).DefaultIfEmpty(0).Max(),
+            SqlValue.Cast cast => NestingOf(cast.Value),
+            SqlValue.Case choice => choice.Arms.Select(NestingOf).DefaultIfEmpty(0).Max(),
+            _ => 0,
+        };
 
         /// <summary>
         /// What the host writes for the computed places at the run (h10): each atom's stratum, each imported path's import

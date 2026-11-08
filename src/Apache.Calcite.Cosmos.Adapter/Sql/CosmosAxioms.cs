@@ -566,7 +566,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Like, Class.None, Both, "absent=undefined null=undefined true=undefined false=undefined number=undefined object=undefined array=undefined"),
                 ]),
             new("Service.AffixesMatchByCodePoint",
-                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too. The emulator matches the string as it stores it against the argument as sent, so a statement sends it in that spelling (Service.EmulatorComparesTheSpellingItIsSent); Azure matches the string as written, its CONTAINS reading it only up to its first U+0000 (Service.NulEndsWhatReplaceAndContainsRead).",
+                "STARTSWITH, ENDSWITH and CONTAINS match a string's code points as written, with no normalisation: U+00E9 matches itself alone and e the decomposed e, U+0301 alone; U+1F600 and U+E000 match whole; a true third operand folds ASCII case, matching as the test over UPPER or LOWER of both sides, and a false one does not; ENDSWITH of the empty string is true of every string, the empty one too. The emulator matches the string as it stores it against the argument as sent, so a statement sends it in that spelling (Service.EmulatorComparesTheSpellingItIsSent); Azure matches the string as written, its CONTAINS reading it only up to its first U+0000 (Service.NulEndsWhatReplaceAndContainsRead).",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.TheAffixesMatchByCodePoint",
                 [
                     // S's affix form (h07): a string by whether the argument matches it, under the matcher the cell's none names;
@@ -577,6 +577,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.StartsWith, Class.String, Azure, "none=codepoint matching=true missing=false"),
                     new(Test.EndsWith, Class.String, Azure, "none=codepoint matching=true missing=false"),
                     new(Test.Contains, Class.String, Azure, "none=codepoint matching=true missing=false"),
+                ],
+                // A true third operand folds ASCII case as UPPER and LOWER do, Java's full mapping parting beyond ASCII
+                // (Service.CaseMappingIsSimple): what S's foldedas licenses a LIKE over a fold to be written as (G6).
+                Folds:
+                [
+                    new(Test.StartsWith, "UPPER", JsonCharacterBand.BeyondAscii, Both),
+                    new(Test.StartsWith, "LOWER", JsonCharacterBand.BeyondAscii, Both),
+                    new(Test.EndsWith, "UPPER", JsonCharacterBand.BeyondAscii, Both),
+                    new(Test.EndsWith, "LOWER", JsonCharacterBand.BeyondAscii, Both),
+                    new(Test.Contains, "UPPER", JsonCharacterBand.BeyondAscii, Both),
+                    new(Test.Contains, "LOWER", JsonCharacterBand.BeyondAscii, Both),
                 ]),
             new("Service.LikeMatchesByCodePoint",
                 "LIKE matches by code point, case sensitive: _ matches one code point, U+1F600, U+00E9 and U+E000 alike, and % any run of them, the empty one too.",

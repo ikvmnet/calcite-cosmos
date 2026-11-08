@@ -184,6 +184,84 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// S images a call <see cref="RenderingTheory.PlaceDepth"/> deep and no deeper (G6): a conjunct over one nested past
+        /// that is unproven alone, the run completing and a conjunct beside it proven, where a run spent on the depth would
+        /// leave every answer in the bundle incomplete; the probe of check 2 of g6 at depths 1 to 32.
+        /// </summary>
+        [Fact]
+        public void ACallNestedPastSsDepthLeavesItsOwnConjunctUnprovenAlone()
+        {
+            var plain = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("cat", SqlTypeName.VARCHAR), Lit("bikes")));
+            foreach (var depth in new[] { 1, RenderingTheory.PlaceDepth, RenderingTheory.PlaceDepth + 1, 12, 32 })
+            {
+                var nested = Name;
+                for (var i = 0; i < depth; i++)
+                    nested = Rex.makeCall(i % 2 == 0 ? SqlStdOperatorTable.UPPER : SqlStdOperatorTable.LOWER, nested);
+
+                var deep = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, nested, Lit("X")));
+                foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+                {
+                    using var bundle = ProbeTheory.Open(set);
+                    var terms = new[] { plain, deep }.Select(r => bundle.Write(r)).ToList();
+                    foreach (var path in new[] { plain, deep }.SelectMany(r => r.Places).Distinct())
+                        bundle.Import(Source, path, Strings, NoBand);
+                    foreach (var call in bundle.ComputedCalls)
+                        bundle.ImportComputed(call, NoBand);
+                    foreach (var term in terms)
+                        bundle.Generate(term);
+
+                    var run = bundle.RunGenerate(RenderingBundle.WidthOf([plain, deep]));
+                    var because = $"depth {depth} under {set}";
+                    run.StopReason.Should().Be(RunStopReason.Completed, because);
+                    bundle.ReadBest(terms[0]).Kind.Should().Be(RenderingVerdictKind.Proven, because);
+                    bundle.ReadBest(terms[1]).Kind.Should().Be(depth <= RenderingTheory.PlaceDepth ? RenderingVerdictKind.Proven : RenderingVerdictKind.Unproven, because);
+                }
+            }
+        }
+
+        /// <summary>
+        /// S writes a <c>LIKE</c> over a fold as the case-insensitive affix its rows say matches alike over the fold's subject
+        /// (G6's <c>foldedas</c>): the pattern's narrowest affix, of an argument the fold leaves as it is, where nothing the
+        /// facts hold of the subject parts; and none for an argument the fold changes or beyond ASCII, a subject that may hold
+        /// a character beyond it, a pattern no affix says, a call that folds nothing, or rows that say nothing of the match.
+        /// </summary>
+        [Fact]
+        public void SWritesALikeOverAFoldAsTheCaseInsensitiveAffixItsRowsMatchAlike()
+        {
+            (CosmosServiceTest, string, long)? Folded(RexNode subject, string pattern, RenderingSet set, JsonCharacterBand chars = JsonCharacterBand.None, RenderingTheory? theory = null)
+            {
+                var like = Loading.Read(Rex.makeCall(SqlStdOperatorTable.LIKE, subject, Lit(pattern))).Should().BeOfType<SqlPredicate.Affix>().Subject;
+                using var bundle = (theory ?? ProbeTheory).Open(set);
+                var term = bundle.Write(like);
+                foreach (var path in like.Places)
+                    bundle.Import(Source, path, Strings, ClassSet(chars));
+                foreach (var call in bundle.ComputedCalls)
+                    bundle.ImportComputed(call, ClassSet(chars));
+
+                bundle.RunBridge().StopReason.Should().Be(RunStopReason.Completed);
+                return bundle.FoldOf(term);
+            }
+
+            var upper = Rex.makeCall(SqlStdOperatorTable.UPPER, Name);
+            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator, RenderingSet.Portable })
+            {
+                Folded(upper, "%B%", set).Should().Be((CosmosServiceTest.Contains, "B", 0L), set.ToString());
+                Folded(Rex.makeCall(SqlStdOperatorTable.LOWER, Name), "a%", set).Should().Be((CosmosServiceTest.StartsWith, "a", 0L));
+                Folded(upper, "%ABC", set).Should().Be((CosmosServiceTest.EndsWith, "ABC", 0L));
+                Folded(upper, "%%B%", set).Should().Be((CosmosServiceTest.Contains, "B", 0L), "a run of % is one");
+                Folded(upper, "%b%", set).Should().BeNull("UPPER leaves no b");
+                Folded(upper, "%" + (char)0xC9 + "%", set).Should().BeNull("Calcite's fold of an argument beyond ASCII is Java's");
+                Folded(upper, "%B%", set, JsonCharacterBand.NonAscii).Should().BeNull("Java maps U+00DF to SS, and the service's match leaves it");
+                Folded(upper, "%A_B%", set).Should().BeNull("_ is one code point, no affix's");
+                Folded(upper, "%A%B%", set).Should().BeNull("two runs are a LIKE");
+                Folded(upper, "AB", set).Should().BeNull("a pattern of no % is an equality");
+                Folded(Rex.makeCall(SqlLibraryOperators.REVERSE, Name), "%B%", set).Should().BeNull("REVERSE folds nothing");
+            }
+
+            Folded(upper, "%B%", RenderingSet.Production, theory: RenderingTheory.Define(Measured with { Folds = [] })).Should().BeNull("no row says how the match folds");
+        }
+
+        /// <summary>
         /// No image where a key may disagree: over a band LOWER parts over, on the emulator and on Azure alike; over a path that may hold a number, which the service's LOWER leaves undefined; and over integer
         /// arithmetic, whose emulator rows differ or fail over numbers, so the 44 arithmetic statements are listed.
         /// </summary>

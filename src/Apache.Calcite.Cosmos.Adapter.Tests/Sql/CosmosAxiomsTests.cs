@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
-                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null))
+                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -223,6 +223,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
             });
             CosmosAxiomRows.ReadRewrites(all).Should().BeEquivalentTo(new[] { (CosmosAnswer.StoredCodePoint, JsonValues.NulClass), (CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass) });
+            CosmosAxiomRows.ReadFolds(all).Should().BeEquivalentTo(
+                from target in new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
+                from test in new[] { Test.StartsWith, Test.EndsWith, Test.Contains }
+                from function in new[] { "UPPER", "LOWER" }
+                from band in new[] { JsonValues.SurrogateBand, JsonValues.HighBand, JsonValues.NonAsciiBand }
+                select (target, test, function, band));
             CosmosAxiomRows.ReadUnsent(all).Should().BeEquivalentTo(new[] { (RenderingTarget.Azure, JsonValues.UnpairedClass), (RenderingTarget.Emulator, JsonValues.UnpairedClass) });
 
             var mirror = CosmosAxiomRows.ReadPairReadings(all);

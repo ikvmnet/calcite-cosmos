@@ -29,6 +29,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<FunctionValueClass, string, bool> WholeOfClass { get; } = Primitive.Create<FunctionValueClass, string, bool>("whole-of-class", (a, c) =>
             JsonValues.TryNumberOf(c, out var n) && n == decimal.Truncate(n) && FunctionValueClasses.Holds(a, c));
 
+        /// <summary>
+        /// Calcite's fold by a function, by the name its rows are filed under, leaves a text as it is (G6): the call on the one
+        /// value, evaluated as Calcite does (<see cref="RenderingImage.Evaluate"/>); never where C# cannot say Calcite's answer.
+        /// </summary>
+        public static Primitive<string, string, bool> FoldsToItself { get; } = Primitive.Create<string, string, bool>("folds-to-itself", (function, text) =>
+            RenderingImage.Evaluate(function, [JsonValues.Of(text)]) == JsonValues.Of(text));
+
         /// <summary>Every truth of the first set is in the second.</summary>
         public static Primitive<Truths, Truths, bool> TruthsWithin { get; } = Primitive.Create<Truths, Truths, bool>("truths-within", (a, b) => (a & ~b) == Truths.None);
 

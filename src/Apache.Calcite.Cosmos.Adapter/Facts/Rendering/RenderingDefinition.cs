@@ -118,6 +118,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Shape, string Band)> Truncations { get; init; } = [];
 
         /// <summary>
+        /// Which tests' case-insensitive forms match as the test over a fold, on each target, and the bands each row says
+        /// nothing of (<c>CosmosAxiomRows.ReadFolds</c>, G6), which S reads of a <c>LIKE</c> over a fold (<c>foldedas</c>).
+        /// None in a definition that names none, where no such <c>LIKE</c> is written case-insensitive.
+        /// </summary>
+        public IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Function, string Band)> Folds { get; init; } = [];
+
+        /// <summary>
         /// Which band each comparator's spelling rewrites (<c>CosmosAxiomRows.ReadRewrites</c>, G1): from which S derives the
         /// spelling a set's statements send, the paths it may write, and where an affix's cut of a range says the match. None
         /// in a definition that names none, where every set is sent as written.

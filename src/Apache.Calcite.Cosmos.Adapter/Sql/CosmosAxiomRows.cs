@@ -169,6 +169,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 select (target.Target, truncation.Test, truncation.Shape, truncation.Band)).Distinct(),
         ];
 
+        /// <summary>
+        /// One row per target a test's case-insensitive form matches as the test over a fold on, and each band it says nothing
+        /// of, by member (G6), S's <c>foldsas</c>. It merges nothing.
+        /// </summary>
+        public static IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Function, string Band)> ReadFolds(IEnumerable<CosmosAxiom> axioms) =>
+        [
+            .. (from axiom in axioms
+                from fold in axiom.Folds ?? []
+                from target in Targets
+                where fold.On.HasFlag(target.Flag)
+                from band in JsonValues.ClassSet(fold.Band).AsEnumerable()
+                select (target.Target, fold.Test, fold.Function, band)).Distinct(),
+        ];
+
         /// <summary>One row per way a comparison of two paths reads against a literal, the mirror law (F3), S's <c>pairreads</c>.</summary>
         public static IReadOnlyList<(CosmosServiceTest Test, bool Swapped, CosmosServiceTest Reads)> ReadPairReadings(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from reading in axiom.PairReadings ?? [] select (reading.Test, reading.Swapped, reading.Reads)).Distinct()];

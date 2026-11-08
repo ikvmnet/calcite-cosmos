@@ -3146,12 +3146,15 @@ across documents* and *A join of a container to itself* is the record.
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
   on every target rather than passed unasked. It pushed under `Production` before; no digest statement moved at either
   step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
-- **The case-insensitive match is read as the service's fold** — *small, run 2 and h16.* `UPPER(x) LIKE '%ABC%'` is
-  written `CONTAINS(x, 'ABC', true)` where S's image of the fold over the pattern's text is the text itself
-  (`CosmosRexTranslator.FoldsToItself`, G6's fix), which reads the service's case-insensitive matcher as folding by its
-  `UPPER` and `LOWER` (`Service.CaseMappingIsSimple`): no row describes the matcher itself. Its own rows, measured over
-  cased witnesses in each band, and S's form of a folded affix land with S's affix printer (h16), when the rewrite goes
-  with the bridge (h37).
+- **Azure's case-insensitive prefix and suffix rest on the statement** — *small, run 2.* S licenses `UPPER(x) LIKE
+  'ABC%'` as `STARTSWITH(x, 'ABC', true)` by `Service.AffixesMatchByCodePoint`'s `Folds` (G6's second fix), on both
+  targets; `CONTAINS`'s flag is measured on both over ASCII, and the prefix's and the suffix's agreement over ASCII was
+  added to `CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii` on 2026-11-07, holding on the emulator. The probe
+  account's next run answers it for Azure, beside cased witnesses in each band beyond ASCII, where every row parts.
+- **S's generate mode has no folded affix** — *small, h16.* S answers which case-insensitive affix a `LIKE` over a fold
+  is (`foldedas`), and the translator writes it (`RenderingOracle.FoldOf`), a bridge question of its own; S's affix
+  printer offers no such candidate yet. The candidate, its form read off `foldedas`, lands with the printer (h16), and
+  the bridge's question goes with the bridge (h37).
 - **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,
   so a pair's form is exact or nothing, never implied, and the translator's Rex of it is not built. Writing it is the
   grammar's row and the builder's arm, at the switch, when S first owns a pair.

@@ -555,10 +555,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || _paths.TryResolvePath(call, out _))
                 return;
 
-            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
-                && Unimaged(call) is string why)
-                throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
-
+            RequireImaged(call);
             foreach (var rule in CosmosFunctionSpellings.Refusals(call, Set))
                 foreach (var ordinal in rule.Asked)
                     if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), rule.Refused) is string input)
@@ -566,6 +563,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
+        }
+
+        /// <summary>
+        /// Refuses a call within an expression that S gives no image, where its rows name it (<see cref="RequireImaged"/>): what
+        /// a rank clause's keyword is held to, the column gate's question without the bridge's copy of the spelling's legality,
+        /// since S's operand rows key what that copy asks of a search, a replacement and a stored operand (F2).
+        /// </summary>
+        /// <param name="node">The expression.</param>
+        /// <exception cref="CosmosTranslationException">S gives a call no image.</exception>
+        void RequireImagesAgree(RexNode node)
+        {
+            if (node is not RexCall call || _paths.TryResolvePath(call, out _))
+                return;
+
+            RequireImaged(call);
+            for (var i = 0; i < call.getOperands().size(); i++)
+                RequireImagesAgree(Operand(call, i));
+        }
+
+        /// <summary>
+        /// Refuses a call its rows name that S gives no image (<see cref="Unimaged"/>); one no row names stays under the
+        /// spelling table's licence until h37 (<see cref="CosmosFunctionSpellings.Named"/>).
+        /// </summary>
+        void RequireImaged(RexCall call)
+        {
+            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
+                && Unimaged(call) is string why)
+                throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
         }
 
         /// <summary>
@@ -599,12 +624,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
             }
 
-            return images.ImageOf(Set, place, path =>
-            {
-                _facts.TryPossible(path, out var possible);
-                return (possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
-            }, inner => Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(inner)), out why, out spelling);
+            var answer = Metadata.CosmosRendering.ImageOf(images, Set, place, ReadOf, CharsOf, _container?.Name);
+            (why, spelling) = (answer.Why, answer.Spelling);
+            return answer.Image;
         }
+
+        /// <summary>What this translation's facts hold of a path, as the bridge imports it into S: its values, and its characters' classes.</summary>
+        (Apache.Calcite.Cosmos.Facts.Saturation.PathValues Values, Eggnog.ValueSet<string> Chars) ReadOf(JsonDocumentPath path)
+        {
+            _facts.TryPossible(path, out var possible);
+            return (possible, Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(path)));
+        }
+
+        /// <summary>The classes this translation's facts hold a call's characters may be in, as the bridge imports them into S.</summary>
+        Eggnog.ValueSet<string> CharsOf(SqlValue.Call call) => Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.ClassSet(_facts.CharactersOf(call));
 
         /// <summary>
         /// Gets the S the column bridge asks (<see cref="Unimaged"/>): its schema's, none where a test turned S off for it,
@@ -4144,8 +4177,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// A case fold under such a pattern is a case-insensitive match, and the service has one:
         /// <c>UPPER(x) LIKE '%ACADIA%'</c> is <c>CONTAINS(x, 'ACADIA', true)</c>, and the prefix and
-        /// suffix forms are <c>STARTSWITH</c> and <c>ENDSWITH</c> with the same flag. See
-        /// <see cref="TryCaseInsensitiveMatch"/> for what the pattern has to be.
+        /// suffix forms are <c>STARTSWITH</c> and <c>ENDSWITH</c> with the same flag. Which, and of what, is
+        /// S's (<see cref="FoldOf"/>).
         /// </para>
         /// </remarks>
         void WriteLike(StringBuilder builder, RexCall call)
@@ -4181,14 +4214,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (pattern.IndexOfAny(new[] { '[', ']' }) >= 0)
                 throw new CosmosTranslationException("LIKE with a bracket in the pattern is not supported: Cosmos reads a character range where SQL reads the brackets literally.");
 
-            // The raw path under a string operator, once its coercion to VARCHAR is unwrapped -- a
-            // VARIANT partition-key column carries one where an ANY value did not; see StripTextCoercion.
-            if (TryCaseFoldOperand(subject, out _) is RexNode value && TryCaseInsensitiveMatch(pattern, out var function, out var text)
-                && FoldsToItself((RexCall)subject, text))
+            // What a LIKE over a fold is written as is S's (G6): the case-insensitive affix its rows say matches alike, over the
+            // fold's subject, the raw path once its coercion to VARCHAR is unwrapped -- a VARIANT partition-key column carries
+            // one where an ANY value did not; see StripTextCoercion.
+            if (FoldOf(call) is var (test, argument, operand))
             {
-                builder.Append(function).Append('(');
-                Write(builder, StripTextCoercion(value));
-                builder.Append(", ").Append(_parameters.Add(Sent(text, compared: true))).Append(", true)");
+                builder.Append(Apache.Calcite.Cosmos.Facts.Rendering.ServiceForm.NameOf(test)).Append('(');
+                Write(builder, StripTextCoercion(Operand((RexCall)subject, (int)operand)));
+                builder.Append(", ").Append(_parameters.Add(Sent(argument, compared: true))).Append(", true)");
                 return;
             }
 
@@ -4219,70 +4252,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Recognises a pattern that, matched against a case fold, is a case-insensitive prefix,
-        /// suffix or substring match, and names the service function that makes it.
+        /// The case-insensitive affix S says a <c>LIKE</c> over a fold answers as (G6, its <c>foldedas</c>): the test, its
+        /// argument and the ordinal of the fold's subject, the <c>LIKE</c> read as the loader that reads places reads it, each
+        /// path and call in it as this translation's facts hold them; <c>null</c> where it is no <c>LIKE</c> over a call, S
+        /// says none, or no S is asked.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// <c>UPPER(x) LIKE '%ACADIA%'</c> is what an ORM writes for a case-insensitive
-        /// <c>contains</c>, and what a typeahead is; rendered as written it is a scan the service
-        /// folds and pattern-matches row by row, and <c>CONTAINS(x, 'ACADIA', true)</c> is the same
-        /// question asked of the function that answers it. <c>STARTSWITH</c> and <c>ENDSWITH</c> take
-        /// the same third argument.
-        /// </para>
-        /// <para>
-        /// <b>What the pattern has to be: its shape.</b> The wildcards may only be one leading and one
-        /// trailing <c>%</c>, so that what is between them is matched literally as a unit; a <c>_</c>
-        /// or an inner <c>%</c> is a pattern and stays one. What its text has to be is S's
-        /// (<see cref="FoldsToItself"/>), and what the value folded has to be,
-        /// <see cref="RequireStringFunctionsAgree"/>'s, which asks S's image of the fold before this is reached.
-        /// </para>
+        /// <c>UPPER(x) LIKE '%ACADIA%'</c> is what an ORM writes for a case-insensitive <c>contains</c>, and what a typeahead is;
+        /// rendered as written it is a scan the service folds and pattern-matches row by row, and
+        /// <c>CONTAINS(x, 'ACADIA', true)</c> is the same question asked of the function that answers it. S's rows say the
+        /// service's case-insensitive <c>STARTSWITH</c>, <c>ENDSWITH</c> and <c>CONTAINS</c> match as the test over Calcite's
+        /// fold where neither side holds a character past ASCII (<c>Service.AffixesMatchByCodePoint</c>), so S answers one
+        /// where the pattern is the narrowest affix of an argument the fold leaves as it is and nothing the facts hold of
+        /// <c>x</c> parts:
+        /// <c>UPPER(x)</c> never holds a lowercase letter, so <c>LIKE '%acadia%'</c> stays a <c>LIKE</c>, which answers the
+        /// same nothing, and beyond ASCII Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c>, which no case-insensitive
+        /// comparison of the stored text reproduces. What the value folded has to be beside that is the column gate's
+        /// (<see cref="RequireStringFunctionsAgree"/>), which asks S's image of the fold before this is reached.
         /// </remarks>
-        /// <param name="pattern">The literal pattern.</param>
-        /// <param name="function">On success, the service function.</param>
-        /// <param name="text">On success, the text to match, with the wildcards removed.</param>
-        /// <returns><c>true</c> if the pattern is one of the three shapes.</returns>
-        static bool TryCaseInsensitiveMatch(string pattern, out string function, out string text)
-        {
-            function = "";
-            text = "";
-
-            var leading = pattern.StartsWith("%", StringComparison.Ordinal);
-            var trailing = pattern.EndsWith("%", StringComparison.Ordinal);
-            if (leading == false && trailing == false)
-                return false;
-
-            var start = leading ? 1 : 0;
-            var end = trailing ? pattern.Length - 1 : pattern.Length;
-            if (end <= start)
-                return false;
-
-            var core = pattern.Substring(start, end - start);
-            if (core.IndexOfAny(['%', '_']) >= 0)
-                return false;
-
-            function = leading && trailing ? "CONTAINS" : trailing ? "STARTSWITH" : "ENDSWITH";
-            text = core;
-            return true;
-        }
-
-        /// <summary>
-        /// Whether S images the case fold over a pattern's text as that text itself (G6): the fold's rows agree with Calcite's
-        /// over every band the text holds on every target the set serves, and the text is already in the case the fold
-        /// makes. Then the fold of a value the gate proved S images contains it exactly where the service's match, which
-        /// folds as its <c>UPPER</c> and <c>LOWER</c> do (<c>Service.CaseMappingIsSimple</c>), finds it under the flag.
-        /// </summary>
-        /// <remarks>
-        /// <c>UPPER(x)</c> never contains a lowercase letter, so <c>LIKE '%acadia%'</c> matches nothing under it, and S's image
-        /// of <c>UPPER('acadia')</c> is <c>'ACADIA'</c>: the plain form stands, which answers the same nothing. Beyond ASCII
-        /// the rows part (F5): Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c> and a ligature to its letters, which no
-        /// case-insensitive comparison of the stored text reproduces, and S gives the fold over such a text no image.
-        /// </remarks>
-        /// <param name="fold">The case fold the pattern is matched against.</param>
-        /// <param name="text">The pattern's text, its wildcards removed.</param>
-        bool FoldsToItself(RexCall fold, string text) =>
-            ImageOf(_rexBuilder.makeCall(fold.getOperator(), _rexBuilder.makeLiteral(text, fold.getType(), false)) as RexCall, out _) is { } image
-            && image.Equals(Apache.Calcite.Cosmos.Facts.Rendering.PathImport.CellOf(Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of(text)));
+        /// <param name="like">The <c>LIKE</c>.</param>
+        (Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest Test, string Argument, long Operand)? FoldOf(RexCall like) =>
+            Images is { } images && Places.Read(like) is SqlPredicate.Affix { Value: SqlValue.Call } affix
+                ? Metadata.CosmosRendering.FoldOf(images, Set, affix, ReadOf, CharsOf, _container?.Name).Fold
+                : null;
 
         /// <summary>
         /// Writes an element access.
@@ -4519,8 +4511,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return;
             }
 
-            // What a repetition's count and result, REPLACE's search and a concatenation that reads a null as the empty
-            // string answer are their rows', which the column gate asks S's image of (G6).
+            // What a call its rows name computes, its count, result, search and null-as-empty concatenation among them, is S's
+            // image, which the column gate asked before anything was written (G6); the table is the spelling and the arity.
 
             if (CosmosFunctionSpellings.DirectFunctions.TryGetValue(name, out var mapping) == false)
                 throw new CosmosTranslationException($"Unsupported function '{name}'.");
@@ -4528,11 +4520,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var count = call.getOperands().size();
             if (count < mapping.MinArgs || count > mapping.MaxArgs)
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
-
-            // A string function the table maps that no row names, measured, declared or the service's own: computed in process
-            // until a row does (CosmosFunctionSpellings.Named, G6).
-            if (call.getType()?.getSqlTypeName() is SqlTypeName type && (type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR) && CosmosFunctionSpellings.Named(Rendering, name) == false)
-                throw new CosmosTranslationException($"{name} is computed in process: what it asks of its operands' characters for the service to answer as Calcite does has not been measured.");
 
             // REPLACE's search is matched against the subject, a compared position (_spelled); its replacement is not.
             WriteFunctionCall(builder, call, mapping.Name, name == "REPLACE" ? 1 : -1);
@@ -4850,7 +4837,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // A function a scoring function's operand computes is held to S's image of it, as a column's is: a keyword the
             // service makes otherwise than Calcite would is not the one the statement names.
-            RequireStringFunctionsAgree(node);
+            RequireImagesAgree(node);
 
             _scoring = true;
 

@@ -21,7 +21,7 @@ builder.Services.AddOpenTelemetry()
 | --- | --- | --- | --- |
 | `cosmos.request_charge` | histogram | `{request_unit}` | request units charged, one measurement per response |
 | `cosmos.responses` | counter | `{response}` | responses received |
-| `cosmos.rendering.declines` | counter | `{decline}` | filter questions the rendering reasoning declined while planning |
+| `cosmos.rendering.declines` | counter | `{decline}` | questions the rendering reasoning declined while planning |
 
 The first two carry two tags:
 
@@ -38,7 +38,10 @@ as a point read; without it, it could not be told from the query it replaced.
 `cosmos.rendering.declines` counts each question about a filter that the adapter's rendering
 reasoning could not answer while the statement was planned (Chapter 8). The conjuncts it asked about stay
 in process with nothing sent for them — but after a `composite` decline, below: the rows are right, and
-the container is read for them. It carries `cosmos.container` and `cosmos.rendering.reason`:
+the container is read for them. It counts the questions asked of what a filter or a projection computes
+too: a function of a document value it declines is computed in process over the value the service sends,
+and a `LIKE` over `UPPER` or `LOWER` is not rewritten as the service's case-insensitive match
+(Chapter 8.2). It carries `cosmos.container` and `cosmos.rendering.reason`:
 
 | reason | what happened |
 | --- | --- |

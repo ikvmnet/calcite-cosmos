@@ -41,7 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// a class is to the gate (G2); a pair's readings, its table and the rows that license it, and what each reading's
         /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); each set's table
         /// as the leaves read it; and what a computed call is keyed by, what Calcite answers over each key and the service
-        /// alone defines, and the images a call's rows license (G6). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
+        /// alone defines, the images a call's rows license, and the case-insensitive affix a LIKE over a fold is written as
+        /// (G6). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -73,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ["measure"] =
                 [
                     "a measured answer is one a set's service may give",
+                    "a target a set serves whose rows fold a test's case-insensitive form is the set's, with the bands its row parts at",
                 ],
                 ["allowed"] =
                 [
@@ -94,6 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a class some row orders is placed by its comparators",
                     "a key every target its set serves measured is settled",
                     "a comparator whose spelling rewrites a band rewrites",
+                    "a fold every target its set serves has rows of is the set's, outside the bands any parts at",
                 ],
                 ["sets"] =
                 [
@@ -303,8 +306,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a literal operand at an ordinal its function's rows name no key of, nor any literal of, lets its call be absent",
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
+                ["fold"] =
+                [
+                    "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
+                ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(137);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(140);
         }
 
         /// <summary>
@@ -420,6 +427,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.Moves.Should().OnlyContain(r => s.Theory.Check(s.Moves.Of(r.Comparator, r.Band)));
             d.StoredAs.Should().OnlyContain(r => s.Theory.Check(s.StoredAs.Of(r.Target, r.Written, r.Stored)));
             d.Truncations.Should().OnlyContain(r => s.Theory.Check(s.Truncates.Of(r.Target, r.Test, r.Shape, r.Band)));
+            d.Folds.Should().NotBeEmpty().And.OnlyContain(r => s.Theory.Check(s.FoldsAs.Of(r.Target, r.Test, r.Function, r.Band)));
             d.Rewrites.Should().OnlyContain(r => s.Theory.Check(s.Rewrites.Of(r.Comparator, r.Band)));
             d.Unsent.Should().OnlyContain(r => s.Theory.Check(s.Unsent.Of(r.Target, r.Class)));
             d.PairReadings.Should().OnlyContain(r => s.Theory.Check(s.PairReads.Of(r.Test, r.Swapped, r.Reads)));

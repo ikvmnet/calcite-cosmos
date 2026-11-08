@@ -3666,9 +3666,11 @@ name with none is refused, so a function added to the translator's table is comp
 been said. `CosmosRexTranslator.RequireStringFunctionsAgree` asks it once of the whole expression, before anything is
 written, as a rendering is asked, of the facts the translation was licensed (*Which facts may justify what*). Asked at a
 writer it would miss the case-insensitive rewrite, which writes the folded value and not the fold: asked of the `LIKE`
-it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the fold beneath it S, H and N. The rewrite
-asks S's image of the fold over its pattern's text, which must be the text itself (`FoldsToItself`, since G6's fix;
-the case mapping's class named once for both before it). Where one is not
+it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the fold beneath it S, H and N. Whether the
+rewrite is made, and as which test, is S's since G6's second fix (*A case fold under `LIKE` is the service's
+case-insensitive match*): the pattern's text its own fold, and neither it nor the fold's subject holding a band the
+matcher's rows part at; the case mapping's class named once for both before G6, and the translator's reading of the
+pattern between. Where one is not
 proved the translation is refused, and the function stays in process over the value the service sends, which is what a
 path declared nothing of always did; the rest of the statement pushes.
 
@@ -4531,15 +4533,27 @@ to be a path, as the full text predicates do, would refuse the ordinary case.
 `UPPER(x) LIKE '%ACADIA%'` is what an ORM writes for a case-insensitive `contains`, and what a
 typeahead is; `CONTAINS(x, 'ACADIA', true)` is the same question asked of the function that answers
 it, `STARTSWITH` and `ENDSWITH` taking the same third argument for the prefix and suffix forms (#84).
-The rewrite is exact rather than a weakening, and it is exact only under three conditions the
-translator checks: the wildcards are one leading and one trailing `%` and nothing else, so what lies
-between is matched literally as a unit; the text is already in the case the fold produces, since
-`UPPER(x)` never contains a lowercase letter and `LIKE '%acadia%'` under it matches nothing, which the
-plain form answers just as well; and the text is ASCII. The last is where the equivalence actually
-rests — on the fold Calcite applies and the folding the service applies under the flag agreeing on
-every character — and ASCII is where that is known. Java's `toUpperCase` maps `ß` to `SS` and a
-ligature to its letters, which no case-insensitive comparison of the stored text reproduces, so
-outside ASCII the plain form stands and folds at the service under its own rules as it did.
+The rewrite is exact rather than a weakening, and S says where (G6's second fix, the `fold` ruleset): *a `LIKE` over a
+fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject*. The pattern is read as
+S reads every pattern, by its narrowest affix (`AffixPattern`, a run of `%` one), and only a prefix, a suffix and a
+containment with no `_` have rows, so what lies between is matched literally as a unit; the text is its own fold
+(`folds-to-itself`, Calcite's `UPPER` or `LOWER` of the literal), since `UPPER(x)` never contains a lowercase letter and
+`LIKE '%acadia%'` under it matches nothing, which the plain form answers just as well; and every target the set serves
+has a row saying its flag matches as the test over that fold (`foldsas`, `Service.AffixesMatchByCodePoint`'s `Folds`),
+outside the bands the row parts at, which neither the subject's characters nor the text's may hold. Those bands are
+every one beyond ASCII, and that is where the equivalence actually rests — on the fold Calcite applies and the folding
+the service applies under the flag agreeing on every character — and ASCII is where that is known. Java's
+`toUpperCase` maps `ß` to `SS` and a ligature to its letters, which no case-insensitive comparison of the stored text
+reproduces, so outside ASCII the plain form stands and folds at the service under its own rules as it did. The
+translator writes what S answers (`RenderingOracle.FoldOf`, a bridge question of the `LIKE`, read off `foldedas`, and
+counted as a filter's is), the ruleset run after check mode's stages in the bridge's own schedule
+(`RenderingTheory.Bridge`) since no check reads it: in check mode's partition stage it cost every check a round a pass,
+three of a type test's, and 27 of the census's checks of a negation ran out of the count they are given. Until G6's
+second fix it read the pattern's shape, the text's case and its ASCII itself (`TryCaseInsensitiveMatch`), one leading
+and one trailing `%` alone, so `'%%ACADIA%'` stayed a `LIKE`, and the flag's reading was prose with no row (*The service's case-insensitive flag folds ASCII the way `UPPER` does*). What else the
+stored text may hold, a U+0000 at which Azure's `CONTAINS` stops and the emulator's stored escapes, is the column
+gate's, asked of the `LIKE` the rewrite stands for (`CosmosFunctionSpellings.Refusals`, until h37); the fold changes
+neither.
 
 **The text was not the whole of it: the value folded has to be ASCII too.** This section used to call the rewrite
 exact on the pattern's text alone, and the measurement said otherwise (`reports/verify-strings.md`): `UPPER(s) LIKE
@@ -7836,7 +7850,9 @@ S declines while a statement it writes is planned, tagged with the container and
 `unavailable`, `engine`, `conflict` — or a run that stopped before a conjunct asked was read, `incomplete`; and once a
 statement, `composite`, where its admissions were voided and the rounds run again without them. Only the statement's
 own set's are counted, and only where S writes it, since only those change what a host's plan sends. The count lives in
-`CosmosFilterRendering`, under `Metadata/`, so that nothing under `Facts/` reaches the client.
+`CosmosFilterRendering`, under `Metadata/`, so that nothing under `Facts/` reaches the client. The translator's bridge
+questions are counted beside them since G6's second fix (*What the bridge asks is counted as a filter's question is*),
+from `CosmosRendering`, alike.
 
 **What changed is listed.** With S writing, 699 of the gate's 3,492 statements plan otherwise than at `main`: the
 Writes-armed rehearsal's digests, which the switch reproduces byte for byte, each change classed against the shadow's
@@ -8393,8 +8409,31 @@ key since G6's fix (*Rows that name a second operand*): within 10,000 code point
 nothing bounds the subject, undefined on Azure and unmeasured on the emulator, where G6 had computed every one in process
 while no row held the bound; no corpus plan holds one, and every digest is unchanged. A rank clause's keyword is asked as
 a column is (`TranslateRank`), so a `REPLACE` of an empty search or a `CONCAT` that reads a null as empty stays in process
-there too, where G6 wrote it unasked. The legality the rows do not carry stays the bridge's
-(`CosmosFunctionSpellings.Refusals`). It goes at h37, when S writes the column.
+there too, where G6 wrote it unasked, and only S's image is asked there since G6's second fix (`RequireImagesAgree`), the
+operand rows keying what the bridge's copy of the legality asks of a search, a replacement and a stored operand (F2).
+The legality the rows do not carry stays the column's (`CosmosFunctionSpellings.Refusals`). It goes at h37, when S
+writes the column.
+
+**What the bridge asks is counted as a filter's question is (G6's second fix).** Each question, a call's image or a
+`LIKE`'s fold (*A case fold under `LIKE` is the service's case-insensitive match*), is a bundle the schema's oracle opens
+and remembers as it does a filter's (`RenderingOracle.Bridged`): its hits, bundles and declines are `Counts`', its
+bundles `Bridges` too, a decline is counted on `cosmos.rendering.declines` under its container and reason
+(`CosmosRendering.Bridged`), and where the flow is measured it is a sample of its own (`RenderingCostSample.Bridge`),
+which the plan's cost lines leave out. G6 asked them unseen: no counter or sample showed a call computed in process
+because S declined it. A question that finds no generation waits as a filter's does, to the deadline the schema's first
+waiting question set (*Generations off the planning thread*, under *The production oracle*), and declines
+`unavailable` past it, so on a schema's first plan a
+function that would push stays in process, and a `LIKE` over a fold is not rewritten; unchanged, and now counted.
+
+**How deep S images a call is a stage's passes (G6's second fix).** The three place rulesets run as `Repeat(PlaceDepth,
+…)`, four passes, each gathering one level's operands, imaging it and stating its imports, so a call nested four deep is
+imaged and one deeper is a place S gives no image, computed in process with S's reason. A run's budget grows by eight
+iterations for each level an atom's calls nest past it (`RenderingBundle.PastPlaceDepth`), the analysis still reading
+every level of the term, so a deeper call leaves its own conjunct unproven within the run rather than every answer of
+its bundle incomplete. G6 saturated the three to a fixpoint bounded only by the run's iterations: the loader's gate,
+which cut a place at four, was gone, and a call nested past what the iterations reached left the run incomplete, every
+answer of its bundle with it. Five nested `REVERSE`s and more, which G6 imaged, are computed in process
+(`CosmosFunctionRowsGateTests`); no corpus plan nests a call so deep, and every digest is unchanged.
 
 **Which spelling a call takes is S's (G6).** A function the service spells more than one way, each saying what Calcite
 computes, lists its spellings by rank (`CosmosFunctionSpellings.Spellings`, the definition's `CallSpellings`): a window
@@ -9081,9 +9120,11 @@ over the first; where a row said `Same`, over a surrogate for each and the high 
 letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so the `Same` proved nothing, as
 `RIGHT`'s surrogate key is read. The rows now say it, so S's image rule and the column bridge refuse a case mapping
 beyond ASCII through them, and the legality that kept it to ASCII under every set (`CosmosFunctionSpellings.Mapped`) is
-gone. The case-insensitive match's pattern is held to S's image of the fold over it since G6's fix (`FoldsToItself`),
-which reads the service's matcher as folding by its `UPPER` and `LOWER` (`Service.CaseMappingIsSimple`); the matcher's
-own rows are owed (`TODO.md`). Run 2 measures cased witnesses in each band.
+gone. The case-insensitive match is S's since G6's second fix, over the matcher's own rows
+(`Service.AffixesMatchByCodePoint`'s `Folds`, `foldsas`), which part at every band beyond ASCII as the mapping does (*A
+case fold under `LIKE` is the service's case-insensitive match*); G6's fix had read the matcher as folding by the
+service's `UPPER` and `LOWER` (`CosmosRexTranslator.FoldsToItself`, `Service.CaseMappingIsSimple`) with no row of its own. Run 2 measures
+cased witnesses in each band, and Azure's case-insensitive prefix and suffix over ASCII.
 
 ### Character bands and the stored spelling, S's (G1)
 
@@ -9898,9 +9939,12 @@ row model means `id` and the system properties, whose presence the service guara
 **The service's case-insensitive flag folds ASCII the way `UPPER` does.** `UPPER(x) LIKE '%ACADIA%'`
 is rendered as `CONTAINS(x, 'ACADIA', true)` on the reading that the flag compares the stored text
 and the argument case-insensitively, character for character, over ASCII. The reference documents the
-flag and says no more; the rewrite is confined to ASCII text so that nothing outside it is assumed,
-and the differential corpus is where the assumption would be caught — it has not yet run against an
-account with the rewrite in place.
+flag and says no more; the rewrite is confined to ASCII text so that nothing outside it is assumed.
+Since G6's second fix the reading is a row S licenses the rewrite by (`Service.AffixesMatchByCodePoint`'s `Folds`),
+parting at every band beyond ASCII. `CONTAINS`'s flag is measured over ASCII on both targets, and every test's parts
+from Java's beyond it (`CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii`); the prefix's and the suffix's agreement
+over ASCII was added to that measurement on 2026-11-07 and holds on the emulator, and Azure's is the probe account's
+next run, until when its rows of them rest on the statement.
 
 **What a type test says of an absent path.** The record disagrees with itself: one remark in the
 translator has `IS_PRIMITIVE` false there, this document had it undefined, and the operator table says

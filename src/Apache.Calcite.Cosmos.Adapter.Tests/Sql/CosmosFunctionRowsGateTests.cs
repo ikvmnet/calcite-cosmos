@@ -414,21 +414,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// A call over a call is asked of the rows of each, whatever the loader makes a place of: a replacement whose
-        /// literal holds a surrogate pair, which the loader spells no place of, and six reversals, past the four it nests
-        /// places to, are gathered with their images as any nested call is, and push where those were measured alike; a
-        /// replacement holding U+FDD0, which the emulator stores escaped, is refused there, and on Azure, which measured a
-        /// replacement only as the literal <c>x</c>, a replacement of either band is.
+        /// literal holds a surrogate pair, which the loader spells no place of, and four reversals, as deep as S images a
+        /// place (<c>RenderingTheory.PlaceDepth</c>), are gathered with their images as any nested call is, and push where
+        /// those were measured alike, where a fifth gets no image and stays in process; a replacement holding U+FDD0, which
+        /// the emulator stores escaped, is refused there, and on Azure, which measured a replacement only as the literal
+        /// <c>x</c>, a replacement of either band is.
         /// </summary>
         [Fact]
         public void ACallOverACallIsAskedWhateverTheLoaderMakesAPlaceOf()
         {
             RexNode Replace(string replacement) => Call(SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Unicode(replacement));
-            var reversed = Str();
-            for (var i = 0; i < 6; i++)
-                reversed = Call(SqlLibraryOperators.REVERSE, reversed);
+            RexNode Reversed(int times)
+            {
+                var reversed = Str();
+                for (var i = 0; i < times; i++)
+                    reversed = Call(SqlLibraryOperators.REVERSE, reversed);
+
+                return reversed;
+            }
 
             foreach (var target in new[] { Azure, Emulator })
-                Translator(target, JsonCharacterBand.None).TryTranslate(reversed, out _).Should().BeTrue($"{target}: six reversals");
+            {
+                Translator(target, JsonCharacterBand.None).TryTranslate(Reversed(Apache.Calcite.Cosmos.Facts.Rendering.RenderingTheory.PlaceDepth), out _).Should().BeTrue($"{target}: four reversals");
+                Translator(target, JsonCharacterBand.None).TryTranslate(Reversed(Apache.Calcite.Cosmos.Facts.Rendering.RenderingTheory.PlaceDepth + 1), out _).Should().BeFalse($"{target}: a fifth is past S's depth");
+            }
 
             Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue("the reversal of a replacement by a pair");
             Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("the emulator stores U+FDD0 escaped");
