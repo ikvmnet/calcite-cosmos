@@ -9008,21 +9008,21 @@ stood for a measured row, linked to it by a comment; a loading that reads places
 it stands, and S's rules read the row as a cell.
 
 - *A value cast to `VARIANT` is the box it is*, `SqlValue.Box` and the vocabulary's `box(type, value)`, by the SQL type
-  of what it holds, whatever value that is: the rules read a reading's and a literal's alone. The loader read a text boxed as the text (`Boxed`) and a boxed
-  string as the string (`BoxedString`), for an equality and a null test alone, and `Comparand` stripped the box off any
-  literal. `boxof` and `seesthrough` are analyses read beside the terms now, and four rules in the vocabulary's
-  ruleset, S's alone, join them: within one box a comparison the row sees through (`=`, `<>`) of a reading and a boxed
-  literal is an atom of the reading; a raw value is in the box of the kind it holds, so compared with a literal boxed
-  as values of the literal's own kind are it is the raw value's comparison, which its column's cells decide, one rule
-  for a raw value and one for a raw value in a column; and a box of a type `boxnull` names is null where what it holds
-  is, so its null test is the reading's and it is strict where what it holds is. `boxnull` is one cell a type, each
-  measured apart (`VARCHAR`, `BOOLEAN`, `INTEGER`, `BIGINT`, `DOUBLE`, `DECIMAL`), where the first cut read the null test
-  through every box off the text's alone. The row gained three cells, measured in `AVariantEqualsOnlyItsOwnBox`: a
-  `CHAR` literal is a string's box, the `'42'` that equals the stored `"42"` alone, and a boolean and `BOOLEAN` share
-  one. An order, a literal in another box, and an `INTEGER`, which Calcite boxes apart
-  from a stored integer's `BIGINT` (`CAST(42 AS VARIANT)` equals no stored 42), are no atom; the strip read that last
-  one as the raw value's comparison with 42. That a literal in another box is `FALSE` under `=` is a cell no rule reads
-  yet (`TODO.md`). `IrEval` evaluates a box as the row says.
+  of what it holds, whatever value that is: the rules read a reading's and a literal's alone. The loader read a text
+  boxed as the text (`Boxed`) and a boxed string as the string (`BoxedString`), for an equality and a null test alone,
+  and `Comparand` stripped the box off any literal. `boxof` and `seesthrough` are analyses read beside the terms now,
+  and four rules in the vocabulary's ruleset, S's alone, join them: within one box a comparison the row sees through
+  (`=`, `<>`) of a reading and a boxed literal is an atom of the reading; a raw value is in the box of the kind it
+  holds, so compared with a literal boxed as values of the literal's own kind are it is the raw value's comparison,
+  which its column's cells decide, one rule for a raw value and one for a raw value in a column; and a box of a type
+  `boxnull` names is null where what it holds is, so its null test is the reading's and it is strict where what it holds
+  is. `boxnull` is one cell a type, each measured apart (`VARCHAR`, `BOOLEAN`, `INTEGER`, `BIGINT`, `DOUBLE`,
+  `DECIMAL`), where the first cut read the null test through every box off the text's alone. The row gained three cells,
+  measured in `AVariantEqualsOnlyItsOwnBox`: a `CHAR` literal is a string's box, the `'42'` that equals the stored
+  `"42"` alone, and a boolean and `BOOLEAN` share one. An order, a literal in another box, and an `INTEGER`, which
+  Calcite boxes apart from a stored integer's `BIGINT` (`CAST(42 AS VARIANT)` equals no stored 42), are no atom; the
+  strip read that last one as the raw value's comparison with 42. That a literal in another box is `FALSE` under `=` is
+  a cell no rule reads yet (`TODO.md`). `IrEval` evaluates a box as the row says.
 - *A one-place test is of the reading as it stands.* A type test's and `IS_DEFINED`'s in-process body is handed the
   document and the path its accessor names, not the value (`CosmosTypeTestImplementor`), which the loader said by
   writing `Raw(path)` for a reading that was no cast. The cell is `testreads(reader, as)`, `CosmosAxiom.TestReads` on
