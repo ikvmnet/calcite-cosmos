@@ -67,6 +67,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public CosmosAnchorBound Bound { get; init; }
 
         /// <summary>
+        /// Gets whether the slot binds only whether the value is there: <c>true</c> for a value, <c>null</c> for none.
+        /// </summary>
+        /// <remarks>
+        /// A comparison's guard tests its parameter for null and nothing else, so it is sent nothing the service would
+        /// have to read: not the value itself, which may be one it has no type for, such as Calcite's boxed <c>UUID</c>.
+        /// </remarks>
+        public bool Presence { get; init; }
+
+        /// <summary>
         /// Gets the length in UTF-16 code units the parameter's type holds a string to — its <c>CHAR(n)</c> or
         /// <c>VARCHAR(n)</c> — or <c>null</c> for a type that holds any.
         /// </summary>
