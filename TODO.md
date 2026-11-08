@@ -2998,10 +2998,10 @@ across documents* and *A join of a container to itself* is the record.
   hold them, and the place's import read; no image, or no S asked (S turned off, a translator with no schema), keeps it
   in process. The legality the rows do not carry stays the bridge's (`CosmosFunctionSpellings.Refusals`). What S does
   not yet image that a user may miss:
-  - A `REPEAT` of a positive count: the service repeats no further than 10,000 code points on Azure, a bound of the
-    result no row holds, so S has no place for it whatever F bounds the subject's length to (the copy G6 deleted pushed
-    one over a subject the facts bound short). The proper fix is a result key in the rows (F2's) and S's import of a
-    string's length bounds (`JsonFactSet.LengthsOf`), measured on Azure; no corpus plan holds one.
+  - A `REPEAT` whose subject only a `maxLength` bounds: S keys its result by the longest string the subject's cells
+    name (`RenderingImage.ResultKeys`, G6's fix), an `enum`'s or a literal's, and reads no length bound, so the service's
+    10,000 code points are proved over a domain alone. S's import of a string's length bounds (`JsonFactSet.LengthsOf`)
+    gives it the rest; no corpus plan holds one.
   - A call more deeply nested than the run's iterations reach (64 and 8 a leaf in check mode, the bridge's bundle one
     leaf): S's fixpoint has no depth of its own, so such a call's image is the run's to finish; none in the corpus.
   It goes when S writes the column (h37).
@@ -3146,10 +3146,12 @@ across documents* and *A join of a container to itself* is the record.
   (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
   on every target rather than passed unasked. It pushed under `Production` before; no digest statement moved at either
   step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
-- **A result key bounds nothing yet** — *small, legality until a row holds one.* The image rule reads no key of a call's result, since no row
-  holds one (f12's `FunctionValueClass` classes operands only; a result within or past 10,000 code points is a class still to add), so `REPEAT`'s length bound (the service's 10,000, `CosmosFunctionSpellings.RepetitionLimit`) is kept by
-  spelling a `REPEAT` place only for a count of 0. Run 1 measured Azure's rows as they stood, with no result key, so
-  the bound stays legality.
+- **The case-insensitive match is read as the service's fold** — *small, run 2 and h16.* `UPPER(x) LIKE '%ABC%'` is
+  written `CONTAINS(x, 'ABC', true)` where S's image of the fold over the pattern's text is the text itself
+  (`CosmosRexTranslator.FoldsToItself`, G6's fix), which reads the service's case-insensitive matcher as folding by its
+  `UPPER` and `LOWER` (`Service.CaseMappingIsSimple`): no row describes the matcher itself. Its own rows, measured over
+  cased witnesses in each band, and S's form of a folded affix land with S's affix printer (h16), when the rewrite goes
+  with the bridge (h37).
 - **The Rex builder writes no comparison of two paths** — *small, h15.* `RenderingRexGrammar` holds no `ComparePaths`,
   so a pair's form is exact or nothing, never implied, and the translator's Rex of it is not built. Writing it is the
   grammar's row and the builder's arm, at the switch, when S first owns a pair.

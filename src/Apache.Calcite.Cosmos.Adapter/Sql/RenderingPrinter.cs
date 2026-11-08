@@ -36,10 +36,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>). A member's name is written as it is: whether a
         /// place may be written is S's, which proposes no form over one naming a band the set respells
         /// (<c>RenderingTheory.Writable</c>).</param>
+        /// <param name="computed">Each computed place the form reads (h10), its call by its spelling.</param>
+        /// <param name="spellings">
+        /// The spelling S chose of each such call (<see cref="RenderingBundle.SpellingOf"/>), which it is printed in; a call S
+        /// chose none of is printed in the one every call of its function takes.
+        /// </param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
         public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false,
-            IReadOnlyDictionary<string, SqlValue.Call>? computed = null)
+            IReadOnlyDictionary<string, SqlValue.Call>? computed = null, Func<SqlValue.Call, long?>? spellings = null)
         {
             object? Bound(string literal) => stored && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
 
@@ -82,7 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     default:
                         return null;
                 }
-            });
+            }, spellings?.Invoke(call));
 
             void Compare(ServiceForm compare, bool parenthesised)
             {

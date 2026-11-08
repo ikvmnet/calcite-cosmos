@@ -22,6 +22,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ValueSet<FunctionKey>, ValueSet<FunctionKey>, bool> Overlaps { get; } =
             Primitive.Create<ValueSet<FunctionKey>, ValueSet<FunctionKey>, bool>("overlaps", (a, b) => a.Intersect(b).IsEmpty == false);
 
+        /// <summary>
+        /// A literal is a whole number of a class, read exactly (G6): what a spelling that asks a class of an operand needs of
+        /// it, which a number held approximately, whose place no bound reads, never is.
+        /// </summary>
+        public static Primitive<FunctionValueClass, string, bool> WholeOfClass { get; } = Primitive.Create<FunctionValueClass, string, bool>("whole-of-class", (a, c) =>
+            JsonValues.TryNumberOf(c, out var n) && n == decimal.Truncate(n) && FunctionValueClasses.Holds(a, c));
+
         /// <summary>Every truth of the first set is in the second.</summary>
         public static Primitive<Truths, Truths, bool> TruthsWithin { get; } = Primitive.Create<Truths, Truths, bool>("truths-within", (a, b) => (a & ~b) == Truths.None);
 

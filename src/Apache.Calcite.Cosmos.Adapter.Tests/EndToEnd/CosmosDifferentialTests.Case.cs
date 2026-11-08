@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var place = read.Computed.Last();
             var parameters = new CosmosParameterList();
             var text = RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, JsonValues.Of("b")), read.Places.ToDictionary(SqlValue.Spell), "c", parameters,
-                computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place });
+                computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place }, spellings: Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering.ChosenSpellings.Of(read, RenderingSet.Emulator));
 
             var query = parameters.Parameters.Aggregate(new QueryDefinition($"SELECT VALUE c.id FROM c WHERE {text}"), (q, p) => q.WithParameter(p.Name, p.Value));
             var ids = new List<string>();

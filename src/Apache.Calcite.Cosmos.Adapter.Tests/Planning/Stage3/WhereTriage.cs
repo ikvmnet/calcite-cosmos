@@ -176,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
             // The loader types every call the service spells since G6, and S keys one only where its rows name it: a place
             // whose call no row names is classed as it was while the loader left it opaque.
-            bool Unnamed() => holds.Any(h => h.Split(':', 3) is ["place", var function, var type] && CosmosRendering.Definition.CallKey(function, type) is null);
+            bool Unnamed() => holds.Any(h => h.Split(':', 3) is ["place", var function, var type] && RowNames.KeyOf(CosmosRendering.Definition, function, type) is null);
 
             if (Has("parameter"))
                 return (Declined, "a parameter (3B)");

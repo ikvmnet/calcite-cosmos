@@ -418,17 +418,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             /// <remarks>
             /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
-            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal 0,
-            /// the empty string at both ends: a positive one is the result's bound, a key no row holds, so S has no place for
-            /// it however short the facts bound the subject (G6; the bridge's copy of S's rules pushed one within the limit).
-            /// A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), which no run sent, so it stays
-            /// in process whatever its length.
+            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So S keys the result by its
+            /// length against that bound, the longest string the facts allow times a literal count: the rows answer within it
+            /// as Calcite does, and past it, or where nothing bounds it, Azure's answer is undefined and the emulator's
+            /// unmeasured (G6). A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), which no run
+            /// sent, so it stays in process whatever its length.
             /// </remarks>
             [Fact]
             public void ARepetitionPushesWhereTheCountKeepsItWithinWhatTheServiceRepeats()
             {
-                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeFalse("no row holds the result's bound, though 3,333 times three is 9,999");
+                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("3,333 times three is 9,999");
+                Pushes(OneOf("ab", "c\U0001F600e"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("a pair is one code point");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("3,334 times three is 10,002");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("both targets repeat that far");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("no run measured the emulator past it");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(-1)).Should().BeFalse("REPLICATE is undefined for a negative count");
                 Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");
                 Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeFalse("nothing bounds the string's length");
@@ -446,6 +449,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// absent keys a cell Azure has not measured, which is computed in process there until run 2 measures it
             /// (TODO.md). The emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
+            /// <remarks>
+            /// A rank clause's keyword is held to S's image of the function computing it, as a column is (G6's check: the
+            /// gate had moved off the writer a rank clause writes through, which pushed both of these): a <c>REPLACE</c> of an
+            /// empty search and the concatenation that reads a null as empty stay in process, the plain one pushes.
+            /// </remarks>
+            [Fact]
+            public void ARankClausesKeywordIsHeldToTheFunctionRows()
+            {
+                string Rank(RexNode keyword) => Translator().TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Str(), keyword));
+
+                Rank(_rex.makeCall(SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b"))).Should().Be("FULLTEXTSCORE(c.s, REPLACE(c.s, @p0, @p1))");
+                var empty = () => Rank(_rex.makeCall(SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")));
+                empty.Should().Throw<CosmosTranslationException>().WithMessage("REPLACE is computed in process*");
+                var concat = () => Rank(_rex.makeCall(SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("!")));
+                concat.Should().Throw<CosmosTranslationException>().WithMessage("CONCAT is computed in process*");
+            }
+
             [Fact]
             public void AReplacementPushesWhereTheSearchHoldsSomething()
             {

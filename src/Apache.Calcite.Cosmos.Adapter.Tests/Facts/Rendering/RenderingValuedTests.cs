@@ -82,6 +82,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// S chooses a window's spelling by its start (G6's <c>callspelling</c> rules): from its start where it is a literal
+        /// whole number of one or more, and clipped as Calcite clips it anywhere else, a start below one or one read off a
+        /// path, whose place is written though no row images it. A function with one spelling has no choice.
+        /// </summary>
+        [Fact]
+        public void SChoosesAWindowsSpellingByItsStart()
+        {
+            long? Chosen(RexNode start, RexNode? subject = null)
+            {
+                var read = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, subject ?? Name, start, Int(2)), Lit("ab")));
+                read.Computed.Should().ContainSingle();
+                return ChosenSpellings.Of(read, RenderingSet.Production)(PlaceOf(read));
+            }
+
+            Chosen(Int(1)).Should().Be(CosmosFunctionSpellings.WindowFromItsStart);
+            Chosen(Int(7)).Should().Be(CosmosFunctionSpellings.WindowFromItsStart);
+            Chosen(Int(0)).Should().Be(CosmosFunctionSpellings.WindowClipped);
+            Chosen(Int(-3)).Should().Be(CosmosFunctionSpellings.WindowClipped);
+            Chosen(JsonValue("n", SqlTypeName.INTEGER)).Should().Be(CosmosFunctionSpellings.WindowClipped, "a start read off a path is no literal");
+            var lower = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")));
+            ChosenSpellings.Of(lower, RenderingSet.Production)(PlaceOf(lower)).Should().BeNull("LOWER has one spelling");
+        }
+
+        /// <summary>
+        /// S keys a call by the name its rows give it at its type, an arithmetic operator's with its type, and by none where
+        /// they name none (G6's <c>callkey</c> rules), which the tests that read the rows apart from S read alike
+        /// (<see cref="RowNames"/>).
+        /// </summary>
+        [Fact]
+        public void SKeysACallByTheNameItsRowsGiveIt()
+        {
+            string? KeyOf(RexNode call, RexNode than)
+            {
+                var read = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, call, than));
+                using var bundle = ProbeTheory.Open(RenderingSet.Emulator);
+                var term = bundle.Write(read);
+                foreach (var path in read.Places)
+                    bundle.Import(Source, path, PathValues.Anything, JsonValues.AllBands);
+                foreach (var computed in bundle.ComputedCalls)
+                    bundle.ImportComputed(computed, JsonValues.AllBands);
+                bundle.Generate(term);
+                bundle.RunGenerate(RenderingBundle.WidthOf([read])).StopReason.Should().Be(RunStopReason.Completed);
+                var place = PlaceOf(read);
+                bundle.KeyOf(place).Should().Be(RowNames.KeyOf(ProbeRows.Measured, place.Function, place.Type));
+                return bundle.KeyOf(place);
+            }
+
+            var n = JsonValue("n", SqlTypeName.INTEGER);
+            KeyOf(Rex.makeCall(SqlStdOperatorTable.LOWER, Name), Lit("abc")).Should().Be("LOWER");
+            KeyOf(Rex.makeCall(SqlStdOperatorTable.PLUS, n, Int(1)), Int(2)).Should().Be("+:INTEGER");
+            KeyOf(Rex.makeCall(SqlStdOperatorTable.ABS, n), Int(2)).Should().BeNull("no row names ABS");
+        }
+
+        /// <summary>
         /// <c>LOWER(name) = 'abc'</c> over ASCII strings is Proven under the emulator, whose rows say LOWER agrees there; the
         /// form is the comparison over the place, printed as the service's call and built as the Rex the loader reads back.
         /// </summary>
@@ -104,7 +158,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Loading.Read(built!).Should().Be(read, "what is sent is what Calcite reads");
         }
 
-        /// <summary>A window with a literal start of one or more round trips too, and a nested call is gathered once its inner place is written.</summary>
+        /// <summary>
+        /// A window with a literal start of one or more round trips too, printed from its start as S chose (<c>callspelling</c>,
+        /// G6), and a nested call is gathered once its inner place is written.
+        /// </summary>
         [Fact]
         public void AWindowAndANestedCallRoundTrip()
         {
@@ -122,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var printed = Loading.Read(window) is var w && PlaceOf(w) is var place
                 ? RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, Of("abc")), w.Places.ToDictionary(SqlValue.Spell), "c", new CosmosParameterList(),
-                    computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place }) : null;
+                    computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place }, spellings: ChosenSpellings.Of(w, RenderingSet.Emulator)) : null;
             printed.Should().Be("(SUBSTRING(c.name, (@p0 - 1), @p1) = @p2)");
         }
 
@@ -342,7 +399,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var from0 = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(2)), Lit("a")));
             var window = PlaceOf(from0);
             RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, window.Spelled!, Of("a")), from0.Places.ToDictionary(SqlValue.Spell), "c", new CosmosParameterList(),
-                computed: new Dictionary<string, SqlValue.Call> { [window.Spelled!] = window })
+                computed: new Dictionary<string, SqlValue.Call> { [window.Spelled!] = window }, spellings: ChosenSpellings.Of(from0, RenderingSet.Emulator))
                 .Should().Be("(SUBSTRING(c.a, (@p0 < 1 ? 0 : (@p0 - 1)), (@p0 < 1 ? (((@p0 + @p1) < 1) ? 0 : ((@p0 + @p1) - 1)) : @p1)) = @p2)", "the translator's clip");
             var negative = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.SUBSTRING, Path("a"), Int(0), Int(-1)), Lit("a")));
             negative.Computed.Should().ContainSingle();
@@ -409,6 +466,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Asked(set, beneath: false).Should().NotBe(RenderingVerdictKind.Proven, $"the root's path may hold a character beyond ASCII under {set}");
                 Asked(set, beneath: true).Should().Be(RenderingVerdictKind.Proven, $"the round's node holds it ASCII under {set}");
             }
+        }
+
+        /// <summary>
+        /// A later round's image of a place makes no atom over it strict elsewhere (G6's check): beneath the round the path
+        /// holds strings and the count's keys agree, but at the root it may hold a boolean, whose count the service leaves
+        /// undefined where Calcite's is a value, so the root's atom over the same count implies only its path present, as it
+        /// does with no round at all; <c>LENGTH(true)</c> is undefined where <c>CHAR_LENGTH('true') = 4</c> is TRUE.
+        /// </summary>
+        [Fact]
+        public void ALaterRoundsImageMakesNoAtomOverItsPlaceStrictAtTheRoot()
+        {
+            var four = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlStdOperatorTable.CHAR_LENGTH, Name), Int(4)));
+            var above = Loading.Read(Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Rex.makeCall(SqlStdOperatorTable.CHAR_LENGTH, Name), Int(3)));
+            var root = new SqlPredicate.Or([four, above]);
+            var mixed = PathValues.OfKinds(ValueSet.Of(StringType, BooleanType));
+            ValueSet<ServiceForm> Implied(bool beneath)
+            {
+                var theory = ProbeTheory;
+                using var bundle = theory.Open(RenderingSet.Emulator);
+                var term = bundle.Write(root);
+                foreach (var path in root.Places)
+                    bundle.Import(Source, path, mixed, NoBand);
+                foreach (var call in bundle.ComputedCalls)
+                    bundle.ImportComputed(call, NoBand);
+                if (beneath)
+                    bundle.AssumeComputed(Source with { Round = Source.Round + 1 }, above, [(NamePath, Strings, NoBand)]);
+
+                bundle.Generate(term);
+                bundle.RunGenerate(RenderingBundle.WidthOf([root])).StopReason.Should().Be(RunStopReason.Completed);
+                bundle.Failure.Should().BeNull();
+                bundle.Scope.TryGet(theory.Implied.Of(bundle.Write(four), RenderPosition.Pos), out ValueSet<ServiceForm> implied).Should().BeTrue();
+                GC.KeepAlive(theory);
+                return implied;
+            }
+
+            Implied(beneath: true).AsEnumerable().Select(f => f.ToString()).Should().Equal(Implied(beneath: false).AsEnumerable().Select(f => f.ToString()),
+                "the round's image holds beneath its round alone");
+            Implied(beneath: true).AsEnumerable().Should().NotContain(f => f.ToString().Contains("LENGTH", StringComparison.Ordinal));
         }
 
     }

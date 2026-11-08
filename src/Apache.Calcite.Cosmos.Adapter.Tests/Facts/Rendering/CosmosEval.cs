@@ -281,7 +281,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static (bool Known, J? Value) Place(SqlValue.Call call, J.Obj document, RenderingTarget target)
         {
-            if (CosmosRendering.Definition.CallKey(call.Function, call.Type) is not string function || Subjects.Contains(function) == false)
+            if (RowNames.KeyOf(CosmosRendering.Definition, call.Function, call.Type) is not string function || Subjects.Contains(function) == false)
                 return (false, null);
 
             var subjects = Subjects[function].ToHashSet();

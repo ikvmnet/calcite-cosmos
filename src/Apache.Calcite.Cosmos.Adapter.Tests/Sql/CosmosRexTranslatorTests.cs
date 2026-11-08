@@ -798,16 +798,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <remarks>
         /// The one string function whose name differs: SQL repeats with <c>REPEAT</c> and Cosmos
-        /// with <c>REPLICATE</c>, same arguments in the same order. A count of 0 is S's image; a positive one
-        /// is computed in process, the service repeating no further than 10,000 code points, a result bound no
-        /// row holds, so S has no place for it whatever the facts bound the string to (G6, TODO.md).
+        /// with <c>REPLICATE</c>, same arguments in the same order. The service repeats no further than 10,000
+        /// code points, so S keys the result by its length against that bound, which the facts bound the
+        /// string to, and the rows answer within it as Calcite does (G6).
         /// </remarks>
         [Fact]
         public void RepeatBecomesReplicate()
         {
             var bounded = Declared(new JsonClaim.OneOf(new JsonScalar[] { "bikes", "cars" }));
             bounded.Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(0))).Should().Be("REPLICATE(c.name, @p0)");
-            CanTranslate(bounded, Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2))).Should().BeFalse("no row holds the result's bound");
+            bounded.Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2))).Should().Be("REPLICATE(c.name, @p1)");
+            CanTranslate(Declared(new JsonClaim.OfType(JsonType.String)), Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
+                .Should().BeFalse("nothing bounds the string's length, so its result may be past the bound");
         }
 
         /// <remarks>

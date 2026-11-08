@@ -33,6 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             FunctionSubjects = CosmosAxiomRows.ReadFunctionSubjects(FunctionOutcomes),
             FunctionNames = CosmosAxiomRows.ReadFunctionNames(FunctionOutcomes),
             FunctionYields = CosmosAxiomRows.ReadFunctionYields(FunctionOutcomes),
+            CallSpellings = Sql.CosmosFunctionSpellings.Spellings,
             TypeKinds = ReadTypeKinds(),
             Columns = CosmosAxiomRows.ReadColumns(CosmosAxioms.All),
             Parts = CosmosAxiomRows.ReadParts(CosmosAxioms.All),

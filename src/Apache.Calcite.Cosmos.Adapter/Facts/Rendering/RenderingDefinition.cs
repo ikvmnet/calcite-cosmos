@@ -79,13 +79,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<string> LiteralReaders { get; init; } = [PathImport.LiteralReader];
 
         /// <summary>
-        /// The name a call of an operator at a SQL type is keyed by, as S's rule reads <see cref="FunctionNames"/>: its name at
-        /// the type where the rows name one, its own where they name it alone, <c>null</c> where they name neither. A read
-        /// of the rows, for the translator's bridge and the tests; S keys its own calls by its rule.
+        /// The service spellings a call of a function may take where more than one says what Calcite computes, each by its
+        /// rank: one every call takes, at <see cref="FunctionKey.Every"/>, and one a call takes where its literal at an
+        /// ordinal is a whole number of a class (<c>CosmosFunctionSpellings.Spellings</c>, G6). S's <c>callspelling</c> keeps
+        /// the least a call takes, which the printer and the translator write.
         /// </summary>
-        public string? CallKey(string op, string? type) =>
-            FunctionNames.FirstOrDefault(n => n.Operator == op && n.Type is not null && n.Type == type).Name
-            ?? FunctionNames.FirstOrDefault(n => n.Operator == op && n.Type is null).Name;
+        public IReadOnlyList<(string Function, long Spelling, long Ordinal, FunctionValueClass Class)> CallSpellings { get; init; } = [];
 
         /// <summary>
         /// What each raw column answers on each key (<c>CosmosAxiomRows.ReadColumns</c>), whose union S's rule takes (h12).

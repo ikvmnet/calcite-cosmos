@@ -39,6 +39,43 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                           select key);
 
         /// <summary>
+        /// The keys a call's result falls under where its function's rows key one (<see cref="FunctionKey.Result"/>): a string
+        /// by its length against the bound the service repeats to, the one class every string it may be lies within where
+        /// its operands bound it (<see cref="MostOf"/>) and every class where nothing does. Key assembly: whether the
+        /// rows measured and agree on each is S's rule, as an operand's keys are.
+        /// </summary>
+        /// <param name="function">The name the call's rows are filed under.</param>
+        /// <param name="gathered">The call's gathered operands.</param>
+        /// <param name="subjects">The operands the rows name, <see cref="FunctionKey.Result"/> among them where they key the result.</param>
+        public static ValueSet<FunctionKey> ResultKeys(string function, ValueSet<PathImport> gathered, ValueSet<long> subjects) =>
+            subjects.Contains(FunctionKey.Result)
+                ? ValueSet.From(FunctionValueClasses.ResultAtomsOf(MostOf(function, gathered))
+                    .Select(atom => FunctionKey.Of(function, FunctionKey.Result, CosmosValueClass.String, JsonCharacterBand.None, atom)))
+                : ValueSet<FunctionKey>.Empty;
+
+        /// <summary>
+        /// The most code points a call's result may hold over its operands' cells, or <c>null</c> where they bound none:
+        /// Calcite's repetition's, a count below one making the empty string whatever it repeats, and otherwise the count
+        /// times the longest string the subject may be, where its cells name each. The call on its cells, a primitive (d).
+        /// </summary>
+        static long? MostOf(string function, ValueSet<PathImport> gathered)
+        {
+            var imports = gathered.AsEnumerable().OrderBy(i => i.Ordinal).ToList();
+            if (function != "REPEAT" || imports is not [var subject, var count] || count.Values.Values is not { Count: 1 } counts
+                || JsonValues.TryNumberOf(counts.AsEnumerable().Single(), out var times) == false || times != decimal.Truncate(times))
+                return null;
+
+            if (times < 1)
+                return 0;
+
+            if (subject.Values.Values is not { } strings || strings.AsEnumerable().Any(v => JsonValues.IsString(v) == false && JsonValues.TypeOf(v) != JsonValues.NullType))
+                return null;
+
+            var longest = strings.AsEnumerable().Where(JsonValues.IsString).Select(v => FunctionValueClasses.CodePoints(JsonValues.StringOf(v))).DefaultIfEmpty(0).Max();
+            return times > long.MaxValue / Math.Max(1, longest) ? null : longest * (long)times;
+        }
+
+        /// <summary>
         /// The keys any operands of a call of an arity may fall under (G6): each read as anything, every kind and band, keyed as
         /// <see cref="Keys"/> keys a gathered one. Key assembly: whether the service defines every one is S's rule.
         /// </summary>
@@ -98,9 +135,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             return values is { Count: > 0 } ? atoms.Where(a => values.Any(v => FunctionValueClasses.Holds(a, v))) : atoms;
         }
 
+        /// <summary>
+        /// The most units a repetition C# builds as a point: a longer one is its type's kinds, never narrower than the call.
+        /// What the service makes of one is its result key's (<see cref="ResultKeys"/>), whatever is built.
+        /// </summary>
+        const long Built = 1 << 16;
+
         /// <summary>A call on single values, where C#'s answer is provably Calcite's; <c>null</c> elsewhere.</summary>
         static string? Evaluate(string function, IReadOnlyList<string> values)
         {
+            // Calcite's repetition: a count below one is the empty string.
+            if (function == "REPEAT" && values is [var repeated, var count] && JsonValues.IsString(repeated) && JsonValues.TryNumberOf(count, out var times) && times == decimal.Truncate(times))
+                return JsonValues.StringOf(repeated) is var text && (times < 1 || text.Length == 0) ? JsonValues.Of("")
+                    : text.Length * times <= Built ? JsonValues.Of(string.Concat(Enumerable.Repeat(text, (int)times)))
+                    : null;
+
             if (values.All(JsonValues.IsString) == false)
                 return null;
 

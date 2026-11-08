@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true).Read(window);
             var place = read.Computed.Last();
             string Print() => RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, JsonValues.Of("abc")), read.Places.ToDictionary(SqlValue.Spell), "c",
-                new CosmosParameterList(), computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place });
+                new CosmosParameterList(), computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place }, spellings: ChosenSpellings.Of(read, RenderingSet.Production));
 
             var unplanted = Print();
             string planted;

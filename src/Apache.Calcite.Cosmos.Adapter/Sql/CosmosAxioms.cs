@@ -764,6 +764,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.AtLeastOne),
                     new("REPEAT", FunctionKey.Literal, Class.Number, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.Zero, Evidence: "Service.ReplicateStopsAtTenThousandCodePoints"),
                     new("REPEAT", FunctionKey.Literal, Class.String, JsonCharacterBand.Nul, Emulator, CosmosFunctionAnswer.Fails, CalciteYield.Value, FunctionValueClass.NonEmpty),
+                    // A repetition's result by its length (FunctionKey.Result, G6): within 10,000 code points as Calcite's on
+                    // both targets, as the count of 2 measured it over strings of no band; past them undefined on Azure, as
+                    // Service.ReplicateStopsAtTenThousandCodePoints measured, and on the emulator unmeasured.
+                    new("REPEAT", FunctionKey.Result, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.WithinRepetitionBound),
+                    new("REPEAT", FunctionKey.Result, Class.String, JsonCharacterBand.None, Azure, CosmosFunctionAnswer.Undefined, CalciteYield.Value, FunctionValueClass.PastRepetitionBound, Evidence: "Service.ReplicateStopsAtTenThousandCodePoints"),
                     // POSITION's needle, keyed as the operand it is, measured as the 0 and the 1 its spellings hold.
                     new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
                 ]),

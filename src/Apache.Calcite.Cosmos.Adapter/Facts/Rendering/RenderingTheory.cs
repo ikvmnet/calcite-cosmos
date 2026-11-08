@@ -191,6 +191,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             TypeKinds = Graph.DefineFunction<string, ValueSet<string>>("typekinds", ValueLattice.Union<string>());
             LiteralReaders = Graph.DefineFunction<ValueSet<string>>("literalreaders", ValueLattice.Union<string>());
             HeldAbsent = Graph.DefineFunction<Val, ValueSet<string>>("heldabsent", ValueLattice.Union<string>());
+            SpelledAlways = Graph.DefineRelation<string, long>("spelledalways");
+            SpelledWhere = Graph.DefineRelation<string, long, long, FunctionValueClass>("spelledwhere");
+            CallSpelling = Graph.DefineFunction<Val, long>("callspelling", ValueLattice.Min<long>());
 
             // The raw columns, one row a column a key, raw at the frozen root, and their union, which Eggnog's join takes (h12).
             RawColumn = Graph.DefineFunction<RawKey, string, Truths>("rawcolumn");
@@ -402,6 +405,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The name a call's rows are filed under, S's rule over <see cref="RowName"/> and <see cref="RowNamedAlone"/> (G6).</summary>
         public Function<Val, string> CallKey { get; }
+
+        /// <summary>A spelling, by its rank, every call of a function may take (<c>spelledalways</c>, G6): constant data.</summary>
+        public Relation<string, long> SpelledAlways { get; }
+
+        /// <summary>
+        /// A spelling, by its rank, a call of a function may take where its literal at an ordinal is a whole number of a class
+        /// (<c>spelledwhere</c>, G6): constant data.
+        /// </summary>
+        public Relation<string, long, long, FunctionValueClass> SpelledWhere { get; }
+
+        /// <summary>
+        /// The spelling a call takes, the least ranked of those its function's rows let it (<c>callspelling</c>, G6): what the
+        /// printer and the translator write of a call whose function has more than one.
+        /// </summary>
+        public Function<Val, long> CallSpelling { get; }
 
         /// <summary>What Calcite answers over a function key, a value or null, as its row states (G6): constant data.</summary>
         public Function<FunctionKey, CalciteYield> FunctionYield { get; }
@@ -1999,6 +2017,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(CallKey.Of(v).Is(n), HeldAbsent.Of(v).Is(ValueSet<string>.Empty));
             });
 
+            // Which spelling a call takes, where its function has more than one, is the least its operands let it (G6): one
+            // every call takes, and one a literal at an ordinal lets it take where it is a whole number of the class the
+            // spelling asks, a window's start of one or more. No image reads it; the printer and the translator write it.
+            reading.DefineRule("a call takes a spelling every call of its function takes", r =>
+            {
+                var (v, args) = r.Vars<Val, Args>("v", "args");
+                var n = r.Var<string>("n");
+                var k = r.Var<long>("k");
+                r.When(v.Is(Ir.Call.Of(n, args)), SpelledAlways.Of(n, k));
+                r.Then(CallSpelling.Of(v).Is(k));
+            });
+
+            reading.DefineRule("a call takes a spelling its literal at an ordinal lets it, a whole number of the class the spelling asks", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var args = r.Var<Args>("args");
+                var (n, c) = r.Vars<string, string>("n", "c");
+                var (k, i) = r.Vars<long, long>("k", "i");
+                var a = r.Var<FunctionValueClass>("a");
+                r.When(v.Is(Ir.Call.Of(n, args)), SpelledWhere.Of(n, k, i, a), CallArgAt.Of(v, i, w), w.Is(Ir.Literal.Of(c)));
+                r.Where(RenderingPrimitives.WholeOfClass.Of(a, c));
+                r.Then(CallSpelling.Of(v).Is(k));
+            });
+
             // An operand no row of its function keys - a window's start, a trim's character, a repetition's stored count -
             // says nothing of what Calcite answers over it, so the call may be null over it: absent beside its type's kinds
             // (G6). A literal is keyed where the rows key one apart. Read off the call's operands as the host writes them,
@@ -2041,7 +2083,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // The two images of a measured call, apart on whether Calcite answers null over some key its operands fall under:
             // a value of its type over every one, the point where C# evaluates it as Calcite does, or absent beside. Each
             // reads the gathering complete, one import an ordinal, each read through a reader its rows were measured through or
-            // exactly, and every key measured and agreeing on every target the set serves (G6).
+            // exactly, and every key measured and agreeing on every target the set serves, its result's among them where its
+            // rows key one: a repetition past the bound Azure repeats to has no image there (G6).
             void Measured(RuleBuilder r, bool absent)
             {
                 var v = r.Var<Val>("v");
@@ -2058,7 +2101,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     z.Is(MeasuredKeys.Of(kn)), d.Is(DisagreeingKeys.Of(st, kn)), rd.Is(MeasuredReaders.Of(kn)), ex.Is(LiteralReaders.Of()));
                 r.When(vk.Is(YieldKeys.Of(kn, CalciteYield.Value)), nk.Is(YieldKeys.Of(kn, CalciteYield.Null)), tk.Is(TypeKinds.Of(t)), ha.Is(HeldAbsent.Of(v)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(g, PathImport.ReadersOf), Primitives.Union<string>().Of(rd, ex)));
-                r.When(ks.Is(Compute.Of(kn, g, FunctionSubjects.Of(kn), ex, RenderingImage.Keys)));
+                // Its operands' keys, and its result's where the rows key one: a repetition by its length (G6).
+                r.When(ks.Is(Primitives.Union<FunctionKey>().Of(Compute.Of(kn, g, FunctionSubjects.Of(kn), ex, RenderingImage.Keys),
+                    Compute.Of(kn, g, FunctionSubjects.Of(kn), RenderingImage.ResultKeys))));
                 r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, z));
                 r.Where(Primitives.IsEmpty<FunctionKey>().Of(Primitives.Intersect<FunctionKey>().Of(ks, d)));
                 r.Where(Primitives.IsSubsetOf<FunctionKey>().Of(ks, Primitives.Union<FunctionKey>().Of(vk, nk)));
@@ -2127,7 +2172,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
 
             // A later round's atom is read beneath a stratum of the round's own, where its place may have an image the root
-            // has none of (G6): the place's import joins it, with the absence beside it a root image would have.
+            // has none of (G6): the place's import joins it. Its absence is Calcite's null only beneath that stratum, whose
+            // keys agree there, so no strictness follows from it: NullWhereAbsent has no stratum, and every atom over the
+            // place at every stratum would read it (the root rule's alone, which holds wherever the root's image does).
             image.DefineRule("a computed place's import joins its image beneath each stratum an atom over it is read at", r =>
             {
                 var e = r.Var<Pred>("e");
@@ -2136,7 +2183,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var s = r.Var<long>("s");
                 var x = r.Var<PathValues>("x");
                 r.When(Ir.Atom.Of(e, q, a), q.Is(Valued.Of(v)), s.Is(StratumId.Of(e)), x.Is(ArmImport.Of(s, q)));
-                r.Then(Imported.Of(q).Is(x), NullWhereAbsent.Of(q));
+                r.Then(Imported.Of(q).Is(x));
             });
 
             assume.DefineRule("an atom over a computed place is assumed as its place's image beneath the atom's stratum", r =>
@@ -2613,6 +2660,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 foreach (var (op, type, name) in definition.FunctionNames)
                     w.Assume(type is null ? RowNamedAlone.Of(op) : RowName.Of(op, type).Is(name));
+
+                foreach (var (function, spelling, ordinal, @class) in definition.CallSpellings)
+                    w.Assume(ordinal == FunctionKey.Every ? SpelledAlways.Of(function, spelling) : SpelledWhere.Of(function, spelling, ordinal, @class));
 
                 foreach (var (key, yields) in definition.FunctionYields)
                     w.Assume(FunctionYield.Of(key).Is(yields));

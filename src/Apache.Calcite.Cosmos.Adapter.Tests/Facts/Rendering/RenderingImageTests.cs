@@ -137,18 +137,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
         }
 
-        /// <summary>Every class holds the atoms it is the union of, and every atom is held by its kind's <see cref="FunctionValueClass.Any"/>.</summary>
+        /// <summary>
+        /// Every class holds the atoms it is the union of, and every atom is held by its kind's <see cref="FunctionValueClass.Any"/>
+        /// or is one a result is keyed by, a string's length against the bound the service repeats to, counted in code points.
+        /// </summary>
         [Fact]
         public void EveryClassHoldsTheAtomsItIsTheUnionOf()
         {
-            var values = new[] { Of(-2m), Of(0m), Of(0.5m), Of(1m), Of(7m), Of(""), Of("a") };
+            var bound = (int)FunctionValueClasses.RepetitionBound;
+            var values = new[] { Of(-2m), Of(0m), Of(0.5m), Of(1m), Of(7m), Of(""), Of("a"), Of(new string('a', bound)), Of(new string('a', bound + 1)),
+                Of(string.Concat(Enumerable.Repeat("a\U0001F600b", bound / 3))) };
             foreach (var (kind, @class, atom) in FunctionValueClasses.Holding.Where(h => h.Class != FunctionValueClass.Any))
-                FunctionValueClasses.AtomsOf(kind).Should().Contain(atom, $"{@class} holds an atom of {kind}");
+                FunctionValueClasses.AtomsOf(kind).Concat(FunctionValueClasses.ResultAtoms.Where(r => r.Kind == kind).Select(r => r.Atom))
+                    .Should().Contain(atom, $"{@class} holds an atom of {kind}");
+            FunctionValueClasses.Holds(FunctionValueClass.WithinRepetitionBound, values[^1]).Should().BeTrue("a pair is one code point, as the service counts it");
+            FunctionValueClasses.ResultAtomsOf(bound).Should().Equal(FunctionValueClass.WithinRepetitionBound);
+            FunctionValueClasses.ResultAtomsOf(bound + 1).Should().Equal(FunctionValueClass.WithinRepetitionBound, FunctionValueClass.PastRepetitionBound);
+            FunctionValueClasses.ResultAtomsOf(null).Should().Equal(FunctionValueClass.WithinRepetitionBound, FunctionValueClass.PastRepetitionBound);
             foreach (var kind in new[] { CosmosValueClass.Number, CosmosValueClass.String })
                 foreach (var @class in FunctionValueClasses.Holding.Where(h => h.Kind == kind).Select(h => h.Class).Distinct())
                     foreach (var value in values.Where(v => CosmosValueClasses.Of(v) == kind))
                         FunctionValueClasses.Holds(@class, value).Should().Be(
                             FunctionValueClasses.Holding.Any(h => h.Kind == kind && h.Class == @class && FunctionValueClasses.Holds(h.Atom, value)), $"{@class} of {value}");
+        }
+
+        /// <summary>
+        /// A repetition's result is keyed by its length against the bound the service repeats to, where its rows key one: within
+        /// it where a literal count times the longest string the subject's cells name stays there, and by both classes where
+        /// nothing bounds it. A count below one is the empty string whatever it repeats.
+        /// </summary>
+        [Fact]
+        public void ARepetitionsResultIsKeyedByItsLengthAgainstTheBound()
+        {
+            var subjects = ValueSet.Of(0L, 1L, FunctionKey.Result);
+            var bounded = PathImport.Of(0, PredicateAtom.TextReader, PathValues.Meet(PathValues.OneOf(ValueSet.Of(Of("ab"), Of("cde"))), PathValues.OfKinds(ValueSet.Of(StringType))), NoBand);
+            var unbounded = Text(0, ValueSet.Of(StringType));
+            ValueSet<FunctionValueClass> Atoms(PathImport subject, string count, ValueSet<long> named) =>
+                ValueSet.From(RenderingImage.ResultKeys("REPEAT", Gathered(subject, Literal(1, count)), named).AsEnumerable().Select(k => k.Value));
+            var within = ValueSet.Of(FunctionValueClass.WithinRepetitionBound);
+            var both = within.Add(FunctionValueClass.PastRepetitionBound);
+            Atoms(bounded, Of(3333m), subjects).Should().Equal(within, "3,333 times three is 9,999");
+            Atoms(bounded, Of(3334m), subjects).Should().Equal(both, "3,334 times three is 10,002");
+            Atoms(unbounded, Of(2m), subjects).Should().Equal(both, "nothing bounds the string's length");
+            Atoms(unbounded, Of(0m), subjects).Should().Equal(within);
+            Atoms(unbounded, Of(-1m), subjects).Should().Equal(within, "Calcite's repetition of a negative count is the empty string");
+            Atoms(bounded, Of(2m), ValueSet.Of(0L, 1L)).Should().BeEmpty("rows keying no result key none");
+            ValueSet.From(RenderingImage.ResultKeys("LOWER", Gathered(bounded), ValueSet.Of(0L, FunctionKey.Result)).AsEnumerable().Select(k => k.Value))
+                .Should().Equal(both, "a result nothing bounds is under both classes");
         }
 
         /// <summary>
@@ -167,8 +202,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A nested place is read through its type's reader, a text place as text, which the rows were measured through; a
-        /// raw reading was measured by none, and its reader lies beyond what S's image rules license (G6). A call is keyed by
-        /// the name its rows give it at its type, an arithmetic operator's with its type, and none where they name none.
+        /// raw reading was measured by none, and its reader lies beyond what S's image rules license (G6). Which name a call
+        /// is keyed by is S's rule (<c>RenderingValuedTests.SKeysACallByTheNameItsRowsGiveIt</c>).
         /// </summary>
         [Fact]
         public void ANestedPlaceIsReadThroughItsType()
@@ -179,10 +214,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var licensed = ValueSet.From(readers).Union(ValueSet.From(ProbeRows.Measured.LiteralReaders));
             PathImport.ReadersOf(Gathered(inner, Literal(1, Of("a")))).AsEnumerable().All(licensed.Contains).Should().BeTrue();
             PathImport.ReadersOf(Gathered(PathImport.Of(0, PredicateAtom.RawReader, PathValues.OfKinds(ValueSet.Of(StringType)), NoBand))).AsEnumerable().All(licensed.Contains).Should().BeFalse();
-            ProbeRows.Measured.CallKey("+", "INTEGER").Should().Be("+:INTEGER");
-            ProbeRows.Measured.CallKey("LOWER", "VARCHAR").Should().Be("LOWER");
-            ProbeRows.Measured.CallKey("+", "SMALLINT").Should().BeNull("no row measured + at SMALLINT");
-            ProbeRows.Measured.CallKey("ABS", "INTEGER").Should().BeNull();
         }
 
         /// <summary>

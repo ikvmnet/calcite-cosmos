@@ -3667,7 +3667,8 @@ been said. `CosmosRexTranslator.RequireStringFunctionsAgree` asks it once of the
 written, as a rendering is asked, of the facts the translation was licensed (*Which facts may justify what*). Asked at a
 writer it would miss the case-insensitive rewrite, which writes the folded value and not the fold: asked of the `LIKE`
 it stands for, the rewrite to a `CONTAINS` asks Z of the folded value, and the fold beneath it S, H and N. The rewrite
-asks the same of its pattern's text (`FoldsAlike`), the case mapping's class named once for both. Where one is not
+asks S's image of the fold over its pattern's text, which must be the text itself (`FoldsToItself`, since G6's fix;
+the case mapping's class named once for both before it). Where one is not
 proved the translation is refused, and the function stays in process over the value the service sends, which is what a
 path declared nothing of always did; the rest of the statement pushes.
 
@@ -8297,9 +8298,10 @@ first. #246's refusals stand as they are, and nothing under `Production` would c
 **What a place is.** A call the function rows name, read whole at a known SQL type by a loading that reads places, is a
 path of its own in S: `Valued(v)`, a term over the call, read through its type's reader (`typed:VARCHAR`, `typed:INTEGER`).
 The loader stamps the call with `Type` and `Spelled`, the service's call over its operands' spellings
-(`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a window whose start is
-no whole literal, a `REPEAT` of any count but 0 (a result key no row holds), a literal the SDK will not send, gets no
-place and stays what it was. Whether the rows name the call and how deep S images it are S's (G6): the loader's gate
+(`CosmosFunctionSpellings.Spell`), neither part of the call's identity; one it cannot spell, a trim of a character but
+a space, a literal the SDK will not send, gets no place and stays what it was. A window's start and a repetition's count
+are asked there no longer (G6's fix): a window is stamped with the spelling every call of it takes and written in the one
+S chose (*Which spelling a call takes is S's*), and a repetition's result is keyed by its length (`FunctionKey.Result`). Whether the rows name the call and how deep S images it are S's (G6): the loader's gate
 (`RowFunctions`, four deep) is gone, and a call no row names is a place with no key, so no image. An atom may then read a
 place where it read a path: a comparison with a literal, `IN`, `IS NULL`, so the gate, templates, strictness and
 weakening run on it unchanged. F is handed the same atoms and reads them as it read any atom over a value it has no
@@ -8386,10 +8388,27 @@ alone, `ToString`, was imaged only where its operands were gathered, and its ope
 the IR reads through no reader, nor did `ANY` name any kind: *a place's import beneath a stratum is its type's kinds and
 absent where the service defines every key any operands may fall under* reads no gathering
 (`RenderingImage.AnyKeys`), and `ANY` holds every kind (`CosmosRendering.ReadTypeKinds`). And a `REPEAT` of a positive
-count, which the copy pushed over a subject whose length the facts bound, has no place in S, its result's bound (10,000
-code points on Azure) a key no row holds, so it is computed in process (latent item 9, closed); no corpus plan held one,
-and every digest is unchanged. The legality the rows do not carry stays the bridge's (`CosmosFunctionSpellings.Refusals`).
-It goes at h37, when S writes the column.
+count, which the copy pushed over a subject whose length the facts bound (latent item 9), is imaged through its result's
+key since G6's fix (*Rows that name a second operand*): within 10,000 code points as Calcite's, and past them, or where
+nothing bounds the subject, undefined on Azure and unmeasured on the emulator, where G6 had computed every one in process
+while no row held the bound; no corpus plan holds one, and every digest is unchanged. A rank clause's keyword is asked as
+a column is (`TranslateRank`), so a `REPLACE` of an empty search or a `CONCAT` that reads a null as empty stays in process
+there too, where G6 wrote it unasked. The legality the rows do not carry stays the bridge's
+(`CosmosFunctionSpellings.Refusals`). It goes at h37, when S writes the column.
+
+**Which spelling a call takes is S's (G6).** A function the service spells more than one way, each saying what Calcite
+computes, lists its spellings by rank (`CosmosFunctionSpellings.Spellings`, the definition's `CallSpellings`): a window
+clipped as Calcite clips one that starts before the string, which every call takes (`spelledalways`), and from its start
+alone, which a call takes where its literal start is a whole number of one or more (`spelledwhere`, the class
+`AtLeastOne` read exactly by `whole-of-class`, so a number held approximately never is). *A call takes a spelling every
+call of its function takes* and *… its literal at an ordinal lets it* write `callspelling`, a `Min`, in the first group
+beside the call's key; no image reads it. The loader stamps a place with the spelling every call takes, its identity
+before S runs; the printer writes the one S chose (`RenderingBundle.SpellingOf`), and the translator's window
+(`WriteSubstring`) reads it off the run that imaged the call (`RenderingOracle.ImageOf`). Until G6's fix the spelling
+table chose by the start's literal, giving a window whose start was none no place, and the translator by `IsAtLeastOne`,
+which also read a path the facts bound to one or more; no such window has an image, its start read through
+`typed:INTEGER`, which no row of `SUBSTRING` was measured through, so that arm wrote nothing. A window whose start is a
+path is now a place S gives no image, as the bridge refused it before, and a stored start is a row away.
 
 **What the bridge reads is one node of F's,** as S's importer reads one (`RenderingImporter`): the facts the
 translation was licensed, the node its conjunct is rendered beneath, each path's `possible` and `chars` there (the top
@@ -8427,7 +8446,11 @@ path it meets, beside the path's spelling, and the root image rule of a place be
 stratum, which runs before `strict`. Asking `Imported` instead, as first built, moved 495 lines of the Production plan
 digest, since a path read only inside an opaque term (`JSON_VALUE(c."DOC", '$.label') LIKE 'bi%'`) has no import and
 lost the `IS_DEFINED` its weakening sends; the relation leaves every path as it was, digests byte-equal, and the rule
-count at 76. The order test reads it as it reads `imported`, the host's for paths and the image rule's for places.
+count at 76. The order test reads it as it reads `imported`, the host's for paths and the image rule's for places. A
+later round's image joins the place's import beneath its own stratum (G6) and states none: its absence is Calcite's
+null beneath that stratum alone, and `nullwhereabsent` has no stratum, so every atom over the place would read it. G6
+first stated it there, which made `NOT (CHAR_LENGTH(x) = 4 OR CHAR_LENGTH(x) > 3)`'s place strict at the root through
+the second atom's round; its fix leaves the root image rule the only one that states it.
 
 ### A comparison of two readings (h11)
 
@@ -8984,7 +9007,10 @@ the band it lies within, never a key of its own, until a row names it.
   with classes of value (an empty search, a length's sign) where a measurement parts them (*The defects answered before
   h15*); the measurement harness keys a spelling's literal operands as it names them (`CosmosFunctionSpelling.Fixed`),
   over the witnesses of a string of no band, and a spelling a target has not run claims nothing there. A result's class
-  (`REPEAT` within or past 10,000 code points) is no operand's, and waits for a result key (`TODO.md`).
+  is no operand's: a `REPEAT` is keyed by its result at `FunctionKey.Result` since G6's fix, within or past 10,000 code
+  points counted as the service counts them (`FunctionValueClasses.CodePoints`), the longest string the subject's cells
+  name times a literal count, and by both where nothing bounds them (`RenderingImage.ResultKeys`); the image rule asks
+  those keys beside the operands', so Azure's `Undefined` past the bound and the emulator's unmeasured keys refuse it.
 - **The column bridge reads each operand by its own rows.** It keys a call as S's image rule keys it, every operand the
   rows name by its ordinal and by `Every` (owed: `CosmosFunctionSpellings.Disagreeing`, *The column bridge*), so a
   function whose rows name two operands is asked of each; G6 replaces it, and it goes at h37.
@@ -9055,8 +9081,9 @@ over the first; where a row said `Same`, over a surrogate for each and the high 
 letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so the `Same` proved nothing, as
 `RIGHT`'s surrogate key is read. The rows now say it, so S's image rule and the column bridge refuse a case mapping
 beyond ASCII through them, and the legality that kept it to ASCII under every set (`CosmosFunctionSpellings.Mapped`) is
-gone. `CaseMapped` remains the case-insensitive match's legality (`FoldsAlike`), which no row describes. Run 2 measures
-cased witnesses in each band.
+gone. The case-insensitive match's pattern is held to S's image of the fold over it since G6's fix (`FoldsToItself`),
+which reads the service's matcher as folding by its `UPPER` and `LOWER` (`Service.CaseMappingIsSimple`); the matcher's
+own rows are owed (`TODO.md`). Run 2 measures cased witnesses in each band.
 
 ### Character bands and the stored spelling, S's (G1)
 

@@ -297,12 +297,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a call of an operator its rows name at a type is keyed by that name at its type",
                     "a call of an operator its rows name alone is keyed by its name",
+                    "a call takes a spelling every call of its function takes",
+                    "a call takes a spelling its literal at an ordinal lets it, a whole number of the class the spelling asks",
                     "an operand read at an ordinal its function's rows name no key of lets its call be absent",
                     "a literal operand at an ordinal its function's rows name no key of, nor any literal of, lets its call be absent",
                     "a comparison of two readings of one kind is an atom of their pair, with what each reading's order holds",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(135);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(137);
         }
 
         /// <summary>

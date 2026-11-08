@@ -160,21 +160,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             "the emulator matches a pattern against the units it stores, so `_` matches one unit of an escape and a 0 or a 1 an escape's second unit");
 
         /// <summary>
-        /// The bands a function's rows over a string operand answer otherwise than Calcite on some target a set serves, a
-        /// target that measured none of them answering it unmeasured: for a case mapping, what a case-insensitive match
-        /// asks its text to be free of (<see cref="FoldsAlike"/>, F5).
-        /// </summary>
-        public static JsonCharacterBand Parting(RenderingDefinition definition, RenderingSet set, string function)
-        {
-            var answers = definition.Functions.Where(f => f.Key.Function == function && f.Key.Kind == CosmosValueClass.String && f.Key.Band != JsonCharacterBand.None)
-                .ToDictionary(f => (f.Key, f.Target), f => f.Answer);
-            return (from key in answers.Keys.Select(k => k.Key).Distinct()
-                    from target in definition.Serves[set].AsEnumerable()
-                    where (answers.TryGetValue((key, target), out var answer) ? answer : CosmosFunctionAnswer.Unmeasured) != CosmosFunctionAnswer.Same
-                    select key.Band).Aggregate(JsonCharacterBand.None, (a, b) => a | b);
-        }
-
-        /// <summary>
         /// The rows' name of a call as the loader names it (<see cref="CosmosPredicateLoader.NameOf"/>): its operator's, a trim
         /// with its flag, or <c>null</c> for a trim whose flag is no literal.
         /// </summary>
@@ -248,6 +233,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _ => null,
         };
 
+        /// <summary>A window spelled from its start, the service counting from 0: S's choice where the start is a whole number of one or more.</summary>
+        public const long WindowFromItsStart = 0;
+
+        /// <summary>A window spelled clipped as Calcite clips one that starts before the string: right whatever its start.</summary>
+        public const long WindowClipped = 1;
+
+        /// <summary>
+        /// The spellings a call of a function may take where more than one says what Calcite computes, each by its rank, the
+        /// least S's <c>callspelling</c> lets a call take being the one written (G6): a window clipped whatever its start
+        /// (<see cref="FunctionKey.Every"/>), and from its start where its literal start is a whole number of one or more.
+        /// </summary>
+        public static IReadOnlyList<(string Function, long Spelling, long Ordinal, FunctionValueClass Class)> Spellings { get; } =
+        [
+            ("SUBSTRING", WindowFromItsStart, 1, FunctionValueClass.AtLeastOne),
+            ("SUBSTRING", WindowClipped, FunctionKey.Every, FunctionValueClass.Any),
+        ];
+
         /// <summary><c>SUBSTRING</c> over a start proved at least one: the service counts from 0. M30 drops the shift (line 17).</summary>
         public static string SubstringFrom(string subject, string start, string length) => RenderingPrinterFaults.Has(RenderingPrinterFault.M30)
             ? $"SUBSTRING({subject}, {start}, {length})"
@@ -262,13 +264,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// The service's spelling of a loader call over its operands' spellings, or <c>null</c> where it has none: a
-        /// computed place's <c>Spelling</c> in S. The literal operands a spelling's legality reads (a window's start, a
-        /// trim's character, a repetition's count) are asked here, and a parameter is never one; what a search or a window's
-        /// length answers is the rows'.
+        /// computed place's <c>Spelling</c> in S. The literal operands a spelling's legality reads (a trim's character) are
+        /// asked here, and a parameter is never one; what a search, a count or a window's length answers is the rows', and
+        /// which of a function's spellings a call takes S's (<see cref="Spellings"/>).
         /// </summary>
         /// <param name="call">The loader's call.</param>
         /// <param name="spell">An operand's spelling, or <c>null</c> where it has none.</param>
-        public static string? Spell(SqlValue.Call call, Func<SqlValue, string?> spell)
+        /// <param name="spelling">
+        /// The spelling S chose of the call (<c>callspelling</c>), or <c>null</c> for the one every call of its function takes,
+        /// the place's identity the loader stamps before S runs.
+        /// </param>
+        public static string? Spell(SqlValue.Call call, Func<SqlValue, string?> spell, long? spelling = null)
         {
             // A literal the SDK refuses to send, one holding an unpaired surrogate, is never bound (Service.LoneSurrogateParameterIsNeverSent):
             // legality. What any other literal makes, U+0000, U+FDD0 and a pair among them, is the function rows' (F2, G1),
@@ -285,24 +291,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 else
                     return null;
 
-            long? Integral(int i) => call.Operands[i] is SqlValue.Literal { IsNumber: true } l && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.TryNumberOf(l.Value, out var n) && n == decimal.Truncate(n) && Math.Abs(n) < long.MaxValue ? (long)n : null;
             string? Text(int i) => call.Operands[i] is SqlValue.Literal l && Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.IsString(l.Value) ? Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.StringOf(l.Value) : null;
 
             switch (call.Function)
             {
-                case "SUBSTRING" when operands.Length == 3 && Integral(1) >= 1:
-                    return SubstringFrom(operands[0], operands[1], operands[2]);
                 // A window from before the string, clipped as Calcite clips it, is the service's window from 0
-                // (Calcite.SubstringClipsAWindowBeforeTheString, Service.SubstringOfANegativeStartIsEmpty). A length below 0,
-                // which Calcite raises over, is its rows' (Service.StringFunctionAnswersByBand), as every length is.
-                case "SUBSTRING" when operands.Length == 3 && Integral(1) <= 0:
-                    return SubstringClipped(operands[0], operands[1], operands[2]);
+                // (Calcite.SubstringClipsAWindowBeforeTheString, Service.SubstringOfANegativeStartIsEmpty); S's choice
+                // writes the shift alone. A length below 0, which Calcite raises over, is its rows', as every length is.
+                case "SUBSTRING" when operands.Length == 3:
+                    return spelling == WindowFromItsStart ? SubstringFrom(operands[0], operands[1], operands[2]) : SubstringClipped(operands[0], operands[1], operands[2]);
                 case "POSITION" when operands.Length == 2:
                     return Position(operands[0], operands[1]);
                 case "TRIM BOTH" or "TRIM LEADING" or "TRIM TRAILING" when operands.Length == 2 && Text(0) == " ":
                     return $"{TrimOf(call.Function[5..])}({operands[1]})";
-                // A positive count reads Azure's length bound, a result key no row holds yet (h14b).
-                case "REPEAT" when operands.Length == 2 && Integral(1) == 0:
+                // Whatever its count: what the service answers of a count and of its result's length is the rows' (G6).
+                case "REPEAT" when operands.Length == 2:
                     return $"REPLICATE({operands[0]}, {operands[1]})";
                 // An empty search, which the service answers undefined, is the rows' (Service.StringFunctionAnswersByBand).
                 case "REPLACE" when operands.Length == 3:
@@ -319,19 +322,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             return $"{mapping.Name}({string.Join(", ", operands)})";
         }
-
-        /// <summary>
-        /// The most code points the service's <c>REPLICATE</c> answers, inclusive: past them it is undefined on Azure, where
-        /// Calcite's <c>REPEAT</c> repeats (<c>Service.ReplicateStopsAtTenThousandCodePoints</c>). The emulator has no limit.
-        /// </summary>
-        public const long RepetitionLimit = 10_000;
-
-        /// <summary>
-        /// Whether <c>REPLICATE</c> answers Calcite's <c>REPEAT</c> for a count and a subject at most so many code points
-        /// long: 0 is empty at both, a negative count undefined at the service, a positive one Calcite's within the limit.
-        /// </summary>
-        public static bool RepeatsAsCalcite(long count, long? most) =>
-            count == 0 || count > 0 && most is long length && length <= RepetitionLimit / count;
 
         /// <summary>Whether a <c>LIKE</c> pattern is a prefix match, its one wildcard a trailing <c>%</c>, written as <c>STARTSWITH</c>.</summary>
         static bool IsPrefix(string pattern) =>
@@ -354,13 +344,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             return start > 0 && end < pattern.Length && end > start && pattern.IndexOfAny(['%', '_'], start, end - start) < 0;
         }
-
-        /// <summary>
-        /// Whether a text the case-insensitive match is handed folds alike at both ends: free of every band its case
-        /// mapping's rows part over (<see cref="Parting"/>), read as the theory reads characters.
-        /// </summary>
-        public static bool FoldsAlike(string text, JsonCharacterBand parting) =>
-            (JsonFactEncoding.Characters(text) & parting) == JsonCharacterBand.None;
 
     }
 

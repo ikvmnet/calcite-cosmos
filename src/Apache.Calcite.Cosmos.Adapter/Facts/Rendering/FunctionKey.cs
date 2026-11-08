@@ -27,6 +27,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public const long Literal = -2;
 
+        /// <summary>
+        /// A function row's operand standing for the call's result, keyed by its length where the service bounds what it
+        /// makes (<see cref="FunctionValueClasses.ResultAtoms"/>): a repetition past 10,000 code points, which Azure answers
+        /// undefined.
+        /// </summary>
+        public const long Result = -3;
+
         /// <summary>The key, as a rule computes one.</summary>
         public static FunctionKey Of(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value = FunctionValueClass.Any) =>
             new(function, ordinal, kind, band, value);
@@ -61,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The key spelled <c>function/operand/kind/band</c>, and <c>/class</c> where it names one, as a run record names it.</summary>
         public override string ToString() =>
-            Function + "/" + (Ordinal == Every ? "each" : Ordinal == Literal ? "literal" : Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture)) + "/" + Kind + "/" + Band
+            Function + "/" + (Ordinal == Every ? "each" : Ordinal == Literal ? "literal" : Ordinal == Result ? "result" : Ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture)) + "/" + Kind + "/" + Band
             + (Value == FunctionValueClass.Any ? "" : "/" + Value);
 
     }

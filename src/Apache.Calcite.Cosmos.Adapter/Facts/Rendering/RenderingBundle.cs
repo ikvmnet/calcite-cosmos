@@ -163,6 +163,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : null;
 
         /// <summary>
+        /// The name S keys a computed place's call by once a run completed (its <c>callkey</c> rules over the rows' names,
+        /// G6); <c>null</c> where the rows name none, the bundle wrote no place for the call, or the run may not be read.
+        /// </summary>
+        public string? KeyOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.CallKey.Of(term), out var key) ? key : null)
+            : null;
+
+        /// <summary>
+        /// The spelling S chose of a computed place's call once a run completed (its <c>callspelling</c> rules, G6), the rank
+        /// the printer and the translator write; <c>null</c> where its function's rows give it none, the bundle wrote no place
+        /// for the call, or the run may not be read.
+        /// </summary>
+        public long? SpellingOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.CallSpelling.Of(term), out var spelling) ? spelling : (long?)null)
+            : null;
+
+        /// <summary>
         /// Imports a computed place's characters: F's for the call at the root (<c>ValueChars</c>), a superset beneath any
         /// stratum. A call the bundle wrote no place for is ignored.
         /// </summary>
