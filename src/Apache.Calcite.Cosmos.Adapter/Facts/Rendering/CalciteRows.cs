@@ -14,6 +14,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="Through">The tests of a reading a row says are its operand's.</param>
     /// <param name="LikeUnits">What <c>LIKE</c> reads each unit of its pattern as, each citing its row.</param>
     /// <param name="TestKinds">The classes each one-place test is TRUE of, each citing its row.</param>
+    /// <param name="TestReads">The readings a one-place test's in-process body takes apart, with the reading it reads instead (G8).</param>
     internal sealed record CalciteRows(
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> Reads,
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> Bands,
@@ -21,11 +22,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(string Reader, string As)> ReadAs,
         IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> Through,
         IReadOnlyList<(LikeUnit Unit, string Row)> LikeUnits,
-        IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> TestKinds)
+        IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> TestKinds,
+        IReadOnlyList<(string Reader, string As)> TestReads)
     {
 
         /// <summary>No row.</summary>
-        public static readonly CalciteRows None = new([], [], [], [], [], [], []);
+        public static readonly CalciteRows None = new([], [], [], [], [], [], [], []);
 
     }
 

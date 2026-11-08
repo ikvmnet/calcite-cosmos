@@ -200,8 +200,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             ? new SqlPredicate.IsNull(tested)
                             : Structure((RexNode)operands.get(0)) is SqlPredicate structure
                                 ? new SqlPredicate.Not(structure)
-                            : Boxed((RexNode)operands.get(0)) is SqlValue boxed
-                                ? new SqlPredicate.IsNull(boxed)
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var unknown
                                 ? new SqlPredicate.Case(unknown, False, new SqlPredicate.Case(new SqlPredicate.Not(unknown), False, True))
                                 : Opaque(node);
@@ -212,8 +210,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
                             : Structure((RexNode)operands.get(0)) is SqlPredicate held
                                 ? held
-                            : Boxed((RexNode)operands.get(0)) is SqlValue boxedPresent
-                                ? new SqlPredicate.Not(new SqlPredicate.IsNull(boxedPresent))
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var known
                                 ? new SqlPredicate.Case(known, True, new SqlPredicate.Case(new SqlPredicate.Not(known), True, False))
                                 : Opaque(node);
@@ -244,20 +240,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.LIKE) when _legacy == false:
                         return Like(call) ?? Opaque(node);
 
-                    // Over a reading of a path alone, as IS_DEFINED is read; over a call it asks of a computed value.
+                    // Over a reading of a path alone, as IS_DEFINED is read; over a call it asks of a computed value. Where
+                    // places are read, the reading as it stands: what the in-process body takes it apart into is the
+                    // vocabulary's test rules' over Calcite.TypeTestsAreTheirBodies' rows (testreads, G8), a cast no row
+                    // names. Elsewhere, F's reading until h15, the raw value of a reading that is no cast.
                     case var _ when _legacy == false && TypeTests.TryGetValue(call.getOperator(), out var test) && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath typed } typedRead && typedRead is not SqlValue.Cast
-                            ? new SqlPredicate.TypeTest(test, new SqlValue.Raw(typed))
+                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath typed } typedRead && (_places || typedRead is not SqlValue.Cast)
+                            ? new SqlPredicate.TypeTest(test, _places ? typedRead : new SqlValue.Raw(typed))
                             : Opaque(node);
 
-                    // The service's test of the document, which a weakening writes and a caller may: what it asks is the
-                    // path's whatever reads it, so it is read of the raw value. A cast is no accessor the in-process body
-                    // can take apart, and is not read. A schema's own declaration of it is Calcite's wrapping, with the one
-                    // body, read by reference too and by S alone until h15, F's terms unchanged.
+                    // The service's test of the document, which a weakening writes and a caller may, read as the type tests
+                    // are. A schema's own declaration of it is Calcite's wrapping, with the one body, read by reference too
+                    // and by S alone until h15, F's terms unchanged.
                     case var _ when (ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) || _places && CosmosSchemaFunctions.Presents(call.getOperator(), CosmosOperators.IsDefined))
                         && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath defined } read && read is not SqlValue.Cast
-                            ? new SqlPredicate.IsDefined(new SqlValue.Raw(defined))
+                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath defined } read && (_places || read is not SqlValue.Cast)
+                            ? new SqlPredicate.IsDefined(_places ? read : new SqlValue.Raw(defined))
                             : Opaque(node);
 
                     default:
@@ -275,24 +273,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     : null;
 
             static readonly SqlPredicate True = new SqlPredicate.Constant(true), False = new SqlPredicate.Constant(false);
-
-            /// <summary>
-            /// Reads a text reading cast to <c>VARIANT</c> as the text: a string box, null where the text is
-            /// (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), for an equality with a boxed string and a null test alone. Only
-            /// S's tests read it until its switch (h15), F's terms unchanged.
-            /// </summary>
-            SqlValue? Boxed(RexNode node) =>
-                _places && node is RexCall call && call.getKind().name() == nameof(SqlKind.__Enum.CAST) && call.getOperands().size() == 1
-                && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT && Value((RexNode)call.getOperands().get(0)) is SqlValue.Text text
-                    ? text
-                    : null;
-
-            /// <summary>A string literal cast to <c>VARIANT</c>, as the string.</summary>
-            SqlValue? BoxedString(RexNode node) =>
-                node is RexCall { } call && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT && CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal
-                && Literal(literal) is SqlValue.Literal { Kind: Cosmos.Facts.Saturation.JsonValues.StringType } text
-                    ? text
-                    : null;
 
             /// <summary>
             /// Reads a plain <c>JSON_QUERY</c> of a path, under a null test, as the path holding a structure: it answers
@@ -332,9 +312,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
-            /// Reads <c>LIKE</c> of a reading of a path as text, against a literal pattern holding no bracket, and with no
-            /// <c>ESCAPE</c>; <c>NOT LIKE</c> as its negation; <c>null</c> for anything else. A loading that reads places reads
-            /// it of a <c>VARCHAR</c> column's raw value and of a computed text place too (h07), S's alone until h15.
+            /// Reads <c>LIKE</c> against a literal pattern with no <c>ESCAPE</c>, <c>NOT LIKE</c> as its negation, <c>null</c>
+            /// for anything else. A loading that reads places reads it of any place as it stands, every unit of its pattern a
+            /// bracket among them: which readings it decides is the vocabulary's over Calcite's rows, and what each side reads
+            /// a unit as their rows' (<c>likeunits</c>, <c>likereads</c>, G7/G8), S's alone until h15. F's reading until then
+            /// reads it of a reading of a path as text, against a pattern holding no bracket.
             /// </summary>
             SqlPredicate? Like(RexCall call)
             {
@@ -342,15 +324,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return null;
 
                 var operand = (RexNode)call.getOperands().get(0);
-                if (Value(operand) is not { } subject || (subject is { PathRead: not null } and (SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" })
-                    || _places && (subject is SqlValue.Raw { PathRead: not null } && IsCharacter(operand.getType()?.getSqlTypeName()) || subject is SqlValue.Call { Type: "VARCHAR", Spelled: not null })) == false)
+                if (Value(operand) is not { } subject || (_places ? IsPlace(subject) : subject is { PathRead: not null } and (SqlValue.Text or SqlValue.Cast { Target: "VARCHAR" or "CHAR" })) == false)
                     return null;
 
                 if (call.getOperands().get(1) is not RexLiteral literal || Literal(literal) is not SqlValue.Literal { Kind: Cosmos.Facts.Saturation.JsonValues.StringType } pattern)
                     return null;
 
                 var text = Cosmos.Facts.Saturation.JsonValues.StringOf(pattern.Value);
-                if (text.IndexOfAny(['[', ']']) >= 0)
+                if (_places == false && text.IndexOfAny(['[', ']']) >= 0)
                     return null;
 
                 SqlPredicate like = new SqlPredicate.Affix(Cosmos.Facts.Saturation.PredicateAtom.LikeTest, subject, text);
@@ -394,23 +375,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var a = (RexNode)call.getOperands().get(0);
                 var b = (RexNode)call.getOperands().get(1);
 
-                if (Value(a) is { } left && IsPlace(left) && Comparand(b, left) is SqlValue right && Compares(left, right))
+                if (Value(a) is { } left && IsPlace(left) && Comparand(b, left) is SqlValue right && (right is SqlValue.Box || Compares(left, right)))
                     return new SqlPredicate.Compare(op, left, right);
 
-                if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
+                if (Value(b) is { } mirrored && IsPlace(mirrored) && Comparand(a, mirrored) is SqlValue other && (other is SqlValue.Box || Compares(mirrored, other)))
                     return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
                 if (_places && Value(a) is { } first && IsPlace(first) && Value(b) is { } second && IsPlace(second))
                     return new SqlPredicate.Compare(op, first, second);
-
-                // A text boxed as a VARIANT equals a boxed string as the text does (Calcite.VariantEqualsOnlyItsOwnBox).
-                if (op is SqlPredicate.Compare.Equal or SqlPredicate.Compare.NotEqual)
-                {
-                    if (Boxed(a) is { } boxed && BoxedString(b) is { } literal)
-                        return new SqlPredicate.Compare(op, boxed, literal);
-                    if (Boxed(b) is { } mirroredBox && BoxedString(a) is { } mirroredLiteral)
-                        return new SqlPredicate.Compare(op, mirroredBox, mirroredLiteral);
-                }
 
                 return null;
             }
@@ -436,7 +408,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// (<c>PredicateAtom</c>). F's terms stay so until it reads places (h15), and with them the casts as S does.
             /// </para>
             /// <para>
-            /// Anything else is a literal as written, or boxed for a <c>VARIANT</c> comparison.
+            /// Anything else is a literal as written, or one boxed for a <c>VARIANT</c> comparison: where places are read, the
+            /// box as it stands (<see cref="SqlValue.Box"/>), what it equals S's box rules' (G8); elsewhere the literal.
             /// </para>
             /// </remarks>
             SqlValue? Comparand(RexNode node, SqlValue reading)
@@ -445,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return Value(node);
 
                 if (_places)
-                    return CosmosRexShapes.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : CastNumber(node);
+                    return node is RexLiteral literal ? Literal(literal) : Value(node) is SqlValue.Box { Value: SqlValue.Literal } boxed ? boxed : CastNumber(node);
 
                 var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
                 if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
@@ -581,7 +554,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return reading switch
                 {
                     SqlValue.Text => literal.Kind == "string",
-                    SqlValue.Raw => literal.Kind != "null",
+                    // Literal reads no SQL null, and a JSON null is no literal a filter writes: any literal.
+                    SqlValue.Raw => true,
                     SqlValue.Typed { Type: "BOOLEAN" } => literal.Kind == "boolean",
                     SqlValue.Typed => literal.IsNumber,
                     SqlValue.Cast { Target: "VARCHAR" or "CHAR" } => literal.Kind == "string",
@@ -778,11 +752,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return computed with { Type = type, Spelled = spelled };
             }
 
-            /// <summary>An operand's spelling in a computed place's: a path's, a literal's own, a nested place's; none for the rest.</summary>
+            /// <summary>
+            /// An operand's spelling in a computed place's: a path's, a literal's own, a nested place's; none for a box, over which
+            /// no row reads a function, and none for the rest.
+            /// </summary>
             static string? PlaceSpelling(SqlValue operand) => operand switch
             {
                 SqlValue.Call call => call.Spelled,
                 SqlValue.Literal literal => literal.Value,
+                SqlValue.Box => null,
                 _ when operand.PathRead is JsonDocumentPath path => SqlValue.Spell(path),
                 _ => null,
             };
@@ -857,7 +835,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var operand = (RexNode)call.getOperands().get(0);
                 var target = call.getType()?.getSqlTypeName();
 
-                // A literal boxed for a VARIANT comparison is the literal.
+                // A value cast to VARIANT, where places are read, is the box it is, of its SQL type (G8): a literal, or a reading
+                // of a path. Elsewhere, F's reading until h15, a literal boxed for a VARIANT comparison is the literal.
+                if (target == SqlTypeName.VARIANT && _places)
+                    return operand.getType()?.getSqlTypeName()?.getName() is string boxed && (operand is RexLiteral boxedLiteral ? Literal(boxedLiteral) : Value(operand)) is SqlValue held
+                        && (held is SqlValue.Literal || IsPlace(held))
+                        ? new SqlValue.Box(boxed, held) : null;
+
                 if (operand is RexLiteral literal)
                     return target == SqlTypeName.VARIANT ? Literal(literal) : null;
 

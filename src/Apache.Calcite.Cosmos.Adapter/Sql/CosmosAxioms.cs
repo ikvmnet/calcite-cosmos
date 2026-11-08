@@ -559,7 +559,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.IsBool, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=true false=true number=false string=false object=false array=false"),
                     new(Test.IsObject, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=true array=false"),
                     new(Test.IsArray, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=false array=true"),
-                ]),
+                ],
+                // The body is handed the document and the path the accessor names, JSON_VALUE whatever it returns
+                // (CosmosTypeTestImplementor): a test of the text, of a raw value or of a RETURNING asks of the value at the
+                // path, and a cast is no accessor (G8).
+                TestReads: [new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader)]),
             new("Calcite.ItemIsNullWhereNoElementIs",
                 "ITEM over a raw value is its element, counted from one, and null wherever there is no element: past the end, at zero, over an object, a null and an absent path. Over a scalar a VARIANT's is null too and an ANY's raises. An ANY's element is the value the reader built, and a VARIANT's is no box: unequal to every boxed value, and a cast of it raises.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AnItemIsNullWhereNoElementIs"),
@@ -567,14 +571,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "A reading of an element, the text accessor, a RETURNING, JSON_QUERY and JSON_EXISTS alike, answers what the same reading of a path holding the element answers, and where there is no element, past the end or over a value that is no array, what it answers over an absent path.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath"),
             new("Calcite.VariantEqualsOnlyItsOwnBox",
-                "A VARIANT equals a value cast to VARIANT only in its own box: a stored integer, boxed BIGINT, the integer cast to BIGINT and nothing else, a fraction, boxed DOUBLE, a DOUBLE, and a string a string; so an IN of a number and its spelling keeps each in its own box alone. A text cast to VARIANT is a string box, equal to a boxed string where the text is that string and null where the text is null.",
+                "A VARIANT equals a value cast to VARIANT only in its own box: a stored integer, boxed BIGINT, the integer cast to BIGINT and nothing else, a fraction, boxed DOUBLE, a DOUBLE, a boolean, boxed BOOLEAN, a BOOLEAN, and a string a string, a CHAR literal among them; so an IN of a number and its spelling keeps each in its own box alone. A text cast to VARIANT is a string box, equal to a boxed string where the text is that string and null where the text is null.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteVariantMeasurementTests.AVariantEqualsOnlyItsOwnBox",
                 Boxes:
                 [
                     new(JsonValues.IntegerType, "BIGINT"), new(JsonValues.FractionType, "DOUBLE"), new(JsonValues.StringType, "VARCHAR"),
                     new("BIGINT", "BIGINT"), new("DOUBLE", "DOUBLE"), new(PredicateAtom.TextReader, "VARCHAR"),
+                    // A CHAR literal boxed equals the stored string alone (the CHAR '42' box), and TRUE boxed the stored true
+                    // alone: a string's box and a boolean's (G8), which a raw value compared with a boxed literal is read in.
+                    new("CHAR", "VARCHAR"), new(JsonValues.BooleanType, "BOOLEAN"), new("BOOLEAN", "BOOLEAN"),
                 ],
-                SeesThrough: [PredicateAtom.Equal, PredicateAtom.NotEqual]),
+                // A box is null where what it holds is: its null test is the text's (G8).
+                SeesThrough: [PredicateAtom.Equal, PredicateAtom.NotEqual, PredicateAtom.NullTest]),
             new("Calcite.IntegerArithmeticWraps",
                 "+, - and * over two INTEGERs or two BIGINTs wrap at the type's bounds as Java's do, 2147483647 + 1 being -2147483648 and 9223372036854775807 + 1 -9223372036854775808, and are exact within them, past 2^53 too.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteArithmeticMeasurementTests.IntegerArithmeticWraps"),

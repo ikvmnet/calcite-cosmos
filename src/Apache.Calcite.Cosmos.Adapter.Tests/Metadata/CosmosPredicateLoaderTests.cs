@@ -123,13 +123,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A field's raw value names the column its declared type is where S reads places (rawtyped): a promoted path's
-        /// <c>VARIANT</c>; the facts graph's reading names none, its terms as they were until h15.
+        /// <c>VARIANT</c>, and the string it is compared with the box Calcite casts it to (G8); the facts graph's reading names
+        /// neither, its terms as they were until h15.
         /// </summary>
         [Fact]
         public void ARawFieldNamesItsColumnWhereSReads()
         {
             var equal = Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), false), Str("b")));
-            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Eq(new SqlValue.Raw(Category) { Column = "VARIANT" }, "b"));
+            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("CHAR", Lit("b"))));
             One(equal).Should().Be(Eq(new SqlValue.Raw(Category), "b"));
         }
 
@@ -162,15 +163,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Load(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
         }
 
+        /// <summary>
+        /// A value cast to <c>VARIANT</c> is the box it is where S reads (G8), by the SQL type of what it holds, a reading or a
+        /// literal, compared and tested for null as written: what each comparison of it means is S's rules' over
+        /// <c>Calcite.VariantEqualsOnlyItsOwnBox</c>' rows, which read no atom of its order. F's terms stay as they were until h15.
+        /// </summary>
         [Fact]
-        public void ATextBoxedAsAVariantIsTheTextWhereSReads()
+        public void AValueCastToAVariantIsTheBoxWhereSReads()
         {
             var boxed = _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), JsonValue("label"));
+            var (text, bikes) = (new SqlValue.Box("VARCHAR", Text(Label)), new SqlValue.Box("CHAR", Lit("bikes")));
             var equal = Call(SqlStdOperatorTable.EQUALS, boxed, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), Str("bikes")));
-            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Eq(Text(Label), "bikes"));
-            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, boxed)).Conjuncts.Should().ContainSingle().Which.Should().Be(IsNull(Text(Label)));
+            LoadPlaces(equal).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(text, "=", bikes));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, boxed)).Conjuncts.Should().ContainSingle().Which.Should().Be(IsNull(text));
             LoadPlaces(Call(SqlStdOperatorTable.LESS_THAN, boxed, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), Str("bikes")))).Conjuncts.Should().ContainSingle()
-                .Which.Should().BeOfType<SqlPredicate.Opaque>("a VARIANT's order is not the text's");
+                .Which.Should().Be(Cmp(text, "<", bikes), "whether a VARIANT's order reads what it holds is the row's to say, and it says not");
+            LoadPlaces(Call(SqlStdOperatorTable.EQUALS, Variant, _rex.makeAbstractCast(Sql(SqlTypeName.VARIANT), _rex.makeLiteral(true), false))).Conjuncts.Should().ContainSingle()
+                .Which.Should().Be(Cmp(new SqlValue.Raw(Category) { Column = "VARIANT" }, "=", new SqlValue.Box("BOOLEAN", Lit(true))));
             Load(equal).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
         }
 
@@ -205,7 +214,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A schema's own <c>IS_DEFINED</c>, Calcite's wrapping of the declaration <see cref="CosmosSchemaFunctions"/> holds, is
-        /// the operator's test where S reads; a function merely named so, or a declaration of it this table does not hold, is
+        /// the operator's test where S reads, of the reading as it stands, which the body takes apart as the rows say (G8);
+        /// a function merely named so, or a declaration of it this table does not hold, is
         /// no test, but a call S's rows key nothing of, so a place with no image (G6); the schema's is opaque in F's reading
         /// until h15.
         /// </summary>
@@ -219,8 +229,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var declared = CosmosSchemaFunctions.Instance.get("IS_DEFINED");
             declared.size().Should().Be(1);
             var schema = Call(Wrapped((org.apache.calcite.schema.Function)declared.iterator().next()), JsonValue("label"));
-            LoadPlaces(schema).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.IsDefined(Raw(Label)));
-            LoadPlaces(Call(SqlStdOperatorTable.NOT, schema)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(new SqlPredicate.IsDefined(Raw(Label))));
+            LoadPlaces(schema).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.IsDefined(Text(Label)));
+            LoadPlaces(Call(SqlStdOperatorTable.NOT, schema)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(new SqlPredicate.IsDefined(Text(Label))));
             Load(schema).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
 
             var unheld = Call(Wrapped(new CosmosSchemaFunction(CosmosOperators.IsDefined, 1)), JsonValue("label"));
@@ -419,13 +429,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// <c>LIKE</c> is read only as two operands over text against a literal holding no bracket: an <c>ESCAPE</c>, a
-        /// computed pattern, a bracket, which the service reads as a class and Calcite as itself, and a subject that is no
-        /// reading of a path stay opaque, and so does a type test over a call.
+        /// <c>LIKE</c> is read in F's terms only as two operands over text against a literal holding no bracket: an
+        /// <c>ESCAPE</c>, a computed pattern, a bracket, which the service reads as a class and Calcite as itself, and a
+        /// subject that is no reading of a path stay opaque, and so does a type test over a call. Where S reads, a bracket is a
+        /// unit of the pattern like any, which each side's rows read (G8), and a type test is of the reading as it stands.
         /// </summary>
         [Fact]
         public void EachRefusedLikeStaysOpaque()
         {
+            LoadPlaces(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[b]%"))).Conjuncts.Should().ContainSingle()
+                .Which.Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(Label), "a[b]%"));
+            LoadPlaces(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"), Str("!"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>();
+            LoadPlaces(Call(CosmosOperators.IsString, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.TypeTest>().Which.Value.Should().Be(Text(Label));
+            LoadPlaces(Call(CosmosOperators.IsString, Variant)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.TypeTest>()
+                .Which.Value.Should().Be(new SqlValue.Raw(Category) { Column = "VARIANT" });
+            One(Call(CosmosOperators.IsString, JsonValue("label"))).Should().BeOfType<SqlPredicate.TypeTest>().Which.Value.Should().Be(Raw(Label), "F's terms stay as they were until h15");
+
             One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"), Str("!"))).Should().Be(Opaque(0));
             One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), JsonValue("kind"))).Should().Be(Opaque(0));
             One(Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a[b]%"))).Should().Be(Opaque(0));

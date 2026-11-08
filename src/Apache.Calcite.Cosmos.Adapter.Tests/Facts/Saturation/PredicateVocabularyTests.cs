@@ -27,7 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var graph = new EGraph();
             var paths = new PathVocabulary(graph);
-            var ir = new PredicateVocabulary(graph, graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis }));
+            var ir = new PredicateVocabulary(graph, graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis }),
+                graph.DefineRelation<string, string>("testreads", new TableOptions { Role = TableRole.Analysis }));
             var junctions = new List<(bool Truth, int Arms)>();
             var writer = new PredicateWriter(ir, path => JsonFactEncoding.Path(path).ToTerm(paths), (_, truth, arms) =>
             {
@@ -41,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Assume(facts.ToArray());
 
             scope.Run(Schedule.Saturate(ir.Analyse), cancellationToken: TestContext.Current.CancellationToken).StopReason.Should().Be(RunStopReason.Completed);
-            ir.Analyse.Rules.Should().HaveCount(11, "two of them the type test's and the affix's, which this conjunct holds none of");
+            ir.Analyse.Rules.Should().HaveCount(15, "seven of them the one-place tests' and the affix's, which this conjunct holds none of");
             scope.CountRows(ir.Atom).Should().Be(4);
             scope.CountRows(ir.Point).Should().Be(4, "'bikes', 'x', 'y' and 3, beside their atoms");
             junctions.Should().Equal(new[] { (true, 2), (false, 2), (false, 3) }, "the disjunction is written as an arm, before the conjunction it nests in");

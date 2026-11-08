@@ -210,6 +210,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A bracket is a unit of a pattern like any where S reads (G8), the loader refusing none: Calcite's rows read it as
+        /// itself, so a pattern an affix says is written as that affix, whose argument the service reads unit by unit as
+        /// itself, and one only the service's <c>LIKE</c> says is unread there, its rows reading the bracket as a range. The
+        /// legacy reading, and F's until h15, read none.
+        /// </summary>
+        [Fact]
+        public void ABracketIsReadAsItsRowsSay()
+        {
+            var t = JsonValue("t", SqlTypeName.VARCHAR);
+            var prefix = Loading.Read(Like(t, "[a]%"));
+            prefix.Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Text(TPath), "[a]%"));
+            Legacy.Read(Like(t, "[a]%")).Should().BeOfType<SqlPredicate.Opaque>();
+
+            var answer = Generate(prefix, RenderingSet.Emulator, Strings);
+            answer.Kind.Should().Be(RenderingVerdictKind.Proven, answer.Reason);
+            answer.Best!.Subforms.Should().Contain(ServiceForm.AffixOf(CosmosServiceTest.StartsWith, SqlValue.Spell(TPath), "[a]"));
+            Generate(Loading.Read(Like(t, "[a]_b%")), RenderingSet.Emulator, Strings).Kind.Should().Be(RenderingVerdictKind.Unproven);
+        }
+
+        /// <summary>
         /// An affix cuts a cell of strings into those its pattern matches and those it misses, each with a witness; <c>%</c>
         /// cuts nothing, and a pattern holding a unit the classes forbid leaves the missing half alone.
         /// </summary>

@@ -16,9 +16,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// The JSON kinds each type test is TRUE of, by its name: the graph's own rows, an analysis assumed at its root, which
         /// the type-test rule reads (<c>Calcite.TypeTestsAreTheirBodies</c>, G7).
         /// </param>
-        public PredicateVocabulary(EGraph graph, Function<string, ValueSet<string>> testKinds)
+        /// <param name="testReads">
+        /// The readings a one-place test's in-process body takes apart, with the reading it reads instead: the graph's own
+        /// rows, an analysis assumed at its root, which the test-read rules read (<c>Calcite.TypeTestsAreTheirBodies</c>, G8).
+        /// </param>
+        public PredicateVocabulary(EGraph graph, Function<string, ValueSet<string>> testKinds, Relation<string, string> testReads)
         {
             TestKinds = testKinds;
+            TestReads = testReads;
             graph.DefineSort<Val>("Val");
             graph.DefineSort<Pred>("Pred");
             graph.DefineSort<Args>("Args");
@@ -35,6 +40,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Typed = graph.DefineConstructor<JPath, string, Val>("typed", options: term);
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
             DecimalCast = graph.DefineConstructor<long, long, Val, Val>("decimal cast", options: term);
+            Box = graph.DefineConstructor<string, Val, Val>("box", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
             Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
@@ -56,6 +62,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Point = graph.DefineRelation<Pred, string>("point", analysis);
             Reads = graph.DefineRelation<Val, JPath, string>("reads", analysis);
             Atom = graph.DefineRelation<Pred, JPath, PredicateAtom>("atom", analysis);
+            TestRead = graph.DefineRelation<Val, JPath, string>("testread", analysis);
 
             Analyse = graph.DefineRuleset("analyse");
             DefineAnalysis();
@@ -86,6 +93,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// (<c>RenderingTheory.Denotes</c>, G8).
         /// </summary>
         public Constructor<long, long, Val, Val> DecimalCast { get; }
+
+        /// <summary>
+        /// A value cast to <c>VARIANT</c>: the SQL type of what it boxes, and that value. Written where a loading reads places,
+        /// so never in F's statements; read by S's own rules of what a box equals and where it is null (<c>boxof</c>,
+        /// <c>seesthrough</c>, G8). It reads no path: no rule here reads one.
+        /// </summary>
+        public Constructor<string, Val, Val> Box { get; }
 
         /// <summary>A literal, in <see cref="JsonValues"/>' spelling.</summary>
         public Constructor<string, Val> Literal { get; }
@@ -133,6 +147,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Function<string, ValueSet<string>> TestKinds { get; }
 
         /// <summary>
+        /// The readings a one-place test's in-process body takes apart, by the constructor the IR writes each as, with the
+        /// reading it reads instead: the graph's rows, which the test-read rules read.
+        /// </summary>
+        public Relation<string, string> TestReads { get; }
+
+        /// <summary>
         /// A <c>CASE</c> over predicates: its condition, then-arm and else-arm. No rule of the facts graph reads one, so it
         /// learns of one what it learns of an opaque term.
         /// </summary>
@@ -155,6 +175,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>A predicate over one path, as the atom that says what it means: an analysis of terms alone.</summary>
         public Relation<Pred, JPath, PredicateAtom> Atom { get; }
+
+        /// <summary>
+        /// The path a one-place test of a value asks of, and the reading it reads there: what the test's in-process body
+        /// takes the value's accessor apart into, where a row says it does (<see cref="TestReads"/>, G8).
+        /// </summary>
+        public Relation<Val, JPath, string> TestRead { get; }
 
         /// <summary>Reads terms into atoms.</summary>
         public Ruleset Analyse { get; }
@@ -217,19 +243,48 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(e.Is(IsNull.Of(v)), Reads.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
             });
-            Analyse.DefineRule("a definedness test is an atom of what it reads", r =>
+            // A one-place test's body is handed the document and the path the accessor names, not the value it reads
+            // (Calcite.TypeTestsAreTheirBodies, G8): each accessor its row names is read as the reading the row says the body
+            // reads instead, one rule a constructor; a cast, which no row names, is no accessor, and its test is no atom.
+            Analyse.DefineRule("a test reads the text's path as its row says the body reads it", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(v.Is(Text.Of(p)), TestReads.Of(PredicateAtom.TextReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads a raw value's path as its row says the body reads it", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(v.Is(Raw.Of(p)), TestReads.Of(PredicateAtom.RawReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads the path of a raw value in a column as its row says the body reads it", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, c) = r.Vars<string, string>("k", "c");
+                r.When(v.Is(RawIn.Of(p, c)), TestReads.Of(PredicateAtom.RawReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads a returning's path as its row says the body reads it", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, t) = r.Vars<string, string>("k", "t");
+                r.When(v.Is(Typed.Of(p, t)), TestReads.Of(PredicateAtom.TypedReaders, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a definedness test is an atom of what its body reads", r =>
             {
                 var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
                 var k = r.Var<string>("k");
-                r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
+                r.When(e.Is(IsDefined.Of(v)), TestRead.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
             });
-            Analyse.DefineRule("a type test is an atom of what it reads, TRUE of the kinds its row says", r =>
+            Analyse.DefineRule("a type test is an atom of what its body reads, TRUE of the kinds its row says", r =>
             {
                 var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
                 var (t, k) = r.Vars<string, string>("t", "k");
                 var ks = r.Var<ValueSet<string>>("ks");
-                r.When(e.Is(TypeTest.Of(t, v)), Reads.Of(v, p, k), ks.Is(TestKinds.Of(t)));
+                r.When(e.Is(TypeTest.Of(t, v)), TestRead.Of(v, p, k), ks.Is(TestKinds.Of(t)));
                 r.Then(Atom.Of(e, p, Compute.Of(k, t, ks, PredicateAtom.TypeTest)));
             });
             Analyse.DefineRule("an affix test with a literal pattern is an atom of what it reads", r =>

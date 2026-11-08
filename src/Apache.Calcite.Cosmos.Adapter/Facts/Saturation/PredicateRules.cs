@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             Graph = graph;
             Json = json;
-            Ir = new PredicateVocabulary(graph, json.TestKinds);
+            Ir = new PredicateVocabulary(graph, json.TestKinds, json.TestReads);
 
             var local = new TableOptions { Lift = false };
             var analysis = new TableOptions { Role = TableRole.Analysis };

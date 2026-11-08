@@ -204,7 +204,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(CosmosServiceTest Test, string Read)> ReadCompares { get; init; } = KleeneTables.Compares;
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
-        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds);
+        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads);
+
+        /// <summary>
+        /// The readings a one-place test's in-process body takes apart, with the reading it reads instead
+        /// (<c>CosmosAxiomRows.ReadTestReads</c>, G8): <c>testreads</c>, which the predicate vocabulary's test rules read.
+        /// </summary>
+        public IReadOnlyList<(string Reader, string As)> TestReads { get; init; } = [];
 
         /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
         public IReadOnlyList<(string Target, string Reader, string Row)> Casts { get; init; } = [];

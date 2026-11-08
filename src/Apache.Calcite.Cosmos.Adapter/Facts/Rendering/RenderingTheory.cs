@@ -28,7 +28,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Paths = new PathVocabulary(Graph);
             // The classes each type test is true of (G7), the vocabulary's to read: held as an analysis, rows at the root.
             TestKinds = Graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
-            Ir = new PredicateVocabulary(Graph, TestKinds);
+            // The readings a test's body takes apart (G8), the vocabulary's test rules' to read: likewise an analysis.
+            TestReads = Graph.DefineRelation<string, string>("testreads", new TableOptions { Role = TableRole.Analysis });
+            Ir = new PredicateVocabulary(Graph, TestKinds, TestReads);
             Register(Graph.Values);
 
             Outcome = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("outcome");
@@ -62,11 +64,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Respelled = Graph.DefineFunction<RenderingSet, ValueSet<string>>("respelled", ValueLattice.Union<string>());
             Unsendable = Graph.DefineFunction<RenderingSet, ValueSet<string>>("unsendable", ValueLattice.Union<string>());
             PairReads = Graph.DefineRelation<CosmosServiceTest, bool, CosmosServiceTest>("pairreads");
-            BoxOf = Graph.DefineRelation<string, string>("boxof");
-            SeesThrough = Graph.DefineRelation<string>("seesthrough");
+            // Read beside the terms by S's box rules in the vocabulary's ruleset (G8), which may read only terms and analyses.
+            BoxOf = Graph.DefineRelation<string, string>("boxof", new TableOptions { Role = TableRole.Analysis });
+            SeesThrough = Graph.DefineRelation<string>("seesthrough", new TableOptions { Role = TableRole.Analysis });
             StructureOnly = Graph.DefineRelation<string>("structureonly");
             // What Calcite makes of each reading, the facts graph's vocabulary too (G7).
-            Calcite = new ReadingVocabulary(Graph, TestKinds);
+            Calcite = new ReadingVocabulary(Graph, TestKinds, TestReads);
             CalciteReads = Calcite.Reads;
             CalciteBands = Calcite.Bands;
             MeasuredCast = Graph.DefineRelation<string, string, string>("measuredcast");
@@ -294,6 +297,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var twovalued = Graph.DefineRuleset("twovalued");
             DefineProposal(at, spell);
             DefineLifts(lift, strict);
+            DefineBoxes(strict);
             DefineChoice(best, weaken);
             DefineCase(at, twovalued, best, weaken);
 
@@ -643,10 +647,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The classes no literal of a form sent under a set may hold, a parameter holding one never being sent to a target it serves.</summary>
         public Function<RenderingSet, ValueSet<string>> Unsendable { get; }
 
-        /// <summary>The box each reading or kind of value is held in, cast to <c>VARIANT</c>, G8's.</summary>
+        /// <summary>
+        /// The box each reading, kind of stored value or value cast is held in, cast to <c>VARIANT</c>, G8's: an analysis the
+        /// box rules read beside the terms.
+        /// </summary>
         public Relation<string, string> BoxOf { get; }
 
-        /// <summary>The comparisons that read the values inside one box, G8's.</summary>
+        /// <summary>The comparisons and tests that read the values inside one box, G8's: an analysis the box rules read.</summary>
         public Relation<string> SeesThrough { get; }
 
         /// <summary>The functions that answer a structure alone, G8's.</summary>
@@ -689,6 +696,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// the vocabulary's type-test rule reads, as the facts graph's does.
         /// </summary>
         public Function<string, ValueSet<string>> TestKinds { get; }
+
+        /// <summary>
+        /// The readings a one-place test's in-process body takes apart, with the reading it reads instead
+        /// (<c>Calcite.TypeTestsAreTheirBodies</c>, G8), which the vocabulary's test rules read, as the facts graph's do.
+        /// </summary>
+        public Relation<string, string> TestReads { get; }
 
         // Composition's: Kleene's answers, the keys each set is expected and matched on, the connectives it composes
         // through, an identity's class and the position beneath a negation.
@@ -1909,6 +1922,64 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (m, p, row) = r.Vars<bool, JPath, string>("m", "p", "row");
                 r.When(e.Is(Ir.Compare.Of(op, v, w)), Denotes.Of(w, c, m), Ir.Reads.Of(v, p, k), o.Is(Compute.Of(k, PredicateAtom.Outermost)), TakesConstant.Of(o, m, row));
                 r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+        }
+
+        // S's alone, in the vocabulary's ruleset (G8): a value cast to VARIANT, which the loader reads as the box it is where
+        // it reads places. A VARIANT equals a value only in its own box (Calcite.VariantEqualsOnlyItsOwnBox): within one, the
+        // comparisons its row says see through it read the values inside, and its null test is what it holds; boxes apart
+        // no rule reads, and the comparison is no atom. A text's box is the row's of its reading, a literal's of its SQL
+        // type, and a raw value's of the kind it holds, so a raw value compared with a literal boxed as values of the
+        // literal's own kind are reads as the raw value against the literal, every other kind in another box.
+        void DefineBoxes(Ruleset strict)
+        {
+            Ir.Analyse.DefineRule("a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (u, l) = r.Vars<Val, Val>("u", "l");
+                var (op, t, lt, c) = r.Vars<string, string, string, string>("op", "t", "lt", "c");
+                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.Box.Of(t, u)), Ir.Reads.Of(u, p, k), BoxOf.Of(k, b),
+                    w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)), BoxOf.Of(lt, b));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+
+            Ir.Analyse.DefineRule("a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
+            {
+                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
+                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
+                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.Raw.Of(p)), Ir.Reads.Of(v, p, k), w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)),
+                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), BoxOf.Of(kc, b), BoxOf.Of(lt, b));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+            Ir.Analyse.DefineRule("a comparison that sees through a box, of a raw value in a column and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
+            {
+                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
+                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
+                var (k, b, col) = r.Vars<string, string, string>("k", "b", "col");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.RawIn.Of(p, col)), Ir.Reads.Of(v, p, k), w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)),
+                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), BoxOf.Of(kc, b), BoxOf.Of(lt, b));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+
+            Ir.Analyse.DefineRule("a null test that sees through a box is an atom of the reading it holds", r =>
+            {
+                var (e, v, u) = r.Vars<Pred, Val, Val>("e", "v", "u");
+                var (t, k, b) = r.Vars<string, string, string>("t", "k", "b");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(Ir.IsNull.Of(v)), SeesThrough.Of(PredicateAtom.NullTest), v.Is(Ir.Box.Of(t, u)), Ir.Reads.Of(u, p, k), BoxOf.Of(k, b));
+                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
+            });
+
+            // Null where what it holds is, by the same row, so a comparison of a box is strict where its reading is.
+            strict.DefineRule("a box whose null test sees through it is strict in what it holds is strict in", r =>
+            {
+                var (v, u) = r.Vars<Val, Val>("v", "u");
+                var (t, p) = r.Vars<string, JPath>("t", "p");
+                r.When(v.Is(Ir.Box.Of(t, u)), SeesThrough.Of(PredicateAtom.NullTest), Strict.Of(u, p));
+                r.Then(Strict.Of(v, p));
             });
         }
 

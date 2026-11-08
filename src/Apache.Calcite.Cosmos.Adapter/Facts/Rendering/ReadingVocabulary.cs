@@ -24,11 +24,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Defines the vocabulary's tables on a graph, beside the predicate vocabulary's test kinds, which its type-test rule
-        /// writes; <see cref="Define"/> defines its rules.
+        /// writes, and the readings a test's body takes apart, which its facts seed; <see cref="Define"/> defines its rules.
         /// </summary>
-        public ReadingVocabulary(EGraph graph, Function<string, ValueSet<string>> testKinds)
+        public ReadingVocabulary(EGraph graph, Function<string, ValueSet<string>> testKinds, Relation<string, string> testReads)
         {
             TestKinds = testKinds;
+            TestReads = testReads;
             var analysis = new TableOptions { Role = TableRole.Analysis };
             TestClasses = graph.DefineRelation<CosmosServiceTest, CosmosValueClass, string>("testclasses", analysis);
             TestNames = graph.DefineRelation<string, CosmosServiceTest>("testnames", analysis);
@@ -46,6 +47,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
         public Function<string, ValueSet<string>> TestKinds { get; }
+
+        /// <summary>The readings a one-place test's body takes apart, with the reading it reads instead: the predicate vocabulary's, which this one's facts seed (G8).</summary>
+        public Relation<string, string> TestReads { get; }
 
         /// <summary>The classes each one-place test is TRUE of in process, citing the row.</summary>
         public Relation<CosmosServiceTest, CosmosValueClass, string> TestClasses { get; }
@@ -106,6 +110,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var (test, kind, row) in rows.TestKinds)
                 yield return TestClasses.Of(test, kind, row);
+
+            foreach (var (reader, @as) in rows.TestReads)
+                yield return TestReads.Of(reader, @as);
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

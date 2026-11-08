@@ -60,6 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             ReaderOrders = CosmosAxiomRows.ReadReaderOrders(CosmosAxioms.All),
             ReaderKinds = ReadReaderKinds(),
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
+            TestReads = CosmosAxiomRows.ReadTestReads(CosmosAxioms.All),
             Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
         });
 

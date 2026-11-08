@@ -530,6 +530,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             SqlValue.Call call => 1 + call.Operands.Select(NestingOf).DefaultIfEmpty(0).Max(),
             SqlValue.Cast cast => NestingOf(cast.Value),
+            SqlValue.Box box => NestingOf(box.Value),
             SqlValue.Case choice => choice.Arms.Select(NestingOf).DefaultIfEmpty(0).Max(),
             _ => 0,
         };

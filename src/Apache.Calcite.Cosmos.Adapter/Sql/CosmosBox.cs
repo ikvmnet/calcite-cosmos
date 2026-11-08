@@ -8,7 +8,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// values inside (<see cref="CosmosAxiom.SeesThrough"/>).
     /// </summary>
     /// <param name="Kind">A reading, by the name a reader takes (<c>PredicateAtom.TextReader</c>, <c>PredicateAtom.TypedReader</c>),
-    /// or a kind of stored value, by its type (<c>JsonValues.IntegerType</c>).</param>
+    /// a kind of stored value, by its type (<c>JsonValues.IntegerType</c>), or a value cast, a literal among them, by its SQL
+    /// type (<c>BIGINT</c>, <c>CHAR</c>).</param>
     /// <param name="Box">The box, by its SQL type.</param>
     internal sealed record CosmosBox(string Kind, string Box);
 

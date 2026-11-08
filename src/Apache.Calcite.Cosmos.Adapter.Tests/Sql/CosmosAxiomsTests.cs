@@ -235,8 +235,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             mirror.Should().HaveCount(12).And.Contain((Test.Less, true, Test.Greater)).And.Contain((Test.GreaterOrEqual, false, Test.GreaterOrEqual));
             mirror.Select(r => (r.Test, r.Swapped)).Should().OnlyHaveUniqueItems();
 
-            CosmosAxiomRows.ReadBoxes(all).Should().HaveCount(6).And.Contain((PredicateAtom.TextReader, "VARCHAR")).And.Contain((JsonValues.IntegerType, "BIGINT"));
-            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
+            CosmosAxiomRows.ReadBoxes(all).Should().HaveCount(9).And.Contain((PredicateAtom.TextReader, "VARCHAR")).And.Contain((JsonValues.IntegerType, "BIGINT"))
+                .And.Contain(("CHAR", "VARCHAR")).And.Contain((JsonValues.BooleanType, "BOOLEAN")).And.NotContain(b => b.Kind == "INTEGER", "an INTEGER is boxed apart from a stored integer");
+            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual, PredicateAtom.NullTest);
+            CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
+                (PredicateAtom.TypedReaders, PredicateAtom.RawReader) });
             CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);

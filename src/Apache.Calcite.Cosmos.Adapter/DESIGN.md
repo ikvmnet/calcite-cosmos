@@ -9001,6 +9001,46 @@ number's places without trailing zeros, not the literal's written scale, so `CAS
 unmoved where the fold read no constant against a reading that takes no move; and a computed place read as `DOUBLE`
 takes the number as a path read so does, where the fold, which named path readings alone, left the comparison opaque.
 
+**Boxes, one-place tests and `LIKE`'s brackets are cells S's rules read (G8).** Three of the loader's branches each
+stood for a measured row, linked to it by a comment; a loading that reads places now writes what Calcite was handed as
+it stands, and S's rules read the row as a cell.
+
+- *A value cast to `VARIANT` is the box it is*, `SqlValue.Box` and the vocabulary's `box(type, value)`, by the SQL type
+  of what it holds, a reading of a path or a literal. The loader read a text boxed as the text (`Boxed`) and a boxed
+  string as the string (`BoxedString`), for an equality and a null test alone, and `Comparand` stripped the box off any
+  literal. `boxof` and `seesthrough` are analyses read beside the terms now, and four rules in the vocabulary's
+  ruleset, S's alone, join them: within one box a comparison the row sees through (`=`, `<>`) of a reading and a boxed
+  literal is an atom of the reading; a raw value is in the box of the kind it holds, so compared with a literal boxed
+  as values of the literal's own kind are it is the raw value's comparison, which its column's cells decide, one rule
+  for a raw value and one for a raw value in a column; and the null test sees through a box (`seesthrough(is null)`),
+  so it is the reading's, and a box is strict where what it holds is. The row gained three cells, measured in
+  `AVariantEqualsOnlyItsOwnBox`: a `CHAR` literal is a string's box, the `'42'` that equals the stored `"42"` alone,
+  and a boolean and `BOOLEAN` share one. An order, a literal in another box, and an `INTEGER`, which Calcite boxes apart
+  from a stored integer's `BIGINT` (`CAST(42 AS VARIANT)` equals no stored 42), are no atom; the strip read that last
+  one as the raw value's comparison with 42. That a literal in another box is `FALSE` under `=` is a cell no rule reads
+  yet (`TODO.md`). `IrEval` evaluates a box as the row says.
+- *A one-place test is of the reading as it stands.* A type test's and `IS_DEFINED`'s in-process body is handed the
+  document and the path its accessor names, not the value (`CosmosTypeTestImplementor`), which the loader said by
+  writing `Raw(path)` for a reading that was no cast. The cell is `testreads(reader, as)`, `CosmosAxiom.TestReads` on
+  `Calcite.TypeTestsAreTheirBodies`: the text, a raw value and a returning, each read as the raw value. Four rules of the
+  shared vocabulary, one a constructor, make `testread(v, p, as)` of each value a row names, and the definedness and
+  type-test rules read it where they read `reads`; a cast names no row and is no atom, as before.
+- *`LIKE` is read of any place, against any literal pattern without `ESCAPE`*, a bracket a unit like any. What it
+  means is each side's rows' (`likeunits`, `likereads`; *Calcite's readings as rows (G7)*): Calcite's read a bracket as
+  itself, so a prefix holding one is written as the `STARTSWITH` of its units and proven, and the service's `LIKE` reads
+  a range, so a pattern only it can say is unread. The loader refused a pattern holding a bracket, and a subject that
+  was not the text, a cast to text, a `VARCHAR` column or a computed text place.
+
+`Compares`' arm refusing a `null` literal against a raw value is gone: a `Literal` reads no SQL null, so it never
+fired. Before h15 F's reading keeps each branch, its IR being the digests': the raw value in a test, the bracket
+refused and the literal unboxed. `RenderingFamily`'s legality reads through a box (`Unboxed`), so S owns what it owned
+until G10 deletes it at h15, and a call over a box is no place (`PlaceSpelling`).
+
+`Structure`, `JSON_QUERY` under a null test read as a structure test, stays C#'s. The plan reads it as a rewrite,
+`IS_NULL(JSON_QUERY(p))` to a structure test of `p`, and a rewrite is a merge, which S's tripwire forbids; a reader of
+its own with a template beside it, or an alias relation S's rules read through, would each move it without a merge, and
+each changes which forms S proposes, which a refactor before h15 may not (`TODO.md`).
+
 ### The foundation's rows: refinements and operand keys (F1, F2)
 
 The audit's plan gives the rows the shape the later families read before any of them moves (§3, the foundation). f12
@@ -9091,9 +9131,9 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
   answers as a `CONTAINS`; `REPLACE`'s is its function row's. `Service.LoneSurrogateIsStoredAsReplacement` is read again
   by the target that measured it (`CosmosAxiomRows.ReadStoredOn`, S's `storedas`), beside F's target-free `storedAs`.
 - `Service.TwoPathsCompareAsAPathAndALiteral`: `pairreads(op, swapped, op')`, the mirror law.
-- `Calcite.VariantEqualsOnlyItsOwnBox`: `boxof(kind, box)` (an integer `BIGINT`, a fraction `DOUBLE`, a string and the
-  text reader `VARCHAR`) and `seesthrough` (`=`, `<>`); `Calcite.JsonQueryAnswersStructureOnly`:
-  `structureonly(JSON_QUERY)`.
+- `Calcite.VariantEqualsOnlyItsOwnBox`: `boxof(kind, box)` (an integer `BIGINT`, a fraction `DOUBLE`, a string, the
+  text reader and since G8 a `CHAR` literal `VARCHAR`, a boolean `BOOLEAN`) and `seesthrough` (`=`, `<>` and since G8
+  the null test); `Calcite.JsonQueryAnswersStructureOnly`: `structureonly(JSON_QUERY)`.
 - `Calcite.CastToBooleanParses`: `calcitereads(reader, kind, answer)` for each kind it names, and `calcitebands`, the
   classes its witnesses of a string held (the trimmed class and U+0000), beyond which the parse is unmeasured.
 - `Calcite.CastToBooleanParses`, `Calcite.CastOfTheAccessorParsesTheRendering` and `Calcite.CastOfARawValueToText`:
@@ -9102,15 +9142,16 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
   measured the rest: `itself` of typed `VARCHAR` and `CHAR`, and `reflexive` of every reading S pairs that holds no NaN.
 - `Calcite.TypeTestsAreTheirBodies`: `testkinds(test)`, the classes each type test is true of in process, read off its
   vector; since G7 the readings vocabulary's rule keys them by the test's name and JSON kind, in F's root and S's, for
-  the shared vocabulary's type-test rule.
+  the shared vocabulary's type-test rule. Since G8 `testreads(reader, as)` too, the readings its body takes apart.
 - `Calcite.RawNullIsSqlNull`: each column's own entries for a stored null and an absent path, read and cast alike, SQL
   null in each. `ReadColumns` reads both entries since G5, an absent path its own class.
 - `CosmosFunctionAnswer.Defined`, the D class's answer, apart from `Undefined`; no row states it yet (G6).
 
 G1's rules read `moves`, `storedas` and `truncates` (*Character bands and the stored spelling, S's (G1)*), G3's
 `pairreads` and `readerorder` (*Answer roles, pairs and failure, S's (G2, G3, G4)*), and G7's `calcitereads`,
-`calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*); no rule reads the rest until its group's does:
-G8 `boxof`, `seesthrough`, `structureonly` and `measuredcast` (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
+`calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*), and G8's `boxof`, `seesthrough` and `testreads`
+(*Boxes, one-place tests and `LIKE`'s brackets are cells S's rules read (G8)*); no rule reads `structureonly` and
+`measuredcast` yet (`TODO.md`). `RenderingTheoryTests.TheFoundationsRowsAreFactsOfS` holds each to be a
 fact of S as the definition carries it.
 
 **What each answer is to the leaf (F4).** `AnswerMeanings` holds the roles beside the outcomes: `Comparators` (every

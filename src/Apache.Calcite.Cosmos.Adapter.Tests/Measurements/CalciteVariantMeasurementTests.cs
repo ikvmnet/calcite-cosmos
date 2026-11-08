@@ -184,8 +184,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A <c>VARIANT</c> equals a value cast to <c>VARIANT</c> only in its own box: a stored integer, boxed <c>BIGINT</c>,
-        /// the integer cast to <c>BIGINT</c> first and nothing else, a fraction, boxed <c>DOUBLE</c>, a <c>DOUBLE</c>, and a
-        /// string a string; so an <c>IN</c> of a number and its spelling keeps each in its own box alone. A text cast to
+        /// the integer cast to <c>BIGINT</c> first and nothing else, a fraction, boxed <c>DOUBLE</c>, a <c>DOUBLE</c>, a boolean,
+        /// boxed <c>BOOLEAN</c>, <c>TRUE</c>, and a string a string, the <c>CHAR</c> literal <c>'42'</c> among them; so an
+        /// <c>IN</c> of a number and its spelling keeps each in its own box alone. A text cast to
         /// <c>VARIANT</c> is a string box, compared and tested for null as the text.
         /// </summary>
         [Fact, CosmosPins("Calcite.VariantEqualsOnlyItsOwnBox")]
@@ -195,8 +196,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var variant = MaterialisedTable.Of(SqlTypeName.VARIANT, ["42", "\"42\"", "42.0", "true", "null", null]);
             variant.Ask(connection, "\"v\" = CAST(CAST(42 AS BIGINT) AS VARIANT)", "\"v\" = CAST(42 AS VARIANT)", "\"v\" = CAST(CAST(42 AS DOUBLE) AS VARIANT)",
                 "\"v\" = CAST(CAST(42 AS DECIMAL(3, 1)) AS VARIANT)", "\"v\" = CAST('42' AS VARIANT)",
-                "\"v\" IN (CAST(CAST(42 AS BIGINT) AS VARIANT), CAST('42' AS VARIANT))").Should().Equal(
-                "TFFFUU", "FFFFUU", "FFTFUU", "FFFFUU", "FTFFUU", "TTFFUU");
+                "\"v\" IN (CAST(CAST(42 AS BIGINT) AS VARIANT), CAST('42' AS VARIANT))", "\"v\" = CAST(TRUE AS VARIANT)", "\"v\" <> CAST(TRUE AS VARIANT)").Should().Equal(
+                "TFFFUU", "FFFFUU", "FFTFUU", "FFFFUU", "FTFFUU", "TTFFUU", "FFFTUU", "TTTFUU");
 
             // A text cast to VARIANT is a string box: equal to a boxed string as the text is, null where the text is.
             var text = MaterialisedTable.Of(SqlTypeName.VARCHAR, Strings);

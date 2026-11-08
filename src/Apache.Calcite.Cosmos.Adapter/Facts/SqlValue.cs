@@ -71,6 +71,17 @@ namespace Apache.Calcite.Cosmos.Facts
             public override string ToString() => "cast(DECIMAL(" + Precision + ", " + Scale + "), " + Value + ")";
         }
 
+        /// <summary>
+        /// A value cast to <c>VARIANT</c>, as Calcite writes a text it boxes and a literal it compares with a <c>VARIANT</c>: the
+        /// SQL type of what it boxes, and that value. What box it is held in, what it equals and where it is null are S's rules
+        /// over <c>Calcite.VariantEqualsOnlyItsOwnBox</c>'s rows (<c>boxof</c>, <c>seesthrough</c>, G8); no other rule reads one.
+        /// Read only where a loading reads places.
+        /// </summary>
+        public sealed record Box(string Type, SqlValue Value) : SqlValue
+        {
+            public override string ToString() => "box(" + Type + ", " + Value + ")";
+        }
+
         /// <summary>A literal: a JSON scalar in the theory's spelling.</summary>
         public sealed record Literal(string Value) : SqlValue
         {
@@ -158,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Facts
         public static Literal Of(JsonScalar value) => new(JsonFactEncoding.Value(value));
 
         /// <summary>
-        /// Gets the document path the value reads, through any cast, or <c>null</c> where it reads none.
+        /// Gets the document path the value reads, through any cast or box, or <c>null</c> where it reads none.
         /// </summary>
         public JsonDocumentPath? PathRead => this switch
         {
@@ -166,6 +177,7 @@ namespace Apache.Calcite.Cosmos.Facts
             Raw r => r.Path,
             Typed t => t.Path,
             Cast c => c.Value.PathRead,
+            Box b => b.Value.PathRead,
             _ => null,
         };
 
@@ -180,6 +192,7 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             Call call => call.Operands.SelectMany(ComputedWithin).Concat(call.Type is null ? [] : [call]),
             Cast cast => ComputedWithin(cast.Value),
+            Box box => ComputedWithin(box.Value),
             _ => [],
         };
 

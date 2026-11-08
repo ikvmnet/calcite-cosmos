@@ -65,8 +65,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string TextReader = "text";
         public const string RawReader = "raw";
 
+        /// <summary>Every <c>RETURNING</c>, whatever its type, as a row names them all (<c>testreads</c>, G8).</summary>
+        public const string TypedReaders = "typed";
+
         /// <summary>Returns the reader of a <c>RETURNING</c> of a SQL type.</summary>
-        public static string TypedReader(string type) => "typed:" + type;
+        public static string TypedReader(string type) => TypedReaders + ":" + type;
 
         /// <summary>Returns the reader of a cast to a SQL type over another reader.</summary>
         public static string CastReader(string target, string inner) => "cast:" + target + ":" + inner;

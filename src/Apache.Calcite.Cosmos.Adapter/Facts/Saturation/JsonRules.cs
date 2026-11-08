@@ -80,6 +80,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             CastsToText = graph.DefineFunction<string, ValueSet<string>>("castsToText", ValueLattice.Union<string>());
             // Read beside the terms by the vocabulary's type-test rule, which may read only terms and analyses (G7).
             TestKinds = graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
+            // Read beside the terms by the vocabulary's test rules, likewise (G8).
+            TestReads = graph.DefineRelation<string, string>("testreads", new TableOptions { Role = TableRole.Analysis });
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
@@ -92,7 +94,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             graph.Values.RegisterEnum<Truths>();
             graph.Values.Register<ReadingTable>("reading table");
             graph.Values.Register<LikeUnit>("like unit");
-            Readings = new ReadingVocabulary(graph, TestKinds);
+            Readings = new ReadingVocabulary(graph, TestKinds, TestReads);
             ReadingRules = graph.DefineRuleset("readings");
             Readings.Define(ReadingRules);
 
@@ -265,6 +267,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// reads. A test with no row is no atom.
         /// </summary>
         public Function<string, ValueSet<string>> TestKinds { get; }
+
+        /// <summary>
+        /// The readings a one-place test's in-process body takes apart, with the reading it reads instead
+        /// (<c>Calcite.TypeTestsAreTheirBodies</c>, G8): the root's, which <see cref="PredicateVocabulary"/>'s test rules read.
+        /// A reading no row names, a cast's, is no test's atom.
+        /// </summary>
+        public Relation<string, string> TestReads { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing

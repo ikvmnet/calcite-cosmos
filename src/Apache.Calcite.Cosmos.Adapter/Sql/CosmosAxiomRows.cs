@@ -228,7 +228,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
-            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms));
+            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
+                ReadTestReads(axioms));
+
+        /// <summary>
+        /// One row per reading a one-place test's in-process body takes apart, with the reading it reads instead (G8), both
+        /// graphs' <c>testreads</c>: what the predicate vocabulary's type-test and definedness rules read a test's value by.
+        /// </summary>
+        public static IReadOnlyList<(string Reader, string As)> ReadTestReads(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from read in axiom.TestReads ?? [] select (read.Reader, read.As)).Distinct()];
 
         /// <summary>One row per unit of a pattern a <c>Calcite</c> row says <c>LIKE</c> reads, with what it reads it as, citing the row (G7), <c>likeunits</c>.</summary>
         public static IReadOnlyList<(LikeUnit Unit, string Row)> ReadLikeUnits(IEnumerable<CosmosAxiom> axioms) =>

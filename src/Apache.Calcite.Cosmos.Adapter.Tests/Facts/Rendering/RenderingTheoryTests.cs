@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -69,9 +70,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison with a parameter is an atom of what it reads",
                     "a membership is an atom of what it reads",
                     "a null test is an atom of what it reads",
-                    "a definedness test is an atom of what it reads",
-                    "a type test is an atom of what it reads, TRUE of the kinds its row says",
+                    "a test reads the text's path as its row says the body reads it",
+                    "a test reads a raw value's path as its row says the body reads it",
+                    "a test reads the path of a raw value in a column as its row says the body reads it",
+                    "a test reads a returning's path as its row says the body reads it",
+                    "a definedness test is an atom of what its body reads",
+                    "a type test is an atom of what its body reads, TRUE of the kinds its row says",
                     "an affix test with a literal pattern is an atom of what it reads",
+                    "a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading",
+                    "a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value",
+                    "a comparison that sees through a box, of a raw value in a column and a literal boxed as a value of its kind is, is an atom of the raw value",
+                    "a null test that sees through a box is an atom of the reading it holds",
                 ],
                 ["measure"] =
                 [
@@ -286,6 +295,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a reading Calcite answers null over an absent path is strict in its path",
                     "a call whose operator answers null for a null operand is strict in what an operand is strict in",
                     "a predicate over a strict value implies its path present",
+                    "a box whose null test sees through it is strict in what it holds is strict in",
                 ],
                 ["best"] =
                 [
@@ -344,7 +354,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(165);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(174);
         }
 
         /// <summary>
@@ -453,7 +463,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (d, s) = (Measured, ProbeTheory);
             new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
-                d.SeesThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count }
+                d.SeesThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count,
+                d.TestReads.Count }
                 .Should().OnlyContain(n => n > 0);
 
             d.Parts.Should().OnlyContain(r => s.Theory.Check(s.Parts.Of(r.Comparator, r.Band, r.Other)));
@@ -470,12 +481,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.CalciteReadings.Should().OnlyContain(r => s.Theory.Check(s.CalciteReads.Of(r.Reader, r.Kind, r.Answer)));
             d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
             d.Comparands.Should().OnlyContain(r => s.Theory.Check(s.TakesConstant.Of(r.Reading, r.Moved, r.Row)));
+            d.TestReads.Should().OnlyContain(r => s.Theory.Check(s.TestReads.Of(r.Reader, r.As)));
             foreach (var g in d.CalciteBands.GroupBy(r => (r.Reader, r.Kind)))
                 s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
             foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))
                 s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
             foreach (var g in d.TestKinds.Where(r => ServiceForm.SpellingOf(r.Test) is not null).GroupBy(r => ServiceForm.SpellingOf(r.Test)!))
                 s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.SelectMany(r => CosmosValueClasses.JsonKinds.Where(k => k.Class == r.Kind).Select(k => k.Kind)).Distinct());
+        }
+
+        /// <summary>
+        /// A box is read by its rows (G8): within one, the comparisons <c>Calcite.VariantEqualsOnlyItsOwnBox</c> says see
+        /// through it, and its null test, are atoms of the reading it holds, and a raw value compared with a literal boxed as
+        /// values of the literal's own kind are is the raw value's comparison, which its cells decide; an order, a literal in
+        /// another box and an <c>INTEGER</c>, boxed apart from a stored integer's <c>BIGINT</c>, are no atom. A one-place test
+        /// is an atom of what its body reads, by <c>Calcite.TypeTestsAreTheirBodies</c>' rows the raw value of a text, of a
+        /// raw value in a column and of a returning alike, and of no cast.
+        /// </summary>
+        [Fact]
+        public void ABoxAndATestAreReadByTheirRows()
+        {
+            static IReadOnlyList<PredicateAtom> Atoms(SqlPredicate conjunct) => [.. RenderingTemplatesTests.AtomsOf([conjunct]).Select(a => a.Atom)];
+            var t = JsonDocumentPath.Root.Property("t");
+            var (text, bikes, yes) = (new SqlValue.Box("VARCHAR", new SqlValue.Text(t)), new SqlValue.Box("CHAR", OracleFixture.Lit("bikes")), new SqlValue.Box("BOOLEAN", OracleFixture.Lit(true)));
+
+            Atoms(new SqlPredicate.Compare("=", text, bikes)).Should().Equal(PredicateAtom.Compare(PredicateAtom.TextReader, "=", JsonValues.Of("bikes")));
+            Atoms(new SqlPredicate.Compare("<>", text, bikes)).Should().Equal(PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")));
+            Atoms(new SqlPredicate.IsNull(text)).Should().Equal(PredicateAtom.IsNull(PredicateAtom.TextReader));
+            Atoms(new SqlPredicate.Compare("<", text, bikes)).Should().BeEmpty("no row says a VARIANT's order sees through its box");
+            Atoms(new SqlPredicate.Compare("=", text, yes)).Should().BeEmpty("a boolean's box is not a text's");
+
+            var variant = new SqlValue.Raw(t) { Column = "VARIANT" };
+            Atoms(new SqlPredicate.Compare("=", variant, bikes)).Should().Equal(PredicateAtom.Compare(PredicateAtom.RawIn("VARIANT"), "=", JsonValues.Of("bikes")));
+            Atoms(new SqlPredicate.Compare("<>", variant, yes)).Should().Equal(PredicateAtom.Compare(PredicateAtom.RawIn("VARIANT"), "<>", JsonValues.Of(true)));
+            Atoms(new SqlPredicate.Compare("=", variant, new SqlValue.Box("INTEGER", OracleFixture.Lit(42m)))).Should().BeEmpty("an INTEGER is boxed apart from a stored integer");
+            Atoms(new SqlPredicate.Compare("=", new SqlValue.Raw(t), new SqlValue.Box("BIGINT", OracleFixture.Lit(42m)))).Should().Equal(PredicateAtom.Compare(PredicateAtom.RawReader, "=", JsonValues.Of(42m)));
+
+            var kinds = ProbeTheory.Theory.Get(ProbeTheory.TestKinds.Of("IS_STRING"));
+            foreach (var read in new SqlValue[] { new SqlValue.Text(t), new SqlValue.Raw(t), variant, new SqlValue.Typed(t, "VARCHAR") })
+            {
+                Atoms(new SqlPredicate.TypeTest("IS_STRING", read)).Should().Equal([PredicateAtom.TypeTest(PredicateAtom.RawReader, "IS_STRING", kinds)], read.ToString());
+                Atoms(new SqlPredicate.IsDefined(read)).Should().Equal([PredicateAtom.IsDefined(PredicateAtom.RawReader)], read.ToString());
+            }
+
+            Atoms(new SqlPredicate.IsDefined(new SqlValue.Cast("VARCHAR", new SqlValue.Text(t)))).Should().BeEmpty("a cast is no accessor the body takes apart");
         }
 
         /// <summary>

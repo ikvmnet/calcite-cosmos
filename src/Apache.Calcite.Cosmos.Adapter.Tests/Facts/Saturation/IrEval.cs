@@ -113,6 +113,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlPredicate.Opaque o:
                     return world.Choose(T | F | U, "opaque#" + o.Id + "@" + Documents.Json(document));
 
+                // A value cast to VARIANT (Calcite.VariantEqualsOnlyItsOwnBox, G8): equal to a boxed literal within its own box,
+                // as what it holds is to the literal, and unequal to it in any other; a raw value is boxed by the kind it holds,
+                // so within the literal's kind's box the raw value compared with the literal decides. Null where it holds null.
+                case SqlPredicate.Compare { Op: PredicateAtom.Equal or PredicateAtom.NotEqual, Right: SqlValue.Box { Value: SqlValue.Literal literal } right } c:
+                {
+                    var held = c.Left is SqlValue.Box box ? box.Value : c.Left;
+                    var alike = c.Left is SqlValue.Box ? BoxOf(Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(held)) is { } own && own == BoxOf(right.Type)
+                        : BoxOf(literal.Kind) is { } kind && kind == BoxOf(right.Type);
+                    if (alike)
+                        return Truth(new SqlPredicate.Compare(c.Op, held, literal), document, world, typed, raw);
+
+                    var absent = IsRaw(held) ? At(document, PathOf(held)) is null or J.Null : Read(held, document, world, typed) is SqlDatum.NullDatum;
+                    return absent ? U : c.Op == PredicateAtom.Equal ? F : T;
+                }
+
+                case SqlPredicate.IsNull { Value: SqlValue.Box box }:
+                    return Truth(new SqlPredicate.IsNull(box.Value), document, world, typed, raw);
+
+                // A box no case above reads, its order or two readings boxed (G8): what Calcite answers no row says, so it is
+                // any answer, as the opaque conjunct the loader made of it before was.
+                case SqlPredicate.Compare c when c.Left is SqlValue.Box || c.Right is SqlValue.Box:
+                    return world.Choose(T | F | U, "box " + c + "@" + Documents.Json(document));
+
                 case SqlPredicate.Compare c when IsRaw(c.Left):
                     return RawCompare(c.Op, c.Left, c.Right, document, world, raw);
 
@@ -249,11 +272,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             return read.Where(r => r.Value is SqlValue.Raw).SelectMany(r => r.Literals).All(IsString) ? [RawAs.Variant, RawAs.Any, RawAs.Varchar] : [RawAs.Variant, RawAs.Any];
         }
 
-        /// <summary>The literal a number Calcite wrote cast casts (G8), or the value itself.</summary>
+        /// <summary>The box each reading, kind of stored value and value cast is held in, as its row says (G8).</summary>
+        static readonly IReadOnlyList<(string Kind, string Box)> Boxes = Apache.Calcite.Cosmos.Adapter.Sql.CosmosAxiomRows.ReadBoxes(Apache.Calcite.Cosmos.Adapter.Sql.CosmosAxioms.All);
+
+        static string? BoxOf(string? kind) => kind is null ? null : Boxes.Where(b => b.Kind == kind).Select(b => b.Box).FirstOrDefault();
+
+        /// <summary>The literal a number Calcite wrote cast casts (G8), or a box holds, or the value itself.</summary>
         static SqlValue Uncast(SqlValue value) => value switch
         {
             SqlValue.Cast { PathRead: null } cast => Uncast(cast.Value),
             SqlValue.DecimalCast cast => Uncast(cast.Value),
+            SqlValue.Box { PathRead: null } box => Uncast(box.Value),
             _ => value,
         };
 

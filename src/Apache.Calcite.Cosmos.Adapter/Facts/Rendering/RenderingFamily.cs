@@ -24,9 +24,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             SqlPredicate.Opaque => false,
             SqlPredicate.TypeTest or SqlPredicate.Case or SqlPredicate.Affix or SqlPredicate.Constant => false,
-            SqlPredicate.Compare c => c.Right is SqlValue.Literal && HasEdges(c.Left),
+            SqlPredicate.Compare c => Unboxed(c.Right) is SqlValue.Literal && HasEdges(Unboxed(c.Left)),
             SqlPredicate.In i => HasEdges(i.Value),
-            SqlPredicate.IsNull n => HasEdges(n.Value),
+            SqlPredicate.IsNull n => HasEdges(Unboxed(n.Value)),
             SqlPredicate.IsDefined d => HasEdges(d.Value),
             _ => true,
         });
@@ -41,10 +41,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static bool ReadExactly(SqlPredicate conjunct) => conjunct.Subterms.All(term => term switch
         {
             // Two readings compared (h11) are no atom of the facts graph's, which learns nothing from them.
-            SqlPredicate.Compare { Right: not (SqlValue.Literal or SqlValue.Parameter) } => true,
-            SqlPredicate.Compare c => ReadExactly(c.Left, c.Right is SqlValue.Literal { IsNumber: true }),
+            SqlPredicate.Compare c when Unboxed(c.Right) is not (SqlValue.Literal or SqlValue.Parameter) => true,
+            SqlPredicate.Compare c => ReadExactly(Unboxed(c.Left), Unboxed(c.Right) is SqlValue.Literal { IsNumber: true }),
             SqlPredicate.In i => ReadExactly(i.Value, i.Points.Any(JsonValues.IsNumber)),
-            SqlPredicate.IsNull n => ReadExactly(n.Value, false),
+            SqlPredicate.IsNull n => ReadExactly(Unboxed(n.Value), false),
             SqlPredicate.Affix a => ReadExactly(a.Value, false),
             SqlPredicate.TypeTest => ReadingPrecisionTable.Of(ReadingPrecisionTable.TypeTest) == Exact,
             SqlPredicate.IsDefined or SqlPredicate.Opaque or SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Case or SqlPredicate.Constant => true,
@@ -59,6 +59,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         static bool HasEdges(SqlValue value) => ReaderOf(value) is { } reader && ReaderEdgesTable.Rows.ContainsKey(reader);
+
+        /// <summary>
+        /// What a value cast to <c>VARIANT</c> holds, which the family is keyed by as the IR was before S read the box (G8), so
+        /// that the family is what it was; the value itself otherwise. Deleted with the family's shape list at h15 (G10).
+        /// </summary>
+        static SqlValue Unboxed(SqlValue value) => value is SqlValue.Box box ? box.Value : value;
 
         /// <summary>A reading's reader as the vocabulary's analysis names it; <c>null</c> for a call, a literal and a parameter.</summary>
         internal static string? ReaderOf(SqlValue value) => value switch

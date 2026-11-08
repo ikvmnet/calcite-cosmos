@@ -3110,12 +3110,34 @@ across documents* and *A join of a container to itself* is the record.
   S derives (DESIGN.md, *Character bands and the stored spelling, S's (G1)*). G3's rules read `pairreads` and
   `readerorder`, whose `reflexive` and typed `itself` rows g234 measured (DESIGN.md, *Answer roles, pairs and failure,
   S's (G2, G3, G4)*), and G7's `calcitereads`, `calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*).
-  G8 reads `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`, which no row
-  states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
+  G8 reads `boxof` and `seesthrough`, and `testreads` beside them (*Boxes, one-place tests and `LIKE`'s brackets are
+  cells S's rules read (G8)*); `structureonly` waits on `Structure` (below) and `measuredcast` on the cast targets' move,
+  and G6 the D class's `Defined`, which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
+- **`Structure` is the loader's, not a cell's** — *the owner's call, before or at h15.* `JSON_QUERY` of a path under a
+  null test is read as a structure test of the path by `CosmosPredicateLoader.Structure`, a branch standing for
+  `Calcite.JsonQueryAnswersStructureOnly` (`structureonly`, which no rule reads). The plan moves it as a rewrite of the
+  null test to the structure test, and a rewrite is a merge, which S's no-merge tripwire refuses. Two moves keep S
+  merge-free: a reader of its own for `JSON_QUERY` with a template that writes the structure test, or an alias relation
+  that S's atom rules read through. Either changes the forms S proposes for it, so neither is a refactor before h15, and
+  which one the owner picks decides whether F gains the reader too.
+- **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
+  equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
+  only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
+  `<>` and null where the value is. A rule that reads two `boxof` rows apart makes it one, beside a row for a returning's
+  box, which none names.
+- **`testreads` is read off the implementor, not measured** — *small, a measurement.* The cell that a type test and
+  `IS_DEFINED` of the text, a raw value and a returning ask what the document holds at the path is what
+  `CosmosTypeTestImplementor`'s body does (G8), pinned by no run. A measurement of a test over a reading that reads
+  otherwise than the raw value, `IS_NUMBER` of the text over a stored 30 and `IS_STRING` of a `RETURNING DOUBLE` over a
+  stored `"30"`, pins it.
+- **F reads G8's branches as the loader did until h15** — *h15's.* F's statements are the digests', so a loading without
+  places still writes `Raw(path)` in a one-place test, refuses a bracket in `LIKE` and a subject that is no text, and
+  reads a literal boxed for a `VARIANT` as the literal. At h15 F reads places, and the box rules, S's alone since they
+  read `boxof` and `seesthrough`, which only S's root holds, move to the shared vocabulary with those rows in F's root.
 - **The service's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, a measurement.* Each
   target's `LIKE` units are rows now (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell decides a
   pattern's `_` where both sides' rows say what it reads. `Service.LikeMatchesByCodePoint`'s witnesses hold a surrogate
