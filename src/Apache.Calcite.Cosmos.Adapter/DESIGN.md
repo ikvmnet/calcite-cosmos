@@ -8730,8 +8730,8 @@ the plans stay as they were:
   boolean S proves what `TryStoredBoolean` argues: the path written bare, its negation, its comparisons with a boolean
   and its null test; where the path may hold a string it proves nothing, `"TRUE"` being true to Calcite and a string to
   the service. A number raises on every row, which anything but a failure refines. A truth test is read as the `CASE`
-  Calcite defines it as, so under `Production` it waits with the other ternaries on S1. The reader is coarse in the
-  precision table, which only F reads, and F never builds it before the switch.
+  Calcite defines it as, so under `Production` it waits with the other ternaries on S1. No `readsexactly` row calls the
+  reader exact, which only a statement's strata read, and F never builds it before the switch.
 - **A schema's own `IS_DEFINED`.** A call through a connection carries Calcite's `SqlUserDefinedFunction` around the
   declaration `CosmosSchemaFunctions` holds, another operator instance with the one in-process body
   (`CosmosTypeTestImplementor`). The loader reads it as the operator's test where the call's function is, by reference,

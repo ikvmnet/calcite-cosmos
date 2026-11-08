@@ -129,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// leave out there, a <c>VARCHAR</c> column's read and a raw ordering, and a typed column, <c>DECIMAL</c>'s among them,
         /// over a structure; where a reading compares a number's double, which the coarse reading compares by value; and the
         /// cast of a raw value to text, which the coarse reading reads as an <c>ANY</c> renders it alone (<c>TODO.md</c>). A
-        /// reading the precision table calls exact is read so by neither (<see cref="EveryExactReadingAnswersAsItsCell"/>).
+        /// reading the rows call exact (<c>readsexactly</c>) is read so by neither (<see cref="EveryExactReadingAnswersAsItsCell"/>).
         /// </summary>
         [Fact]
         public void CellAnswersStayInsideTheCoarseAnswer()
@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// the facts graph as its cells answer: the coarse answer on a cell's state holds every truth the cell gives, and
         /// what a row of each truth can be (<see cref="PredicateAtom.Kept"/>) admits every value Calcite gives that truth on,
         /// through every reader the reading stands for. So a stratum that assumes such an atom leaves out no document Calcite
-        /// keeps. Coins are left out, counted; the table calls some reading coarse that this would hold.
+        /// keeps. Coins are left out, counted; the rows call some reading coarse that this would hold.
         /// </summary>
         [Fact, CosmosPins("Calcite.TheFactsGraphReadsTheseReadingsExactly")]
         public void EveryExactReadingAnswersAsItsCell()

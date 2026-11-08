@@ -2686,7 +2686,7 @@ across documents* and *A join of a container to itself* is the record.
   plans.* An `ANY` holds a number not written as a long as its double (`Calcite.RawNullIsSqlNull`), so a stored
   `29.9999999999999999` is equal to 30 and `9007199254740993.0` below 2^53 + 1. The coarse raw equality says no number of
   another value equals the literal, so `NeverTrue` may decide it over a path whose numbers round onto the literal; the
-  precision table calls raw beside a number coarse, so no stratum rests on it. S's cells read the box (g10).
+  `readsexactly` rows call raw beside a number coarse, so no stratum rests on it. S's cells read the box (g10).
 - **A `BIGINT` compared with a fraction raises near its limit** — *small.* Calcite raises comparing 2^63 − 1 in a
   `BIGINT` column with `42.5`, where it compares 2^53 + 1. Neither mode of `IrEval` models it, and nothing it is held
   to reaches it; the typed orderings over number cells should.
