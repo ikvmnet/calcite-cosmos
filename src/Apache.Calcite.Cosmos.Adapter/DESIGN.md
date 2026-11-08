@@ -8735,13 +8735,15 @@ under `places` only, and the templates are among those production asks from the 
 as they were.
 
 - **One form kind, `Affix`**, whose test is `STARTSWITH`, `ENDSWITH`, `CONTAINS` or `LIKE`, over a path or a computed
-  place and an argument. What each asks is one pattern of literal runs and `%` (`AffixPattern`): `STARTSWITH(p, a)` is
-  `a%`, `ENDSWITH` `%a`, `CONTAINS` `%a%`, `LIKE` its own pattern with every run of `%` one. A pattern holding `_`, a
-  backslash, a bracket or a lone surrogate is none, so a `LIKE` of one is never written: Calcite reads `_` as one code
-  point that is no line terminator, which no row measures the service at; a backslash may be an escape to either; the
-  service reads a bracket as a range (`Service.LikeReadsBracketsAsARange`); and no statement sends a lone surrogate. A
-  `LIKE` is written as the narrowest test that says its pattern, an equality where it holds no `%`, and the printer and
-  the check reader write and read each as the translator does, the argument a parameter.
+  place and an argument. What each asks is one pattern (`LikePattern`): `STARTSWITH(p, a)` is `a`'s units each itself
+  and a run, `ENDSWITH` the reverse, `CONTAINS` `a` between two, by the test's definition; `LIKE` its own pattern, each
+  unit read as a side's rows say (G7, *Calcite's readings as rows*): Calcite reads `_` as one code point that is no line
+  terminator and a backslash and a bracket as themselves; the service reads `_` as one code point over the classes its
+  witnesses held, a bracket as a range, and a backslash and a lone `]` it was never sent, so a pattern holding one of
+  those is anything to the leaf. No statement sends a lone surrogate, which is the writer's limit, not a reading. A
+  `LIKE` is written as the narrowest test that says its pattern as Calcite reads it, an equality where it holds only
+  literal units, and the printer and the check reader write and read each as the translator does, the argument a
+  parameter.
 - **Matched by code point, which is matched by unit.** Over well-formed text a pattern of runs matches by UTF-16 unit
   exactly where it matches by code point: a run's surrogate pair can only meet a pair. So Calcite's `LIKE`, the cells and
   the service's rows (`Service.AffixesMatchByCodePoint`, `Service.LikeMatchesByCodePoint`) share one matcher, and only a
@@ -8749,11 +8751,14 @@ as they were.
   leaf answers either, over the unpaired surrogates S hands it unread (`storedas`, G1): a pattern holding only pairs meets only
   pairs, and one holding a lone surrogate is never sent.
 - **A cell cut by what a pattern matches.** An affix is no interval of the code-unit order, so `CutPoints` hands its
-  pattern as a cut of its own (`CutKind.Affix`), and `PathCell.Split` parts each interval of strings into those the
-  pattern matches and those it misses (`Strings.Like`, `Strings.NotLike`). A half is kept where a witness search finds
-  a string of it, or shown empty where the pattern holds a unit the classes forbid; where neither, the interval is left
-  whole, which says less and nothing false. The search joins the patterns' runs in each order between fillers and checks
-  every candidate against the cell whole. `SetAside` holds that any cell an affix cut may meet any cell of strings, and
+  pattern, as Calcite's rows read it, as a cut of its own (`CutKind.Affix`), spelled `%` a run, `_` any one code point
+  and a backslash before a literal `%`, `_` or backslash (`AffixPattern`), and `PathCell.Split` parts each interval of
+  strings into those the spelling matches and those it misses (`Strings.Like`, `Strings.NotLike`). A side whose `_`
+  reads fewer code points than the spelling's, or was measured over fewer classes, parts from it only over a cell that
+  may hold one, which `LikePattern.OnLike` and `OnNotLike` answer. A half is kept where a witness search finds a string of
+  it, or shown empty where the pattern holds a literal unit the classes forbid; where neither, the interval is left
+  whole, which says less and nothing false. The search joins the patterns' runs in each order between fillers, each `_`
+  a unit the classes allow, and checks every candidate against the cell whole. `SetAside` holds that any cell an affix cut may meet any cell of strings, and
   a pair is not ordered across one, since neither knows an affix's least string.
 - **The leaf, as an order names a comparator.** A value that is no string answers by its kind's row (`(test, None,
   kind)`, N5). A string answers by the matcher its test's entry names, `(test, String, None)`, and then whether it
@@ -8768,7 +8773,9 @@ as they were.
   the string as written, but its `CONTAINS`, and a `LIKE` of one run between two `%`, read only up to a string's first
   U+0000 (`Service.NulEndsWhatReplaceAndContainsRead`), so `ServiceLeaf.Matched` answers either for such a pattern
   over a cell that may hold one, or for a pattern that holds one; over a string free of it the matcher is exact. Which
-  patterns and bands those are is S's since G1 (`truncates`: `unread`, `blind`).
+  patterns and bands those are is S's since G1 (`truncates`: `unread`, `blind`). A `LIKE`'s pattern is read by the
+  set's rows of its units (`likesof`, G7), which the set's view hands the leaf, and matched three-valued: a `_` over a
+  code point its row was not measured over is either.
 - **Calcite's side** (`PredicateAtom.OnCell`, F's `On` unchanged): a string read as itself by the rendering, a cast to
   text, a `VARCHAR` column's raw value or a computed text place matches by the pattern, an interval as an affix cut it
   and every string `%`; a boolean renders `true` or `false`; a number renders in its grammar's units
@@ -9457,7 +9464,7 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   `KleeneTables.Compares`);
 - a test a row says is its operand's (`calcitethrough`) answers over each class what its operand's read of it means,
   beside its own, and rests on its operand's rows;
-- `LIKE` reads each unit of its pattern as its row says (`likeunits`);
+- `LIKE` reads each unit of its pattern as its row says (`likeunits`), one row a unit (`LikeUnit.Of`);
 - a type test is TRUE, by its name, of the JSON kinds of each class its row says (`testclasses`, `testnames`,
   `classkinds`, into `testkinds`), and rests on that row.
 
@@ -9490,12 +9497,31 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   where the reading's order is `reflexive`, which no double's reading is (`Calcite.ANaNComparesAsNothingAlike`), so two
   `'NaN'`s on two paths read as doubles may be FALSE (`RenderingPairTests`).
 - *RawPlan.* Whole against compared is G5's `RawAnswer`, per key, not a per-atom table (*Raw columns as cells*).
+- *A pattern's units, each side's rows* (check 2). A `LikeUnit` is a row: the unit, its reading (`run`, `one`,
+  `itself`, `range`, `unmeasured`), the class a `one` misses, the classes the reading was measured over (`Over`, every
+  class where it names none) and, for the unit spelled empty, the units the side's other rows name (`Besides`), which
+  the reader reads off the registry beside it. `LikeUnit.Of` is one exact lookup: the row naming the unit, or the empty
+  one not naming it besides; none leaves the pattern unread, and two fail the run. Calcite's rows are `likeunits`; each
+  target's are S's `likereads`: `Service.LikeMatchesByCodePoint`'s `%` a run, `_` one code point over the classes its
+  witnesses held (a surrogate pair, U+00E9, U+E000 and ASCII, pinned by `TheServicesOneIsReadOverTheClassesItsWitnessesHeld`)
+  and every other unit itself; `Service.LikeReadsBracketsAsARange`'s `[` a range, and `]` and a backslash unmeasured,
+  no witness sending a `]` closing nothing or a backslash without `ESCAPE`. A set reads a unit by a row where every
+  target it serves reads it so (`liketargets`, settled into `likesof` in `tabulate`, as folds are), and its view hands
+  the leaf those. `LikePattern` is a pattern as one side reads it: over a string matched unit by unit in Kleene's three
+  values, a run or a `one` over a code point its row was not measured over unknown; over a range an affix cut by its
+  spelling, matched where every run and `one` was measured over the range's classes and no `one` misses one of them,
+  missed where every one was measured. The cut reads Calcite's rows (`CutPoints`, handed `readerrows`), so does the
+  template (`RenderingTemplates.Affix`, handed it beside the atom) and Calcite's side (`LikeOn`); the leaf reads the
+  set's, and so do the truncation and spelling rules' shapes. `AffixPattern.Canonical` and `Plain`, which refused
+  `_`, `\`, `[` and `]` in four places, and `Like`'s named-else-default precedence are gone. Under the corpus a
+  `LIKE` holding `_` stays unproven: every path it reads may hold a line terminator, which Calcite's `_` misses and no
+  witness of the service's held.
 
-**What did not move.** `AffixPattern.Canonical` and `Plain` still refuse a pattern holding `_`, `\`, `[` or `]`: they
-are the service writer's representation of a pattern of runs, and what the service makes of `_` is the licence's
-question (post2, h15), not Calcite's reading (`TODO.md`). Which evaluator reads a reading's rows, the text's, a raw
-value's, a typed one's or a cast's, is still `Reading.Parse`'s by the spelling (`TODO.md`). `LikeOn`'s number and
-structure misses are evaluation, as the audit found. Digests, the census and population D are byte-equal.
+**What did not move.** Which test a `LIKE`'s pattern is proposed as is still `AffixPattern.Written`'s, the narrowest:
+one template per test and a weight in `Priced` land with h15's templates (`TODO.md`). Which evaluator reads a
+reading's rows, the text's, a raw value's, a typed one's or a cast's, is still `Reading.Parse`'s by the spelling, and
+`EvaluatorOf` and `Kept` default to the reading's own (`TODO.md`). `LikeOn`'s number and structure misses are
+evaluation, as the audit found. Digests, the census and population D are byte-equal.
 
 ## Differential testing
 

@@ -44,8 +44,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public ValueSet<string> UnitRows { get; }
 
         /// <summary>What <c>LIKE</c> reads a unit of its pattern as, as its row says, which the rule joins in.</summary>
-        public static ReadingTable Unit(string unit, string reads, string except, string row) =>
-            new(Empty._rows, ValueSet.Of(new LikeUnit(unit, reads, except)), ValueSet.Of(row), Empty._tests);
+        public static ReadingTable Unit(LikeUnit unit, string row) => new(Empty._rows, ValueSet.Of(unit), ValueSet.Of(row), Empty._tests);
 
         /// <summary>A row a type test rests on, by its name, as the rule joins it in.</summary>
         public static ReadingTable Tested(string test, string row) => new(Empty._rows, ValueSet<LikeUnit>.Empty, ValueSet<string>.Empty, Empty._tests.Add(test, ValueSet.Of(row)));

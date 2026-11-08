@@ -74,9 +74,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>Every reading's rows S's rules join from the registry's (G7), which Calcite's side of a cell evaluates a reading by.</summary>
         public static ReadingTable ReaderRows => ProbeTheory.Theory.Get(ProbeTheory.ReaderRows.Of());
 
-        /// <summary>The table S settles for the set CI asserts under, with its pair table.</summary>
+        /// <summary>The table S settles for the set CI asserts under, with its pair table and the units its LIKE reads (G7).</summary>
         public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed,
-            ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)));
+            ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)), ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingCheckRun.AssertedSet)));
+
+        /// <summary>The form a template proposes for an atom, its LIKE's pattern read by Calcite's rows as S's template rule reads it (G7).</summary>
+        public static ServiceForm Spell(TemplateId id, RenderPosition pos, PredicateAtom atom, string path) => RenderingTemplates.Spell(id, pos, RenderingTemplates.Read(atom, ReaderRows), path);
 
         /// <summary>The classes S places by their order's comparators, derived from the registry's rows.</summary>
         public static ValueSet<CosmosValueClass> Placed => ProbeTheory.Theory.Get(ProbeTheory.Placed.Of());

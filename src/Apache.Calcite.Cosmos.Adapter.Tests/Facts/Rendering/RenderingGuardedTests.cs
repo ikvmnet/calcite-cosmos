@@ -114,10 +114,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ATextEqualityWithANumeralIsTheStringOrTheNumber()
         {
-            var form = RenderingTemplates.Spell(TemplateId.TextAlternatives, RenderPosition.Pos, PredicateAtom.Compare(PredicateAtom.TextReader, "=", JsonValues.Of("30")), Text);
+            var form = ProbeRows.Spell(TemplateId.TextAlternatives, RenderPosition.Pos, PredicateAtom.Compare(PredicateAtom.TextReader, "=", JsonValues.Of("30")), Text);
             form.Text.Should().Be(ServiceForm.JunctionOf(CosmosServiceTest.Or, [ServiceForm.CompareOf(CosmosServiceTest.Equal, Text, JsonValues.Of("30")),
                 ServiceForm.JunctionOf(CosmosServiceTest.And, [ServiceForm.TestOf(CosmosServiceTest.IsNumber, Text), ServiceForm.CompareOf(CosmosServiceTest.Equal, Text, JsonValues.Of(30m))])]).Text);
-            RenderingTemplates.Spell(TemplateId.TextAlternatives, RenderPosition.Pos, PredicateAtom.Compare(PredicateAtom.TextReader, "=", JsonValues.Of("bikes")), Text).Kind
+            ProbeRows.Spell(TemplateId.TextAlternatives, RenderPosition.Pos, PredicateAtom.Compare(PredicateAtom.TextReader, "=", JsonValues.Of("bikes")), Text).Kind
                 .Should().Be(ServiceFormKind.Opaque);
 
             var conjunct = Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("text", SqlTypeName.VARCHAR), Rex.makeLiteral("30"));

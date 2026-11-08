@@ -54,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     {
                         try
                         {
-                            RenderingTemplates.Spell(id, pos, atom, path);
+                            ProbeRows.Spell(id, pos, atom, path);
                         }
                         catch (Exception e)
                         {
@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var asked = from atom in Synthetic(plain: true) from fit in RenderingTemplateRows.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
                         from row in RenderingTemplateRows.Templates where row.Item1 == fit.Item1 select (Id: fit.Item1, Pos: row.Item2, Atom: atom);
             asked.Should().NotBeEmpty();
-            asked.Where(a => RenderingTemplates.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
+            asked.Where(a => ProbeRows.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
             TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {RenderingTemplateRows.Fits.Count} fits rows");
         }
 
@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var parameters = Synthetic(plain: true).Select(a => a with { Operand = null, Points = null, Parameter = true }).ToList();
             parameters.Select(RenderingTemplates.ShapeOf).Should().OnlyContain(s => s == RenderingTemplates.ParameterShape);
             RenderingTemplateRows.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
-            (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select RenderingTemplates.Spell(id, pos, atom, Path))
+            (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
                 .Should().OnlyContain(f => f.Kind == ServiceFormKind.Opaque);
         }
 
@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static ServiceForm Spelled(SqlPredicate conjunct, TemplateId template, RenderPosition pos)
         {
             var (atom, path) = AtomsOf([Atom(conjunct)]).Single();
-            return RenderingTemplates.Spell(template, pos, atom, path);
+            return ProbeRows.Spell(template, pos, atom, path);
         }
 
         /// <summary>What the template spells for a conjunct's atom at its position, beside the text read back, beneath its <c>NOT</c> at <c>Neg</c>.</summary>
@@ -148,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         [Fact]
         public void NoTemplateWritesTwoOrderingsOfOnePath() => (from atom in Synthetic(plain: false) from id in System.Enum.GetValues<TemplateId>()
-                from pos in System.Enum.GetValues<RenderPosition>() select RenderingTemplates.Spell(id, pos, atom, Path))
+                from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
             .Where(f => f.Subforms.Count(g => RenderingPrimitives.StringOrdering.Function(g)) > 1).Select(f => f.Text).Should().BeEmpty();
 
         /// <summary>
@@ -323,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheSentinelsAgreeWithNothingAndAreRefutedByNothing()
         {
             var atom = Ne(OracleFixture.Text(LabelPath), "bikes");
-            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), RenderingTemplates.Spell(TemplateId.BooleanAlternatives, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
+            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), ProbeRows.Spell(TemplateId.BooleanAlternatives, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
             {
                 sentinel.Kind.Should().Be(ServiceFormKind.Opaque);
                 var (equal, implies) = Check(atom, sentinel);

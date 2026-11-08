@@ -68,16 +68,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// An affix or a <c>LIKE</c> (h07): over a value that is no string by its kind
         /// (<c>Service.StringPredicatesOverNonStringsAreUndefined</c>); over a string by whether it matches under each matcher
         /// S found reads the test's own entry (<see cref="MeasuredEntry.Readers"/>, <c>Service.AffixesMatchByCodePoint</c>,
-        /// <c>Service.LikeMatchesByCodePoint</c>). An argument no pattern says, and an entry S found nothing reads, answer
-        /// anything.
+        /// <c>Service.LikeMatchesByCodePoint</c>), a <c>LIKE</c>'s pattern read by the set's rows of its units (G7). A pattern
+        /// they leave unread, and an entry S found nothing reads, answer anything.
         /// </summary>
         static ServiceOutcomes Affix(ServiceForm leaf, PathCell cell, CosmosValueClass kind, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
             if (kind != CosmosValueClass.String)
                 return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
 
-            if (leaf.Pattern is not { } pattern)
+            if (leaf.PatternOf(table.LikeUnits) is not { } pattern)
                 return ServiceOutcomes.Widest;
+
+            table.Cite(pattern, rows);
 
             if (table.Read(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, CosmosValueClass.None), rows) is not { } entry)
                 return ServiceOutcomes.Widest;
@@ -92,16 +94,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Whether a string cell's values match a pattern under a matcher: a string as the matcher matches it
-        /// (<see cref="Matches"/>), and a range as the affix cut it by its own pattern, a lone <c>%</c> matching every string
-        /// (<see cref="AffixPattern.Universal"/>). Either where S's rules found the match unread over a band the cell may hold
+        /// (<see cref="Matches"/>), and a range as the affix cut it by the pattern's spelling, a lone <c>%</c> matching every
+        /// string (<see cref="AffixPattern.Universal"/>), where every unit read as a run or one was measured over the range's
+        /// classes (<see cref="LikePattern.OnLike"/>, <see cref="LikePattern.OnNotLike"/>). Either where a unit's row leaves
+        /// the match unread (G7), where S's rules found the match unread over a band the cell may hold
         /// (<see cref="LeafReads.Unread"/>), a range's affix cut untold over one it may hold (<see cref="LeafReads.Uncut"/>),
         /// or every cell unread (<see cref="LeafReads.Blind"/>): which rows say so, and of which bands, is S's
-        /// (<c>truncates</c>, <c>storedas</c>, <c>rewrites</c>), and the leaf tests the bands it is handed on the cell.
+        /// (<c>truncates</c>, <c>storedas</c>, <c>rewrites</c>, <c>likereads</c>), and the leaf tests the bands it is handed on the cell.
         /// </summary>
-        static CosmosValueClass[] Matched(PathCell cell, string pattern, CosmosAnswer matcher, LeafReads reads)
+        static CosmosValueClass[] Matched(PathCell cell, LikePattern pattern, CosmosAnswer matcher, LeafReads reads)
         {
             CosmosValueClass[] either = [CosmosValueClass.Matching, CosmosValueClass.Missing];
-            CosmosValueClass[] Side(bool match) => match ? [CosmosValueClass.Matching] : [CosmosValueClass.Missing];
+            CosmosValueClass[] Side(bool? match) => match is bool m ? m ? [CosmosValueClass.Matching] : [CosmosValueClass.Missing] : either;
             if (reads.Blind.IsEmpty == false)
                 return either;
 
@@ -110,9 +114,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 PathCell.Point when Bands(cell).Overlaps(reads.Unread) => either,
                 PathCell.Point { Value: var v } => Side(Matches(matcher, StringOf(v), pattern)),
                 PathCell.Strings s when s.Classes.Overlaps(reads.Unread) || s.Classes.Overlaps(reads.Uncut) => either,
-                PathCell.Strings when AffixPattern.Universal(pattern) => [CosmosValueClass.Matching],
-                PathCell.Strings s when s.Like?.Contains(pattern) == true => [CosmosValueClass.Matching],
-                PathCell.Strings s when s.NotLike?.Contains(pattern) == true => [CosmosValueClass.Missing],
+                PathCell.Strings when AffixPattern.Universal(pattern.Spelled) => [CosmosValueClass.Matching],
+                PathCell.Strings s when s.Like?.Contains(pattern.Spelled) == true => Side(pattern.OnLike(s.Classes)),
+                PathCell.Strings s when s.NotLike?.Contains(pattern.Spelled) == true => Side(pattern.OnNotLike(s.Classes)),
                 _ => either,
             };
         }
@@ -273,14 +277,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         /// <summary>
-        /// Each matcher the leaf evaluates, by an evaluation of its own: by code point, as by UTF-16 unit over well-formed text
-        /// (<see cref="AffixPattern.Matches"/>); under the emulator's, the string's stored spelling against the pattern's, which
+        /// Each matcher the leaf evaluates, by an evaluation of its own: by code point, each unit as its row reads it
+        /// (<see cref="LikePattern.Matches"/>); under the emulator's, the string's stored spelling against the pattern's, which
         /// is what it matches (<c>Service.EmulatorComparesTheSpellingItIsSent</c>).
         /// </summary>
-        static readonly IReadOnlyDictionary<CosmosAnswer, Func<string, string, bool>> Matchings = new Dictionary<CosmosAnswer, Func<string, string, bool>>
+        static readonly IReadOnlyDictionary<CosmosAnswer, Func<string, LikePattern, bool?>> Matchings = new Dictionary<CosmosAnswer, Func<string, LikePattern, bool?>>
         {
-            [CosmosAnswer.CodePoint] = AffixPattern.Matches,
-            [CosmosAnswer.StoredCodePoint] = (text, pattern) => AffixPattern.Matches(EmulatorStoredText.Of(text), EmulatorStoredText.Of(pattern)),
+            [CosmosAnswer.CodePoint] = (text, pattern) => pattern.Matches(text),
+            [CosmosAnswer.StoredCodePoint] = (text, pattern) => pattern.Respelled(EmulatorStoredText.Of).Matches(EmulatorStoredText.Of(text)),
         };
 
         /// <summary>
@@ -314,21 +318,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : throw new ArgumentOutOfRangeException(nameof(comparator), comparator, "No comparator of strings the leaf evaluates: S's roles hand none other.");
 
         /// <summary>
-        /// Whether a string matches a pattern of runs under a matcher the test's entry names, its own evaluation on two
-        /// concrete strings (<see cref="Matchings"/>), as <see cref="Compare"/> is the comparator's. One the leaf does not
-        /// evaluate S never hands (<see cref="Evaluates"/>).
+        /// Whether a string matches a pattern under a matcher the test's entry names, its own evaluation on a concrete string
+        /// and pattern (<see cref="Matchings"/>), as <see cref="Compare"/> is the comparator's: <c>null</c> where a unit's row
+        /// was not measured over a code point it reads. One the leaf does not evaluate S never hands (<see cref="Evaluates"/>).
         /// </summary>
-        internal static bool Matches(CosmosAnswer matcher, string text, string pattern) => Matchings.TryGetValue(matcher, out var matches)
+        internal static bool? Matches(CosmosAnswer matcher, string text, LikePattern pattern) => Matchings.TryGetValue(matcher, out var matches)
             ? matches(text, pattern)
             : throw new ArgumentOutOfRangeException(nameof(matcher), matcher, "No matcher the leaf evaluates: S's roles hand an affix's entry none other.");
 
         /// <summary>
-        /// Whether a matcher's spelling splits a pattern of runs, so that a range's affix cut, of strings as written, does not
-        /// say what it matches: under the emulator's, where the stored spelling of the pattern is not its runs' own
+        /// Whether a matcher's spelling splits a pattern, so that a range's affix cut, of strings as written, does not say
+        /// what it matches: under the emulator's, where the stored spelling of the pattern is not its own
         /// (<see cref="AffixPattern.StoredAlike"/>); never under one that matches what it is sent. The matcher's own
         /// evaluation of a concrete pattern, as <see cref="Matches"/> is of a string.
         /// </summary>
-        internal static bool Splits(CosmosAnswer matcher, string pattern) => matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern) == false;
+        internal static bool Splits(CosmosAnswer matcher, LikePattern pattern) => matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern.Spelled) == false;
 
         /// <summary>
         /// Strings by code point, a pair the one it encodes and a lone surrogate its own unit: the order of their UTF-8 bytes,

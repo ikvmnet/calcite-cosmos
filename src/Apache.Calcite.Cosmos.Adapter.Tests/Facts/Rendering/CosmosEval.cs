@@ -110,29 +110,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An affix or <c>LIKE</c>: undefined over anything but a string (Service.StringPredicatesOverNonStringsAreUndefined);
-        /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), on the emulator an affix
-        /// matching the stored string against the argument as sent in that spelling (Service.EmulatorComparesTheSpellingItIsSent).
-        /// None for an argument no pattern of runs says, and for the emulator's LIKE where either holds an escape, unmeasured.
-        /// On Azure a CONTAINS, and the LIKE of one run between two % it answers as one, reads the string only up to its
-        /// first U+0000, and an argument holding one matches every string (Service.NulEndsWhatReplaceAndContainsRead).
+        /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), a LIKE's pattern read by
+        /// the target's own rows of its units (Service.LikeReadsBracketsAsARange too, G7), on the emulator an affix matching
+        /// the stored string against the argument as sent in that spelling (Service.EmulatorComparesTheSpellingItIsSent).
+        /// None where the rows leave a unit unread or a unit's reading was not measured over a code point it reads, and for
+        /// the emulator's LIKE where either holds an escape, unmeasured. On Azure a CONTAINS, and the LIKE of one run between
+        /// two % it answers as one, reads the string only up to its first U+0000, and an argument holding one matches every
+        /// string (Service.NulEndsWhatReplaceAndContainsRead).
         /// </summary>
         static ServiceOutcomes? Affix(ServiceForm form, J? value, RenderingTarget target)
         {
             if (value is not J.Str s)
                 return ServiceOutcomes.Undefined;
 
-            if (form.Pattern is not { } pattern)
+            if (form.PatternOf(LikeUnitsOn(target)) is not { } pattern)
                 return null;
 
+            static ServiceOutcomes? Of(bool? match) => match is bool m ? Truth(m) : null;
             return target switch
             {
                 RenderingTarget.Emulator when form.Test == CosmosServiceTest.Like =>
-                    EmulatorStoredText.Escapes(s.Value) || EmulatorStoredText.Escapes(pattern) ? null : Truth(AffixPattern.Matches(s.Value, pattern)),
-                RenderingTarget.Emulator => Truth(AffixPattern.Matches(EmulatorStoredText.Of(s.Value), EmulatorStoredText.Of(pattern))),
-                _ when AffixPattern.Runs(pattern) is ["", { Length: > 0 }, ""] => pattern.Contains('\0') ? ServiceOutcomes.True : Truth(AffixPattern.Matches(s.Value.Split('\0')[0], pattern)),
-                _ => Truth(AffixPattern.Matches(s.Value, pattern)),
+                    EmulatorStoredText.Escapes(s.Value) || EmulatorStoredText.Escapes(pattern.Written) ? null : Of(pattern.Matches(s.Value)),
+                RenderingTarget.Emulator => Of(pattern.Respelled(EmulatorStoredText.Of).Matches(EmulatorStoredText.Of(s.Value))),
+                _ when AffixPattern.Runs(pattern.Spelled) is ["", { Length: > 0 }, ""] => pattern.Written.Contains('\0') ? ServiceOutcomes.True : Of(pattern.Matches(s.Value.Split('\0')[0])),
+                _ => Of(pattern.Matches(s.Value)),
             };
         }
+
+        /// <summary>What a target's LIKE reads each unit of a pattern as, its rows' (CosmosAxiomRows.ReadServiceLikeUnits).</summary>
+        static Eggnog.ValueSet<LikeUnit> LikeUnitsOn(RenderingTarget target) =>
+            Eggnog.ValueSet.From(CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All).Where(u => u.Target == target).Select(u => u.Unit));
 
         /// <summary>Service.IsDefined, Service.IsNull, Service.IsPrimitive, Service.KindTests: never undefined.</summary>
         static bool Test(CosmosServiceTest test, J? value) => test switch

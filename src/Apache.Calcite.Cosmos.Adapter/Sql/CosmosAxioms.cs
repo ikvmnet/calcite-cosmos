@@ -638,10 +638,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.Like, Class.String, Emulator, "matching=true missing=false"),
                     // Azure's by code point, one run between two % read as a CONTAINS is (ServiceLeaf).
                     new(Test.Like, Class.String, Azure, "none=codepoint matching=true missing=false"),
+                ],
+                // What the leaf reads a LIKE's pattern by (G7): _ over the classes its witnesses held, ASCII among them, and
+                // over any other unread, a line terminator among them (likereads).
+                LikeUnits:
+                [
+                    new("%", CosmosLikeUnit.Run), new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand]),
+                    new("", CosmosLikeUnit.Itself),
                 ]),
             new("Service.LikeReadsBracketsAsARange",
                 "LIKE reads [a-c] as one character of the range and [^a-c] as one outside it, [[] as a literal [, and a pattern holding a [ it never closes matches nothing, the string it spells included; ESCAPE makes the character after it literal.",
-                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange",
+                // A bracket opens a range; no witness sends a ] closing nothing or a backslash without ESCAPE, so neither is read (G7).
+                LikeUnits: [new("[", CosmosLikeUnit.Range), new("]", CosmosLikeUnit.Unmeasured), new("\\", CosmosLikeUnit.Unmeasured)]),
             new("Service.IntegralNumbersReadBackAsHeld",
                 "A number reads back as the service holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point by the emulator as a double, 9007199254740993.0 as 9007199254740992, and by Azure as an int64 where it is one, 9007199254740993.0 as itself, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),

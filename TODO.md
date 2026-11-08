@@ -3116,15 +3116,24 @@ across documents* and *A join of a container to itself* is the record.
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
-- **The service writer's pattern refuses `_`, `\`, `[` and `]`** — *small, h15's licence.* Calcite's units are a row
-  (`Calcite.LikeReadsItsPatternsUnits`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell and the facts graph
-  decide `_` and `\`. `AffixPattern.Canonical` and `Plain`, the service writer's pattern of runs, still refuse those
-  units and the brackets: what the service's `LIKE` makes of each is unmeasured, and a pushed `_` is the licence's
-  question (post2). A row of the service's units per target, as `likeunits` holds Calcite's, would let the writer's
-  pattern read them as Calcite's are read.
+- **The service's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, a measurement.* Each
+  target's `LIKE` units are rows now (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell decides a
+  pattern's `_` where both sides' rows say what it reads. `Service.LikeMatchesByCodePoint`'s witnesses hold a surrogate
+  pair, U+00E9 and U+E000 beside ASCII, so its `_` is read over those classes alone, and a cell of strings that may hold
+  a line terminator, a character `TRIM` removes, U+0000, U+FFFD, U+FDD0 or an unpaired surrogate answers either: every
+  path the corpus reads is such a cell, so no `LIKE` holding `_` is proven yet. `Service.LikeReadsBracketsAsARange`
+  sends no `]` closing nothing and no backslash without `ESCAPE`, so a pattern holding either is unread there. Witnesses
+  of each class under `_` (`a_b` over `a\nb`, `a\tb`, `a\u0000b`, …) and of the bare `\` and `]`, on both targets,
+  widen `Over` and turn those rows to a reading.
+- **A `LIKE` is proposed as the narrowest test only** — *small, with h15's templates.* `AffixPattern.Written` chooses,
+  in C#, the one test a pattern is written as: an equality, `STARTSWITH`, `ENDSWITH`, `CONTAINS` or `LIKE`.
+  The proper form is a template per test, each proposing the pattern as that test where it says it, and a weight per
+  test in `Priced`, so S's best chooses among the forms the gate holds. It lands with h15, when the templates production
+  asks change and a plan may; before it every move is a refactor and the plans would move with the choice.
 - **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
   reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
-  text's, a raw value's, a typed one's or a cast's, is the spelling's; and `Raw.EqualOn` beside a null literal, and
+  text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
+  reading's own evaluator where no alias row names one, a lookup with a default; and `Raw.EqualOn` beside a null literal, and
   `RawText.EqualOn` and `OrderOn` beside a literal that is no string, take the coarse answer beside G5's rows. An
   evaluator that is a function of the rows alone, with the casts owed above as rows, finishes G7.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the

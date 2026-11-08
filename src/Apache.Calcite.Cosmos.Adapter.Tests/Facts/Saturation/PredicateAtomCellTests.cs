@@ -295,7 +295,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>Each import, with either set of classes, cut at nothing and where the reader's edges cut it (<see cref="CutPoints"/>).</summary>
         static IEnumerable<(CellPartition Coarse, CellPartition Fine)> Partitions(PredicateAtom atom)
         {
-            var literals = CutPoints.Of(atom, ServiceForm.BareOf(SqlValue.Spell(A)), ReaderEdgesTable.Rows.GetValueOrDefault(atom.Reader) ?? new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty));
+            var literals = CutPoints.Of(atom, ServiceForm.BareOf(SqlValue.Spell(A)), ReaderEdgesTable.Rows.GetValueOrDefault(atom.Reader) ?? new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty), FactsReadings.Rows);
             foreach (var values in Imports)
                 foreach (var classes in new[] { AllBands, NoBand })
                     yield return (PathCell.Split(SqlValue.Spell(A), values, classes, ValueSet<CutPoint>.Empty), PathCell.Split(SqlValue.Spell(A), values, classes, literals));

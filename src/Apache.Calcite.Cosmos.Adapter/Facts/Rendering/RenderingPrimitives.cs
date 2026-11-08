@@ -122,8 +122,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// A matcher's spelling splits an affix's pattern (<see cref="ServiceLeaf.Splits"/>, the matcher's own evaluation of a
         /// concrete pattern): an affix cut of a range, made of strings as written, does not say what that matcher matches.
         /// </summary>
-        public static Primitive<ServiceForm, CosmosAnswer, bool> SpellingSplits { get; } = Primitive.Create<ServiceForm, CosmosAnswer, bool>("spelling-splits", (f, m) =>
-            f.Kind == ServiceFormKind.Affix && f.Pattern is { } pattern && ServiceLeaf.Splits(m, pattern));
+        public static Primitive<ServiceForm, CosmosAnswer, ValueSet<(LikeUnit, string)>, bool> SpellingSplits { get; } =
+            Primitive.Create<ServiceForm, CosmosAnswer, ValueSet<(LikeUnit, string)>, bool>("spelling-splits", (f, m, likes) =>
+                f.PatternOf(ServiceTable.UnitsOf(likes)) is { } pattern && ServiceLeaf.Splits(m, pattern));
 
         /// <summary>The Rex builder writes a form over the atom's reader: every comparison, membership and test of it is in the grammar.</summary>
         public static Primitive<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool> RexWritable { get; } =

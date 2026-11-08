@@ -20,7 +20,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(string Reader, string Row)> Rows,
         IReadOnlyList<(string Reader, string As)> ReadAs,
         IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> Through,
-        IReadOnlyList<(string Unit, string Reads, string Except, string Row)> LikeUnits,
+        IReadOnlyList<(LikeUnit Unit, string Row)> LikeUnits,
         IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> TestKinds)
     {
 

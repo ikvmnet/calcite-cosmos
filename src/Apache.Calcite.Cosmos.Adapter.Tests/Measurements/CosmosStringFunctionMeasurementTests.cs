@@ -905,11 +905,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "false/F false/F false/F false/F false/F true/T false/F");
         }
 
+        /// <summary>
+        /// What <c>LikeMatchesByCodePoint</c> sends: the classes their characters hold are what its row says <c>_</c> was
+        /// measured over (<c>RenderingAffixTests.TheServicesOneIsReadOverTheClassesItsWitnessesHeld</c>, G7).
+        /// </summary>
+        internal static readonly string[] LikeWitnesses = ["\"a\ud83d\ude00b\"", "\"axb\"", "\"axxb\"", "\"ab\"", "\"AXB\"", "\"a\u00e9b\"", "\"a\ue000b\""];
+
         /// <summary><c>LIKE</c>'s <c>_</c> matches one code point and <c>%</c> any run, case sensitive.</summary>
         [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeMatchesByCodePoint")]
         public async Task LikeMatchesByCodePoint()
         {
-            string?[] witnesses = ["\"a\ud83d\ude00b\"", "\"axb\"", "\"axxb\"", "\"ab\"", "\"AXB\"", "\"a\u00e9b\"", "\"a\ue000b\""];
+            string?[] witnesses = LikeWitnesses;
             (await Probe("Service.LikeMatchesByCodePoint", witnesses, "c.v LIKE \"a_b\"", "c.v LIKE \"a__b\"", "c.v LIKE \"a%b\"", "c.v LIKE \"a%\"", "c.v LIKE \"%b\"", "c.v LIKE \"%x%\"", "c.v LIKE \"axb\"")).Should().Equal(
                 "true/T true/T false/F false/F false/F true/T true/T",
                 "false/F false/F true/T false/F false/F false/F false/F",

@@ -40,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Through = graph.DefineRelation<string, CosmosServiceTest, string>("calcitethrough");
             ReadTruths = graph.DefineFunction<CosmosServiceTest, string, Truths>("readtruths");
             ReadCompares = graph.DefineRelation<CosmosServiceTest, string>("readcompares");
-            LikeUnits = graph.DefineRelation<string, string, string, string>("likeunits");
+            LikeUnits = graph.DefineRelation<LikeUnit, string>("likeunits");
             ReaderRows = graph.DefineFunction<ReadingTable>("readerrows", ReadingTable.Union);
         }
 
@@ -77,8 +77,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The tests the value read decides, by what it is read as (<see cref="KleeneTables.Compares"/>).</summary>
         public Relation<CosmosServiceTest, string> ReadCompares { get; }
 
-        /// <summary>What <c>LIKE</c> reads each unit of a pattern as, citing its row.</summary>
-        public Relation<string, string, string, string> LikeUnits { get; }
+        /// <summary>What <c>LIKE</c> reads each unit of a pattern as, citing its row: one row a unit (<see cref="LikeUnit.Of"/>).</summary>
+        public Relation<LikeUnit, string> LikeUnits { get; }
 
         /// <summary>Every reading's rows in one value (<see cref="ReadingTable"/>), which a cell and the facts graph's atom rules bind.</summary>
         public Function<ReadingTable> ReaderRows { get; }
@@ -101,8 +101,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             foreach (var (reader, test, operand) in rows.Through)
                 yield return Through.Of(reader, test, operand);
 
-            foreach (var (unit, reads, except, row) in rows.LikeUnits)
-                yield return LikeUnits.Of(unit, reads, except, row);
+            foreach (var (unit, row) in rows.LikeUnits)
+                yield return LikeUnits.Of(unit, row);
 
             foreach (var (test, kind, row) in rows.TestKinds)
                 yield return TestClasses.Of(test, kind, row);
@@ -189,9 +189,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             reads.DefineRule("LIKE reads each unit of its pattern as its row says", r =>
             {
-                var (u, rd, ex, row) = r.Vars<string, string, string, string>("u", "rd", "ex", "row");
-                r.When(LikeUnits.Of(u, rd, ex, row));
-                r.Then(ReaderRows.Of().Is(Compute.Of(u, rd, ex, row, ReadingTable.Unit)));
+                var u = r.Var<LikeUnit>("u");
+                var row = r.Var<string>("row");
+                r.When(LikeUnits.Of(u, row));
+                r.Then(ReaderRows.Of().Is(Compute.Of(u, row, ReadingTable.Unit)));
             });
 
             reads.DefineRule("a type test is TRUE, by its name, of the JSON kinds of each class its row says", r =>

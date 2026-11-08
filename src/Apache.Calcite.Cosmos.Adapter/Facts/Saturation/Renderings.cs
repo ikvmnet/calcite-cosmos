@@ -5,6 +5,8 @@ using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
@@ -145,18 +147,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             type == ArrayType ? text.StartsWith('[') : type == ObjectType && text.StartsWith('{');
 
         /// <summary>
-        /// Determines whether a structure's rendering, <c>[…]</c> or <c>{…}</c>, may match a pattern of runs: a first run
-        /// starts with the opening bracket and a last run ends with the closing one, where the pattern begins or ends with
-        /// a run.
+        /// Determines whether a structure's rendering, <c>[…]</c> or <c>{…}</c>, may match a pattern as read (G7): its
+        /// first unit, where read as itself, the opening bracket and its last the closing one, and two units at least where
+        /// none is a run.
         /// </summary>
-        public static bool MayRenderStructureLike(string type, string pattern)
+        public static bool MayRenderStructureLike(string type, LikePattern pattern)
         {
-            if (type is not (ArrayType or ObjectType))
+            if (type is not (ArrayType or ObjectType) || pattern.Units.Count == 0)
                 return false;
 
-            var (open, close) = type == ArrayType ? ('[', ']') : ('{', '}');
-            var runs = pattern.Split('%');
-            return (runs[0].Length == 0 || runs[0][0] == open) && (runs[^1].Length == 0 || runs[^1][^1] == close) && (runs.Length > 1 || pattern.Length >= 2);
+            var (open, close) = type == ArrayType ? ("[", "]") : ("{", "}");
+            bool May(int i, string bracket) => pattern.Units[i].Row.Reads != LikeUnit.Itself || pattern.Units[i].Unit == bracket;
+            return May(0, open) && May(pattern.Units.Count - 1, close) && (pattern.Units.Count >= 2 || pattern.Units[0].Row.Reads == LikeUnit.Run);
         }
 
         /// <summary>Determines whether two scalars may be one value: numbers by their value, anything else by its spelling.</summary>

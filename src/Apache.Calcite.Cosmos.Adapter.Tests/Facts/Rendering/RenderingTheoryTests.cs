@@ -77,6 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a measured answer is one a set's service may give",
                     "a target a set serves whose rows fold a test's case-insensitive form is the set's, with the bands its row parts at",
+                    "a target a set serves whose rows read a unit of LIKE's pattern is the set's, by the row",
                 ],
                 ["allowed"] =
                 [
@@ -99,6 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a key every target its set serves measured is settled",
                     "a comparator whose spelling rewrites a band rewrites",
                     "a fold every target its set serves has rows of is the set's, outside the bands any parts at",
+                    "a unit of LIKE's pattern every target its set serves reads so is the set's, by the row",
                 ],
                 ["sets"] =
                 [
@@ -342,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(163);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(165);
         }
 
         /// <summary>

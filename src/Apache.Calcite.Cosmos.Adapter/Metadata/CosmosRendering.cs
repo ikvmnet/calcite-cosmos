@@ -54,6 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CalciteReadAs = CosmosAxiomRows.ReadCalciteReadAs(CosmosAxioms.All),
             CalciteThrough = CosmosAxiomRows.ReadCalciteThrough(CosmosAxioms.All),
             LikeUnits = CosmosAxiomRows.ReadLikeUnits(CosmosAxioms.All),
+            ServiceLikeUnits = CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All),
             Casts = CosmosAxiomRows.ReadCasts(CosmosAxioms.All),
             Comparands = CosmosAxiomRows.ReadComparands(CosmosAxioms.All),
             ReaderOrders = CosmosAxiomRows.ReadReaderOrders(CosmosAxioms.All),

@@ -316,9 +316,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 {
                     var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
                     var (n, sh) = r.Vars<string, string>("n", "sh");
-                    r.When(t.At.Of(e, pos), t.Ir.Atom.Of(e, p, a), n.Is(t.Spelling.Of(p)), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), t.Fits.Of(replaced, sh));
+                    var rr = r.Var<ReadingTable>("rr");
+                    r.When(t.At.Of(e, pos), t.Ir.Atom.Of(e, p, a), n.Is(t.Spelling.Of(p)), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), t.Fits.Of(replaced, sh), rr.Is(t.ReaderRows.Of()));
                     r.Where(pos, x => at.Contains(x));
-                    r.Then(t.Candidate.Of(e, pos, Compute.Of(pos, a, n, (q, x, y) => plant!.Propose(Drop(RenderingTemplates.Spell(replaced, q, x, y), dropped)))));
+                    r.Then(t.Candidate.Of(e, pos, Compute.Of(pos, Compute.Of(a, rr, RenderingTemplates.Read), n, (q, x, y) => plant!.Propose(Drop(RenderingTemplates.Spell(replaced, q, x, y), dropped)))));
                 }), triggers);
         }
 

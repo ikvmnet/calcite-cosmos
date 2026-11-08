@@ -60,14 +60,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             && decimal.TryParse(s, System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var n)
             ? JsonValues.Of(n) : null;
 
+        /// <summary>An atom beside Calcite's rows of its readings, which a <c>LIKE</c>'s pattern is read by (G7), as the template rule hands it.</summary>
+        public static (PredicateAtom, ReadingTable) Read(PredicateAtom atom, ReadingTable readings) => (atom, readings);
+
         /// <summary>
         /// The form a template proposes for an atom at a position, over its path's spelling, each member carrying the atom's
         /// reader (<see cref="ServiceForm.Read"/>); the sentinel where it proposes none.
         /// </summary>
-        public static ServiceForm Spell(TemplateId id, RenderPosition pos, PredicateAtom atom, string path) =>
-            (atom.Parameter ? null : Write(id, pos == RenderPosition.Pos, atom, path)) is { } form ? ServiceForm.Read(form, atom.Reader) : Unspelled;
+        public static ServiceForm Spell(TemplateId id, RenderPosition pos, (PredicateAtom Atom, ReadingTable Readings) read, string path) =>
+            (read.Atom.Parameter ? null : Write(id, pos == RenderPosition.Pos, read.Atom, read.Readings.Units, path)) is { } form ? ServiceForm.Read(form, read.Atom.Reader) : Unspelled;
 
-        static ServiceForm? Write(TemplateId id, bool pos, PredicateAtom atom, string path)
+        static ServiceForm? Write(TemplateId id, bool pos, PredicateAtom atom, ValueSet<LikeUnit> units, string path)
         {
             // The core is the comparison with its literal, an IN as its equalities, the presence or type it tests; none for a null test.
             var (core, literal) = (Core(atom, path), atom.Operand);
@@ -83,8 +86,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 TemplateId.ComparePaths => atom.Against is not null && Op(atom.Test) is { } compared && PlaceSpellings.Sides(path) is (var left, var right)
                     ? ServiceForm.ComparePathsOf(compared, left, right) : null,
                 _ when atom.Against is not null => null,
-                TemplateId.Affix when atom.Test == PredicateAtom.LikeTest => Affix(atom, path),
-                TemplateId.AffixRendered when atom.Test == PredicateAtom.LikeTest && Affix(atom, path) is { } matched =>
+                TemplateId.Affix when atom.Test == PredicateAtom.LikeTest => Affix(atom, units, path),
+                TemplateId.AffixRendered when atom.Test == PredicateAtom.LikeTest && Affix(atom, units, path) is { } matched =>
                     All([ServiceForm.NotOf(number), ServiceForm.NotOf(ServiceForm.TestOf(IsBool, path)), matched]),
                 TemplateId.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
                 _ when core is null => null,
@@ -116,10 +119,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ValueSet<string> Points(PredicateAtom atom) => atom.Points ?? ValueSet<string>.Empty;
 
-        /// <summary>A <c>LIKE</c>'s pattern as the narrowest affix that says it (<see cref="AffixPattern.Written"/>); none for one no pattern of runs says.</summary>
-        static ServiceForm? Affix(PredicateAtom atom, string path) => atom.Operand is { } operand && AffixPattern.Canonical(JsonValues.StringOf(operand)) is { } pattern
-            ? AffixPattern.Written(pattern) is var (test, argument) ? ServiceForm.AffixOf(test, path, argument) : ServiceForm.CompareOf(Equal, path, JsonValues.Of(pattern))
-            : null;
+        /// <summary>
+        /// A <c>LIKE</c>'s pattern, as Calcite's rows read it (G7), as the narrowest test that says it (<see cref="AffixPattern.Written"/>):
+        /// one of literal units alone the equality of its text. None for one the rows leave unread, and none for one no
+        /// statement can send, holding an unpaired surrogate: a writer's limit, not a reading.
+        /// </summary>
+        static ServiceForm? Affix(PredicateAtom atom, ValueSet<LikeUnit> units, string path) =>
+            atom.Operand is { } operand && JsonValues.StringOf(operand) is var text && JsonValues.IsEncodable(text) && LikePattern.Read(text, units) is { } pattern
+                ? AffixPattern.Written(pattern) is var (test, argument) ? ServiceForm.AffixOf(test, path, argument) : ServiceForm.CompareOf(Equal, path, JsonValues.Of(AffixPattern.Equality(pattern)))
+                : null;
 
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>
         static ServiceForm[] Alternatives(ServiceForm core, string literal, string path) =>

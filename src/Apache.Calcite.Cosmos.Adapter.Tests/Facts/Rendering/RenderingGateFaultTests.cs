@@ -653,8 +653,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
                 var (t, n, sh) = r.Vars<TemplateId, string, string>("t", "n", "sh");
-                r.When(theory.At.Of(e, pos), theory.Ir.Atom.Of(e, p, a), n.Is(theory.Spelling.Of(p)), theory.Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), theory.Fits.Of(t, sh));
-                r.Then(theory.Candidate.Of(e, pos, Compute.Of(t, pos, a, n, (id, q, x, y) => Unguard(RenderingTemplates.Spell(id, q, x, y)))));
+                var rr = r.Var<ReadingTable>("rr");
+                r.When(theory.At.Of(e, pos), theory.Ir.Atom.Of(e, p, a), n.Is(theory.Spelling.Of(p)), theory.Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), theory.Fits.Of(t, sh),
+                    rr.Is(theory.ReaderRows.Of()));
+                r.Then(theory.Candidate.Of(e, pos, Compute.Of(t, pos, Compute.Of(a, rr, RenderingTemplates.Read), n, (id, q, x, y) => Unguard(RenderingTemplates.Spell(id, q, x, y)))));
             }));
 
         /// <summary>S's plants of M8 and M9: a boolean's <c>!=</c> and orderings with a string answered by its rendering.</summary>

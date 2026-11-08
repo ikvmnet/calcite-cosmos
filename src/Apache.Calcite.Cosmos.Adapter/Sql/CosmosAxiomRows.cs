@@ -6,6 +6,8 @@ using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
+using Eggnog;
+
 namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
@@ -229,8 +231,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms));
 
         /// <summary>One row per unit of a pattern a <c>Calcite</c> row says <c>LIKE</c> reads, with what it reads it as, citing the row (G7), <c>likeunits</c>.</summary>
-        public static IReadOnlyList<(string Unit, string Reads, string Except, string Row)> ReadLikeUnits(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from unit in axiom.LikeUnits ?? [] select (unit.Unit, unit.Reads, unit.Except ?? "", axiom.Id)).Distinct()];
+        public static IReadOnlyList<(LikeUnit Unit, string Row)> ReadLikeUnits(IEnumerable<CosmosAxiom> axioms) =>
+            [.. ReadLikeUnitsOn(axioms).Where(u => u.Target == RenderingTarget.Calcite).Select(u => (u.Unit, u.Row))];
+
+        /// <summary>
+        /// One row per unit of a pattern a <c>Service</c> row says a target's <c>LIKE</c> reads, with what it reads it as,
+        /// citing the row (G7), S's <c>likereads</c>.
+        /// </summary>
+        public static IReadOnlyList<(RenderingTarget Target, LikeUnit Unit, string Row)> ReadServiceLikeUnits(IEnumerable<CosmosAxiom> axioms) =>
+            [.. ReadLikeUnitsOn(axioms).Where(u => u.Target != RenderingTarget.Calcite)];
+
+        /// <summary>
+        /// Each target's units, as rows: the unit spelled empty reading every unit the target's other rows name not, which
+        /// its row carries as data (<see cref="LikeUnit.Besides"/>), so a unit is read by exactly one row of a target.
+        /// </summary>
+        static IEnumerable<(RenderingTarget Target, LikeUnit Unit, string Row)> ReadLikeUnitsOn(IEnumerable<CosmosAxiom> axioms)
+        {
+            var rows = (from axiom in axioms
+                        from unit in axiom.LikeUnits ?? []
+                        from target in Targets
+                        where axiom.MeasuredOn.HasFlag(target.Flag)
+                        select (target.Target, unit, axiom.Id)).ToList();
+            return (from row in rows
+                    let named = row.Item2.Unit.Length > 0 ? ValueSet<string>.Empty
+                        : ValueSet.From(rows.Where(o => o.Item1 == row.Item1 && o.Item2.Unit.Length > 0).Select(o => o.Item2.Unit))
+                    let over = row.Item2.Over is { } classes ? ValueSet.From(classes) : null
+                    select (row.Item1, new LikeUnit(row.Item2.Unit, row.Item2.Reads, row.Item2.Except ?? "", over, named), row.Item3)).Distinct();
+        }
 
         /// <summary>One row per reading a <c>Calcite</c> row says is read as another over each class both read alike (G7), <c>calcitereadas</c>.</summary>
         public static IReadOnlyList<(string Reader, string As)> ReadCalciteReadAs(IEnumerable<CosmosAxiom> axioms) =>

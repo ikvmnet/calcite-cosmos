@@ -24,7 +24,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Kleene, IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity,
         IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing, IReadOnlyList<(RenderPosition, Verdict, Box)> Refuting, Truths Tolerated,
         IReadOnlyDictionary<string, ReaderEdges> Edges,
-        Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
+        Func<PredicateAtom, ServiceForm, ReaderEdges, ReadingTable, ValueSet<CutPoint>> Cut,
         Func<string, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> Split,
         Func<CellPartition, PathValues, ValueSet<string>, ValueSet<CutPoint>, CellPartition> SetAside,
         Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> Leaf,
@@ -192,7 +192,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> CalciteThrough { get; init; } = [];
 
         /// <summary>What <c>LIKE</c> reads each unit of its pattern as, each citing its row (<c>CosmosAxiomRows.ReadLikeUnits</c>, G7).</summary>
-        public IReadOnlyList<(string Unit, string Reads, string Except, string Row)> LikeUnits { get; init; } = [];
+        public IReadOnlyList<(LikeUnit Unit, string Row)> LikeUnits { get; init; } = [];
+
+        /// <summary>
+        /// What each target's <c>LIKE</c> reads each unit of its pattern as, each citing its row (<c>CosmosAxiomRows.ReadServiceLikeUnits</c>,
+        /// G7): S's <c>likereads</c>, which a set reads a unit by where every target it serves reads it so.
+        /// </summary>
+        public IReadOnlyList<(RenderingTarget Target, LikeUnit Unit, string Row)> ServiceLikeUnits { get; init; } = [];
 
         /// <summary>The comparisons a cell decides of a value read so (<see cref="KleeneTables.Compares"/>): the readings vocabulary's <c>readcompares</c> (G7).</summary>
         public IReadOnlyList<(CosmosServiceTest Test, string Read)> ReadCompares { get; init; } = KleeneTables.Compares;

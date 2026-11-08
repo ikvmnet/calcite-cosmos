@@ -125,7 +125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             LeafReads Matched(CosmosServiceTest test, string argument, RenderingSet set)
             {
                 var leaf = ServiceForm.AffixOf(test, Label, argument);
-                return Reads(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), leaf.Pattern!), leaf, set, AllBands);
+                return Reads(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), leaf.PatternOf(ProbeRows.ReaderRows.Units)!.Written), leaf, set, AllBands);
             }
 
             var (none, nul) = (ValueSet<string>.Empty, ValueSet.Of(NulClass));
@@ -163,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             LeafReads Matched(string argument)
             {
                 var leaf = ServiceForm.AffixOf(CosmosServiceTest.EndsWith, Label, argument);
-                return Reads(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), leaf.Pattern!), leaf, RenderingSet.Production, AllBands, planted);
+                return Reads(new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), leaf.PatternOf(ProbeRows.ReaderRows.Units)!.Written), leaf, RenderingSet.Production, AllBands, planted);
             }
 
             var (none, nul) = (ValueSet<string>.Empty, ValueSet.Of(NulClass));

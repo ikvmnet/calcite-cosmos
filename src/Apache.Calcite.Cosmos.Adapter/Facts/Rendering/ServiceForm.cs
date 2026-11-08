@@ -120,8 +120,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The tests an affix form asks: <c>STARTSWITH</c>, <c>ENDSWITH</c>, <c>CONTAINS</c> and <c>LIKE</c>.</summary>
         public static ValueSet<CosmosServiceTest> Affixes { get; } = ValueSet.Of(CosmosServiceTest.StartsWith, CosmosServiceTest.EndsWith, CosmosServiceTest.Contains, CosmosServiceTest.Like);
 
-        /// <summary>An affix's pattern of runs and <c>%</c> (<see cref="AffixPattern.Of"/>); <c>null</c> for any other form, and for an argument no pattern says.</summary>
-        public string? Pattern => Kind == ServiceFormKind.Affix ? AffixPattern.Of(Test, JsonValues.StringOf(Literal!)) : null;
+        /// <summary>
+        /// An affix's pattern as a side's rows read it (<see cref="AffixPattern.Of"/>, G7); <c>null</c> for any other form, and
+        /// for a <c>LIKE</c> holding a unit the rows leave unread.
+        /// </summary>
+        public LikePattern? PatternOf(ValueSet<LikeUnit> units) => Kind == ServiceFormKind.Affix ? AffixPattern.Of(Test, JsonValues.StringOf(Literal!), units) : null;
 
         /// <summary>A test's name in the service's SQL, which a form's text and the printer both spell it by.</summary>
         public static string NameOf(CosmosServiceTest test) => SpellingOf(test) ?? throw new ArgumentOutOfRangeException(nameof(test), test, null);

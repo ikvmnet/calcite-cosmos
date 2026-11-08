@@ -123,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var theory = RenderingTheory.Define(Measured with
             {
-                Cut = (a, f, g) => Count(("cuts", a, f), Measured.Cut(a, f, g)),
+                Cut = (a, f, g, w) => Count(("cuts", a, f), Measured.Cut(a, f, g, w)),
                 Split = (n, x, k, c) => Count(("partition", n, x, k, c), Measured.Split(n, x, k, c)),
                 Leaf = (f, z, t, q) => Count(("svc", z, f), Measured.Leaf(f, z, t, q)),
                 Compound = (f, v, w, t) => Count(("svc", v.Cells, f), Measured.Compound(f, v, w, t)),

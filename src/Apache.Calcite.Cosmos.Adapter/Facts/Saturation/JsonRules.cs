@@ -91,6 +91,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             graph.Values.RegisterEnum<CosmosServiceTest>();
             graph.Values.RegisterEnum<Truths>();
             graph.Values.Register<ReadingTable>("reading table");
+            graph.Values.Register<LikeUnit>("like unit");
             Readings = new ReadingVocabulary(graph, TestKinds);
             ReadingRules = graph.DefineRuleset("readings");
             Readings.Define(ReadingRules);

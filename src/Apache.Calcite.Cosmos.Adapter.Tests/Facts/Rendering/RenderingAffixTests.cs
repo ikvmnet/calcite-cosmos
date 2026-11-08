@@ -63,29 +63,133 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return bundle.ReadBest(term);
         }
 
-        /// <summary>A pattern is runs and <c>%</c>; one holding <c>_</c>, a backslash, a bracket or a lone surrogate is none, and each is written as the narrowest test that says it.</summary>
+        /// <summary>
+        /// An affix asks its argument's units each as itself, between runs; a <c>LIKE</c> its own, as a side's rows read each
+        /// unit (G7): Calcite's <c>_</c> one code point and a backslash and a bracket themselves, the service's bracket a range
+        /// and its backslash and lone <c>]</c> unmeasured, so a pattern holding one is unread there. Each is written as the
+        /// narrowest test that says it, one of literal units alone the equality of its text.
+        /// </summary>
         [Fact]
         public void APatternIsWrittenAsTheNarrowestTest()
         {
-            AffixPattern.Of(CosmosServiceTest.StartsWith, "ab").Should().Be("ab%");
-            AffixPattern.Of(CosmosServiceTest.EndsWith, "ab").Should().Be("%ab");
-            AffixPattern.Of(CosmosServiceTest.Contains, "").Should().Be("%");
-            AffixPattern.Of(CosmosServiceTest.Like, "a%%b%%").Should().Be("a%b%");
-            AffixPattern.Of(CosmosServiceTest.StartsWith, "a%").Should().BeNull();
-            foreach (var refused in new[] { "a_b", "a\\%", "[a]%", "\ud800%" })
-                AffixPattern.Canonical(refused).Should().BeNull(refused);
+            var (calcite, service) = (ReaderRows.Units, Table.LikeUnits);
+            AffixPattern.Of(CosmosServiceTest.StartsWith, "ab", calcite)!.Spelled.Should().Be("ab%");
+            AffixPattern.Of(CosmosServiceTest.EndsWith, "ab", calcite)!.Spelled.Should().Be("%ab");
+            AffixPattern.Of(CosmosServiceTest.Contains, "", calcite)!.Spelled.Should().Be("%");
+            AffixPattern.Of(CosmosServiceTest.Like, "a%%b%%", calcite)!.Spelled.Should().Be("a%b%");
+            AffixPattern.Of(CosmosServiceTest.StartsWith, "a%", calcite)!.Spelled.Should().Be("a\\%%", "an affix's argument is literal");
+            AffixPattern.Of(CosmosServiceTest.Like, "a\\%", calcite)!.Spelled.Should().Be("a\\\\%", "Calcite's backslash escapes nothing");
+            AffixPattern.Of(CosmosServiceTest.Like, "[a]%", calcite)!.Spelled.Should().Be("[a]%", "nor is its bracket a range");
+            AffixPattern.Of(CosmosServiceTest.Like, "a_b", calcite)!.HoldsOne.Should().BeTrue();
+            foreach (var unread in new[] { "a\\%", "[a]%", "a]%" })
+                AffixPattern.Of(CosmosServiceTest.Like, unread, service).Should().BeNull(unread);
+            AffixPattern.Of(CosmosServiceTest.Like, "a_b%", service)!.Spelled.Should().Be("a_b%");
 
-            AffixPattern.Written("ab").Should().BeNull("no % is an equality");
-            AffixPattern.Written("%").Should().Be((CosmosServiceTest.StartsWith, ""));
-            AffixPattern.Written("ab%").Should().Be((CosmosServiceTest.StartsWith, "ab"));
-            AffixPattern.Written("%ab").Should().Be((CosmosServiceTest.EndsWith, "ab"));
-            AffixPattern.Written("%ab%").Should().Be((CosmosServiceTest.Contains, "ab"));
-            AffixPattern.Written("a%b").Should().Be((CosmosServiceTest.Like, "a%b"));
+            string? Written(string pattern) => AffixPattern.Written(LikePattern.Read(pattern, calcite)!) is var (test, argument) ? test + " " + argument : null;
+            Written("ab").Should().BeNull("literal units alone are an equality");
+            AffixPattern.Equality(LikePattern.Read("a\\b", calcite)!).Should().Be("a\\b");
+            Written("%").Should().Be("StartsWith ");
+            Written("ab%").Should().Be("StartsWith ab");
+            Written("%ab").Should().Be("EndsWith ab");
+            Written("%ab%").Should().Be("Contains ab");
+            Written("%a\\b%").Should().Be("Contains a\\b");
+            Written("%a[b%").Should().Be("Contains a[b");
+            Written("a%b").Should().Be("Like a%b");
+            Written("a_b%%").Should().Be("Like a_b%");
+            Written("%_%").Should().Be("Like %_%");
 
             AffixPattern.StoredAlike("0%").Should().BeTrue("a string's first unit is never an escape's second");
             AffixPattern.StoredAlike("%0").Should().BeFalse();
             AffixPattern.StoredAlike("%a\0").Should().BeFalse();
             AffixPattern.StoredAlike("%ab%").Should().BeTrue();
+            AffixPattern.StoredAlike("%a_%").Should().BeFalse("a _ may read one unit of an escape");
+        }
+
+        /// <summary>
+        /// A unit is read by exactly one row of a side (G7): the one naming it, or the one spelled empty, whose row says as
+        /// data which units it reads not; none reads a unit no row covers, and two rows reading one unit fail loudly, an
+        /// empty row not told its side's other units among them. Each side's rows as the registry gives them read every
+        /// unit once.
+        /// </summary>
+        [Fact]
+        public void AUnitIsReadByExactlyOneRowOfItsSide()
+        {
+            var run = new LikeUnit("%", LikeUnit.Run, "", null, ValueSet<string>.Empty);
+            var rest = new LikeUnit("", LikeUnit.Itself, "", null, ValueSet.Of("%"));
+            LikeUnit.Of(ValueSet.Of(run, rest), "%").Should().Be(run);
+            LikeUnit.Of(ValueSet.Of(run, rest), "a").Should().Be(rest);
+            LikeUnit.Of(ValueSet.Of(run), "a").Should().BeNull();
+            FluentActions.Invoking(() => LikeUnit.Of(ValueSet.Of(run, run with { Reads = LikeUnit.Itself }), "%")).Should().Throw<System.InvalidOperationException>();
+            FluentActions.Invoking(() => LikeUnit.Of(ValueSet.Of(run, rest with { Besides = ValueSet<string>.Empty }), "%")).Should().Throw<System.InvalidOperationException>();
+
+            foreach (var units in new[] { ReaderRows.Units, Table.LikeUnits })
+                foreach (var unit in new[] { "%", "_", "\\", "[", "]", "a", "\u00e9", "\ud83d\ude00" })
+                    LikeUnit.Of(units, unit).Should().NotBeNull(unit);
+        }
+
+        /// <summary>
+        /// A side's <c>_</c> reads a code point as its row says (G7): Calcite's any but a line terminator, the service's any
+        /// of the classes its witnesses held and unknown over another, so a string holding one only a reading of it might
+        /// match is neither matched nor missed; a run, measured over every class, decides either way.
+        /// </summary>
+        [Fact]
+        public void ASidesOneIsReadOverTheClassesItsRowMeasured()
+        {
+            var calcite = LikePattern.Read("a_b", ReaderRows.Units)!;
+            var service = LikePattern.Read("a_b", Table.LikeUnits)!;
+            calcite.Matches("axb").Should().BeTrue();
+            calcite.Matches("a\nb").Should().BeFalse("Calcite's _ is no line terminator");
+            calcite.Matches("ab").Should().BeFalse();
+            service.Matches("axb").Should().BeTrue();
+            service.Matches("a\u00e9b").Should().BeTrue();
+            service.Matches("a\ud83d\ude00b").Should().BeTrue();
+            service.Matches("a\nb").Should().BeNull("no witness held a line terminator");
+            service.Matches("a\tb").Should().BeNull("nor a character TRIM removes");
+            service.Matches("ab").Should().BeFalse("no reading of _ matches no code point");
+            service.Matches("a\nxb").Should().BeFalse("nor two");
+            LikePattern.Read("a%b", Table.LikeUnits)!.Matches("a\nb").Should().BeTrue();
+
+            service.OnLike(ValueSet<string>.Empty).Should().BeTrue();
+            service.OnLike(ValueSet.Of(NonAsciiBand)).Should().BeTrue();
+            service.OnLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeNull();
+            service.OnNotLike(ValueSet.Of(SurrogateBand)).Should().BeFalse();
+            service.OnNotLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeNull();
+            calcite.OnLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeNull("a line terminator the spelling's _ reads Calcite's misses");
+            calcite.OnNotLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeFalse("Calcite's _ matches no more than the spelling's");
+        }
+
+        /// <summary>
+        /// A <c>LIKE</c> holding <c>_</c> is decided cell by cell under Azure's rows (G7): over a range its spelling cut, by
+        /// the classes the range may hold, matched where they are all ones the service's <c>_</c> was measured over and either
+        /// where one is not; and a pattern holding a unit the service's rows leave unread answers anything.
+        /// </summary>
+        [Fact]
+        public void TheServicesOneIsDecidedOnEachCell()
+        {
+            var path = SqlValue.Spell(TPath);
+            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+                ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Production)));
+            PathCell.Strings Range(params string[] classes) => new(null, null, ValueSet<string>.Empty, ValueSet.From(classes), Like: ValueSet.Of("a_b"));
+            ServiceOutcomes On(string pattern, PathCell cell) => ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, pattern), new CellPartition(path, ValueSet.Of(cell)), production, LeafReads.None).Outcomes.Single().Outcomes;
+
+            On("a_b", Range()).Should().Be(ServiceOutcomes.True);
+            On("a_b", Range(NonAsciiBand, HighBand)).Should().Be(ServiceOutcomes.True);
+            On("a_b", Range(TrimmedClass, LineTerminatorClass)).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False);
+            On("a_b", new PathCell.Point(Of("a\u00e9b"))).Should().Be(ServiceOutcomes.True);
+            On("a_b", new PathCell.Point(Of("a\nb"))).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False);
+            On("[a]_b", new PathCell.Point(Of("a\u00e9b"))).Should().Be(ServiceOutcomes.Widest);
+        }
+
+        /// <summary>
+        /// The classes the service's <c>_</c> is read over are those <c>LikeMatchesByCodePoint</c>'s witnesses hold, no more
+        /// and no fewer (G7): the row says what was sent.
+        /// </summary>
+        [Fact]
+        public void TheServicesOneIsReadOverTheClassesItsWitnessesHeld()
+        {
+            var witnessed = ValueSet.From(Measurements.CosmosStringFunctionMeasurementTests.LikeWitnesses.SelectMany(w => BandsOfText(StringOf(w)).AsEnumerable()));
+            CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All).Where(u => u.Unit.Unit == "_").Should().HaveCount(2)
+                .And.OnlyContain(u => u.Row == "Service.LikeMatchesByCodePoint" && u.Unit.Over != null && u.Unit.Over.Equals(witnessed));
         }
 
         /// <summary>
@@ -142,8 +246,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheLeafReadsTheMatcherItsEntryNames()
         {
             var path = SqlValue.Spell(TPath);
-            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.Placed);
-            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed);
+            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+                ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Emulator)));
+            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+                ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Production)));
             var cells = new CellPartition(path, ValueSet.Of<PathCell>(new PathCell.Point(Of("ab")), new PathCell.Point(Of("ba")), new PathCell.Point(Of("a\0")), new PathCell.Point(Of(1m)), new PathCell.Null(), new PathCell.Absent()));
             // Each cell's outcome in the order written above, whatever order the partition keeps, under what S's rules hand the leaf.
             ServiceOutcomes[] On(ServiceForm leaf, ServiceTable table, LeafReads? reads = null) => ServiceLeaf.On(leaf, cells, table, reads ?? LeafReads.None) is var vector
@@ -172,8 +278,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Over a path that holds strings every affix the translator writes for <c>LIKE</c> is Proven under <c>Emulator</c>,
-        /// its form the affix that says the pattern, and so is its negation; a pattern of two runs, a <c>LIKE</c> the emulator's
-        /// unmeasured matcher reads, and a <c>_</c>, which no row measures, are not. Under <c>Production</c> each is too, but a
+        /// its form the affix that says the pattern, and so is its negation; a pattern of two runs and one holding <c>_</c>,
+        /// each a <c>LIKE</c> the emulator's unmeasured matcher reads, are not. Under <c>Production</c> each is too, but a
         /// <c>CONTAINS</c> over strings that may hold U+0000, which Azure's reads only up to.
         /// </summary>
         [Fact]

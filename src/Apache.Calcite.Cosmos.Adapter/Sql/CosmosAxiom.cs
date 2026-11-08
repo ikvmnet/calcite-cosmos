@@ -50,7 +50,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="ReadAs">The readings a <c>Calcite</c> row says are read as another over each class both read alike
     /// (<see cref="CosmosAxiomRows.ReadCalciteReadAs"/>, G7).</param>
     /// <param name="Through">The tests of a reading a <c>Calcite</c> row says are its operand's (<see cref="CosmosAxiomRows.ReadCalciteThrough"/>, G7).</param>
-    /// <param name="LikeUnits">What <c>LIKE</c> reads each unit of its pattern as, a <c>Calcite</c> row's (<see cref="CosmosAxiomRows.ReadLikeUnits"/>, G7).</param>
+    /// <param name="LikeUnits">What <c>LIKE</c> reads each unit of its pattern as on each target the row names: Calcite's
+    /// (<see cref="CosmosAxiomRows.ReadLikeUnits"/>) and the service's (<see cref="CosmosAxiomRows.ReadServiceLikeUnits"/>), G7.</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,

@@ -149,10 +149,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 return "an affix whose pattern the triage reads not";
 
             var pattern = like.Groups[1].Value.Replace("''", "'", StringComparison.Ordinal);
-            var canonical = AffixPattern.Canonical(pattern);
+            var canonical = Canonical(pattern);
             if (pattern.Contains('_'))
                 return "LIKE's _: one code point that is no line terminator, which no row measures the service at";
-            if (emulator && canonical is not null && AffixPattern.Written(canonical) is { Test: CosmosServiceTest.Like })
+            if (emulator && canonical is not null && AffixPattern.Runs(canonical) is not ([_] or ["", ""] or [_, ""] or ["", _] or ["", _, ""]))
                 return "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed";
             if (emulator == false && canonical is not null && AffixPattern.Runs(canonical) is ["", { Length: > 0 }, ""])
                 return "one run between two %: Azure's CONTAINS reads a string only to its first U+0000, so S answers either over one that may hold it (sound refusal)";
@@ -162,6 +162,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 return "an affix over a raw value cast to text that names no column: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps";
             return "an affix: Unproven otherwise";
         }
+
+        /// <summary>
+        /// A pattern as runs and <c>%</c> alone, every run of <c>%</c> one; <c>null</c> for one holding <c>_</c>, a backslash, a
+        /// bracket or a lone surrogate: the triage's own reading, which classes a row by the pattern Rex holds and not by
+        /// the rows S reads it by, so a reason stays what it was when S's reading changes.
+        /// </summary>
+        static string? Canonical(string pattern) =>
+            pattern.Replace("%", "", StringComparison.Ordinal) is var units && units.IndexOfAny(['_', '\\', '[', ']']) < 0 && JsonValues.IsEncodable(units)
+                ? string.Join("%", pattern.Split('%').Where((run, i) => i == 0 || run.Length > 0 || i == pattern.Split('%').Length - 1)) : null;
 
         static (string Class, string Reason) Unproven(TranslatorCensus.Push push, Verdicts own)
         {

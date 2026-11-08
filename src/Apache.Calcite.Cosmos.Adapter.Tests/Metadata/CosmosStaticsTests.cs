@@ -172,6 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.CosmosValueClasses", ["Constants", "JsonKinds", "Kinds", "Types"], StaticFact, "the classes a cell may be of, the constant each boolean class is sent as, and each class's JSON type and kinds"),
             ("Facts.Rendering.FunctionValueClasses", ["Holding", "ResultAtoms"], StaticFact, "the atoms each class of value a function row may be keyed by holds, and those a result is keyed by"),
             ("Facts.Rendering.LeafReads", ["None"], StaticFact, "the empty reads, immutable"),
+            ("Facts.Rendering.LikeUnit", ["Ends"], StaticFact, "the run an affix test's definition puts at its argument's ends"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "Compares", "Failing", "Identity", "Operands", "Opposite", "OppositeElse", "Reads", "Rows", "Units"], StaticFact, "Kleene logic as rows"),
             ("Facts.Rendering.Priced", ["None", "Unpriced"], StaticFact, "sentinels"),
             ("Facts.Rendering.RawAnswer", ["Fails", "OnTheCell", "Unanswered"], StaticFact, "the answers a raw rule states, and the lattice's top"),

@@ -202,6 +202,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             FoldParts = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("foldparts", ValueLattice.Union<string>());
             Folds = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("folds");
             FoldedAs = Graph.DefineRelation<Pred, CosmosServiceTest, string, long>("foldedas");
+            // What each target's LIKE reads each unit of its pattern as, and a set's, settled where every target it serves reads it so (G7).
+            LikeReads = Graph.DefineRelation<RenderingTarget, LikeUnit, string>("likereads");
+            LikeTargets = Graph.DefineFunction<RenderingSet, LikeUnit, string, ValueSet<RenderingTarget>>("liketargets", ValueLattice.Union<RenderingTarget>());
+            LikesOf = Graph.DefineFunction<RenderingSet, ValueSet<(LikeUnit, string)>>("likesof", ValueLattice.Union<(LikeUnit, string)>());
 
             // The raw columns as their rows state them, one fact a field, raw at the frozen root; what a test answers of a value
             // read as null or raised on, and each class's JSON type; each column's answer on a key, the rules', and their union,
@@ -304,6 +308,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefinePair(pair, place);
             var fold = Graph.DefineRuleset("fold");
             DefineFolds(measure, tabulate, fold);
+            DefineLikes(measure, tabulate);
             // A nested call is gathered once its inner place is written, each nesting level one pass of the three strata, so S
             // images a call PlaceDepth deep and no deeper (G6): one nested past it gets no image, and only its own conjunct is
             // unproven, the run completing within its budget (RenderingBundle.PlaceIterations), where the loader cut it before.
@@ -589,6 +594,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// held (G6): settled from <see cref="FoldTargets"/> and <see cref="FoldParts"/> complete.
         /// </summary>
         public Function<RenderingSet, CosmosServiceTest, string, ValueSet<string>> Folds { get; }
+
+        /// <summary>What a target's <c>LIKE</c> reads a unit of its pattern as, citing its row (G7, <c>Service.LikeMatchesByCodePoint</c>'s).</summary>
+        public Relation<RenderingTarget, LikeUnit, string> LikeReads { get; }
+
+        /// <summary>The targets a set serves whose rows read a unit of a pattern so, by the row (G7).</summary>
+        public Function<RenderingSet, LikeUnit, string, ValueSet<RenderingTarget>> LikeTargets { get; }
+
+        /// <summary>
+        /// What a set's <c>LIKE</c> reads each unit of its pattern as, each with its row: a unit every target the set serves
+        /// reads so, settled from <see cref="LikeTargets"/> complete, which the set's view hands the leaf (G7).
+        /// </summary>
+        public Function<RenderingSet, ValueSet<(LikeUnit, string)>> LikesOf { get; }
 
         /// <summary>
         /// A <c>LIKE</c> over a fold answers as a test's case-insensitive form of an argument over the fold's operand at an
@@ -931,6 +948,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<RawTruths>("raw truths");
             values.Register<ClassRead>("class read");
             values.Register<ReadingTable>("reading table");
+            values.Register<LikeUnit>("like unit");
+            values.Register<(LikeUnit, string)>("like unit and row");
+            values.Register<(PredicateAtom, ReadingTable)>("atom and readings");
             values.Register<(PredicateAtom, RawTruths)>("atom and raw truths");
             values.Register<PathImport>("path import");
             values.Register<MeasuredEntry>("measured entry");
@@ -960,6 +980,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<(string, string)>();
             values.RegisterSet<(CosmosAnswer, string)>();
             values.RegisterSet<ClassRead>();
+            values.RegisterSet<(LikeUnit, string)>();
         }
 
         void DefineTheory(Ruleset measure, Ruleset allowed, Ruleset refutes, Ruleset tabulate)
@@ -1158,8 +1179,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var s = r.Var<RenderingSet>("s");
                 var (t, pt, pl) = r.Vars<ValueSet<MeasuredEntry>, ValueSet<MeasuredEntry>, ValueSet<CosmosValueClass>>("t", "pt", "pl");
-                r.When(t.Is(Table.Of(s)), pt.Is(PairTable.Of(s)), pl.Is(Placed.Of()));
-                r.Then(View.Of(s).Is(Compute.Of(t, pl, pt, ServiceTable.Of)));
+                var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
+                r.When(t.Is(Table.Of(s)), pt.Is(PairTable.Of(s)), pl.Is(Placed.Of()), lu.Is(LikesOf.Of(s)));
+                r.Then(View.Of(s).Is(Compute.Of(t, pl, pt, lu, ServiceTable.Of)));
             });
         }
 
@@ -1387,10 +1409,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, x, k, y) = r.Vars<RenderPosition, PathValues, ValueSet<string>, PathValues>("pos", "x", "k", "y");
                 var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
+                var rr = r.Var<ReadingTable>("rr");
                 r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), y.Is(Assumed.Of(e)), n.Is(Spelling.Of(p)),
-                    rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)));
+                    rd.Is(Compute.Of(a, w => w.Reader)), g.Is(Edges.Of(rd)), rr.Is(ReaderRows.Of()));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, w => w.Paths), Compute.Of(n, PlaceSpellings.Set)));
-                var cuts = Compute.Of(a, f, g, definition.Cut);
+                // A LIKE's pattern cuts as Calcite's rows read it (G7).
+                var cuts = Compute.Of(a, f, g, rr, definition.Cut);
                 r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, cuts, definition.Split), y, k, cuts, definition.SetAside)));
             });
 
@@ -1591,7 +1615,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
                 var (d, t) = r.Vars<ValueSet<RenderingTarget>, RenderingTarget>("d", "t");
                 var (x, sh, u) = r.Vars<CosmosServiceTest, string, string>("x", "sh", "u");
-                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), sh.Is(Compute.Of(g, AffixShapeOf)));
+                var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
+                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), lu.Is(LikesOf.Of(s)),
+                    sh.Is(Compute.Of(g, lu, AffixShapeOf)));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
                 r.Then(Unread.Of(g).Is(Primitives.Singleton<string>().Of(u)));
             });
@@ -1602,8 +1628,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
                 var (d, t, b) = r.Vars<ValueSet<RenderingTarget>, RenderingTarget, ValueSet<string>>("d", "t", "b");
                 var (x, sh, u) = r.Vars<CosmosServiceTest, string, string>("x", "sh", "u");
-                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), sh.Is(Compute.Of(g, AffixShapeOf)),
-                    b.Is(Compute.Of(g, CharactersOfPattern)));
+                var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
+                r.When(Need.Of(z, g), Under.Of(s), d.Is(Serves.Of(s)), Truncates.Of(t, x, sh, u), x.Is(Compute.Of(g, f => f.Test)), lu.Is(LikesOf.Of(s)),
+                    sh.Is(Compute.Of(g, lu, AffixShapeOf)), b.Is(Compute.Of(g, CharactersOfPattern)));
                 r.Where(Primitives.Contains<RenderingTarget>().Of(d, t));
                 r.Where(Primitives.Contains<string>().Of(b, u));
                 r.Then(Blind.Of(g).Is(Primitives.Singleton<string>().Of(u)));
@@ -1627,9 +1654,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (z, g, s) = r.Vars<CellPartition, ServiceForm, RenderingSet>("z", "g", "s");
                 var (k, o) = r.Vars<MeasuredKey, ValueSet<CosmosAnswer>>("k", "o");
                 var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
-                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), Rewrites.Of(c, u));
+                var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
+                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), Rewrites.Of(c, u), lu.Is(LikesOf.Of(s)));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
-                r.Where(RenderingPrimitives.SpellingSplits.Of(g, c));
+                r.Where(RenderingPrimitives.SpellingSplits.Of(g, c, lu));
                 r.Then(Uncut.Of(g).Is(Primitives.Singleton<string>().Of(u)));
             });
 
@@ -1919,8 +1947,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
                 var (t, n, sh) = r.Vars<TemplateId, string, string>("t", "n", "sh");
-                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), Writable.Of(p), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh));
-                r.Then(Candidate.Of(e, pos, Compute.Of(t, pos, a, n, RenderingTemplates.Spell)));
+                var rr = r.Var<ReadingTable>("rr");
+                r.When(At.Of(e, pos), Ir.Atom.Of(e, p, a), Writable.Of(p), n.Is(Spelling.Of(p)), Template.Of(t, pos), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), Fits.Of(t, sh),
+                    rr.Is(ReaderRows.Of()));
+                r.Then(Candidate.Of(e, pos, Compute.Of(t, pos, Compute.Of(a, rr, RenderingTemplates.Read), n, RenderingTemplates.Spell)));
             });
         }
 
@@ -2348,9 +2378,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (i, s, t) = r.Vars<long, RenderingSet, CosmosServiceTest>("i", "s", "t");
                 var (b, ch) = r.Vars<ValueSet<string>, ValueSet<string>>("b", "ch");
                 var (sub, x) = r.Vars<ValueSet<long>, PathValues>("sub", "x");
+                var rr = r.Var<ReadingTable>("rr");
                 r.When(e.Is(Ir.Affix.Of(PredicateAtom.LikeTest, v, c)), Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), x.Is(Imported.Of(q)), kn.Is(CallKey.Of(v)),
-                    sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), ch.Is(ImportedChars.Of(p)), Under.Of(s));
-                r.When(t.Is(Compute.Of(c, AffixPattern.WrittenTest)), a.Is(Compute.Of(c, AffixPattern.WrittenArgument)), b.Is(Folds.Of(s, t, kn)));
+                    sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), ch.Is(ImportedChars.Of(p)), Under.Of(s), rr.Is(ReaderRows.Of()));
+                r.When(t.Is(Compute.Of(c, rr, AffixPattern.WrittenTest)), a.Is(Compute.Of(c, rr, AffixPattern.WrittenArgument)), b.Is(Folds.Of(s, t, kn)));
                 r.Where(Primitives.Contains<long>().Of(sub, i));
                 r.Where(RenderingPrimitives.FoldsToItself.Of(kn, a));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(b, ch)));
@@ -2358,6 +2389,36 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(FoldedAs.Of(e, t, a, i));
             });
         }
+
+        // What a set's LIKE reads each unit of a pattern as (G7): a target's rows' where every target the set serves reads the
+        // unit so, as a fold is settled; a unit the targets read apart is the set's by no row, so a pattern holding it is unread.
+        void DefineLikes(Ruleset measure, Ruleset tabulate)
+        {
+            measure.DefineRule("a target a set serves whose rows read a unit of LIKE's pattern is the set's, by the row", r =>
+            {
+                var (x, s) = r.Vars<RenderingTarget, RenderingSet>("x", "s");
+                var u = r.Var<LikeUnit>("u");
+                var row = r.Var<string>("row");
+                var d = r.Var<ValueSet<RenderingTarget>>("d");
+                r.When(LikeReads.Of(x, u, row), d.Is(Serves.Of(s)));
+                r.Where(Primitives.Contains<RenderingTarget>().Of(d, x));
+                r.Then(LikeTargets.Of(s, u, row).Is(Primitives.Singleton<RenderingTarget>().Of(x)));
+            });
+
+            tabulate.DefineRule("a unit of LIKE's pattern every target its set serves reads so is the set's, by the row", r =>
+            {
+                var s = r.Var<RenderingSet>("s");
+                var u = r.Var<LikeUnit>("u");
+                var row = r.Var<string>("row");
+                var (m, d) = r.Vars<ValueSet<RenderingTarget>, ValueSet<RenderingTarget>>("m", "d");
+                r.When(m.Is(LikeTargets.Of(s, u, row)), d.Is(Serves.Of(s)));
+                r.Where(Primitives.IsSubsetOf<RenderingTarget>().Of(d, m));
+                r.Then(LikesOf.Of(s).Is(Primitives.Singleton<(LikeUnit, string)>().Of(Compute.Of(u, row, LikeRead))));
+            });
+        }
+
+        /// <summary>A unit of a set's pattern and the row it is read by, as <see cref="LikesOf"/> holds it.</summary>
+        static (LikeUnit, string) LikeRead(LikeUnit unit, string row) => (unit, row);
 
         // The raw columns (h12, G5): what each column answers on a key, from its rows alone. A null test is what the column
         // reads the class as means to it; a comparison it compiles, over a class it reads as null or raises on, what that
@@ -2754,10 +2815,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static ValueSet<string> CharactersOfLiteral(ServiceForm form) => form.Literal is { } literal ? JsonValues.CharactersOf(literal) : JsonValues.NoBand;
 
         /// <summary>The classes an affix's pattern holds characters of; none for any other form.</summary>
-        static ValueSet<string> CharactersOfPattern(ServiceForm form) => form.Kind == ServiceFormKind.Affix && form.Pattern is { } pattern ? JsonValues.BandsOfText(pattern) : JsonValues.NoBand;
+        static ValueSet<string> CharactersOfPattern(ServiceForm form) => form.Kind == ServiceFormKind.Affix ? JsonValues.BandsOfText(JsonValues.StringOf(form.Literal!)) : JsonValues.NoBand;
 
         /// <summary>The shape a truncation row may name of an affix's pattern (<see cref="AffixPattern.ShapeOf"/>); none for any other form.</summary>
-        static string AffixShapeOf(ServiceForm form) => form.Kind == ServiceFormKind.Affix && form.Pattern is { } pattern ? AffixPattern.ShapeOf(pattern) : "";
+        static string AffixShapeOf(ServiceForm form, ValueSet<(LikeUnit, string)> likes) =>
+            form.PatternOf(ServiceTable.UnitsOf(likes)) is { } pattern ? AffixPattern.ShapeOf(pattern.Spelled) : "";
 
         /// <summary>The key of a test's entry over a string, which names its matchers.</summary>
         static MeasuredKey MatchKeyOf(ServiceForm form) => MeasuredKey.Of(form.Test, CosmosValueClass.String, CosmosValueClass.None);
@@ -2856,9 +2918,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (target, @class) in definition.Unsent)
                     w.Assume(Unsent.Of(target, @class));
 
-                // What each set's rows make of its statements starts empty, so a set none says anything of reads nothing (G1).
+                // What each set's rows make of its statements starts empty, so a set none says anything of reads nothing (G1),
+                // a LIKE's pattern among them (G7).
                 foreach (var set in definition.Serves.Keys)
-                    w.Assume(PartingBands.Of(set).Is(ValueSet<string>.Empty), Respelled.Of(set).Is(ValueSet<string>.Empty), Unsendable.Of(set).Is(ValueSet<string>.Empty));
+                    w.Assume(PartingBands.Of(set).Is(ValueSet<string>.Empty), Respelled.Of(set).Is(ValueSet<string>.Empty), Unsendable.Of(set).Is(ValueSet<string>.Empty),
+                        LikesOf.Of(set).Is(ValueSet<(LikeUnit, string)>.Empty));
+
+                foreach (var (target, unit, row) in definition.ServiceLikeUnits)
+                    w.Assume(LikeReads.Of(target, unit, row));
 
                 foreach (var (test, swapped, reads) in definition.PairReadings)
                     w.Assume(PairReads.Of(test, swapped, reads));

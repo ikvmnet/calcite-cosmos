@@ -414,7 +414,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return cells;
         }
 
-        /// <summary>A cell as the strings a pattern matches and those it misses, a half a unit its classes forbid empty.</summary>
+        /// <summary>A cell as the strings a pattern matches and those it misses, a half a literal unit its classes forbid empty.</summary>
         static IEnumerable<PathCell> Parted(Strings s, string pattern)
         {
             if (s.Like?.Contains(pattern) == true || s.NotLike?.Contains(pattern) == true)
@@ -423,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var matching = s with { Like = (s.Like ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
             var missing = s with { NotLike = (s.NotLike ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
             var allowed = Allowed(s.Classes);
-            var empty = pattern.Any(unit => unit != '%' && allowed[unit] == false);
+            var empty = AffixPattern.LiteralUnits(pattern).Any(unit => allowed[unit] == false);
             return (empty ? false : matching.Witness() is not null ? true : (bool?)null, missing.Witness() is not null) switch
             {
                 (true, true) => [matching, missing],
@@ -433,25 +433,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// A string of an affix's cell, searched for: the patterns it must match, their runs joined in each order, between
-        /// fillers of a unit or none, after the interval's least string where it has a low end. Every candidate is checked
-        /// against the cell whole; <c>null</c> where none holds, which shows nothing empty.
+        /// A string of an affix's cell, searched for: the patterns it must match, their runs joined in each order, each
+        /// <c>_</c> a unit the classes allow, between fillers of a unit or none, after the interval's least string where it
+        /// has a low end. Every candidate is checked against the cell whole; <c>null</c> where none holds, which shows nothing
+        /// empty.
         /// </summary>
         static string? Matching(Strings s)
         {
             var allowed = Allowed(s.Classes);
-            var like = s.Like?.AsEnumerable().ToList() ?? [];
-            var seeds = new List<string>();
-            foreach (var order in like.Count <= 3 ? Orderings(like) : [like])
-                seeds.Add(string.Concat(order.Select(p => p.Replace("%", "", StringComparison.Ordinal))));
-            seeds.AddRange(like.Select(p => p.Replace("%", "", StringComparison.Ordinal)));
-            if (seeds.Count == 0)
-                seeds.Add("");
-
             var fillers = new List<string> { "" };
             fillers.AddRange(new[] { 'x', 'a', '0', ' ' }.Where(u => allowed[u]).Select(u => u.ToString()));
             if (Array.IndexOf(allowed, true) is var least and >= 0 && fillers.Contains(((char)least).ToString()) == false)
                 fillers.Add(((char)least).ToString());
+
+            var one = fillers.Count > 1 ? fillers[1] : "x";
+            var like = s.Like?.AsEnumerable().ToList() ?? [];
+            var seeds = new List<string>();
+            foreach (var order in like.Count <= 3 ? Orderings(like) : [like])
+                seeds.Add(string.Concat(order.Select(p => AffixPattern.Filled(p, one))));
+            seeds.AddRange(like.Select(p => AffixPattern.Filled(p, one)));
+            if (seeds.Count == 0)
+                seeds.Add("");
 
             var bases = new List<string> { "" };
             if (s.Low is not null && LeastString(new Strings(s.Low, s.High, ValueSet<string>.Empty, s.Classes)) is { } above)

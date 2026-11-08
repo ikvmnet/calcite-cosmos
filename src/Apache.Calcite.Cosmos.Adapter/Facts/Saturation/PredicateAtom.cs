@@ -475,10 +475,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// <c>LIKE</c> on a cell, S's (h07): UNKNOWN where the null test finds null, raising where it raises, and where it
-        /// finds a value, the match. A string the reading's rows read as itself (G7) is matched; a cell an affix cut by the
-        /// pattern matches as cut, and every string <c>%</c>. A class the rows read as rendered is matched as its rendering:
-        /// a boolean as <c>true</c> or <c>false</c>, a number in its grammar's units (<see cref="Renderings.MayBeNumberUnit"/>),
-        /// so a pattern holding another unit misses every number, and a structure between its brackets
+        /// finds a value, the match, its pattern read by Calcite's rows of its units (G7), so one they leave unread is either.
+        /// A string the reading's rows read as itself is matched; a cell an affix cut by the pattern's spelling matches as
+        /// cut where each unit read as a run or one reads the cell's classes as the spelling does (<see cref="LikePattern.OnLike"/>,
+        /// <see cref="LikePattern.OnNotLike"/>), and every string <c>%</c>. A class the rows read as rendered is matched as its
+        /// rendering: a boolean as <c>true</c> or <c>false</c>, a number in its grammar's units (<see cref="Renderings.MayBeNumberUnit"/>),
+        /// so a pattern holding another unit as itself misses every number, and a structure between its brackets
         /// (<see cref="Renderings.MayRenderStructureLike"/>). Anything else is either.
         /// </summary>
         Truths LikeOn(PathCell cell, Truths isNull, ReadingRows rows, ValueSet<LikeUnit> units)
@@ -487,66 +489,35 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if ((isNull & Truths.False) == 0)
                 return truths;
 
-            var pattern = StringOf(Operand!);
-            var canonical = AffixPattern.Canonical(pattern);
+            var pattern = LikePattern.Read(StringOf(Operand!), units);
+            var universal = pattern is not null && AffixPattern.Universal(pattern.Spelled);
             var renders = CosmosValueClasses.Of(cell) is { } kind && rows.ReadsAs(kind, CalciteRead.Renders);
             static Truths Of(bool? match) => match is bool m ? m ? Truths.True : Truths.False : Truths.True | Truths.False;
-            return truths | cell switch
+            return truths | (pattern is null ? Truths.True | Truths.False : cell switch
             {
-                PathCell.Point { Value: var v } when IsString(v) => Of(Like(StringOf(v), pattern, units)),
-                PathCell.Strings s when canonical is not null => Of(AffixPattern.Universal(canonical) || s.Like?.Contains(canonical) == true ? true : s.NotLike?.Contains(canonical) == true ? false : null),
-                PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(Like(Renderings.BooleanText(v), pattern, units)),
-                PathCell.Point { Value: var v } when renders && IsNumber(v) && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
-                PathCell.Numbers when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : canonical.All(u => u == '%' || Renderings.MayBeNumberUnit(u)) ? null : false),
-                PathCell.Structure { Type: var type } when renders && canonical is not null => Of(AffixPattern.Universal(canonical) ? true : Renderings.MayRenderStructureLike(type, canonical) ? null : false),
+                PathCell.Point { Value: var v } when IsString(v) => Of(pattern.Matches(StringOf(v))),
+                PathCell.Strings when universal => Truths.True,
+                PathCell.Strings s when s.Like?.Contains(pattern.Spelled) == true => Of(pattern.OnLike(s.Classes)),
+                PathCell.Strings s when s.NotLike?.Contains(pattern.Spelled) == true => Of(pattern.OnNotLike(s.Classes)),
+                PathCell.Strings => Truths.True | Truths.False,
+                PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(pattern.Matches(Renderings.BooleanText(v))),
+                PathCell.Point { Value: var v } when renders && IsNumber(v) => Of(universal ? true : MayBeNumber(pattern) ? null : false),
+                PathCell.Numbers when renders => Of(universal ? true : MayBeNumber(pattern) ? null : false),
+                PathCell.Structure { Type: var type } when renders => Of(universal ? true : Renderings.MayRenderStructureLike(type, pattern) ? null : false),
                 _ => Truths.True | Truths.False,
-            };
+            });
         }
+
+        /// <summary>Whether a pattern may match a number's rendering: each unit it reads as itself is one of the grammar's.</summary>
+        static bool MayBeNumber(LikePattern pattern) =>
+            pattern.Units.All(u => u.Row.Reads != LikeUnit.Itself || u.Unit.Length == 1 && Renderings.MayBeNumberUnit(u.Unit[0]));
 
         /// <summary>
-        /// Whether a pattern matches text as <c>LIKE</c> reads each unit of it (<paramref name="units"/>, G7): a run of any
-        /// characters, one code point in no class its row names, or the character itself; a surrogate pair is one unit of
-        /// either. <c>null</c> for a pattern holding a unit no row reads.
+        /// Whether a pattern matches text as <c>LIKE</c> reads each unit of it (<paramref name="units"/>, G7, <see cref="LikePattern"/>):
+        /// a run of any characters, one code point in no class its row names, or the character itself; a surrogate pair is
+        /// one unit of either. <c>null</c> for a pattern holding a unit no row reads, or read where its row was not measured.
         /// </summary>
-        internal static bool? Like(string text, string pattern, ValueSet<LikeUnit> units)
-        {
-            var read = new List<(LikeUnit Unit, string Spelled)>();
-            foreach (var unit in CodePoints(pattern))
-            {
-                if (units.AsEnumerable().Where(u => u.Unit == unit).Concat(units.AsEnumerable().Where(u => u.Unit.Length == 0)).Select(u => (LikeUnit?)u).FirstOrDefault() is not { } row)
-                    return null;
-
-                read.Add((row, unit));
-            }
-
-            // Which prefixes of the text the pattern's units read so far match, one more unit a step.
-            var points = CodePoints(text).ToList();
-            var reach = new bool[points.Count + 1];
-            reach[0] = true;
-            foreach (var (unit, spelled) in read)
-            {
-                var next = new bool[points.Count + 1];
-                for (var j = 0; j <= points.Count; j++)
-                    next[j] = unit.Reads switch
-                    {
-                        LikeUnit.Run => reach[j] || j > 0 && next[j - 1],
-                        LikeUnit.One => j > 0 && reach[j - 1] && (unit.Except.Length == 0 || BandsOfText(points[j - 1]).Contains(unit.Except) == false),
-                        LikeUnit.Itself => j > 0 && reach[j - 1] && points[j - 1] == spelled,
-                        _ => throw new InvalidOperationException($"LIKE reads no unit as {unit.Reads}."),
-                    };
-
-                reach = next;
-            }
-
-            return reach[points.Count];
-        }
-
-        /// <summary>A string's code points, each spelled as the string holds it; an unpaired surrogate one of its own.</summary>
-        static IEnumerable<string> CodePoints(string text)
-        {
-            for (var i = 0; i < text.Length; i += char.IsSurrogatePair(text, i) ? 2 : 1)
-                yield return text.Substring(i, char.IsSurrogatePair(text, i) ? 2 : 1);
-        }
+        internal static bool? Like(string text, string pattern, ValueSet<LikeUnit> units) => LikePattern.Read(pattern, units)?.Matches(text);
 
         /// <summary>
         /// What a comparison with a parameter answers where a null test answers so: it reads the value as the null test
