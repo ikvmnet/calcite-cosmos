@@ -541,13 +541,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         internal static bool? Like(string text, string pattern, ValueSet<LikeUnit> units) => LikePattern.Read(pattern, units)?.Matches(text);
 
+        /// <summary>A comparison with SQL's null by an operator null over a null operand: UNKNOWN, beside a raise where reading the value raises.</summary>
+        static Truths ComparedWithNull(Truths isNull) => (isNull & Truths.Raises) | Truths.Unknown;
+
         /// <summary>
         /// What a comparison with a parameter answers where a null test answers so: it reads the value as the null test
         /// does, so raises where that read does, and is anything where that read finds a value.
         /// </summary>
-        /// <summary>A comparison with SQL's null by an operator null over a null operand: UNKNOWN, beside a raise where reading the value raises.</summary>
-        static Truths ComparedWithNull(Truths isNull) => (isNull & Truths.Raises) | Truths.Unknown;
-
         static Truths ComparedWhereNotNull(Truths isNull) =>
             (isNull & Truths.Raises) | ((isNull & Truths.False) != 0 ? Truths.True | Truths.False | Truths.Unknown : 0);
 

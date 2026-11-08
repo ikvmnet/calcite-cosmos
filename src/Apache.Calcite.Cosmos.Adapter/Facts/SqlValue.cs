@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// SQL's null, as Calcite writes a literal of a type holding none: no JSON value, a JSON null being a literal of its
-        /// own. What a comparison with it answers is S's rule over the operator's row (<c>strictop</c>, G7). Read only where a
+        /// own. What a comparison with it answers is S's rule over the operator's row (<c>strictop</c>, G8). Read only where a
         /// loading reads places.
         /// </summary>
         public sealed record Null(string Type) : SqlValue
