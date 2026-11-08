@@ -4171,6 +4171,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// which rows match whenever a value contains one.
         /// </para>
         /// <para>
+        /// A pattern Calcite's rows leave unread is computed in process, in a filter and a column alike: U+0000 is
+        /// Calcite's escape where no <c>ESCAPE</c> is written, reading the unit after it as itself and raising before any
+        /// other or at the pattern's end (<c>Calcite.LikeEscapesByNul</c>), and its rows read every unit but that one.
+        /// </para>
+        /// <para>
         /// A literal pattern whose only wildcard is a single trailing <c>%</c> is a prefix match,
         /// rendered as <c>STARTSWITH</c> — which the index serves, where <c>LIKE</c> is a scan.
         /// </para>
@@ -4211,6 +4216,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
                 throw new CosmosTranslationException("LIKE with a computed pattern is not supported: Cosmos gives '[' a meaning SQL does not, and only a literal pattern can be checked for one.");
 
+            // What Calcite's LIKE reads each unit of a pattern as is its rows' (G7, Calcite.LikeReadsItsPatternsUnits), the
+            // ones S is defined from: a pattern they leave unread has no reading the service could be asked to match alike,
+            // U+0000 among its units, which is Calcite's escape where none is written (Calcite.LikeEscapesByNul).
+            if (Apache.Calcite.Cosmos.Facts.Rendering.LikePattern.Read(pattern, CalciteLikeUnits) is null)
+                throw new CosmosTranslationException("LIKE is computed in process: Calcite's rows leave a unit of its pattern unread, U+0000 being Calcite's escape where none is written.");
+
             if (pattern.IndexOfAny(new[] { '[', ']' }) >= 0)
                 throw new CosmosTranslationException("LIKE with a bracket in the pattern is not supported: Cosmos reads a character range where SQL reads the brackets literally.");
 
@@ -4236,6 +4247,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             WriteBinary(builder, StripTextCoercion(Operand(call, 0)), Operand(call, 1), "LIKE");
         }
+
+        /// <summary>What Calcite's <c>LIKE</c> reads each unit of a pattern as, the rows of the definition S is defined from (<c>likeunits</c>, G7).</summary>
+        Eggnog.ValueSet<Apache.Calcite.Cosmos.Facts.Rendering.LikeUnit> CalciteLikeUnits =>
+            Eggnog.ValueSet.From(System.Linq.Enumerable.Select(Rendering.LikeUnits, u => u.Unit));
 
         /// <summary>
         /// Determines whether an expression is a rendering of a path not declared a string, one whose text may be a

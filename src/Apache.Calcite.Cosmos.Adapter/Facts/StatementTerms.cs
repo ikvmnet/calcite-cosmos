@@ -91,6 +91,14 @@ namespace Apache.Calcite.Cosmos.Facts
         internal PredicateRules? Rules => _rules;
 
         /// <summary>
+        /// Whether the facts graph reads a reading as Calcite does beside a literal of a class, as the readings vocabulary's
+        /// rows say at its root (<c>readsexactly</c>, <see cref="Rendering.RenderingFamily.ReadExactly(SqlPredicate, System.Func{string, Rendering.CosmosValueClass, bool})"/>); no reading where
+        /// the declaration could not be compiled.
+        /// </summary>
+        internal bool ReadsExactly(string reader, Rendering.CosmosValueClass beside) =>
+            _contexts is { } contexts && contexts.Graph.Root.TryGet(contexts.Rules.Readings.ReadsExactly.Of(reader, beside), out var exact) && exact;
+
+        /// <summary>
         /// Returns the child of a context that assumes these predicates beside what it holds, made the first time it is
         /// asked for. It holds the statement's terms and their verdicts, whatever it assumes.
         /// </summary>

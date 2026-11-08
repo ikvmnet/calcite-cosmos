@@ -43,6 +43,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "a backslash is itself, escaping nothing, a bracket no range and a dot no wildcard");
         }
 
+        /// <summary>
+        /// U+0000 is the escape where no <c>ESCAPE</c> is written (<c>Like.sqlToRegexLike</c>, its escape character 0): before
+        /// <c>_</c>, <c>%</c> or another U+0000 it reads that unit as itself, and before any other unit or at the pattern's end
+        /// it raises. So no row reads it as itself, and a pattern holding it is unread (<c>Calcite.LikeReadsItsPatternsUnits</c>).
+        /// </summary>
+        [Fact, CosmosPins("Calcite.LikeEscapesByNul")]
+        public void LikeEscapesByNul()
+        {
+            using var connection = MaterialisedTable.Open();
+            var documents = MaterialisedTable.Of(new[]
+            {
+                "{\"v\":\"a_\"}", "{\"v\":\"a\\u0000x\"}", "{\"v\":\"a\\u0000_\"}", "{\"v\":\"a%\"}",
+                "{\"v\":\"a\\u0000\"}", "{\"v\":\"a\\u0000\\u0000\"}", "{\"v\":\"ab\"}", "{\"v\":\"a\\u0000b\"}",
+            });
+
+            const string v = "JSON_VALUE(\"d\", '$.v')";
+            documents.Ask(connection, $"{v} LIKE 'a\0_'", $"{v} LIKE 'a\0%'", $"{v} LIKE 'a\0\0'", $"{v} LIKE '%\0%'", $"{v} NOT LIKE 'a\0_'").Should().Equal(
+                ["TFFFFFFF", "FFFTFFFF", "FFFFTFFF", "FFFTFFFF", "FTTTTTTT"],
+                "U+0000 before _, % or U+0000 reads that unit as itself, matching it alone");
+            documents.Ask(connection, $"{v} LIKE 'a_'").Should().Equal(["TFFTTFTF"], "unescaped, _ is one code point, U+0000 among them");
+            foreach (var pattern in new[] { "a\0x", "a\0b", "a\0", "B\0" })
+            {
+                var failure = documents.Failure(connection, $"{v} LIKE '{pattern}'");
+                failure.Should().NotBeNull("U+0000 before another unit, or at the end, escapes nothing");
+                failure!.Message.Should().StartWith("Invalid escape sequence");
+            }
+        }
+
     }
 
 }

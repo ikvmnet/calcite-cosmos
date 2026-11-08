@@ -270,6 +270,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// escape's second unit, so under the emulator such a <c>LIKE</c> asks its subject to hold neither escape: the
         /// generic <c>LIKE</c> and the fold's <c>CONTAINS</c> and <c>ENDSWITH</c> alike. A prefix starts where the subject
         /// does and is exact, and a pattern with none of them cannot start or end inside a pair. On Azure each is as before.
+        /// A pattern holding U+0000 is computed in process on either target: Calcite reads it as the escape where none is
+        /// written (<c>Calcite.LikeEscapesByNul</c>), so <c>'a\0%'</c> matches <c>a%</c> alone, which no prefix says.
         /// </summary>
         [Fact]
         public void ALikeWhosePatternMeetsAnEscapeAsksItsSubjectUnderTheEmulator()
@@ -288,8 +290,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             Translator(Emulator, Z).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("0%")), out var prefix).Should().BeTrue("a prefix is exact");
             prefix.Should().Be("STARTSWITH(c.s, @p0)");
-            Translator(Emulator, Z | H).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("a\0%")), out _).Should().BeTrue("a prefix holding U+0000 is sent stored, and E is a prefix code");
-            Translator(Emulator, H).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("%a\0")), out _).Should().BeFalse("a pattern holding U+0000 elsewhere asks its subject");
+            Translator(Emulator, Z | H).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("a\0%")), out _).Should().BeFalse("Calcite reads U+0000 as the escape, so the pattern is a% exactly");
+            Translator(Azure, Z | H).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("a\0%")), out _).Should().BeFalse("on Azure too");
+            Translator(Emulator, H).TryTranslate(Call(SqlStdOperatorTable.LIKE, Str(), Lit("%a\0")), out _).Should().BeFalse("an escape at the pattern's end raises in Calcite");
 
             var fold = Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Str()), Lit("%0"));
             Translator(Azure, Z).TryTranslate(fold, out var azure).Should().BeTrue();

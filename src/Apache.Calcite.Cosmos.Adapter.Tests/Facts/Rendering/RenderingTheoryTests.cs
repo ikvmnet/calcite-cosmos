@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -40,7 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// of each set and leaf: the spelling a set is sent, its parting bands and unsendable classes, the paths it may write,
         /// and what a leaf reads beside its table (G1); what reads each settled key and how it reads a whole number, and what
         /// a class is to the gate (G2); a pair's readings, its table and the rows that license it, and what each reading's
-        /// order holds (G3); a failing side's key and a junction holding its connective's unit (G4); each set's table
+        /// order holds (G3); a failing side's key, a junction holding its connective's unit, and a weakening written as its
+        /// parts stand, regrouped and folded by the same laws (G4); each set's table
         /// as the leaves read it; and what a computed call is keyed by, what Calcite answers over each key and the service
         /// alone defines, the images a call's rows license, and the case-insensitive affix a LIKE over a fold is written as
         /// (G6); and what Calcite makes of each reading, <c>LIKE</c>'s units and what each type test is TRUE of, the readings
@@ -106,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["tabulate"] =
                 [
-                    "a class some row orders is placed by its comparators",
+                    "a class whose key over no cell names a comparator is read by its test's readers",
                     "a key every target its set serves measured is settled",
                     "a comparator whose spelling rewrites a band rewrites",
                     "a fold every target its set serves has rows of is the set's, outside the bands any parts at",
@@ -148,6 +150,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a cast of a raw value compares the text it renders a value as, which the cell decides",
                     "a raw reading's comparison its column does not compile fails the statement",
                     "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
+                    "a raw column no row measured answers each key as the union of those that were",
                     "a reading reads the classes its rows name",
                     "a raw column raising over a class refines the text over it",
                     "a raw column reading a class as the text reads it refines the text over it",
@@ -170,6 +173,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a type test is TRUE, by its name, of the JSON kinds of each class its row says",
                     "a reading whose test is its operand's rests on its operand's rows",
                     "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
+                    "a raw column no row measured reads each class as the union of those that were",
+                    "a raw column no row measured is null over an absent path where the union's reading is",
+                    "a raw column no row measured holds each order the union's reading holds",
                 ],
                 ["roles"] =
                 [
@@ -316,7 +322,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "any other leaf weakens to what its implied forms make together",
                     "a junction's weakening joins its arms' weakenings",
                     "a negation's weakening is its operand's at the opposite position, negated",
-                    "a case weakens to its arms' weakenings under its condition's",
+                    "a weakening that negates a constant is Kleene's negation of it",
+                    "a weakening holding its connective's unit is what Kleene's logic folds it to",
+                    "a weakening holding its own connective or a part twice is what its connective's laws regroup it to",
+                    "a case's then-arm weakened beneath its condition holding its connective's unit is what Kleene's logic folds it to",
+                    "a case's then-arm weakened beneath its condition holding its own connective or a part twice is what its connective's laws regroup it to",
+                    "a node's weakening is the cheapest form that weakens it",
+                    "a case's then-arm weakened beneath its condition is the cheapest form that weakens it there",
+                    "a case's then-arm weakens beneath its condition to their weakenings joined, where its position reads it so",
+                    "a case weakens to its then-arm's weakening beneath its condition joined with its else-arm's, where its position reads it so",
+                    "a case weakens to its arms' weakenings joined, where its position joins them",
                 ],
                 ["twovalued"] =
                 [
@@ -355,7 +370,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(175);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(188);
         }
 
         /// <summary>
@@ -586,7 +601,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             // Each raw reading again through each declared column (rawtyped).
             built.AddRange([.. from reader in built where PredicateAtom.IsRaw(reader) || reader.EndsWith(":" + PredicateAtom.RawReader, StringComparison.Ordinal)
-                               from column in PredicateAtom.RawColumns select PredicateAtom.InColumn(reader, column)]);
+                               from column in PredicateAtom.Columns select PredicateAtom.InColumn(reader, column)]);
 
             // A numeric cast of the raw value is held back until a Calcite row measures it, through a column or not.
             var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)
@@ -594,6 +609,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }
+
+        /// <summary>
+        /// The casts the edges table names are the casts a <c>Calcite</c> row measured (<c>measuredcast</c>), each once: the
+        /// table writes their keys by hand until h15 derives them from those rows (<c>TODO.md</c>, the loader's cast
+        /// targets), so a cast measured or dropped without the table following fails here rather than drifting.
+        /// </summary>
+        [Fact]
+        public void TheEdgesTablesCastsAreTheMeasuredCasts() =>
+            ReaderEdgesTable.Rows.Keys.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) && PredicateAtom.ColumnOf(reader) is null)
+                .Should().BeEquivalentTo(CosmosAxiomRows.ReadCasts(CosmosAxioms.All).Select(c => PredicateAtom.CastReader(c.Target, c.Reader)).Distinct());
 
     }
 

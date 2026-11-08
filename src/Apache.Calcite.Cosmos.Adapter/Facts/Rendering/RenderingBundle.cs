@@ -118,14 +118,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// A case beneath a stratum as S's <c>chosen</c>: the condition read where the case is, the then-arm beneath the
-        /// condition too, and the else-arm twice, narrow beneath its negation (to <see cref="NarrowDepth"/> conditions) and
-        /// wide where the case is. Each arm's atoms are collected as they are tagged.
-        /// </summary>
-        /// <summary>
         /// What the host writes of a call the loader read as a computed place (h10): its type, arity, operands by ordinal,
-        /// its place's spelling, and that it reads that place through its type's reader. The loader types only a call the
-        /// function rows name; whether its place has an import is the image rule's. A call with no spelling has no place.
+        /// its place's spelling, and that it reads that place through its type's reader. The loader types a call it read
+        /// whole that the service can spell, where it reads places; whether the rows name it and its place has an import is
+        /// S's (G6). A call with no spelling has no place.
         /// </summary>
         IEnumerable<Fact> Computed(SqlValue.Call call, ConstructorTerm<Val> term, IReadOnlyList<ConstructorTerm<Val>> operands)
         {
@@ -165,12 +161,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// What S writes a <c>LIKE</c> over a fold as once a bridge run completed (<see cref="RunBridge"/>, its
         /// <c>foldedas</c>, G6): the test whose case-insensitive form answers alike, its argument, and the ordinal of the
-        /// fold's operand it is asked over; <c>null</c> where S says none, or the run may not be read.
+        /// fold's operand it is asked over; <c>null</c> where S says none, says more than one, as a fold over a function of
+        /// two subjects may, or the run may not be read.
         /// </summary>
         /// <param name="like">The <c>LIKE</c> as the bundle wrote it.</param>
         public (CosmosServiceTest Test, string Argument, long Operand)? FoldOf(Pred like) => _run is { StopReason: RunStopReason.Completed }
-            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0]))
-                .Select(row => ((CosmosServiceTest Test, string Argument, long Operand)?)((CosmosServiceTest)row.Keys[1], (string)row.Keys[2], (long)row.Keys[3])).SingleOrDefault())
+            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0])).Take(2).ToList() is [var row]
+                ? ((CosmosServiceTest Test, string Argument, long Operand)?)((CosmosServiceTest)row.Keys[1], (string)row.Keys[2], (long)row.Keys[3])
+                : null)
             : null;
 
         /// <summary>
@@ -245,6 +243,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ? (JsonFactEncoding.Path(path).ToTerm(_theory.Paths), SqlValue.Spell(path))
             : value is SqlValue.Call { Spelled: { } spelled } call && _computed.TryGetValue(call, out var term) ? (_theory.Valued.Of(term), spelled) : null;
 
+        /// <summary>
+        /// A case beneath a stratum as S's <c>chosen</c>: the condition read where the case is, the then-arm beneath the
+        /// condition too, and the else-arm twice, narrow beneath its negation (to <see cref="NarrowDepth"/> conditions) and
+        /// wide where the case is. Each arm's atoms are collected as they are tagged.
+        /// </summary>
         ConstructorTerm<Pred> Chosen(PredicateWriter writer, long stratum, SqlPredicate.Case chosen, List<Fact> bookkeeping)
         {
             var at = stratum == 0 ? Array.Empty<SqlPredicate>() : _strata[stratum];

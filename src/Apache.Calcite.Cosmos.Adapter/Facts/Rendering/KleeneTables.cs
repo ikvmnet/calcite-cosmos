@@ -103,6 +103,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static IReadOnlyList<(CosmosServiceTest Connective, bool Constant, bool Absorbs)> Units { get; } =
             [(And, true, false), (Or, false, false), (And, false, true), (Or, true, true)];
 
+        /// <summary>
+        /// The connective a position joins a leaf's implied forms by, each a weakening of the leaf: <c>AND</c> at <c>Pos</c>,
+        /// where each keeps every row the leaf keeps, and <c>OR</c> at <c>Neg</c>, where each drops every row it drops; the
+        /// junction's identity (<see cref="Units"/>) where it implies none.
+        /// </summary>
+        public static IReadOnlyList<(RenderPosition, CosmosServiceTest)> Weakens { get; } = [(RenderPosition.Pos, And), (RenderPosition.Neg, Or)];
+
+        /// <summary>
+        /// The position a case's weakening reads its then-arm beneath its condition at, with the wide else-arm's, which holds
+        /// beneath any condition: at <c>Pos</c>, the condition's weakening at <c>Pos</c> joined with the then-arm's by the
+        /// first connective, and that with the else-arm's by the second, <c>(c AND a) OR b</c>, true wherever the condition
+        /// and the then-arm both are, or the else-arm is.
+        /// </summary>
+        public static IReadOnlyList<(RenderPosition, CosmosServiceTest, CosmosServiceTest)> CaseThen { get; } = [(RenderPosition.Pos, And, Or)];
+
+        /// <summary>
+        /// The position a case's weakening joins its arms' weakenings at, its condition's aside: at <c>Neg</c>, <c>a AND b</c>,
+        /// false wherever either arm is.
+        /// </summary>
+        public static IReadOnlyList<(RenderPosition, CosmosServiceTest)> CaseArms { get; } = [(RenderPosition.Neg, And)];
+
+        /// <summary>Kleene's negation of each constant: the other.</summary>
+        public static IReadOnlyList<(bool Constant, bool Negation)> Negations { get; } = [(true, false), (false, true)];
+
         /// <summary>The class of a cell on which a side leaves each junction to its sibling.</summary>
         public static IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity { get; } = new Dictionary<CosmosServiceTest, ValueSet<CellClass>>
         {

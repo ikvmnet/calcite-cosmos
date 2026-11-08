@@ -247,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var c in checks)
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
-            RenderingFamily.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
+            Saturation.FactsReadings.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
             checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "IS_DEFINED(c.label)"], "the kind is sent, and the label's weakening beneath it");
             checks.Should().OnlyContain(c => c.LaterRound == false && c.Import!.Digest.Contains(" beneath ") == false, "nothing is read beneath the coarse stratum");
         }

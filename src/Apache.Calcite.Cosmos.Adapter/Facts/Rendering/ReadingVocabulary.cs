@@ -43,6 +43,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ReadCompares = graph.DefineRelation<CosmosServiceTest, string>("readcompares");
             LikeUnits = graph.DefineRelation<LikeUnit, string>("likeunits");
             ReaderRows = graph.DefineFunction<ReadingTable>("readerrows", ReadingTable.Union);
+            ReadsExactly = graph.DefineFunction<string, CosmosValueClass, bool>("readsexactly", ValueLattice.Max<bool>(), analysis);
         }
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
@@ -87,6 +88,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Every reading's rows in one value (<see cref="ReadingTable"/>), which a cell and the facts graph's atom rules bind.</summary>
         public Function<ReadingTable> ReaderRows { get; }
 
+        /// <summary>
+        /// Whether the facts graph reads a reading as Calcite does beside a literal of a class, <c>Number</c> or <c>None</c>
+        /// for any other, a row's: what a statement's strata read before resting on an atom (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>).
+        /// </summary>
+        public Function<string, CosmosValueClass, bool> ReadsExactly { get; }
+
         /// <summary>The facts a root holds: the rows, the truth table and the comparisons the cell decides, and the table empty.</summary>
         public IEnumerable<Fact> Facts(CalciteRows rows, IEnumerable<(CosmosServiceTest Test, string Read, Truths Truths)> truths, IEnumerable<(CosmosServiceTest Test, string Read)> compares)
         {
@@ -113,6 +120,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var (reader, @as) in rows.TestReads)
                 yield return TestReads.Of(reader, @as);
+
+            foreach (var (reader, beside) in rows.Exact)
+                yield return ReadsExactly.Of(reader, beside).Is(true);
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

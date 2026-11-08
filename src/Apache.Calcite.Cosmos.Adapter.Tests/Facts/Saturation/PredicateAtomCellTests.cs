@@ -4,6 +4,7 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -146,18 +147,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// Every reading <see cref="ReadingPrecisionTable"/> calls exact, beside each literal it is exact beside, is read by
+        /// Every reading the rows call exact (<c>Calcite.TheFactsGraphReadsTheseReadingsExactly</c>, <c>readsexactly</c>),
+        /// beside each literal it is exact beside, is read by
         /// the facts graph as its cells answer: the coarse answer on a cell's state holds every truth the cell gives, and
         /// what a row of each truth can be (<see cref="PredicateAtom.Kept"/>) admits every value Calcite gives that truth on,
         /// through every reader the reading stands for. So a stratum that assumes such an atom leaves out no document Calcite
         /// keeps. Coins are left out, counted; the table calls some reading coarse that this would hold.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Calcite.TheFactsGraphReadsTheseReadingsExactly")]
         public void EveryExactReadingAnswersAsItsCell()
         {
             var (inexact, (asked, tossed)) = (new List<string>(), (0, 0));
             var readers = new HashSet<string>();
-            foreach (var atom in Atoms(boundaries: true).Where(a => RenderingFamily.ReadExactly(Predicate(a))))
+            foreach (var atom in Atoms(boundaries: true).Where(a => FactsReadings.ReadExactly(Predicate(a))))
             {
                 readers.Add(atom.Reader);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
@@ -185,7 +187,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             TestContext.Current.TestOutputHelper?.WriteLine($"{asked:N0} answers checked; {tossed:N0} left out, a coin tossed");
             inexact.Should().BeEmpty("a stratum resting on a reading called exact leaves out no document Calcite keeps");
-            readers.Select(PredicateAtom.Columnless).Distinct().Should().BeEquivalentTo(ReadingPrecisionTable.Rows.Keys.Where(Readers.Contains), "every row the grid reads is held");
+            readers.Select(PredicateAtom.Columnless).Distinct().Should().BeEquivalentTo(
+                CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All).Select(r => r.Reader).Distinct().Where(Readers.Contains), "every row the grid reads is held");
         }
 
         static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;

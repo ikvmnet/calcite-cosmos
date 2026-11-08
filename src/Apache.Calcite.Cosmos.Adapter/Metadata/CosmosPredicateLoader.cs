@@ -246,23 +246,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.LIKE) when _legacy == false:
                         return Like(call) ?? Opaque(node);
 
-                    // Over a reading of a path alone, as IS_DEFINED is read; over a call it asks of a computed value. Where
-                    // places are read, the reading as it stands: what the in-process body takes it apart into is the
-                    // vocabulary's test rules' over Calcite.TypeTestsAreTheirBodies' rows (testreads, G8), a cast no row
-                    // names. Elsewhere, F's reading until h15, the raw value of a reading that is no cast.
+                    // Where places are read, the test of the value as it stands, whatever it reads: what the in-process body
+                    // takes it apart into, and whether it raises, is the vocabulary's test rules' over
+                    // Calcite.TypeTestsAreTheirBodies' rows (testreads, G8), a reading no row names, a cast or a computed
+                    // value's, leaving the atom unread. Elsewhere, F's reading until h15, the raw value of a reading of a path
+                    // alone that is no cast.
                     case var _ when _legacy == false && TypeTests.TryGetValue(call.getOperator(), out var test) && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath typed } typedRead && (_places || typedRead is not SqlValue.Cast)
-                            ? new SqlPredicate.TypeTest(test, _places ? typedRead : new SqlValue.Raw(typed))
-                            : Opaque(node);
+                        return _places
+                            ? Value((RexNode)operands.get(0)) is { } typedValue ? new SqlPredicate.TypeTest(test, typedValue) : Opaque(node)
+                            : Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath typed } typedRead && typedRead is not SqlValue.Cast
+                                ? new SqlPredicate.TypeTest(test, new SqlValue.Raw(typed)) : Opaque(node);
 
                     // The service's test of the document, which a weakening writes and a caller may, read as the type tests
                     // are. A schema's own declaration of it is Calcite's wrapping, with the one body, read by reference too
                     // and by S alone until h15, F's terms unchanged.
                     case var _ when (ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) || _places && CosmosSchemaFunctions.Presents(call.getOperator(), CosmosOperators.IsDefined))
                         && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath defined } read && (_places || read is not SqlValue.Cast)
-                            ? new SqlPredicate.IsDefined(_places ? read : new SqlValue.Raw(defined))
-                            : Opaque(node);
+                        return _places
+                            ? Value((RexNode)operands.get(0)) is { } defined ? new SqlPredicate.IsDefined(defined) : Opaque(node)
+                            : Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath path } read && read is not SqlValue.Cast
+                                ? new SqlPredicate.IsDefined(new SqlValue.Raw(path)) : Opaque(node);
 
                     default:
                         return Bare(node) ?? Opaque(node);
@@ -797,9 +800,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return null;
 
                 // The field's declared type is the column Calcite reads it through, which a loading that reads places names
-                // (rawtyped); a CHAR's padding no row measured, so it stays the union.
+                // (rawtyped), as read: what each column reads is its rows', a CHAR's the union's until a row measures its
+                // padding (PredicateAtom.UnionColumns).
                 if (CosmosRexShapes.IsDocumentValueType(type) || IsCharacter(type))
-                    return new SqlValue.Raw(path) { Column = _places && type?.getName() is string column && Cosmos.Facts.Saturation.PredicateAtom.RawColumns.Contains(column) ? column : null };
+                    return new SqlValue.Raw(path) { Column = _places ? type?.getName() : null };
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
             }

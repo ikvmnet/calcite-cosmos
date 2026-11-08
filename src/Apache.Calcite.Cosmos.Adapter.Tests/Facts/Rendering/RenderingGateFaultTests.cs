@@ -595,12 +595,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var coarse = new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Cast("VARCHAR", Raw(LabelPath)), "a%");
             var exact = new SqlPredicate.Affix(PredicateAtom.LikeTest, Text(LabelPath), "a%");
 
-            RenderingFamily.ReadExactly(coarse).Should().BeFalse();
-            RenderingFamily.ReadExactly(new SqlPredicate.Not(coarse)).Should().BeFalse();
-            RenderingFamily.ReadExactly(new SqlPredicate.Case(exact, coarse, new SqlPredicate.Constant(false))).Should().BeFalse();
-            RenderingFamily.ReadExactly(exact).Should().BeTrue();
-            RenderingFamily.ReadExactly(new SqlPredicate.TypeTest("IS_STRING", Raw(LabelPath))).Should().BeTrue();
-            RenderingFamily.ReadExactly(new SqlPredicate.Case(exact, new SqlPredicate.Constant(true), new SqlPredicate.Constant(false))).Should().BeTrue();
+            Saturation.FactsReadings.ReadExactly(coarse).Should().BeFalse();
+            Saturation.FactsReadings.ReadExactly(new SqlPredicate.Not(coarse)).Should().BeFalse();
+            Saturation.FactsReadings.ReadExactly(new SqlPredicate.Case(exact, coarse, new SqlPredicate.Constant(false))).Should().BeFalse();
+            Saturation.FactsReadings.ReadExactly(exact).Should().BeTrue();
+            Saturation.FactsReadings.ReadExactly(new SqlPredicate.TypeTest("IS_STRING", Raw(LabelPath))).Should().BeTrue();
+            Saturation.FactsReadings.ReadExactly(new SqlPredicate.Case(exact, new SqlPredicate.Constant(true), new SqlPredicate.Constant(false))).Should().BeTrue();
         }
 
         /// <summary>

@@ -1,8 +1,7 @@
+using System;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
-
-using static Apache.Calcite.Cosmos.Facts.Rendering.ReadingPrecisionTable.ReadingPrecision;
 
 namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
@@ -31,32 +30,35 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             _ => true,
         });
 
+        /// <summary>The reading a type test's row is keyed by, whatever reads its path: what it asks is the document's kind (<c>Calcite.TypeTestsAreTheirBodies</c>).</summary>
+        public const string TypeTest = "type test";
+
         /// <summary>
-        /// Whether the facts graph reads every atom of a conjunct as Calcite does on TRUE and FALSE, by the reading
-        /// precision's rows, so that what a stratum that assumes it says of the documents is so. A presence test, and an
-        /// opaque term and two readings compared, from which the facts graph learns nothing, exclude nothing; nor do a junction, a negation, a
-        /// <c>CASE</c> and a truth value, of which no rule of its reads more than their atoms, each read here in its turn. A
-        /// kind not named is not read exactly.
+        /// Whether the facts graph reads every atom of a conjunct as Calcite does on TRUE and FALSE, as the readings
+        /// vocabulary's rows say (<c>readsexactly</c>, <c>Calcite.TheFactsGraphReadsTheseReadingsExactly</c>), so that what a
+        /// stratum that assumes it says of the documents is so. Only walks the IR to the atoms the facts graph makes and asks
+        /// the rows of each: a presence test, and an opaque term and two readings compared, from which the facts graph learns
+        /// nothing, exclude nothing; nor do a junction, a negation, a <c>CASE</c> and a truth value, of which no rule of its
+        /// reads more than their atoms, each read here in its turn. A kind not named is not read exactly.
         /// </summary>
-        public static bool ReadExactly(SqlPredicate conjunct) => conjunct.Subterms.All(term => term switch
+        /// <param name="conjunct">The conjunct.</param>
+        /// <param name="exact">Whether the rows read a reading, its raw column apart, exactly beside a literal of a class:
+        /// <c>Number</c>, or <c>None</c> for any other literal and for none.</param>
+        public static bool ReadExactly(SqlPredicate conjunct, Func<string, CosmosValueClass, bool> exact) => conjunct.Subterms.All(term => term switch
         {
             // Two readings compared (h11) are no atom of the facts graph's, which learns nothing from them.
             SqlPredicate.Compare c when Unboxed(c.Right) is not (SqlValue.Literal or SqlValue.Parameter) => true,
-            SqlPredicate.Compare c => ReadExactly(Unboxed(c.Left), Unboxed(c.Right) is SqlValue.Literal { IsNumber: true }),
-            SqlPredicate.In i => ReadExactly(i.Value, i.Points.Any(JsonValues.IsNumber)),
-            SqlPredicate.IsNull n => ReadExactly(Unboxed(n.Value), false),
-            SqlPredicate.Affix a => ReadExactly(a.Value, false),
-            SqlPredicate.TypeTest => ReadingPrecisionTable.Of(ReadingPrecisionTable.TypeTest) == Exact,
+            SqlPredicate.Compare c => ReadExactly(Unboxed(c.Left), Unboxed(c.Right) is SqlValue.Literal { IsNumber: true }, exact),
+            SqlPredicate.In i => ReadExactly(i.Value, i.Points.Any(JsonValues.IsNumber), exact),
+            SqlPredicate.IsNull n => ReadExactly(Unboxed(n.Value), false, exact),
+            SqlPredicate.Affix a => ReadExactly(a.Value, false, exact),
+            SqlPredicate.TypeTest => exact(TypeTest, CosmosValueClass.None),
             SqlPredicate.IsDefined or SqlPredicate.Opaque or SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Case or SqlPredicate.Constant => true,
             _ => false,
         });
 
-        static bool ReadExactly(SqlValue reading, bool besideNumber) => (ReaderOf(reading) is { } reader ? ReadingPrecisionTable.Of(reader) : Coarse) switch
-        {
-            Exact => true,
-            ExactBesideNoNumber => besideNumber == false,
-            _ => false,
-        };
+        static bool ReadExactly(SqlValue reading, bool besideNumber, Func<string, CosmosValueClass, bool> exact) =>
+            ReaderOf(reading) is { } reader && exact(PredicateAtom.Columnless(reader), besideNumber ? CosmosValueClass.Number : CosmosValueClass.None);
 
         static bool HasEdges(SqlValue value) => ReaderOf(value) is { } reader && ReaderEdgesTable.Rows.ContainsKey(reader);
 

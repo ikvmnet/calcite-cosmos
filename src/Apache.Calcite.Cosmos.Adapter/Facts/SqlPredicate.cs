@@ -120,7 +120,9 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// A match of the text a value reads against a literal pattern: <c>LIKE</c>, with no <c>ESCAPE</c> and no bracket.
+        /// A match of the text a value reads against a literal pattern: <c>LIKE</c> with no <c>ESCAPE</c> written, each unit
+        /// of the pattern read as each target's rows read it (G7), a bracket among them, and a U+0000, Calcite's escape where
+        /// none is written, left unread by Calcite's (<c>Calcite.LikeEscapesByNul</c>).
         /// </summary>
         public sealed record Affix(string Op, SqlValue Value, string Pattern) : SqlPredicate
         {

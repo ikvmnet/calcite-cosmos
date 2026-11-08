@@ -92,6 +92,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, bool> FormIsGrouped { get; } = Primitive.Create<ServiceForm, bool>("form-is-grouped", f =>
             f.Kind is ServiceFormKind.And or ServiceFormKind.Or && ServiceForm.Regrouped(f).Equals(f) == false);
 
+        /// <summary>A form is the negation of the other.</summary>
+        public static Primitive<ServiceForm, ServiceForm, bool> FormNegates { get; } = Primitive.Create<ServiceForm, ServiceForm, bool>("form-negates", (f, g) =>
+            f.Kind == ServiceFormKind.Not && f.Members[0].Equals(g));
+
         /// <summary>A form is a junction of the connective.</summary>
         public static Primitive<ServiceForm, CosmosServiceTest, bool> FormHeads { get; } = Primitive.Create<ServiceForm, CosmosServiceTest, bool>("form-heads", (f, j) =>
             f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Test == j);
@@ -145,6 +149,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A number has more places than a scale: a cast to it truncates the number toward zero, by less than one.</summary>
         public static Primitive<string, long, bool> PlacesBeyond { get; } = Primitive.Create<string, long, bool>("places-beyond", (c, s) =>
             JsonValues.TryNumberOf(c, out var x) && Places(x) > s);
+
+        /// <summary>
+        /// A reading of the raw value through every column, its innermost <c>raw</c> naming none (<c>cast:VARCHAR:raw</c>,
+        /// not <c>cast:VARCHAR:raw:ANY</c>): what a reading's own name says of its shape, as <see cref="FormIsLeaf"/> says
+        /// of a form's.
+        /// </summary>
+        public static Primitive<string, bool> ReadsEveryColumn { get; } = Primitive.Create<string, bool>("reads-every-column", reader =>
+            PredicateAtom.ColumnOf(reader) is null && (reader == PredicateAtom.RawReader || reader.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal)));
 
         /// <summary>
         /// The digits a number has before its point, as a <c>BigDecimal</c>'s precision less its scale counts them: the

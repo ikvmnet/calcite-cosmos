@@ -185,14 +185,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A join flattens a member of its connective, keeps one of each part in the arms' order, and folds Kleene's
-        /// constants at either position, which the weakening's assembly reads; a best's junction is the arms as they stand
-        /// (<see cref="ServiceForm.Paired"/>), which S's regroup rule rewrites to the join wherever no constant is in it, its
-        /// price below the pair's: fewer nodes where a copy goes, fewer groups where a junction is flattened (G4). A leaf's
-        /// fold joins its implied set in order.
+        /// A junction is written as its arms stand (<see cref="ServiceForm.Paired"/>), a best's and a weakening's alike, and
+        /// what S's regroup and units rules rewrite it to, the cheapest kept (<see cref="Priced.Cheapest"/>), flattens a member
+        /// of its connective, keeps one of each part in the arms' order and folds Kleene's constants at either position:
+        /// fewer nodes where a copy or a constant goes, fewer groups where a junction is flattened (G4). A leaf's implied set
+        /// is gathered in order by its position's connective, its identity where it is empty.
         /// </summary>
         [Fact]
-        public void JoinedFlattensKeepsOnePerPartAndFoldsConstants()
+        public void APairRegroupedAndFoldedFlattensKeepsOnePerPartAndFoldsConstants()
         {
             var (a, b, c) = (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, JsonValues.Of("x")), ServiceForm.TestOf(CosmosServiceTest.IsString, Path));
             var (yes, no) = (ServiceForm.ConstantOf(true), ServiceForm.ConstantOf(false));
@@ -205,20 +205,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (and, yes, a, a), (and, a, no, no), (or, no, a, a), (or, a, yes, yes), (and, yes, yes, yes), (or, no, no, no), (and, no, yes, no),
             })
             {
-                ServiceForm.Joined(connective, l, m).Should().Be(joined, $"{l} {connective} {m}");
                 var paired = ServiceForm.Paired(connective, l, m);
-                paired.Members.Should().Equal([l, m], "a best's junction is the arms as they stand");
+                paired.Members.Should().Equal([l, m], "a junction is the arms as they stand");
+                Rewritten(paired).Should().Be(joined, $"{l} {connective} {m}");
+                if (joined.Equals(paired) == false)
+                    Priced.Of(joined).CompareTo(Priced.Of(paired)).Should().BeNegative($"{joined} is priced below {paired}");
+
                 if (new[] { joined, l, m }.Any(f => f.Subforms.Any(s => s.Kind == ServiceFormKind.Constant)))
                     continue;
 
                 var grouped = RenderingPrimitives.FormIsGrouped.Function(paired);
                 (grouped ? ServiceForm.Regrouped(paired) : paired).Should().Be(joined, $"{paired} regrouped");
-                if (grouped)
-                    Priced.Of(joined).CompareTo(Priced.Of(paired)).Should().BeNegative($"{joined} is priced below {paired}");
             }
 
-            ServiceForm.Joined(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction joins");
             ServiceForm.Paired(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction pairs");
+            ServiceForm.Gathered(CosmosServiceTest.Not, ValueSet.Of(a, b), true).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction gathers");
 
             // Flattened, a junction has as many nodes and one group fewer; with a copy gone, fewer nodes too.
             var (nested, flat) = (All(a, All(b, c)), All(a, b, c));
@@ -226,11 +227,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Priced.Of(flat).CompareTo(Priced.Of(nested)).Should().BeNegative("of one size, the flatter is kept, whatever its text");
             Priced.Of(All(b, All(c, a))).CompareTo(Priced.Of(All(b, c, a))).Should().BePositive();
 
-            var implied = ValueSet.Of(b, a, All(a, ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), b));
-            ServiceForm.Folded(implied, RenderPosition.Pos).Should().Be(ServiceForm.Joined(and, ServiceForm.Joined(and, implied[0], implied[1]), implied[2]));
-            ServiceForm.Folded(implied, RenderPosition.Neg).Should().Be(Any([.. implied]));
-            (ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Pos), ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Neg)).Should().Be((yes, no));
-            ServiceForm.Folded(ValueSet.Of(a), RenderPosition.Neg).Should().Be(a);
+            var notNull = ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path));
+            var implied = ValueSet.Of(b, a, All(a, notNull, b));
+            ServiceForm.Gathered(and, implied, true).Members.Should().Equal([.. implied], "gathered as they stand, in the set's order");
+            Rewritten(ServiceForm.Gathered(and, implied, true)).Should().Be(All([.. implied.AsEnumerable().SelectMany(f => f.Kind == ServiceFormKind.And ? f.Flat : [f]).Distinct()]));
+            Rewritten(ServiceForm.Gathered(or, implied, false)).Should().Be(Any([.. implied]));
+            (ServiceForm.Gathered(and, ValueSet<ServiceForm>.Empty, true), ServiceForm.Gathered(or, ValueSet<ServiceForm>.Empty, false)).Should().Be((yes, no));
+            ServiceForm.Gathered(or, ValueSet.Of(a), false).Should().Be(a);
+        }
+
+        /// <summary>
+        /// What S's units and regroup rules rewrite a junction to at one node, the cheapest kept as the weakening's lattice
+        /// keeps it: every regrouping of a grouped form and every fold of one holding a unit of its connective, from Kleene's
+        /// rows (<see cref="KleeneTables.Units"/>), until none is new.
+        /// </summary>
+        static ServiceForm Rewritten(ServiceForm form)
+        {
+            var (seen, frontier) = (new HashSet<ServiceForm> { form }, new Queue<ServiceForm>([form]));
+            while (frontier.TryDequeue(out var f))
+            {
+                var next = KleeneTables.Units.Where(u => RenderingPrimitives.FormHeads.Function(f, u.Connective) && RenderingPrimitives.FormHolds.Function(f, ServiceForm.ConstantOf(u.Constant)))
+                    .Select(u => ServiceForm.Unit(f, u.Constant, u.Absorbs));
+                if (RenderingPrimitives.FormIsGrouped.Function(f))
+                    next = next.Append(ServiceForm.Regrouped(f));
+
+                foreach (var g in next.Where(seen.Add))
+                    frontier.Enqueue(g);
+            }
+
+            return seen.Aggregate(Priced.Cheapest.Merge);
         }
 
         /// <summary>Negating folds both constants and strips one <c>NOT</c>; presence is <c>IS_DEFINED</c>, beneath a <c>NOT</c> its negation.</summary>

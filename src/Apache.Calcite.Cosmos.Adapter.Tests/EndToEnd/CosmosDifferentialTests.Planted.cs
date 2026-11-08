@@ -49,9 +49,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// <b>Not judged, and why.</b> No U+FDD0 literal can be written, Calcite casting it to ISO-8859-1, so U+FDD0 reaches
-        /// the service as a parameter or as stored data alone. Calcite's own <c>LIKE</c> with U+0000 in the pattern answers
-        /// nothing or raises "Invalid escape sequence", so no such pattern is planted. <c>POSITION(? IN x)</c> fails
-        /// validation on both sides.
+        /// the service as a parameter or as stored data alone. Calcite's own <c>LIKE</c> reads U+0000 in the pattern as its
+        /// escape (<c>Calcite.LikeEscapesByNul</c>), so no such pattern is planted: none is sent on any target, which
+        /// <see cref="ALikeWhosePatternHoldsNulIsComputedInProcess"/> holds. <c>POSITION(? IN x)</c> fails validation on both
+        /// sides.
         /// </para>
         /// <para>
         /// Run where the account is an emulator, and skipped on Azure, which stores every string as written and whose own
@@ -110,6 +111,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // Every line said, where an assertion would list ten.
             if (wrong.Count > 0 || unpushed.Count > 0)
                 Assert.Fail($"{wrong.Count} WRONG, {unpushed.Count} not pushed:\n" + string.Join("\n", wrong.Concat(unpushed)));
+        }
+
+        /// <summary>
+        /// U+0000 is Calcite's <c>LIKE</c> escape where no <c>ESCAPE</c> is written (<c>Calcite.LikeEscapesByNul</c>): before
+        /// <c>%</c> or <c>_</c> it reads that unit as itself, and at the pattern's end it raises. Calcite's rows read every
+        /// other unit (<c>Calcite.LikeReadsItsPatternsUnits</c>), so a pattern holding one is unread, and no statement sends
+        /// it, <c>LIKE</c> or <c>NOT LIKE</c>, in a filter or a column: each is computed in process, and answers, or raises,
+        /// as Calcite does. Run on any target.
+        /// </summary>
+        [Fact]
+        public async Task ALikeWhosePatternHoldsNulIsComputedInProcess()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            const string name = "JSON_VALUE(c.\"DOC\", '$.name')";
+            var wrong = new List<string>();
+            foreach (var pattern in new[] { "B\0%", "B\0_", "B\0" })
+                foreach (var sql in new[]
+                {
+                    $"SELECT c.\"id\" FROM products AS c WHERE {name} LIKE '{pattern}'",
+                    $"SELECT c.\"id\" FROM products AS c WHERE {name} NOT LIKE '{pattern}'",
+                    $"SELECT c.\"id\", {name} LIKE '{pattern}' FROM products AS c",
+                })
+                {
+                    var sent = new List<string>();
+                    var (oracle, pushed) = (await Attempt(sql, pushdown: false), await Attempt(sql, pushdown: true, sent));
+                    var shown = Shown(sql);
+                    if (oracle.Raised is { } raised)
+                    {
+                        if (Innermost(raised).StartsWith("Invalid escape sequence", StringComparison.Ordinal) == false)
+                            wrong.Add($"{shown}: Calcite raised {Innermost(raised)}, not the escape's error");
+                        if (pushed.Raised is not { } failed || Innermost(failed) != Innermost(raised))
+                            wrong.Add($"{shown}: {(pushed.Raised is { } other ? "raised " + Innermost(other) : "answered")} where Calcite raises {Innermost(raised)}");
+                    }
+                    else if (Refines(sql, false, oracle, pushed) is { } failure)
+                    {
+                        wrong.Add(Shown(failure));
+                    }
+
+                    if (sent.FirstOrDefault(s => s.Contains("LIKE", StringComparison.Ordinal) || s.Contains("STARTSWITH", StringComparison.Ordinal)) is { } statement)
+                        wrong.Add($"{shown}: sent {Shown(statement)}");
+                }
+
+            wrong.Should().BeEmpty("a pattern Calcite's rows leave unread is computed in process, and answers or raises as Calcite does");
+
+            static string Innermost(Exception e)
+            {
+                while (e.InnerException is { } inner)
+                    e = inner;
+
+                return e.Message.Split('\n')[0];
+            }
         }
 
         /// <summary>

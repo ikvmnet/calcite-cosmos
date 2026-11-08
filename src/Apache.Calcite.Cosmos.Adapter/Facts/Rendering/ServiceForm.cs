@@ -298,34 +298,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A negation's operand, or the negation of anything else.</summary>
         public static ServiceForm Strip(ServiceForm form) => form.Kind == ServiceFormKind.Not ? form.Members[0] : NotOf(form);
 
-        /// <summary>
-        /// Two forms joined by a connective: a junction of its own flattened into its members, one of each part kept in the
-        /// arms' order, and Kleene's constants folded whatever the position, the identity left out and the absorbing one
-        /// the whole. The weakening's assembly alone: a weakening has no lattice, one form a node, so it cannot leave the
-        /// paired form and its regrouping both to a rule (<c>TODO.md</c>, the weakening's assembly); a best is joined by
-        /// <see cref="Paired"/>, and S's rules regroup and fold it. Total, as a rule body's calls must be: no junction joins
-        /// by anything else, and an opaque sentinel says so.
-        /// </summary>
-        public static ServiceForm Joined(CosmosServiceTest connective, ServiceForm left, ServiceForm right)
-        {
-            if (connective is not (CosmosServiceTest.And or CosmosServiceTest.Or))
-                return Unjoined;
-
-            var kind = connective == CosmosServiceTest.And ? ServiceFormKind.And : ServiceFormKind.Or;
-            var (identity, absorbing) = (ConstantOf(kind == ServiceFormKind.And), ConstantOf(kind == ServiceFormKind.Or));
-            var parts = new List<ServiceForm>();
-            foreach (var part in new[] { left, right }.SelectMany(arm => arm.Kind == kind ? arm.Flat : [arm]))
-            {
-                if (part.Equals(absorbing))
-                    return absorbing;
-
-                if (part.Equals(identity) == false && parts.Contains(part) == false)
-                    parts.Add(part);
-            }
-
-            return parts.Count switch { 0 => identity, 1 => parts[0], _ => JunctionOf(connective, parts) };
-        }
-
         static readonly ServiceForm Unjoined = OpaqueOf("unjoined", ValueSet<string>.Empty);
 
         /// <summary>
@@ -370,18 +342,24 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// Forms folded into one by the connective a position keeps rows by, <c>AND</c> at <c>Pos</c>, where each keeps
-        /// every row the leaf keeps, and <c>OR</c> at <c>Neg</c>, where each drops every row it drops; in the set's order,
-        /// the identity for none. A leaf's weakening, which prunes nothing and chooses nothing.
+        /// Forms joined by a connective as they stand, in the set's order: the constant given where there is none, the one
+        /// where there is one, and a junction of them otherwise, nothing flattened, rid of copies or folded, which S's rules
+        /// regroup and fold (<see cref="Regrouped"/>, <see cref="Unit"/>). Only puts the forms together; which connective
+        /// and constant is the rows' (<see cref="KleeneTables.Weakens"/>, <see cref="KleeneTables.Units"/>), and whether the
+        /// join holds the rule's. Total: no junction joins by anything else, and an opaque sentinel says so.
         /// </summary>
-        public static ServiceForm Folded(ValueSet<ServiceForm> forms, RenderPosition pos) =>
-            forms.Aggregate(ConstantOf(pos == RenderPosition.Pos), (joined, form) => Joined(pos == RenderPosition.Pos ? CosmosServiceTest.And : CosmosServiceTest.Or, joined, form));
+        public static ServiceForm Gathered(CosmosServiceTest connective, ValueSet<ServiceForm> forms, bool none) =>
+            connective is not (CosmosServiceTest.And or CosmosServiceTest.Or) ? Unjoined
+            : forms.AsEnumerable().ToArray() switch { [] => ConstantOf(none), [var one] => one, var many => JunctionOf(connective, many) };
 
         /// <summary>A path present, at <c>Pos</c>; beneath a <c>NOT</c>, at <c>Neg</c>, what is false exactly where it is present.</summary>
         public static ServiceForm Presence(string path, RenderPosition pos) =>
             pos == RenderPosition.Pos ? TestOf(CosmosServiceTest.IsDefined, path) : NotOf(TestOf(CosmosServiceTest.IsDefined, path));
 
-        /// <summary>A form negated: a constant's other value, a negation's operand, or the negation of anything else.</summary>
+        /// <summary>
+        /// A form negated: a constant's other value, a negation's operand, or the negation of anything else: the else rows'
+        /// sign of a best's condition (<see cref="Signed"/>).
+        /// </summary>
         public static ServiceForm Negated(ServiceForm form) => form.Kind == ServiceFormKind.Constant ? ConstantOf(form.Literal == JsonValues.Of(false)) : Strip(form);
 
         /// <inheritdoc />

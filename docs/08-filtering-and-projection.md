@@ -68,9 +68,12 @@ each is sent as the weakening proved for it and rechecked.
 | `SUBSTRING`, `POSITION`, `TRIM` (spaces), string, math and array functions | Cosmos functions — [Appendix B](appendix-b-functions.md) |
 | `IS_DEFINED(x)`, `IS_STRING(x)`, … | the same Cosmos functions |
 
-`LIKE` has three refusals. A pattern containing `[` or `]` is declined — Cosmos reads a bracket as a
-character range, SQL reads it literally. `LIKE … ESCAPE` is declined. And a pattern that is not a
-literal is declined, because only a literal can be checked for brackets.
+`LIKE` has four refusals. A pattern containing `[` or `]` is declined — Cosmos reads a bracket as a
+character range, SQL reads it literally. `LIKE … ESCAPE` is declined, and so is a pattern holding
+U+0000, which Calcite reads as an escape where none is written — before `_`, `%` or another U+0000 it
+matches that character itself, and before anything else it fails the statement — where Cosmos reads
+U+0000 as a character. And a pattern that is not a literal is declined, because only a literal can be
+checked for brackets.
 
 The case-insensitive rewrite applies when the pattern is plain text after a `%`, before one, or between
 two — a run of `%` reads as one, so `'%%ABC%'` is `'%ABC%'` — the text is already in the case `UPPER`
@@ -530,7 +533,7 @@ documents it has to read.
 | --- | --- |
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
-| `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
+| `LIKE` with brackets, `ESCAPE`, a computed pattern or U+0000 in the pattern | Cosmos reads `[…]` differently, and Calcite reads U+0000 as an escape |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |

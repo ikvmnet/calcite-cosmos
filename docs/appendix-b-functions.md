@@ -18,7 +18,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
 | `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |
 | `IN (…)`, `NOT IN (…)`, `BETWEEN` | comparisons | same cost as the native forms |
-| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, literal pattern only. A pattern that is one run of text between two `%`, which the service answers as a `CONTAINS`, only over a string proved to hold no U+0000: Azure's `CONTAINS` stops at the first (B.2) |
+| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, no U+0000, which Calcite reads as an escape where none is written, literal pattern only. A pattern that is one run of text between two `%`, which the service answers as a `CONTAINS`, only over a string proved to hold no U+0000: Azure's `CONTAINS` stops at the first (B.2) |
 | `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text already in the fold's case, after a `%`, before one or between two (a run of `%` reads as one), and `x` proved ASCII as `UPPER` asks (B.2), and for `CONTAINS` to hold no U+0000; otherwise in process |
 | `CASE` | nested `? :` | |
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |

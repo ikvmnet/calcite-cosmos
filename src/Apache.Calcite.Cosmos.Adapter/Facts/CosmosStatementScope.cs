@@ -115,33 +115,36 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Returns the stratum a round's atoms may be stated beneath in a bundle imported from the root (spec §5.2): the
         /// deepest node of the chain at or above <paramref name="node"/> every conjunct of which it assumes is in the bundle
-        /// and read exactly by the facts graph (<see cref="RenderingFamily.ReadExactly(SqlPredicate)"/>), and the root, which
+        /// and read exactly by the facts graph (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>), and the root, which
         /// assumes none, otherwise and for a node not of the chain; with its depth in the chain, zero for the root, and the
         /// conjuncts it assumes by index. A coarse reading may leave out cells Calcite keeps, and a translator's conjunct rests
         /// on no proof S holds. Asked of the rounds so far while they run, by the renderer they hand a round.
         /// </summary>
         /// <param name="node">The round's node, or where the rounds stopped.</param>
         /// <param name="inBundle">Whether a conjunct is in the bundle: S's, through the round's junction.</param>
-        /// <param name="readExactly">A plant's reading precision (G12); none for the reading precision's rows.</param>
+        /// <param name="readExactly">A plant's reading precision (G12); none for the readings vocabulary's rows.</param>
         internal (StatementTerms.Node Node, int Depth, IReadOnlyList<int> Assumes) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool>? readExactly)
         {
             lock (_lock)
-                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? RenderingFamily.ReadExactly);
+                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? ReadExactly);
         }
+
+        /// <summary>Whether the facts graph reads every atom of a conjunct exactly, as the rows at its root say (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>).</summary>
+        bool ReadExactly(SqlPredicate conjunct) => RenderingFamily.ReadExactly(conjunct, _terms.ReadsExactly);
 
         /// <summary>
         /// Returns the licence an arm of a <c>CASE</c> in a conjunct may be read beneath (spec §4.2 h08): the conjunct's
         /// render stratum with the longest leading run of the arm's conditions the facts graph reads exactly
-        /// (<see cref="RenderingFamily.ReadExactly(SqlPredicate)"/>), each condition beneath those before it; or
+        /// (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>), each condition beneath those before it; or
         /// <c>null</c> where not even the first is, and the arm is read at the enclosing node. Dropping a condition widens
         /// the cells an arm is held to, which is stricter and sound.
         /// </summary>
         /// <param name="conjunct">The conjunct the arm is part of.</param>
         /// <param name="conditions">The conditions the arm is read under, outermost first.</param>
-        /// <param name="readExactly">A plant's reading precision; none for the reading precision's rows.</param>
+        /// <param name="readExactly">A plant's reading precision; none for the readings vocabulary's rows.</param>
         internal OracleLicence? StratumFor(int conjunct, IReadOnlyList<SqlPredicate> conditions, Func<SqlPredicate, bool>? readExactly)
         {
-            var exact = readExactly ?? RenderingFamily.ReadExactly;
+            var exact = readExactly ?? ReadExactly;
             var kept = conditions.TakeWhile(exact).ToArray();
             return kept.Length == 0 ? null : OracleLicence.RenderArm(Check(conjunct), kept);
         }

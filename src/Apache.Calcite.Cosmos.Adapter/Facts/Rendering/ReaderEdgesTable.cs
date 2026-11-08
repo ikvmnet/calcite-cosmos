@@ -54,11 +54,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             [PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader)] = Row(CutKind.Double, CutKind.Rendering),
         });
 
-        /// <summary>A raw reading read through one column (rawtyped) is cut where the union is: each column's answer changes there or nowhere.</summary>
+        /// <summary>
+        /// A raw reading read through one column (rawtyped) is cut where the union is: each column's answer changes there or
+        /// nowhere, a column no row measured reading as the union (<see cref="PredicateAtom.UnionColumns"/>).
+        /// </summary>
         static Dictionary<string, ReaderEdges> InColumns(Dictionary<string, ReaderEdges> rows)
         {
             foreach (var (reader, edges) in rows.Where(r => PredicateAtom.IsRaw(r.Key) || r.Key.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal)).ToList())
-                foreach (var column in PredicateAtom.RawColumns)
+                foreach (var column in PredicateAtom.Columns)
                     rows[PredicateAtom.InColumn(reader, column)] = edges;
 
             return rows;

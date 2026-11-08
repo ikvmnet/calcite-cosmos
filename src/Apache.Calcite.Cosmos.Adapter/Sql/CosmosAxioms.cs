@@ -497,10 +497,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // So each place is read as the accessor's text over every class both read alike, LIKE among its tests (G7).
                 ReadAs: [new(PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TextReader), new(PredicateAtom.TypedReader("CHAR"), PredicateAtom.TextReader)]),
             new("Calcite.LikeReadsItsPatternsUnits",
-                "LIKE reads % as any run of characters, line terminators among them; _ as one code point, a surrogate pair one, that is no Java line terminator; and every other unit as the character itself, a backslash escaping nothing, a bracket no range and a dot no wildcard.",
+                "LIKE reads % as any run of characters, line terminators among them; _ as one code point, a surrogate pair one, that is no Java line terminator; and every other unit but U+0000 as the character itself, a backslash escaping nothing, a bracket no range and a dot no wildcard.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Measurements.CalciteLikeMeasurementTests.LikeReadsItsPatternsUnits",
                 // What a cell and the facts graph decide a match of a known string by; a unit no row reads is undecided (G7).
-                LikeUnits: [new("%", CosmosLikeUnit.Run), new("_", CosmosLikeUnit.One, JsonValues.LineTerminatorClass), new("", CosmosLikeUnit.Itself)]),
+                // U+0000 is no unit read as itself but Calcite's escape (Calcite.LikeEscapesByNul), so the row reads every other
+                // class, and a pattern holding one is unread: computed in process, and sent on no path.
+                LikeUnits:
+                [
+                    new("%", CosmosLikeUnit.Run), new("_", CosmosLikeUnit.One, JsonValues.LineTerminatorClass),
+                    new("", CosmosLikeUnit.Itself, Over: [.. JsonValues.CharacterClasses.Select(c => c.Member).Where(c => c != JsonValues.NulClass)]),
+                ]),
+            new("Calcite.LikeEscapesByNul",
+                "LIKE with no ESCAPE written reads U+0000 in its pattern as its escape (Like.sqlToRegexLike, escapeChar 0): before _, % or another U+0000 it reads that unit as itself, 'a<U+0000>_' matching a_ alone, 'a<U+0000>%' a% alone and 'a<U+0000><U+0000>' a<U+0000> alone; before any other unit, or at the pattern's end, it raises Invalid escape sequence.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Measurements.CalciteLikeMeasurementTests.LikeEscapesByNul"),
             new("Calcite.EqualValuesReadAlikeCompareEqual",
                 "Two equal values read alike compare equal, = <= >= TRUE and <> < > FALSE, wherever the reading reads a value: the accessor's text; a boolean's and an integer's or DECIMAL's column or RETURNING, a CHAR's and a computed text place's; the text cast to BOOLEAN, INTEGER or BIGINT; a raw value cast to VARCHAR through a VARIANT, an ANY and a VARCHAR column. A double's reading is not so, a NaN being equal to nothing (Calcite.ANaNComparesAsNothingAlike).",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.EqualValuesReadAlikeCompareEqual",
@@ -565,6 +574,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // is no accessor (G8). A raw value's row carries the reading the IR held before G8: the body takes apart an
                 // accessor alone and raises over a field, an item or a cast to ANY (TODO.md).
                 TestReads: [new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader)]),
+            new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
+                "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, and a type test, which asks the document's kind, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Facts.Saturation.PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell",
+                // Which stratum a later round's atoms are stated beneath reads these cells (RenderingFamily.ReadExactly): a
+                // reading no cell names is read coarsely, and a stratum never rests on it.
+                ExactReadings:
+                [
+                    .. from reader in new[]
+                       {
+                           PredicateAtom.TextReader, PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader),
+                           PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader), RenderingFamily.TypeTest,
+                       }
+                       from beside in new[] { Class.Number, Class.None }
+                       select new CosmosExactReading(reader, beside),
+                    new(PredicateAtom.RawReader, Class.None),
+                ]),
             new("Calcite.ItemIsNullWhereNoElementIs",
                 "ITEM over a raw value is its element, counted from one, and null wherever there is no element: past the end, at zero, over an object, a null and an absent path. Over a scalar a VARIANT's is null too and an ANY's raises. An ANY's element is the value the reader built, and a VARIANT's is no box: unequal to every boxed value, and a cast of it raises.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AnItemIsNullWhereNoElementIs"),

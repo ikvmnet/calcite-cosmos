@@ -379,7 +379,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
             var tables = new[] { (CosmosAxiomTarget.Emulator, RenderingSet.Emulator), (CosmosAxiomTarget.Azure, RenderingSet.Production) }
-                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2)), ProbeTheory.Theory.Get(ProbeTheory.Placed.Of())));
+                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2)), ProbeTheory.Theory.Get(ProbeTheory.ReaderClasses.Of())));
             var wrong = from axiom in WithOutcomes
                         from outcome in axiom.Outcomes!
                         where outcome.Formula is not null

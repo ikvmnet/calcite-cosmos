@@ -31,6 +31,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The form priced, or the inert sentinel for <see cref="None"/>: total, as a rule body's calls must be.</summary>
         public static ServiceForm FormOf(Priced price) => price.Form ?? Unpriced;
 
+        /// <summary>
+        /// Of two forms the one priced lower (<see cref="CompareTo"/>), as <c>bestexact</c>'s <c>Min</c> keeps of two prices:
+        /// what a node's weakening is kept by, so that one written as its parts stand and the regrouping or fold S's rules
+        /// rewrite it to leave the second, fewer nodes or as many in fewer groups (G4). Two forms of one price are one form.
+        /// </summary>
+        public static ValueLattice<ServiceForm> Cheapest { get; } = new("cheapest", (a, b) => Of(a).CompareTo(Of(b)) <= 0 ? a : b);
+
         /// <inheritdoc />
         public int CompareTo(Priced? other)
         {

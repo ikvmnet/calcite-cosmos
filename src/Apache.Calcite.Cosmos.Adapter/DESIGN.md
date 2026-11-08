@@ -6980,14 +6980,20 @@ refuse it. So the builder never meets a member it would have to leave out, which
 strengthen the weakening. Which reader is typed as a number is one table, the readers' type tests `T(p)`
 (`RenderingRexGrammar.TypeTests`), which the templates' guards read too.
 
-**The weakening's assembly decides nothing.** `ServiceForm.Joined` flattens a member of its own connective, keeps one of
-each part in the arms' order, and folds Kleene's constants at either position; `Negated` folds both constants and strips
-one `NOT`; `ServiceForm.Folded` joins a leaf's implied set in the set's order, by `AND` at `Pos` and `OR` at
-`Neg`, the identity for none, and prunes nothing: flattening and one part each make a presence test vanish into a
-guarded form that holds it. Whether a leaf takes its best or this fold is two rules (`best-is-implied` and its
-negation). `Joined` is the weakening's alone: a weakening has no lattice, so one node cannot hold the paired form and
-what S's rules regroup it to (TODO.md, *The weakening's assembly is C#'s*). A best is joined bare, by `Paired`, and
-regrouped by rules (*Bests*, below).
+**The weakening's assembly decides nothing.** A weakening is a form as a best is, and S's laws apply to it alike. Each
+weaken rule writes a candidate, `weakens(e, pos, f)`, as its parts stand: a junction's arms' weakenings `Paired`; a
+negation's operand's weakening at the opposite position, one `NOT` stripped; a case's arms in the shape its position's
+rows give (`KleeneTables.CaseThen`, `CaseArms`); and a leaf's implied set `Gathered` in the set's order by the
+connective its position keeps rows by (`KleeneTables.Weakens`: `AND` at `Pos`, `OR` at `Neg`), that connective's
+identity for none (`Units`). The rules that rewrite a best rewrite a candidate: one holding its connective's unit folds
+as Kleene's logic does (`ServiceForm.Unit`), one holding its own connective or a part twice regroups
+(`form-is-grouped`, `ServiceForm.Regrouped`), and the negation of a constant is the other constant
+(`KleeneTables.Negations`, `form-negates`). `weakening(e, pos)` keeps the cheapest candidate (`Priced.Cheapest`), as
+`bestexact` keeps the cheapest best, so the folded and regrouped form is kept whichever rule fires first. The gathering
+prunes nothing: flattening and one part each make a presence test vanish into a guarded form that holds it. Whether a
+leaf takes its best or the gathering is two rules (`best-is-implied` and its negation). `ServiceForm.Joined` and
+`Folded`, which flattened and folded in C#, and `RenderingWeakening`'s position ternary are gone (*What the re-audit
+moved into rules*, below).
 
 **What holds it.** `RenderingTemplatesTests`: totality over every atom the inputs load, a synthetic atom of every shape
 and a parameter; every pair the rows ask spells a form; the translator's spelling, over every one-atom conjunct the check
@@ -7058,7 +7064,8 @@ extra strata take the 16.
   writes weakenings, and none is read.
 - `ReadBest` gives the best and its proof, or Unproven naming the least refuted cell and the cheapest form refuted
   there; a junction root names none, since generate mode composes no refutation. Beside either it gives the weakening,
-  `TRUE` read as none: `Joined` and `Negated` fold every constant, so it is the one trivial spelling.
+  `TRUE` read as none: the units rule and the negated constant's fold every constant, and the price keeps the folded
+  form, so it is the one trivial spelling.
 - `Agreements` lists the non-vacuous agreements, which source A and the pairwise check judge.
 
 **The definition holds generate mode's rows.** The template, fits and strictness rows join the rows of characters in
@@ -7131,12 +7138,16 @@ names no shape: within the family S's Unproven is the answer (O2), declined and 
 translator's, whose recheck spine the printer will not write. Every statement a plan admits reads it since the switch
 (g16).
 
-**Which stratum a later round may rest on is data.** `RenderingFamily.ReadExactly` reads `ReadingPrecisionTable`: the
-text accessor, `RETURNING BOOLEAN` and a cast of the accessor to an integer type exact, the raw value exact beside no
-number literal, every other reading coarse. The check run reads it there too. What makes a row exact is what a stratum
-needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
+**Which stratum a later round may rest on is a row.** `Calcite.TheFactsGraphReadsTheseReadingsExactly` names each
+reading the facts graph reads as Calcite does beside a literal of a class (`CosmosAxiom.ExactReadings`): the text
+accessor, `RETURNING BOOLEAN`, a cast of the accessor to an integer type and a type test beside any, the raw value
+beside no number literal. The readings vocabulary loads them into both graphs (`readsexactly`), and a statement's strata
+read the facts graph's root (`StatementTerms.ReadsExactly`); `RenderingFamily.ReadExactly` only walks a conjunct to the
+atoms the facts graph makes and asks the rows of each. A reading the row does not name is coarse. The check run reads
+the same rows. What makes a reading exact is what a stratum needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
 value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
-leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` holds each row to it.
+leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` pins the row: every
+reading it names answers as its cell, and every reading the grid reads is named.
 
 **The run reads what production asked.** For each statement the check run plans, riding its pass, generate mode's run
 reads the bundles of §4.4 production's sites opened (*The production path*): each imported from the statement's root,
@@ -8146,7 +8157,7 @@ byte-equal; h15 deletes it with `Owns`' refusing arm, once S's families answer f
 `RenderingCaptureTests.EveryNewShapeIsTheTranslatorsUntilTheSwitch` holds it.
 
 **`ReadExactly` is total.** An affix is read by its reader's precision, as a comparison is, so one over a cast of a raw
-value to text opens no stratum; a type test is exact (its row in `ReadingPrecisionTable`); `case` and a constant are
+value to text opens no stratum; a type test is exact (`Calcite.TheFactsGraphReadsTheseReadingsExactly`); `case` and a constant are
 exact only where every term in them is; anything unnamed is not (G16b, its h07 half).
 
 **What the spec named and h07 does not do.** `STARTSWITH` and `ENDSWITH` have no Rex operator in the adapter: they are
@@ -8237,7 +8248,8 @@ value is a leaf with no value, so it weakens to its constant. This rule, and the
 counts 68 rules where the spec counts 66 at h08.
 
 **The weakening** reads the wide else alone, always sound: `(wc AND wa) OR wb` at `Pos`, `wa AND wb` at `Neg`
-(`RenderingWeakening.OfCase`), `wa` holding beneath `[c]`, which every row the case takes `a` on lies in.
+(`KleeneTables.CaseThen` and `CaseArms`, rows the case's weakening rules read, the then-arm's beneath its condition
+kept as `weakenedthen`), `wa` holding beneath `[c]`, which every row the case takes `a` on lies in.
 
 **A type test proposes itself.** The `Bare` template fits the seven type tests over any reader, its core the service's
 own test, which answers what Calcite's body does (`Service.TypeTestBodiesMatchTheService`); the gate decides.
@@ -8359,7 +8371,7 @@ row for the call leaves its place without an import (`RenderingValuedTests.APlac
 **What the order test is told.** `image` reads `Gathered`, which `place` grows in the same fixpoint, so the order test
 would refuse its universal; it reads it whole by the count guard (invariant 3): the rule states `set-length` of the
 gathering equal to the call's `Arity`, a host-written value, and each operand gives one import (one reader a `Val`, one
-`ArmImport` a stratum, no head merging classes), any other gathering falling under `Malformed`. The test excuses a set
+`ArmImport` a stratum, no head merging classes), so a gathering of that count holds each ordinal once. The test excuses a set
 only in a rule that states its count; a plant without one is refused. `image` and `assume` write `Imported` and
 `Assumed`, which the host owns, for keys the host never writes (a `Valued` place, an atom over one), and the test reads
 those two writes as any rule's, complete only after the `places` stratum.
@@ -8367,8 +8379,8 @@ those two writes as any rule's, complete only after the `places` stratum.
 **`RenderingImage` decides nothing.** It reads cells and evaluates: the call on single values where C#'s answer is
 Calcite's (an ASCII case mapping, a count of UTF-16 units, a trim of spaces, a reversal with no surrogate, a
 concatenation), and elsewhere every value of the result's type, with absent wherever an operand may be other than the
-function's domain. Whether the keys agree is the rule's, over the rows (the owner's hybrid rule). A key it cannot read,
-or a gathering missing or doubling an ordinal, is `Malformed`, a key no row holds, so no image is written.
+function's domain. Whether the keys agree is the rule's, over the rows (the owner's hybrid rule). A kind no class names
+is keyed as it is, a key no row holds, so no image is written; whether a gathering is whole is the count guard's (above).
 
 **A two-operand call is keyed by its subject, through the readers its row was measured over.** The rows were measured
 over one operand: a count's, a case mapping's, `REPLACE`'s first, `POSITION`'s second, a trim's string, every operand of
@@ -8378,8 +8390,9 @@ side (`CosmosAxiom.Readers`): the text accessor, `RETURNING VARCHAR` and a cast 
 functions, and the typed and cast readings at `INTEGER`, `BIGINT`, `DECIMAL` and `DOUBLE` for the arithmetic, each of
 which `CosmosFunctionComparison` asks Calcite through, a key's answer the worst over them. `CosmosAxiomRows.ReadFunctionReads`
 reads both into S as constant raw facts, `functionsubject` and `measuredreaders` (since f12 `functionsubjects`, every
-operand the rows name, and `measuredreaders` an intersection of each axiom's), which the image rule reads beside the keys; `RenderingImage.Keys` takes them as operands and falls under `Malformed` where an operand is neither a literal nor
-read through a measured reader. No C# table says which operand or reader a row is of, and a reader no row names (a
+operand the rows name, and `measuredreaders` an intersection of each axiom's), which the image rule reads beside the keys; `RenderingImage.Keys` takes them as operands and keys only the operands
+they name, a literal through S's `literalreaders`, and whether every operand is read through a measured reader is the
+image rule's (`functionreaders`). No C# table says which operand or reader a row is of, and a reader no row names (a
 `CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column bridge asks S's image of each call
 since G6 (*The column bridge asks S's image*), and the one function no run measured, `LENGTH`, is declared unmeasured
 (`CosmosAxiomRows.Declared`), so S images it on no operand and no target. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
@@ -8871,7 +8884,8 @@ Proven. At the gate, real pushes left neither Proven nor decided by name, h14b's
 ### The raw reading through its column (rawtyped)
 
 **What moved.** Under S's reading alone (`places`), the loader names the column a declared field is read through,
-`SqlValue.Raw.Column`: `VARIANT`, `ANY` or `VARCHAR`, the three of `Calcite.RawNullIsSqlNull`. A `CHAR` field, an
+`SqlValue.Raw.Column`: `VARIANT`, `ANY` or `VARCHAR`, the three of `Calcite.RawNullIsSqlNull`. A `CHAR` field (until the
+re-audit's close, which names its column too, read as the union by rows), an
 accessor, an item chain and the cast-to-`ANY` marker name none and read the union as before, and so do F and every
 planning path, which never set `places`: the eight plan digests at the commit are byte-equal to the parent's
 (`Production` `3dc62a38…`, `Emulator` `542c9f12…`).
@@ -9186,9 +9200,10 @@ failure, what a whole condition over a value that is no boolean keeps as it is; 
 answers that are comparators, `Matching` those that are matchers, and `Unmatched` the comparators no matcher is. The
 leaf reads those sets, where it named the answers in three lists and an affix's in a fourth, and `CellOutcomes` reads
 `AnswerMeanings.Whole` and its rows, where it held both as a mask and a sentinel. Which classes are placed by their
-order's comparators is S's too: the rule *a class some row orders is placed by its comparators* derives `placed` from
-the outcome rows (strings and numbers), of every set alike, so a set whose table holds no order of a placed class still
-asks for one and is named missing it; it reaches the leaf with the table (`ServiceTable.Placed`). G2 replaces the three
+order's comparators is S's too: a rule derives it from the outcome rows (strings and numbers), of every set alike, so
+a set whose table holds no order of a placed class still asks for one and is named missing it; it reaches the leaf with
+the table. Since the re-audit the rule is *a class whose key over no cell names a comparator is read by its test's
+readers* (`readsover`, `ServiceTable.ReaderClasses`), which says an affix's matched class as well. G2 replaces the three
 sets with the answers that read a key and how each reads a whole number, and the mask `Whole` with a rule over a class.
 
 **The case mapping (F5).** `UPPER` and `LOWER` part over every band beyond ASCII on both targets in
@@ -9260,14 +9275,16 @@ complete an earlier stratum, is read as not:
   string only up to; and one the set's spelling and the test's matcher read apart, sent respelled to a matcher whose
   spelling keeps it or as written to one that rewrites it.
 - `uncut`: the bands a range's affix cut does not tell, those the matcher's spelling rewrites where that spelling splits
-  the pattern (`spelling-splits`, the matcher's own evaluation of a concrete pattern, `ServiceLeaf.Splits`: the stored
-  spelling's `AffixPattern.StoredAlike` under the emulator's matcher, never under one that matches what it is sent).
+  the pattern (`spelling-splits`, the matcher's own evaluation of a concrete pattern, `ServiceLeaf.Splits` over
+  `ServiceLeaf.Spellings`: the stored spelling's `AffixPattern.StoredAlike` under the emulator's matcher, never under one
+  that matches what it is sent, and always under a matcher with no evaluation there).
 
 `ServiceLeaf` tests them on concrete cells and names no band, character or comparator: `Place`, `Sides` and `Matched`
 lost their arms for `StoredCodePoint`, U+0000, the high band and the surrogates, and `ByCodePoint` its reading of a lone
 surrogate as U+FFFD: it compares a lone surrogate by its unit and a pair as the code point it encodes, as the service
 orders what it holds. What a matcher matches of two concrete strings is `ServiceLeaf.Matches`, and whether its spelling
-splits a concrete pattern `ServiceLeaf.Splits`, the stored spelling's evaluations beside `Compare`'s; which comparators
+splits a concrete pattern `ServiceLeaf.Splits`, each matcher's evaluation in `Spellings` beside its match in
+`Matchings`; which comparators
 read a cell, a string's or a number's, is the answers' roles, keyed by the order's class (F4, G2's `readby`).
 `RenderingLeafReadsTests` holds what S hands a comparison, an affix and a pair under each
 target's set and the portable one, a planted matcher that rewrites under a set sent as written, and which names each set
@@ -9464,9 +9481,9 @@ either side of a parenthesis.
 The junction rule joins its arms' bests by `Paired` too, since fix round 2, where it joined them by `Joined` under
 `form-is-join-of`, which is gone. `Joined` flattened, dropped copies and folded constants in C#, and the second check
 named it. The regroup and units rules give what it gave, and with the price ranking groups the bests, and the plans,
-are what they were. `Joined` stays the weakening's alone (`ServiceForm.Folded`, the junction weakening rule,
-`RenderingWeakening.OfCase`): `weakening` has no lattice, one form a node, so a rule cannot give a node both the paired
-weakening and the regrouped one and keep one (`TODO.md`, *The weakening's assembly is C#'s*).
+are what they were. `Joined` stayed the weakening's alone, `weakening` having no lattice, until the re-audit gave it
+one (*What the re-audit moved into rules*): the weakening rules write candidates as their parts stand, these two rules
+rewrite them, and the cheapest is kept.
 
 **What stays C#.** `ServiceLeaf` evaluates one atom on concrete cells: it compares two strings, places a number by the
 flags its readings give, matches a pattern and reads a key. `ServiceCompound` reads a key for each pair of operand
@@ -9546,7 +9563,9 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   `Matched` and `Covers` are gone.
 - *`LIKE`'s units.* `Calcite.LikeReadsItsPatternsUnits` (`CalciteLikeMeasurementTests`, in process) says `%` is any
   run, line terminators among them; `_` one code point, a surrogate pair one, that is no Java line terminator; and every
-  other unit itself, a backslash, a bracket and a dot among them, there being no escape unless one is written. `Like`
+  other unit but U+0000 itself, a backslash, a bracket and a dot among them. U+0000 is Calcite's escape where none is
+  written (`Calcite.LikeEscapesByNul`, measured at the re-audit's close), so that row is measured over every class but
+  U+0000's, and a pattern holding one is unread on Calcite's side. `Like`
   matches a pattern unit by unit as the table says, so `_` and `\` are decided, and a pattern holding a unit no row reads
   is not. `AffixPattern.Matches` no longer folds that undecided answer: every pattern it is asked of is runs and `%`.
 - *`BooleanCast`.* Its rows are the table's, its answers `readtruths` and the comparisons the cell decides, its rests
@@ -9588,6 +9607,53 @@ one template per test and a weight in `Priced` land with h15's templates (`TODO.
 reading's rows, the text's, a raw value's, a typed one's or a cast's, is still `Reading.Parse`'s by the spelling, and
 `EvaluatorOf` and `Kept` default to the reading's own (`TODO.md`). `LikeOn`'s number and structure misses are
 evaluation, as the audit found. Digests, the census and population D are byte-equal.
+
+### What the re-audit moved into rules
+
+The re-audit at 09801e0 found C# deciding where a row or a rule of S's should. Each is a row or a rule now; the eight
+plan digests and the census are byte-equal to the parent's.
+
+- **The weakening (G4's remainder).** *The weakening's assembly decides nothing* (above): candidates in `weakens` and
+  `weakensthen` as their parts stand, rewritten by the units, regroup and negated-constant rules, `weakening` and
+  `weakenedthen` keeping the cheapest (`Priced.Cheapest`). Which connective a position gathers a leaf's implied forms by,
+  and the shape a case's weakening takes at each position, are rows (`KleeneTables.Weakens`, `CaseThen`, `CaseArms`,
+  `Negations`). `ServiceForm.Joined` and `Folded` and `RenderingWeakening` are gone. The candidates are a relation and
+  the kept one a lattice over it, so the order the rules fire in changes nothing (`RenderingOrderTests`).
+- **Which class a test's readers read.** The affix's leaf fixed in C# that a string cell is matched and any other read
+  by its class's key, as a comparison's read `placed`. One rule over the outcome rows says both: a key over no cell that
+  names a comparator says its test's readers read the class (`readsover`), handed to the leaf as
+  `ServiceTable.ReaderClasses`; the affix reads the entry of the class S found.
+- **A matcher's spelling.** `ServiceLeaf.Splits` named the emulator's matcher, every other never splitting. Each
+  matcher's evaluation of a pattern's spelling is a table beside its match (`ServiceLeaf.Spellings`), and a matcher with
+  none splits every pattern, so a range's cut is trusted nowhere its spelling may rewrite.
+- **A lone `%` over a range.** The leaf answered `Matching`, and Calcite's side TRUE, from the spelling. Each reads the
+  range as `%`'s row reads its classes (`LikePattern.OnLike`), as a point is read, a number's rendering over no band and
+  a structure's over every band.
+- **A JSON null literal.** `Raw.EqualOn` answered one from the coarse table; it is keyed as any class is and reads its
+  row, or none.
+- **Which readings the facts graph reads exactly.** `ReadingPrecisionTable` is gone for
+  `Calcite.TheFactsGraphReadsTheseReadingsExactly`'s rows (*Which stratum a later round may rest on is a row*, above).
+- **U+0000 in a `LIKE` pattern.** Calcite reads it as the escape where none is written (`Calcite.LikeEscapesByNul`):
+  before `_`, `%` or another U+0000 it reads that unit as itself, and before anything else or at the pattern's end it
+  raises `Invalid escape sequence`. `Calcite.LikeReadsItsPatternsUnits`' row for every other unit is measured over every
+  class but U+0000's, so `LikePattern.Read` leaves such a pattern unread on Calcite's side: S proves nothing of it, and
+  the translator, reading the same rows, computes it in process.
+- **A type test and `IS_DEFINED` over a computed place.** Where places are read the loader writes them over any value,
+  where it kept them to one that reads a path; whether one is an atom is `testreads`', which names no call's reading, so
+  none is yet.
+- **A `CHAR` field.** Where places are read the loader names the column a declared field's type names, `CHAR` among
+  them. No row measured `CHAR`'s padding, so `PredicateAtom.UnionColumns` holds it and S's rules read it as the
+  measured columns' union (`unioncolumn`): its truths on each key (`rawunion`), what it reads each class as
+  (`readerrows`), its strictness and its order the union's reading's, and its cuts the union's (`ReaderEdgesTable`). A
+  row measuring `CHAR` replaces the union with its own.
+
+**What did not move.** Which test a `LIKE` is proposed as lands with h15's templates (`TODO.md`). `JSON_QUERY` under a
+null test moves with h15, where it changes four census lines. The translator writer's choice of which operand it sends
+in the stored spelling goes with the writer, `WHERE` at h16 and columns at h37; S's printer already spells every
+literal by its set. `ReaderEdgesTable`'s cast keys equal `measuredcast`'s rows, which
+`RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts` holds, and move with h15's cast targets (`TODO.md`). F's
+own verdict over `readsexactly`, a rule over a conjunct's atoms in place of `RenderingFamily.ReadExactly`'s walk, waits
+for h15, when F's terms are S's (`TODO.md`).
 
 ## Differential testing
 

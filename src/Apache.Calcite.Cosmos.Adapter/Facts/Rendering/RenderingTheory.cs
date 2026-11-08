@@ -42,7 +42,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Evidence = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<string>>("evidence", ValueLattice.Union<string>());
             Final = Graph.DefineFunction<MeasuredKey, RenderingSet, ValueSet<CosmosAnswer>>("final");
             Table = Graph.DefineFunction<RenderingSet, ValueSet<MeasuredEntry>>("table", ValueLattice.Union<MeasuredEntry>());
-            Placed = Graph.DefineFunction<ValueSet<CosmosValueClass>>("placed", ValueLattice.Union<CosmosValueClass>());
+            ReadsOver = Graph.DefineRelation<CosmosServiceTest, CosmosValueClass>("readsover");
+            ReaderClasses = Graph.DefineFunction<ValueSet<(CosmosServiceTest, CosmosValueClass)>>("readerclasses", ValueLattice.Union<(CosmosServiceTest, CosmosValueClass)>());
             Class = Graph.DefineRelation<CellClass>("class");
             RaiseOnly = Graph.DefineFunction<ValueSet<CellClass>>("raiseonly", ValueLattice.Union<CellClass>());
             Allowing = Graph.DefineRelation<RenderPosition, Verdict, Box>("allowing");
@@ -156,7 +157,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             StrictReader = Graph.DefineRelation<string>("strictreader");
             BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
             Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
-            Weakening = Graph.DefineFunction<Pred, RenderPosition, ServiceForm>("weakening");
+            Weakens = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("weakens");
+            WeakensThen = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("weakensthen");
+            Weakening = Graph.DefineFunction<Pred, RenderPosition, ServiceForm>("weakening", Priced.Cheapest);
+            WeakenedThen = Graph.DefineFunction<Pred, RenderPosition, ServiceForm>("weakenedthen", Priced.Cheapest);
+            WeakensBy = Graph.DefineRelation<RenderPosition, CosmosServiceTest>("weakensby");
+            CaseThen = Graph.DefineRelation<RenderPosition, CosmosServiceTest, CosmosServiceTest>("casethen");
+            CaseArms = Graph.DefineRelation<RenderPosition, CosmosServiceTest>("casearms");
+            Negates = Graph.DefineRelation<bool, bool>("negates");
             Leaf = Graph.DefineRelation<Pred>("leaf");
             Over = Graph.DefineRelation<Pred, Val>("over");
             CallArg = Graph.DefineRelation<Val, Val>("callarg");
@@ -224,6 +232,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ClassType = Graph.DefineFunction<CosmosValueClass, string>("classtype");
             RawColumn = Graph.DefineFunction<RawKey, string, RawAnswer>("rawcolumn");
             RawUnion = Graph.DefineFunction<RawTruths>("rawunion", RawTruths.Union);
+            // Rows at the frozen root, read beside the terms by the rule that gives such a column's reading the union's order, so
+            // held as an analysis, as readerorder is.
+            UnionColumn = Graph.DefineRelation<string>("unioncolumn", new TableOptions { Role = TableRole.Analysis });
             // Which raw column refines the text over every class the text reads, and so reads as it over a function's rows (G5).
             ReadsClasses = Graph.DefineFunction<string, ValueSet<CosmosValueClass>>("readsclasses", ValueLattice.Union<CosmosValueClass>());
             RefinesText = Graph.DefineFunction<string, ValueSet<CosmosValueClass>>("refinestext", ValueLattice.Union<CosmosValueClass>());
@@ -519,6 +530,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The raw columns' answers, joined key by key from every column's: what a raw reading's cells read.</summary>
         public Function<RawTruths> RawUnion { get; }
 
+        /// <summary>A column a raw value is read through that no row measured, read as the measured columns' union (<see cref="PredicateAtom.UnionColumns"/>).</summary>
+        public Relation<string> UnionColumn { get; }
+
         /// <summary>The classes a reading's rows say it reads: what refining it is over (G5).</summary>
         public Function<string, ValueSet<CosmosValueClass>> ReadsClasses { get; }
 
@@ -550,11 +564,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<RenderingSet, ValueSet<MeasuredEntry>> Table { get; }
 
         /// <summary>
-        /// The classes some row measures an order of, whose comparisons the leaf places by the order entry's comparators
-        /// (F4): derived from the rows, of every set alike, so that a set whose table holds no order of a class still asks
-        /// for that order and is named missing it.
+        /// Each test and class whose key over no cell some row answers with a comparator: the class's cells are read by that
+        /// entry's readers, an order's comparators placing a comparison's cell (F4) and an affix's matchers matching one
+        /// (h07). Derived from the rows, of every set alike, so that a set whose table holds no such entry still asks for it
+        /// and is named missing it.
         /// </summary>
-        public Function<ValueSet<CosmosValueClass>> Placed { get; }
+        public Relation<CosmosServiceTest, CosmosValueClass> ReadsOver { get; }
+
+        /// <summary>
+        /// <see cref="ReadsOver"/> as one set, which each set's view hands the leaf (<see cref="ServiceTable.ReaderClasses"/>):
+        /// a class it holds of a test is read by the entry's readers, and any other by its own key.
+        /// </summary>
+        public Function<ValueSet<(CosmosServiceTest, CosmosValueClass)>> ReaderClasses { get; }
 
         public Relation<CellClass> Class { get; }
         public Function<ValueSet<CellClass>> RaiseOnly { get; }
@@ -874,7 +895,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         // row an operator, which the lattice meets, so a name is strict only where every operator it stands for is), and the
         // readers Calcite answers null for over an absent path; the host writes a root where it stands (`at`), and beside
         // the terms each leaf over the value it is and each call's operands. The rules write the rest: each node's position, its cheapest exact form (`None`
-        // until one is found), the forms it implies, and one weakening, lattice-free, which a second write faults.
+        // until one is found), the forms it implies, every form that weakens it, written as its parts stand and regrouped and
+        // folded by the rules over each, and the cheapest of them (Priced.Cheapest).
         public Relation<Pred, RenderPosition> At { get; }
         public Relation<TemplateId, RenderPosition> Template { get; }
         public Relation<TemplateId, string> Fits { get; }
@@ -885,7 +907,37 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<string> StrictReader { get; }
         public Function<Pred, RenderPosition, Priced> BestExact { get; }
         public Function<Pred, RenderPosition, ValueSet<ServiceForm>> Implied { get; }
+
+        /// <summary>
+        /// A form that weakens a node at a position: each one a rule writes, as its parts stand, and each one the units and
+        /// regroup rules rewrite one of them to. A relation, so that every form is rewritten, not only the cheapest at the
+        /// moment it was read: the cheapest of a junction's rewrites may come from a pair the cheapest unrewritten one hides.
+        /// </summary>
+        public Relation<Pred, RenderPosition, ServiceForm> Weakens { get; }
+
+        /// <summary>A form that weakens a case's then-arm beneath its condition, where its position reads it so (<see cref="CaseThen"/>).</summary>
+        public Relation<Pred, RenderPosition, ServiceForm> WeakensThen { get; }
+
+        /// <summary>The cheapest form that weakens a node at a position (<see cref="Weakens"/>, <see cref="Priced.Cheapest"/>).</summary>
         public Function<Pred, RenderPosition, ServiceForm> Weakening { get; }
+
+        /// <summary>The cheapest form that weakens a case's then-arm beneath its condition (<see cref="WeakensThen"/>).</summary>
+        public Function<Pred, RenderPosition, ServiceForm> WeakenedThen { get; }
+
+        /// <summary>The connective a position joins a leaf's implied forms by (<see cref="KleeneTables.Weakens"/>).</summary>
+        public Relation<RenderPosition, CosmosServiceTest> WeakensBy { get; }
+
+        /// <summary>
+        /// The position a case's weakening reads its then-arm beneath its condition at, with the connective that joins them and
+        /// the one that joins that with the else-arm (<see cref="KleeneTables.CaseThen"/>).
+        /// </summary>
+        public Relation<RenderPosition, CosmosServiceTest, CosmosServiceTest> CaseThen { get; }
+
+        /// <summary>The position a case's weakening joins its arms' at, and the connective (<see cref="KleeneTables.CaseArms"/>).</summary>
+        public Relation<RenderPosition, CosmosServiceTest> CaseArms { get; }
+
+        /// <summary>Kleene's negation of each constant (<see cref="KleeneTables.Negations"/>).</summary>
+        public Relation<bool, bool> Negates { get; }
         public Relation<Pred> Leaf { get; }
         public Relation<Pred, Val> Over { get; }
         public Relation<Val, Val> CallArg { get; }
@@ -978,6 +1030,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<LeafReads>("leaf reads");
             values.Register<(string, string)>("band pair");
             values.Register<(CosmosAnswer, string)>("answer reading");
+            values.Register<(CosmosServiceTest, CosmosValueClass)>("test and class");
             values.RegisterEnum<SentSpelling>();
             values.Register<ReaderEdges>("reader edges");
             values.Register<CutPoint>("cut point");
@@ -998,6 +1051,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.RegisterSet<ServiceForm>();
             values.RegisterSet<(string, string)>();
             values.RegisterSet<(CosmosAnswer, string)>();
+            values.RegisterSet<(CosmosServiceTest, CosmosValueClass)>();
             values.RegisterSet<ClassRead>();
             values.RegisterSet<(LikeUnit, string)>();
         }
@@ -1106,13 +1160,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Refutes.Of(pos, v).Is(Primitives.Singleton<CellClass>().Of(k)));
             });
 
-            // Outcome is complete here too: a class an order row is of is placed by comparators, whatever set asks.
-            tabulate.DefineRule("a class some row orders is placed by its comparators", r =>
+            // Outcome is complete here too: a key over no cell that names a comparator says its readers read the class, an
+            // order's placing a comparison's cell and an affix's matching one, whatever set asks.
+            tabulate.DefineRule("a class whose key over no cell names a comparator is read by its test's readers", r =>
             {
-                var (k, tg) = r.Vars<MeasuredKey, RenderingTarget>("k", "tg");
-                var (a, t, c) = r.Vars<CosmosAnswer, CosmosServiceTest, CosmosValueClass>("a", "t", "c");
-                r.When(a.Is(Outcome.Of(k, tg)), t.Is(Compute.Of(k, x => x.Test)), t.Is(CosmosServiceTest.Order), c.Is(Compute.Of(k, x => x.Operand)));
-                r.Then(Placed.Of().Is(Primitives.Singleton<CosmosValueClass>().Of(c)));
+                var (k, tg, mn) = r.Vars<MeasuredKey, RenderingTarget, AnswerMeanings>("k", "tg", "mn");
+                var (a, t, c, n) = r.Vars<CosmosAnswer, CosmosServiceTest, CosmosValueClass, CosmosValueClass>("a", "t", "c", "n");
+                r.When(a.Is(Outcome.Of(k, tg)), n.Is(Compute.Of(k, x => x.Cell)), n.Is(CosmosValueClass.None), mn.Is(Means.Of()), t.Is(Compute.Of(k, x => x.Test)),
+                    c.Is(Compute.Of(k, x => x.Operand)));
+                r.Where(Primitives.Contains<CosmosAnswer>().Of(Compute.Of(mn, x => x.Comparators), a));
+                r.Then(ReadsOver.Of(t, c), ReaderClasses.Of().Is(Primitives.Singleton<(CosmosServiceTest, CosmosValueClass)>().Of(Compute.Of(t, c, (x, y) => (x, y)))));
             });
 
             // Measured is complete when this stratum runs, so a key is settled once and its answers are all of them; what reads
@@ -1197,9 +1254,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             view.DefineRule("a set's settled table is viewed as its leaves read it", r =>
             {
                 var s = r.Var<RenderingSet>("s");
-                var (t, pt, pl) = r.Vars<ValueSet<MeasuredEntry>, ValueSet<MeasuredEntry>, ValueSet<CosmosValueClass>>("t", "pt", "pl");
+                var (t, pt, pl) = r.Vars<ValueSet<MeasuredEntry>, ValueSet<MeasuredEntry>, ValueSet<(CosmosServiceTest, CosmosValueClass)>>("t", "pt", "pl");
                 var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
-                r.When(t.Is(Table.Of(s)), pt.Is(PairTable.Of(s)), pl.Is(Placed.Of()), lu.Is(LikesOf.Of(s)));
+                r.When(t.Is(Table.Of(s)), pt.Is(PairTable.Of(s)), pl.Is(ReaderClasses.Of()), lu.Is(LikesOf.Of(s)));
                 r.Then(View.Of(s).Is(Compute.Of(t, pl, pt, lu, ServiceTable.Of)));
             });
         }
@@ -1674,7 +1731,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (k, o) = r.Vars<MeasuredKey, ValueSet<CosmosAnswer>>("k", "o");
                 var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
                 var lu = r.Var<ValueSet<(LikeUnit, string)>>("lu");
-                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), Rewrites.Of(c, u), lu.Is(LikesOf.Of(s)));
+                var (ft, fc) = r.Vars<CosmosServiceTest, CosmosValueClass>("ft", "fc");
+                r.When(Need.Of(z, g), Under.Of(s), ft.Is(Compute.Of(g, x => x.Test)), ReadsOver.Of(ft, fc), k.Is(Compute.Of(ft, fc, ReaderKeyOf)),
+                    o.Is(Final.Of(k, s)), Rewrites.Of(c, u), lu.Is(LikesOf.Of(s)));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
                 r.Where(RenderingPrimitives.SpellingSplits.Of(g, c, lu));
                 r.Then(Uncut.Of(g).Is(Primitives.Singleton<string>().Of(u)));
@@ -1689,8 +1748,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (k, o, mn) = r.Vars<MeasuredKey, ValueSet<CosmosAnswer>, AnswerMeanings>("k", "o", "mn");
                 var (rs, rw, b) = r.Vars<ValueSet<string>, ValueSet<string>, ValueSet<string>>("rs", "rw", "b");
                 var (c, d, u) = r.Vars<CosmosAnswer, CosmosAnswer, string>("c", "d", "u");
-                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), rs.Is(Respelled.Of(s)), rw.Is(RewrittenBy.Of(c)), mn.Is(Means.Of()),
-                    Rewrites.Of(d, u), b.Is(Compute.Of(g, CharactersOfPattern)));
+                var (ft, fc) = r.Vars<CosmosServiceTest, CosmosValueClass>("ft", "fc");
+                r.When(Need.Of(z, g), Under.Of(s), ft.Is(Compute.Of(g, x => x.Test)), ReadsOver.Of(ft, fc), k.Is(Compute.Of(ft, fc, ReaderKeyOf)),
+                    o.Is(Final.Of(k, s)), rs.Is(Respelled.Of(s)), rw.Is(RewrittenBy.Of(c)), mn.Is(Means.Of()), Rewrites.Of(d, u), b.Is(Compute.Of(g, CharactersOfPattern)));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(Compute.Of(mn, x => x.Matchers), c));
                 r.Where(Primitives.Contains<string>().Of(rs, u));
@@ -1705,8 +1765,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (k, o, mn) = r.Vars<MeasuredKey, ValueSet<CosmosAnswer>, AnswerMeanings>("k", "o", "mn");
                 var (rs, b) = r.Vars<ValueSet<string>, ValueSet<string>>("rs", "b");
                 var (c, u) = r.Vars<CosmosAnswer, string>("c", "u");
-                r.When(Need.Of(z, g), Under.Of(s), k.Is(Compute.Of(g, MatchKeyOf)), o.Is(Final.Of(k, s)), rs.Is(Respelled.Of(s)), mn.Is(Means.Of()), Rewrites.Of(c, u),
-                    b.Is(Compute.Of(g, CharactersOfPattern)));
+                var (ft, fc) = r.Vars<CosmosServiceTest, CosmosValueClass>("ft", "fc");
+                r.When(Need.Of(z, g), Under.Of(s), ft.Is(Compute.Of(g, x => x.Test)), ReadsOver.Of(ft, fc), k.Is(Compute.Of(ft, fc, ReaderKeyOf)),
+                    o.Is(Final.Of(k, s)), rs.Is(Respelled.Of(s)), mn.Is(Means.Of()), Rewrites.Of(c, u), b.Is(Compute.Of(g, CharactersOfPattern)));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(o, c));
                 r.Where(Primitives.Contains<CosmosAnswer>().Of(Compute.Of(mn, x => x.Matchers), c));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(rs, Primitives.Singleton<string>().Of(u))));
@@ -2143,40 +2204,106 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             weaken.DefineRule("a leaf whose exact form can be written as a Rex weakens to it", r =>
             {
-                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
                 var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
                 r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
                 r.Where(RenderingPrimitives.BestIsImplied.Of(b, s));
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(b, Priced.FormOf)));
+                r.When(f.Is(Compute.Of(b, Priced.FormOf)));
+                r.Then(Weakens.Of(e, pos, f));
             });
 
+            // Each implied form is a weakening of the leaf, joined as they stand by the connective its position keeps rows by,
+            // the junction's identity where there is none (KleeneTables.Weakens, Units); the rules below regroup and fold them.
             weaken.DefineRule("any other leaf weakens to what its implied forms make together", r =>
             {
-                var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
-                var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
-                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), s.Is(Implied.Of(e, pos)));
-                r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
-                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                var (b, im) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "im");
+                var (j, kc) = r.Vars<CosmosServiceTest, bool>("j", "kc");
+                r.When(At.Of(e, pos), Leaf.Of(e), b.Is(BestExact.Of(e, pos)), im.Is(Implied.Of(e, pos)), WeakensBy.Of(pos, j), Units.Of(j, kc, false));
+                r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, im));
+                r.When(f.Is(Compute.Of(j, im, kc, ServiceForm.Gathered)));
+                Composes(r, j, null);
+                r.Then(Weakens.Of(e, pos, f));
             });
 
             weaken.DefineRule("a junction's weakening joins its arms' weakenings", r =>
             {
                 var (e, x, y) = r.Vars<Pred, Pred, Pred>("e", "x", "y");
                 var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
-                var (wx, wy) = r.Vars<ServiceForm, ServiceForm>("wx", "wy");
-                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), wx.Is(Weakening.Of(x, pos)), wy.Is(Weakening.Of(y, pos)));
+                var (wx, wy, f) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wx", "wy", "f");
+                r.When(At.Of(e, pos), First.Of(e, x), Junction.Of(e, x, y, j), wx.Is(Weakening.Of(x, pos)), wy.Is(Weakening.Of(y, pos)), f.Is(Compute.Of(j, wx, wy, ServiceForm.Paired)));
                 Composes(r, j, null);
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(j, wx, wy, ServiceForm.Joined)));
+                r.Then(Weakens.Of(e, pos, f));
             });
 
             weaken.DefineRule("a negation's weakening is its operand's at the opposite position, negated", r =>
             {
                 var (e, a) = r.Vars<Pred, Pred>("e", "a");
-                var (pos, q, w) = r.Vars<RenderPosition, RenderPosition, ServiceForm>("pos", "q", "w");
-                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), w.Is(Weakening.Of(a, q)));
+                var (pos, q) = r.Vars<RenderPosition, RenderPosition>("pos", "q");
+                var (w, f) = r.Vars<ServiceForm, ServiceForm>("w", "f");
+                r.When(At.Of(e, pos), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), w.Is(Weakening.Of(a, q)), f.Is(Compute.Of(w, ServiceForm.Strip)));
                 Composes(r, CosmosServiceTest.Not, null);
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(w, ServiceForm.Negated)));
+                r.Then(Weakens.Of(e, pos, f));
+            });
+
+            // A negated constant is Kleene's negation of it (KleeneTables.Negations), one node fewer, so the price keeps it.
+            weaken.DefineRule("a weakening that negates a constant is Kleene's negation of it", r =>
+            {
+                var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
+                var (kc, kn) = r.Vars<bool, bool>("kc", "kn");
+                r.When(Weakens.Of(e, pos, f), Negates.Of(kc, kn));
+                r.Where(RenderingPrimitives.FormNegates.Of(f, Compute.Of(kc, ServiceForm.ConstantOf)));
+                r.When(g.Is(Compute.Of(kn, ServiceForm.ConstantOf)));
+                Composes(r, CosmosServiceTest.Not, null);
+                r.Then(Weakens.Of(e, pos, g));
+            });
+
+            Regroups(weaken, Weakens, "a weakening");
+            Regroups(weaken, WeakensThen, "a case's then-arm weakened beneath its condition");
+
+            weaken.DefineRule("a node's weakening is the cheapest form that weakens it", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                r.When(Weakens.Of(e, pos, f));
+                r.Then(Weakening.Of(e, pos).Is(f));
+            });
+
+            weaken.DefineRule("a case's then-arm weakened beneath its condition is the cheapest form that weakens it there", r =>
+            {
+                var (e, pos, f) = r.Vars<Pred, RenderPosition, ServiceForm>("e", "pos", "f");
+                r.When(WeakensThen.Of(e, pos, f));
+                r.Then(WeakenedThen.Of(e, pos).Is(f));
+            });
+        }
+
+        // A weakening is a form like a best, which the laws S's units and regroup rules apply to a best rewrite alike (G4):
+        // written as its parts stand, folded where it holds its connective's unit and regrouped where it holds its own
+        // connective or a part twice, each form that weakens a node rewritten as an agreement of a best is, and the price
+        // keeps the cheapest (Priced.Cheapest). Whatever form the rules read, the one they write is equal to it, so each
+        // weakens the node wherever the one read does.
+        void Regroups(Ruleset weaken, Relation<Pred, RenderPosition, ServiceForm> weakens, string what)
+        {
+            weaken.DefineRule(what + " holding its connective's unit is what Kleene's logic folds it to", r =>
+            {
+                var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
+                var (j, kc, u) = r.Vars<CosmosServiceTest, bool, bool>("j", "kc", "u");
+                r.When(weakens.Of(e, pos, f), Units.Of(j, kc, u));
+                r.Where(RenderingPrimitives.FormHeads.Of(f, j));
+                r.Where(RenderingPrimitives.FormHolds.Of(f, Compute.Of(kc, ServiceForm.ConstantOf)));
+                r.When(g.Is(Compute.Of(f, kc, u, ServiceForm.Unit)));
+                Composes(r, j, null);
+                r.Then(weakens.Of(e, pos, g));
+            });
+
+            weaken.DefineRule(what + " holding its own connective or a part twice is what its connective's laws regroup it to", r =>
+            {
+                var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
+                var j = r.Var<CosmosServiceTest>("j");
+                r.When(weakens.Of(e, pos, f));
+                r.Where(RenderingPrimitives.FormIsGrouped.Of(f));
+                r.When(j.Is(Compute.Of(f, x => x.Test)), g.Is(Compute.Of(f, ServiceForm.Regrouped)));
+                Composes(r, j, null);
+                r.Then(weakens.Of(e, pos, g));
             });
         }
 
@@ -2594,6 +2721,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(RawUnion.Of().Is(Compute.Of(k, c, t, RawTruths.Of)));
             });
 
+            // A column no row measured, a CHAR's, answers each key as the union does until a row measures it: every measured
+            // column's answer joined under its key, as under the union's.
+            raw.DefineRule("a raw column no row measured answers each key as the union of those that were", r =>
+            {
+                var (k, c, u) = r.Vars<RawKey, string, string>("k", "c", "u");
+                var t = r.Var<RawAnswer>("t");
+                r.When(t.Is(RawColumn.Of(k, c)), UnionColumn.Of(u));
+                r.Then(RawUnion.Of().Is(Compute.Of(k, u, t, RawTruths.Of)));
+            });
+
             raw.DefineRule("a reading reads the classes its rows name", r =>
             {
                 var (rd, a) = r.Vars<string, string>("rd", "a");
@@ -2652,6 +2789,36 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var k = r.Var<CosmosValueClass>("k");
                 r.When(a.Is(RawReads.Of(rd, c, k)));
                 r.Then(ReaderRows.Of().Is(Compute.Of(rd, c, k, a, ReadingTable.Raw)));
+            });
+
+            // A column no row measured reads as the union until a row measures it (PredicateAtom.UnionColumns): each class
+            // as every measured column reads it, null over an absent path where the union's reading is, and its order what
+            // the union's holds.
+            reads.DefineRule("a raw column no row measured reads each class as the union of those that were", r =>
+            {
+                var (rd, c, a, u) = r.Vars<string, string, string, string>("rd", "c", "a", "u");
+                var k = r.Var<CosmosValueClass>("k");
+                r.When(a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u));
+                r.Then(ReaderRows.Of().Is(Compute.Of(rd, u, k, a, ReadingTable.Raw)));
+            });
+
+            reads.DefineRule("a raw column no row measured is null over an absent path where the union's reading is", r =>
+            {
+                var (rd, c, a, u) = r.Vars<string, string, string, string>("rd", "c", "a", "u");
+                var k = r.Var<CosmosValueClass>("k");
+                r.When(a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u), StrictReader.Of(rd));
+                r.Then(StrictReader.Of(Compute.Of(rd, u, PredicateAtom.InColumn)));
+            });
+
+            // An order is an analysis, read beside the terms, so the rule reads the orders and the columns alone, and which
+            // reading reads every column is what its name says of its shape (reads-every-column).
+            reads.DefineRule("a raw column no row measured holds each order the union's reading holds", r =>
+            {
+                var (rd, u) = r.Vars<string, string>("rd", "u");
+                var o = r.Var<ValueSet<string>>("o");
+                r.When(o.Is(ReaderOrder.Of(rd)), UnionColumn.Of(u));
+                r.Where(RenderingPrimitives.ReadsEveryColumn.Of(rd));
+                r.Then(ReaderOrder.Of(Compute.Of(rd, u, PredicateAtom.InColumn)).Is(o));
             });
         }
 
@@ -2828,16 +2995,43 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(h)));
             });
 
-            // The wide else alone, which is sound beneath any condition.
-            weaken.DefineRule("a case weakens to its arms' weakenings under its condition's", r =>
+            // The wide else alone, which is sound beneath any condition, in the shape the position's rows give
+            // (KleeneTables.CaseThen, CaseArms): the then-arm's weakening beneath the condition's joined with the else-arm's,
+            // or the arms' joined.
+            weaken.DefineRule("a case's then-arm weakens beneath its condition to their weakenings joined, where its position reads it so", r =>
             {
                 var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
                 var bw = r.Var<Pred>("bw");
-                var pos = r.Var<RenderPosition>("pos");
-                var (wc, wa, wb) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wc", "wa", "wb");
-                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), wc.Is(Weakening.Of(c, RenderPosition.Pos)), wa.Is(Weakening.Of(a, pos)), wb.Is(Weakening.Of(bw, pos)));
-                ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or));
-                r.Then(Weakening.Of(e, pos).Is(Compute.Of(pos, wc, wa, wb, RenderingWeakening.OfCase)));
+                var (pos, j, k) = r.Vars<RenderPosition, CosmosServiceTest, CosmosServiceTest>("pos", "j", "k");
+                var (wc, wa, f) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wc", "wa", "f");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), CaseThen.Of(pos, j, k), wc.Is(Weakening.Of(c, RenderPosition.Pos)), wa.Is(Weakening.Of(a, pos)),
+                    f.Is(Compute.Of(j, wc, wa, ServiceForm.Paired)));
+                Composes(r, j, null);
+                r.Then(WeakensThen.Of(e, pos, f));
+            });
+
+            weaken.DefineRule("a case weakens to its then-arm's weakening beneath its condition joined with its else-arm's, where its position reads it so", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var (pos, j, k) = r.Vars<RenderPosition, CosmosServiceTest, CosmosServiceTest>("pos", "j", "k");
+                var (wt, wb, f) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wt", "wb", "f");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), CaseThen.Of(pos, j, k), wt.Is(WeakenedThen.Of(e, pos)), wb.Is(Weakening.Of(bw, pos)),
+                    f.Is(Compute.Of(k, wt, wb, ServiceForm.Paired)));
+                Composes(r, k, null);
+                r.Then(Weakens.Of(e, pos, f));
+            });
+
+            weaken.DefineRule("a case weakens to its arms' weakenings joined, where its position joins them", r =>
+            {
+                var (e, c, a, bn) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "a", "bn");
+                var bw = r.Var<Pred>("bw");
+                var (pos, j) = r.Vars<RenderPosition, CosmosServiceTest>("pos", "j");
+                var (wa, wb, f) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("wa", "wb", "f");
+                r.When(At.Of(e, pos), e.Is(Chosen.Of(c, a, bn, bw)), CaseArms.Of(pos, j), wa.Is(Weakening.Of(a, pos)), wb.Is(Weakening.Of(bw, pos)),
+                    f.Is(Compute.Of(j, wa, wb, ServiceForm.Paired)));
+                Composes(r, j, null);
+                r.Then(Weakens.Of(e, pos, f));
             });
         }
 
@@ -2913,8 +3107,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static string AffixShapeOf(ServiceForm form, ValueSet<(LikeUnit, string)> likes) =>
             form.PatternOf(ServiceTable.UnitsOf(likes)) is { } pattern ? AffixPattern.ShapeOf(pattern.Spelled) : "";
 
-        /// <summary>The key of a test's entry over a string, which names its matchers.</summary>
-        static MeasuredKey MatchKeyOf(ServiceForm form) => MeasuredKey.Of(form.Test, CosmosValueClass.String, CosmosValueClass.None);
+        /// <summary>The key of a test's entry over a class and no cell, which names the readers of the class's cells (<see cref="ReadsOver"/>).</summary>
+        static MeasuredKey ReaderKeyOf(CosmosServiceTest test, CosmosValueClass operand) => MeasuredKey.Of(test, operand, CosmosValueClass.None);
 
         /// <summary>The classes a form's literals hold characters of, which the lifts meet with what a set's targets are never sent.</summary>
         internal static ValueSet<string> LiteralClasses(ServiceForm form) => JsonValues.CharactersOf(ValueSet.From(form.Literals));
@@ -3066,6 +3260,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (j, constant, absorbs) in KleeneTables.Units)
                     w.Assume(Units.Of(j, constant, absorbs));
 
+                foreach (var (pos, j) in KleeneTables.Weakens)
+                    w.Assume(WeakensBy.Of(pos, j));
+
+                foreach (var (pos, j, k) in KleeneTables.CaseThen)
+                    w.Assume(CaseThen.Of(pos, j, k));
+
+                foreach (var (pos, j) in KleeneTables.CaseArms)
+                    w.Assume(CaseArms.Of(pos, j));
+
+                foreach (var (constant, negation) in KleeneTables.Negations)
+                    w.Assume(Negates.Of(constant, negation));
+
+                foreach (var column in PredicateAtom.UnionColumns)
+                    w.Assume(UnionColumn.Of(column));
+
                 // What reads each test's entry, how a comparator reads a whole number (G2); what a failing side stands for (G4);
                 // the kinds a pair's side holds, and each set's pair table, empty until a row reads one (G3).
                 foreach (var (test, operand, answer) in definition.Means.ReadBy.AsEnumerable())
@@ -3162,7 +3371,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 w.Assume(RawUnion.Of().Is(RawTruths.Empty));
 
-                w.Assume(Means.Of().Is(definition.Means), Placed.Of().Is(ValueSet<CosmosValueClass>.Empty), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
+                w.Assume(Means.Of().Is(definition.Means), ReaderClasses.Of().Is(ValueSet<(CosmosServiceTest, CosmosValueClass)>.Empty), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
                     Rewriting.Of().Is(ValueSet<CosmosAnswer>.Empty), RexGrammar.Of().Is(RenderingRexGrammar.Written), UnknownClasses.Of().Is(ValueSet<CellClass>.Empty));
             });
 

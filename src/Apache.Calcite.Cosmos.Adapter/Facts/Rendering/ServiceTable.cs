@@ -9,8 +9,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// A set's table as the evaluation primitives read it: its entries, indexed by key; the classes S placed by their order's
-    /// readers (<see cref="RenderingTheory.Placed"/>); the keys S read a comparison of two paths by, in a table of their
+    /// A set's table as the evaluation primitives read it: its entries, indexed by key; the tests and classes S found an
+    /// entry's readers read (<see cref="RenderingTheory.ReaderClasses"/>); the keys S read a comparison of two paths by, in a table of their
     /// own (G3); and what the set's <c>LIKE</c> reads each unit of a pattern as, by its row (<see cref="RenderingTheory.LikesOf"/>,
     /// G7); equal by content, since Eggnog interns a value by its equality. S views each set's once it is settled
     /// (<see cref="RenderingTheory.View"/>), and the theory holds it.
@@ -21,10 +21,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Dictionary<MeasuredKey, MeasuredEntry> _index;
         readonly Dictionary<MeasuredKey, MeasuredEntry> _pairs;
 
-        ServiceTable(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed, ValueSet<MeasuredEntry> pairs, ValueSet<(LikeUnit, string)> likes)
+        ServiceTable(ValueSet<MeasuredEntry> entries, ValueSet<(CosmosServiceTest, CosmosValueClass)> readerClasses, ValueSet<MeasuredEntry> pairs, ValueSet<(LikeUnit, string)> likes)
         {
             Entries = entries;
-            Placed = placed;
+            ReaderClasses = readerClasses;
             Pairs = pairs;
             Likes = likes;
             LikeUnits = UnitsOf(likes);
@@ -35,8 +35,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Every entry, one a key.</summary>
         public ValueSet<MeasuredEntry> Entries { get; }
 
-        /// <summary>The classes whose comparisons are placed by their order entry's readers, as S derived them.</summary>
-        public ValueSet<CosmosValueClass> Placed { get; }
+        /// <summary>
+        /// The tests and classes whose entry over no cell names the readers of the class's cells, as S derived them
+        /// (<see cref="RenderingTheory.ReadsOver"/>): an order's, which place a comparison's cell, and an affix's, which match one.
+        /// </summary>
+        public ValueSet<(CosmosServiceTest, CosmosValueClass)> ReaderClasses { get; }
+
+        /// <summary>Whether S found the entry of a test over a class to name the readers of the class's cells.</summary>
+        public bool ReadsOver(CosmosServiceTest test, CosmosValueClass operand) => ReaderClasses.Contains((test, operand));
 
         /// <summary>Every key of a comparison of two paths S read off the rows, one a key: the pair table (G3).</summary>
         public ValueSet<MeasuredEntry> Pairs { get; }
@@ -48,15 +54,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public ValueSet<LikeUnit> LikeUnits { get; }
 
         /// <summary>
-        /// The view of a set's entries, the placed classes, the pair table and the units its <c>LIKE</c> reads; two entries
-        /// for one key throw.
+        /// The view of a set's entries, the classes its readers read, the pair table and the units its <c>LIKE</c> reads; two
+        /// entries for one key throw.
         /// </summary>
-        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed, ValueSet<MeasuredEntry> pairs, ValueSet<(LikeUnit, string)> likes) =>
-            new(entries, placed, pairs, likes);
+        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<(CosmosServiceTest, CosmosValueClass)> readerClasses, ValueSet<MeasuredEntry> pairs,
+            ValueSet<(LikeUnit, string)> likes) => new(entries, readerClasses, pairs, likes);
 
-        /// <summary>The view of a set's entries, the placed classes and the pair table, its <c>LIKE</c> reading no unit.</summary>
-        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed, ValueSet<MeasuredEntry> pairs) =>
-            Of(entries, placed, pairs, ValueSet<(LikeUnit, string)>.Empty);
+        /// <summary>The view of a set's entries, the classes its readers read and the pair table, its <c>LIKE</c> reading no unit.</summary>
+        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<(CosmosServiceTest, CosmosValueClass)> readerClasses, ValueSet<MeasuredEntry> pairs) =>
+            Of(entries, readerClasses, pairs, ValueSet<(LikeUnit, string)>.Empty);
 
         /// <summary>The units of a set's rows of <c>LIKE</c>, apart from their rows.</summary>
         public static ValueSet<LikeUnit> UnitsOf(ValueSet<(LikeUnit, string)> likes) => ValueSet.From(likes.AsEnumerable().Select(l => l.Item1));
@@ -65,8 +71,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public void Cite(LikePattern pattern, ISet<string> rows) =>
             rows.UnionWith(Likes.AsEnumerable().Where(l => pattern.Rows.Contains(l.Item1)).Select(l => l.Item2));
 
-        /// <summary>The view of a set's entries and the placed classes, with no pair read.</summary>
-        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<CosmosValueClass> placed) => Of(entries, placed, ValueSet<MeasuredEntry>.Empty);
+        /// <summary>The view of a set's entries and the classes its readers read, with no pair read.</summary>
+        public static ServiceTable Of(ValueSet<MeasuredEntry> entries, ValueSet<(CosmosServiceTest, CosmosValueClass)> readerClasses) =>
+            Of(entries, readerClasses, ValueSet<MeasuredEntry>.Empty);
 
         public bool TryGet(MeasuredKey key, [MaybeNullWhen(false)] out MeasuredEntry entry) => _index.TryGetValue(key, out entry);
 
@@ -109,13 +116,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <inheritdoc />
-        public bool Equals(ServiceTable? other) => other is not null && Entries.Equals(other.Entries) && Placed.Equals(other.Placed) && Pairs.Equals(other.Pairs) && Likes.Equals(other.Likes);
+        public bool Equals(ServiceTable? other) => other is not null && Entries.Equals(other.Entries) && ReaderClasses.Equals(other.ReaderClasses) && Pairs.Equals(other.Pairs) && Likes.Equals(other.Likes);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => Equals(obj as ServiceTable);
 
         /// <inheritdoc />
-        public override int GetHashCode() => HashCode.Combine(Entries, Placed, Pairs, Likes);
+        public override int GetHashCode() => HashCode.Combine(Entries, ReaderClasses, Pairs, Likes);
 
     }
 

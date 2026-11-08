@@ -28,10 +28,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
 
         /// <summary>
-        /// The union S holds is, key by key, every column's answer joined, and beside it each column's own under the key of
-        /// the reading through that column alone (rawtyped), each S's rules' answer for that column, and nothing else: every
-        /// class a column states, an absent path its own (F3), beside each literal it is compared beside. Both lattices keep
-        /// their laws over the answers and unions S gives.
+        /// The union S holds is, key by key, every measured column's answer joined, and beside it each column's own under the
+        /// key of the reading through that column alone (rawtyped), each S's rules' answer for that column, and nothing else:
+        /// every class a column states, an absent path its own (F3), beside each literal it is compared beside. A column no
+        /// row measured (<see cref="PredicateAtom.UnionColumns"/>, a <c>CHAR</c>'s) answers each key as the union does. Both
+        /// lattices keep their laws over the answers and unions S gives.
         /// </summary>
         [Fact]
         public void TheUnionIsEveryKeysColumnsJoined()
@@ -39,6 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var s = ProbeRows.ProbeTheory;
             var union = ProbeRows.Columns;
             var columns = union.Entries.Where(e => PredicateAtom.ColumnOf(e.Key.Reader) is not null).ToList();
+            var measured = columns.Where(e => PredicateAtom.RawColumns.Contains(PredicateAtom.ColumnOf(e.Key.Reader)!)).ToList();
             var joined = union.Entries.Where(e => PredicateAtom.ColumnOf(e.Key.Reader) is null).ToList();
             static RawKey Columnless(RawKey key) => key with { Reader = PredicateAtom.Columnless(key.Reader) };
 
@@ -47,12 +49,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 ["raw:VARIANT"] = 288, ["raw:ANY"] = 288, ["raw:VARCHAR"] = 48,
                 ["cast:VARCHAR:raw:VARIANT"] = 48, ["cast:VARCHAR:raw:ANY"] = 48, ["cast:VARCHAR:raw:VARCHAR"] = 48,
+                ["raw:CHAR"] = 288, ["cast:VARCHAR:raw:CHAR"] = 48,
             });
             joined.Should().HaveCount(288 + 48);
             foreach (var (key, answer) in joined)
-                answer.Should().Be(columns.Where(e => Columnless(e.Key) == key).Aggregate(new RawAnswer(), (a, e) => RawAnswer.Join(a, e.Value)), key.ToString());
-            foreach (var (key, answer) in columns)
+                answer.Should().Be(measured.Where(e => Columnless(e.Key) == key).Aggregate(new RawAnswer(), (a, e) => RawAnswer.Join(a, e.Value)), key.ToString());
+            foreach (var (key, answer) in measured)
                 s.Theory.Get(s.RawColumn.Of(Columnless(key), PredicateAtom.ColumnOf(key.Reader)!)).Should().Be(answer, key.ToString());
+            foreach (var (key, answer) in columns.Except(measured))
+                answer.Should().Be(joined.Single(e => e.Key == Columnless(key)).Value, key + " reads as the union");
 
             RawTruths.AnswerUnion.Verify([.. union.Entries.Select(e => e.Value).Distinct(), RawAnswer.Unanswered]);
             RawTruths.Union.Verify([RawTruths.Empty, union, .. union.Entries.Take(40).Select(e => RawTruths.Of(e.Key, e.Value))]);

@@ -619,6 +619,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// U+0000 is Calcite's escape where no <c>ESCAPE</c> is written (<c>Calcite.LikeEscapesByNul</c>), and its rows read
+        /// every other unit (<c>Calcite.LikeReadsItsPatternsUnits</c>): a pattern holding one is unread, so neither
+        /// <c>STARTSWITH</c> nor <c>LIKE</c> is written for it, over a string that holds no U+0000 either.
+        /// </remarks>
+        [Fact]
+        public void LikeWithAPatternCalcitesRowsLeaveUnreadIsDeclined()
+        {
+            foreach (var pattern in new[] { "B\0%", "B\0_", "B\0", "%\0%" })
+            {
+                CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern))).Should().BeFalse(pattern.Replace("\0", "<U+0000>"));
+                CanTranslate(Translator(Holding(JsonCharacterBand.Any & ~JsonCharacterBand.Nul)), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str(pattern)))
+                    .Should().BeFalse(pattern.Replace("\0", "<U+0000>") + " over a string holding no U+0000");
+            }
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("B%"))).Should().BeTrue("a pattern its rows read");
+        }
+
+        /// <remarks>
         /// A computed pattern cannot be checked for the bracket divergence, so it is declined whole
         /// rather than pushed on the hope that no value contains one.
         /// </remarks>

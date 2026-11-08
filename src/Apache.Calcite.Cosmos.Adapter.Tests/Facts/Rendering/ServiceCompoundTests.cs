@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceForm.JunctionOf(CosmosServiceTest.Or, [Leaf, ServiceForm.TestOf(CosmosServiceTest.IsNull, S)]),
         ];
 
-        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, ProbeRows.Placed);
+        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, ProbeRows.ReaderClasses);
 
         static OutcomeVector Random(Random random, bool fails) => new(Cells, Cells.Cells.Select(_ =>
             new CellOutcome((ServiceOutcomes)random.Next(1, fails ? 16 : 8), random.Next(4) == 0 ? CosmosValueClass.String : CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);

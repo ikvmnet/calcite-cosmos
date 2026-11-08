@@ -89,6 +89,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static readonly IReadOnlyList<string> RawColumns = ["VARIANT", "ANY", "VARCHAR"];
 
         /// <summary>
+        /// The columns a raw value is read through that no row measured, each read as the measured columns' union until one
+        /// does: a field typed <c>CHAR</c>, whose padding no row measured. S's rules give each the union's rows (rawtyped).
+        /// </summary>
+        public static readonly IReadOnlyList<string> UnionColumns = ["CHAR"];
+
+        /// <summary>Every column a raw value is read through: the measured ones, and those read as their union.</summary>
+        public static IEnumerable<string> Columns => RawColumns.Concat(UnionColumns);
+
+        /// <summary>
         /// Returns a reader read through one raw column: <c>raw:VARIANT</c> for <c>raw</c>, <c>cast:VARCHAR:raw:ANY</c> for
         /// <c>cast:VARCHAR:raw</c>. The raw reading is always innermost, so the column is the reader's last segment.
         /// </summary>
@@ -100,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>The raw column a reader is read through, or <c>null</c> for a reader naming none.</summary>
         public static string? ColumnOf(string reader)
         {
-            foreach (var column in RawColumns)
+            foreach (var column in Columns)
                 if (reader == RawReader + ":" + column || reader.EndsWith(":" + RawReader + ":" + column, StringComparison.Ordinal))
                     return column;
 
@@ -500,7 +509,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// finds a value, the match, its pattern read by Calcite's rows of its units (G7), so one they leave unread is either.
         /// A string the reading's rows read as itself is matched; a cell an affix cut by the pattern's spelling matches as
         /// cut where each unit read as a run or one reads the cell's classes as the spelling does (<see cref="LikePattern.OnLike"/>,
-        /// <see cref="LikePattern.OnNotLike"/>), and every string <c>%</c>. A class the rows read as rendered is matched as its
+        /// <see cref="LikePattern.OnNotLike"/>), and by <c>%</c>, which no cut parts, as the half every string is in, a number's
+        /// rendering of ASCII and a structure's of any class alike. A class the rows read as rendered is matched as its
         /// rendering: a boolean as <c>true</c> or <c>false</c>, a number in its grammar's units (<see cref="Renderings.MayBeNumberUnit"/>),
         /// so a pattern holding another unit as itself misses every number, and a structure between its brackets
         /// (<see cref="Renderings.MayRenderStructureLike"/>). Anything else is either.
@@ -518,14 +528,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return truths | (pattern is null ? Truths.True | Truths.False : cell switch
             {
                 PathCell.Point { Value: var v } when IsString(v) => Of(pattern.Matches(StringOf(v))),
-                PathCell.Strings when universal => Truths.True,
+                PathCell.Strings s when universal => Of(pattern.OnLike(s.Classes)),
                 PathCell.Strings s when s.Like?.Contains(pattern.Spelled) == true => Of(pattern.OnLike(s.Classes)),
                 PathCell.Strings s when s.NotLike?.Contains(pattern.Spelled) == true => Of(pattern.OnNotLike(s.Classes)),
                 PathCell.Strings => Truths.True | Truths.False,
                 PathCell.Point { Value: var v } when renders && TypeOf(v) == BooleanType => Of(pattern.Matches(Renderings.BooleanText(v))),
-                PathCell.Point { Value: var v } when renders && IsNumber(v) => Of(universal ? true : MayBeNumber(pattern) ? null : false),
-                PathCell.Numbers when renders => Of(universal ? true : MayBeNumber(pattern) ? null : false),
-                PathCell.Structure { Type: var type } when renders => Of(universal ? true : Renderings.MayRenderStructureLike(type, pattern) ? null : false),
+                PathCell.Point { Value: var v } when renders && IsNumber(v) => Of(universal ? pattern.OnLike(NoBand) : MayBeNumber(pattern) ? null : false),
+                PathCell.Numbers when renders => Of(universal ? pattern.OnLike(NoBand) : MayBeNumber(pattern) ? null : false),
+                PathCell.Structure { Type: var type } when renders => Of(universal ? pattern.OnLike(AllBands) : Renderings.MayRenderStructureLike(type, pattern) ? null : false),
                 _ => Truths.True | Truths.False,
             });
         }
@@ -1122,9 +1132,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// A string is equal to the one with its units alone (<c>Calcite.RawStringEqualityIsOrdinal</c>), and a number
                 /// to a number literal through its box: an <c>ANY</c>'s, a long by its value and any other number by its double,
                 /// which the theory spells alike written with a point, so both; and a <c>VARIANT</c>'s only where the literal's
-                /// box, which the IR does not keep, is its own. So TRUE or FALSE where any reading of the box is equal.
+                /// box, which the IR does not keep, is its own. So TRUE or FALSE where any reading of the box is equal. A literal
+                /// of any class is keyed alike, a null's among them, and reads its key's row or none.
                 /// </summary>
-                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) => TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : Through(cell, PredicateAtom.Equal, literal, columns, () => cell switch
+                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) => Through(cell, PredicateAtom.Equal, literal, columns, () => cell switch
                 {
                     _ when IsNumber(literal) => TryNumberOf(literal, out var c) && cell.SidesOf(c, byValue: true, byDouble: true) is { } sides && sides.All(s => s is int side && side != 0) ? F : T | F,
                     PathCell.Point { Value: var v } => v == literal ? T : F,

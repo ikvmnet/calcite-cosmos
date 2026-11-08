@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 // A class S placed is placed by its order's readers (F4, G2); any other is read by its key.
                 case ServiceFormKind.Compare:
                     var operand = CosmosValueClasses.Of(leaf.Literal!);
-                    return operand == kind && table.Placed.Contains(operand)
+                    return operand == kind && table.ReadsOver(CosmosServiceTest.Order, operand)
                         ? Within(leaf, cell, operand, table, reads, rows)
                         : table.Outcomes(MeasuredKey.Of(leaf.Test, operand, kind), rows);
 
@@ -65,15 +65,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>
-        /// An affix or a <c>LIKE</c> (h07): over a value that is no string by its kind
-        /// (<c>Service.StringPredicatesOverNonStringsAreUndefined</c>); over a string by whether it matches under each matcher
-        /// S found reads the test's own entry (<see cref="MeasuredEntry.Readers"/>, <c>Service.AffixesMatchByCodePoint</c>,
-        /// <c>Service.LikeMatchesByCodePoint</c>), a <c>LIKE</c>'s pattern read by the set's rows of its units (G7). A pattern
-        /// they leave unread, and an entry S found nothing reads, answer anything.
+        /// An affix or a <c>LIKE</c> (h07): over a class S found the test's entry names readers of
+        /// (<see cref="ServiceTable.ReadsOver"/>), a string's, by whether the cell matches under each matcher S found reads it
+        /// (<see cref="MeasuredEntry.Readers"/>, <c>Service.AffixesMatchByCodePoint</c>, <c>Service.LikeMatchesByCodePoint</c>),
+        /// a <c>LIKE</c>'s pattern read by the set's rows of its units (G7); over any other by its class's key
+        /// (<c>Service.StringPredicatesOverNonStringsAreUndefined</c>). A pattern they leave unread, and an entry S found
+        /// nothing reads, answer anything.
         /// </summary>
         static ServiceOutcomes Affix(ServiceForm leaf, PathCell cell, CosmosValueClass kind, ServiceTable table, LeafReads reads, ISet<string> rows)
         {
-            if (kind != CosmosValueClass.String)
+            if (table.ReadsOver(leaf.Test, kind) == false)
                 return table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.None, kind), rows);
 
             if (leaf.PatternOf(table.LikeUnits) is not { } pattern)
@@ -81,22 +82,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             table.Cite(pattern, rows);
 
-            if (table.Read(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, CosmosValueClass.None), rows) is not { } entry)
+            if (table.Read(MeasuredKey.Of(leaf.Test, kind, CosmosValueClass.None), rows) is not { } entry)
                 return ServiceOutcomes.Widest;
 
             var outcomes = entry.Outcomes;
             foreach (var matcher in entry.Readers)
                 foreach (var side in Matched(cell, pattern, matcher, reads))
-                    outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, CosmosValueClass.String, side), rows);
+                    outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, kind, side), rows);
 
             return outcomes;
         }
 
         /// <summary>
         /// Whether a string cell's values match a pattern under a matcher: a string as the matcher matches it
-        /// (<see cref="Matches"/>), and a range as the affix cut it by the pattern's spelling, a lone <c>%</c> matching every
-        /// string (<see cref="AffixPattern.Universal"/>), where every unit read as a run or one was measured over the range's
-        /// classes (<see cref="LikePattern.OnLike"/>, <see cref="LikePattern.OnNotLike"/>). Either where a unit's row leaves
+        /// (<see cref="Matches"/>), and a range as the affix cut it by the pattern's spelling, a lone <c>%</c>, which no cut
+        /// parts, as the half every string is in (<see cref="AffixPattern.Universal"/>), where every unit read as a run or one
+        /// was measured over the range's classes (<see cref="LikePattern.OnLike"/>, <see cref="LikePattern.OnNotLike"/>). Either where a unit's row leaves
         /// the match unread (G7), where S's rules found the match unread over a band the cell may hold
         /// (<see cref="LeafReads.Unread"/>), a range's affix cut untold over one it may hold (<see cref="LeafReads.Uncut"/>),
         /// or every cell unread (<see cref="LeafReads.Blind"/>): which rows say so, and of which bands, is S's
@@ -114,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 PathCell.Point when Bands(cell).Overlaps(reads.Unread) => either,
                 PathCell.Point { Value: var v } => Side(Matches(matcher, StringOf(v), pattern)),
                 PathCell.Strings s when s.Classes.Overlaps(reads.Unread) || s.Classes.Overlaps(reads.Uncut) => either,
-                PathCell.Strings when AffixPattern.Universal(pattern.Spelled) => [CosmosValueClass.Matching],
+                PathCell.Strings s when AffixPattern.Universal(pattern.Spelled) => Side(pattern.OnLike(s.Classes)),
                 PathCell.Strings s when s.Like?.Contains(pattern.Spelled) == true => Side(pattern.OnLike(s.Classes)),
                 PathCell.Strings s when s.NotLike?.Contains(pattern.Spelled) == true => Side(pattern.OnNotLike(s.Classes)),
                 _ => either,
@@ -160,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return ServiceOutcomes.Widest;
 
             // Two values of one class S placed are placed by its order's readers (F4, G2).
-            if (left == right && table.Placed.Contains(left))
+            if (left == right && table.ReadsOver(CosmosServiceTest.Order, left))
             {
                 if (table.Read(MeasuredKey.Of(CosmosServiceTest.Order, left, CosmosValueClass.None), rows) is not { } order)
                     return ServiceOutcomes.Widest;
@@ -327,12 +328,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : throw new ArgumentOutOfRangeException(nameof(matcher), matcher, "No matcher the leaf evaluates: S's roles hand an affix's entry none other.");
 
         /// <summary>
-        /// Whether a matcher's spelling splits a pattern, so that a range's affix cut, of strings as written, does not say
-        /// what it matches: under the emulator's, where the stored spelling of the pattern is not its own
-        /// (<see cref="AffixPattern.StoredAlike"/>); never under one that matches what it is sent. The matcher's own
-        /// evaluation of a concrete pattern, as <see cref="Matches"/> is of a string.
+        /// Whether each matcher the leaf evaluates spells a pattern apart from itself, by an evaluation of its own, as
+        /// <see cref="Matchings"/> is its match: one by code point matches what it is sent, never; the emulator's where the
+        /// stored spelling of the pattern is not its own (<see cref="AffixPattern.StoredAlike"/>).
         /// </summary>
-        internal static bool Splits(CosmosAnswer matcher, LikePattern pattern) => matcher == CosmosAnswer.StoredCodePoint && AffixPattern.StoredAlike(pattern.Spelled) == false;
+        static readonly IReadOnlyDictionary<CosmosAnswer, Func<LikePattern, bool>> Spellings = new Dictionary<CosmosAnswer, Func<LikePattern, bool>>
+        {
+            [CosmosAnswer.CodePoint] = _ => false,
+            [CosmosAnswer.StoredCodePoint] = pattern => AffixPattern.StoredAlike(pattern.Spelled) == false,
+        };
+
+        /// <summary>
+        /// Whether a matcher's spelling splits a pattern, so that a range's affix cut, of strings as written, does not say
+        /// what it matches: the matcher's own evaluation of a concrete pattern (<see cref="Spellings"/>), as
+        /// <see cref="Matches"/> is of a string; one with none splits every pattern, so its cut is trusted nowhere a band its
+        /// spelling rewrites may lie.
+        /// </summary>
+        internal static bool Splits(CosmosAnswer matcher, LikePattern pattern) => Spellings.TryGetValue(matcher, out var splits) == false || splits(pattern);
 
         /// <summary>
         /// Strings by code point, a pair the one it encodes and a lone surrogate its own unit: the order of their UTF-8 bytes,

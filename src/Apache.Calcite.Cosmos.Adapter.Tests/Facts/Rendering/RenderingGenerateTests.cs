@@ -355,7 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var answer = generated.Answers.Single();
             answer.Best.Should().BeNull();
             var arms = ((SqlPredicate.And)((SqlPredicate.Not)root).Operand).Arms;
-            answer.Weakening.Should().Be(ServiceForm.Negated(ServiceForm.Joined(Op.And, generated.Weakening(arms[0], RenderPosition.Neg)!, generated.Weakening(arms[1], RenderPosition.Neg)!)));
+            answer.Weakening.Should().Be(ServiceForm.NotOf(ServiceForm.Paired(Op.And, generated.Weakening(arms[0], RenderPosition.Neg)!, generated.Weakening(arms[1], RenderPosition.Neg)!)));
         }
 
         /// <summary>

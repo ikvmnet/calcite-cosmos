@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly string[] Literals = [Of("bikes"), Of(""), High, Emoji, Of(30m), Of(2.5m), Of(true), NullValue];
 
-        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, ProbeRows.Placed);
+        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, ProbeRows.ReaderClasses);
 
         static IEnumerable<ServiceForm> Leaves()
         {

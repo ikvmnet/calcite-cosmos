@@ -75,14 +75,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static ReadingTable ReaderRows => ProbeTheory.Theory.Get(ProbeTheory.ReaderRows.Of());
 
         /// <summary>The table S settles for the set CI asserts under, with its pair table and the units its LIKE reads (G7).</summary>
-        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), Placed,
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), ReaderClasses,
             ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)), ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingCheckRun.AssertedSet)));
 
         /// <summary>The form a template proposes for an atom, its LIKE's pattern read by Calcite's rows as S's template rule reads it (G7).</summary>
         public static ServiceForm Spell(TemplateId id, RenderPosition pos, PredicateAtom atom, string path) => RenderingTemplates.Spell(id, pos, RenderingTemplates.Read(atom, ReaderRows), path);
 
-        /// <summary>The classes S places by their order's comparators, derived from the registry's rows.</summary>
-        public static ValueSet<CosmosValueClass> Placed => ProbeTheory.Theory.Get(ProbeTheory.Placed.Of());
+        /// <summary>The tests and classes S found an entry's readers read (order comparators, affix matchers), derived from the registry's rows.</summary>
+        public static ValueSet<(CosmosServiceTest, CosmosValueClass)> ReaderClasses => ProbeTheory.Theory.Get(ProbeTheory.ReaderClasses.Of());
 
         public static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
 
@@ -119,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static ServiceTable TableOf(RenderingDefinition definition, RenderingSet set)
         {
             var theory = RenderingTheory.Define(definition);
-            var table = ViewOf(theory, set) ?? ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, theory.Theory.Get(theory.Placed.Of()));
+            var table = ViewOf(theory, set) ?? ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, theory.Theory.Get(theory.ReaderClasses.Of()));
             GC.KeepAlive(theory);
             return table;
         }

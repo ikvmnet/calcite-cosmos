@@ -343,7 +343,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (entry, report, round) = ((RenderingMemo.Entry?)null, (ImportReport?)null, Enumerable.Range(0, statement.Conjuncts.Count).Max(statement.StratumOf) + 1);
             if (skip is null)
             {
-                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => RenderingFamily.ReadExactly(statement.RenderingStatement.Conjuncts[j]))
+                var node = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(record.Conjunct)).All(j => Saturation.FactsReadings.ReadExactly(statement.RenderingStatement.Conjuncts[j]))
                     ? statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(record.Conjunct)) : RootOf([statement.ScopeForCheck])!.Value;
                 var source = new ImportSource(statement.RenderingStatement.Digest, "weakening", round);
                 (entry, report) = Check([ir], read.Form, [read.Form], Verdict.Implies,
@@ -433,7 +433,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (statement, conjunct) = (held[i].Statement, held[i].Conjunct);
                 var assumes = statement.ScopeForCheck.AssumedIn(OracleLicence.RenderConjunct(conjunct))
                     .Select(j => judged.FirstOrDefault(k => held[k].Statement == statement && held[k].Conjunct == j, -1)).ToArray();
-                if (statement.StratumOf(conjunct) <= 1 || assumes.Any(k => k < 0 || RenderingFamily.ReadExactly(IrOf(held[k])) == false))
+                if (statement.StratumOf(conjunct) <= 1 || assumes.Any(k => k < 0 || Saturation.FactsReadings.ReadExactly(IrOf(held[k])) == false))
                     continue;
 
                 var node = statement.ScopeForCheck.ContextFor(OracleLicence.RenderConjunct(conjunct));

@@ -233,7 +233,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
-                ReadTestReads(axioms));
+                ReadTestReads(axioms), ReadExactReadings(axioms));
+
+        /// <summary>
+        /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'
+        /// <c>readsexactly</c>: which strata a statement's later rounds may rest on (<see cref="CosmosExactReading"/>).
+        /// </summary>
+        public static IReadOnlyList<(string Reader, CosmosValueClass Beside)> ReadExactReadings(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from exact in axiom.ExactReadings ?? [] select (exact.Reader, exact.Beside)).Distinct()];
 
         /// <summary>
         /// One row per reading a one-place test's in-process body takes apart, with the reading it reads instead (G8), both

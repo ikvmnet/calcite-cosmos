@@ -81,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
                 r.When(theory.Leaf.Of(e), b.Is(theory.BestExact.Of(e, pos)), s.Is(theory.Implied.Of(e, pos)));
                 r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
-                r.Then(theory.Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
+                r.Then(theory.Weakening.Of(e, pos).Is(Compute.Of(s, x => ServiceForm.Gathered(CosmosServiceTest.And, x, true))));
             });
             theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: an exact agreement not yet vacuous is a best", r =>
             {

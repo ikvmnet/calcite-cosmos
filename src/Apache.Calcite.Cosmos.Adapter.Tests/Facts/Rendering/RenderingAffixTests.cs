@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheServicesOneIsDecidedOnEachCell()
         {
             var path = SqlValue.Spell(TPath);
-            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.ReaderClasses, ValueSet<MeasuredEntry>.Empty,
                 ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Production)));
             PathCell.Strings Range(params string[] classes) => new(null, null, ValueSet<string>.Empty, ValueSet.From(classes), Like: ValueSet.Of("a_b"));
             ServiceOutcomes On(string pattern, PathCell cell) => ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, pattern), new CellPartition(path, ValueSet.Of(cell)), production, LeafReads.None).Outcomes.Single().Outcomes;
@@ -266,9 +266,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheLeafReadsTheMatcherItsEntryNames()
         {
             var path = SqlValue.Spell(TPath);
-            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+            var emulator = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Emulator)), ProbeRows.ReaderClasses, ValueSet<MeasuredEntry>.Empty,
                 ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Emulator)));
-            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.Placed, ValueSet<MeasuredEntry>.Empty,
+            var production = ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingSet.Production)), ProbeRows.ReaderClasses, ValueSet<MeasuredEntry>.Empty,
                 ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingSet.Production)));
             var cells = new CellPartition(path, ValueSet.Of<PathCell>(new PathCell.Point(Of("ab")), new PathCell.Point(Of("ba")), new PathCell.Point(Of("a\0")), new PathCell.Point(Of(1m)), new PathCell.Null(), new PathCell.Absent()));
             // Each cell's outcome in the order written above, whatever order the partition keeps, under what S's rules hand the leaf.

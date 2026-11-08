@@ -3005,8 +3005,9 @@ across documents* and *A join of a container to itself* is the record.
     name (`RenderingImage.ResultKeys`, G6's fix), an `enum`'s or a literal's, and reads no length bound, so the service's
     10,000 code points are proved over a domain alone. S's import of a string's length bounds (`JsonFactSet.LengthsOf`)
     gives it the rest; no corpus plan holds one.
-  - A call more deeply nested than the run's iterations reach (64 and 8 a leaf in check mode, the bridge's bundle one
-    leaf): S's fixpoint has no depth of its own, so such a call's image is the run's to finish; none in the corpus.
+  - A call nested deeper than S images (`RenderingTheory.PlaceDepth`, four passes of the place, image and assume
+    strata): it gets no image, and only its own conjunct is unproven, the run completing within its budget; none in the
+    corpus.
   It goes when S writes the column (h37).
 - **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
   `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`
@@ -3045,11 +3046,13 @@ across documents* and *A join of a container to itself* is the record.
   (permanent); lift an agreement whose cells are raises Calcite answers on real documents, none set aside, as decision 2
   already lets any answer refine a raise (permanent, a change to the vacuity policy); or read a `VARIANT`'s ordering
   through the union again (a bridge, until one of the others).
-- **A raw reading names its column only where a field declares one** — *small.* The loader names `VARIANT`, `ANY` or
-  `VARCHAR` for a declared field under S's reading alone; an accessor, an item chain, the cast-to-`ANY` marker and a
-  `CHAR` field read the three columns' union as before (h12), and F reads every raw value through the union. A raw value
-  under a function over any of them, or an affix's negation over its cast to text, stays Unproven, as the union parts
-  them; none reaches the gate's census.
+- **A raw reading names its column only where a field declares one** — *small.* The loader names the column a declared
+  field's type names under S's reading alone, `VARIANT`, `ANY`, `VARCHAR` or `CHAR`; an accessor, an item chain and the
+  cast-to-`ANY` marker read the three columns' union as before (h12), and F reads every raw value through the union. A
+  raw value under a function over any of them, or an affix's negation over its cast to text, stays Unproven, as the
+  union parts them; none reaches the gate's census. S's rules read `CHAR`'s column as the union, no row having measured
+  its padding (`PredicateAtom.UnionColumns`): `Calcite.RawNullIsSqlNull`'s cells measured over a `CHAR` field give it
+  rows of its own, and take it out of `UnionColumns`.
 - **C6's switch subset holds no affix** — *small, before h15's switch.* Run 1 ran C6 on the switch's subset under
   `Production` (`Runs/2026-11-04-probe-account-conformance.tsv`, 259 forms, 0 divergences), but the switch's run at the
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
@@ -3099,14 +3102,6 @@ across documents* and *A join of a container to itself* is the record.
   which reads an `OR` of equalities as an `IN` over literals alone, so over the places reading an `OR` of cast numbers
   stays a disjunction of atoms. A raw reading, and a typed one no row names, compared with a cast number is a comparison
   with no atom over the places reading, where the fold left it opaque.
-- **The weakening's assembly is C#'s** — *small, and it needs a lattice over weakenings.* `ServiceForm.Joined` flattens a
-  member of its own connective, keeps one of each part and folds a constant where the junction weakening rule,
-  `ServiceForm.Folded` and `RenderingWeakening.OfCase` assemble a weakening. A best is `Paired` and S's regroup and units
-  rules rewrite it, the price keeping the regrouped (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*). A
-  weakening cannot be, since `weakening` has no lattice: one form a node, so a node given the paired weakening and the
-  regrouped one faults the bundle. A lattice that keeps the regrouped of two weakenings, as `Priced` does of two bests,
-  lets the weakening rules write `Paired`, the two rules regroup and fold it, and `Joined` go, with the weakenings as
-  they were.
 - **The foundation's F3 rows wait on their groups** — *each group's, G2 to G8.* f345 reads the prose rows' cells into S
   (DESIGN.md, *The foundation's cells, roles and case mapping*); G1's rules read `parts`, `moves`, `storedas` and
   `truncates`, each set's parting bands are its own comparators', and the leaf, the lifts and `StoresSpelled` read what
@@ -3155,9 +3150,9 @@ across documents* and *A join of a container to itself* is the record.
   (`raw($["category"] VARIANT) is defined`, Proven), so it is no refactor before h15; the measurement is a test of a
   field, an item and a cast to `ANY` in process, which the same row records.
 - **`IS_DEFINED` of a computed call has no atom** — *small, with the row above.* The bridge's presence test of a computed
-  place, `IS_DEFINED` over the call, is no atom since G8: no `testreads` row names a call's reading, and the body raises
-  over a call, so the row it wants is that raise (above). Before G8 the loader wrote nothing for it either; the digests
-  were byte-equal.
+  place, `IS_DEFINED` over the call, is no atom: where places are read the loader writes it, and a type test, over any
+  value since the re-audit's close, but no `testreads` row names a call's reading, and the body raises over a call, so
+  the row it wants is that raise (above). Before G8 the loader wrote nothing for it either; the digests were byte-equal.
 - **The loader's element guards and cast targets are G8's sites no step schedules** — *h15's.* Two branches stand for
   rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an accessor's
   raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand for
@@ -3166,7 +3161,17 @@ across documents* and *A join of a container to itself* is the record.
   terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15; both
   move with h15's switch, the guards to an element reading S's cells read and the casts to the cast rule reading
   `measuredcast`. This entry is all that carries them: the audit's plan lists neither before h15 (§3, item 5), and
-  h15's task names `Structure` alone of G8's sites.
+  h15's task names `Structure` alone of G8's sites. `ReaderEdgesTable`'s cast keys are a copy of the same rows
+  (`cast:VARCHAR:raw`, `cast:BOOLEAN:text`, `cast:INTEGER:text`, `cast:BIGINT:text`, `cast:DOUBLE:text`), and which
+  cast readers have a key licenses four things: a cut, `RenderingFamily.HasEdges`, `CosmosRendering.ReadReaderKinds`
+  and the templates' rows. They equal `measuredcast`'s rows, which `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts`
+  holds; the keys move with the cast targets, derived from `measuredcast`, and the edges stay data per type.
+- **F's strata walk the IR to ask `readsexactly`** — *h15's.* Which readings the facts graph reads exactly is a row
+  (`Calcite.TheFactsGraphReadsTheseReadingsExactly`, `readsexactly`) since the re-audit's close, but whether a conjunct
+  is read exactly is still `RenderingFamily.ReadExactly`'s walk to its atoms, asking the rows of each and reading through
+  a box by `Unboxed`. The proper form is a rule of F's over a conjunct's atoms, a lattice of the inexact ones keyed by
+  the `StatementTerms.Node` chain `StratumFor` walks, which `StratumFor` and the arm licence read. It reads F's terms as
+  S does, so it moves with h15's switch, where G10 removes `Unboxed`.
 - **A comparison with SQL's null is read by S alone** — *h15's.* Where places are read the loader writes a null literal
   as `null(type)` and S's rule reads a comparison with it by an operator its `strictop` row says is null over a null
   operand as UNKNOWN wherever its reading is read (G8). F's root holds no `strictop`, so F reads it as the loader did,
@@ -3194,8 +3199,8 @@ across documents* and *A join of a container to itself* is the record.
 - **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
   reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
   text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
-  reading's own evaluator where no alias row names one, a lookup with a default; and `Raw.EqualOn` beside a null literal, and
-  `RawText.EqualOn` and `OrderOn` beside a literal that is no string, take the coarse answer beside G5's rows. An
+  reading's own evaluator where no alias row names one, a lookup with a default; and `RawText.EqualOn` and `OrderOn`
+  beside a literal that is no string take the coarse answer beside G5's rows. An
   evaluator that is a function of the rows alone, with the casts owed above as rows, finishes G7.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
   keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
@@ -3215,6 +3220,12 @@ across documents* and *A join of a container to itself* is the record.
   `EachStringFunctionAnswersItsRowByBand` measured answering as Calcite's over U+0000 and U+FDD0; the rows still say
   `Fails` and `Differs` there, as they did while a literal shared their key, worse than measured. Read as measured, a
   concatenation over a path that may hold either would push on the emulator and move its digests, so it waits for h15.
+- **The translator's writer names the operands it sends in the stored spelling** — *h16 and h37, with the writer.*
+  Under a set S says stores a spelling, `CosmosRexTranslator` sends `REPLACE`'s search, `POSITION`'s needle, a
+  comparison's value and a `LIKE`'s affix argument as `EmulatorStoredText.Of`, by function name and ordinal, and refuses
+  an escaped constant anywhere else (`WriteCompared`, `Sent`, `WriteNamedFunction`, `WriteFunctionCall`). S's printer
+  spells every literal by its set (`RenderingPrinter.Place`) and its operand-keyed rows refuse the rest, so where both
+  admit a call they spell it alike. It goes with the writer, the `WHERE` share at h16 and the column bridge at h37.
 - **The bridge still refuses a containment over U+0000 on the emulator** — *h37 to h42.* The translator's
   `CosmosFunctionSpellings.Refusals` refuses a containment `LIKE` over a path that may hold U+0000 on the emulator as on
   Azure, which no emulator row says; reading the rows would push such a `LIKE` there and move the digests. It reads
@@ -3223,8 +3234,8 @@ across documents* and *A join of a container to itself* is the record.
   carrying each.
 - **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
   and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
-  (h14b) Azure does too: `CosmosFunctionSpellings.Gated` names it with the functions the rows measure, so it is refused
-  on every target rather than passed unasked. It pushed under `Production` before; no digest statement moved at either
+  (h14b) Azure does too: it is declared unmeasured (`CosmosAxiomRows.Declared`), so S images it on no target and the
+  column bridge, which asks S's image, keeps it in process on every target rather than passing it unasked. It pushed under `Production` before; no digest statement moved at either
   step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
 - **Azure's case-insensitive prefix and suffix rest on the statement** — *small, run 2.* S licenses `UPPER(x) LIKE
   'ABC%'` as `STARTSWITH(x, 'ABC', true)` by `Service.AffixesMatchByCodePoint`'s `Folds` (G6's second fix), on both
@@ -3499,7 +3510,7 @@ across documents* and *A join of a container to itself* is the record.
   digests and node names, which no two questions of one statement's terms share.
 - **A generate weakening folds every implied member** — *small, text only.* A leaf with no writable best weakens to the
   `AND` of all its implied forms, so `<> '30'` over text sends five members where one guarded form holds the rest; the
-  rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Folded` decides nothing.
+  rows are the same. Pruning a member another implies would be a rule; `ServiceForm.Gathered` decides nothing.
 - **P4's orderings are no tighter than J's** — *small, a gain not delivered.* No template excludes the nulls and
   structures C1's string branch keeps, so `>= '30'` weakens to J's form under `Production`, and to presence under
   `Emulator`, where J's branch over strings that may hold U+0000 is unproven to S (O7, listed). A guarded string branch,
@@ -3516,9 +3527,10 @@ across documents* and *A join of a container to itself* is the record.
   statement give no witness case for S's plants: generate mode composes no refutation through a junction, so no single
   refuting cell makes a document that shows the statement wrong, and the `HAVING` statement's rows are no ids. Their
   refutations are asserted at the atom; composing refutations in generate mode would give the cases back.
-- **G7 plants presence's dual, not the fold's** — *small.* A weakening is lattice-free, so a fold planted beside the
-  right one faults the bundle, and the definition names no fold a plant could replace. Naming
-  `ServiceForm.Folded` in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
+- **G7 plants presence's dual, not the fold's** — *small.* A weakening keeps the cheapest form that weakens it, so a
+  fold planted beside the right one no longer faults the bundle, but the definition names no fold a plant could
+  replace: the connective a position gathers a leaf's implied forms by is `KleeneTables.Weakens`, S's own row. Naming it
+  in the definition, as `Leaf` and `Pair` are, would let one, at a production line or two.
 - **A raw accessor compared with a parameter does not plan in the check run's harness** — *small.* `c."$.label" <> ?`
   leaves the parameter untyped beside an `ANY`, so the parameterised residual the inputs gain reads the label through
   the accessor.
