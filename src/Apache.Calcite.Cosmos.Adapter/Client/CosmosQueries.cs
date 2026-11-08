@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     continue;
                 }
 
-                bound[i] = parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
+                bound[i] = parameters[i] with { Value = slot.Presence ? Present(root, slot) : slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
 
                 // In the stored spelling of the target, the emulator's, where the service compares the value with a path
                 // (Service.EmulatorComparesTheSpellingItIsSent): after Held's truncation, Calcite truncating what it was
@@ -255,6 +255,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="root">The data context.</param>
         /// <param name="value">The ordinal to read.</param>
         /// <returns>The bound value.</returns>
+        /// <summary>
+        /// Reads whether one dynamic parameter holds a value: <c>true</c> where it does, <c>null</c> where it does not.
+        /// </summary>
+        static object? Present(org.apache.calcite.DataContext root, CosmosDynamicValue slot) =>
+            root.get(slot.VariableName) is null ? null : true;
+
         static object? Value(org.apache.calcite.DataContext root, CosmosDynamicValue value)
         {
             return root.get(value.VariableName) switch

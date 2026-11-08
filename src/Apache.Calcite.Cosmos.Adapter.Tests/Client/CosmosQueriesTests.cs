@@ -246,6 +246,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             bound.Parameters[0].Value.Should().BeNull();
         }
 
+        /// <summary>
+        /// A guard's slot binds whether its value is there, and never the value: a UUID as Calcite boxes it is no type
+        /// the service has.
+        /// </summary>
+        [Fact]
+        public void APresenceSlotBindsTrueForAValueAndNullForNone()
+        {
+            CosmosQuery Bind(object? value) => CosmosQueries.Bind(
+                Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { Presence = true })),
+                value is null ? new Context() : new Context(("?0", value)));
+
+            Bind(java.util.UUID.fromString("3a900000-0000-4000-8000-000000000001")).Parameters[0].Value.Should().Be(true);
+            Bind("x").Parameters[0].Value.Should().Be(true);
+            Bind(null).Parameters[0].Value.Should().BeNull();
+        }
+
     }
 
 }

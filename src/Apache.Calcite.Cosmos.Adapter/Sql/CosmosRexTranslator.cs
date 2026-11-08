@@ -2889,17 +2889,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Binds the parameter a comparison's guard tests for null: in the stored spelling where the comparison's is, which
-        /// is null where the value is (<see cref="_spelled"/>).
+        /// Binds the parameter a comparison's guard tests for null, as whether it holds a value
+        /// (<see cref="CosmosDynamicValue.Presence"/>).
         /// </summary>
-        string Guard(org.apache.calcite.rex.RexDynamicParam parameter)
-        {
-            var name = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()));
-            if (_spelled)
-                _parameters.Spell(name);
-
-            return name;
-        }
+        string Guard(org.apache.calcite.rex.RexDynamicParam parameter) =>
+            _parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Presence = true });
 
         /// <summary>
         /// Returns the parameters a comparison reads through operators that answer null for a null, each once: those
