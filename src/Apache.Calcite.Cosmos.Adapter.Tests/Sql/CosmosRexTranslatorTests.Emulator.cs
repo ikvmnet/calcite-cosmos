@@ -82,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void AParameterComparedWithAPathIsNamedStored()
             {
                 Translator(CosmosServiceTarget.Emulator).Translate(Eq(Name, Param)).Should().Be("(NOT IS_NULL(@p1) AND (c.name = @p0))");
-                _t._parameters.Stored.Should().Equal(["@p0", "@p1"], "the guard's null is the value's, in either spelling");
+                _t._parameters.Stored.Should().Equal(["@p0"], "the guard binds only whether the value is there, which has no spelling");
 
                 Translator(CosmosServiceTarget.Azure).Translate(Eq(Name, Param));
                 _t._parameters.Stored.Should().BeEmpty();

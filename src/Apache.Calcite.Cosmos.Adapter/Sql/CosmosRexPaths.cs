@@ -116,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     path = _fields[access.getField().getIndex()];
                     return path is not null;
 
-                case RexCall call when KindOf(call) == SqlKind.__Enum.ITEM && call.getOperands().size() == 2:
+                case RexCall call when KindOf(call) == nameof(SqlKind.__Enum.ITEM) && call.getOperands().size() == 2:
                     if (TryResolvePath(Operand(call, 0), out var basePath) == false || Operand(call, 1) is not RexLiteral accessor)
                         break;
 
@@ -332,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var kind = KindOf(call);
 
-            return (kind == SqlKind.__Enum.CAST || kind == SqlKind.__Enum.SAFE_CAST)
+            return (kind == nameof(SqlKind.__Enum.CAST) || kind == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && call.getType()?.getSqlTypeName() == SqlTypeName.ANY
                 && IsTextRendering(Operand(call, 0));
@@ -378,7 +378,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static bool IsGeographyParameter(RexNode node)
         {
-            if (node is RexCall call && KindOf(call) == SqlKind.__Enum.CAST && call.getOperands().size() == 1)
+            if (node is RexCall call && KindOf(call) == nameof(SqlKind.__Enum.CAST) && call.getOperands().size() == 1)
             {
                 if (call.getType()?.getSqlTypeName() != SqlTypeName.GEOMETRY)
                     return false;

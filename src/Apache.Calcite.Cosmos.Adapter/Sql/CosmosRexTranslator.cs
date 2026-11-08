@@ -736,19 +736,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             switch (KindOf(call))
             {
-                case SqlKind.__Enum.EQUALS:
-                case SqlKind.__Enum.NOT_EQUALS:
-                case SqlKind.__Enum.LESS_THAN:
-                case SqlKind.__Enum.LESS_THAN_OR_EQUAL:
-                case SqlKind.__Enum.GREATER_THAN:
-                case SqlKind.__Enum.GREATER_THAN_OR_EQUAL:
-                case SqlKind.__Enum.IS_NULL:
-                case SqlKind.__Enum.IS_NOT_NULL:
-                case SqlKind.__Enum.LIKE:
+                case nameof(SqlKind.__Enum.EQUALS):
+                case nameof(SqlKind.__Enum.NOT_EQUALS):
+                case nameof(SqlKind.__Enum.LESS_THAN):
+                case nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL):
+                case nameof(SqlKind.__Enum.GREATER_THAN):
+                case nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL):
+                case nameof(SqlKind.__Enum.IS_NULL):
+                case nameof(SqlKind.__Enum.IS_NOT_NULL):
+                case nameof(SqlKind.__Enum.LIKE):
                     return true;
 
-                case SqlKind.__Enum.CAST:
-                case SqlKind.__Enum.SAFE_CAST:
+                case nameof(SqlKind.__Enum.CAST):
+                case nameof(SqlKind.__Enum.SAFE_CAST):
                     // A marker says what it reads, and so does a cast a stored boolean proves. Any other
                     // cast hands its operand on to whatever encloses it, to be judged there: one that
                     // converts is refused by WriteCast, and one that boxes, asserts or renders hands
@@ -786,7 +786,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     break;
                 case RexCall call:
                     var compared = _comparing;
-                    _comparing = compared && KindOf(call) is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST;
+                    _comparing = compared && KindOf(call) is nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST);
 
                     try
                     {
@@ -1531,14 +1531,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>NOT COALESCE(category &lt;&gt; 'bikes', FALSE)</c> lost the null category.
         /// </para>
         /// </remarks>
-        static bool CarriesPosition(SqlKind.__Enum kind)
+        static bool CarriesPosition(string kind)
         {
-            return kind is SqlKind.__Enum.AND or SqlKind.__Enum.OR or SqlKind.__Enum.NOT or SqlKind.__Enum.CASE
-                or SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS
-                or SqlKind.__Enum.LESS_THAN or SqlKind.__Enum.LESS_THAN_OR_EQUAL
-                or SqlKind.__Enum.GREATER_THAN or SqlKind.__Enum.GREATER_THAN_OR_EQUAL
-                or SqlKind.__Enum.IS_TRUE or SqlKind.__Enum.IS_FALSE
-                or SqlKind.__Enum.IS_NOT_TRUE or SqlKind.__Enum.IS_NOT_FALSE;
+            return kind is nameof(SqlKind.__Enum.AND) or nameof(SqlKind.__Enum.OR) or nameof(SqlKind.__Enum.NOT) or nameof(SqlKind.__Enum.CASE)
+                or nameof(SqlKind.__Enum.EQUALS) or nameof(SqlKind.__Enum.NOT_EQUALS)
+                or nameof(SqlKind.__Enum.LESS_THAN) or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL)
+                or nameof(SqlKind.__Enum.GREATER_THAN) or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL)
+                or nameof(SqlKind.__Enum.IS_TRUE) or nameof(SqlKind.__Enum.IS_FALSE)
+                or nameof(SqlKind.__Enum.IS_NOT_TRUE) or nameof(SqlKind.__Enum.IS_NOT_FALSE);
         }
 
         /// <summary>
@@ -1548,98 +1548,98 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             switch (KindOf(call))
             {
-                case SqlKind.__Enum.EQUALS:
+                case nameof(SqlKind.__Enum.EQUALS):
                     WriteComparison(builder, call, "=");
                     break;
-                case SqlKind.__Enum.NOT_EQUALS:
+                case nameof(SqlKind.__Enum.NOT_EQUALS):
                     WriteComparison(builder, call, "!=");
                     break;
-                case SqlKind.__Enum.LESS_THAN:
+                case nameof(SqlKind.__Enum.LESS_THAN):
                     WriteComparison(builder, call, "<");
                     break;
-                case SqlKind.__Enum.LESS_THAN_OR_EQUAL:
+                case nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL):
                     WriteComparison(builder, call, "<=");
                     break;
-                case SqlKind.__Enum.GREATER_THAN:
+                case nameof(SqlKind.__Enum.GREATER_THAN):
                     WriteComparison(builder, call, ">");
                     break;
-                case SqlKind.__Enum.GREATER_THAN_OR_EQUAL:
+                case nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL):
                     WriteComparison(builder, call, ">=");
                     break;
-                case SqlKind.__Enum.AND:
+                case nameof(SqlKind.__Enum.AND):
                     WriteChain(builder, call, "AND");
                     break;
-                case SqlKind.__Enum.OR:
+                case nameof(SqlKind.__Enum.OR):
                     WriteChain(builder, call, "OR");
                     break;
-                case SqlKind.__Enum.PLUS:
+                case nameof(SqlKind.__Enum.PLUS):
                     RequireNoFraction(call);
                     WriteBinary(builder, call, "+");
                     break;
-                case SqlKind.__Enum.MINUS:
+                case nameof(SqlKind.__Enum.MINUS):
                     RequireNoFraction(call);
                     WriteBinary(builder, call, "-");
                     break;
-                case SqlKind.__Enum.TIMES:
+                case nameof(SqlKind.__Enum.TIMES):
                     RequireNoFraction(call);
                     WriteBinary(builder, call, "*");
                     break;
-                case SqlKind.__Enum.DIVIDE:
+                case nameof(SqlKind.__Enum.DIVIDE):
                     RequireApproximateQuotient(call);
                     WriteBinary(builder, call, "/");
                     break;
-                case SqlKind.__Enum.MOD:
+                case nameof(SqlKind.__Enum.MOD):
                     RequireNoFraction(call);
                     WriteBinary(builder, call, "%");
                     break;
-                case SqlKind.__Enum.NOT:
+                case nameof(SqlKind.__Enum.NOT):
                     WriteNot(builder, call);
                     break;
-                case SqlKind.__Enum.MINUS_PREFIX:
+                case nameof(SqlKind.__Enum.MINUS_PREFIX):
                     RequireOperandCount(call, 1);
                     builder.Append("(-");
                     Write(builder, Operand(call, 0));
                     builder.Append(')');
                     break;
-                case SqlKind.__Enum.IS_NULL:
+                case nameof(SqlKind.__Enum.IS_NULL):
                     WriteIsNull(builder, call, negated: false);
                     break;
-                case SqlKind.__Enum.IS_NOT_NULL:
+                case nameof(SqlKind.__Enum.IS_NOT_NULL):
                     WriteIsNull(builder, call, negated: true);
                     break;
-                case SqlKind.__Enum.IS_TRUE:
+                case nameof(SqlKind.__Enum.IS_TRUE):
                     WriteTruthTest(builder, call, truth: true, negated: false);
                     break;
-                case SqlKind.__Enum.IS_FALSE:
+                case nameof(SqlKind.__Enum.IS_FALSE):
                     WriteTruthTest(builder, call, truth: false, negated: false);
                     break;
-                case SqlKind.__Enum.IS_NOT_TRUE:
+                case nameof(SqlKind.__Enum.IS_NOT_TRUE):
                     WriteTruthTest(builder, call, truth: true, negated: true);
                     break;
-                case SqlKind.__Enum.IS_NOT_FALSE:
+                case nameof(SqlKind.__Enum.IS_NOT_FALSE):
                     WriteTruthTest(builder, call, truth: false, negated: true);
                     break;
-                case SqlKind.__Enum.LIKE:
+                case nameof(SqlKind.__Enum.LIKE):
                     WriteLike(builder, call);
                     break;
-                case SqlKind.__Enum.ITEM:
+                case nameof(SqlKind.__Enum.ITEM):
                     WriteItem(builder, call);
                     break;
-                case SqlKind.__Enum.CASE:
+                case nameof(SqlKind.__Enum.CASE):
                     WriteCase(builder, call);
                     break;
-                case SqlKind.__Enum.TRIM:
+                case nameof(SqlKind.__Enum.TRIM):
                     WriteTrim(builder, call);
                     break;
-                case SqlKind.__Enum.CAST:
-                case SqlKind.__Enum.SAFE_CAST:
+                case nameof(SqlKind.__Enum.CAST):
+                case nameof(SqlKind.__Enum.SAFE_CAST):
                     WriteCast(builder, call);
                     break;
-                case SqlKind.__Enum.FLOOR:
+                case nameof(SqlKind.__Enum.FLOOR):
                     RequireOperandCount(call, 1);
                     WriteFunctionCall(builder, call, "FLOOR");
                     break;
-                case SqlKind.__Enum.CEIL:
+                case nameof(SqlKind.__Enum.CEIL):
                     // Cosmos spells it CEILING; CEIL is rejected.
                     RequireOperandCount(call, 1);
                     WriteFunctionCall(builder, call, "CEILING");
@@ -1970,7 +1970,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal static RexNode StripTextCoercion(RexNode node)
         {
             if (node is RexCall call
-                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && (KindOf(call) == nameof(SqlKind.__Enum.CAST) || KindOf(call) == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && (call.getType()?.getSqlTypeName() == SqlTypeName.VARCHAR || call.getType()?.getSqlTypeName() == SqlTypeName.CHAR)
                 && call.getType()?.getPrecision() == org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED
@@ -2092,7 +2092,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return null;
 
             if (call.getOperands().size() != 1)
@@ -2365,7 +2365,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return false;
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return false;
 
             if (call.getType()?.getSqlTypeName() != SqlTypeName.UUID || call.getOperands().size() != 1)
@@ -2952,7 +2952,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var negated = _negated;
             var value = _value;
-            var notEquals = KindOf(call) == SqlKind.__Enum.NOT_EQUALS;
+            var notEquals = KindOf(call) == nameof(SqlKind.__Enum.NOT_EQUALS);
 
             // Read for its value, a comparison SQL can answer unknown for is declined: every form
             // written below is false somewhere SQL's is unknown, which a WHERE cannot tell apart and a
@@ -2974,7 +2974,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // not guarded, its null not being the comparison's: such an operand is refused below where
             // the position needs it.
             var parameters = new List<org.apache.calcite.rex.RexDynamicParam>();
-            if (negated ? KindOf(call) is not (SqlKind.__Enum.LESS_THAN_OR_EQUAL or SqlKind.__Enum.GREATER_THAN_OR_EQUAL) : IsInclusive(KindOf(call)) || notEquals)
+            if (negated ? KindOf(call) is not (nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL) or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL)) : IsInclusive(KindOf(call)) || notEquals)
             {
                 CollectGuardParameters(Operand(call, 0), parameters);
                 CollectGuardParameters(Operand(call, 1), parameters);
@@ -3009,17 +3009,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Binds the parameter a comparison's guard tests for null: in the stored spelling where the comparison's is, which
-        /// is null where the value is (<see cref="_spelled"/>).
+        /// Binds the parameter a comparison's guard tests for null, as whether it holds a value
+        /// (<see cref="CosmosDynamicValue.Presence"/>).
         /// </summary>
-        string Guard(org.apache.calcite.rex.RexDynamicParam parameter)
-        {
-            var name = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()));
-            if (_spelled)
-                _parameters.Spell(name);
-
-            return name;
-        }
+        string Guard(org.apache.calcite.rex.RexDynamicParam parameter) =>
+            _parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Presence = true });
 
         /// <summary>
         /// Returns the parameters a comparison reads through operators that answer null for a null, each once: those
@@ -3293,7 +3287,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var leftValue = StripVariantCoercion(left);
             var rightValue = StripVariantCoercion(right);
 
-            if (KindOf(call) == SqlKind.__Enum.EQUALS)
+            if (KindOf(call) == nameof(SqlKind.__Enum.EQUALS))
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
                     left = unwrappedLeft;
@@ -3317,7 +3311,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     && EquateOrder(left, right) is { IsProved: false } nulls)
                     throw new CosmosTranslationException("An equality the service answers otherwise than Calcite: " + nulls.Reason + ".");
             }
-            else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
+            else if (KindOf(call) == nameof(SqlKind.__Enum.NOT_EQUALS)
                 && (_paths.IsTextRendering(leftValue) && IsTextComparand(rightValue) || _paths.IsTextRendering(rightValue) && IsTextComparand(leftValue))
                 && RendersOnlyStrings(leftValue, rightValue) == false)
             {
@@ -3541,23 +3535,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Determines whether a kind is one of the four ordering comparisons, the inequality not among
         /// them.
         /// </summary>
-        static bool IsOrderingComparison(SqlKind.__Enum kind)
+        static bool IsOrderingComparison(string kind)
         {
-            return kind is SqlKind.__Enum.LESS_THAN
-                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
-                or SqlKind.__Enum.GREATER_THAN
-                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
+            return kind is nameof(SqlKind.__Enum.LESS_THAN)
+                or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL)
+                or nameof(SqlKind.__Enum.GREATER_THAN)
+                or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL);
         }
 
         /// <summary>
         /// Determines whether two equal values satisfy a comparison of a kind: an equality, <c>&lt;=</c> and
         /// <c>&gt;=</c>.
         /// </summary>
-        static bool IsInclusive(SqlKind.__Enum kind)
+        static bool IsInclusive(string kind)
         {
-            return kind is SqlKind.__Enum.EQUALS
-                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
-                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
+            return kind is nameof(SqlKind.__Enum.EQUALS)
+                or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL)
+                or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL);
         }
 
         /// <summary>
@@ -3701,7 +3695,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             while (node is RexCall call
-                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && (KindOf(call) == nameof(SqlKind.__Enum.CAST) || KindOf(call) == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && Operand(call, 0).getType()?.getSqlTypeName() == SqlTypeName.UUID)
                 node = Operand(call, 0);
@@ -3729,7 +3723,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             while (node is RexCall call
-                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && (KindOf(call) == nameof(SqlKind.__Enum.CAST) || KindOf(call) == nameof(SqlKind.__Enum.SAFE_CAST))
                 && call.getOperands().size() == 1
                 && Operand(call, 0).getType()?.getSqlTypeName() == type)
                 node = Operand(call, 0);
@@ -3982,7 +3976,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return null;
 
             if (call.getType()?.getSqlTypeName() != SqlTypeName.BOOLEAN)
@@ -4310,7 +4304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // nonsense such as "@p0.name" from a bound parameter. Calcite's own operand type
             // checking rejects many such calls before they reach here, but not all of them.
             var target = Operand(call, 0);
-            if (target is not RexInputRef && (target is not RexCall inner || KindOf(inner) != SqlKind.__Enum.ITEM))
+            if (target is not RexInputRef && (target is not RexCall inner || KindOf(inner) != nameof(SqlKind.__Enum.ITEM)))
                 throw new CosmosTranslationException("ITEM may only be applied to a field reference or another ITEM.");
 
             Write(builder, target);
@@ -4546,7 +4540,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         static RexNode StripCast(RexNode node)
         {
-            while (node is RexCall cast && KindOf(cast) == SqlKind.__Enum.CAST && cast.getOperands().size() == 1)
+            while (node is RexCall cast && KindOf(cast) == nameof(SqlKind.__Enum.CAST) && cast.getOperands().size() == 1)
                 node = Operand(cast, 0);
 
             return node;
