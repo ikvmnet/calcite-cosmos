@@ -17,9 +17,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
 
     /// <summary>
-    /// The raw columns' union as S's rule (spec h12): S joins every column's row on a key, which the registry's row reads
-    /// one row a column a key, and a raw reading's cells read the union, deciding on the cell only what a column comparing
-    /// the value as its type answers. The plant that drops a column is <c>RenderingGenerateMutationTests</c>'.
+    /// The raw columns' union as S's rules (spec h12, G5): S derives each column's answer on a key from the registry's row,
+    /// read one fact a field, and joins the columns; a raw reading's cells read the union, deciding on the cell only what a
+    /// column comparing the value as one type with the literal leaves to it. The plant that drops a column is
+    /// <c>RenderingGenerateMutationTests</c>'.
     /// </summary>
     public sealed class RenderingRawUnionTests
     {
@@ -27,25 +28,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
 
         /// <summary>
-        /// The union S holds is, key by key, every column's truths joined, and beside it each column's own under the key of
-        /// the reading through that column alone (rawtyped), and nothing else; both lattices keep their laws over the truths
-        /// and unions the row gives.
+        /// The union S holds is, key by key, every column's answer joined, and beside it each column's own under the key of
+        /// the reading through that column alone (rawtyped), each S's rules' answer for that column, and nothing else: every
+        /// class a column states, an absent path its own (F3), beside each literal it is compared beside. Both lattices keep
+        /// their laws over the answers and unions S gives.
         /// </summary>
         [Fact]
         public void TheUnionIsEveryKeysColumnsJoined()
         {
-            var rows = CosmosAxiomRows.ReadColumns(CosmosAxioms.All);
+            var s = ProbeRows.ProbeTheory;
             var union = ProbeRows.Columns;
-            var keys = rows.GroupBy(r => r.Key).ToList();
-            union.Count.Should().Be(keys.Count + rows.Count);
-            foreach (var key in keys)
-                union[key.Key].Should().Be(key.Aggregate(Truths.None, (t, r) => t | r.Truths), key.Key.ToString());
-            foreach (var row in rows)
-                union[row.Key.In(row.Column)].Should().Be(row.Truths, row.Key.In(row.Column).ToString());
+            var columns = union.Entries.Where(e => PredicateAtom.ColumnOf(e.Key.Reader) is not null).ToList();
+            var joined = union.Entries.Where(e => PredicateAtom.ColumnOf(e.Key.Reader) is null).ToList();
+            static RawKey Columnless(RawKey key) => key with { Reader = PredicateAtom.Columnless(key.Reader) };
 
-            RawTruths.TruthsUnion.Verify(Enumerable.Range(0, 16).Select(t => (Truths)t));
-            RawTruths.Union.Verify([RawTruths.Empty, union, .. rows.Take(40).Select(r => RawTruths.Of(r.Key, r.Truths))]);
-            GC.KeepAlive(ProbeRows.ProbeTheory);
+            // Each column's reading: 8 classes, its null test and five comparisons beside each literal it is beside.
+            columns.GroupBy(e => e.Key.Reader).ToDictionary(g => g.Key, g => g.Count()).Should().Equal(new System.Collections.Generic.Dictionary<string, int>
+            {
+                ["raw:VARIANT"] = 288, ["raw:ANY"] = 288, ["raw:VARCHAR"] = 48,
+                ["cast:VARCHAR:raw:VARIANT"] = 48, ["cast:VARCHAR:raw:ANY"] = 48, ["cast:VARCHAR:raw:VARCHAR"] = 48,
+            });
+            joined.Should().HaveCount(288 + 48);
+            foreach (var (key, answer) in joined)
+                answer.Should().Be(columns.Where(e => Columnless(e.Key) == key).Aggregate(new RawAnswer(), (a, e) => RawAnswer.Join(a, e.Value)), key.ToString());
+            foreach (var (key, answer) in columns)
+                s.Theory.Get(s.RawColumn.Of(Columnless(key), PredicateAtom.ColumnOf(key.Reader)!)).Should().Be(answer, key.ToString());
+
+            RawTruths.AnswerUnion.Verify([.. union.Entries.Select(e => e.Value).Distinct(), RawAnswer.Unanswered]);
+            RawTruths.Union.Verify([RawTruths.Empty, union, .. union.Entries.Take(40).Select(e => RawTruths.Of(e.Key, e.Value))]);
+            GC.KeepAlive(s);
         }
 
         /// <summary>
@@ -101,14 +112,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             PredicateAtom.Swap(On(PredicateAtom.Affix(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader), PredicateAtom.LikeTest, "b%"), thirty)).Should().Be(T | U | R);
         }
 
-        /// <summary>A definition naming no column leaves the union empty, and a raw cell then reads anything and a raise.</summary>
+        /// <summary>
+        /// A definition naming no column leaves the union empty, and a raw cell then reads anything and a raise, the lattice's
+        /// top: no column says the value is compared at all, so the cell decides nothing.
+        /// </summary>
         [Fact]
         public void NoColumnReadsAnythingAndARaise()
         {
-            var theory = RenderingTheory.Define(ProbeRows.Measured with { Columns = [] });
+            var theory = RenderingTheory.Define(ProbeRows.Measured with { Columns = RawColumnRows.None });
             var empty = theory.Theory.Get(theory.RawUnion.Of());
             empty.Should().Be(RawTruths.Empty);
-            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty).Should().Be(T | U | R);
+            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty).Should().Be(T | F | U | R);
             GC.KeepAlive(theory);
         }
 

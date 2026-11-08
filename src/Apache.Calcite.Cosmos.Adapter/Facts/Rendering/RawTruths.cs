@@ -1,8 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-
-using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
 
@@ -10,49 +9,53 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The raw columns' truths, key by key: what Calcite may answer for a raw reading's test over a value of a kind, where
-    /// a column comparing the value as its type answers TRUE or FALSE (h12). S's <c>rawunion</c> holds it, each column's
-    /// row joined in by <see cref="Union"/>, so the union across columns is Eggnog's join; a primitive reads it on a cell.
+    /// The raw columns' answers, key by key: what Calcite may answer for a raw reading's test over a value of a kind, the
+    /// truths S's rules state whole and those a comparison on the cell decides (<see cref="RawAnswer"/>, h12, G5). S's
+    /// <c>rawunion</c> holds it, each column's answer joined in by <see cref="Union"/>, so the union across columns is
+    /// Eggnog's join; a primitive reads the cell's key in it.
     /// </summary>
     internal sealed class RawTruths : IEquatable<RawTruths>
     {
 
-        /// <summary>A truth's union, the join each key's truths take.</summary>
-        public static readonly ValueLattice<Truths> TruthsUnion = new("truths-union", (a, b) => a | b);
+        /// <summary>An answer's union, the join each key's answers take.</summary>
+        public static readonly ValueLattice<RawAnswer> AnswerUnion = new("raw-answer-union", RawAnswer.Join);
 
-        /// <summary>The keys' truths joined key by key, a key one side lacks taking the other's.</summary>
+        /// <summary>The keys' answers joined key by key, a key one side lacks taking the other's.</summary>
         public static readonly ValueLattice<RawTruths> Union = new("raw-union", (a, b) => a.Join(b));
 
         /// <summary>No column's truths: what <c>rawunion</c> starts as.</summary>
-        public static readonly RawTruths Empty = new(ImmutableSortedDictionary<RawKey, Truths>.Empty, 0);
+        public static readonly RawTruths Empty = new(ImmutableSortedDictionary<RawKey, RawAnswer>.Empty, 0);
 
-        readonly ImmutableSortedDictionary<RawKey, Truths> _truths;
+        readonly ImmutableSortedDictionary<RawKey, RawAnswer> _truths;
         readonly int _hash;
 
         // The hash is the entries' hashes summed, so a join updates it by the keys it changes.
-        RawTruths(ImmutableSortedDictionary<RawKey, Truths> truths, int hash)
+        RawTruths(ImmutableSortedDictionary<RawKey, RawAnswer> truths, int hash)
         {
             _truths = truths;
             _hash = hash;
         }
 
-        static int HashOf(RawKey key, Truths truths) => HashCode.Combine(key, truths);
+        static int HashOf(RawKey key, RawAnswer answer) => HashCode.Combine(key, answer);
 
-        /// <summary>One column's truths on a key, as the rule joins it in.</summary>
-        public static RawTruths Of(RawKey key, Truths truths) => new(ImmutableSortedDictionary<RawKey, Truths>.Empty.Add(key, truths), HashOf(key, truths));
+        /// <summary>One column's answer on a key, as the rule joins it in.</summary>
+        public static RawTruths Of(RawKey key, RawAnswer answer) => new(ImmutableSortedDictionary<RawKey, RawAnswer>.Empty.Add(key, answer), HashOf(key, answer));
 
         /// <summary>
-        /// One column's truths on a key, as the rule joins them in: under the union's key, beside the other columns', and
+        /// One column's answer on a key, as the rule joins it in: under the union's key, beside the other columns', and
         /// under the key of the reading through that column alone (rawtyped).
         /// </summary>
-        public static RawTruths Of(RawKey key, string column, Truths truths) =>
-            new(ImmutableSortedDictionary<RawKey, Truths>.Empty.Add(key, truths).Add(key.In(column), truths), HashOf(key, truths) + HashOf(key.In(column), truths));
+        public static RawTruths Of(RawKey key, string column, RawAnswer answer) =>
+            new(ImmutableSortedDictionary<RawKey, RawAnswer>.Empty.Add(key, answer).Add(key.In(column), answer), HashOf(key, answer) + HashOf(key.In(column), answer));
 
-        /// <summary>The truths on a key; anything, a raise among it, where no column answers for it.</summary>
-        public Truths this[RawKey key] => _truths.TryGetValue(key, out var truths) ? truths : Truths.Any | Truths.Raises;
+        /// <summary>The answer on a key; the lattice's top, anything and a raise, where no column answers for it.</summary>
+        public RawAnswer this[RawKey key] => _truths.TryGetValue(key, out var answer) ? answer : RawAnswer.Unanswered;
 
         /// <summary>How many keys a column answers for.</summary>
         public int Count => _truths.Count;
+
+        /// <summary>Each key and its answer, in key order.</summary>
+        public IEnumerable<KeyValuePair<RawKey, RawAnswer>> Entries => _truths;
 
         RawTruths Join(RawTruths other)
         {
@@ -60,8 +63,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var (joined, hash) = (into._truths, into._hash);
             foreach (var (key, truths) in from._truths)
             {
-                var held = joined.TryGetValue(key, out var h) ? h : (Truths?)null;
-                var merged = held is { } t ? TruthsUnion.Merge(t, truths) : truths;
+                var held = joined.TryGetValue(key, out var h) ? h : (RawAnswer?)null;
+                var merged = held is { } t ? AnswerUnion.Merge(t, truths) : truths;
                 if (merged == held)
                     continue;
 
@@ -78,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         public override int GetHashCode() => _hash;
 
-        /// <summary>Each key and its truths, in key order, as the theory's digest reads a row.</summary>
+        /// <summary>Each key and its answer, in key order, as the theory's digest reads a row.</summary>
         public override string ToString() => string.Join(";", _truths.Select(t => t.Key + "=" + t.Value));
 
     }

@@ -1,32 +1,61 @@
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
     /// <summary>
-    /// One of the three columns the IR's raw reading is read through — a promoted path's <c>VARIANT</c>, an <c>ANY</c>, a
-    /// field typed <c>VARCHAR</c> — and what it makes of a stored value of each kind, as <c>Calcite.RawNullIsSqlNull</c>
-    /// measured it in process: whether it is raw beside a string literal alone; what it reads a value of each kind as, a
-    /// stored null and an absent path among them, each column's own entries (F3); whether it orders within a type, since
-    /// without an ordering any ordering raises; and what its cast to text makes of each kind. Across types an equality is
-    /// unequal and an ordering raises. <see cref="CosmosAxiomRows.ReadColumns"/> reads it into S, whose rule takes the union.
+    /// A reading of one of the three columns the IR's raw value is read through — a promoted path's <c>VARIANT</c>, an
+    /// <c>ANY</c>, a field typed <c>VARCHAR</c> — the raw value or its cast to text, as a <c>Calcite</c> row measured it in
+    /// process: what it reads a stored value of each class as, a stored null and an absent path among them; the literal
+    /// classes it is compared beside; which comparisons compile over it; whether it compares a value as its type or as the
+    /// text it renders; and what a comparison it compiles answers of a value beside a literal of another type.
+    /// <see cref="CosmosAxiomRows.ReadColumns"/> reads it into S one fact a field, and S's rules say what each key answers (G5).
     /// </summary>
-    internal sealed record CosmosRawColumn(string Name, bool BesideStringsAlone, IReadOnlyDictionary<string, CosmosRawColumn.Answer> Read, bool Orders,
-        IReadOnlyDictionary<string, CosmosRawColumn.Answer> AsText)
+    /// <param name="Name">The column, by its SQL type.</param>
+    /// <param name="Reader">The reading through the column: <c>raw</c>, or <c>cast:VARCHAR:raw</c>.</param>
+    /// <param name="Reads">What it reads a stored value of each class as (<see cref="CalciteRead"/>).</param>
+    /// <param name="AsType">Whether it compares a value as the value's type, or as the text it renders.</param>
+    /// <param name="Beside">The literal classes it is compared beside.</param>
+    /// <param name="Compiles">Whether each comparison compiles over it; one that does not fails the statement.</param>
+    /// <param name="Across">What each comparison it compiles answers of a value it reads as itself beside a literal of another type.</param>
+    internal sealed record CosmosRawColumn(string Name, string Reader, IReadOnlyDictionary<CosmosValueClass, string> Reads, bool AsType,
+        IReadOnlyList<CosmosValueClass> Beside, IReadOnlyDictionary<CosmosServiceTest, bool> Compiles, IReadOnlyDictionary<CosmosServiceTest, Truths> Across)
     {
 
-        /// <summary>What a column makes of a stored value: the value itself, compared as its type or rendered; SQL null; or a raise.</summary>
-        public enum Answer { Itself, Null, Raises }
+        /// <summary>The literal classes a column is compared beside where it takes any: every class a literal is of.</summary>
+        public static IReadOnlyList<CosmosValueClass> Literals { get; } = [CosmosValueClass.String, CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False,
+            CosmosValueClass.Object, CosmosValueClass.Array, CosmosValueClass.Null];
 
-        /// <summary>The kinds of stored value a column answers for apart: a value of each type, a stored null and an absent path.</summary>
-        public const string String = "string", Number = "number", Boolean = "boolean", Structure = "structure", Null = "null", Absent = "absent";
+        /// <summary>
+        /// One answer a class, as a row states them: a string's, a number's, a boolean's, a structure's, a stored null's and an
+        /// absent path's, each measured over its witnesses (true and false, an object and an array).
+        /// </summary>
+        public static Dictionary<CosmosValueClass, string> Kinds(string text, string number, string boolean, string structure, string nulled, string absent) => new()
+        {
+            [CosmosValueClass.String] = text, [CosmosValueClass.Number] = number, [CosmosValueClass.True] = boolean, [CosmosValueClass.False] = boolean,
+            [CosmosValueClass.Object] = structure, [CosmosValueClass.Array] = structure, [CosmosValueClass.Null] = nulled, [CosmosValueClass.Absent] = absent,
+        };
 
-        /// <summary>The kinds that are a value, a stored null and an absent path apart.</summary>
-        public static IReadOnlyList<string> Values { get; } = [String, Number, Boolean, Structure];
+        /// <summary>Whether an equality and each ordering compile, as a row states them.</summary>
+        public static Dictionary<CosmosServiceTest, bool> Comparisons(bool equality, bool orderings) => new()
+        {
+            [CosmosServiceTest.Equal] = equality, [CosmosServiceTest.Less] = orderings, [CosmosServiceTest.LessOrEqual] = orderings,
+            [CosmosServiceTest.Greater] = orderings, [CosmosServiceTest.GreaterOrEqual] = orderings,
+        };
 
-        /// <summary>One answer a kind, as a row states them.</summary>
-        public static Dictionary<string, Answer> Kinds(Answer text, Answer number, Answer boolean, Answer structure, Answer nulled, Answer absent) =>
-            new() { [String] = text, [Number] = number, [Boolean] = boolean, [Structure] = structure, [Null] = nulled, [Absent] = absent };
+        /// <summary>What an equality and each ordering answer across types, as a row states them; none where it states none.</summary>
+        public static Dictionary<CosmosServiceTest, Truths> AcrossTypes(Truths equality, Truths? orderings = null)
+        {
+            var across = new Dictionary<CosmosServiceTest, Truths> { [CosmosServiceTest.Equal] = equality };
+            if (orderings is { } o)
+                foreach (var test in new[] { CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual })
+                    across[test] = o;
+
+            return across;
+        }
 
     }
 

@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
@@ -79,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// An object, an array, a JSON null and an absent path all answer SQL null: the first two by
         /// the standard's error path, since neither is a scalar.
         /// </remarks>
-        [Fact, CosmosPins("Calcite.JsonValueRendersScalarsAsText")]
+        [Fact, CosmosPins("Calcite.JsonValueRendersScalarsAsText"), CosmosPins("Calcite.JsonValueReadsStructureAsNull")]
         public void TheBareAccessorRendersEveryScalarAsText()
         {
             var expected = new (string Json, string? Value)[]
@@ -110,6 +114,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             Ask("JSON_VALUE('{}', '$.v')").Value.Should().BeNull("an absent path answers null");
+
+            // What the two rows read into S say of each class (G5): a string itself, a number and a boolean rendered, and an
+            // object, an array, a null and an absent path null.
+            static IEnumerable<(CosmosValueClass, string)> Readings(string id) =>
+                (CosmosAxioms.All.Single(a => a.Id == id).CalciteReadings ?? []).Select(r => { r.Reader.Should().Be(PredicateAtom.TextReader); return (r.Kind, r.Answer); });
+            Readings("Calcite.JsonValueRendersScalarsAsText").Should().BeEquivalentTo([(CosmosValueClass.String, CosmosCalciteReading.Itself),
+                (CosmosValueClass.Number, CosmosCalciteReading.Renders), (CosmosValueClass.True, CosmosCalciteReading.Renders), (CosmosValueClass.False, CosmosCalciteReading.Renders)]);
+            Readings("Calcite.JsonValueReadsStructureAsNull").Should().BeEquivalentTo([(CosmosValueClass.Object, CosmosCalciteReading.Null),
+                (CosmosValueClass.Array, CosmosCalciteReading.Null), (CosmosValueClass.Null, CosmosCalciteReading.Null), (CosmosValueClass.Absent, CosmosCalciteReading.Null)]);
         }
 
         /// <summary>

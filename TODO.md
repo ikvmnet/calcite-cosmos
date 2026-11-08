@@ -3112,8 +3112,7 @@ across documents* and *A join of a container to itself* is the record.
   S's (G2, G3, G4)*). G7 reads `calcitereads`, `calcitebands` and `testkinds` (where `PredicateAtom.TypeTests` holds a
   C# copy of the last), G8 `boxof`, `seesthrough`, `structureonly` and `measuredcast`, and G6 the D class's `Defined`,
   which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
-  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; the raw columns' absent-path entries,
-  which `CosmosAxiomRows.ReadColumns` does not read, since its keys hold a stored null and no absent path (G5); and
+  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).

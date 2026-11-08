@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>The registry's definition with one raw column's rows dropped, which S's union then lacks.</summary>
         static Plant Dropped(string column, params (string Sql, string? Caught)[] triggers) =>
-            new("drop " + column, true, d => d with { Columns = [.. d.Columns.Where(c => c.Column != column)] }, _ => { }, triggers);
+            new("drop " + column, true, d => d with { Columns = d.Columns.Without(column) }, _ => { }, triggers);
 
         /// <summary>
         /// h12's plant (line 34): the raw columns' union with a column dropped from the row. Without <c>ANY</c> a number or a
@@ -163,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (tip, dropped) = (Planned(new Plant("raw tip", true, d => d, _ => { }, triggers)), Planned(Dropped("VARCHAR", triggers)));
             dropped.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty();
             Sent(dropped).Should().BeEquivalentTo(Sent(tip));
-            var theory = Graph(d => d with { Columns = [.. d.Columns.Where(c => c.Column != "VARCHAR")] }, _ => { }).Current();
+            var theory = Graph(d => d with { Columns = d.Columns.Without("VARCHAR") }, _ => { }).Current();
             RenderingAnswerMemo.DigestOf(theory).Should().NotBe(RenderingAnswerMemo.DigestOf(ProbeRows.ProbeTheory));
         }
 

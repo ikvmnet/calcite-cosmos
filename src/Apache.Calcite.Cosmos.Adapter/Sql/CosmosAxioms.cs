@@ -7,7 +7,7 @@ using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
-using Column = Apache.Calcite.Cosmos.Adapter.Sql.CosmosRawColumn.Answer;
+using Column = Apache.Calcite.Cosmos.Adapter.Sql.CosmosRawColumn;
 using Test = Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest;
 
 namespace Apache.Calcite.Cosmos.Adapter.Sql
@@ -83,6 +83,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         // A connective's operands that are no truth, each measured over its own witnesses; declared before the rows read it.
         static readonly Class[] NoTruth = [Class.Undefined, Class.Absent, Class.Null, Class.Number, Class.String, Class.Object, Class.Array];
+
+        // The cast of a raw value to text, whose columns a row states; declared before the rows read it.
+        static readonly string CastOfRaw = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
 
         // An outcome's targets, those that ran its own witnesses: one alone where the two answered apart.
         const CosmosAxiomTarget Both = CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Emulator = CosmosAxiomTarget.Emulator, Azure = CosmosAxiomTarget.Azure;
@@ -364,10 +367,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.TheBareAccessorRendersEveryScalarAsText",
                 // The text accessor reads a string as the string (F3, G3); that two equal values read so compare equal is
                 // Calcite.EqualValuesReadAlikeCompareEqual's.
-                ReaderOrders: [new(PredicateAtom.TextReader, CosmosReaderOrder.Itself)]),
+                ReaderOrders: [new(PredicateAtom.TextReader, CosmosReaderOrder.Itself)],
+                // A string as itself, and a number and a boolean as their renderings (G5).
+                CalciteReadings: [new(PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself), new(PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders),
+                    new(PredicateAtom.TextReader, Class.True, CosmosCalciteReading.Renders), new(PredicateAtom.TextReader, Class.False, CosmosCalciteReading.Renders)]),
             new("Calcite.JsonValueReadsStructureAsNull",
                 "JSON_VALUE without RETURNING answers SQL null for an object, an array, a JSON null and an absent path.",
-                CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.TheBareAccessorRendersEveryScalarAsText"),
+                CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.TheBareAccessorRendersEveryScalarAsText",
+                CalciteReadings: [.. new[] { Class.Object, Class.Array, Class.Null, Class.Absent }.Select(kind => new CosmosCalciteReading(PredicateAtom.TextReader, kind, CosmosCalciteReading.Null))]),
             new("Calcite.JsonQueryAnswersStructureOnly",
                 "JSON_QUERY answers an object or an array as its JSON, written without the whitespace the document carried, and null for a scalar, a JSON null and an absent path.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 16), "Measurements.CalciteJsonValueMeasurementTests.JsonQueryAnswersStructureOnlyAndWritesItCompactly",
@@ -426,20 +433,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.RawNullIsSqlNull",
                 "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone. Within a type ANY orders as the type, a string by its UTF-16 units as a VARCHAR column does and false before true, and compares a number in the box the reader built: a long by its value, and any other number by its double's exact value, so 2^53 + 1 written with a point is 2^53 and a stored 0.1 lies above 0.1; two doubles compare by Double.compareTo, so a stored -0.0 lies below a double 0 and is unequal to it, where a long 0 equals both.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal",
+                // The raw value through each column (G5): every value as its type, a null and an absent path SQL null; beside a
+                // literal of any class, or a VARCHAR column beside a string alone.
                 Columns:
                 [
-                    // No ordering, the statement failing to compile; a number equal to one boxed with its own type alone; cast to
-                    // text, a number or a boolean is null and a structure raises.
-                    new("VARIANT", false, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself, Column.Null, Column.Null), false, CosmosRawColumn.Kinds(Column.Itself, Column.Null, Column.Null, Column.Raises, Column.Null, Column.Null)),
-                    // Ordered as the type, a number in its box; cast to text, each value as Java renders the box.
-                    new("ANY", false, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself, Column.Null, Column.Null), true, CosmosRawColumn.Kinds(Column.Itself, Column.Itself, Column.Itself, Column.Itself, Column.Null, Column.Null)),
+                    // No ordering, the statement failing to compile; a value of another type unequal.
+                    new("VARIANT", PredicateAtom.RawReader, Column.Kinds(CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null),
+                        true, Column.Literals, Column.Comparisons(true, false), Column.AcrossTypes(Truths.False)),
+                    // Ordered as the type, a number in its box; a value of another type unequal, and an ordering across types failing.
+                    new("ANY", PredicateAtom.RawReader, Column.Kinds(CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null),
+                        true, Column.Literals, Column.Comparisons(true, true), Column.AcrossTypes(Truths.False, Truths.Raises)),
                     // A string alone, the statement failing over anything else.
-                    new("VARCHAR", true, CosmosRawColumn.Kinds(Column.Itself, Column.Raises, Column.Raises, Column.Raises, Column.Null, Column.Null), true, CosmosRawColumn.Kinds(Column.Itself, Column.Raises, Column.Raises, Column.Raises, Column.Null, Column.Null)),
+                    new("VARCHAR", PredicateAtom.RawReader, Column.Kinds(CalciteRead.Itself, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
+                        true, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
                 ]),
             new("Calcite.CastOfARawValueToText",
                 "A cast to VARCHAR of a raw value is its column's own. A string is itself and a null or an absent path null in each; a VARIANT casts a number and a boolean to null and raises over an object or an array; an ANY renders each value as Java renders the reader's box: a boolean as true or false, an integer within a long in its digits and any other number as Java spells its double, 42.0 as 42.0 and 99999999999999999999 as 1.0E20, an object as {a=1} and an array as [1]; and a VARCHAR column reads a string alone.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 24), "Measurements.CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn",
-                Casts: [new("VARCHAR", PredicateAtom.RawReader)]),
+                Casts: [new("VARCHAR", PredicateAtom.RawReader)],
+                // The cast through each column (G5): the text it renders compared as a string, beside a string, every comparison
+                // compiling; a VARIANT's number and boolean null and its structure raising, a VARCHAR column's anything but a string.
+                Columns:
+                [
+                    new("VARIANT", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
+                        false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
+                    new("ANY", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Itself, CalciteRead.Null, CalciteRead.Null),
+                        false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
+                    new("VARCHAR", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
+                        false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
+                ]),
             new("Calcite.ReadingsAreNullOverAnAbsentPath",
                 "Every reading the predicate loader builds is null over an absent path: the text accessor; RETURNING of each scalar type, and a column of each; the raw value in a VARIANT, an ANY and a VARCHAR column; a cast of the accessor or of the raw value to INTEGER, BIGINT or DOUBLE; and a cast of the raw value to VARCHAR. Read as data by the rendering graph's strict readings (CosmosStrictness).",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 23), "Measurements.CalciteNullStrictnessMeasurementTests.EveryReadingIsNullOverAnAbsentPath",

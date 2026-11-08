@@ -2,15 +2,13 @@ using System;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
-using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
-
 namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The key of a raw column's truths (h12): a raw reading, the union's or one column's (rawtyped), the kind of value a cell holds, the test, and the class of
-    /// the literal beside it (<see cref="CosmosValueClass.None"/> for the null test), which says both whether a column
-    /// raw beside strings alone is read and whether the literal is of the value's type.
+    /// The key of a raw column's answer (h12): a raw reading, the union's or one column's (rawtyped), the class of value a
+    /// cell holds, the test, and the class of the literal beside it (<see cref="CosmosValueClass.None"/> for the null test).
+    /// Which columns answer a key, and how, are S's rules over the columns' rows (G5).
     /// </summary>
     internal readonly record struct RawKey(string Reader, CosmosValueClass Kind, CosmosServiceTest Test, CosmosValueClass Operand) : IComparable<RawKey>
     {
@@ -21,20 +19,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The key as the reading through one column asks it: its own column's truths, no other's (rawtyped).</summary>
         public RawKey In(string column) => this with { Reader = PredicateAtom.InColumn(Reader, column) };
 
-        /// <summary>Whether the literal is of another type than the value: across, where no column compares the two as one type.</summary>
-        public bool Across => TypeOf(Kind) != TypeOf(Operand);
-
-        /// <summary>A boolean is one type, and so is a structure.</summary>
-        static CosmosValueClass TypeOf(CosmosValueClass c) => c switch { CosmosValueClass.False => CosmosValueClass.True, CosmosValueClass.Array => CosmosValueClass.Object, _ => c };
-
         /// <summary>
-        /// The key a raw reading's test reads on a cell beside a literal: none for a cell of no one kind, a null read as one
-        /// with an absent path, or for a test no column answers.
+        /// The key a raw reading's test reads on a cell beside a literal, the cell's class as every reader of the rows spells
+        /// it, an absent path its own (F3): none for a cell of no one class, or a test no column answers.
         /// </summary>
         public static RawKey? On(string reader, PathCell cell, string test, string? literal)
         {
-            var kind = cell is PathCell.Point { Value: var v } && JsonValues.TypeOf(v) == NullType ? null
-                : CosmosValueClasses.Of(cell) is CosmosValueClass.Absent ? CosmosValueClass.Null : CosmosValueClasses.Of(cell);
             CosmosServiceTest? asked = test switch
             {
                 PredicateAtom.Equal => CosmosServiceTest.Equal,
@@ -45,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 PredicateAtom.NullTest => CosmosServiceTest.IsNull,
                 _ => null,
             };
-            return kind is { } k && asked is { } a ? new(reader, k, a, literal is null ? CosmosValueClass.None : CosmosValueClasses.Of(literal)) : null;
+            return CosmosValueClasses.Of(cell) is { } kind && asked is { } a ? new(reader, kind, a, literal is null ? CosmosValueClass.None : CosmosValueClasses.Of(literal)) : null;
         }
 
         /// <inheritdoc />

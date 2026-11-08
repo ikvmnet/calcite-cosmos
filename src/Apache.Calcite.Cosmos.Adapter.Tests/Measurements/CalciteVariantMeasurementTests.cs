@@ -4,6 +4,8 @@ using System.Linq;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
@@ -47,18 +49,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>The strings, a null and an absent path: what a <c>VARCHAR</c> column reads.</summary>
         static readonly string?[] Strings = Values.Take(7).Append("null").Append(null).ToArray();
 
-        /// <summary>The column of the row the raw cells' union reads (<see cref="CosmosRawColumn"/>), which these tests hold.</summary>
+        /// <summary>The raw reading through a column, as the row S's raw rules read states it (<see cref="CosmosRawColumn"/>), which these tests hold.</summary>
         static CosmosRawColumn Column(string name) => CosmosAxioms.All.Single(a => a.Id == "Calcite.RawNullIsSqlNull").Columns!.Single(c => c.Name == name);
 
+        /// <summary>The cast of the raw value to text through a column, as its row states it.</summary>
+        static CosmosRawColumn Cast(string name) => CosmosAxioms.All.Single(a => a.Id == "Calcite.CastOfARawValueToText").Columns!.Single(c => c.Name == name);
+
         /// <summary>
-        /// A value of each kind but a string answered alike, and a stored null and an absent path SQL null, as every column
+        /// A value of each class but a string answered alike, and a stored null and an absent path SQL null, as every column
         /// reads them: what the table says a column makes of each.
         /// </summary>
-        static Dictionary<string, CosmosRawColumn.Answer> Kinds(CosmosRawColumn.Answer text, CosmosRawColumn.Answer others, CosmosRawColumn.Answer? structure = null) => new()
-        {
-            [CosmosRawColumn.String] = text, [CosmosRawColumn.Number] = others, [CosmosRawColumn.Boolean] = others, [CosmosRawColumn.Structure] = structure ?? others,
-            [CosmosRawColumn.Null] = CosmosRawColumn.Answer.Null, [CosmosRawColumn.Absent] = CosmosRawColumn.Answer.Null,
-        };
+        static Dictionary<CosmosValueClass, string> Kinds(string text, string others, string? structure = null) =>
+            CosmosRawColumn.Kinds(text, others, others, structure ?? others, CosmosCalciteReading.Null, CosmosCalciteReading.Null);
 
         /// <summary>
         /// A raw value is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not
@@ -105,7 +107,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var none = MaterialisedTable.Of(SqlTypeName.VARIANT, new string?[0]);
             foreach (var op in new[] { "<", "<=", ">", ">=" })
                 (none.Failure(connection, $"\"v\" {op} 'bikes'")?.Message).Should().Contain("VariantValue", $"{op} over a VARIANT has no method to call, whatever the rows hold");
-            (Column("VARIANT").Orders, Column("ANY").Orders, Column("VARCHAR").Orders).Should().Be((false, true, true));
+            Column("VARIANT").Compiles.Should().Equal(CosmosRawColumn.Comparisons(true, false));
+            foreach (var name in new[] { "ANY", "VARCHAR" })
+                Column(name).Compiles.Should().Equal(CosmosRawColumn.Comparisons(true, true), $"{name} compiles every comparison");
 
             any.Ask(connection, "\"v\" IS NULL", "\"v\" = 42", "\"v\" = TRUE").Should().Equal("FFFFFFFFFFFFFTT", "FFFFFFFTTFFFFUU", "FFFFFFFFFTFFFUU");
 
@@ -129,9 +133,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             varchar.Ask(connection, "\"v\" IS NULL", "\"v\" <> 'bikes'", "\"v\" < 'bikes'").Should().Equal("FFFFFFFTT", "FTTTTTTUU", "FTFTFFFUU");
             foreach (var value in Values.Skip(7).Take(6))
                 FluentActions.Invoking(() => MaterialisedTable.Read(value, SqlTypeName.VARCHAR)).Should().Throw<CosmosMaterializationException>($"a VARCHAR column reads {value} as no string");
-            Column("VARCHAR").Read.Should().Equal(Kinds(CosmosRawColumn.Answer.Itself, CosmosRawColumn.Answer.Raises));
+            Column("VARCHAR").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Raises));
+            Column("VARCHAR").Beside.Should().Equal([CosmosValueClass.String], "a VARCHAR column is raw beside a string alone");
+            Column("VARCHAR").Across.Should().BeEmpty("a VARCHAR column reads no value of another type than a string");
             foreach (var name in new[] { "VARIANT", "ANY" })
-                Column(name).Read.Should().Equal(Kinds(CosmosRawColumn.Answer.Itself, CosmosRawColumn.Answer.Itself), $"{name} answers for a value of every kind above");
+            {
+                Column(name).Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Itself), $"{name} answers for a value of every kind above");
+                Column(name).Beside.Should().Equal(CosmosRawColumn.Literals, $"{name} is raw beside a literal of every class");
+            }
+
+            // Across types an equality is unequal, and ANY's ordering fails; each compares a value as its type.
+            Column("VARIANT").Across.Should().Equal(CosmosRawColumn.AcrossTypes(Truths.False));
+            Column("ANY").Across.Should().Equal(CosmosRawColumn.AcrossTypes(Truths.False, Truths.Raises));
+            new[] { "VARIANT", "ANY", "VARCHAR" }.Select(name => Column(name)).Should().OnlyContain(c => c.AsType && c.Reader == PredicateAtom.RawReader);
         }
 
         /// <summary>
@@ -159,9 +173,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             MaterialisedTable.Of(SqlTypeName.VARCHAR, ["42"]).Failure(connection, asked[0]).Should().BeOfType<CosmosMaterializationException>("a VARCHAR column reads no number");
 
             // The columns the cells' union reads are what this measures.
-            Column("VARIANT").AsText.Should().Equal(Kinds(CosmosRawColumn.Answer.Itself, CosmosRawColumn.Answer.Null, CosmosRawColumn.Answer.Raises));
-            Column("ANY").AsText.Should().Equal(Kinds(CosmosRawColumn.Answer.Itself, CosmosRawColumn.Answer.Itself));
-            Column("VARCHAR").AsText.Should().Equal(Kinds(CosmosRawColumn.Answer.Itself, CosmosRawColumn.Answer.Raises));
+            Cast("VARIANT").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Null, CosmosCalciteReading.Raises));
+            Cast("ANY").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Itself));
+            Cast("VARCHAR").Reads.Should().Equal(Kinds(CosmosCalciteReading.Itself, CosmosCalciteReading.Raises));
+
+            // Each compares the text it renders, beside a string, every comparison compiling: the VARIANT's ordering too.
+            new[] { "VARIANT", "ANY", "VARCHAR" }.Select(Cast).Should().OnlyContain(c => c.AsType == false && c.Reader == PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)
+                && c.Beside.SequenceEqual(new[] { CosmosValueClass.String }) && c.Compiles.All(t => t.Value) && c.Compiles.Count == 5 && c.Across.Count == 0);
         }
 
         /// <summary>

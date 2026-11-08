@@ -8575,14 +8575,15 @@ rawtyped it also keeps each column's own, *…and a column's reading's its own*)
 **The key carries the literal's class.** `RawKey(Reader, Kind, Test, Operand)`: the reading (`raw` or
 `cast:VARCHAR:raw`), the cell's kind, the test, and the literal's class (none for the null test). The spec's key held
 whether the literal is across the cell's type, but a `VARCHAR` column is raw beside a string alone, so a number cell
-beside a string and beside a boolean, both across, answer apart; the class says both, and `RawKey.Across` reads the
-type off it, a boolean one type and a structure one. Each row is what the column answers over a value of the kind: a
+beside a string and beside a boolean, both across, answer apart; the class says both, and since G5 S's rules compare
+the two classes' types (`classtype`), a boolean one type. Each row is what the column answers over a value of the kind: a
 column comparing the value as its type TRUE or FALSE, across types an equality FALSE and an ordering a raise, a column
 with no ordering a raise on any, a null UNKNOWN (TRUE to the null test), and the cast the rendering compared, null or
 a raise as the column casts.
 
 **One value, joined key by key.** `rawunion` is one value, `RawTruths`, a key's truths per key, under a lattice that
-joins two key by key with `TruthsUnion` (`a | b`), both laws-checked. A rule's primitive reads only what the rule binds,
+joins two key by key with an answer's union (`AnswerUnion`, since G5; `TruthsUnion`, `a | b`, before), both
+laws-checked. A rule's primitive reads only what the rule binds,
 and a raw atom's cells ask a key each, by the cell's kind; a function keyed by `RawKey`, as the spec has it, would need
 a lookup per kind and a second rule to gather them, so the union is the table's single value and the gate's pairing rule
 binds it beside the atom (four operands a `Compute`, so the atom and the union go as one pair). It starts empty, so a
@@ -8592,6 +8593,8 @@ definition naming no column still pairs every atom: a key no column answers read
 and the literal is of the value's type, the comparison on the cell (a string by its units, a number through
 `SidesOf`, the cast's rendering through `MayRender`), met with the union; the null, the raise and across types are the
 union's. So the answers are those of the C# union figure for figure: digests byte-equal, population D unchanged.
+Since G5 which of the two a key takes is the key's own answer, S's rules over the columns' rows (*Raw columns as cells,
+S's (G5)*).
 
 **The plant.** A definition with a column's rows dropped is caught by source A: without `ANY` a number cast to text is
 never the text it renders as, and S sends `c.category = "30"`, losing the stored 30 an `ANY` keeps; without `VARIANT` a
@@ -8874,8 +8877,8 @@ spec has not (`TODO.md`).
 **A function over a `VARCHAR` column.** The function rows read a call's operand through the text
 (`Calcite.JsonValueRendersScalarsAsText`). A column that reads a string as itself and raises over every other kind but
 null, the row's `VARCHAR`, hands a function what the text does over a string, a null as null, and over anything else
-Calcite raises, which any answer refines; so `CosmosAxiomRows.ReadFunctionReads` adds its reader beside the text's,
-derived from the row's column rather than listed. `CONCAT(c.id, '!')` over `id` is read so.
+Calcite raises, which any answer refines; so the column's reader is read beside the text's, derived from the row's
+column rather than listed (since G5 S's rule, *Raw columns as cells, S's (G5)*). `CONCAT(c.id, '!')` over `id` is read so.
 
 **An affix's negation.** Over a field declared `VARIANT`, the cast to text is a string itself, a number or a boolean
 null and a structure a raise. `NOT LIKE 'b%'` then keeps no number or boolean, where the service's `NOT STARTSWITH` is
@@ -9092,8 +9095,7 @@ definition (`CosmosRendering.Definition`), and S's root assumes it into a relati
 - `Calcite.TypeTestsAreTheirBodies`: `testkinds(test)`, the classes each type test is true of in process, read off its
   vector.
 - `Calcite.RawNullIsSqlNull`: each column's own entries for a stored null and an absent path, read and cast alike, SQL
-  null in each. `ReadColumns` reads a stored null's entry where it had chosen SQL null in C#, and an absent path's entry
-  waits on G5.
+  null in each. `ReadColumns` reads both entries since G5, an absent path its own class.
 - `CosmosFunctionAnswer.Defined`, the D class's answer, apart from `Undefined`; no row states it yet (G6).
 
 G1's rules read `moves`, `storedas` and `truncates` (*Character bands and the stored spelling, S's (G1)*), and G3's
@@ -9396,6 +9398,42 @@ flags its readings give, matches a pattern and reads a key. `ServiceCompound` re
 classes. `PathCell.SidesOf` and `PredicateAtom.OnPair` evaluate on cells by what S hands them. `AnswerMeanings.Read`
 applies the meanings to a class a rule hands it. `CosmosRendering.ReadReaderKinds` reads Calcite's type system once,
 an input.
+
+### Raw columns as cells, S's (G5)
+
+**What moved.** The raw columns' answers were three C# readings of `Calcite.RawNullIsSqlNull` and
+`Calcite.CastOfARawValueToText`: `CosmosAxiomRows.ReadColumns` built each key's truths with a law per answer (`Rows`,
+`Answered`, `KindOf`), `RawKey.Across` said which literal is across a value's type, `RawKey.On` gave a point null no key
+and read an absent path as a null, and `RawText.AsText` and `Raw.Through` met the union with the cell's comparison where
+a key's truths held TRUE or FALSE, falling back to their own answer where no key was stated. Now each column is a row of
+its own (`CosmosRawColumn`: what it reads each class as, which comparisons compile, the literal classes it is compared
+beside, whether it compares as the value's type or the text it renders, and what it answers across types), read one fact
+a field (`rawreads`, `rawcompiles`, `rawbeside`, `rawastype`, `rawacross`), and six rules of `raw` say what each key
+answers, into `rawcolumn` and, by the h12 rule, `rawunion`:
+- a null test is what the column reads the class as means to it (`readtruths`, `KleeneTables.Reads`: itself FALSE, null
+  TRUE, a raise a raise);
+- a comparison over a class read as null or a raise is what that read means to it (UNKNOWN, a raise);
+- a value read as itself beside a literal of its type is compared as the type, and a cast's text compared, both of which
+  the cell decides;
+- across types, what the column says (`rawacross`); one the column does not compile fails the statement.
+
+**A key's answer says what the cell decides.** `RawAnswer(Whole, Compared)`: the truths a rule states whole, and those a
+comparison on the cell decides (`OnTheCell`: TRUE or FALSE). `RawText.AsText` and `Raw.Through` read the cell's key and
+ask the cell only where the key says so; a key no column states is `Unanswered`, anything and a raise, the lattice's top.
+That is the RawPlan the audit asked for, whole against compared, as data per key. A point null is a `Null` cell and an
+absent path an `Absent` one, each with its own entries.
+
+**Which column reads as the text over a function's rows.** `ReadFunctionReads` added the `VARCHAR` column's reader beside
+a function's text reader where its rows were measured through the text (rawtyped), a C# condition. S's rules derive it:
+a column refines the text over a class it reads as the text does (`calcitereads` of the text, F3's rows, now stated
+for every class: a string itself, a number and a boolean rendered, the rest null) or raises on, and one refining it over
+every class the text reads is read as it over a function measured through the text (`functionreaders`, which the image
+rule reads). The subset is asked in the stage after the rows are gathered (`readas`), so it reads them complete.
+
+**What did not move.** The keys are the parent's figure for figure, but for two no plan reaches: a `VARCHAR` column
+beside a literal that is no string, which no row measures, answers `Unanswered` where the parent answered the comparison
+and a raise; and an object beside an array is across types where the parent read both as one structure type, which no
+literal reaches. Digests, the census and population D are byte-equal.
 
 ## Differential testing
 

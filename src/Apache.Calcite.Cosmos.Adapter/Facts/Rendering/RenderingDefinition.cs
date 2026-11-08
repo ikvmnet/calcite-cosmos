@@ -87,10 +87,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(string Function, long Spelling, long Ordinal, FunctionValueClass Class)> CallSpellings { get; init; } = [];
 
         /// <summary>
-        /// What each raw column answers on each key (<c>CosmosAxiomRows.ReadColumns</c>), whose union S's rule takes (h12).
-        /// None in a definition that names none, where a raw reading's cells read anything and a raise.
+        /// What each raw column states, one fact a field (<c>CosmosAxiomRows.ReadColumns</c>), from which S's rules say what it
+        /// answers on each key and take the union across columns (h12, G5). None in a definition that names none, where a raw
+        /// reading's cells read anything and a raise.
         /// </summary>
-        public IReadOnlyList<(RawKey Key, string Column, Truths Truths)> Columns { get; init; } = [];
+        public RawColumnRows Columns { get; init; } = RawColumnRows.None;
+
+        /// <summary>
+        /// What each test answers of a value a reading reads as itself, as SQL null, or raises on, where a value read so
+        /// decides it (<see cref="KleeneTables.Reads"/>): S's <c>readtruths</c>, which the raw rules read (G5).
+        /// </summary>
+        public IReadOnlyList<(CosmosServiceTest Test, string Read, Truths Truths)> ReadTruths { get; init; } = KleeneTables.Reads;
+
+        /// <summary>The JSON type of each class of value (<see cref="CosmosValueClasses.Types"/>): S's <c>classtype</c>, which says two are of one type.</summary>
+        public IReadOnlyList<(CosmosValueClass Class, string Type)> ClassTypes { get; init; } = CosmosValueClasses.Types;
 
         /// <summary>
         /// Which bands each comparator ranks apart from Calcite's UTF-16 order (<c>CosmosAxiomRows.ReadParts</c>, F3), which

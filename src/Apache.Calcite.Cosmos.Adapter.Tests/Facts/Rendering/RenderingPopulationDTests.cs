@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [InlineData("VARIANT")]
         public void ARawColumnDroppedFromTheUnionIsCaught(string column)
         {
-            var planted = RenderingTheory.Define(Measured with { Columns = [.. Measured.Columns.Where(c => c.Column != column)] });
+            var planted = RenderingTheory.Define(Measured with { Columns = Measured.Columns.Without(column) });
             var tally = Run(Trials, [planted], [RenderingSet.Production]);
             Print(tally);
             tally.Faults.Should().NotBeEmpty();

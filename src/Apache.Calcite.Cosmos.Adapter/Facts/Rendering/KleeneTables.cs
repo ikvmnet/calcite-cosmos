@@ -28,6 +28,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static readonly CosmosValueClass[] Operands = [True, False, Undefined, Absent, Null, Number, CosmosValueClass.String, Object, CosmosValueClass.Array];
 
+        /// <summary>
+        /// What a test answers of a value a reading reads as SQL null, raises on, or reads as a value, where what it reads
+        /// decides it (G5): <c>IS NULL</c> TRUE of a null and FALSE of a value, a comparison UNKNOWN beside a null, and any test
+        /// raising where the read does. A comparison of a value it reads is the reading's own, which no row here says.
+        /// </summary>
+        public static IReadOnlyList<(CosmosServiceTest Test, string Read, Truths Truths)> Reads { get; } =
+        [
+            (CosmosServiceTest.IsNull, CalciteRead.Itself, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Null, Truths.True), (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises),
+            .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
+               from read in new[] { (CalciteRead.Null, Truths.Unknown), (CalciteRead.Raises, Truths.Raises) }
+               select (test, read.Item1, read.Item2),
+        ];
+
         /// <summary>Kleene's answer on each key, for each target that may be handed its operands.</summary>
         public static IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Rows { get; } =
             [.. Over(RenderingTarget.Emulator, Operands), .. Over(RenderingTarget.Azure, Operands), .. Over(RenderingTarget.Calcite, Booleans),

@@ -126,7 +126,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["raw"] =
                 [
-                    "a raw reading's truths on a key are the union of its columns', and a column's reading's its own",
+                    "a raw reading's null test over a class is what its column reads the class as means to it",
+                    "a raw reading's comparison over a class its column reads as null or raises on is what that read means to it",
+                    "a raw reading's comparison of a value with a literal of its type is the comparison as the type, which the cell decides",
+                    "a raw reading's comparison of a value with a literal of another type is what its column answers across types",
+                    "a cast of a raw value compares the text it renders a value as, which the cell decides",
+                    "a raw reading's comparison its column does not compile fails the statement",
+                    "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
+                    "a reading reads the classes its rows name",
+                    "a raw column raising over a class refines the text over it",
+                    "a raw column reading a class as the text reads it refines the text over it",
+                    "a function's operand is read through what its rows were measured through",
+                ],
+                ["readas"] =
+                [
+                    "a raw column refining the text over every class the text reads is read as it over a function measured through the text",
                 ],
                 ["roles"] =
                 [
@@ -311,7 +325,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(140);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(151);
         }
 
         /// <summary>

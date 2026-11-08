@@ -240,7 +240,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
-            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(6).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(14).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+                .And.Contain((PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself)).And.Contain((PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders))
+                .And.Contain((PredicateAtom.TextReader, Class.Absent, CosmosCalciteReading.Null))
                 .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises));
             CosmosAxiomRows.ReadCalciteBands(all).Should().BeEquivalentTo(new[] { (parse, Class.String, JsonValues.TrimmedClass), (parse, Class.String, JsonValues.NulClass) });
             CosmosAxiomRows.ReadCasts(all).Should().HaveCount(5).And.Contain(("BOOLEAN", PredicateAtom.TextReader, "Calcite.CastToBooleanParses"))
@@ -258,33 +260,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// The raw columns S takes the union of are a <c>Calcite</c> row's, read through the registry one row a column a key
-        /// (h12): every key the raw reading and its cast ask, a column raw beside strings alone only beside a string, and each
-        /// answer as the row states it.
+        /// The raw columns S answers keys from are two <c>Calcite</c> rows', read through the registry one fact a field (h12,
+        /// G5): what each reading reads each class as, the literals it is beside, the comparisons that compile, whether it
+        /// compares as the type or as text, and what it answers across types. What each key answers is S's rules' over them:
+        /// a VARIANT's number beside a string unequal and a VARCHAR column's raising; a VARIANT's ordering failing and an
+        /// ANY's left to the cell; an ordering across types failing; a null and an absent path SQL null; the cast's number
+        /// null through a VARIANT and its rendering through an ANY; a VARCHAR column beside nothing but a string.
         /// </summary>
         [Fact]
-        public void TheRawColumnsAreACalciteRowsReadOneRowAColumnAKey()
+        public void TheRawColumnsAreTwoCalciteRowsReadOneFactAField()
         {
             const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
             var rows = CosmosAxiomRows.ReadColumns(CosmosAxioms.All);
-            rows.Select(r => (r.Key, r.Column)).Should().OnlyHaveUniqueItems();
-            rows.GroupBy(r => r.Column).ToDictionary(g => g.Key, g => g.Count()).Should().Equal(new Dictionary<string, int> { ["VARIANT"] = 294, ["ANY"] = 294, ["VARCHAR"] = 84 });
-
             var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
-            Truths At(string reader, Class kind, Test test, Class operand, string column) =>
-                rows.Single(r => r.Key == RawKey.Of(reader, kind, test, operand) && r.Column == column).Truths;
+            (rows.Reads.Count, rows.Beside.Count, rows.Compiles.Count, rows.AsType.Count, rows.Across.Count).Should().Be((48, 18, 30, 6, 6));
+            rows.Reads.Select(r => (r.Reading, r.Column, r.Kind)).Should().OnlyHaveUniqueItems();
+            rows.Columns.Should().BeEquivalentTo("VARIANT", "ANY", "VARCHAR");
+            rows.Reads.Where(r => r.Kind is Class.Null or Class.Absent).Should().HaveCount(12).And.OnlyContain(r => r.Answer == CosmosCalciteReading.Null,
+                "a stored null and an absent path are SQL null in each column, read and cast alike (F3)");
 
-            (At("raw", Class.Number, Test.Equal, Class.String, "VARIANT"), At("raw", Class.Number, Test.Equal, Class.String, "VARCHAR")).Should().Be((F, R));
-            (At("raw", Class.Number, Test.Less, Class.Number, "VARIANT"), At("raw", Class.Number, Test.Less, Class.Number, "ANY")).Should().Be((R, T | F));
-            (At("raw", Class.True, Test.Equal, Class.False, "ANY"), At("raw", Class.Object, Test.Greater, Class.String, "ANY")).Should().Be((T | F, R));
-            (At("raw", Class.Null, Test.Equal, Class.String, "ANY"), At("raw", Class.Null, Test.IsNull, Class.None, "VARCHAR")).Should().Be((U, T));
+            var union = ProbeRows.Columns;
+            RawAnswer At(string reader, Class kind, Test test, Class operand, string column) => union[RawKey.Of(reader, kind, test, operand).In(column)];
+
+            (At("raw", Class.Number, Test.Equal, Class.String, "VARIANT"), At("raw", Class.Number, Test.Equal, Class.String, "VARCHAR")).Should().Be((RawAnswer.Stated(F), RawAnswer.Stated(R)));
+            (At("raw", Class.Number, Test.Less, Class.Number, "VARIANT"), At("raw", Class.Number, Test.Less, Class.Number, "ANY")).Should().Be((RawAnswer.Fails, RawAnswer.OnTheCell));
+            (At("raw", Class.True, Test.Equal, Class.False, "ANY"), At("raw", Class.Object, Test.Greater, Class.String, "ANY")).Should().Be((RawAnswer.OnTheCell, RawAnswer.Stated(R)));
+            (At("raw", Class.Null, Test.Equal, Class.String, "ANY"), At("raw", Class.Null, Test.IsNull, Class.None, "VARCHAR")).Should().Be((RawAnswer.Stated(U), RawAnswer.Stated(T)));
+            (At("raw", Class.Absent, Test.Equal, Class.String, "ANY"), At("raw", Class.Absent, Test.IsNull, Class.None, "VARIANT")).Should().Be((RawAnswer.Stated(U), RawAnswer.Stated(T)));
             (At(cast, Class.Number, Test.Equal, Class.String, "VARIANT"), At(cast, Class.Number, Test.Equal, Class.String, "ANY"), At(cast, Class.Object, Test.IsNull, Class.None, "VARIANT"))
-                .Should().Be((U, T | F, R));
-            rows.Should().NotContain(r => r.Column == "VARCHAR" && r.Key.Reader == "raw" && r.Key.Test != Test.IsNull && r.Key.Operand != Class.String);
-
-            // A stored null and an absent path are each column's own entries, read and cast alike (F3): SQL null in each.
-            CosmosAxioms.All.Single(a => a.Id == "Calcite.RawNullIsSqlNull").Columns.Should().HaveCount(3).And.OnlyContain(c =>
-                new[] { c.Read, c.AsText }.All(d => d[CosmosRawColumn.Null] == CosmosRawColumn.Answer.Null && d[CosmosRawColumn.Absent] == CosmosRawColumn.Answer.Null));
+                .Should().Be((RawAnswer.Stated(U), RawAnswer.OnTheCell, RawAnswer.Stated(R)));
+            At("raw", Class.Number, Test.Equal, Class.Number, "VARCHAR").Should().Be(RawAnswer.Unanswered, "a VARCHAR column is raw beside a string alone");
+            System.GC.KeepAlive(ProbeRows.ProbeTheory);
         }
 
         /// <summary>
