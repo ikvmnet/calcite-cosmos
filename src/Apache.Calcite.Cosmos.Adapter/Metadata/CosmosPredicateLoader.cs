@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Internal;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 
@@ -316,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var narrowest = int.MaxValue;
 
                 while (node is RexCall call &&
-                       (SqlKind.__Enum)call.getKind().ordinal() is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST &&
+                       JavaEnums.Of(call.getKind()) is SqlKind.__Enum.CAST or SqlKind.__Enum.SAFE_CAST &&
                        call.getOperands().size() == 1)
                 {
                     if (call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL)

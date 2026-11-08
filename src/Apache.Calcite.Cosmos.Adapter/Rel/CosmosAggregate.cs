@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Internal;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -96,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var arguments = call.getArgList();
 
-            switch ((SqlKind.__Enum)call.getAggregation().getKind().ordinal())
+            switch (JavaEnums.Of(call.getAggregation().getKind()))
             {
                 case SqlKind.__Enum.COUNT:
                     // COUNT(*) counts rows and agrees with SQL. COUNT(x) does not: Cosmos counts
@@ -228,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         static CosmosOrderVerdict? ExtremeVerdict(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, Facts.Rendering.RenderingSet set)
         {
             var arguments = call.getArgList();
-            if ((SqlKind.__Enum)call.getAggregation().getKind().ordinal() is not (SqlKind.__Enum.MIN or SqlKind.__Enum.MAX) || arguments.size() != 1)
+            if (JavaEnums.Of(call.getAggregation().getKind()) is not (SqlKind.__Enum.MIN or SqlKind.__Enum.MAX) || arguments.size() != 1)
                 return null;
 
             return ExtremeOf(((java.lang.Integer)arguments.get(0)).intValue(), inputRowType, fields, readings) is CosmosOrderOperand operand
@@ -259,7 +260,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static string FunctionName(AggregateCall call)
         {
-            return (SqlKind.__Enum)call.getAggregation().getKind().ordinal() switch
+            return JavaEnums.Of(call.getAggregation().getKind()) switch
             {
                 SqlKind.__Enum.COUNT => "COUNT",
                 SqlKind.__Enum.SUM => "SUM",
@@ -423,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 {
                     var argument = ((java.lang.Integer)call.getArgList().get(0)).intValue();
                     var path = fields[argument]!;
-                    var max = (SqlKind.__Enum)call.getAggregation().getKind().ordinal() == SqlKind.__Enum.MAX;
+                    var max = JavaEnums.Of(call.getAggregation().getKind()) == SqlKind.__Enum.MAX;
                     var operand = ExtremeOf(argument, inputRowType, fields, inputReadings)!;
 
                     implementor.ExtremeAnchored(path.ToString(), new CosmosOrderExtreme(name, max, CosmosServiceOrder.ComparedAs(operand), verdict.Anchors[0], null,

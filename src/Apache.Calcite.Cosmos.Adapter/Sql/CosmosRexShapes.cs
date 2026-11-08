@@ -1,5 +1,7 @@
 using System;
 
+using Apache.Calcite.Cosmos.Adapter.Internal;
+
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
@@ -406,10 +408,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Projects a call's <see cref="SqlKind"/> onto the CLR enumeration IKVM generates for it, so that dispatch is
-        /// compile-time checked rather than string-matched.
+        /// Projects a call's <see cref="SqlKind"/> onto the CLR enumeration IKVM generates for it, by name, so that dispatch is
+        /// compile-time checked.
         /// </summary>
-        internal static SqlKind.__Enum KindOf(RexCall call) => (SqlKind.__Enum)call.getKind().ordinal();
+        internal static SqlKind.__Enum KindOf(RexCall call) => JavaEnums.Of(call.getKind());
 
         /// <summary>
         /// Returns an operand as a <see cref="RexNode"/>. Calcite's operand lists are raw Java collections, which surface as

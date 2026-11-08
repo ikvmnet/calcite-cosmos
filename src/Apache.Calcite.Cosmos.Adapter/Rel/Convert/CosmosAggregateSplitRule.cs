@@ -1,3 +1,5 @@
+using Apache.Calcite.Cosmos.Adapter.Internal;
+
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
@@ -132,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         static bool IsSplittable(AggregateCall call)
         {
-            switch ((SqlKind.__Enum)call.getAggregation().getKind().ordinal())
+            switch (JavaEnums.Of(call.getAggregation().getKind()))
             {
                 case SqlKind.__Enum.COUNT:
                 case SqlKind.__Enum.SUM:
@@ -202,7 +204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var argument = java.util.Collections.singletonList(java.lang.Integer.valueOf(ordinal));
 
-            if ((SqlKind.__Enum)call.getAggregation().getKind().ordinal() == SqlKind.__Enum.COUNT)
+            if (JavaEnums.Of(call.getAggregation().getKind()) == SqlKind.__Enum.COUNT)
                 return AggregateCall.create(
                     SqlStdOperatorTable.SUM0,
                     false,
