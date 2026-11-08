@@ -9466,7 +9466,7 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   says so now (`ReadAs`), and that `LIKE` matches each as the string it holds, nothing padded (measured beside the
   order). The alias holds over a string, a stored null and an absent path, the classes both read alike; over any other
   class neither the row nor the alias says anything, so the reading is unread there (`Reading.Unread`: anything and a
-  raise). The facts graph had lost these readings with G7's first half, an undisclosed widening; it reads them again,
+  raise). The facts graph, which read them as the text by name and lost them with G7's first half, reads them again
   from the same table. They rest on the row that licenses the alias beside the text's.
 - *The `LIKE` gate, both halves.* `OnCell` and `On`'s `Matched` decide `LIKE` where the reading's rows read a string as
   itself, and `Kept` keeps, for every reading, a row whose read value is not null. `MatchesText`, the reader test in
@@ -9493,8 +9493,9 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
 
 **What did not move.** `AffixPattern.Canonical` and `Plain` still refuse a pattern holding `_`, `\`, `[` or `]`: they
 are the service writer's representation of a pattern of runs, and what the service makes of `_` is the licence's
-question (post2, h15), not Calcite's reading (`TODO.md`). `LikeOn`'s number and structure misses are evaluation, as the
-audit found. Digests, the census and population D are byte-equal.
+question (post2, h15), not Calcite's reading (`TODO.md`). Which evaluator reads a reading's rows, the text's, a raw
+value's, a typed one's or a cast's, is still `Reading.Parse`'s by the spelling (`TODO.md`). `LikeOn`'s number and
+structure misses are evaluation, as the audit found. Digests, the census and population D are byte-equal.
 
 ## Differential testing
 
