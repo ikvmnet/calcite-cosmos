@@ -1,0 +1,210 @@
+# The emulator rows measured on 2026-11-08 (rows2), each line as its pinning test logged it (CosmosWitnessProbe), run against
+# mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview, release EN20261019: case mapping over cased letters of
+# each band, RIGHT with its cut inside a surrogate pair, LIKE's _ and % over one character of each class, a ] closing nothing
+# and a backslash with no ESCAPE, and CONTAINS and a one-run LIKE over U+0000. A function's answer is the projection; a
+# truth's is value/kept. Release EN20260907 answered every line alike; both refuse the lone surrogate the LIKE test also
+# sends, so no line holds it.
+release	row	expression	witness	answer
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aBc"	"ABC"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐐨𐐀"	"𐐀𐐀"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"a𐐀b"	"A𐐀B"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐒰𐓘"	"𐒰𐒰"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𞤀𞤢"	"𞤀𞤀"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𖹀𖹠"	"𖹀𖹀"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ａａ"	"ＡＡ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬀ"	"ﬀ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬓ"	"ﬓ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aÉb"	"AÉB"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ÿ"	"Ÿ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"µ"	"Μ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΟΔΟΣ"	"ΟΔΟΣ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ς"	"Σ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΐ"	"ΐ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"İ"	"İ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ı"	"I"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ß"	"ß"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ẞ"	"ẞ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ǅ"	"Ǆ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ꭰ"	"Ꭰ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ꭰ"	"Ꭰ"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ა"	"Ა"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ა"	"Ა"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aBc"	"abc"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐐨𐐀"	"𐐨𐐨"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"a𐐀b"	"a𐐨b"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐒰𐓘"	"𐓘𐓘"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𞤀𞤢"	"𞤢𞤢"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𖹀𖹠"	"𖹠𖹠"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ａａ"	"ａａ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬀ"	"ﬀ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬓ"	"ﬓ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aÉb"	"aéb"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ÿ"	"ÿ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"µ"	"µ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΟΔΟΣ"	"οδοσ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ς"	"ς"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΐ"	"ΐ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"İ"	"i"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ı"	"ı"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ß"	"ß"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ẞ"	"ß"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ǅ"	"ǆ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ꭰ"	"ꭰ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ꭰ"	"ꭰ"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ა"	"ა"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ა"	"ა"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"abc"	"c"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"a😀b"	"b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"😀b"	"b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"a😀"	"😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"😀😀"	"😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 1)	"𐐀xy"	"y"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"abc"	"bc"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"a😀b"	"😀b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"😀b"	"😀b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"a😀"	"a😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"😀😀"	"😀😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 2)	"𐐀xy"	"xy"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"abc"	"abc"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"a😀b"	"a😀b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"😀b"	"😀b"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"a😀"	"a😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"😀😀"	"😀😀"
+EN20261019	Service.RightOverASplitPair	RIGHT(c.v, 3)	"𐐀xy"	"𐐀xy"
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\nb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\rb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\r\nb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u0085b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u2028b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u2029b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\tb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u000bb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a　b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a�b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a﷐b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u0000b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a😀b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"aéb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"ab"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"axb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"ab"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\nb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\rb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\r\nb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u0085b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u2028b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u2029b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\tb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u000bb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a　b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a�b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a﷐b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u0000b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a😀b"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"aéb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"ab"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"axb"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"ab"	false/F
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\nb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\rb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\r\nb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u0085b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u2028b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u2029b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\tb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u000bb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a　b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a�b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a﷐b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u0000b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a😀b"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"aéb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"ab"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"axb"	true/T
+EN20261019	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"ab"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a]b"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a]b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"]"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a]b"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a]b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\b"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a]b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\b"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\%"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\_"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a]b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\b"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\%"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\_"	true/T
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"\\"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a]b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"]"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\b"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a%"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a_"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"axb"	false/F
+EN20261019	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"\\"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "b")	"a\u0000b"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "b")	"\u0000ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "b")	"ab\u0000"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "b")	"b\u0000a"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "b")	"ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "B", true)	"a\u0000b"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "B", true)	"\u0000ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "B", true)	"ab\u0000"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "B", true)	"b\u0000a"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	CONTAINS(c.v, "B", true)	"ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%b%"	"a\u0000b"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%b%"	"\u0000ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%b%"	"ab\u0000"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%b%"	"b\u0000a"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%b%"	"ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%a%"	"a\u0000b"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%a%"	"\u0000ab"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%a%"	"ab\u0000"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%a%"	"b\u0000a"	true/T
+EN20261019	Service.EmulatorContainsReadsPastNul	c.v LIKE "%a%"	"ab"	true/T

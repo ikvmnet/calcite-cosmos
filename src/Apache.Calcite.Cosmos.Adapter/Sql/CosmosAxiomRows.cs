@@ -76,13 +76,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>A function no run measured that a gate holds to its rows</b>, Calcite's library <c>LENGTH</c>: each key
-        /// <see cref="CosmosFunctionAnswer.Unmeasured"/> on both targets, so that it is read as unmeasured rather than as
-        /// unnamed, and no reader it was measured through, so that no image and no column is written of it. Its spelling is
-        /// the service's <c>LENGTH</c>, which counts what <c>CHAR_LENGTH</c>'s rows say it counts; what Calcite's counts in
-        /// each library has not been measured beside it.
-        /// </para>
-        /// <para>
         /// <b>A function the service defines alone</b>, the D class, <c>ToString</c>: one of this adapter's own operators,
         /// which Calcite has no body for, so what the service answers is what it means. Each key is
         /// <see cref="CosmosFunctionAnswer.Defined"/> on both targets over every kind and band, and Calcite's call null over
@@ -92,10 +85,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         public static IReadOnlyList<CosmosFunctionOutcome> Declared { get; } =
         [
-            .. from kind in new[] { CosmosValueClass.String, CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
-                   CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
-               select new CosmosFunctionOutcome("LENGTH", FunctionKey.Every, kind, JsonCharacterBand.None, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
-                   CosmosFunctionAnswer.Unmeasured, CalciteYield.Null),
             .. from kind in new[] { CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
                    CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
                select new CosmosFunctionOutcome("ToString", FunctionKey.Every, kind, JsonCharacterBand.None, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
@@ -261,15 +250,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             [.. ReadLikeUnitsOn(axioms).Where(u => u.Target != RenderingTarget.Calcite)];
 
         /// <summary>
-        /// Each target's units, as rows: the unit spelled empty reading every unit the target's other rows name not, which
-        /// its row carries as data (<see cref="LikeUnit.Besides"/>), so a unit is read by exactly one row of a target.
+        /// Each target's units, as rows, on the targets each names, its row's by default: the unit spelled empty reading every
+        /// unit the target's other rows name not, which its row carries as data (<see cref="LikeUnit.Besides"/>), so a unit
+        /// is read by exactly one row of a target.
         /// </summary>
         static IEnumerable<(RenderingTarget Target, LikeUnit Unit, string Row)> ReadLikeUnitsOn(IEnumerable<CosmosAxiom> axioms)
         {
             var rows = (from axiom in axioms
                         from unit in axiom.LikeUnits ?? []
                         from target in Targets
-                        where axiom.MeasuredOn.HasFlag(target.Flag)
+                        where (unit.On ?? axiom.MeasuredOn).HasFlag(target.Flag) && axiom.MeasuredOn.HasFlag(target.Flag)
                         select (target.Target, unit, axiom.Id)).ToList();
             return (from row in rows
                     let named = row.Item2.Unit.Length > 0 ? ValueSet<string>.Empty

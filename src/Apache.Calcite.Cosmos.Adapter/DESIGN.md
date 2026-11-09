@@ -8394,8 +8394,9 @@ operand the rows name, and `measuredreaders` an intersection of each axiom's), w
 they name, a literal through S's `literalreaders`, and whether every operand is read through a measured reader is the
 image rule's (`functionreaders`). No C# table says which operand or reader a row is of, and a reader no row names (a
 `CHAR`, a cast of a raw reading, a `REAL`) gets no image. The translator's column bridge asks S's image of each call
-since G6 (*The column bridge asks S's image*), and the one function no run measured, `LENGTH`, is declared unmeasured
-(`CosmosAxiomRows.Declared`), so S images it on no operand and no target. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
+since G6 (*The column bridge asks S's image*). Calcite's library `LENGTH`, declared unmeasured until rows2, has keys of
+its own since then, judged against the service's `LENGTH` lines `CHAR_LENGTH`'s spelling sends on both targets, so it
+pushes where `CHAR_LENGTH` does. The other operands' characters are legality, kept in `CosmosFunctionSpellings.Refusals`: #246's stored rules under the emulator
 (`REPLACE`'s search and replacement, every operand of a `CONCAT`, a `REPEAT`'s subject, the `LIKE` patterns), which no row
 measured. Until f345 the case mapping beyond ASCII was one too, under every set, since the rows' witnesses for the
 surrogate and high bands (an emoji, `ﬀ`) hold no letter the mapping changes while Java's changes U+10428, U+10400 and
@@ -8975,8 +8976,10 @@ the operand; and each case is declined under every set it asks.
   string it may be one of them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell`
   writes an empty search, which the rows decline, where it refused one.
 - **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
-  where they said `Same` over witnesses that held no letter the mapping changes; S proves none of these places until run
-  2's cased witnesses let a row say `Same`.
+  where they said `Same` over witnesses that held no letter the mapping changes. rows2's cased witnesses
+  (`Service.CaseMappingOverCasedLetters`) let the emulator's `LOWER` over the high band say `Same`; every other band
+  parts there, the surrogate band among them, since the emulator maps scripts Unicode cased after Java 8's tables.
+  Azure's keys wait for run 2.
 - **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite, but what a literal
   makes there does not: a U+0000 made by `CONCAT`, `||`, `REPEAT` or a replacement fails the statement, and a U+FDD0
   made before a 0 or a 1 is read back as an escape's first unit. The emulator's rows say so, measured as the literal
@@ -9042,9 +9045,14 @@ it stands, and S's rules read the row as a cell.
   writing `Raw(path)` for a reading that was no cast. The cell is `testreads(reader, as)`, `CosmosAxiom.TestReads` on
   `Calcite.TypeTestsAreTheirBodies`: the text, a raw value and a returning, each read as the raw value. Four rules of the
   shared vocabulary, one a constructor, make `testread(v, p, as)` of each value a row names, and the definedness and
-  type-test rules read it where they read `reads`; a cast names no row and is no atom, as before. The raw value's row is
-  the reading the IR held before G8, not the body's, which raises over a field, an item and a cast to `ANY`
-  (`TODO.md`).
+  type-test rules read it where they read `reads`; a cast names no row and is no atom, as before. rows2 measured the
+  cell in process (`CalciteTypeTestMeasurementTests`): the text and a `RETURNING` of each type read the raw value, the
+  statement raising where the `RETURNING` raises, and a field of every type, an item and a cast to `ANY` raise. No row
+  names a column's reading, but the vocabulary reads a test of a raw value in a column through the raw value's row, as
+  it reads an item and a cast to `ANY` the loader writes as the raw value: each is an agreement where Calcite raises,
+  sound while any answer but a failure refines a raise (decision 2), and wrong only in its reason. Keying a column by
+  its own row with no atom for a test that raises moved 103 of the census's type-test pushes from Proven to Unproven
+  and failed the emulator's triage line 6, so it waits for a test atom that carries its reading's raise (`TODO.md`).
 - *A comparison with SQL's null is read as written.* Where places are read a null literal is `null(type)`, and S's rule
   reads a comparison with it by an operator `strictop` says is null over a null operand as UNKNOWN wherever its reading
   is read, raising where reading it raises (`PredicateAtom.CompareNull`); `strictop` is an analysis now, which the
@@ -9212,7 +9220,11 @@ over the first; where a row said `Same`, over a surrogate for each and the high 
 letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so the `Same` proved nothing, as
 `RIGHT`'s surrogate key is read. The rows now say it, so S's image rule and the column bridge refuse a case mapping
 beyond ASCII through them, and the legality that kept it to ASCII under every set (`CosmosFunctionSpellings.Mapped`) is
-gone. The case-insensitive match is S's since G6's second fix, over the matcher's own rows
+gone. rows2 measured cased letters of each band on the emulator (`Service.CaseMappingOverCasedLetters`), each key it
+moves naming that row as its evidence: `LOWER` over the high band maps the fullwidth capitals, its only cased letters, as
+Java does, and every other band parts, Osage, Adlam and Medefaidrin among the surrogates being mapped by the emulator and
+left by Java 8's tables. A band's `Same` is only as good as its witnesses' letters, so the witnesses hold a script cased
+after Java 8 in each band that has one. The case-insensitive match is S's since G6's second fix, over the matcher's own rows
 (`Service.AffixesMatchByCodePoint`'s `Folds`, `foldsas`), which part at every band beyond ASCII as the mapping does (*A
 case fold under `LIKE` is the service's case-insensitive match*); G6's fix had read the matcher as folding by the
 service's `UPPER` and `LOWER` (`CosmosRexTranslator.FoldsToItself`, `Service.CaseMappingIsSimple`) with no row of its own. Run 2 measures
@@ -9587,12 +9599,17 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   class where it names none) and, for the unit spelled empty, the units the side's other rows name (`Besides`), which
   the reader reads off the registry beside it. `LikeUnit.Of` is one exact lookup: the row naming the unit, or the empty
   one not naming it besides; none leaves the pattern unread, and two fail the run. Calcite's rows are `likeunits`; each
-  target's are S's `likereads`: `Service.LikeMatchesByCodePoint`'s `%` a run, `_` one code point over the classes its
-  witnesses held (a surrogate pair, U+00E9, U+E000 and ASCII, pinned by `TheServicesOneIsReadOverTheClassesItsWitnessesHeld`)
-  and every other unit itself; `Service.LikeReadsBracketsAsARange`'s `[` a range, and `]` and a backslash unmeasured,
-  no witness sending a `]` closing nothing or a backslash without `ESCAPE`. A set reads a unit by a row where every
+  target's are S's `likereads`: `Service.LikeMatchesByCodePoint`'s `%` a run and every other unit itself;
+  `Service.LikeReadsBracketsAsARange`'s `[` a range. A unit may name the targets its run measured (`CosmosLikeUnit.On`),
+  fewer than its row's: on Azure `_` is `LikeMatchesByCodePoint`'s, one code point over the classes its witnesses held (a
+  surrogate pair, U+00E9, U+E000 and ASCII), and `]` and a backslash are unmeasured; on the emulator `_` is
+  `Service.LikeOneOverEachClass`'s, one code point over every class it matched one of (rows2: line terminators, the
+  trimmed class, U+FFFD and the three bands, U+FDD0 and U+0000 being two stored units and a lone surrogate refused), and
+  `]` and a backslash are `Service.LikeReadsALoneBracketAndABackslash`'s, each itself. Each `_` is pinned to its
+  witnesses by `TheServicesOneIsReadOverTheClassesItsWitnessesHeld`. A set reads a unit by a row where every
   target it serves reads it so (`liketargets`, settled into `likesof` in `tabulate`, as folds are), and its view hands
-  the leaf those. `LikePattern` is a pattern as one side reads it: over a string matched unit by unit in Kleene's three
+  the leaf those; so since rows2 `Portable` reads `_`, a lone `]` and a backslash by no row, its two targets reading
+  them apart, and a pattern holding one is unread there until run 2 measures Azure's over the emulator's witnesses. `LikePattern` is a pattern as one side reads it: over a string matched unit by unit in Kleene's three
   values, a run or a `one` over a code point its row was not measured over unknown; over a range an affix cut by its
   spelling, matched where every run and `one` was measured over the range's classes and no `one` misses one of them,
   missed where every one was measured. The cut reads Calcite's rows (`CutPoints`, handed `readerrows`), so does the

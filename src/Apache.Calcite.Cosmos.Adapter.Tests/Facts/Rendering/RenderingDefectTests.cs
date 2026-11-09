@@ -122,7 +122,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 d => IrEval.At(d, T) is J.Num ? ServiceOutcomes.Undefined : null),
 
             // Item 5. A case mapping over a surrogate, and LOWER over the high band, whose rows said Same where no witness held
-            // a letter the mapping changes: Java's maps U+10428 and U+10400, and U+FF21 to U+FF41. The rows part (F5).
+            // a letter the mapping changes: Java's maps U+10428 and U+10400, and U+FF21 to U+FF41. The rows part (F5), but
+            // for the emulator's LOWER over the high band, which maps U+FF21 as Java does (Service.CaseMappingOverCasedLetters,
+            // rows2), so it is proven there and asked under Azure's sets alone.
             ["CaseMappingOverASurrogate"] = () => FromRex(
                 Rex.makeCall(SqlStdOperatorTable.OR,
                     Eq(Rex.makeCall(SqlStdOperatorTable.UPPER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("\U00010400")),
@@ -131,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [Doc(("s", new J.Str("\U00010428"))), Doc(("s", new J.Str("\U00010400")))]),
             ["LowerOverTheHighBand"] = () => FromRex(
                 Eq(Rex.makeCall(SqlStdOperatorTable.LOWER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("ａ")),
-                _ => (Strings, JsonCharacterBand.HighBmp), AllSets,
+                _ => (Strings, JsonCharacterBand.HighBmp), [RenderingSet.Production, RenderingSet.Portable],
                 [Doc(("s", new J.Str("Ａ"))), Doc(("s", new J.Str("ａ")))]),
 
             // Item 6. What the emulator makes of a literal it stores escaped: a U+0000 made there fails the statement (Postgres

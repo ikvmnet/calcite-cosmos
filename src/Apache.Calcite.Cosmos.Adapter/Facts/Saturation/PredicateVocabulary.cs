@@ -265,6 +265,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(Raw.Of(p)), TestReads.Of(PredicateAtom.RawReader, k));
                 r.Then(TestRead.Of(v, p, k));
             });
+            // The body raises over a field, which it cannot take apart (measured in process, rows2), so this reads the raw
+            // value's row where Calcite raises: sound while any answer but a failure refines a raise (decision 2), but an
+            // agreement Calcite never makes, until a test atom carries its reading's raise (TODO.md).
             Analyse.DefineRule("a test reads the path of a raw value in a column as its row says the body reads it", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");

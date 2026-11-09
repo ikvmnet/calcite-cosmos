@@ -122,6 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             "CHAR_LENGTH" => [Call(SqlStdOperatorTable.CHAR_LENGTH, Str())],
             "CHARACTER_LENGTH" => [Call(SqlStdOperatorTable.CHARACTER_LENGTH, Str())],
+            "LENGTH" => [Call(SqlLibraryOperators.LENGTH, Str())],
             "SUBSTRING" => [Call(SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(2))],
             "LEFT" => [Call(SqlLibraryOperators.LEFT, Str(), Int(2))],
             "RIGHT" => [Call(SqlLibraryOperators.RIGHT, Str(), Int(2))],
@@ -140,8 +141,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         };
 
         /// <summary>
-        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>), at
-        /// each operand the rows key, is refused there, read off the rows: <c>POSITION</c> over a surrogate among them, which
+        /// Every band the emulator was measured to part from Calcite over (<c>Service.StringFunctionAnswersByBand</c>, its own
+        /// keys, not Azure's), at each operand the rows key, is refused there, read off the rows: <c>POSITION</c> over a surrogate among them, which
         /// the emulator's <c>INDEX_OF</c> counts as one code point where Calcite counts two units, pushed before h10, and a
         /// search that may be empty, which the service answers undefined.
         /// </summary>
@@ -150,6 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var parted = from o in CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
                          where o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
+                             && o.On.HasFlag(CosmosAxiomTarget.Emulator)
                          select (o.Function, o.Subject, o.Band);
             parted.Should().NotBeEmpty();
             foreach (var (function, subject, band) in parted)
@@ -313,30 +315,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// A string function no run measured is unmeasured and refused whatever it holds, on every target: <c>LENGTH</c>,
-        /// whose rows are declared unmeasured (<see cref="CosmosAxiomRows.Declared"/>, G6) so that the gate reads it as no
-        /// list does. Azure's verdict declared for it went with run 1 (h14b).
+        /// Calcite's library <c>LENGTH</c> is read by its measured rows, as <c>CHAR_LENGTH</c> is (rows2): its keys judge the
+        /// service's <c>LENGTH</c> lines both records hold against Calcite's, so it passes over ASCII on both targets and is
+        /// refused over a surrogate on both and over the high band on the emulator, where the declared rows refused it
+        /// everywhere.
         /// </summary>
         [Fact]
-        public void AFunctionNoRowNamesIsRefusedEverywhere()
+        public void TheLibrarysLengthIsReadByItsMeasuredRows()
         {
-            CosmosFunctionSpellings.Named(CosmosRendering.Definition, "LENGTH").Should().BeTrue("its declared rows name it, so it is refused rather than passed unasked");
+            CosmosFunctionSpellings.Named(CosmosRendering.Definition, "LENGTH").Should().BeTrue();
             var length = SqlLibraryOperators.LENGTH;
-            Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeFalse("the emulator never measured LENGTH");
-            Pushes(Azure, JsonCharacterBand.None, length, Str()).Should().BeFalse("nor did the probe account");
+            Pushes(Emulator, JsonCharacterBand.None, length, Str()).Should().BeTrue();
+            Pushes(Azure, JsonCharacterBand.None, length, Str()).Should().BeTrue();
+            Pushes(Emulator, JsonCharacterBand.Surrogates, length, Str()).Should().BeFalse("the emulator counts code points");
+            Pushes(Azure, JsonCharacterBand.Surrogates, length, Str()).Should().BeFalse("and so does Azure, where Calcite counts units");
+            Pushes(Emulator, JsonCharacterBand.HighBmp, length, Str()).Should().BeFalse("U+FDD0 is two code points stored");
+            Pushes(Azure, JsonCharacterBand.HighBmp, length, Str()).Should().BeTrue();
         }
 
         /// <summary>
-        /// A case mapping asks ASCII under every set: its rows part over a surrogate, and LOWER's over the high band, where
-        /// the witnesses held no letter the mapping changes while Java's changes U+10428, U+10400 and U+FF21 (F5). No
-        /// emulator refusal is lost (h10).
+        /// A case mapping asks ASCII where its rows are unwitnessed: Azure's part over a surrogate, and LOWER's over the high
+        /// band, where the witnesses held no letter the mapping changes while Java's changes U+10428, U+10400 and U+FF21 (F5).
+        /// The emulator's are read off cased letters (<c>Service.CaseMappingOverCasedLetters</c>, rows2): they part over a
+        /// surrogate, Osage, Adlam and Medefaidrin mapped where Java 8 leaves them, and LOWER over the high band, whose
+        /// capitals are the fullwidth Latin ones alone, maps as Java does, so it pushes there. No emulator refusal is lost (h10).
         /// </summary>
         [Fact]
         public void ACaseMappingAsksAsciiWhereItsRowsAreUnwitnessed()
         {
             Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse();
             Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse();
-            Pushes(Emulator, H, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse();
+            Pushes(Emulator, H, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse("UPPER leaves U+FB00, which Java writes as two");
+            Pushes(Emulator, H, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("the fullwidth capitals map as Java maps them");
+            Pushes(Azure, H, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse("Azure's cased letters are run 2's");
             Pushes(Azure, Z, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
         }
 

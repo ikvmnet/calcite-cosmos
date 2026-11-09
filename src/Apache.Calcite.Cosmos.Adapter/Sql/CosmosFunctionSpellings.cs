@@ -169,8 +169,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             : null;
 
         /// <summary>
-        /// Whether the column gate holds a function to its rows: rows of the definition are filed under its name, measured,
-        /// declared unmeasured, or defined by the service alone (<see cref="CosmosAxiomRows.Declared"/>, G6).
+        /// Whether the column gate holds a function to its rows: rows of the definition are filed under its name, measured or
+        /// defined by the service alone (<see cref="CosmosAxiomRows.Declared"/>, G6).
         /// </summary>
         public static bool Named(RenderingDefinition definition, string function) => definition.FunctionNames.Any(n => n.Name == function);
 

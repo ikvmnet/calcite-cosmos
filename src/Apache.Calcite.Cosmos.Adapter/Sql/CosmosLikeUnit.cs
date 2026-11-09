@@ -16,7 +16,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Except">The character class a <see cref="One"/> does not match, by its name in <c>JsonValues</c>; none for any other.</param>
     /// <param name="Over">The character classes the reading was measured over, by their names in <c>JsonValues</c>, the
     /// witnesses' own; <c>null</c> for every class.</param>
-    internal sealed record CosmosLikeUnit(string Unit, string Reads, string? Except = null, IReadOnlyList<string>? Over = null)
+    /// <param name="On">The targets whose run measured the unit so, where they are fewer than the row's; <c>null</c> for
+    /// every target the row was measured on.</param>
+    internal sealed record CosmosLikeUnit(string Unit, string Reads, string? Except = null, IReadOnlyList<string>? Over = null, CosmosAxiomTarget? On = null)
     {
 
         /// <summary>Any run of characters, the empty one among them.</summary>

@@ -513,7 +513,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// values of the literal's own kind are is the raw value's comparison, which its cells decide; an order, a literal in
         /// another box and an <c>INTEGER</c>, boxed apart from a stored integer's <c>BIGINT</c>, are no atom. A one-place test
         /// is an atom of what its body reads, by <c>Calcite.TypeTestsAreTheirBodies</c>' rows the raw value of a text, of a
-        /// raw value in a column and of a returning alike, and of no cast. A box's null test is what it holds where its type's
+        /// raw value in a column and of a returning alike, and of no cast; over a column the body raises (measured, rows2), so
+        /// that atom stands until a test carries its reading's raise (TODO.md). A box's null test is what it holds where its type's
         /// row says so (<c>boxnull</c>), each type its own cell; and a comparison with SQL's null by an operator null over a null
         /// operand (<c>strictop</c>) is an atom UNKNOWN wherever it is read.
         /// </summary>

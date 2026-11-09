@@ -3058,19 +3058,19 @@ across documents* and *A join of a container to itself* is the record.
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
   licenses one is N5–N7's lines alone. An input holding `STARTSWITH` or a `LIKE` over a path among the gate's
   conjuncts, run again before the switch, would give C6 one.
-- **No witness splits a surrogate pair at `RIGHT`'s cut** — *small, a measurement.* The probe account answered `RIGHT`
-  `Same` over the surrogate band (run 1), where `LEFT`, `SUBSTRING` and the lengths answer `Differs`, but none of the
-  row's witnesses puts the cut between a pair's halves, so `Same` there proves nothing of one that does, and
-  `CosmosAxioms` records Azure's `RIGHT` as `Differs` over `Surrogates`, the band refused. A witness whose count from the
-  end falls inside a pair, measured, decides it.
-- **The case mapping parts over every band beyond ASCII until a cased witness is measured** — *small, run 2's.* The
-  rows said `Same` for `UPPER` over a surrogate and for `LOWER` over a surrogate and the high band, whose witnesses (an
-  emoji, `ﬀ`) hold no letter the mapping changes, while Java's changes U+10428, U+10400 and U+FF21, so each `Same`
-  proved nothing of a cased one, and since f345 (F5) `Service.StringFunctionAnswersByBand` says `Differs` for `UPPER`
-  and `LOWER` over the three bands beyond ASCII on both targets, as `RIGHT`'s surrogate key is read; the legality that
-  said it (`CosmosFunctionSpellings.Mapped`) is gone. Witnesses holding cased letters in each band (U+10428/U+10400,
-  U+FF21/U+FF41), measured, let the rows say `Same` where a target maps as Java does. Both emulator images map them as
-  Java does (2026-11-04, the defects step); Azure's is run 2's.
+- **No witness splits a surrogate pair at `RIGHT`'s cut on Azure** — *small, run 2's.* The probe account answered
+  `RIGHT` `Same` over the surrogate band (run 1), but none of the row's witnesses put the cut between a pair's halves,
+  so `CosmosAxioms` records Azure's `RIGHT` as `Differs` over `Surrogates`, the band refused.
+  `Service.RightOverASplitPair`'s witnesses do (rows2): on the emulator, which counts code points, they part as its row
+  says; run 2 sends them to the probe account, and its answer decides Azure's key.
+- **Azure's case mapping parts over every band beyond ASCII until a cased witness is measured** — *small, run 2's.*
+  `Service.StringFunctionAnswersByBand` says `Differs` for `UPPER` and `LOWER` over the three bands beyond ASCII on
+  Azure, its run-1 witnesses holding no letter the mapping changes there (F5). `Service.CaseMappingOverCasedLetters`
+  measures cased letters of each band (rows2): Deseret, and Osage, Adlam and Medefaidrin, which Unicode cased after
+  Java 8's tables; fullwidth Latin and the ligatures Java writes as two; Latin-1, Greek, the Turkish i, ß, a title-case
+  letter, Cherokee and Georgian. Both emulator images map the later scripts, so every band parts there but `LOWER` over
+  the high band, whose capitals are the fullwidth ones alone, which the emulator's key now says is `Same`. Azure's keys
+  are run 2's, from the same witnesses.
 - **Azure's operand keys are run 1's literals alone** — *small, run 2's.* Since fix6 the rows key `REPLACE`'s search and
   replacement and `SUBSTRING`'s length (DESIGN.md, *The defects answered before h15*), measured on the emulator over
   every kind and band, and on Azure only as run 1's spellings hold them, a search and a replacement that are strings of
@@ -3137,22 +3137,35 @@ across documents* and *A join of a container to itself* is the record.
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
   `<>` and null where the value is. A rule that reads two `boxof` rows apart makes it one, beside a row for a returning's
   box, which none names.
-- **`testreads` is read off the implementor, and a raw value's row is not even that** — *small, a measurement, and the
-  owner's to weigh before h15.* The cell that a type test and `IS_DEFINED` of the text and of a returning ask what the
-  document holds at the path is what `CosmosTypeTestImplementor`'s body does (G8), pinned by no run. A
-  measurement of a test over a reading that reads otherwise than the raw value, `IS_NUMBER` of the text over a stored 30
-  and `IS_STRING` of a `RETURNING DOUBLE` over a stored `"30"`, pins it. The raw value's row, `testreads(raw, raw)`, is
-  not the body's: the body takes apart a `JSON_VALUE` or `JSON_QUERY` whose path is a literal and raises over anything
-  else, so a test of a field bound to the raw value (`RawIn`), of an item chain or of a cast to `ANY` raises in process,
-  where the row reads the value at the path. It carries the reading the IR held before G8, `Raw(path)` in every
-  one-place test, and S's proofs over it are of what the push answers where Calcite raises, a refinement of a raise
-  rather than an agreement. A row saying the body raises there moves the census's `IS_DEFINED` of a promoted column
-  (`raw($["category"] VARIANT) is defined`, Proven), so it is no refactor before h15; the measurement is a test of a
-  field, an item and a cast to `ANY` in process, which the same row records.
-- **`IS_DEFINED` of a computed call has no atom** — *small, with the row above.* The bridge's presence test of a computed
-  place, `IS_DEFINED` over the call, is no atom: where places are read the loader writes it, and a type test, over any
-  value since the re-audit's close, but no `testreads` row names a call's reading, and the body raises over a call, so
-  the row it wants is that raise (above). Before G8 the loader wrote nothing for it either; the digests were byte-equal.
+- **A test of a raw value in a column, an item or a cast to `ANY` reads the raw value's row where its body raises** —
+  *medium, before h15: it waits on a test atom that carries its reading's raise.* `testreads` is measured in process
+  since rows2 (`CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess`): a type test and `IS_DEFINED` of
+  the text and of a `RETURNING` of each type read the raw value, and raise over a field of every type, an item and a
+  cast to `ANY`, the implementor taking apart a `JSON_VALUE` alone. No row names a column's reading, but the shared
+  vocabulary reads a test of a raw value in a column through the raw value's row, `testreads(raw, raw)`, and where
+  places are read the loader writes an item chain and a cast to `ANY` as the raw value too
+  (`CosmosPredicateLoader.Value`, `Cast`), so a test of any of the three is an atom Calcite never answers. Every verdict
+  resting on one is a push answering where Calcite raises, which any answer but a failure refines (decision 2), so none
+  is unsound; what is wrong is the reason. Keying a column's test by its own row, which none names, is the honest
+  reading, and rows2 tried it: with no atom for a test that raises, 103 of the census's pushes in
+  `coverage-type-tests.tsv` moved from Proven to Unproven (52 under the emulator, 51 under Production, among them
+  `raw($["category"] VARIANT) is defined`), and the emulator's triage line 6 failed. So the reading stays until the
+  test atom below carries the raise; then the column's rule reads its own row, a cast and an item are written apart (as
+  G8's other cast and item sites move at h15), and each test is an atom that raises, which decision 2's rows refine.
+  The raw value's own row stays for the accessor re-typed `ANY`, which the body does take apart, and F's reading until
+  h15.
+- **A test does not carry its operand's raise** — *medium, before h15.* A test of a `RETURNING` raises in process
+  wherever the `RETURNING` raises (`RETURNING INTEGER` over `true`, `RETURNING DOUBLE` over `1`), and a test of a field,
+  an item or a cast to `ANY` raises over every value, measured in rows2, but the test atom reads the raw value's kind
+  alone, so S reads it TRUE or FALSE there. A push answering where Calcite raises refines the raise (decision 2), so no
+  verdict is unsound, but a stratum's agreement is wider than Calcite's. The proper fix is a test atom that takes its
+  reading's raises — `Raises` where its reader's cell raises, and on every cell where the row says the body raises over
+  the reading — which the entry above waits on.
+- **`IS_DEFINED` of a computed call has no atom** — *small.* The bridge's presence test of a computed place,
+  `IS_DEFINED` over the call, is no atom: where places are read the loader writes it, and a type test, over any value,
+  but no `testreads` row names a call's reading, and the body raises over any operand but a `JSON_VALUE`, as rows2
+  measured over a cast, so the row it wants is that raise, read as no atom. Before G8 the loader wrote nothing for it
+  either; the digests were byte-equal.
 - **The loader's element guards and cast targets are G8's sites no step schedules** — *h15's.* Two branches stand for
   rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an accessor's
   raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand for
@@ -3182,15 +3195,19 @@ across documents* and *A join of a container to itself* is the record.
   opaque. At h15 F reads places, and the box rules and the null comparison's, S's alone since they read `boxof`,
   `seesthrough`, `boxnull` and `strictop`, which only S's root holds, move to the shared vocabulary with those rows in
   F's root; the `JSON_QUERY` reader moves into the shared vocabulary then (*`Structure` moves at h15*).
-- **The service's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, a measurement.* Each
-  target's `LIKE` units are rows now (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*), so a cell decides a
-  pattern's `_` where both sides' rows say what it reads. `Service.LikeMatchesByCodePoint`'s witnesses hold a surrogate
-  pair, U+00E9 and U+E000 beside ASCII, so its `_` is read over those classes alone, and a cell of strings that may hold
-  a line terminator, a character `TRIM` removes, U+0000, U+FFFD, U+FDD0 or an unpaired surrogate answers either: every
-  path the corpus reads is such a cell, so no `LIKE` holding `_` is proven yet. `Service.LikeReadsBracketsAsARange`
-  sends no `]` closing nothing and no backslash without `ESCAPE`, so a pattern holding either is unread there. Witnesses
-  of each class under `_` (`a_b` over `a\nb`, `a\tb`, `a\u0000b`, …) and of the bare `\` and `]`, on both targets,
-  widen `Over` and turn those rows to a reading.
+- **Azure's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, run 2's.* Each target's `LIKE`
+  units are rows (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*). On the emulator rows2 measured `_` over
+  one character of each class (`Service.LikeOneOverEachClass`): one code point of every class as written, line
+  terminators among them where Calcite's `_` matches none, U+FDD0 and U+0000 as the two it stores, and a lone surrogate
+  refused; and a `]` closing nothing and a backslash with no `ESCAPE` each as itself
+  (`Service.LikeReadsALoneBracketAndABackslash`). Azure's `_` is still `Service.LikeMatchesByCodePoint`'s, over a
+  surrogate pair, U+00E9 and U+E000 alone, and its `]` and backslash unmeasured: run 2 sends both rows' witnesses, a
+  lone surrogate among them, which Azure stores as U+FFFD.
+- **The emulator's `LIKE` matcher is still owed** — *small, the emulator's.* `CosmosAxiomRows.Owed` keeps the emulator's
+  `LIKE` cell unread, its reading of a stored escape unmeasured. rows2 measured it for `_`: U+FDD0 and U+0000 are two
+  code points each, as the affixes' `storedcodepoint` matcher reads them. Stating the `LIKE` outcome with that matcher,
+  and `_` over the two escapes as the stored spelling, settles the cell; it moves the emulator's census rows of a
+  `LIKE`, so it is a step of its own.
 - **A `LIKE` is proposed as the narrowest test only** — *small, with h15's templates.* `AffixPattern.Written` chooses,
   in C#, the one test a pattern is written as: an equality, `STARTSWITH`, `ENDSWITH`, `CONTAINS` or `LIKE`.
   The proper form is a template per test, each proposing the pattern as that test where it says it, and a weight per
@@ -3228,20 +3245,15 @@ across documents* and *A join of a container to itself* is the record.
   admit a call they spell it alike. It goes with the writer, the `WHERE` share at h16 and the column bridge at h37.
 - **The bridge still refuses a containment over U+0000 on the emulator** — *h37 to h42.* The translator's
   `CosmosFunctionSpellings.Refusals` refuses a containment `LIKE` over a path that may hold U+0000 on the emulator as on
-  Azure, which no emulator row says; reading the rows would push such a `LIKE` there and move the digests. It reads
+  Azure, which no emulator row says, `Service.EmulatorContainsReadsPastNul` measuring it read past U+0000 there (rows2); reading the rows would push such a `LIKE` there and move the digests. It reads
   `StoresSpelled` as S derives it since G1, and goes with the translator bridge's other copies of G1's decisions
   (`Refusals`' case-mapped, searched and stored records, `LikeRefusal`, `IsPrefix`'s stored branch) at h37 to h42, S
   carrying each.
-- **`LENGTH` has no row** — *small, a measurement on both targets.* Calcite's library `LENGTH` is keyed by its own name
-  and the string row measured `CHAR_LENGTH`, so the emulator refuses it (h10), and since the declared verdicts went
-  (h14b) Azure does too: it is declared unmeasured (`CosmosAxiomRows.Declared`), so S images it on no target and the
-  column bridge, which asks S's image, keeps it in process on every target rather than passing it unasked. It pushed under `Production` before; no digest statement moved at either
-  step. A `LENGTH` key in `Service.StringFunctionAnswersByBand`, measured on both, gives it back.
 - **Azure's case-insensitive prefix and suffix rest on the statement** — *small, run 2.* S licenses `UPPER(x) LIKE
   'ABC%'` as `STARTSWITH(x, 'ABC', true)` by `Service.AffixesMatchByCodePoint`'s `Folds` (G6's second fix), on both
   targets; `CONTAINS`'s flag is measured on both over ASCII, and the prefix's and the suffix's agreement over ASCII was
   added to `CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii` on 2026-11-07, holding on the emulator. The probe
-  account's next run answers it for Azure, beside cased witnesses in each band beyond ASCII, where every row parts.
+  account's next run answers it for Azure, beside cased witnesses in each band beyond ASCII (`Service.CaseMappingOverCasedLetters`, rows2), where every row parts.
 - **S's generate mode has no folded affix** — *small, h16.* S answers which case-insensitive affix a `LIKE` over a fold
   is (`foldedas`), and the translator writes it (`RenderingOracle.FoldOf`), a bridge question of its own; S's affix
   printer offers no such candidate yet. The candidate, its form read off `foldedas`, lands with the printer (h16), and

@@ -48,6 +48,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly PathValues Strings = PathValues.OfKinds(ValueSet.Of(StringType));
 
+        /// <summary>
+        /// A set's view as S tabulates it, its <c>LIKE</c> units among it: Azure's under <c>Production</c> and the emulator's
+        /// under <c>Emulator</c>. <c>Portable</c> reads a unit only where both read it alike, which since rows2 <c>_</c>, a
+        /// lone <c>]</c> and a backslash are not, the emulator's being measured over more (<c>CosmosLikeUnit.On</c>).
+        /// </summary>
+        static ServiceTable On(RenderingSet set) => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(set)), ReaderClasses,
+            ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(set)), ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(set)));
+
         static RenderingAnswer Generate(SqlPredicate root, RenderingSet set, PathValues values, JsonCharacterBand chars = JsonCharacterBand.None)
         {
             using var bundle = SwitchedTheory.Open(set);
@@ -65,14 +73,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An affix asks its argument's units each as itself, between runs; a <c>LIKE</c> its own, as a side's rows read each
-        /// unit (G7): Calcite's <c>_</c> one code point and a backslash and a bracket themselves, the service's bracket a range
-        /// and its backslash and lone <c>]</c> unmeasured, so a pattern holding one is unread there. Each is written as the
-        /// narrowest test that says it, one of literal units alone the equality of its text.
+        /// unit (G7): Calcite's <c>_</c> one code point and a backslash and a bracket themselves, Azure's bracket a range
+        /// and its backslash and lone <c>]</c> unmeasured, so a pattern holding one is unread there, and the emulator's
+        /// backslash and lone <c>]</c> themselves (rows2). Each is written as the narrowest test that says it, one of literal
+        /// units alone the equality of its text.
         /// </summary>
         [Fact]
         public void APatternIsWrittenAsTheNarrowestTest()
         {
-            var (calcite, service) = (ReaderRows.Units, Table.LikeUnits);
+            var (calcite, service, emulator) = (ReaderRows.Units, On(RenderingSet.Production).LikeUnits, On(RenderingSet.Emulator).LikeUnits);
             AffixPattern.Of(CosmosServiceTest.StartsWith, "ab", calcite)!.Spelled.Should().Be("ab%");
             AffixPattern.Of(CosmosServiceTest.EndsWith, "ab", calcite)!.Spelled.Should().Be("%ab");
             AffixPattern.Of(CosmosServiceTest.Contains, "", calcite)!.Spelled.Should().Be("%");
@@ -84,6 +93,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var unread in new[] { "a\\%", "[a]%", "a]%" })
                 AffixPattern.Of(CosmosServiceTest.Like, unread, service).Should().BeNull(unread);
             AffixPattern.Of(CosmosServiceTest.Like, "a_b%", service)!.Spelled.Should().Be("a_b%");
+            AffixPattern.Of(CosmosServiceTest.Like, "a]%", emulator)!.Spelled.Should().Be("a]%", "the emulator reads a lone ] as itself");
+            AffixPattern.Of(CosmosServiceTest.Like, "a\\%", emulator).Should().NotBeNull("and a backslash as itself");
+            AffixPattern.Of(CosmosServiceTest.Like, "[a]%", emulator).Should().BeNull("and a bracket as a range");
 
             string? Written(string pattern) => AffixPattern.Written(LikePattern.Read(pattern, calcite)!) is var (test, argument) ? test + " " + argument : null;
             Written("ab").Should().BeNull("literal units alone are an equality");
@@ -109,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// A unit is read by exactly one row of a side (G7): the one naming it, or the one spelled empty, whose row says as
         /// data which units it reads not; none reads a unit no row covers, and two rows reading one unit fail loudly, an
         /// empty row not told its side's other units among them. Each side's rows as the registry gives them read every
-        /// unit once.
+        /// unit once: Calcite's and each target's.
         /// </summary>
         [Fact]
         public void AUnitIsReadByExactlyOneRowOfItsSide()
@@ -122,21 +134,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             FluentActions.Invoking(() => LikeUnit.Of(ValueSet.Of(run, run with { Reads = LikeUnit.Itself }), "%")).Should().Throw<System.InvalidOperationException>();
             FluentActions.Invoking(() => LikeUnit.Of(ValueSet.Of(run, rest with { Besides = ValueSet<string>.Empty }), "%")).Should().Throw<System.InvalidOperationException>();
 
-            foreach (var units in new[] { ReaderRows.Units, Table.LikeUnits })
+            foreach (var units in new[] { ReaderRows.Units, On(RenderingSet.Production).LikeUnits, On(RenderingSet.Emulator).LikeUnits })
                 foreach (var unit in new[] { "%", "_", "\\", "[", "]", "a", "\u00e9", "\ud83d\ude00" })
                     LikeUnit.Of(units, unit).Should().NotBeNull(unit);
         }
 
         /// <summary>
-        /// A side's <c>_</c> reads a code point as its row says (G7): Calcite's any but a line terminator, the service's any
-        /// of the classes its witnesses held and unknown over another, so a string holding one only a reading of it might
-        /// match is neither matched nor missed; a run, measured over every class, decides either way.
+        /// A side's <c>_</c> reads a code point as its row says (G7): Calcite's any but a line terminator, Azure's any of the
+        /// classes its witnesses held and unknown over another, so a string holding one only a reading of it might match is
+        /// neither matched nor missed, and the emulator's any of the classes it was measured matching one of, line terminators
+        /// among them (rows2); a run, measured over every class, decides either way.
         /// </summary>
         [Fact]
         public void ASidesOneIsReadOverTheClassesItsRowMeasured()
         {
             var calcite = LikePattern.Read("a_b", ReaderRows.Units)!;
-            var service = LikePattern.Read("a_b", Table.LikeUnits)!;
+            var service = LikePattern.Read("a_b", On(RenderingSet.Production).LikeUnits)!;
+            var emulator = LikePattern.Read("a_b", On(RenderingSet.Emulator).LikeUnits)!;
             calcite.Matches("axb").Should().BeTrue();
             calcite.Matches("a\nb").Should().BeFalse("Calcite's _ is no line terminator");
             calcite.Matches("ab").Should().BeFalse();
@@ -147,7 +161,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             service.Matches("a\tb").Should().BeNull("nor a character TRIM removes");
             service.Matches("ab").Should().BeFalse("no reading of _ matches no code point");
             service.Matches("a\nxb").Should().BeFalse("nor two");
-            LikePattern.Read("a%b", Table.LikeUnits)!.Matches("a\nb").Should().BeTrue();
+            LikePattern.Read("a%b", On(RenderingSet.Production).LikeUnits)!.Matches("a\nb").Should().BeTrue();
+            emulator.Matches("a\nb").Should().BeTrue("the emulator's _ matches a line terminator");
+            emulator.Matches("a\u3000b").Should().BeTrue();
+            emulator.Matches("a\r\nb").Should().BeFalse("two code points");
+            emulator.OnLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeTrue();
+            emulator.OnLike(ValueSet.Of(NulClass)).Should().BeNull("U+0000 is stored as two");
+            LikePattern.Read("a_b", On(RenderingSet.Portable).LikeUnits).Should().BeNull("Azure's _ and the emulator's are read apart");
 
             service.OnLike(ValueSet<string>.Empty).Should().BeTrue();
             service.OnLike(ValueSet.Of(NonAsciiBand)).Should().BeTrue();
@@ -181,15 +201,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The classes the service's <c>_</c> is read over are those <c>LikeMatchesByCodePoint</c>'s witnesses hold, no more
-        /// and no fewer (G7): the row says what was sent.
+        /// The classes each target's <c>_</c> is read over are those its row's witnesses hold where it matched one code point,
+        /// no more and no fewer (G7): Azure's <c>LikeMatchesByCodePoint</c>'s, and the emulator's <c>LikeOneOverEachClass</c>'s
+        /// that <c>a_b</c> kept (rows2). The row says what was sent.
         /// </summary>
         [Fact]
         public void TheServicesOneIsReadOverTheClassesItsWitnessesHeld()
         {
             var witnessed = ValueSet.From(Measurements.CosmosStringFunctionMeasurementTests.LikeWitnesses.SelectMany(w => BandsOfText(StringOf(w)).AsEnumerable()));
-            CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All).Where(u => u.Unit.Unit == "_").Should().HaveCount(2)
-                .And.OnlyContain(u => u.Row == "Service.LikeMatchesByCodePoint" && u.Unit.Over != null && u.Unit.Over.Equals(witnessed));
+            var kept = Measurements.CosmosStringFunctionMeasurementTests.ClassWitnesses.Where((_, i) => i is not (11 or 12))
+                .Zip(Measurements.CosmosStringFunctionMeasurementTests.LikeOneAnswers[0].Split(' ')).Where(p => p.Second == "true/T");
+            var matched = ValueSet.From(kept.SelectMany(p => BandsOfText(System.Text.Json.JsonSerializer.Deserialize<string>(p.First)!).AsEnumerable()));
+
+            var ones = CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All).Where(u => u.Unit.Unit == "_").ToList();
+            ones.Select(u => u.Target).Should().BeEquivalentTo([RenderingTarget.Azure, RenderingTarget.Emulator]);
+            ones.Should().ContainSingle(u => u.Target == RenderingTarget.Azure && u.Row == "Service.LikeMatchesByCodePoint" && u.Unit.Over != null && u.Unit.Over.Equals(witnessed));
+            ones.Should().ContainSingle(u => u.Target == RenderingTarget.Emulator && u.Row == "Service.LikeOneOverEachClass" && u.Unit.Except.Length == 0
+                && u.Unit.Over != null && u.Unit.Over.Equals(matched));
         }
 
         /// <summary>

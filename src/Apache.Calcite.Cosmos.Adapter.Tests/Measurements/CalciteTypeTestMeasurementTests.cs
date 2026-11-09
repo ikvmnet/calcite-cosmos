@@ -1,10 +1,15 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
+
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -40,6 +45,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies").Outcomes!.Select(o => o.Test).Should().BeEquivalentTo(
                 CosmosAxioms.All.Where(a => a.Id is "Service.IsPrimitive" or "Service.IsDefined" or "Service.IsNull" or "Service.KindTests").SelectMany(a => a.Outcomes!).Select(o => o.Test),
                 "every test the service's rows answer has its Calcite side");
+
+            // What the body reads over each reading, measured (testreads): the reading a row names, and where none does, a raise.
+            var rows = CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies").TestReads!;
+            var read = TestReadings();
+            read.Where(r => r.Value != (rows.Where(t => t.Reader == r.Key.Reader || t.Reader == PredicateAtom.TypedReaders && r.Key.Reader.StartsWith(PredicateAtom.TypedReaders + ":", StringComparison.Ordinal))
+                .Select(t => t.As).SingleOrDefault() ?? "raises")).Select(r => $"{r.Key.Test} over {r.Key.Reader} reads {r.Value}").Should().BeEmpty();
+            read.Where(r => r.Value == PredicateAtom.RawReader).Select(r => r.Key.Reader).Distinct().Should().HaveCount(6, "the text and five RETURNINGs read the raw value");
+            rows.Should().NotContain(t => PredicateAtom.ColumnOf(t.Reader) != null, "the body raises over a field, so no row names a column's reading");
+        }
+
+        /// <summary>
+        /// Each reading of a path a one-place test is asked over, in process: its SQL over a document whose <c>v</c> holds the
+        /// witness, or over a column of the document's value, and what the loader writes it as. The text and a
+        /// <c>RETURNING</c> of each type are an accessor the body takes apart; a raw value in a column, an item of one and a
+        /// cast to <c>ANY</c> are not.
+        /// </summary>
+        static readonly (string Reader, string Sql, SqlTypeName? Column)[] Readings =
+        [
+            (PredicateAtom.TextReader, "JSON_VALUE(\"d\", '$.v')", null),
+            (PredicateAtom.TypedReader("INTEGER"), "JSON_VALUE(\"d\", '$.v' RETURNING INTEGER)", null),
+            (PredicateAtom.TypedReader("BIGINT"), "JSON_VALUE(\"d\", '$.v' RETURNING BIGINT)", null),
+            (PredicateAtom.TypedReader("DOUBLE"), "JSON_VALUE(\"d\", '$.v' RETURNING DOUBLE)", null),
+            (PredicateAtom.TypedReader("DECIMAL"), "JSON_VALUE(\"d\", '$.v' RETURNING DECIMAL)", null),
+            (PredicateAtom.TypedReader("BOOLEAN"), "JSON_VALUE(\"d\", '$.v' RETURNING BOOLEAN)", null),
+            (PredicateAtom.CastReader("ANY", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS ANY)", null),
+            (PredicateAtom.RawIn("VARIANT"), "\"v\"", SqlTypeName.VARIANT),
+            (PredicateAtom.RawIn("ANY"), "\"v\"", SqlTypeName.ANY),
+            (PredicateAtom.RawIn("VARCHAR"), "\"v\"", SqlTypeName.VARCHAR),
+            ("item:VARIANT", "\"v\"['x']", SqlTypeName.VARIANT),
+        ];
+
+        /// <summary>The one-place tests whose readings are measured: the definedness test and two type tests.</summary>
+        static readonly (CosmosServiceTest Test, string Name)[] ReadTests =
+            [(CosmosServiceTest.IsDefined, "IS_DEFINED"), (CosmosServiceTest.IsString, "IS_STRING"), (CosmosServiceTest.IsNumber, "IS_NUMBER")];
+
+        /// <summary>
+        /// What each test over each reading reads, measured: <c>raw</c> where it answers each witness as the row says of the
+        /// value the document holds at the path, <c>raises</c> where it raises over every witness, <c>other</c> otherwise.
+        /// </summary>
+        internal static IReadOnlyDictionary<(string Reader, CosmosServiceTest Test), string> TestReadings()
+        {
+            var row = CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies");
+            var classes = new[] { CosmosValueClass.Absent, CosmosValueClass.Null, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Number, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array };
+            // The catalogue's witnesses, and a string every RETURNING of a number reads as one.
+            var witnesses = (from cell in classes from json in CosmosOutcomeWitnesses.Of(CosmosValueClass.None, cell) select (Cell: cell, Json: json))
+                .Append((Cell: CosmosValueClass.String, Json: (string?)"\"30\"")).ToList();
+
+            using var connection = MaterialisedTable.Open("all");
+            var root = (org.apache.calcite.schema.SchemaPlus)((Apache.Calcite.Data.CalciteConnection)connection).RootSchema;
+            foreach (var (_, name) in ReadTests)
+                for (var functions = CosmosSchemaFunctions.Instance.get(name).iterator(); functions.hasNext();)
+                    root.add(name, (org.apache.calcite.schema.Function)functions.next());
+
+            var read = new Dictionary<(string, CosmosServiceTest), string>();
+            foreach (var (reader, sql, column) in Readings)
+            {
+                // The document holds the witness at v, and the column the document's value, under x for an item.
+                var item = reader.StartsWith("item:", StringComparison.Ordinal);
+                var table = new MaterialisedTable(column is { } type ? [("v", type)] : [],
+                    [.. witnesses.Select(w => (w.Json is null ? "{}" : $"{{\"v\":{w.Json}}}", column is null ? Array.Empty<string?>() : [item ? (w.Json is null ? "{}" : $"{{\"x\":{w.Json}}}") : w.Json]))]);
+                var reading = table.Values(connection, sql);
+                foreach (var (test, name) in ReadTests)
+                {
+                    // The test reads the raw value where it answers each witness the reading answers as the row says of the
+                    // value at the path, raising where the reading raises.
+                    var cells = row.Outcomes!.Single(o => o.Test == test).Cells.ToDictionary(c => c.Cell, c => c.Answer);
+                    var values = table.Values(connection, $"{name}({sql})");
+                    read[(reader, test)] = values.All(v => v is Exception) ? "raises"
+                        : values.Select((v, i) => reading[i] is Exception ? v is Exception : v is bool b && (b ? CosmosAnswer.True : CosmosAnswer.False) == cells[witnesses[i].Cell]).All(x => x) ? PredicateAtom.RawReader
+                        : "other:" + string.Join(",", values.Select(v => v is Exception e ? "!" + e.GetType().Name : v?.ToString() ?? "null"));
+                }
+            }
+
+            GC.KeepAlive(connection);
+            return read;
         }
 
     }

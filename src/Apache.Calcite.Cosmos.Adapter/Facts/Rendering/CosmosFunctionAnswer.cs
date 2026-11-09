@@ -26,8 +26,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// Never measured on the target, where another target measured the key: S reads it as anything, written by S's
         /// load so that the rows are total over the targets and one rule reads a key no target of a set may answer
-        /// otherwise (h10). No row of <c>CosmosAxioms</c> states it; a row declared beside them does, of a function a gate
-        /// holds to its rows that no run measured (<c>CosmosAxiomRows.Declared</c>, G6).
+        /// otherwise (h10). No row states it: Calcite's library <c>LENGTH</c>, the one function declared so, has measured
+        /// rows since rows2.
         /// </summary>
         Unmeasured,
 

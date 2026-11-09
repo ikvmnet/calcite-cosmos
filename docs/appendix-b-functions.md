@@ -56,7 +56,7 @@ U+0000 as the two units U+FDD0 `0` and U+FDD0 as U+FDD0 `1` (Appendix E), and it
 reverse and search those units: `LENGTH` counts one U+0000 as two, `REVERSE` puts the `0` first,
 `INDEX_OF` counts past it, a `LIKE` `_` matches half of it and a `0` or `1` in a pattern matches its
 second unit, and a U+0000 the service would make itself, in a `CONCAT` or a `REPLACE`, is an error. So
-on the emulator `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, the subject of `POSITION`, each
+on the emulator `CHAR_LENGTH` and the library's `LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, the subject of `POSITION`, each
 operand of `REPLACE`, `||` and `REPEAT`, and the subject of a `LIKE` whose pattern holds a `_`, a `0` or a
 `1` beyond a plain prefix push only where it is proved to hold neither character; U+FDD0 is not told apart from
 the characters from U+E000 up, so a value that may hold one of those stays in process there as well.
@@ -68,9 +68,9 @@ agree over, and the table says which.
 
 | SQL | Cosmos | pushes where |
 | --- | --- | --- |
-| `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone |
+| `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone; on the emulator `LOWER` also over the characters from U+E000 up, whose only capitals, the fullwidth Latin letters, it lowers as Calcite does |
 | `CHAR_LENGTH`, `CHARACTER_LENGTH` | `LENGTH` | its argument holds no character beyond U+FFFF (an emoji is one; Calcite counts it as two) |
-| `LENGTH` (*library*) | — | stays in process on every target: what the service answers for it beside Calcite's has not been measured |
+| `LENGTH` (*library*) | `LENGTH` | as `CHAR_LENGTH` |
 | `SUBSTRING(s FROM i FOR n)` | `SUBSTRING(s, i - 1, n)` | `s` holds no character beyond U+FFFF: Azure returns half of one as U+FFFD; and `i` and `n` are literals, the service's answers having been measured with literal bounds alone, so a column, a parameter or a `POSITION` there stays in process; and `n` is at least 0, the lengths both were measured with — on Azure a length of 0 as the window from 0 of length 0, which the clip below writes where a window ends before the string — since below 0 Calcite raises where the service answers the empty string. A start below one is written with Calcite's clip to the string, `SUBSTRING(s, (i < 1 ? 0 : (i - 1)), …)`, since the service answers a negative start with the empty string. The form without a length stays in process |
 | `POSITION(a IN b)` | `(INDEX_OF(b, a) + 1)` | `a` is a string of ASCII alone that holds something, with no U+0000 and no white space but a space among it, the patterns the service's answers have been measured with: a literal, or a path the container declares `required` whose `enum` lists only such strings, so an empty pattern, one holding anything beyond ASCII and a path that may be absent stay in process. `b` anything on Azure, which counts as Calcite does. The emulator counts an emoji as one, so there the position after one differs, and counts a stored U+0000 or U+FDD0 as two, so there `b` must hold no character beyond U+FFFF and neither of those |
 | `TRIM`, `LTRIM`, `RTRIM` (spaces) | `TRIM`, `LTRIM`, `RTRIM` | its argument holds nothing the service trims beside a space: U+0009–U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000. Trimming other characters stays in process |
