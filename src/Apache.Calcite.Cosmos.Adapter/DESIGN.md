@@ -8856,6 +8856,38 @@ boolean, translator tests' pushes, are Unproven in the census though S proves ea
 anything under `Production`, and `c.a` is declared printable ASCII where the census reads it as anything (`TODO.md`).
 
 
+### What the probe account answered (run 2)
+
+Run 2 sent rows2's witnesses to the probe account (2026-11-09, the branch at `b9108d5`, Release, one class in a database
+of 400 RU/s deleted when it ended; 1,819 RU of the 2,500 approved): the case mapping over cased letters of each band,
+`RIGHT` with its cut inside a surrogate pair, `LIKE`'s `_` and `%` over one character of each class and an unpaired
+surrogate, and a `]` closing nothing and a backslash with no `ESCAPE`. The record is `Runs/2026-11-09-probe-account.tsv`,
+186 lines; 30 answer apart from EN20261019, each where the row says the targets part, and each row now claims Azure:
+
+- **Azure maps fewer letters than either (`Service.CaseMappingOverCasedLetters`, 17 lines).** Over a surrogate it maps
+  Deseret as Java does and leaves Osage, Adlam and Medefaidrin as Java 8's tables do, so `UPPER` and `LOWER` say `Same`
+  there; `LOWER` maps the fullwidth capitals, `Same` over the high band, where `UPPER` leaves the ligatures Java writes
+  as two; and outside ASCII below the surrogates it leaves U+00B5, U+0131, U+01C5, U+03C2, U+0130 and U+1E9E, which Java
+  maps, so both part there. The keys name the row as their evidence on both targets (`CasedLetters`), and
+  `EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures` reads its lines again through Calcite.
+- **Azure's `RIGHT` cuts by UTF-16 unit and sends the half as U+FFFD (`Service.RightOverASplitPair`, 9 lines),** where
+  Calcite keeps the half, so `RIGHT`'s `Differs` over a surrogate is measured on both targets now and names the row.
+- **Azure's `_` matches U+0000 and U+FDD0 as one code point each (`Service.LikeOneOverEachClass`, 4 lines),** as written,
+  where the emulator matches the two units it stores; over every other class, line terminators and the trimmed class
+  among them, the two answer alike, and an unpaired surrogate, which Azure stores as U+FFFD, answers as U+FFFD does.
+- **A `]` closing nothing and a backslash are themselves on Azure too (`Service.LikeReadsALoneBracketAndABackslash`).**
+
+`CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii` passed beside them, Azure's case-insensitive prefix and suffix over
+ASCII among its assertions. `EachStringFunctionAnswersItsRowByBand` was asked too, the operand spellings fix6 and g1 keyed
+among it, and its projection failed with a 503 after 43 s, so it answered nothing and no operand key moved.
+
+**What it gives S.** Under `Production`, `UPPER` and `LOWER` push over a string that may hold a character beyond U+FFFF,
+and `LOWER` over one that may hold a fullwidth capital, both computed in process before; a `LIKE` pattern holding a lone
+`]` or a backslash is read under every set; and Azure's `_` is read over every class but the unpaired. Where Azure parts
+from Calcite — the case mapping outside ASCII below the surrogates, `UPPER` over the high band, `_` over a line
+terminator — the push stays in process, a correctness-fix decline the owner accepted by name before the run. The plans
+do not move: on both frameworks, over build 336, Production is `038034d1…` and Emulator `8c6dd98a…`, as at the parent.
+
 ### What line 6 asks after run 1 (post1)
 
 Built where run 1's rows license both halves, each S's alone until the switch: a pair's absent side and two nulls
@@ -8972,14 +9004,18 @@ the operand; and each case is declined under every set it asks.
   emulator from its 2026-11-06 record (`Runs/Emulator/2026-11-06-EN20261019.tsv`, both releases alike), an empty search
   `Undefined`, a search holding U+0000 `Differs`, a number or a boolean `Undefined`; on Azure only as the literals run
   1's spellings hold, a string of no band and not empty, so every other search and replacement is unmeasured there
-  and declined until run 2. A path keys that cell as a literal does where the declaration proves it present and every
+  and declined until a run sends them; run 2 did, and its projection failed with a 503, so they wait for the next. A path keys that cell as a literal does where the declaration proves it present and every
   string it may be one of them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell`
   writes an empty search, which the rows decline, where it refused one.
 - **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
   where they said `Same` over witnesses that held no letter the mapping changes. rows2's cased witnesses
   (`Service.CaseMappingOverCasedLetters`) let the emulator's `LOWER` over the high band say `Same`; every other band
   parts there, the surrogate band among them, since the emulator maps scripts Unicode cased after Java 8's tables.
-  Azure's keys wait for run 2.
+  Run 2 sent the same witnesses to Azure, which maps Deseret as Java does and leaves the later scripts as Java 8 does,
+  so both mappings say `Same` over a surrogate there, and `LOWER` over the high band; `UPPER` parts over the high band,
+  leaving the ligatures Java writes as two, and both outside ASCII below it. So the item's two cases are proven under
+  `Production`, `LowerOverTheHighBand` under every set, and each answers as Calcite on its documents
+  (`RenderingDefectTests`, a defect's `Proves`).
 - **The emulator's stored escapes** (item 6). Over stored operands both images answer as Calcite, but what a literal
   makes there does not: a U+0000 made by `CONCAT`, `||`, `REPEAT` or a replacement fails the statement, and a U+FDD0
   made before a 0 or a 1 is read back as an escape's first unit. The emulator's rows say so, measured as the literal
@@ -9227,8 +9263,9 @@ left by Java 8's tables. A band's `Same` is only as good as its witnesses' lette
 after Java 8 in each band that has one. The case-insensitive match is S's since G6's second fix, over the matcher's own rows
 (`Service.AffixesMatchByCodePoint`'s `Folds`, `foldsas`), which part at every band beyond ASCII as the mapping does (*A
 case fold under `LIKE` is the service's case-insensitive match*); G6's fix had read the matcher as folding by the
-service's `UPPER` and `LOWER` (`CosmosRexTranslator.FoldsToItself`, `Service.CaseMappingIsSimple`) with no row of its own. Run 2 measures
-cased witnesses in each band, and Azure's case-insensitive prefix and suffix over ASCII.
+service's `UPPER` and `LOWER` (`CosmosRexTranslator.FoldsToItself`, `Service.CaseMappingIsSimple`) with no row of its own. Run 2
+measured the cased witnesses on Azure (*What the probe account answered (run 2)*), and Azure's case-insensitive prefix
+and suffix agree with the mapping over ASCII (`CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii` passed there).
 
 ### Character bands and the stored spelling, S's (G1)
 
@@ -9601,23 +9638,23 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   one not naming it besides; none leaves the pattern unread, and two fail the run. Calcite's rows are `likeunits`; each
   target's are S's `likereads`: `Service.LikeMatchesByCodePoint`'s `%` a run and every other unit itself;
   `Service.LikeReadsBracketsAsARange`'s `[` a range. A unit may name the targets its run measured (`CosmosLikeUnit.On`),
-  fewer than its row's: on Azure `_` is `LikeMatchesByCodePoint`'s, one code point over the classes its witnesses held (a
-  surrogate pair, U+00E9, U+E000 and ASCII), and `]` and a backslash are unmeasured; on the emulator `_` is
-  `Service.LikeOneOverEachClass`'s, one code point over every class it matched one of (rows2: line terminators, the
-  trimmed class, U+FFFD and the three bands, U+FDD0 and U+0000 being two stored units and a lone surrogate refused), and
-  `]` and a backslash are `Service.LikeReadsALoneBracketAndABackslash`'s, each itself. Each `_` is pinned to its
-  witnesses by `TheServicesOneIsReadOverTheClassesItsWitnessesHeld`. A set reads a unit by a row where every
-  target it serves reads it so (`liketargets`, settled into `likesof` in `tabulate`, as folds are), and its view hands
-  the leaf those; so since rows2 `Portable` reads `_`, a lone `]` and a backslash by no row, its two targets reading
-  them apart, and a pattern holding one is unread there until run 2 measures Azure's over the emulator's witnesses. `LikePattern` is a pattern as one side reads it: over a string matched unit by unit in Kleene's three
+  fewer than its row's: each target's `_` is `Service.LikeOneOverEachClass`'s, one code point over every class it matched
+  one of — line terminators, the trimmed class, U+FFFD and the three bands on both, and on Azure U+FDD0 and U+0000 as
+  written, where the emulator stores them as two units (rows2 and run 2); an unpaired surrogate is unread on both, the
+  emulator refusing it and Azure storing U+FFFD. `]` and a backslash are `Service.LikeReadsALoneBracketAndABackslash`'s
+  on both, each itself. Each `_` is pinned to its witnesses by `TheServicesOneIsReadOverTheClassesItsWitnessesHeld`,
+  Azure's to the probe account's record. A set reads a unit by a row where every target it serves reads it so
+  (`liketargets`, settled into `likesof` in `tabulate`, as folds are), and its view hands the leaf those; so `Portable`
+  reads a lone `]` and a backslash, and reads `_` by no row, its two targets' rows reading U+0000 and U+FDD0 apart, so a
+  pattern holding one is unread there. `LikePattern` is a pattern as one side reads it: over a string matched unit by unit in Kleene's three
   values, a run or a `one` over a code point its row was not measured over unknown; over a range an affix cut by its
   spelling, matched where every run and `one` was measured over the range's classes and no `one` misses one of them,
   missed where every one was measured. The cut reads Calcite's rows (`CutPoints`, handed `readerrows`), so does the
   template (`RenderingTemplates.Affix`, handed it beside the atom) and Calcite's side (`LikeOn`); the leaf reads the
   set's, and so do the truncation and spelling rules' shapes. `AffixPattern.Canonical` and `Plain`, which refused
   `_`, `\`, `[` and `]` in four places, and `Like`'s named-else-default precedence are gone. Under the corpus a
-  `LIKE` holding `_` stays unproven: every path it reads may hold a line terminator, which Calcite's `_` misses and no
-  witness of the service's held.
+  `LIKE` holding `_` stays unproven: every path it reads may hold a line terminator, which Calcite's `_` misses and each
+  target's matches, a correctness-fix decline the owner accepted by name.
 
 **What did not move.** Which test a `LIKE`'s pattern is proposed as is still `AffixPattern.Written`'s, the narrowest:
 one template per test and a weight in `Priced` land with h15's templates (`TODO.md`). Which evaluator reads a

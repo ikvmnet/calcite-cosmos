@@ -341,7 +341,8 @@ above U+0100 (Chapter 8.3).
 and they part over four things. Calcite counts UTF-16 units and the service's `LENGTH` code points, so
 an emoji is 2 to one and 1 to the other, and Azure's `SUBSTRING` returns half of one as U+FFFD. Calcite
 maps case by Java's full mapping, `ß` to `SS` and `ﬀ` to `FF`, and the service leaves both, and on
-Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree. Calcite's `TRIM` removes spaces
+Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree, and on Azure beyond U+FFFF too, and
+`LOWER` over the fullwidth capitals on both. Calcite's `TRIM` removes spaces
 where the service's removes white space: a tab, a line break, U+00A0, U+3000 and the rest of Appendix
 B.2's list. And Azure's `REPLACE` and `CONTAINS` read a string only up to its first U+0000, as does a
 `LIKE` the service answers as a `CONTAINS` — a pattern that is one run of text between two `%` — so

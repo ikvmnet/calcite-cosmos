@@ -46,12 +46,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly PathValues Strings = PathValues.OfKinds(ValueSet.Of(StringType));
 
-        /// <summary>One defect: the predicate S reads, how its paths are imported, the sets asked, the documents judged, and the service where CosmosEval does not say.</summary>
+        /// <summary>
+        /// One defect: the predicate S reads, how its paths are imported, the sets asked, the documents judged, the service
+        /// where CosmosEval does not say, and the sets a later measurement proves it under, the answer Calcite's.
+        /// </summary>
         sealed record Defect(SqlPredicate Read, Func<J.Obj, Truths?> Calcite, Func<JsonDocumentPath, (PathValues Values, JsonCharacterBand Chars)> Import,
-            RenderingSet[] Sets, J.Obj[] Documents, Func<J.Obj, ServiceOutcomes?>? Measured = null);
+            RenderingSet[] Sets, J.Obj[] Documents, Func<J.Obj, ServiceOutcomes?>? Measured = null, RenderingSet[]? Proves = null);
 
-        static Defect FromRex(RexNode rex, Func<JsonDocumentPath, (PathValues, JsonCharacterBand)> import, RenderingSet[] sets, J.Obj[] documents, Func<J.Obj, ServiceOutcomes?>? measured = null) =>
-            new(Loading.Read(rex), CalciteInProcess.Compile(rex, Fields, Readings) ?? throw new InvalidOperationException($"{rex} does not compile alone"), import, sets, documents, measured);
+        static Defect FromRex(RexNode rex, Func<JsonDocumentPath, (PathValues, JsonCharacterBand)> import, RenderingSet[] sets, J.Obj[] documents, Func<J.Obj, ServiceOutcomes?>? measured = null,
+            RenderingSet[]? proves = null) =>
+            new(Loading.Read(rex), CalciteInProcess.Compile(rex, Fields, Readings) ?? throw new InvalidOperationException($"{rex} does not compile alone"), import, sets, documents, measured, proves);
 
         /// <summary>
         /// A place written as Spell would write it without its literal refusal (G1), which gives a literal holding U+0000 or
@@ -122,19 +126,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 d => IrEval.At(d, T) is J.Num ? ServiceOutcomes.Undefined : null),
 
             // Item 5. A case mapping over a surrogate, and LOWER over the high band, whose rows said Same where no witness held
-            // a letter the mapping changes: Java's maps U+10428 and U+10400, and U+FF21 to U+FF41. The rows part (F5), but
-            // for the emulator's LOWER over the high band, which maps U+FF21 as Java does (Service.CaseMappingOverCasedLetters,
-            // rows2), so it is proven there and asked under Azure's sets alone.
+            // a letter the mapping changes: Java's maps U+10428 and U+10400, and U+FF21 to U+FF41. The rows are read off cased
+            // letters now (Service.CaseMappingOverCasedLetters): the emulator's LOWER over the high band maps U+FF21 as Java
+            // does (rows2), and Azure maps Deseret and U+FF21 as Java does (run 2), so each is proven where they say so.
             ["CaseMappingOverASurrogate"] = () => FromRex(
                 Rex.makeCall(SqlStdOperatorTable.OR,
                     Eq(Rex.makeCall(SqlStdOperatorTable.UPPER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("\U00010400")),
                     Eq(Rex.makeCall(SqlStdOperatorTable.LOWER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("\U00010428"))),
                 _ => (Strings, JsonCharacterBand.Surrogates), AllSets,
-                [Doc(("s", new J.Str("\U00010428"))), Doc(("s", new J.Str("\U00010400")))]),
+                [Doc(("s", new J.Str("\U00010428"))), Doc(("s", new J.Str("\U00010400")))], proves: [RenderingSet.Production]),
             ["LowerOverTheHighBand"] = () => FromRex(
                 Eq(Rex.makeCall(SqlStdOperatorTable.LOWER, JsonValue("s", SqlTypeName.VARCHAR)), Unicode("ａ")),
-                _ => (Strings, JsonCharacterBand.HighBmp), [RenderingSet.Production, RenderingSet.Portable],
-                [Doc(("s", new J.Str("Ａ"))), Doc(("s", new J.Str("ａ")))]),
+                _ => (Strings, JsonCharacterBand.HighBmp), AllSets,
+                [Doc(("s", new J.Str("Ａ"))), Doc(("s", new J.Str("ａ")))], proves: AllSets),
 
             // Item 6. What the emulator makes of a literal it stores escaped: a U+0000 made there fails the statement (Postgres
             // 22P05), and a U+FDD0 before a 0 is read back as U+0000. The emulator's rows say so.
@@ -150,17 +154,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Each defect answers as Calcite: no proof whose form keeps another row than Calcite on a document, under any set
-        /// asked, through both theories; and none at all, each declined where its rows part, are unmeasured, or the loader
-        /// reads no constant.
+        /// asked, through both theories; and none at all but under the sets a later measurement proves it under, each
+        /// declined where its rows part, are unmeasured, or the loader reads no constant.
         /// </summary>
         [Theory]
         [MemberData(nameof(Names))]
         public void EachDefectAnswersAsCalcite(string name)
         {
-            var (found, proven) = Judge(Defects[name]());
+            var defect = Defects[name]();
+            var (found, proven) = Judge(defect);
             TestContext.Current.TestOutputHelper?.WriteLine(string.Join(Environment.NewLine, found.Concat(proven)));
             found.Should().BeEmpty();
-            proven.Should().BeEmpty($"{name} is declined under every set asked");
+            proven.Where(p => (defect.Proves ?? []).Any(set => p.StartsWith(set + ":", StringComparison.Ordinal)) == false)
+                .Should().BeEmpty($"{name} is declined under every set asked but those its measurement proves it under");
         }
 
         /// <summary>Every row S's proven form keeps otherwise than Calcite, on every target each set serves, and every form proven.</summary>

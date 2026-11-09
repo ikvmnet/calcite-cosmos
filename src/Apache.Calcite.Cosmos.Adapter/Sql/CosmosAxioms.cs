@@ -136,12 +136,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
-        /// A case mapping's string keys, as <see cref="StringFunction"/> gives them, parting over every band beyond ASCII on
-        /// Azure and over those given on the emulator, each emulator key apart from Azure's naming the row whose cased letters
-        /// measured it (<c>Service.CaseMappingOverCasedLetters</c>, rows2).
+        /// A case mapping's string keys, as <see cref="StringFunction"/> gives them, parting over the bands given for each
+        /// target, each key over a band beyond ASCII naming the row whose cased letters measured it
+        /// (<c>Service.CaseMappingOverCasedLetters</c>: the emulator's in rows2, Azure's in run 2).
         /// </summary>
-        static IEnumerable<CosmosFunctionOutcome> CasedLetters(string function, JsonCharacterBand differs) =>
-            StringFunction(function, 0, differs, JsonCharacterBand.BeyondAscii).Select(o => o.On == Emulator ? o with { Evidence = "Service.CaseMappingOverCasedLetters" } : o);
+        static IEnumerable<CosmosFunctionOutcome> CasedLetters(string function, JsonCharacterBand differs, JsonCharacterBand azure) =>
+            Citing(StringFunction(function, 0, differs, azure), JsonCharacterBand.BeyondAscii, "Service.CaseMappingOverCasedLetters");
+
+        /// <summary>A function's string keys over the bands given, each naming the row whose witnesses measured it.</summary>
+        static IEnumerable<CosmosFunctionOutcome> Citing(IEnumerable<CosmosFunctionOutcome> outcomes, JsonCharacterBand bands, string row) =>
+            outcomes.Select(o => o.Operand == Class.String && o.Band != JsonCharacterBand.None && bands.HasFlag(o.Band) ? o with { Evidence = row } : o);
 
         /// <summary>
         /// A concatenation's literal operand (<see cref="FunctionKey.Literal"/>): a string of no band and not empty answering
@@ -686,20 +690,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // Azure's by code point, one run between two % read as a CONTAINS is (ServiceLeaf).
                     new(Test.Like, Class.String, Azure, "none=codepoint matching=true missing=false"),
                 ],
-                // What the leaf reads a LIKE's pattern by (G7): on Azure _ over the classes its witnesses held, ASCII among
-                // them, and over any other unread, a line terminator among them; the emulator's _ is Service.LikeOneOverEachClass's
-                // (likereads).
+                // What the leaf reads a LIKE's pattern by (G7); each target's _ is Service.LikeOneOverEachClass's (likereads).
                 LikeUnits:
                 [
-                    new("%", CosmosLikeUnit.Run), new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand], On: Azure),
+                    new("%", CosmosLikeUnit.Run),
                     new("", CosmosLikeUnit.Itself),
                 ]),
             new("Service.LikeReadsBracketsAsARange",
                 "LIKE reads [a-c] as one character of the range and [^a-c] as one outside it, [[] as a literal [, and a pattern holding a [ it never closes matches nothing, the string it spells included; ESCAPE makes the character after it literal.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsBracketsAsARange",
-                // A bracket opens a range; on Azure no witness sent a ] closing nothing or a backslash without ESCAPE, so neither
-                // is read there (G7), and the emulator's are Service.LikeReadsALoneBracketAndABackslash's.
-                LikeUnits: [new("[", CosmosLikeUnit.Range), new("]", CosmosLikeUnit.Unmeasured, On: Azure), new("\\", CosmosLikeUnit.Unmeasured, On: Azure)]),
+                // A bracket opens a range (G7); a ] closing nothing and a backslash are Service.LikeReadsALoneBracketAndABackslash's.
+                LikeUnits: [new("[", CosmosLikeUnit.Range)]),
             new("Service.IntegralNumbersReadBackAsHeld",
                 "A number reads back as the service holds it: 30, 30.0, 3e1 and 300e-1 read back 30, equal 30 and are IS_INTEGER, and -0 and -0.0 read back 0; an integer written without a point is held exactly, 9007199254740993 as itself, and one written with a point by the emulator as a double, 9007199254740993.0 as 9007199254740992, and by Azure as an int64 where it is one, 9007199254740993.0 as itself, IS_INTEGER either way; 1e20, 1E21 and 1.5e300 read back with an exponent and are not IS_INTEGER.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegralNumbersReadBackAsHeld"),
@@ -821,7 +822,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
             new("Service.StringFunctionAnswersByBand",
-                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, keyed apart, and a stored operand of either is read as parting still, as it was while a literal shared its key. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. A literal operand of CONCAT, || and REPEAT is keyed apart from a stored one, and POSITION's needle as the operand it is, each measured as the literal its spellings hold on both targets, z, a count of 2 and a 0 or a 1, strings of no band and not empty and a count from 1, and on the emulator as the literals it stores escaped; on Azure REPEAT's count of 0 as well, the empty string as Calcite's, as Service.ReplicateStopsAtTenThousandCodePoints measured it. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, and each read as parting over the rest beyond ASCII as on the emulator; REPLACE over U+0000, its search and replacement measured only as the literals run 1's spellings hold, strings of no band and not empty, and SUBSTRING's length from 1, and at 0 as the window from 0 of length 0 Service.SubstringOfANegativeStartIsEmpty measured; the trims over the trimmed class; RIGHT read as parting over a surrogate though no witness's last two units split a pair. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
+                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, keyed apart, and a stored operand of either is read as parting still, as it was while a literal shared its key. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. A literal operand of CONCAT, || and REPEAT is keyed apart from a stored one, and POSITION's needle as the operand it is, each measured as the literal its spellings hold on both targets, z, a count of 2 and a 0 or a 1, strings of no band and not empty and a count from 1, and on the emulator as the literals it stores escaped; on Azure REPEAT's count of 0 as well, the empty string as Calcite's, as Service.ReplicateStopsAtTenThousandCodePoints measured it. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, the rest beyond ASCII answering as Calcite's, as Service.CaseMappingOverCasedLetters's cased letters measured; REPLACE over U+0000, its search and replacement measured only as the literals run 1's spellings hold, strings of no band and not empty, and SUBSTRING's length from 1, and at 0 as the window from 0 of length 0 Service.SubstringOfANegativeStartIsEmpty measured; the trims over the trimmed class; RIGHT over a surrogate, a cut inside a pair sent as U+FFFD, as Service.RightOverASplitPair measured. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
                 FunctionOutcomes:
@@ -832,15 +833,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. StringFunction("LENGTH", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
                     .. StringFunction("SUBSTRING", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
                     .. StringFunction("LEFT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
-                    .. StringFunction("RIGHT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                    // RIGHT over a surrogate parts on both targets as Service.RightOverASplitPair's cut inside a pair measured.
+                    .. Citing(StringFunction("RIGHT", 0, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Surrogates),
+                        JsonCharacterBand.Surrogates, "Service.RightOverASplitPair"),
                     // The emulator's INDEX_OF counts code points, so POSITION parts over a surrogate as well (Service.IndexOfCountsUnits).
                     .. StringFunction("POSITION", 1, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.None),
-                    // A case mapping parts over each band beyond ASCII on Azure, whose cased witnesses run 2 sends: its rows' Same
-                    // over a surrogate and the high band held no letter the mapping changes (F5). On the emulator the cased
-                    // letters measure each band (Service.CaseMappingOverCasedLetters): LOWER over the high band, whose capitals are
-                    // the fullwidth Latin ones alone, maps as Java does, and every other band beyond ASCII parts.
-                    .. StringFunction("UPPER", 0, JsonCharacterBand.BeyondAscii, JsonCharacterBand.BeyondAscii),
-                    .. CasedLetters("LOWER", JsonCharacterBand.Surrogates | JsonCharacterBand.NonAscii),
+                    // The cased letters measure each band beyond ASCII (Service.CaseMappingOverCasedLetters). On the emulator LOWER
+                    // over the high band, whose capitals are the fullwidth Latin ones alone, maps as Java does, and every other
+                    // band parts. On Azure, run 2, both map a surrogate as Java does, Deseret, and LOWER the high band; UPPER
+                    // parts over the high band, leaving the ligatures Java writes as two, and both outside ASCII below it.
+                    .. CasedLetters("UPPER", JsonCharacterBand.BeyondAscii, JsonCharacterBand.HighBmp | JsonCharacterBand.NonAscii),
+                    .. CasedLetters("LOWER", JsonCharacterBand.Surrogates | JsonCharacterBand.NonAscii, JsonCharacterBand.NonAscii),
                     .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Nul),
                     // A search and a replacement, keyed as each is (F2): on Azure the literals run 1's spellings hold alone; the
                     // emulator's from its 2026-11-06 record, the literals it stores escaped among them.
@@ -885,25 +888,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
                 ]),
             new("Service.CaseMappingOverCasedLetters",
-                "UPPER and LOWER over cased letters of each band part from Java's full mapping over every band beyond ASCII but one: LOWER over the high band, whose capitals are the fullwidth Latin letters alone, maps U+FF21 to U+FF41 as Java does. Over a surrogate the service maps Deseret as Java does and Osage, Adlam and Medefaidrin, which Java 8's tables leave, as a later Unicode does; UPPER over the high band leaves U+FB00 and U+FB13, which Java writes as two; and outside ASCII below the surrogates it leaves ß and maps the final sigma, U+0130 and the letters Cherokee and Georgian cased later otherwise than Java. Both emulator images answer alike; Azure's is run 2's.",
-                CosmosAxiomTarget.Emulator, Edges, "Measurements.CosmosStringFunctionMeasurementTests.CaseMappingOverCasedLetters",
+                "UPPER and LOWER over cased letters of each band part from Java's full mapping over every band beyond ASCII but one: LOWER over the high band, whose capitals are the fullwidth Latin letters alone, maps U+FF21 to U+FF41 as Java does. Over a surrogate the service maps Deseret as Java does and Osage, Adlam and Medefaidrin, which Java 8's tables leave, as a later Unicode does; UPPER over the high band leaves U+FB00 and U+FB13, which Java writes as two; and outside ASCII below the surrogates it leaves ß and maps the final sigma, U+0130 and the letters Cherokee and Georgian cased later otherwise than Java. Both emulator images answer alike. Azure (run 2) maps fewer: over a surrogate Deseret as Java does, and leaves Osage, Adlam and Medefaidrin as Java does, so both mappings answer as Calcite's there; LOWER maps the high band as Java does and UPPER leaves the ligatures there; and outside ASCII below the surrogates it leaves U+00B5, U+0131, U+01C5, U+03C2, U+0130 and U+1E9E, which Java maps, and ß, so both part there.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.CaseMappingOverCasedLetters",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)]),
             new("Service.RightOverASplitPair",
-                "RIGHT(s, n) over a string whose last n UTF-16 units begin inside a surrogate pair: the emulator counts code points, so its cut never splits a pair and its answer parts from Calcite's, which keeps the half, as Service.StringFunctionAnswersByBand says of RIGHT over a surrogate. Azure's is run 2's.",
-                CosmosAxiomTarget.Emulator, Edges, "Measurements.CosmosStringFunctionMeasurementTests.RightWithItsCutInsideASurrogatePair",
+                "RIGHT(s, n) over a string whose last n UTF-16 units begin inside a surrogate pair: the emulator counts code points, so its cut never splits a pair and its answer parts from Calcite's, which keeps the half, as Service.StringFunctionAnswersByBand says of RIGHT over a surrogate. Azure (run 2) counts UTF-16 units and sends the half it cuts as U+FFFD, so its answer parts from Calcite's as well.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.RightWithItsCutInsideASurrogatePair",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)]),
             new("Service.LikeOneOverEachClass",
-                "LIKE's _ matches one code point of every class as written: each Java line terminator, a tab, U+000B, U+00A0 and U+3000, U+FFFD, a surrogate pair, U+00E9 and U+E000, where Calcite's _ matches no line terminator; U+000D U+000A is two. U+FDD0 and U+0000 it reads as the emulator stores them, two code points each, so a_b matches neither and a__b both. % matches a run of any of them. Both emulator images answer alike; Azure's is run 2's, an unpaired surrogate among its witnesses, which the emulator refuses to store.",
-                CosmosAxiomTarget.Emulator, Edges, "Measurements.CosmosStringFunctionMeasurementTests.LikeOneOverEachClass",
-                // The emulator's _ over the classes it matched as one code point (likereads); U+FDD0 and U+0000 are read as the
-                // escape it stores, and no unpaired surrogate is stored, so the three are unread.
+                "LIKE's _ matches one code point of every class as written: each Java line terminator, a tab, U+000B, U+00A0 and U+3000, U+FFFD, a surrogate pair, U+00E9 and U+E000, where Calcite's _ matches no line terminator; U+000D U+000A is two. U+FDD0 and U+0000 the emulator reads as it stores them, two code points each, so a_b matches neither and a__b both, and Azure (run 2) as written, one code point each. % matches a run of any of them. Both emulator images answer alike. An unpaired surrogate the emulator refuses to store, and Azure stores as U+FFFD and matches as it.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.LikeOneOverEachClass",
+                // Each target's _ over the classes it matched as one code point (likereads): on the emulator U+FDD0 and U+0000
+                // are read as the escape it stores, so are unread, and on Azure as written; no target stores an unpaired
+                // surrogate as one, so it is unread on both.
                 LikeUnits:
                 [
-                    new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass]),
+                    new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass], On: Emulator),
+                    new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass,
+                        JsonValues.NulClass, JsonValues.EscapeClass], On: Azure),
                 ]),
             new("Service.LikeReadsALoneBracketAndABackslash",
-                "With no ESCAPE written, LIKE reads a ] that closes no bracket as itself and a backslash as itself, escaping nothing: a]b and ] match themselves alone, a\\% every string starting a and a backslash, and \\ the backslash alone. Both emulator images answer alike; Azure's is run 2's.",
-                CosmosAxiomTarget.Emulator, Edges, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsALoneBracketAndABackslash",
+                "With no ESCAPE written, LIKE reads a ] that closes no bracket as itself and a backslash as itself, escaping nothing: a]b and ] match themselves alone, a\\% every string starting a and a backslash, and \\ the backslash alone. Both emulator images and Azure (run 2) answer alike.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.LikeReadsALoneBracketAndABackslash",
                 LikeUnits: [new("]", CosmosLikeUnit.Itself), new("\\", CosmosLikeUnit.Itself)]),
             new("Service.EmulatorContainsReadsPastNul",
                 "On the emulator CONTAINS, both modes, and a LIKE of one run between two % read past U+0000, which it stores as U+FDD0 followed by 0: b is found in a, U+0000, b and in U+0000, a, b, where Azure reads a string only up to its first U+0000 (Service.NulEndsWhatReplaceAndContainsRead), so no truncation is the emulator's. Both emulator images answer alike.",

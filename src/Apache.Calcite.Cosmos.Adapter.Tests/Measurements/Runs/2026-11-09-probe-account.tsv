@@ -1,0 +1,201 @@
+# What the probe account answered on 2026-11-09 (run 2), line by line: the emulator rows measured on 2026-11-08 (rows2)
+# that the account had not run, each line as its pinning test logged it (CosmosWitnessProbe) before any assertion, the
+# release column Azure: case mapping over cased letters of each band, RIGHT with its cut inside a surrogate pair, LIKE's _
+# and % over one character of each class, an unpaired surrogate among them, and a ] closing nothing and a backslash with no
+# ESCAPE. A function's answer is the projection; a truth's is value/kept. CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii
+# passed beside them, its case-insensitive prefix and suffix over ASCII among its assertions, and logs no line; the class's
+# EachStringFunctionAnswersItsRowByBand was asked too, and its projection failed with a 503, so it answered nothing here.
+#
+# feature/stage3-where at b9108d5, Release, net10.0, one database at 400 RU/s deleted when the class ended: 1,819.29 RU,
+# 660.82 of them the class's setup and cleanup. Of the 186 lines, 30 answer apart from EN20261019, each where the row says
+# the targets part: 17 of the case mapping's, Azure leaving the letters Unicode cased after Java 8's tables as Java does and
+# leaving U+00B5, U+0131, U+01C5, U+03C2, U+0130 and U+1E9E, which both Java and the emulator map; 9 of RIGHT's, Azure
+# counting UTF-16 units and sending a split half as U+FFFD; and 4 of the LIKE's, U+0000 and U+FDD0 each one code point as
+# written where the emulator stores two. The unpaired surrogate's 3 lines answer as U+FFFD's, which Azure stores for it.
+release	row	expression	witness	answer
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\nb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\rb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\r\nb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u0085b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u2028b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u2029b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\tb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u000bb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a　b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a�b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a﷐b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\u0000b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a😀b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"aéb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"ab"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"axb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"ab"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\nb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\rb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\r\nb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u0085b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u2028b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u2029b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\tb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u000bb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a　b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a�b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a﷐b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\u0000b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a😀b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"aéb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"ab"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"axb"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"ab"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\nb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\rb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\r\nb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u0085b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u2028b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u2029b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\tb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u000bb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a　b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a�b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a﷐b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\u0000b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a😀b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"aéb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"ab"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"axb"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"ab"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a_b"	"a\ud800b"	true/T
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a__b"	"a\ud800b"	false/F
+Azure	Service.LikeOneOverEachClass	c.v LIKE "a%b"	"a\ud800b"	true/T
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aBc"	"ABC"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐐨𐐀"	"𐐀𐐀"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"a𐐀b"	"A𐐀B"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐒰𐓘"	"𐒰𐓘"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𞤀𞤢"	"𞤀𞤢"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𖹀𖹠"	"𖹀𖹠"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ａａ"	"ＡＡ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬓ"	"ﬓ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aÉb"	"AÉB"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ÿ"	"Ÿ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"µ"	"µ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΟΔΟΣ"	"ΟΔΟΣ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ς"	"ς"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΐ"	"ΐ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"İ"	"İ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ı"	"ı"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ß"	"ß"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ẞ"	"ẞ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ǅ"	"ǅ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ꭰ"	"Ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ꭰ"	"ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ა"	"ა"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ა"	"Ა"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aBc"	"abc"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐐨𐐀"	"𐐨𐐨"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"a𐐀b"	"a𐐨b"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐒰𐓘"	"𐒰𐓘"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𞤀𞤢"	"𞤀𞤢"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𖹀𖹠"	"𖹀𖹠"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ａａ"	"ａａ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬓ"	"ﬓ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aÉb"	"aéb"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ÿ"	"ÿ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"µ"	"µ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΟΔΟΣ"	"οδοσ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ς"	"ς"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΐ"	"ΐ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"İ"	"İ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ı"	"ı"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ß"	"ß"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ẞ"	"ẞ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ǅ"	"ǅ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ꭰ"	"Ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ꭰ"	"ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ა"	"ა"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ა"	"Ა"
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a]b"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a\\_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]b"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a]b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"]"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a\\_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "]"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a]b"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a\\_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a]%"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a]b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\b"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a\\_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\b"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a]b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\b"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\%"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a\\_"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\%"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a]b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\b"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\%"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a\\_"	true/T
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "a\\_"	"\\"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a]b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"]"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\b"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a\\_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a%"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"a_"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"axb"	false/F
+Azure	Service.LikeReadsALoneBracketAndABackslash	c.v LIKE "\\"	"\\"	true/T
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"abc"	"c"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"a😀b"	"b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"😀b"	"b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"a😀"	"�"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"😀😀"	"�"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 1)	"𐐀xy"	"y"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"abc"	"bc"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"a😀b"	"�b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"😀b"	"�b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"a😀"	"😀"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"😀😀"	"😀"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 2)	"𐐀xy"	"xy"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"abc"	"abc"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"a😀b"	"😀b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"😀b"	"😀b"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"a😀"	"a😀"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"😀😀"	"�😀"
+Azure	Service.RightOverASplitPair	RIGHT(c.v, 3)	"𐐀xy"	"�xy"

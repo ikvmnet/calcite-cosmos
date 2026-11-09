@@ -519,15 +519,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// Where a row measured by the witness probe says the targets part: a string holding U+0000 ordered against another
-        /// (<c>Service.StringOrderIsCodePoint</c>), 9007199254740993.0 held, % past 2^53, and the string functions, whose
-        /// keys are each target's own (<see cref="EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures"/>).
+        /// (<c>Service.StringOrderIsCodePoint</c>), 9007199254740993.0 held, % past 2^53, the string functions, whose keys
+        /// are each target's own (<see cref="EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures"/>), the case
+        /// mapping's and <c>RIGHT</c>'s own witnesses among them, and <c>_</c> over U+0000 and U+FDD0, which the emulator
+        /// stores as two.
         /// </summary>
         static bool Parted(string row, string expression, string witness) => row switch
         {
             "Service.TwoPathsCompareAsAPathAndALiteral" => witness.Contains("\\u0000", StringComparison.Ordinal) && witness.Contains("\"w\":\"", StringComparison.Ordinal),
             "Service.IntegralNumbersReadBackAsHeld" => witness == "9007199254740993.0",
             "Service.IntegerArithmeticIsExactWithinLong" => expression.Contains('%', StringComparison.Ordinal),
-            "Service.StringFunctionAnswersByBand" => true,
+            "Service.StringFunctionAnswersByBand" or "Service.CaseMappingOverCasedLetters" or "Service.RightOverASplitPair" => true,
+            "Service.LikeOneOverEachClass" => witness.Contains("\\u0000", StringComparison.Ordinal) || witness.Contains('﷐', StringComparison.Ordinal),
             _ => false,
         };
 
@@ -554,10 +557,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 var ran = functions.Where(f => keys.SelectMany(k => k.Witnesses).All(w => lines.ContainsKey((row, CosmosFunctionComparison.Spelled(f), w ?? "absent")))).ToList();
                 var asked = CosmosFunctionComparison.Spellings(ran)
                     .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
-                CosmosFunctionComparison.Unsound(CosmosFunctionComparison.Judge(row, ran, keys, asked), CosmosAxioms.Get(row).FunctionOutcomes!.Where(o => o.Evidence is null), CosmosAxiomTarget.Azure)
+                // A key another row's witnesses measured is held to these lines too, where they measured it.
+                var judgedHere = CosmosFunctionComparison.Judge(row, ran, keys, asked);
+                CosmosFunctionComparison.Unsound(judgedHere, CosmosAxioms.Get(row).FunctionOutcomes!.Where(o => o.Evidence is null || judgedHere.Keys.Any(k => Covers(o, k))), CosmosAxiomTarget.Azure)
                     .Should().BeEmpty(row);
             }
+
+            // A row whose own witnesses measure another's keys (run 2): its lines read again answer each key it measured as
+            // the keyed row records it on Azure, or better.
+            var edges = new (string Row, IReadOnlyList<CosmosFunctionSpelling> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
+            {
+                ("Service.CaseMappingOverCasedLetters", CosmosStringFunctionMeasurementTests.CaseMappings, CosmosStringFunctionMeasurementTests.CasedLetters),
+                ("Service.RightOverASplitPair", CosmosStringFunctionMeasurementTests.SplitRights, CosmosStringFunctionMeasurementTests.SplitPairs),
+            };
+            foreach (var (row, functions, keys) in edges)
+            {
+                var asked = CosmosFunctionComparison.Spellings(functions)
+                    .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
+                var judged = CosmosFunctionComparison.Judge(row, functions, keys, asked);
+                var keyed = CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
+                    .Where(o => o.Type is null && judged.Keys.Any(k => (k.Function, k.Ordinal, k.Kind, k.Band) == (o.Function, o.Subject, o.Operand, o.Band)));
+                CosmosFunctionComparison.Unsound(judged, keyed, CosmosAxiomTarget.Azure).Should().BeEmpty(row);
+            }
         }
+
+        /// <summary>Whether a recorded outcome's key covers a measured atom's, as <see cref="CosmosFunctionComparison.Unsound"/> reads it.</summary>
+        static bool Covers(CosmosFunctionOutcome outcome, FunctionKey atom) =>
+            FunctionKey.Of(outcome.Name, outcome.Subject, outcome.Operand, outcome.Band, atom.Value) == atom
+            && FunctionValueClasses.Holding.Contains((atom.Kind, outcome.Value, atom.Value));
 
         /// <summary>
         /// A function key another row's measurement ran names a row measured on every target the key claims, whose pinning

@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// D12, D13: the emulator's <c>REPLACE</c> works on the stored units, a search beginning <c>1</c> meeting U+FDD0's
         /// second unit, and a replacement holding U+0000 fails the statement: so it asks all three operands to hold neither.
         /// Azure asks the subject to hold no U+0000, and the search and the replacement to be what run 1 measured them as, a
-        /// string of no band and not empty, until run 2 measures the rest; an empty search is undefined at both.
+        /// string of no band and not empty, until a run measures the rest; an empty search is undefined at both.
         /// </summary>
         [Fact]
         public void AReplacementAsksEachOperandUnderTheEmulator()
@@ -334,20 +334,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// A case mapping asks ASCII where its rows are unwitnessed: Azure's part over a surrogate, and LOWER's over the high
-        /// band, where the witnesses held no letter the mapping changes while Java's changes U+10428, U+10400 and U+FF21 (F5).
-        /// The emulator's are read off cased letters (<c>Service.CaseMappingOverCasedLetters</c>, rows2): they part over a
-        /// surrogate, Osage, Adlam and Medefaidrin mapped where Java 8 leaves them, and LOWER over the high band, whose
-        /// capitals are the fullwidth Latin ones alone, maps as Java does, so it pushes there. No emulator refusal is lost (h10).
+        /// A case mapping is read off cased letters of each band (<c>Service.CaseMappingOverCasedLetters</c>), where its
+        /// run-1 witnesses held no letter the mapping changes while Java's changes U+10428, U+10400 and U+FF21 (F5). The
+        /// emulator's (rows2) part over a surrogate, Osage, Adlam and Medefaidrin mapped where Java 8 leaves them, and LOWER
+        /// over the high band, whose capitals are the fullwidth Latin ones alone, maps as Java does, so it pushes there.
+        /// Azure's (run 2) map a surrogate as Java does, Deseret, and leave the later scripts as Java 8 does, so both push
+        /// there, and LOWER over the high band. No emulator refusal is lost (h10).
         /// </summary>
         [Fact]
-        public void ACaseMappingAsksAsciiWhereItsRowsAreUnwitnessed()
+        public void ACaseMappingIsReadOffItsCasedLetters()
         {
             Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse();
             Pushes(Emulator, JsonCharacterBand.Surrogates, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse();
             Pushes(Emulator, H, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse("UPPER leaves U+FB00, which Java writes as two");
             Pushes(Emulator, H, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("the fullwidth capitals map as Java maps them");
-            Pushes(Azure, H, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse("Azure's cased letters are run 2's");
+            Pushes(Azure, JsonCharacterBand.Surrogates, SqlStdOperatorTable.UPPER, Str()).Should().BeTrue("Azure maps Deseret as Java does and leaves the later scripts");
+            Pushes(Azure, JsonCharacterBand.Surrogates, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
+            Pushes(Azure, H, SqlStdOperatorTable.UPPER, Str()).Should().BeFalse("UPPER leaves U+FB00 on Azure too");
+            Pushes(Azure, H, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("the fullwidth capitals map as Java maps them on Azure too");
+            Pushes(Azure, JsonCharacterBand.NonAscii, SqlStdOperatorTable.LOWER, Str()).Should().BeFalse("Azure leaves U+1E9E and U+0130, which Java maps");
             Pushes(Azure, Z, SqlStdOperatorTable.LOWER, Str()).Should().BeTrue();
         }
 

@@ -340,21 +340,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <remarks>
-            /// Calcite maps case by Java's full mapping and the service by a simple one, and they agree over ASCII alone:
-            /// ß is <c>SS</c> to Calcite and stays at the service. A tab is ASCII, and a high unit, a surrogate and a
-            /// character below U+D800 outside ASCII are each reason enough to compute the mapping in process.
+            /// Calcite maps case by Java's full mapping and the service by a simple one, and they agree over ASCII and where
+            /// the cased letters measured each band alike (<c>Service.CaseMappingOverCasedLetters</c>): ß is <c>SS</c> to
+            /// Calcite and stays at the service, so a character below U+D800 outside ASCII computes the mapping in process.
+            /// On Azure (run 2) both map a surrogate as Java does, and LOWER the high band, where UPPER leaves the ligatures
+            /// Java writes as two; the emulator maps the scripts cased after Java 8's tables, so it parts over a surrogate.
             /// </remarks>
             [Fact]
-            public void ACaseMappingPushesOverAsciiAlone()
+            public void ACaseMappingPushesWhereTheCasedLettersAnswerAsCalcites()
             {
                 foreach (var op in new[] { SqlStdOperatorTable.UPPER, SqlStdOperatorTable.LOWER })
                 {
                     Pushes(Translator(W), op, Str()).Should().BeTrue(op.getName() + " over ASCII");
                     Pushes(Translator(N), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold ß");
-                    Pushes(Translator(H), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold a high unit");
-                    Pushes(Translator(S), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold a surrogate");
+                    Pushes(Translator(S), op, Str()).Should().BeTrue(op.getName() + " over a string that may hold a surrogate, on Azure");
+                    Pushes(Declaring(CosmosServiceTarget.Emulator, new JsonClaim.OfType(JsonType.String), new JsonClaim.Characters(S)), op, Str()).Should().BeFalse(op.getName() + " over a surrogate, on the emulator");
                     Pushes(Strings(), op, Str()).Should().BeFalse(op.getName() + " over a string nothing is known of");
                 }
+
+                Pushes(Translator(H), SqlStdOperatorTable.UPPER, Str()).Should().BeFalse("UPPER leaves U+FB00, which Java writes as two");
+                Pushes(Translator(H), SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("the fullwidth capitals map as Java maps them");
             }
 
             /// <remarks>
@@ -446,7 +451,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// parameter may be empty until it is bound. Azure's answers were measured with searches and replacements that
             /// are strings of no band holding something, as run 1's literals are, and a path keys that cell alone where the
             /// declaration proves it present and every string it may be one of them, so it pushes there; a path that may be
-            /// absent keys a cell Azure has not measured, which is computed in process there until run 2 measures it
+            /// absent keys a cell Azure has not measured, which is computed in process there until a run measures it
             /// (TODO.md). The emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
             /// <remarks>
@@ -484,7 +489,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Azure's <c>REPLACE</c> reads its subject only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves
             /// <c>a</c>U+0000<c>b</c> as it is — and a search holding one replaces every byte; a replacement holding one is
             /// written as it is. So the subject and the search are asked to hold none. The replacement's U+0000 was measured
-            /// through a parameter, which no witness line records, so its key is unmeasured on Azure until run 2 (TODO.md).
+            /// through a parameter, which no witness line records, so its key is unmeasured on Azure until a run sends it (TODO.md).
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereNeitherTheSubjectNorTheSearchHoldsNul()

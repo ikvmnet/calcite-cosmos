@@ -3058,28 +3058,25 @@ across documents* and *A join of a container to itself* is the record.
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
   licenses one is N5–N7's lines alone. An input holding `STARTSWITH` or a `LIKE` over a path among the gate's
   conjuncts, run again before the switch, would give C6 one.
-- **No witness splits a surrogate pair at `RIGHT`'s cut on Azure** — *small, run 2's.* The probe account answered
-  `RIGHT` `Same` over the surrogate band (run 1), but none of the row's witnesses put the cut between a pair's halves,
-  so `CosmosAxioms` records Azure's `RIGHT` as `Differs` over `Surrogates`, the band refused.
-  `Service.RightOverASplitPair`'s witnesses do (rows2): on the emulator, which counts code points, they part as its row
-  says; run 2 sends them to the probe account, and its answer decides Azure's key.
-- **Azure's case mapping parts over every band beyond ASCII until a cased witness is measured** — *small, run 2's.*
-  `Service.StringFunctionAnswersByBand` says `Differs` for `UPPER` and `LOWER` over the three bands beyond ASCII on
-  Azure, its run-1 witnesses holding no letter the mapping changes there (F5). `Service.CaseMappingOverCasedLetters`
-  measures cased letters of each band (rows2): Deseret, and Osage, Adlam and Medefaidrin, which Unicode cased after
-  Java 8's tables; fullwidth Latin and the ligatures Java writes as two; Latin-1, Greek, the Turkish i, ß, a title-case
-  letter, Cherokee and Georgian. Both emulator images map the later scripts, so every band parts there but `LOWER` over
-  the high band, whose capitals are the fullwidth ones alone, which the emulator's key now says is `Same`. Azure's keys
-  are run 2's, from the same witnesses.
-- **Azure's operand keys are run 1's literals alone** — *small, run 2's.* Since fix6 the rows key `REPLACE`'s search and
+- **Azure's case mapping over a surrogate rests on the scripts its witnesses held** — *small, a measurement.* Run 2
+  keyed Azure's `UPPER` and `LOWER` over a surrogate `Same` (`Service.CaseMappingOverCasedLetters`): Azure maps Deseret
+  as Java does and leaves Osage, Adlam and Medefaidrin, which Unicode cased after Java 8's tables, as Java does. The
+  supplementary scripts cased in Unicode 7 and 8, Warang Citi (U+118A0) and Old Hungarian (U+10C80), and those cased
+  since, Vithkuqi (U+10570) among them, were not sent; Azure leaves U+AB70, which Unicode 8 cased, and U+1E9E and
+  U+01C5, which older tables case, so its mapping looks older than either, but no line says so of them. Witnesses of
+  each, sent with the next probe run, settle it; until then the key rests on the scripts measured, as every band key
+  rests on its witnesses.
+- **Azure's operand keys are run 1's literals alone** — *small, the next probe run's.* Since fix6 the rows key `REPLACE`'s search and
   replacement and `SUBSTRING`'s length (DESIGN.md, *The defects answered before h15*), measured on the emulator over
   every kind and band, and on Azure only as run 1's spellings hold them, a search and a replacement that are strings of
   no band and not empty and a length from 1, and as `Service.SubstringOfANegativeStartIsEmpty`'s window from 0 of length
   0 holds it, a length of 0. A path keys those cells as a literal does where the declaration proves it present and every
   string it may be one of them, so it pushes there. So under `Production` a `REPLACE` whose replacement is empty, whose
   search or replacement holds any band, or which reads either from a path that may be absent is computed in process
-  until run 2 runs `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims on the probe account and
-  `CosmosAxioms` records what it answers; among them a replacement holding U+0000, which
+  until a run sends `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims to the probe account and
+  `CosmosAxioms` records what it answers (run 2 sent them, and the projection asking them failed with a 503 after 43 s,
+  so it answered nothing; a run of them alone costs about 1,000 RU, the class's setup among them, past what run 2 had
+  left); among them a replacement holding U+0000, which
   `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
   (`CosmosRexTranslatorTests.Functions` holds both). Since g1's fix round a concatenation's and a repetition's literal
   is keyed apart from a stored operand (`FunctionKey.Literal`), and `POSITION`'s pattern as the operand it is, each
@@ -3195,14 +3192,13 @@ across documents* and *A join of a container to itself* is the record.
   opaque. At h15 F reads places, and the box rules and the null comparison's, S's alone since they read `boxof`,
   `seesthrough`, `boxnull` and `strictop`, which only S's root holds, move to the shared vocabulary with those rows in
   F's root; the `JSON_QUERY` reader moves into the shared vocabulary then (*`Structure` moves at h15*).
-- **Azure's `_` beyond its witnesses' classes, its backslash and a lone `]`** — *small, run 2's.* Each target's `LIKE`
-  units are rows (`likereads`; DESIGN.md, *Calcite's readings as rows (G7)*). On the emulator rows2 measured `_` over
-  one character of each class (`Service.LikeOneOverEachClass`): one code point of every class as written, line
-  terminators among them where Calcite's `_` matches none, U+FDD0 and U+0000 as the two it stores, and a lone surrogate
-  refused; and a `]` closing nothing and a backslash with no `ESCAPE` each as itself
-  (`Service.LikeReadsALoneBracketAndABackslash`). Azure's `_` is still `Service.LikeMatchesByCodePoint`'s, over a
-  surrogate pair, U+00E9 and U+E000 alone, and its `]` and backslash unmeasured: run 2 sends both rows' witnesses, a
-  lone surrogate among them, which Azure stores as U+FFFD.
+- **`Portable` reads `_` by no row** — *small, S's.* Each target's `_` is measured over every class
+  (`Service.LikeOneOverEachClass`; the emulator at rows2, Azure at run 2): one code point of each as written, line
+  terminators and the trimmed class among them, where Calcite's `_` matches no line terminator, so a pattern holding
+  `_` over a string that may hold one stays in process, a correctness-fix decline the owner accepted by name. The two
+  read U+0000 and U+FDD0 apart (the emulator as the two units it stores), so their rows differ, and a set reads a unit
+  by a row only where every target it serves reads it so: `Portable` reads `_` by none, and a pattern holding one is
+  unread there. A rule reading the classes both rows were measured over alike would read it there.
 - **The emulator's `LIKE` matcher is still owed** — *small, the emulator's.* `CosmosAxiomRows.Owed` keeps the emulator's
   `LIKE` cell unread, its reading of a stored escape unmeasured. rows2 measured it for `_`: U+FDD0 and U+0000 are two
   code points each, as the affixes' `storedcodepoint` matcher reads them. Stating the `LIKE` outcome with that matcher,
@@ -3249,11 +3245,6 @@ across documents* and *A join of a container to itself* is the record.
   `StoresSpelled` as S derives it since G1, and goes with the translator bridge's other copies of G1's decisions
   (`Refusals`' case-mapped, searched and stored records, `LikeRefusal`, `IsPrefix`'s stored branch) at h37 to h42, S
   carrying each.
-- **Azure's case-insensitive prefix and suffix rest on the statement** — *small, run 2.* S licenses `UPPER(x) LIKE
-  'ABC%'` as `STARTSWITH(x, 'ABC', true)` by `Service.AffixesMatchByCodePoint`'s `Folds` (G6's second fix), on both
-  targets; `CONTAINS`'s flag is measured on both over ASCII, and the prefix's and the suffix's agreement over ASCII was
-  added to `CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii` on 2026-11-07, holding on the emulator. The probe
-  account's next run answers it for Azure, beside cased witnesses in each band beyond ASCII (`Service.CaseMappingOverCasedLetters`, rows2), where every row parts.
 - **S's generate mode has no folded affix** — *small, h16.* S answers which case-insensitive affix a `LIKE` over a fold
   is (`foldedas`), and the translator writes it (`RenderingOracle.FoldOf`), a bridge question of its own; S's affix
   printer offers no such candidate yet. The candidate, its form read off `foldedas`, lands with the printer (h16), and

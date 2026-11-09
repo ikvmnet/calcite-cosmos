@@ -409,7 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         /// <remarks>
         /// The prefix's and the suffix's lines were added on 2026-11-07, beside S's <c>foldsas</c> rows
-        /// (<c>Service.AffixesMatchByCodePoint</c>); the probe account runs them at its next run.
+        /// (<c>Service.AffixesMatchByCodePoint</c>); the probe account passed them at run 2 (2026-11-09).
         /// </remarks>
         [Fact]
         public async Task CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii()
@@ -906,8 +906,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
-        /// What <c>LikeMatchesByCodePoint</c> sends: the classes their characters hold are what its row says <c>_</c> was
-        /// measured over (<c>RenderingAffixTests.TheServicesOneIsReadOverTheClassesItsWitnessesHeld</c>, G7).
+        /// What <c>LikeMatchesByCodePoint</c> sends; what each target's <c>_</c> is read over is
+        /// <c>Service.LikeOneOverEachClass</c>'s, whose witnesses hold every class (<see cref="ClassWitnesses"/>).
         /// </summary>
         internal static readonly string[] LikeWitnesses = ["\"a\ud83d\ude00b\"", "\"axb\"", "\"axxb\"", "\"ab\"", "\"AXB\"", "\"a\u00e9b\"", "\"a\ue000b\""];
 
@@ -939,7 +939,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "false/F false/F false/F false/F false/F false/F");
         }
 
-        // ── The edges run 1 left unmeasured, on the emulator (Azure at probe run 2) ───────────
+        // ── The edges run 1 left unmeasured: the emulator at rows2, Azure at probe run 2 ──────
 
         /// <summary>
         /// Cased letters of each band beyond ASCII, keyed by it: a Deseret pair, and letters Unicode cased after Java 8's
@@ -963,10 +963,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.CaseMappingOverCasedLetters")]
         public async Task CaseMappingOverCasedLetters()
         {
-            CosmosFunctionSpelling[] mappings = [new("UPPER", 0, "UPPER(s)", "UPPER(s)"), new("LOWER", 0, "LOWER(s)", "LOWER(s)")];
-            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.CaseMappingOverCasedLetters", mappings, CasedLetters);
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.CaseMappingOverCasedLetters", CaseMappings, CasedLetters);
             CosmosFunctionComparison.Unsound(measured, KeysOf(measured), CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
         }
+
+        /// <summary>The case mappings the cased letters are asked of, as Calcite and the service write them.</summary>
+        internal static readonly CosmosFunctionSpelling[] CaseMappings = [new("UPPER", 0, "UPPER(s)", "UPPER(s)"), new("LOWER", 0, "LOWER(s)", "LOWER(s)")];
 
         /// <summary>The rows of <c>Service.StringFunctionAnswersByBand</c> of the functions, operands and bands a run measured.</summary>
         static IEnumerable<CosmosFunctionOutcome> KeysOf(IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> measured) =>
@@ -980,16 +982,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b"), Json("\U0001F600b"), Json("a\U0001F600"), Json("\U0001F600\U0001F600"), Json("\U00010400xy")]),
         ];
 
+        /// <summary>The counts of 1 to 3 <c>RIGHT</c> is asked of, as Calcite and the service write them.</summary>
+        internal static readonly CosmosFunctionSpelling[] SplitRights = [new("RIGHT", 0, "RIGHT(s, 1)", "RIGHT(s, 1)"), new("RIGHT", 0, "RIGHT(s, 2)", "RIGHT(s, 2)"), new("RIGHT", 0, "RIGHT(s, 3)", "RIGHT(s, 3)")];
+
         /// <summary>
         /// <c>RIGHT</c> with its cut inside a surrogate pair, against Calcite's, which counts UTF-16 units and keeps the
         /// half (<c>Calcite.StringCountsAreInUnits</c>): the key of <c>Service.StringFunctionAnswersByBand</c> no witness of
-        /// its own split a pair at.
+        /// its own split a pair at. Both targets part: the emulator counts code points, and Azure counts units and sends the
+        /// half it cuts as U+FFFD (run 2).
         /// </summary>
         [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.RightOverASplitPair")]
         public async Task RightWithItsCutInsideASurrogatePair()
         {
-            CosmosFunctionSpelling[] rights = [new("RIGHT", 0, "RIGHT(s, 1)", "RIGHT(s, 1)"), new("RIGHT", 0, "RIGHT(s, 2)", "RIGHT(s, 2)"), new("RIGHT", 0, "RIGHT(s, 3)", "RIGHT(s, 3)")];
-            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.RightOverASplitPair", rights, SplitPairs);
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.RightOverASplitPair", SplitRights, SplitPairs);
             CosmosFunctionComparison.Unsound(measured, KeysOf(measured), CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
         }
 

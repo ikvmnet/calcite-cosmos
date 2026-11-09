@@ -18,7 +18,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
 | `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |
 | `IN (…)`, `NOT IN (…)`, `BETWEEN` | comparisons | same cost as the native forms |
-| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, no U+0000, which Calcite reads as an escape where none is written, literal pattern only. A pattern that is one run of text between two `%`, which the service answers as a `CONTAINS`, only over a string proved to hold no U+0000: Azure's `CONTAINS` stops at the first (B.2) |
+| `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no `[`, which Cosmos reads as a range (a `]` that closes none and a backslash are themselves to both), no `ESCAPE`, no U+0000, which Calcite reads as an escape where none is written, literal pattern only. A pattern that is one run of text between two `%`, which the service answers as a `CONTAINS`, only over a string proved to hold no U+0000: Azure's `CONTAINS` stops at the first (B.2) |
 | `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text already in the fold's case, after a `%`, before one or between two (a run of `%` reads as one), and `x` proved ASCII as `UPPER` asks (B.2), and for `CONTAINS` to hold no U+0000; otherwise in process |
 | `CASE` | nested `? :` | |
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |
@@ -68,7 +68,7 @@ agree over, and the table says which.
 
 | SQL | Cosmos | pushes where |
 | --- | --- | --- |
-| `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone; on the emulator `LOWER` also over the characters from U+E000 up, whose only capitals, the fullwidth Latin letters, it lowers as Calcite does |
+| `UPPER`, `LOWER` | `UPPER`, `LOWER` | its argument holds ASCII alone; `LOWER` also over the characters from U+E000 up, whose only capitals, the fullwidth Latin letters, both engines lower alike; on Azure both also over the characters beyond U+FFFF, which Azure maps as Calcite does, Deseret's letters mapped and the scripts cased after Java 8 left as they are |
 | `CHAR_LENGTH`, `CHARACTER_LENGTH` | `LENGTH` | its argument holds no character beyond U+FFFF (an emoji is one; Calcite counts it as two) |
 | `LENGTH` (*library*) | `LENGTH` | as `CHAR_LENGTH` |
 | `SUBSTRING(s FROM i FOR n)` | `SUBSTRING(s, i - 1, n)` | `s` holds no character beyond U+FFFF: Azure returns half of one as U+FFFD; and `i` and `n` are literals, the service's answers having been measured with literal bounds alone, so a column, a parameter or a `POSITION` there stays in process; and `n` is at least 0, the lengths both were measured with — on Azure a length of 0 as the window from 0 of length 0, which the clip below writes where a window ends before the string — since below 0 Calcite raises where the service answers the empty string. A start below one is written with Calcite's clip to the string, `SUBSTRING(s, (i < 1 ? 0 : (i - 1)), …)`, since the service answers a negative start with the empty string. The form without a length stays in process |
