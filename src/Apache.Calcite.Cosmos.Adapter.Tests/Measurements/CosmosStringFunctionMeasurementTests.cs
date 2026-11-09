@@ -1030,7 +1030,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             int[] stored = [11, 12];
             answers.Select(a => string.Join(" ", a.Where((_, i) => stored.Contains(i) == false))).Should().Equal(LikeOneAnswers);
             foreach (var i in stored)
-                new[] { "true/T false/F true/T", "false/F true/T true/T" }.Should().Contain(string.Join(" ", answers.Select(a => a[i])));
+                new[] { WrittenEscapeAnswers, StoredEscapeAnswers }.Should().Contain(string.Join(" ", answers.Select(a => a[i])));
 
             // A lone surrogate, written as JSON's escape, which the emulator refuses to store and Azure stores as U+FFFD
             // (Service.LoneSurrogateIsStoredAsReplacement), so answers as U+FFFD does.
@@ -1043,6 +1043,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 // EN20261019 refuses the write as a bad request, EN20260907 as forbidden, failing to parse it.
             }
         }
+
+        /// <summary>
+        /// The answers of <c>a_b</c>, <c>a__b</c> and <c>a%b</c> over U+FDD0's and U+0000's witnesses read as written, one
+        /// code point each (Azure, run 2), and as the emulator stores them, U+FDD0 and a digit (rows2).
+        /// </summary>
+        internal const string WrittenEscapeAnswers = "true/T false/F true/T", StoredEscapeAnswers = "false/F true/T true/T";
 
         /// <summary>The answers of <c>a_b</c>, <c>a__b</c> and <c>a%b</c> over each class's witness but U+FDD0's and U+0000's.</summary>
         internal static readonly string[] LikeOneAnswers =

@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             Graph = graph;
             Json = json;
-            Ir = new PredicateVocabulary(graph, json.Readings);
+            Ir = new PredicateVocabulary(graph, json.Paths, json.Readings);
 
             var local = new TableOptions { Lift = false };
             var analysis = new TableOptions { Role = TableRole.Analysis };
@@ -400,6 +400,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             {
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
                 r.When(v.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+
+            // A reading written apart, a field's, an item's, a cast's to ANY, is the value its reading is (h15b).
+            Characters.DefineRule("a reading written apart holds its reading's characters", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var f = r.Var<string>("f");
+                var c = r.Var<ValueSet<string>>("c");
+                r.When(v.Is(ir.Apart.Of(f, w)), c.Is(ValueChars.Of(w)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
 

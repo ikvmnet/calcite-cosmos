@@ -62,11 +62,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             thrown.Should().BeEmpty();
 
-            var asked = from atom in Synthetic(plain: true) from fit in RenderingTemplateRows.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
+            var asked = from atom in Synthetic(plain: true) from fit in Measured.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
                         from row in RenderingTemplateRows.Templates where row.Item1 == fit.Item1 select (Id: fit.Item1, Pos: row.Item2, Atom: atom);
             asked.Should().NotBeEmpty();
             asked.Where(a => ProbeRows.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {RenderingTemplateRows.Fits.Count} fits rows");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {Measured.Fits.Count} fits rows");
         }
 
         /// <summary>A parameter atom has its own shape, which no row names, and every template spells the sentinel for it.</summary>
@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var parameters = Synthetic(plain: true).Select(a => a with { Operand = null, Points = null, Parameter = true }).ToList();
             parameters.Select(RenderingTemplates.ShapeOf).Should().OnlyContain(s => s == RenderingTemplates.ParameterShape);
-            RenderingTemplateRows.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
+            Measured.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
             (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
                 .Should().OnlyContain(f => f.Kind == ServiceFormKind.Opaque);
         }
@@ -299,9 +299,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// The Rex builder writes a string comparison over any reader but an ordering over a <c>VARIANT</c> field, which has no
         /// order (h15), a number over a <c>RETURNING</c> of a number type,
         /// never over a cast of the text nor <c>RETURNING DECIMAL</c>, which parse a string the service compares as none, a
-        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test but over a reading its body raises over, a raw
-        /// column's however cast (h15), the readings the test-reads row says so of, constants and the connectives over them;
-        /// nothing else.
+        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test but over a call, which the test-reads row says its
+        /// body raises over and which has no accessor it takes apart (h15); a raw column's, however cast, is written over the
+        /// path's accessor re-typed <c>ANY</c> (h15b); constants and the connectives over them; nothing else.
         /// </summary>
         [Fact]
         public void RexWritableFollowsTheGrammar()
@@ -324,8 +324,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), integer, true),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), cast, false),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), integer, false),
-                (ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), PredicateAtom.RawIn("VARIANT"), false), (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.RawIn("VARCHAR"), false),
-                (ServiceForm.TestOf(CosmosServiceTest.IsString, Path), PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARIANT")), false),
+                (ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.RawIn("VARCHAR"), true),
+                (ServiceForm.TestOf(CosmosServiceTest.IsString, Path), PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARIANT")), true),
                 (Any(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), Compare(s)), PredicateAtom.RawIn("VARIANT"), false), (Compare(s), PredicateAtom.RawIn("VARIANT"), false),
                 (ServiceForm.CompareOf(CosmosServiceTest.Equal, Path, s), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, s), PredicateAtom.RawIn("VARIANT"), true),
                 (Compare(s), PredicateAtom.RawIn("ANY"), true),
@@ -336,8 +336,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingRexGrammar.Written.Tests.Should().BeEquivalentTo(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
                 "every IS_* test the translator writes has an in-process body");
             RenderingRexGrammar.Written.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
-            RenderingRexGrammar.Raising.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Where(t => t.As == PredicateAtom.RaisesReader).Select(t => t.Reader),
-                "the readings no test is written over are those the test-reads row says its body raises over");
+            RenderingRexGrammar.Raising.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Where(t => t.As == PredicateAtom.RaisesReader).Select(t => t.Reader)
+                .Where(r => PredicateAtom.ColumnOf(r) is null && r is not (PredicateAtom.FieldForm or PredicateAtom.ItemForm or PredicateAtom.AnyCastForm)),
+                "the readings no test is written over are those the test-reads row says its body raises over that have no accessor it takes apart: a raw column, a field, an item and a cast to ANY have the path's re-typed ANY");
             RenderingRexGrammar.Unordered.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.Columns.Compiles
                 .Where(c => c.Test is CosmosServiceTest.Less && c.Compiles == false).Select(c => PredicateAtom.RawIn(c.Column)).Distinct(),
                 "the readings no ordering is written over are the raw columns whose rows say an ordering does not compile");
@@ -375,7 +376,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static IEnumerable<PredicateAtom> Synthetic(bool plain)
         {
-            var readers = ReaderEdgesTable.Rows.Keys.Concat(new[] { PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
+            var readers = Measured.Edges.Keys.Concat(new[] { PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
             var literals = plain ? new[] { JsonValues.Of("bikes"), JsonValues.Of("true"), JsonValues.Of(30m), JsonValues.Of(true) }
                 : new[] { "bikes", "false", "", "\uD800", "x", "a😀" }.Select(JsonValues.Of)
                     .Concat(new[] { 0m, 2.5m, -1m, 9007199254740993m, decimal.MaxValue, decimal.MinValue, 0.1m, 1.9999999999999999m }.Select(JsonValues.Of))

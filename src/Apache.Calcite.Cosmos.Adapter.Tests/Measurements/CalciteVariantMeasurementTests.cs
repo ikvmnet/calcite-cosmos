@@ -216,8 +216,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
-        /// A numeric cast of a raw value is each column's own, which no row states, so the rendering check cuts no cells for
-        /// one (<c>ReaderEdgesTable</c>): an <c>ANY</c> converts the Java number the reader built, wrapping a long beyond an
+        /// A numeric cast of a raw value is each column's own, which no row states, so the shared cast rule reads none
+        /// (<c>measuredcast</c>, h15b) and no window of the stored number is stated of one: an <c>ANY</c> converts the Java
+        /// number the reader built, wrapping a long beyond an
         /// int and holding a double at the limit, and parses a string; a <c>VARIANT</c> raises beyond the type and casts a
         /// string to null; a <c>VARCHAR</c> column refuses a number.
         /// </summary>

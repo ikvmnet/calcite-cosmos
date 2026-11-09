@@ -102,6 +102,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosRexPaths _paths;
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
+
+            /// <summary>The input field bound to the document itself, the <c>DOC</c> column, where the input holds it.</summary>
+            readonly int? _document;
             readonly Dictionary<RexNode, long> _opaque = new();
             readonly List<RexNode> _opaqueNodes = new();
             readonly object _lock = new();
@@ -121,6 +124,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
                 _rootAlias = rootAlias;
+                for (var i = 0; i < fields.Count && _document is null; i++)
+                    if (CosmosDocumentPaths.From(fields[i], rootAlias) is { IsRoot: true })
+                        _document = i;
             }
 
             /// <summary>
@@ -466,13 +472,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case RexInputRef reference:
                         return Field(reference);
 
-                    // RETURNING DECIMAL parses the rendering, and the translator reads it as the cast of the text it
-                    // converts (CosmosRexShapes.IsParsingJsonValue); PredicateAtom's typed:DECIMAL is that parse.
-                    case RexCall call when CosmosRexShapes.IsParsingJsonValue(call):
-                        return CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode rendered && Value(rendered) is SqlValue.Text text
-                            ? new SqlValue.Typed(text.Path, "DECIMAL")
-                            : null;
-
                     case RexCall call when call.getOperator().getName() == "JSON_VALUE":
                         return Accessor(call);
 
@@ -486,10 +485,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case RexCall call when Cast(call) is SqlValue cast:
                         return cast;
 
-                    // An item chain over a map addresses the value the service holds; one over an array's element is no
-                    // path's reading, an ANY's raising over a scalar and a VARIANT's element unboxed (Calcite.ItemIsNullWhereNoElementIs).
-                    case RexCall call when IsDocumentValue(call) && Document(call) is JsonDocumentPath { HasElement: false } item:
-                        return new SqlValue.Raw(item);
+                    // An item chain addresses the value the service holds, written apart as an item, which a test's body
+                    // cannot take apart (h15b); over an array's element, an ANY's raising over a scalar and a VARIANT's element
+                    // unboxed (Calcite.ItemIsNullWhereNoElementIs), the shared vocabulary reads it as the element reading.
+                    case RexCall call when IsDocumentValue(call) && Document(call) is JsonDocumentPath item:
+                        return new SqlValue.Raw(item) { Form = Cosmos.Facts.Saturation.PredicateAtom.ItemForm };
 
                     case RexCall call:
                         return Computed(call);
@@ -524,16 +524,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// converts as well, a cast's reader being its own. The raw value is a raw reading itself, and a rendering or a
             /// typed <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed
             /// otherwise has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first
-            /// raw value, and the first node of each reader, is kept, each being the same value.
+            /// raw value, and the first node of each reader, is kept, each being the same value. Beside them, each path's
+            /// accessor over the input's document column re-typed <c>ANY</c>, which a test is written over where the conjunct
+            /// reads the path through a field, an item or a cast alone (h15b): over the column's reference as the conjunct
+            /// holds it, or as the table declares it, <c>VARCHAR NOT NULL</c>.
             /// </remarks>
             public IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> AccessorsOf(RexNode conjunct, RexBuilder rexBuilder)
             {
                 var (raws, readers) = (new Dictionary<string, RexNode>(StringComparer.Ordinal), new Dictionary<string, Dictionary<string, RexNode>>(StringComparer.Ordinal));
+                var addressed = new Dictionary<string, JsonDocumentPath>(StringComparer.Ordinal);
+                RexNode? document = null;
 
                 void Walk(RexNode node)
                 {
                     node = CosmosRexShapes.StripRedundantTextCast(node);
                     var value = Value(node);
+                    if (document is null && node is RexCall { } accessor && accessor.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY" && accessor.getOperands().size() > 0
+                        && accessor.getOperands().get(0) is RexInputRef { } column && column.getIndex() == _document)
+                        document = column;
 
                     // A computed place (h10): the call is its own raw value and its type's reading, keyed by its spelling.
                     if (value is SqlValue.Call { Spelled: { } place, Type: { } type })
@@ -545,6 +553,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     {
                         var spelled = SqlValue.Spell(path);
                         (readers.TryGetValue(spelled, out var read) ? read : readers[spelled] = new(StringComparer.Ordinal)).TryAdd(reader, node);
+                        addressed.TryAdd(spelled, path);
                         if (value is not SqlValue.Cast)
                         {
                             if ((value is SqlValue.Raw ? node : value is SqlValue.Text || node is RexCall ? RenderingRexBuilder.RawValue(rexBuilder, node) : null) is { } raw)
@@ -561,7 +570,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 lock (_lock)
                     Walk(Expand(conjunct));
 
-                return readers.ToDictionary(r => r.Key, r => new RenderingRexBuilder.Accessor(raws.GetValueOrDefault(r.Key), r.Value), StringComparer.Ordinal);
+                if (_document is int index)
+                    document ??= rexBuilder.makeInputRef(rexBuilder.getTypeFactory().createSqlType(SqlTypeName.VARCHAR), index);
+
+                RexNode? Retyped(string spelled)
+                {
+                    if (document is null || addressed.TryGetValue(spelled, out var path) == false || JsonPathOf(path) is not string text)
+                        return null;
+
+                    var operands = new java.util.ArrayList();
+                    operands.add(document);
+                    operands.add(rexBuilder.makeLiteral(text));
+                    return rexBuilder.makeCall(rexBuilder.getTypeFactory().createSqlType(SqlTypeName.ANY), org.apache.calcite.sql.fun.SqlStdOperatorTable.JSON_VALUE, operands);
+                }
+
+                return readers.ToDictionary(r => r.Key, r => new RenderingRexBuilder.Accessor(raws.GetValueOrDefault(r.Key), r.Value) { Retyped = Retyped(r.Key) }, StringComparer.Ordinal);
+            }
+
+            /// <summary>
+            /// A container-rooted path as the SQL/JSON path the accessor names it by, in the grammar the path reader accepts
+            /// (<see cref="CosmosRexPaths.TryExtendByJsonPath"/>); <c>null</c> for one it cannot spell: a name quoting both
+            /// ways, an index beyond an <c>int</c>.
+            /// </summary>
+            static string? JsonPathOf(JsonDocumentPath path)
+            {
+                var text = new System.Text.StringBuilder("$");
+                foreach (var segment in path.Segments)
+                {
+                    if (segment is long index)
+                    {
+                        if (index > int.MaxValue)
+                            return null;
+
+                        text.Append('[').Append(index.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                    }
+                    else if (segment is string name && name.Length > 0 && name.All(c => char.IsLetterOrDigit(c) || c == '_'))
+                        text.Append('.').Append(name);
+                    else if (segment is string quoted && quoted.Length > 0 && quoted.Contains('\'') == false)
+                        text.Append("['").Append(quoted).Append("']");
+                    else if (segment is string doubled && doubled.Length > 0 && doubled.Contains('"') == false)
+                        text.Append("[\"").Append(doubled).Append("\"]");
+                    else
+                        return null;
+                }
+
+                return text.ToString();
             }
 
             /// <summary>
@@ -651,9 +704,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Reads a field of the input: a rendering where the binding says it is read as text, the value the service
             /// holds where it is typed as one, and a <c>RETURNING</c> where it is read as a scalar type.
             /// </summary>
+            /// <remarks>
+            /// A field read as text or as a scalar type is that reading written apart as a field (h15b), which a test's body
+            /// cannot take apart; one typed as a raw value is its column's own reading. Of a path holding an element the shared
+            /// vocabulary reads each as the element reading, which no row measured of a field.
+            /// </remarks>
             SqlValue? Field(RexInputRef reference)
             {
-                if (Document(reference) is not JsonDocumentPath { HasElement: false } path)
+                if (Document(reference) is not JsonDocumentPath path)
                     return null;
 
                 var index = reference.getIndex();
@@ -661,7 +719,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var type = reference.getType()?.getSqlTypeName();
 
                 if (reading == CosmosReading.Text)
-                    return IsCharacter(type) ? new SqlValue.Text(path) : null;
+                    return IsCharacter(type) ? new SqlValue.Text(path) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm } : null;
 
                 if (reading != CosmosReading.Typed)
                     return null;
@@ -671,19 +729,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (CosmosRexShapes.IsDocumentValueType(type) || IsCharacter(type))
                     return new SqlValue.Raw(path) { Column = type?.getName() };
 
-                return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
+                return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm } : null;
             }
 
             /// <summary>
             /// Reads <c>JSON_VALUE</c>: the plain accessor typed as text is a rendering, re-typed <c>ANY</c> it is the raw
-            /// value, and under a scalar <c>RETURNING</c> it asserts its type.
+            /// value, and under a scalar <c>RETURNING</c> it is that reading of the path, <c>RETURNING DECIMAL</c> among them,
+            /// whose parse of the rendering is the reading's own (<c>Calcite.ReturningDecimalParsesTheRendering</c>), though
+            /// the translator addresses no path through it (<see cref="CosmosRexShapes.IsParsingJsonValue"/>).
             /// </summary>
             SqlValue? Accessor(RexCall call)
             {
                 if (CosmosRexShapes.IsPlainJsonValue(call) == false || CosmosRexShapes.IsArrayReturningJsonValue(call))
                     return null;
 
-                if (Document(call) is not JsonDocumentPath path)
+                if ((_paths.TryResolveJsonPath(call, out var addressed) ? Addressed(addressed) : null) is not JsonDocumentPath path)
                     return null;
 
                 var type = call.getType()?.getSqlTypeName();
@@ -691,21 +751,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return new SqlValue.Text(path);
 
                 // An element's rendering and RETURNING are as of a path holding it (Calcite.ReadingsOfAnIndexAreAsOfAPath);
-                // its raw value was not measured.
+                // its raw value, which no row measured, the shared vocabulary reads as the element reading (h15b).
                 if (CosmosRexShapes.IsDocumentValueType(type))
-                    return path.HasElement ? null : new SqlValue.Raw(path);
+                    return new SqlValue.Raw(path);
 
                 return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
             }
 
             /// <summary>
             /// Reads a cast: the coercion Calcite puts around a literal, the split rule's <c>ANY</c> naming the raw value
-            /// under a rendering, a numeric cast the translator recognises, and the cast to text over a raw value.
+            /// under a rendering, the cast to text over a raw value, and any other conversion of the text or a raw value as
+            /// the conversion it is, by its target type.
             /// </summary>
             /// <remarks>
-            /// A numeric cast is the shape readers' to recognise (<see cref="CosmosRexShapes.TryNumericCastOperand(RexNode, RexBuilder)"/>),
-            /// and what it does to a number is <c>PredicateAtom</c>'s to say, in one place each: a cast to <c>DOUBLE</c>
-            /// moving a stored integer by a unit from 2^52 among it. A number compared with one is read in
+            /// Which conversion is a reading is the rows' (<c>measuredcast</c>): the shared cast rule reads one a row measured,
+            /// a number's or a boolean's parse of the text and the cast of a raw value to text, and no other, so a numeric
+            /// cast of a raw value, which over an <c>ANY</c> wraps a long beyond an int, reads nothing (h15b). A cast to a
+            /// character type is the text it renders or a function (<see cref="Computed"/>), and <c>SAFE_CAST</c>, which
+            /// answers null where a cast raises, converts as no row measured. A number compared with one is read in
             /// <see cref="Comparand"/>.
             /// </remarks>
             SqlValue? Cast(RexCall call)
@@ -727,22 +790,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (operand is RexLiteral)
                     return null;
 
+                // The split rule's marker of the raw value, written apart as a cast to ANY, which a test's body cannot take
+                // apart (h15b); of an element, the element reading.
                 if (target == SqlTypeName.ANY)
-                    return Value(operand) is { PathRead: JsonDocumentPath { HasElement: false } raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
-
-                // A field bound to a rendering, cast to a number, parses it as the accessor's cast does: the guarded arm the
-                // Rex builder writes over a text column (spec h09).
-                if (operand is RexInputRef && (target == SqlTypeName.INTEGER || target == SqlTypeName.BIGINT || target == SqlTypeName.DOUBLE)
-                    && Value(operand) is SqlValue.Text rendering)
-                    return new SqlValue.Cast(target!.getName(), rendering);
-
-                // The text cast to BOOLEAN parses it (Calcite.CastToBooleanParses), the way a view types a boolean column. Over
-                // anything but the text no row measures the cast.
-                if (target == SqlTypeName.BOOLEAN)
-                    return Value(operand) is SqlValue.Text parsed ? new SqlValue.Cast(target.getName(), parsed) : null;
-
-                if (CosmosRexShapes.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
-                    return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;
+                    return Value(operand) is { PathRead: JsonDocumentPath raw } inner && inner is SqlValue.Text or SqlValue.Raw
+                        ? new SqlValue.Raw(raw) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm } : null;
 
                 if (CosmosRexShapes.TryTextCastValue(call) is RexNode rendered)
                     return Value(rendered) switch
@@ -752,7 +804,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         _ => null,
                     };
 
-                return null;
+                return kind == nameof(SqlKind.__Enum.CAST) && IsCharacter(target) == false && target?.getName() is string type
+                    && Value(operand) is SqlValue converted && converted is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(type, converted) : null;
             }
 
             /// <summary>
@@ -788,15 +841,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// Resolves a node to the container-rooted document path it addresses, or <c>null</c>.
             /// </summary>
-            JsonDocumentPath? Document(RexNode node)
-            {
-                if (_paths.TryResolvePath(node, out var path) == false || path is null)
-                    return null;
+            JsonDocumentPath? Document(RexNode node) => _paths.TryResolvePath(node, out var path) ? Addressed(path) : null;
 
-                // A path rooted at a traversal alias addresses an element of an array, not the document; and the
-                // document itself is no path a filter compares.
-                return CosmosDocumentPaths.From(path, _rootAlias, elements: true) is JsonDocumentPath document && document.IsRoot == false ? document : null;
-            }
+            /// <summary>The container-rooted document path a resolved path addresses, or <c>null</c>.</summary>
+            JsonDocumentPath? Addressed(CosmosPath? path) =>
+                // A path rooted at a traversal alias addresses an element of an array, not the document; and the document
+                // itself is no path a filter compares.
+                path is not null && CosmosDocumentPaths.From(path, _rootAlias, elements: true) is JsonDocumentPath document && document.IsRoot == false ? document : null;
 
             static bool IsDocumentValue(RexCall call) => CosmosRexShapes.IsDocumentValueType(call.getType()?.getSqlTypeName());
 

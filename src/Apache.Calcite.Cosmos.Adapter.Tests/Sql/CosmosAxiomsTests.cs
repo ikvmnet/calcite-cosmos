@@ -49,8 +49,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// emulator as it stores it. Two constants compared, the other known divergence, are no key S reads.
         /// </summary>
         static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None),
-            // The emulator matches an affix against the string it stores, Azure against the string as written (run 1).
+            // The emulator matches an affix and a LIKE against the string it stores, Azure against the string as written (run 1, rows2).
             MeasuredKey.Of(Test.StartsWith, Class.String, Class.None), MeasuredKey.Of(Test.EndsWith, Class.String, Class.None), MeasuredKey.Of(Test.Contains, Class.String, Class.None),
+            MeasuredKey.Of(Test.Like, Class.String, Class.None),
             // The emulator holds a whole number written with a point as its double, Azure as the int64 it is (N11).
             MeasuredKey.Of(Test.Order, Class.Number, Class.None)];
 
@@ -241,7 +242,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
                 (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
-                (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader) });
+                (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
+                (PredicateAtom.FieldForm, PredicateAtom.RaisesReader), (PredicateAtom.ItemForm, PredicateAtom.RaisesReader), (PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader) });
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
             CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(30).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
@@ -321,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void TheRowsLoadIntoS()
         {
             var rows = CosmosAxiomRows.Read(CosmosAxioms.All);
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(rows));
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(rows, CosmosAxiomRows.ReadCasts(CosmosAxioms.All)));
 
             foreach (var row in rows)
                 theory.Theory.Get(theory.Outcome.Of(row.Key, row.Target)).Should().Be(row.Answer, $"{row.AxiomId} at {row.Key} on {row.Target}");

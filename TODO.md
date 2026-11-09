@@ -2704,14 +2704,17 @@ across documents* and *A join of a container to itself* is the record.
   compare the doubles they round to; and an integer type's column reads any number not written as an integer as its
   double where that is whole (`CosmosJson.GetInteger`): a fraction that rounds to one, which the coarse reading says
   raises alone, and past 2^53 another integer, which `KeptEqual` establishes is the literal. The typed cells read both.
-- **A numeric cast of a raw value is each column's own, and the facts graph reads it as a truncation** — *medium, and it
-  touches plans.* `CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn`: an `ANY` converts the Java number
-  the reader built, so `CAST(… AS INTEGER)` wraps a long beyond an int (4294967297 is 1) and holds a double at the limit;
-  a `VARIANT` raises beyond the type, casts a string or a boolean to null, and under `BIGINT` does not read 2.5 as 2; a
-  `VARCHAR` column refuses a number. `NumberCast` reads every one as truncating and saturating, and so does `IrEval`,
-  which population D holds it to, so neither sees it; the split rule's window for `CAST(… AS INTEGER) = 1` drops a stored
-  4294967297 an `ANY` reads as 1. S cuts no cells for a raw cast, so its checks stay unproven, until a `Calcite.*` row
-  states each column's cast and both graphs read it.
+- **A numeric cast of a raw value is each column's own, and the facts graph reads it as a truncation** — *done at
+  h15b.* `CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn`: an `ANY` converts the Java number the
+  reader built, so `CAST(… AS INTEGER)` wraps a long beyond an int (4294967297 is 1) and holds a double at the limit; a
+  `VARIANT` raises beyond the type, casts a string or a boolean to null, and under `BIGINT` does not read 2.5 as 2; a
+  `VARCHAR` column refuses a number. `NumberCast` read every one as truncating and saturating, so the split rule's
+  window for `CAST(… AS INTEGER) = 1` dropped a stored 4294967297 an `ANY` reads as 1. Since h15b the shared cast rule
+  reads a cast only where a row measured it (`measuredcast`: the text's parse as `INTEGER`, `BIGINT`, `DOUBLE` or
+  `BOOLEAN`, and a raw value's cast to text), keyed by the reading it converts with its column apart, so a numeric cast
+  of a raw value reads nothing in either graph and no window rests on it
+  (`PredicateVocabularyTests.ACastIsAReadingWhereARowMeasuredIt`); the corpus's one such cast sent nothing before and
+  after. A `Calcite.*` row stating each column's cast would make it a reading of its own.
 - **The coarse cast to a double reads a decimal's double by .NET's cast** — *small, and it touches plans.*
   `Renderings.DoubleOf` casts, which rounds twice and misses at 9007199254740994.4: the coarse `CAST(… AS DOUBLE) =
   9007199254740994` answers FALSE of a stored 9007199254740994.4 where Calcite answers TRUE, and `Renderings.SameNumber`
@@ -2892,10 +2895,11 @@ across documents* and *A join of a container to itself* is the record.
   that may hold one, or for a pattern holding one, and the affix is proven under `Production` only over strings free of
   it (h14b). A matcher of its own, the pattern against the string's prefix to its first U+0000, measured as run 1 measured
   `codepoint`, would prove it there too. RU, never rows.
-- **The emulator's `LIKE` over a stored escape is owed** — *small, a measurement.* `(Like, String, None)` on the emulator is
-  declared owed (`CosmosAxiomRows.Owed`): no statement has measured what its `LIKE` makes of U+0000 or U+FDD0 stored
-  escaped, so S writes a pattern of two runs or more as `LIKE` and proves it nowhere. A witness set like
-  `TheEmulatorComparesWhatItIsSentWithWhatItStores`'s, over `LIKE` with runs beginning `0` and `1`, decides it.
+- **The emulator's `LIKE` over a stored escape is owed** — *done at h15b.* `(Like, String, None)` on the emulator was
+  declared owed (`CosmosAxiomRows.Owed`), what its `LIKE` makes of U+0000 or U+FDD0 stored escaped unmeasured, so S
+  proved no pattern of two runs or more there. rows2 measured it for `_` (`Service.LikeOneOverEachClass`), each escape
+  two code points as the affixes' `storedcodepoint` matcher reads them, and h15b states the `LIKE` with that matcher
+  (*The emulator's `LIKE` matcher is still owed*, below).
 - **The Rex builder writes no affix** — *small, with the first weakening that holds one.* `RenderingRexBuilder` has no
   Rex for an affix form, so a weakening holding one is not pushed. None does: of the pull request's 915 weakenings under
   the asserted sets none holds an affix (line 13, DESIGN.md *Line 13 is the printer's round trip*), S weakening a `LIKE`
@@ -2970,10 +2974,12 @@ across documents* and *A join of a container to itself* is the record.
   and rows; a raw `CONTAINS(p, '\0')` matches nearly every string on the emulator (emu-nul §9), so it is measured again
   first. #246's refusals stand; nothing under `Production` would move.
 - **An element is read only through the text accessor and `RETURNING`** — *small, Stage 4 or with `ITEM`'s family.*
-  `ITEM` over a raw value stays opaque: an `ANY`'s raises over a scalar and a `VARIANT`'s element is unboxed
-  (`Calcite.ItemIsNullWhereNoElementIs`), so neither is the raw reading of a path; a reading of its own would let F
-  learn from it. `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a declaration's facts about
-  elements, a partition key and an order still refuse one.
+  Since h15b `ITEM` over a raw value, and an element's raw value however written, read the element reading
+  (`PredicateAtom.ElementReader`), a reading of its own with no rows: an `ANY`'s `ITEM` raises over a scalar and a
+  `VARIANT`'s element is unboxed (`Calcite.ItemIsNullWhereNoElementIs`), and no run measured an index's raw value, so
+  both graphs read it as unmeasured. Rows of its own would let F and S learn from it (*A weakening's test of an element
+  is declined beneath*, below). `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a declaration's
+  facts about elements, a partition key and an order still refuse one.
 - **`LIKE` with `_` or a backslash, and over a cast to `CHAR`, is never decided by F** — *small.* F decides a match only
   of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
   backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and
@@ -3064,25 +3070,36 @@ across documents* and *A join of a container to itself* is the record.
   At the switch (h15) the same measure against `origin/main` (`aea0f71`) is +11,749 / −1,774, net +9,975, and tests
   +13,624 / −1,313, net +12,311: the switch itself +1,159 / −663 (net +496, where the spec sized it at +50 to +100) and
   tests +1,546 / −882 against `9bf56e6`, the steps between the review answers and the switch the rest. So the estimate
-  above no longer stands, and the checkpoint and §11's cuts are the owner's to read again before 3A opens.
+  above no longer stands, and the checkpoint and §11's cuts are the owner's to read again before 3A opens. At h15b
+  production is +12,071 / −1,918, net +10,153, and tests +13,745 / −1,337, net +12,408: h15b itself +412 / −234 (net
+  +178) and tests +370 / −273 (net +97) against the switch (`0902996`).
 - **Every branch-only line goes at h16, checked by a grep** — *h16.* `CosmosRenderingCapture.Census` and its tee, the
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
-- **A weakening's test over a declared field is not pushed** — *h15b's.* The owner decided on 2026-11-08 that a filter
-  Calcite fails on every row fails as Calcite fails it (DESIGN.md, *Vacuity is a table*); since the raises step S reads
-  it so, a test carrying its reading's raise, and since the switch (h15) the production path reads one reading S owns,
-  so a statement holding a test of a declared field or of a call, or an ordering over a declared `VARIANT`, stays in
-  process and fails as Calcite fails it, where the translator pushed it whole, and the manual's account (Chapter 7.3
-  and 7.5, 8.2's table, 22, 23 and Appendix B.5) holds. A weakening's Rex is the other half: `RenderingRexBuilder`
-  wrote a type test over a path's raw value, which for a declared field is the field itself, `IS_DEFINED($4)` over
+- **A weakening's test over a declared field is not pushed** — *done at h15b.* The owner decided on 2026-11-08 that a
+  filter Calcite fails on every row fails as Calcite fails it (DESIGN.md, *Vacuity is a table*); since the raises step S
+  reads it so, a test carrying its reading's raise, and since the switch (h15) the production path reads one reading S
+  owns, so a statement holding a test of a declared field or of a call, or an ordering over a declared `VARIANT`, stays
+  in process and fails as Calcite fails it, where the translator pushed it whole, and the manual's account (Chapter 7.3
+  and 7.5, 8.2's table, 22, 23 and Appendix B.5) holds. A weakening's Rex is the other half: `RenderingRexBuilder` wrote
+  a type test over a path's raw value, which for a declared field is the field itself, `IS_DEFINED($4)` over
   `c."$.category"`, which Calcite's body raises over, and the switch's first build kept what the filter it is pushed in
   does not admit in process, where it would fail. So the grammar writes no test over a reading its body raises over
   (`RenderingRexGrammar.Raising`), and such a weakening is not built: 17 of the pull request's 915 (line 13), RU, never
   rows. S implies no form the builder does not write (`rex-writable`), so where every weakening of a conjunct needs a
   presence or null test of the field, none is pushed: 20 of the gate's moved statements under `Production` and 29 under
-  `Emulator`, three more beside the owner's reason (DESIGN.md, *What the switch moved is listed*). h15b writes the test
-  over the path's accessor re-typed `ANY`, which the body takes apart, and gives them back.
+  `Emulator`, three more beside the owner's reason (DESIGN.md, *What the switch moved is listed*). Since h15b the
+  builder writes such a test over the path's accessor re-typed `ANY` over the input's document column, `JSON_VALUE(DOC,
+  path)` (`RenderingRexBuilder.Accessor.Retyped`), which the body takes apart and whose row is the raw value's own, and
+  pushes no weakening holding a test of a path where the input holds no document column; the grammar's `Raising` names a
+  call's place alone. Against h15's digests every line h15 listed as declined for this entry (20 under `Production`, 29
+  under `Emulator`) or for the owner's reason (20 and 21; 3 and 3 for both) sends the field's test again, each a
+  weakening (`reports/stage3-3A/h15b/listing.tsv`): 106 and 122 moved lines give one back, 57 and 64 a `WHERE` where
+  none was sent, 14 and 21 a tighter one, 32 and 34 the same documents and 3 and 3 in place of an element's weakening,
+  and 20 and 16 more hold it in the plan's weakening beside a statement sent as before. Line 13's 17 that test `label`
+  above a projection, whose input holds no document column (differential 41, 42, 44, 45 and 62), are still not pushed
+  there; each statement sends its test beneath the projection, as at h15.
 - **A raw reading names its column only where a field declares one** — *small.* The loader names the column a declared
   field's type names under S's reading alone, `VARIANT`, `ANY`, `VARCHAR` or `CHAR`; an accessor, an item chain and the
   cast-to-`ANY` marker read the three columns' union as before (h12), and F reads every raw value through the union. A
@@ -3149,7 +3166,7 @@ across documents* and *A join of a container to itself* is the record.
   `<>` and null where the value is. A rule that reads two `boxof` rows apart makes it one, beside a row for a returning's
   box, which none names.
 - **A test of an item chain, a cast to `ANY` or a field read as text or as a scalar type reads as the accessor it is
-  written as** — *h15b's, with the element guards.* `testreads` is measured in process since rows2
+  written as** — *done at h15b.* `testreads` is measured in process since rows2
   (`CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess`): the body takes apart a `JSON_VALUE` alone and
   raises over anything else, and since the raises step a raw value in each column and a call are keyed by rows of their
   own that say so, the test atom carrying the raise (DESIGN.md, *A test carries its reading's raise (raises)*). Four
@@ -3160,24 +3177,33 @@ across documents* and *A join of a container to itself* is the record.
   raises, which any answer but a failure refines (decision 2), so none is unsound; what is wrong is the reason, and the
   manual's account of a test over them (Appendix B.5). No census line S reads holds one: every test it reads is of a
   declared field or of a path an accessor in the line reads, and the one test of a cast to `ANY` the census lists is a
-  translator test's push, which S does not read. h15b writes each apart as a reading of its own whose row says the body
-  raises, the item chain and the cast to `ANY` beside the element guards (the entry below), and each such decline is
-  the owner's of 2026-11-08 by name. The raw value's own row stays for the accessor re-typed `ANY`, which the body takes
-  apart.
-- **The loader's element guards and cast targets are G8's sites no step schedules** — *h15b's.* Two branches stand for
-  rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an accessor's
-  raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand for
-  `Calcite.ItemIsNullWhereNoElementIs` and the raw value of an element no row measured; and the numeric cast targets
-  (`Cast`, `TryNumericCastOperand`, the `RETURNING DECIMAL` arm), which stand for `measuredcast`'s rows. Each changes F's
-  terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15; both
-  move after h15's switch, at h15b, the guards to an element reading S's cells read and the casts to the cast rule
+  translator test's push, which S does not read. Since h15b the loader writes each apart (`SqlValue.Form`, the shared
+  vocabulary's `apart(form, value)`), read as what its reading reads and tested as its form's own `testreads` row says,
+  the body raising (`CalciteTypeTestMeasurementTests` measures each writing), so a test of one is the raises step's atom
+  and a statement holding one fails as Calcite fails it. No census line holds a test of one, so none is accepted by name
+  for the owner's reason; the census's three comparisons of `_ts` over a parameter spell it, `typed($["_ts"] BIGINT
+  field)`, their verdict unchanged, and 11 digest lines under each set spell one in the IR alone, sent as at h15. The
+  raw value's own row stays for the accessor re-typed `ANY`, which the body takes apart.
+- **The loader's element guards and cast targets are G8's sites no step schedules** — *done at h15b.* Two branches stood
+  for rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an
+  accessor's raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand
+  for `Calcite.ItemIsNullWhereNoElementIs` and the raw value of an element no row measured; and the numeric cast targets
+  (`Cast`, `TryNumericCastOperand`, the `RETURNING DECIMAL` arm), which stand for `measuredcast`'s rows. Each changes
+  F's terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15;
+  both move after h15's switch, at h15b, the guards to an element reading S's cells read and the casts to the cast rule
   reading `measuredcast`. The audit's plan lists neither (§3, item 5), and h15's task names `Structure` alone of G8's
   sites. With the guards h15b writes the item chain and the cast to `ANY` apart from the raw value, so a test of either
   raises as the body does (the entry above). `ReaderEdgesTable`'s cast keys are a copy of the same rows
-  (`cast:VARCHAR:raw`, `cast:BOOLEAN:text`, `cast:INTEGER:text`, `cast:BIGINT:text`, `cast:DOUBLE:text`), and which
-  cast readers have a key licenses four things: a cut, `RenderingFamily.HasEdges`, `CosmosRendering.ReadReaderKinds`
-  and the templates' rows. They equal `measuredcast`'s rows, which `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts`
-  holds; the keys move with the cast targets, derived from `measuredcast`, and the edges stay data per type.
+  (`cast:VARCHAR:raw`, `cast:BOOLEAN:text`, `cast:INTEGER:text`, `cast:BIGINT:text`, `cast:DOUBLE:text`), and which cast
+  readers have a key licenses four things: a cut, `RenderingFamily.HasEdges`, `CosmosRendering.ReadReaderKinds` and the
+  templates' rows. They equal `measuredcast`'s rows, which `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts`
+  holds; the keys move with the cast targets, derived from `measuredcast`, and the edges stay data per type. Since h15b
+  both are rules over cells both graphs read: the guards are gone, a path's term saying whether it holds an element
+  (`noelement`, `haselement`) and a raw value of one, however written, reading the element reading, which no row
+  measured (`PredicateVocabularyTests.AReadingWrittenApartIsItsReadingButToItsTest`); and the cast targets are gone with
+  `TryNumericCastOperand` and the `RETURNING DECIMAL` arm, the loader writing a conversion of the text or a raw value by
+  its target type, the shared cast rule reading one a row measured (`measuredcast`), and the edges table deriving its
+  cast keys from the same rows (`ReaderEdgesTable.Of`), each with its target type's edges.
 - **`Portable` reads `_` by no row** — *small, S's.* Each target's `_` is measured over every class
   (`Service.LikeOneOverEachClass`; the emulator at rows2, Azure at run 2): one code point of each as written, line
   terminators and the trimmed class among them, where Calcite's `_` matches no line terminator, so a pattern holding
@@ -3185,11 +3211,14 @@ across documents* and *A join of a container to itself* is the record.
   read U+0000 and U+FDD0 apart (the emulator as the two units it stores), so their rows differ, and a set reads a unit
   by a row only where every target it serves reads it so: `Portable` reads `_` by none, and a pattern holding one is
   unread there. A rule reading the classes both rows were measured over alike would read it there.
-- **The emulator's `LIKE` matcher is still owed** — *small, the emulator's.* `CosmosAxiomRows.Owed` keeps the emulator's
-  `LIKE` cell unread, its reading of a stored escape unmeasured. rows2 measured it for `_`: U+FDD0 and U+0000 are two
-  code points each, as the affixes' `storedcodepoint` matcher reads them. Stating the `LIKE` outcome with that matcher,
-  and `_` over the two escapes as the stored spelling, settles the cell; it moves the emulator's census rows of a
-  `LIKE`, so it is a step of its own.
+- **The emulator's `LIKE` matcher is still owed** — *done at h15b.* `CosmosAxiomRows.Owed` kept the emulator's `LIKE`
+  cell unread, its reading of a stored escape unmeasured. rows2 measured it for `_`: U+FDD0 and U+0000 are two code
+  points each, as the affixes' `storedcodepoint` matcher reads them. Since h15b the emulator's `LIKE` names that
+  matcher (`none=storedcodepoint`), its `_` read over the classes it matched as one code point of the stored spelling,
+  so one `_` misses either escape and two match it (rows2's `a__b`), and `Owed` is empty. No digest or census line of a
+  `LIKE` moves for it: the corpus's patterns beyond one affix, `_ike_`, `_prin_` and `A__B`, run over strings that may
+  hold U+0000 or a line terminator and stay in process as at h15, and the two emulator statements in the census that
+  hold an affix call and move do so for another conjunct, the call byte-equal.
 - **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
   reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
   text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
@@ -3337,7 +3366,8 @@ across documents* and *A join of a container to itself* is the record.
 - **The printer reads its fault switch at each node** — *small, O4's inventory.* `RenderingPrinterFaults` is read, one
   `volatile bool`, for each path name, `NOT` and junction a print writes; since the switch implementation prints every
   form S chose, so the count of inert sites O4 accepted grows by those reads, unmeasured beside a plan's own time.
-- **A path read only through a view's typed column has no raw value** — *small.* The translator writes a cast to `ANY`
+- **A path read only through a view's typed column has no raw value** — *done at h15b where the input holds the
+  document column.* The translator writes a cast to `ANY`
   only over a rendering, so `AccessorsOf` gives such a path none: a string comparison over it builds nothing, and that
   residual's weakening is not pushed (sound, the whole weakening null), and a type test is written over the typed column,
   as J wrote `IS_DEFINED` over it until g18, which `CosmosTypeTestImplementor` cannot take apart in process. No weakening in the
@@ -3345,8 +3375,9 @@ across documents* and *A join of a container to itself* is the record.
   "S holds only what the builder writes"; the reader is the same `typed:T` as a `RETURNING`, so the grammar cannot tell
   the two apart. The column's document accessor, where the binding holds one, would give it a raw value. Since the
   switch (h15) the split rule drops a weakening's member the filter beneath does not admit, so such a test, written and
-  declined there, fails nothing in process, and admitted it is the service's; `RenderingRexGrammar.Raising` names no
-  typed column, and h15b's writing of a test over the accessor re-typed `ANY` is where one is named.
+  declined there, fails nothing in process, and admitted it is the service's. Since h15b `AccessorsOf` gives every path
+  the conjunct addresses its accessor re-typed `ANY` over the input's document column (`Retyped`), and a type test is
+  written over that; where the input holds no document column, a weakening holding a test of the path is not pushed.
 - **A typed reading compared with a fraction keeps no presence** — *small, O7's loss 5 until Stage 3.* Calcite compares
   `RETURNING INTEGER >= 2.5` through a cast to `DECIMAL`, which the loader reads no reading of (it reads a numeric cast of
   text or a raw value alone), so the conjunct is one opaque term with no path, and S proves no weakening where J keeps
@@ -3525,18 +3556,22 @@ across documents* and *A join of a container to itself* is the record.
 - **The in-process judge of an opaque weakening fills typed fields alone** — *done at h15.* `CalciteInProcess` fills a
   field read as text or JSON, a view's column among them, as the reader renders it, so line 1c judges those conjuncts
   too: none is left out at the pull request's size.
-- **Line 13 judges seventeen of the gate's weakenings on nothing** — *small, the round trip's.* At
-  `COSMOS_PARTITION_GATE=1` the round trip reads 3,109 weakenings, and of the 343 sent as S's form of what Calcite
-  reads of them it judges all but seventeen, from partitions 1909 (six statements), 2395, 2396, 2688 and 2689 under
-  both sets and 2411, 2419 and 2420 under `Production`. Three gaps, each the judge's: the conjunct of 1909 holds
+- **Line 13 judges four of the gate's weakenings on nothing** — *small, the round trip's.* At
+  `COSMOS_PARTITION_GATE=1` the round trip read 3,109 weakenings at h15, and of the 343 sent as S's form of what
+  Calcite reads of them it judged all but seventeen, from partitions 1909 (six statements), 2395, 2396, 2688 and 2689
+  under both sets and 2411, 2419 and 2420 under `Production`. Three gaps, each the judge's: the conjunct of 1909 holds
   `tags[0]`, opaque, and Calcite in process returns no compiled conjunct for it (line 1c leaves 30 of its 407 opaque
   weakenings out at the gate's size so, none at the pull request's); the conjuncts of 2395, 2396, 2688 and 2689 hold a
   numeric cast of a `JSON_VALUE` or arithmetic over one, and no document source A draws is one IrEval answers in every
   mode; and over 2411, 2419 and 2420, a concatenation over `id`, S proves under the weakening's own bundle no exact
   form of what the built Rex reads, though the plan sends one. Each was read by hand: what is sent keeps every row its
   conjunct keeps (`reports/stage3-3A/h15/line13-gate.txt`), and the partition gate runs every one of those statements
-  on both emulators. Line 13's leg is the pull request's size, where it passes. The fix is to judge in process any
-  conjunct IrEval measures on no document, and to claim as the filter beneath does.
+  on both emulators. Since h15b it reads 3,691 and of its 343 judges all but four, under `Production`: 2411, 2419 and
+  2420, and 2410, whose weakening sends the category's test since h15b beside the same concatenation
+  (`reports/stage3-3A/h15b/line13-gate.txt`). 1909's six are read as tests over an element's raw value, which the
+  filter beneath declines, and 2395, 2396, 2688 and 2689 are judged, each holding a type test the builder now writes
+  over the accessor re-typed `ANY`. Line 13's leg is the pull request's size, where it passes. The fix is to judge in
+  process any conjunct IrEval measures on no document, and to claim as the filter beneath does.
 - **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
   Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
@@ -3671,12 +3706,24 @@ across documents* and *A join of a container to itself* is the record.
   comparison into a string one from the declared stored form before any statement is built, so S proves forms for the
   lowered conjunct and the lowering itself is C#'s. Line 33 checks it against S meanwhile (`RenderingRewriteTests`).
   Stage 3 makes the lowering templates over the declaration's stored-form facts and deletes the rewrite before the split.
-- **A weakening's test of an element is the translator's beneath** — *h15b's, with the element guards.* Since the
-  switch (h15) the loader reads a type test as an atom of the reading it tests, so a weakening's `IS_STRING` and
-  `IS_NUMBER` over a path are S's in the filter beneath and mean what S's rows say. One over an element is read as
-  opaque there, the loader's element guards standing, so that filter hands it to the translator, which writes it back,
-  its meaning in process resting on `CosmosFunctionBodiesTests` rather than on S: 34 of the pull request's 915
-  weakenings (line 13). h15b's element guards read it.
+- **A weakening's test of an element is declined beneath** — *small, a measurement in process; RU, never rows.* Since
+  the switch (h15) the loader reads a type test as an atom of the reading it tests, so a weakening's `IS_STRING` and
+  `IS_NUMBER` over a path are S's in the filter beneath and mean what S's rows say. One over an element was read as
+  opaque there at h15, the loader's element guards standing, and the translator wrote it back: 34 of the pull
+  request's 915 weakenings (line 13). Since h15b that filter reads it as an atom of the element reading, which no row
+  measured (`Calcite.ReadingsOfAnIndexAreAsOfAPath` measured the text, a `RETURNING`, `JSON_QUERY` and `JSON_EXISTS`
+  of an element as of a path holding it, not its raw value nor a test's body over one), so S declines it and the split
+  rule drops it: against h15's digests 40 statements under `Production` and 42 under `Emulator` send less, 39 and 41
+  an element's type test and partitions 968 an element's equality over its raw value, 3 under each trade an element's
+  weakening for a declared field's (partitions 1608, 1660 and 1948; and 1909 under `Emulator`, tighter for it), and 1
+  and 4 drop one where what is left keeps the same documents; each keeps its filter in process. The proper fix is a
+  row, measured in process as `CalciteItemMeasurementTests` measures the readings of an index: the accessor re-typed
+  `ANY` of an index, and each test's body over it, answering as over a path holding the element; a cell of
+  `Calcite.ReadingsOfAnIndexAreAsOfAPath` naming the raw reading among those an index reads as of a path; and the
+  vocabulary's element rule reading an index's raw value as a path's where that cell names it. A test over an
+  element's text accessor reads the body's raw value as of a path holding it, as at h15; the same measurement holds
+  that too. No step schedules it yet; it needs no run of the service, so it fits any step before 3A's pull request
+  opens.
 - **Lines 6 and 13b read the listing until g17** — *done at g17.* Line 6 is floors per input, each the conjuncts the
   input sent exactly at the switch under each asserted set (`RenderingSentTests.EachInputSendsAtLeastItsFloor`); line
   13b retired with the shadow. The mutation and gate-fault plants plan with S writing, their losses read against the

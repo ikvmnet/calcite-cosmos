@@ -144,14 +144,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void ARangeTheBoundsSatisfyIsAlwaysTrueOfTheConversion()
         {
-            var atLeastZero = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), ">=", Of(0m));
             var integers = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m)));
 
-            atLeastZero.AlwaysTrue(integers, FactsReadings.Rows).Should().BeTrue();
-            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), ">", Of(0m)).AlwaysTrue(integers, FactsReadings.Rows).Should().BeFalse();
-            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), "<", Of(0m)).NeverTrue(integers, FactsReadings.Rows).Should().BeTrue();
             PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), ">=", Of(0m)).AlwaysTrue(integers, FactsReadings.Rows).Should().BeTrue(
                 "a double's parse reads 30.0 and 1.0E30 as it reads 30");
+            PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), "<", Of(0m)).NeverTrue(integers, FactsReadings.Rows).Should().BeTrue();
+
+            // A raw value's numeric cast is no reading (h15b): over an ANY it wraps a long beyond an int, so nothing of a
+            // stored number is decided by it.
+            var wrapped = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), ">=", Of(0m));
+            wrapped.AlwaysTrue(integers, FactsReadings.Rows).Should().BeFalse();
+            wrapped.NeverTrue(integers, FactsReadings.Rows).Should().BeFalse();
         }
 
         /// <summary>
@@ -299,7 +302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         internal static readonly string[] Readers =
         {
             Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.TypedReader("DECIMAL"),
-            PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Raw), PredicateAtom.CastReader("DOUBLE", Text),
+            PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Text), PredicateAtom.CastReader("DOUBLE", Text),
             PredicateAtom.CastReader("VARCHAR", Raw), PredicateAtom.CastReader("BOOLEAN", Text),
         };
 

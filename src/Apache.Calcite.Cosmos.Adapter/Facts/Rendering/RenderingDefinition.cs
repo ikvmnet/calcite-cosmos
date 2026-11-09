@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
         public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
-            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators);
+            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts);
 
         /// <summary>
         /// The readings the facts graph reads as Calcite does beside a literal of a class (<c>CosmosAxiomRows.ReadExactReadings</c>):
@@ -219,7 +219,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(string Reader, string As)> TestReads { get; init; } = [];
 
-        /// <summary>The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3); no rule reads it yet (G8).</summary>
+        /// <summary>
+        /// The casts a <c>Calcite</c> row measured, each citing its row (<c>CosmosAxiomRows.ReadCasts</c>, F3): the readings
+        /// vocabulary's <c>measuredcast</c>, which the shared cast rule reads, and the edges table's cast keys (h15b).
+        /// </summary>
         public IReadOnlyList<(string Target, string Reader, string Row)> Casts { get; init; } = [];
 
         /// <summary>
@@ -249,10 +252,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> TestKinds { get; init; } = [];
 
         /// <summary>
-        /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges,
-        /// templates and primitives as written; strict in nothing until the host names what is.
+        /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, templates and
+        /// primitives as written; the edges each reading's, and a cast's where a row measured it (<paramref name="casts"/>,
+        /// h15b), and the templates fitting each reading cut; strict in nothing until the host names what is.
         /// </summary>
-        public static RenderingDefinition Measured(IReadOnlyList<MeasuredOutcome> rows) => new(
+        public static RenderingDefinition Measured(IReadOnlyList<MeasuredOutcome> rows, IReadOnlyList<(string Target, string Reader, string Row)> casts) =>
+            Measured(rows, casts, ReaderEdgesTable.Of(casts));
+
+        static RenderingDefinition Measured(IReadOnlyList<MeasuredOutcome> rows, IReadOnlyList<(string Target, string Reader, string Row)> casts, IReadOnlyDictionary<string, ReaderEdges> edges) => new(
             rows,
             new Dictionary<RenderingSet, ValueSet<RenderingTarget>>
             {
@@ -262,9 +269,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 [RenderingSet.Calcite] = ValueSet.Of(RenderingTarget.Calcite),
             },
             AnswerMeanings.Measured, KleeneTables.Rows, KleeneTables.Identity, AgreementRows.Allowing, AgreementRows.Refuting, Truths.Raises,
-            ReaderEdgesTable.Rows,
+            edges,
             CutPoints.Of, PathCell.Split, PathCell.SetAside, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of,
-            RenderingTemplateRows.Templates, RenderingTemplateRows.Fits, [], []);
+            RenderingTemplateRows.Templates, RenderingTemplateRows.Over(edges.Keys), [], [])
+        {
+            Casts = casts,
+        };
 
     }
 

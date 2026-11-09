@@ -599,15 +599,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // The body is handed the document and the path the accessor names, JSON_VALUE whatever it returns and JSON_QUERY
                 // (CosmosTypeTestImplementor): a test of the text, of a RETURNING or of a JSON_QUERY asks of the value at the path, measured in
                 // process (rows2), the statement raising where the RETURNING does, which the test atom carries. Over a raw value
-                // in a column and a call the body raises, each keyed by its own reading; an item and a cast to ANY, which the
-                // loader writes as the raw value, read the raw value's row, which stands for the accessor re-typed ANY, until
-                // h15b writes them apart (TODO.md).
+                // in a column and a call the body raises, each keyed by its own reading; and over a field read as text or as a
+                // scalar type, an item chain and a cast to ANY, which the loader writes apart, each keyed by its form (h15b). The
+                // raw value's row stands for the accessor re-typed ANY alone.
                 TestReads:
                 [
                     new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader),
                     new(PredicateAtom.QueryReader, PredicateAtom.RawReader),
                     .. PredicateAtom.Columns.Select(column => new CosmosTestRead(PredicateAtom.RawIn(column), PredicateAtom.RaisesReader)),
                     new(PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
+                    new(PredicateAtom.FieldForm, PredicateAtom.RaisesReader), new(PredicateAtom.ItemForm, PredicateAtom.RaisesReader),
+                    new(PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader),
                 ]),
             new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
                 "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, and a type test, which asks the document's kind, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",
@@ -704,8 +706,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "LIKE matches by code point, case sensitive: _ matches one code point, U+1F600, U+00E9 and U+E000 alike, and % any run of them, the empty one too.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.LikeMatchesByCodePoint",
                 [
-                    // No matcher: what the emulator's LIKE makes of a stored escape is unmeasured (CosmosAxiomRows.Owed), so S's LIKE form answers anything.
-                    new(Test.Like, Class.String, Emulator, "matching=true missing=false"),
+                    // The emulator's by its affixes' matcher, the string as it stores it against the pattern as sent, each _ one
+                    // code point of that spelling, U+0000 and U+FDD0 two each (Service.LikeOneOverEachClass, rows2, h15b).
+                    new(Test.Like, Class.String, Emulator, "none=storedcodepoint matching=true missing=false"),
                     // Azure's by code point, one run between two % read as a CONTAINS is (ServiceLeaf).
                     new(Test.Like, Class.String, Azure, "none=codepoint matching=true missing=false"),
                 ],
@@ -922,12 +925,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.LikeOneOverEachClass",
                 "LIKE's _ matches one code point of every class as written: each Java line terminator, a tab, U+000B, U+00A0 and U+3000, U+FFFD, a surrogate pair, U+00E9 and U+E000, where Calcite's _ matches no line terminator; U+000D U+000A is two. U+FDD0 and U+0000 the emulator reads as it stores them, two code points each, so a_b matches neither and a__b both, and Azure (run 2) as written, one code point each. % matches a run of any of them. Both emulator images answer alike. An unpaired surrogate the emulator refuses to store, and Azure stores as U+FFFD and matches as it.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.LikeOneOverEachClass",
-                // Each target's _ over the classes it matched as one code point (likereads): on the emulator U+FDD0 and U+0000
-                // are read as the escape it stores, so are unread, and on Azure as written; no target stores an unpaired
-                // surrogate as one, so it is unread on both.
+                // Each target's _ over the classes it matched as one code point (likereads): on the emulator over the stored
+                // spelling its matcher reads, U+FDD0 and U+0000 each U+FDD0 and a digit, so U+FDD0 one and U+0000 never met
+                // (rows2, h15b), and on Azure as written; no target stores an unpaired surrogate as one, so it is unread on both.
                 LikeUnits:
                 [
-                    new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass], On: Emulator),
+                    new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass,
+                        JsonValues.EscapeClass], On: Emulator),
                     new("_", CosmosLikeUnit.One, Over: [JsonValues.SurrogateBand, JsonValues.NonAsciiBand, JsonValues.HighBand, JsonValues.TrimmedClass, JsonValues.LineTerminatorClass, JsonValues.ReplacementClass,
                         JsonValues.NulClass, JsonValues.EscapeClass], On: Azure),
                 ]),

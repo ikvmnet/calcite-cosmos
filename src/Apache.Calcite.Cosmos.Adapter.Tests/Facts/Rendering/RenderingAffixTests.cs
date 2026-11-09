@@ -140,9 +140,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A side's <c>_</c> reads a code point as its row says (G7): Calcite's any but a line terminator, and each target's
         /// any of the classes it was measured matching one of, line terminators among them, and unknown over another, so a
-        /// string holding one only a reading of it might match is neither matched nor missed: the emulator's U+0000 and
-        /// U+FDD0, which it stores as two (rows2), and on both an unpaired surrogate, which neither stores as one (run 2);
-        /// a run, measured over every class, decides either way.
+        /// string holding one only a reading of it might match is neither matched nor missed: on both an unpaired surrogate,
+        /// which neither stores as one (run 2). The emulator's reads the string as its matcher does, as it stores it, U+0000
+        /// and U+FDD0 each U+FDD0 and a digit, so <c>a_b</c> misses both and <c>a__b</c> matches both (rows2, h15b), and a
+        /// range's cut as written says nothing of either. A run, measured over every class, decides either way.
         /// </summary>
         [Fact]
         public void ASidesOneIsReadOverTheClassesItsRowMeasured()
@@ -167,6 +168,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             emulator.Matches("a\r\nb").Should().BeFalse("two code points");
             emulator.OnLike(ValueSet.Of(TrimmedClass, LineTerminatorClass)).Should().BeTrue();
             emulator.OnLike(ValueSet.Of(NulClass)).Should().BeNull("U+0000 is stored as two");
+            var twice = LikePattern.Read("a__b", On(RenderingSet.Emulator).LikeUnits)!;
+            foreach (var escape in new[] { "a\0b", "a\uFDD0b" })
+            {
+                ServiceLeaf.Matches(CosmosAnswer.StoredCodePoint, escape, emulator).Should().BeFalse("the emulator stores each escape as two code points");
+                ServiceLeaf.Matches(CosmosAnswer.StoredCodePoint, escape, twice).Should().BeTrue("each _ one of the stored spelling's");
+            }
             LikePattern.Read("a_b", On(RenderingSet.Portable).LikeUnits).Should().BeNull("Azure's _ and the emulator's are read apart");
 
             service.OnLike(ValueSet<string>.Empty).Should().BeTrue();
@@ -206,9 +213,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The classes each target's <c>_</c> is read over are those <c>Service.LikeOneOverEachClass</c>'s witnesses hold
-        /// where <c>a_b</c> kept them, no more and no fewer (G7): the emulator's from its answers (rows2), U+0000 and U+FDD0
-        /// stored as two among the ones it missed, and Azure's from the probe account's record (run 2), which kept both. The
-        /// row says what was sent.
+        /// where <c>a_b</c> kept them, no more and no fewer (G7): the emulator's from its answers (rows2) over the stored
+        /// spelling its matcher reads, U+0000 and U+FDD0 each U+FDD0 and a digit, which <c>a__b</c> kept, and Azure's from the
+        /// probe account's record (run 2), which kept both as written. The row says what was sent.
         /// </summary>
         [Fact]
         public void TheServicesOneIsReadOverTheClassesItsWitnessesHeld()
@@ -217,7 +224,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ValueSet.From(answers.Where(p => p.Answer == "true/T").SelectMany(p => BandsOfText(System.Text.Json.JsonSerializer.Deserialize<string>(p.Witness)!).AsEnumerable()));
 
             var witnesses = Measurements.CosmosStringFunctionMeasurementTests.ClassWitnesses;
-            var emulator = Matched(witnesses.Where((_, i) => i is not (11 or 12)).Zip(Measurements.CosmosStringFunctionMeasurementTests.LikeOneAnswers[0].Split(' ')));
+            var stored = witnesses.Where((_, i) => i is 11 or 12).Select(w => EmulatorStoredText.Of(System.Text.Json.JsonSerializer.Deserialize<string>(w)!)[1..^1]);
+            var twice = Measurements.CosmosStringFunctionMeasurementTests.StoredEscapeAnswers.Split(' ')[1] == "true/T";
+            var emulator = Matched(witnesses.Where((_, i) => i is not (11 or 12)).Zip(Measurements.CosmosStringFunctionMeasurementTests.LikeOneAnswers[0].Split(' ')))
+                .Union(twice ? ValueSet.From(stored.SelectMany(s => BandsOfText(s).AsEnumerable())) : ValueSet<string>.Empty);
             var record = AzureLines("Service.LikeOneOverEachClass", "c.v LIKE " + '"' + "a_b" + '"');
             var azure = Matched(witnesses.Select(w => (w, record[w])));
 
@@ -308,7 +318,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The leaf reads a string by the matcher the test's entry names under <c>Emulator</c>, a stored escape in the stored
-        /// spelling, and anything else by its kind; <c>LIKE</c>'s matcher is owed there, and Azure has measured none.
+        /// spelling, and anything else by its kind; <c>LIKE</c>'s there is its affixes', each <c>_</c> one code point of that
+        /// spelling (h15b).
         /// </summary>
         [Fact]
         public void TheLeafReadsTheMatcherItsEntryNames()
@@ -332,8 +343,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             On(ServiceForm.AffixOf(CosmosServiceTest.EndsWith, path, "\0"), emulator, LeafReads.Matches(ValueSet<string>.Empty, ValueSet.Of(NulClass, EscapeClass), ValueSet<string>.Empty)).Should().Equal(
                 ServiceOutcomes.False, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
 
-            On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), emulator)[0].Should().Be(ServiceOutcomes.Widest);
-            ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), cells, emulator, LeafReads.None).Rows.Should().Contain("missing:Like/String/None");
+            On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), emulator).Should().Equal(
+                ServiceOutcomes.True, ServiceOutcomes.False, ServiceOutcomes.False, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
+            On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a_"), emulator).Should().Equal(
+                ServiceOutcomes.True, ServiceOutcomes.False, ServiceOutcomes.False, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
+            On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a__"), emulator).Should().Equal(
+                ServiceOutcomes.False, ServiceOutcomes.False, ServiceOutcomes.True, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined, ServiceOutcomes.Undefined);
+            ServiceLeaf.On(ServiceForm.AffixOf(CosmosServiceTest.Like, path, "a%b"), cells, emulator, LeafReads.None).Rows.Should().Contain("Service.LikeMatchesByCodePoint")
+                .And.NotContain("missing:Like/String/None");
 
             // Azure's by code point, read past U+0000 by STARTSWITH and to it by CONTAINS (run 1): the truncates row S reads hands
             // a CONTAINS U+0000 unread (Service.NulEndsWhatReplaceAndContainsRead, G1), and the leaf names no band itself.
@@ -346,9 +363,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Over a path that holds strings every affix the translator writes for <c>LIKE</c> is Proven under <c>Emulator</c>,
-        /// its form the affix that says the pattern, and so is its negation; a pattern of two runs and one holding <c>_</c>,
-        /// each a <c>LIKE</c> the emulator's unmeasured matcher reads, are not. Under <c>Production</c> each is too, but a
-        /// <c>CONTAINS</c> over strings that may hold U+0000, which Azure's reads only up to.
+        /// its form the affix that says the pattern, and so is its negation. Under <c>Production</c> each is too, but a
+        /// <c>CONTAINS</c> over strings that may hold U+0000, which Azure's reads only up to. A pattern of two runs and one
+        /// holding <c>_</c> are <c>LIKE</c>'s own form under <c>Emulator</c> since h15b, which read its matcher as its
+        /// affixes', but the one holding <c>_</c> over strings that may hold U+0000, which the emulator stores as two code
+        /// points, or a line terminator, which Calcite's <c>_</c> misses.
         /// </summary>
         [Fact]
         public void AnAffixOverStringsIsProvenUnderEmulator()
@@ -378,7 +397,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             foreach (var pattern in new[] { "a%b", "a_b" })
-                Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), pattern)), RenderingSet.Emulator, Strings).Kind.Should().Be(RenderingVerdictKind.Unproven, pattern);
+            {
+                var answer = Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), pattern)), RenderingSet.Emulator, Strings);
+                answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{pattern}: {answer.Reason}");
+                answer.Best!.Subforms.Should().Contain(ServiceForm.AffixOf(CosmosServiceTest.Like, t, pattern));
+            }
+
+            Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "a%b")), RenderingSet.Emulator, Strings, JsonCharacterBand.Nul).Kind.Should().Be(RenderingVerdictKind.Proven);
+            Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "a_b")), RenderingSet.Emulator, Strings, JsonCharacterBand.Nul).Kind.Should().Be(RenderingVerdictKind.Unproven, "U+0000 is two code points stored");
+            Generate(Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "a_b")), RenderingSet.Emulator, Strings, JsonCharacterBand.LineTerminator).Kind.Should().Be(RenderingVerdictKind.Unproven, "Calcite's _ misses a line terminator");
         }
 
         /// <summary>

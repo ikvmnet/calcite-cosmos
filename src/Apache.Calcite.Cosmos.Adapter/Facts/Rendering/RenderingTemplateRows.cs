@@ -41,15 +41,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static TemplateId[] AffixesRendered => [AffixRenderedEquality, AffixRenderedStartsWith, AffixRenderedEndsWith, AffixRenderedContains, AffixRenderedLike];
 
         /// <summary>
-        /// Each template and the shapes it fits. A <c>JSON_QUERY</c>'s reading is asked its own template alone, the form its
-        /// row says it is (G8): every other template's proposes a value it has none of.
+        /// Each template and the shapes it fits, over the readings an edges table cuts (<see cref="ReaderEdgesTable.Of"/>). A
+        /// <c>JSON_QUERY</c>'s reading is asked its own template alone, the form its row says it is (G8): every other
+        /// template's proposes a value it has none of.
         /// </summary>
-        public static IReadOnlyList<(TemplateId, string Shape)> Fits { get; } = [.. Rows().Distinct()];
+        public static IReadOnlyList<(TemplateId, string Shape)> Over(IEnumerable<string> cut) => [.. Rows(cut).Distinct()];
 
-        static IEnumerable<(TemplateId, string)> Rows()
+        static IEnumerable<(TemplateId, string)> Rows(IEnumerable<string> cut)
         {
             string[] text = [PredicateAtom.TextReader], textual = [PredicateAtom.TextReader, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)];
-            string[] readers = [.. ReaderEdgesTable.Rows.Keys.Where(r => PredicateAtom.ColumnOf(r) is null && r != PredicateAtom.QueryReader), .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
+            string[] readers = [.. cut.Where(r => PredicateAtom.ColumnOf(r) is null && r != PredicateAtom.QueryReader), .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
             string[] parsed = [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(t => PredicateAtom.CastReader(t, PredicateAtom.TextReader)), PredicateAtom.TypedReader("DECIMAL")];
             string[] orderings = [PredicateAtom.Less, PredicateAtom.LessOrEqual, PredicateAtom.Greater, PredicateAtom.GreaterOrEqual];
             string[] comparisons = [PredicateAtom.Equal, PredicateAtom.NotEqual, .. orderings], equalOrOrdering = [PredicateAtom.Equal, .. orderings];

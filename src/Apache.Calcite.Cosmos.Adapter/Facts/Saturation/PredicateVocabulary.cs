@@ -14,14 +14,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     {
 
         /// <param name="graph">The graph.</param>
+        /// <param name="paths">The graph's path terms, which say whether a path holds an element.</param>
         /// <param name="readings">
         /// What Calcite makes of each reading, the graph's own rows, analyses assumed at its root: the JSON kinds each type
         /// test is TRUE of and the readings a one-place test's body takes apart (<c>Calcite.TypeTestsAreTheirBodies</c>, G7,
         /// G8), the boxes a value cast to <c>VARIANT</c> is held in, which readings take what a cast number denotes, and which
         /// operators answer null over a null operand, which the rules of G8 read.
         /// </param>
-        public PredicateVocabulary(EGraph graph, ReadingVocabulary readings)
+        public PredicateVocabulary(EGraph graph, PathVocabulary paths, ReadingVocabulary readings)
         {
+            Paths = paths;
             Readings = readings;
             TestKinds = readings.TestKinds;
             TestReads = readings.TestReads;
@@ -43,6 +45,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             DecimalCast = graph.DefineConstructor<long, long, Val, Val>("decimal cast", options: term);
             Box = graph.DefineConstructor<string, Val, Val>("box", options: term);
             Query = graph.DefineConstructor<JPath, Val>("query", options: term);
+            Apart = graph.DefineConstructor<string, Val, Val>("apart", options: term);
             Null = graph.DefineConstructor<string, Val>("sql null", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
@@ -67,6 +70,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Atom = graph.DefineRelation<Pred, JPath, PredicateAtom>("atom", analysis);
             TestRead = graph.DefineRelation<Val, JPath, string>("testread", analysis);
             Denotes = graph.DefineRelation<Val, string, bool>("denotes", analysis);
+            NoElement = graph.DefineRelation<JPath>("noelement", analysis);
+            HasElement = graph.DefineRelation<JPath>("haselement", analysis);
 
             Analyse = graph.DefineRuleset("analyse");
             DefineAnalysis();
@@ -108,6 +113,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// (<see cref="TestReads"/>).
         /// </summary>
         public Constructor<JPath, Val> Query { get; }
+
+        /// <summary>
+        /// A reading written as a form apart from its accessor (<see cref="SqlValue.Form"/>, h15b): it reads what its reading
+        /// reads, and a test of it as its form's row says the body reads it (<see cref="TestReads"/>).
+        /// </summary>
+        public Constructor<string, Val, Val> Apart { get; }
 
         /// <summary>
         /// SQL's null, of a SQL type: a comparison with it is read by the rule over the operator's row (<c>strictop</c>, G8).
@@ -199,6 +210,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>What Calcite makes of each reading: the rows the rules of G8 read beside the terms.</summary>
         public ReadingVocabulary Readings { get; }
 
+        /// <summary>The graph's path terms.</summary>
+        public PathVocabulary Paths { get; }
+
+        /// <summary>A path holding no element, read off its term.</summary>
+        public Relation<JPath> NoElement { get; }
+
+        /// <summary>A path holding an element, read off its term: one of its steps is an index.</summary>
+        public Relation<JPath> HasElement { get; }
+
         /// <summary>
         /// What a cast of a literal denotes (G8): the number the literal spells, and whether a cast that drops scale moved
         /// Calcite's value from it; nothing where a cast's whole digits do not fit, which raises. Derived from the terms alone.
@@ -210,6 +230,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         void DefineAnalysis()
         {
+            DefineElements();
+
             Analyse.DefineRule("text reads its path", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
@@ -219,15 +241,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Analyse.DefineRule("a raw value reads its path", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)));
+                r.When(v.Is(Raw.Of(p)), NoElement.Of(p));
                 r.Then(Reads.Of(v, p, PredicateAtom.RawReader));
             });
             // A declared field, read through its column (rawtyped).
             Analyse.DefineRule("a raw value in a column reads its path through the column", r =>
             {
                 var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
-                r.When(v.Is(RawIn.Of(p, c)));
+                r.When(v.Is(RawIn.Of(p, c)), NoElement.Of(p));
                 r.Then(Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
+            });
+            // An element's raw value, however written, which no row measured as of a path holding it as the text, a RETURNING
+            // and JSON_QUERY are (Calcite.ReadingsOfAnIndexAreAsOfAPath): the element reading, which reads its rows alone, a
+            // row no run measured as anything and a raise (Calcite.ItemIsNullWhereNoElementIs, h15b).
+            Analyse.DefineRule("a raw value of a path holding an element reads the element reading", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                r.When(v.Is(Raw.Of(p)), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+            });
+            Analyse.DefineRule("a raw value in a column of a path holding an element reads the element reading", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
+                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+            });
+            // A reading written apart, a field's, an item's, a cast's to ANY, reads what its reading reads (h15b); of a path
+            // holding an element, which no row measured of a field, the element reading.
+            Analyse.DefineRule("a reading written apart reads what its reading reads where its path holds no element", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k) = r.Vars<string, string>("f", "k");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), NoElement.Of(p));
+                r.Then(Reads.Of(v, p, k));
+            });
+            Analyse.DefineRule("a reading written apart of a path holding an element reads the element reading", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k) = r.Vars<string, string>("f", "k");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
             Analyse.DefineRule("a returning reads its path as its type", r =>
             {
@@ -241,11 +294,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(Query.Of(p)));
                 r.Then(Reads.Of(v, p, PredicateAtom.QueryReader));
             });
-            Analyse.DefineRule("a cast reads what it converts", r =>
+            // A cast is a reading where a row measured it, keyed by the reading it converts, its column apart (h15b): what a
+            // column's cast reads is the column's own rows. One no row names reads nothing, so no atom rests on it: over an ANY
+            // Calcite wraps a long beyond an int, so CAST(4294967297 AS INTEGER) is 1, which no window of the number holds.
+            Analyse.DefineRule("a cast a row measured reads what it converts", r =>
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
-                var (t, k) = r.Vars<string, string>("t", "k");
-                r.When(v.Is(Cast.Of(t, w)), Reads.Of(w, p, k));
+                var (t, k, kc, row) = r.Vars<string, string, string, string>("t", "k", "kc", "row");
+                r.When(v.Is(Cast.Of(t, w)), Reads.Of(w, p, k), kc.Is(Compute.Of(k, PredicateAtom.Columnless)), Readings.MeasuredCast.Of(t, kc, row));
                 r.Then(Reads.Of(v, p, Compute.Of(t, k, PredicateAtom.CastReader)));
             });
 
@@ -315,6 +371,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(Query.Of(p)), TestReads.Of(PredicateAtom.QueryReader, k));
                 r.Then(TestRead.Of(v, p, k));
             });
+            // A field, an item chain, a cast to ANY: what the body reads over each is its form's own row (h15b), not the row of
+            // the reading it reads, which stands for the accessor the body takes apart.
+            Analyse.DefineRule("a test reads the path of a reading written apart as its form's row says the body reads it", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k, rd) = r.Vars<string, string, string>("f", "k", "rd");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, rd), TestReads.Of(f, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
             // A computed place's call, read where a graph reads one (S's computed places): every call's row says the body
             // raises over it (measured in process); the bridge's presence question about a place is such a test.
             Analyse.DefineRule("a test reads a call's place as every call's row says the body reads it", r =>
@@ -353,6 +418,45 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             DefineComparands();
             DefineNullComparison();
             DefineBoxes();
+        }
+
+        // Whether a path holds an element, read off its term, which a raw value's reading of it reads (h15b): the document and a
+        // property of a path holding none hold none, and an index, every element and a property of a path holding one, one.
+        void DefineElements()
+        {
+            Analyse.DefineRule("the document holds no element", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(p.Is(Paths.Root.Of()));
+                r.Then(NoElement.Of(p));
+            });
+            Analyse.DefineRule("a property of a path holding no element holds none", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var n = r.Var<string>("n");
+                r.When(p.Is(Paths.Prop.Of(q, n)), NoElement.Of(q));
+                r.Then(NoElement.Of(p));
+            });
+            Analyse.DefineRule("an index holds an element", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var i = r.Var<long>("i");
+                r.When(p.Is(Paths.Index.Of(q, i)));
+                r.Then(HasElement.Of(p));
+            });
+            Analyse.DefineRule("every element holds one", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                r.When(p.Is(Paths.Each.Of(q)));
+                r.Then(HasElement.Of(p));
+            });
+            Analyse.DefineRule("a property of a path holding an element holds one", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var n = r.Var<string>("n");
+                r.When(p.Is(Paths.Prop.Of(q, n)), HasElement.Of(q));
+                r.Then(HasElement.Of(p));
+            });
         }
 
         // What a number Calcite wrote cast denotes, which the loader reads as the casts' terms, and the atom of a comparison

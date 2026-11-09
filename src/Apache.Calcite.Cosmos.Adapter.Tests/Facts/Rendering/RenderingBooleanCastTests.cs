@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var read = Loading.Read(Flag);
             read.Should().Be(new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Cast("BOOLEAN", new SqlValue.Text(FlagPath)), SqlValue.Of(true)));
             RenderingFamily.ReaderOf(((SqlPredicate.Compare)read).Left).Should().Be(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader));
-            ReaderEdgesTable.Rows.Should().ContainKey(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader));
+            Measured.Edges.Should().ContainKey(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader));
             PredicateAtom.Compare(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), PredicateAtom.Equal, Of(true)).RestsOn(ProbeRows.ReaderRows).Should().Contain("Calcite.CastToBooleanParses");
         }
 

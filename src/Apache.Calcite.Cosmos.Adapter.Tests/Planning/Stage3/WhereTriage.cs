@@ -154,8 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
         /// <summary>
         /// Why an affix S reads stays Unproven, by its pattern and reading: a <c>_</c>, which each target's row measured
-        /// matching a line terminator where Calcite's matches none (run 2), declined; under <c>Emulator</c> runs between and
-        /// around <c>%</c>, a <c>LIKE</c> the emulator's matcher reads over a stored escape, owed; under <c>Production</c> one
+        /// matching a line terminator where Calcite's matches none (run 2), declined; under <c>Production</c> one
         /// run between two <c>%</c>, which Azure reads only to a string's first U+0000; a pattern a number's rendering may
         /// match, which the service reads as no string; a raw value cast to text that names no column (an accessor, an item
         /// chain), whose columns' union parts what a negation keeps.
@@ -169,8 +168,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             var canonical = Canonical(pattern);
             if (pattern.Contains('_'))
                 return (Declined, RunTwo);
-            if (emulator && canonical is not null && AffixPattern.Runs(canonical) is not ([_] or ["", ""] or [_, ""] or ["", _] or ["", _, ""]))
-                return (Closable, "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed");
             if (emulator == false && canonical is not null && AffixPattern.Runs(canonical) is ["", { Length: > 0 }, ""])
                 return (Closable, "one run between two %: Azure's CONTAINS reads a string only to its first U+0000, so S answers either over one that may hold it (sound refusal)");
             if (pattern.All(c => c == '%' || Renderings.MayBeNumberUnit(c)))

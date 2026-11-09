@@ -2847,7 +2847,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// bike, or a category that is null or absent, beside a price that is a number above 50 or absent. So a document
         /// with no price, or no bike, passes. Since the switch (h15) the price is the guarded pair's, where it was its
         /// absence alone, and the category's guard is written once, where the translator's guard was written around it
-        /// again: tighter.
+        /// again: tighter. Since h15b the category's null test is written over its accessor re-typed <c>ANY</c>, read back
+        /// first (a respelling).
         /// </para>
         /// </remarks>
         [Fact]
@@ -2856,7 +2857,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE (NOT (((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) "
+            Render(FindCosmos(best)).Should().EndWith("WHERE (NOT ((IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category)) "
                 + "AND ((IS_NUMBER(c.price) AND (c.price > @p1)) OR NOT IS_DEFINED(c.price))))", "a document with no price passes the negated conjunction's weakening");
         }
 
@@ -2991,7 +2992,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// An array's element is a path S reads as any other, and its comparison is weakened as any path's is.
+        /// An array's element is a path S reads as any other, and its ordering is weakened as any path's is, but its
+        /// weakening's type tests read the element's raw value, which no row measured, so the filter beneath declines them.
         /// </summary>
         /// <remarks>
         /// <c>$.tags[0]</c> has no document path, and was read as a value its type alone knew: a string, which R1
@@ -3001,19 +3003,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// emulator and on Azure. The IR read an element as one opaque term until the switch (h15), which reads its path
         /// as the loader has since h07 (<c>CosmosDocumentPaths</c>), so S weakens the comparison as any path's: the
         /// string's comparison beside its type test, and past the literal a boolean, which renders there, rechecked above.
-        /// The filter beneath reads the test over an element as opaque, the translator's, until h15b's element guards
-        /// (TODO.md). RU, never rows.
+        /// The filter beneath read the test over an element as opaque, the translator's, until h15b's element guards, and
+        /// since h15b reads it as the element reading, which no row measured: <c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>
+        /// measured the text, a <c>RETURNING</c> and <c>JSON_QUERY</c> of an element as of a path holding it, not its raw
+        /// value nor a test of it. So the filter beneath declines the weakening's type tests and nothing is pushed, the
+        /// ordering Calcite's alone. RU, never rows; a row measuring the raw value of an element and a test of it gives the
+        /// weakening back (TODO.md).
         /// </remarks>
         [Theory]
-        [InlineData("$.tags[0]", "<", "WHERE (IS_DEFINED(c.tags[0]) AND ((NOT IS_STRING(c.tags[0])) OR (c.tags[0] < @p0)))")]
-        [InlineData("$.tags[0]", ">=", "WHERE (((c.tags[0] >= @p0) OR IS_BOOL(c.tags[0])) AND IS_DEFINED(c.tags[0]) AND ((NOT IS_STRING(c.tags[0])) OR (c.tags[0] >= @p1)))")]
-        [InlineData("$.a[0]", "<", "WHERE (IS_DEFINED(c.a[0]) AND ((NOT IS_STRING(c.a[0])) OR (c.a[0] < @p0)))")]
-        [InlineData("$.a.b[0]", "<", "WHERE (IS_DEFINED(c.a.b[0]) AND ((NOT IS_STRING(c.a.b[0])) OR (c.a.b[0] < @p0)))")]
-        public void AnElementsComparisonIsWeakenedAsAPathsIs(string path, string op, string where)
+        [InlineData("$.tags[0]", "<")]
+        [InlineData("$.tags[0]", ">=")]
+        [InlineData("$.a[0]", "<")]
+        [InlineData("$.a.b[0]", "<")]
+        public void AnElementsOrderingSendsNoTestOfItsUnmeasuredRawValue(string path, string op)
         {
             var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '{path}') {op} 'm'");
 
-            Render(FindCosmos(best)).Should().EndWith(where);
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c");
             Plan(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's to make: " + Plan(best));
         }
 
@@ -3579,20 +3585,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the path is missing — but its Rex operator belongs to the standard table rather than to the
         /// Cosmos family, so checking only the latter let it through. A branch containing one can be
         /// true with the path absent, and weakening it to <c>IS_DEFINED</c> would have discarded
-        /// exactly those rows. S keeps the null test as the branch's own exact form, true where the path is absent. Since
-        /// the switch (h15) that weakening, <c>(c.id = @p0) OR ((NOT IS_DEFINED(c.category) OR IS_NULL(c.category)) AND
-        /// IS_DEFINED(c._etag))</c>, tests two declared fields, which Calcite's in-process body raises over, so the Rex
-        /// builder writes none of it (<c>RenderingRexGrammar.Raising</c>) and nothing is pushed, RU, never rows; h15b
-        /// writes such a test over the field's accessor re-typed <c>ANY</c> and gives it back (TODO.md).
+        /// exactly those rows. S keeps the null test as the branch's own exact form, true where the path is absent. At the
+        /// switch (h15) that weakening tested two declared fields, which Calcite's in-process body raises over, so the Rex
+        /// builder wrote none of it and nothing was pushed; since h15b it writes each test over the path's accessor re-typed
+        /// <c>ANY</c> over the document column, <c>JSON_VALUE($0, '$.category')</c>, which the body takes apart, and the
+        /// weakening is pushed again.
         /// </remarks>
         [Fact]
-        public void ABranchUsingSqlNullTestsOverDeclaredFieldsPushesNothing()
+        public void ABranchUsingSqlNullTestsIsWeakenedToItsNullTest()
         {
             var best = PlanToAsync(
                 "SELECT * FROM products AS c " +
                 "WHERE c.\"id\" = 'x' OR (c.\"$.category\" IS NULL AND INITCAP(c.\"_etag\") = 'X')");
 
-            Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c");
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.id = @p0) OR (IS_DEFINED(c._etag) AND (IS_NULL(c.category) OR NOT IS_DEFINED(c.category))))");
             Plan(best).Should().Contain("ClrCursorFilter", "the disjunction is Calcite's to decide: " + Plan(best));
         }
 
@@ -3622,18 +3628,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The translator then pushed no presence for them; S weakens each negated branch to the negation of what makes
         /// its compound true — a defined price or name for the first; for the second, a document whose id is not above
         /// <c>'SPRINT'</c> or whose name is defined — so a document lacking the other branches' paths still passes. Since
-        /// the switch (h15) the second's other branch, which needs a defined price, sends its element's comparison beside
+        /// the switch (h15) the second's other branch, which needs a defined price, sent its element's comparison beside
         /// it, S reading an element's path (tighter); the first is written flat, each guard once, and the third's category
-        /// guard once, where it was written twice (respellings).
+        /// guard once, where it was written twice (respellings). Since h15b the element's tests read its raw value, which no
+        /// row measured, so the filter beneath declines them and the second's branch sends its price alone (looser, RU);
+        /// and the id's own null test, which the service's id never meets, and the third's guard order are respelled.
         /// </para>
         /// </remarks>
         [Theory]
         [InlineData("NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))",
             "WHERE ((IS_PRIMITIVE(c.tags) AND IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND (c.tags != @p0) AND (c.tags != @p1) AND (NOT (c.metadata.sku != @p2))) OR (NOT (NOT IS_DEFINED(c.name) AND NOT IS_DEFINED(c.price))))")]
         [InlineData("NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))",
-            "WHERE ((IS_DEFINED(c.price) AND IS_DEFINED(c.tags[0]) AND (NOT IS_NULL(c.tags[0])) AND IS_PRIMITIVE(c.tags[0]) AND (IS_DEFINED(c.tags[0]) AND NOT IS_NULL(c.tags[0]) AND (c.tags[0] != @p0))) OR (NOT (((c.id > @p1) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id)) AND (NOT IS_DEFINED(c.name)))))")]
+            "WHERE (IS_DEFINED(c.price) OR (NOT ((c.id > @p0) AND NOT IS_DEFINED(c.name))))")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')",
-            "WHERE ((c.price > @p0) OR (NOT (((c.category = @p1) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) AND NOT IS_DEFINED(c.name))))")]
+            "WHERE ((c.price > @p0) OR (NOT (NOT IS_DEFINED(c.name) AND (IS_NULL(c.category) OR (c.category = @p1) OR NOT IS_DEFINED(c.category)))))")]
         public void ADisjunctionWithANegatedCompoundBranchIsWeakenedBranchByBranch(string predicate, string where)
         {
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
@@ -3731,19 +3739,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// exact form where the translator kept its presence. Since the switch (h15) the loader reads a compound compared
         /// with <c>TRUE</c> or <c>FALSE</c>, or unequal to <c>FALSE</c>, as Calcite defines it, the compound or its
         /// negation, and S weakens it so. One unequal to <c>TRUE</c> it reads no reading of, so S proves nothing of the
-        /// fifth, where the translator pushed both paths: what is left of O7's listed loss 3. RU, never rows.
+        /// fifth, where the translator pushed both paths: what is left of O7's listed loss 3. RU, never rows. Since h15b
+        /// the category's null test is written over its accessor re-typed <c>ANY</c>, read back first (a respelling).
         /// </para>
         /// </remarks>
         [Theory]
         [InlineData("NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')",
-            "WHERE (NOT ((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
+            "WHERE (NOT (IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
         [InlineData("NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", "WHERE ((c.category = @p0) AND IS_DEFINED(c.metadata.sku))")]
         [InlineData("(c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", "WHERE ((c.category = @p0) AND IS_DEFINED(c.metadata.sku))")]
         [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = FALSE",
-            "WHERE (NOT ((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
+            "WHERE (NOT (IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
         [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> TRUE", null)]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)",
-            "WHERE ((c.price > @p0) OR (NOT ((c.category = @p1) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku))))")]
+            "WHERE ((c.price > @p0) OR (NOT (IS_NULL(c.category) OR (c.category = @p1) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku))))")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", "WHERE (IS_DEFINED(c.name) OR (c.price > @p0))")]
         public void ACompoundIsReadForItsTruthOrItsFalsity(string predicate, string? where)
         {

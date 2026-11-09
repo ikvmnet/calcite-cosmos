@@ -26,8 +26,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <c>OR</c>, written <c>CASE WHEN IS_NUMBER(raw) THEN … ELSE FALSE|TRUE END</c>, which raises on no string; over
     /// <c>RETURNING DECIMAL</c>, typed <c>DECIMAL(19, 0)</c>, a whole number alone (<c>Calcite.ReturningDecimalParsesTheRendering</c>).
     /// Each member is written through the reader it was judged over (<see cref="ServiceForm.Reader"/>). The type tests the
-    /// translator writes, each with an in-process body (<c>CosmosTypeTestImplementor</c>), over any reading but one the
-    /// body raises over (<see cref="Value.Raising"/>), no ordering over a reading that has no order (<see cref="Value.Unordered"/>),
+    /// translator writes, each with an in-process body (<c>CosmosTypeTestImplementor</c>), over any reading of a path, the
+    /// builder writing it over the path's accessor the body takes apart, the document column's where the conjunct reads the
+    /// path through a field alone (h15b), and over no call (<see cref="Value.Raising"/>); no ordering over a reading that has no order (<see cref="Value.Unordered"/>),
     /// and the ternary as a <c>CASE</c>. The builder,
     /// <c>RenderingRexBuilder</c>, writes every row, held by <c>RenderingRexBuilderTests</c> over every shape S can hold.
     /// </para>
@@ -61,12 +62,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Append(PredicateAtom.TypedReader("DECIMAL") + "/" + JsonValues.IntegerType));
 
         /// <summary>
-        /// The readings a type test's in-process body raises over whatever they hold, keyed as the test-reads row keys them
-        /// (<c>Calcite.TypeTestsAreTheirBodies</c>, which <c>RenderingTemplatesTests</c> holds these to): a raw value in each
-        /// column, a field's, and a call. No test is written over one (h15): where the filter beneath declined it, the body
-        /// would fail every row in process, which no weakening may.
+        /// The readings no test is written over: those a type test's in-process body raises over whatever they hold, keyed as
+        /// the test-reads row keys them (<c>Calcite.TypeTestsAreTheirBodies</c>, which <c>RenderingTemplatesTests</c> holds
+        /// these to), that have no accessor the body takes apart, a call's (h15): where the filter beneath declined it, the
+        /// body would fail every row in process, which no weakening may. A raw value in a column, a field's, has one, the
+        /// path's accessor over the document column re-typed <c>ANY</c>, which the builder writes a test over (h15b), and
+        /// pushes none of where the input holds no document column.
         /// </summary>
-        public static ValueSet<string> Raising { get; } = ValueSet.From(PredicateAtom.Columns.Select(PredicateAtom.RawIn).Append(PredicateAtom.CallReaders));
+        public static ValueSet<string> Raising { get; } = ValueSet.Of(PredicateAtom.CallReaders);
 
         /// <summary>
         /// The readings no ordering is written over: a raw value in a <c>VARIANT</c> column, which has no order, so that an
@@ -120,8 +123,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             /// <summary>
             /// Whether the builder writes a form over a reader, each member over its own where it carries one: every
             /// comparison, membership and test in it, each guarded pair, and nothing else but constants, connectives and
-            /// ternaries. A test is written over no reading of a raw column, whatever casts it (a declared field's), nor a
-            /// call: the body raises over them. No ordering is written over a reading that has no order.
+            /// ternaries. A test is written over no call, which the body raises over and which has no accessor it takes apart.
+            /// No ordering is written over a reading that has no order.
             /// </summary>
             public bool Writes(ServiceForm form, string reader) => Writes(form, reader, Unguarded);
 

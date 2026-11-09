@@ -53,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             const decimal c = 9007199254740993m;
             var atom = PredicateAtom.Compare(PredicateAtom.TypedReader("BIGINT"), PredicateAtom.Equal, Of(c));
             var cells = PathCell.Split(P, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands,
-                CutPoints.Of(atom, ServiceForm.BareOf(P), ReaderEdgesTable.Rows[atom.Reader], ProbeRows.ReaderRows)).Cells;
+                CutPoints.Of(atom, ServiceForm.BareOf(P), ProbeRows.Measured.Edges[atom.Reader], ProbeRows.ReaderRows)).Cells;
 
             var d = DoubleBound.Of(c);
             cells.Should().ContainSingle(cell => cell.Contains(Of(c - 2))).Which.Should().Match<PathCell.Numbers>(n => n.DoubleHigh == System.Math.BitDecrement(d));
@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var kind in new[] { IntegerType, FractionType })
             {
                 var cells = await System.Threading.Tasks.Task.Run(() => PathCell.Split(P, PathValues.OfKinds(ValueSet.Of(kind)), AllBands,
-                    CutPoints.Of(atom, ServiceForm.CompareOf(CosmosServiceTest.Greater, P, c), ReaderEdgesTable.Rows[atom.Reader], ProbeRows.ReaderRows)).Cells,
+                    CutPoints.Of(atom, ServiceForm.CompareOf(CosmosServiceTest.Greater, P, c), ProbeRows.Measured.Edges[atom.Reader], ProbeRows.ReaderRows)).Cells,
                     TestContext.Current.CancellationToken).WaitAsync(System.TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
                 cells.Should().NotBeEmpty().And.OnlyContain(cell => cell.Contains(cell.Witness()), $"the {kind}s cut at {literal} are found");
             }

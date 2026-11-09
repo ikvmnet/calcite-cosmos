@@ -784,7 +784,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 File.WriteAllText(Path.Combine(output, $"coverage-{id}.tsv"), Coverage(pushes.Where(p => p.Row == id)));
 
             TestContext.Current.TestOutputHelper?.WriteLine(string.Join("\n", timings));
-            pushes.Should().Contain(p => p.Source == "a" && p.Row == "type-tests", "the digests' weakenings hand the translator type tests");
+            pushes.Should().Contain(p => p.Source == "a" && p.Row == "A", "the digests' statements are read");
+            pushes.Should().NotContain(p => p.Source == "a" && p.Row == "type-tests",
+                "since h15b no weakening hands the translator a type test: a field's is S's, over the accessor re-typed ANY, and an element's the element reading's, which the filter beneath declines");
         }
 
         /// <summary>Whether a push came from a translator unit test, which asks the translator alone: real, counted apart (u).</summary>

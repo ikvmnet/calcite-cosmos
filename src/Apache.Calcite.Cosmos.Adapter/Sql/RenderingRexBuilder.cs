@@ -27,8 +27,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <c>CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE END</c> in an <c>AND</c> beside <c>IS_NUMBER(p)</c> and
     /// <c>… ELSE TRUE END</c> in an <c>OR</c> beside <c>NOT IS_NUMBER(p)</c>, the guard then left to the <c>CASE</c>, so
     /// that Calcite parses no string and the Rex means the form on an absent path too; a type test as its
-    /// <see cref="CosmosOperators"/> call over the path's accessor re-typed <c>ANY</c> (<see cref="Accessor.Tested"/>), and
-    /// over a field, a cast, an item or a call, which its body raises over, not at all; a constant, <c>NOT</c>, <c>AND</c> and <c>OR</c> as Calcite's,
+    /// <see cref="CosmosOperators"/> call over the path's accessor re-typed <c>ANY</c> (<see cref="Accessor.Tested"/>), the
+    /// document column's where the conjunct reads the path through a field, an item or a cast, which its body raises over
+    /// (h15b), and where the input holds no document column, or the place is a call's, not at all; a constant, <c>NOT</c>, <c>AND</c> and <c>OR</c> as Calcite's,
     /// in the form's order, and the ternary as a <c>CASE</c>; an <c>IN</c> as its points' equalities, the membership the
     /// loader reads back. No carrier operator: what reaches the service is the form S proves of the filter beneath.
     /// </para>
@@ -53,14 +54,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
 
             /// <summary>
-            /// The node a type test, and a guarded pair's <c>IS_NUMBER</c>, is written over: the path's accessor re-typed
-            /// <c>ANY</c>, or one typed as a number or a boolean, each a <c>JSON_VALUE</c> or <c>JSON_QUERY</c> the in-process
-            /// body takes apart into the document and the path; none where the conjunct reads the path only through a field,
-            /// a cast, an item or a call, over which the body raises whatever the value holds (<c>Calcite.TypeTestsAreTheirBodies</c>).
-            /// A weakening holding such a test is then not pushed (h15): the filter beneath would keep it in process where it
-            /// declined it, and fail every row.
+            /// The path's accessor re-typed <c>ANY</c> over the input's document column, <c>JSON_VALUE(DOC, path)</c>, which the
+            /// in-process body takes apart into the document and the path; <c>null</c> where the input holds no document
+            /// column, and for a call's place, which is no path (h15b).
             /// </summary>
-            public RexNode? Tested => TakenApart(Raw) ? Raw
+            public RexNode? Retyped { get; init; }
+
+            /// <summary>
+            /// The node a type test, and a guarded pair's <c>IS_NUMBER</c>, is written over: the path's accessor re-typed
+            /// <c>ANY</c> as the conjunct reads it, or the document column's (<see cref="Retyped"/>), or one typed as a number or
+            /// a boolean, each a <c>JSON_VALUE</c> or <c>JSON_QUERY</c> the in-process body takes apart into the document and
+            /// the path; never a field, a cast, an item or a call, over which the body raises whatever the value holds
+            /// (<c>Calcite.TypeTestsAreTheirBodies</c>), so that where the filter beneath declines a weakening, Calcite keeps it
+            /// in process failing no row. Where there is none, a weakening holding a test of the path is not pushed (h15b).
+            /// </summary>
+            public RexNode? Tested => TakenApart(Raw) ? Raw : TakenApart(Retyped) ? Retyped
                 : Readers.Where(r => RenderingRexGrammar.TypeTests.ContainsKey(r.Key)).OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value).FirstOrDefault(TakenApart);
 
             static bool TakenApart(RexNode? node) => node is RexCall call && call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY";
@@ -106,10 +114,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             static bool IsGuard(ServiceForm member, bool otherwise, ISet<string> cased) => (otherwise ? member.Kind == ServiceFormKind.Not ? member.Members[0] : null : member) is
                 { Kind: ServiceFormKind.Test, Test: CosmosServiceTest.IsNumber, Path: var p } && cased.Contains(p!);
 
-            // CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE|TRUE END, over the reader the member was judged over.
+            // CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE|TRUE END, over the reader the member was judged over: the guard
+            // over the raw value the conjunct holds, or the document column's (h15b), never a typed accessor's, which raises.
             RexNode? Case(ServiceForm member, bool otherwise)
             {
-                if (ComparisonOf(member.Test) is not { } comparison || Of(member.Path!) is not { Raw: { } raw } accessor || ReferenceEquals(accessor.Tested, raw) == false || member.Reader is not { } reader
+                if (ComparisonOf(member.Test) is not { } comparison || Of(member.Path!) is not { Tested: { } raw } accessor
+                    || (ReferenceEquals(raw, accessor.Raw) || ReferenceEquals(raw, accessor.Retyped)) == false || member.Reader is not { } reader
                     || RenderingRexGrammar.Written.IsGuarded(reader, member.Literal!) == false || accessor.Readers.GetValueOrDefault(reader) is not { } node)
                     return null;
 

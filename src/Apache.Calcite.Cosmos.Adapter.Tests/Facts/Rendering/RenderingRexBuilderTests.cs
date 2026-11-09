@@ -153,10 +153,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Whether a form holds a test, or a guarded pair, over a path the conjunct reads only through a field the grammar
-        /// cannot tell from an accessor — a field bound to the text reads as the text, a declared scalar as its
-        /// <c>RETURNING</c> — over which the builder writes no test (<see cref="RenderingRexBuilder.Accessor.Tested"/>): such
-        /// a weakening is not pushed until the loader reads a field apart (h15b, TODO.md).
+        /// Whether a form holds a test, or a guarded pair, over a path with no accessor the body takes apart: one the conjunct
+        /// reads only through a field, an item or a cast, where the input holds no document column to re-type the path's
+        /// accessor over (<see cref="RenderingRexBuilder.Accessor.Tested"/>, h15b). Such a weakening is not pushed.
         /// </summary>
         internal static bool TestsAField(ServiceForm form, IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> accessors) =>
             form.Subforms.Any(f => f.Kind == ServiceFormKind.Test && accessors.GetValueOrDefault(f.Path!) is { Tested: null })
@@ -369,8 +368,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// (h15), unless given: each template's form at each position S proposes it, and each S holds implied, presence among
         /// them, over a path that may hold anything, its characters any but U+0000 under <c>Emulator</c>, whose order parts
         /// from Calcite's there (<c>TODO.md</c>); an accessor's atoms in one bundle. A form outside the grammar builds nothing;
-        /// every other builds but a test over a field (<see cref="TestsAField"/>), counted apart; one S holds implied round
-        /// trips.
+        /// every other builds but a test of a path with no accessor re-typed <c>ANY</c> (<see cref="TestsAField"/>), counted
+        /// apart; one S holds implied round trips.
         /// </summary>
         internal static (int Shapes, int Exact, int Guarded, int Refused, int Implied, int Own, int Cased, List<string> Declined, List<string> Fields, List<string> Problems) Shapes(Func<Builder, Builder>? plant = null,
             bool first = false, RenderingTheory? theory = null)
@@ -452,8 +451,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Exhaustive over the grammar, not the corpus: every shape a template proposes, or S holds implied, for every atom
         /// the loader reads over every reader, literal class and position, and presence, under each asserted set; the
         /// guarded comparison's among them (spec h09), each <c>CASE</c> read back by the loader and proven by S. A test over
-        /// a declared raw column is outside the grammar (h15), and one over a field the grammar cannot tell from an accessor
-        /// builds nothing, reported.
+        /// a field, a raw column's among them, is written over the path's accessor re-typed <c>ANY</c> (h15b), and one of a
+        /// path with none builds nothing, reported.
         /// </summary>
         [Fact]
         public void EveryWritableShapeRoundTrips()
@@ -461,14 +460,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             GC.KeepAlive(ProbeRows.ProbeTheory);
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
             var (shapes, exact, guarded, refused, implied, own, cased, declined, fields, problems) = Shapes();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{shapes} shapes: {refused} outside the grammar, built as nothing; {fields.Count} holding a test over a field, built as "
-                + $"nothing; the rest written, {implied} of them S holds implied and round tripped: {exact} read back as themselves, {guarded} sent as S's form of what Calcite "
+            TestContext.Current.TestOutputHelper?.WriteLine($"{shapes} shapes: {refused} outside the grammar, built as nothing; {fields.Count} holding a test of a path with no "
+                + $"accessor re-typed ANY, built as nothing; the rest written, {implied} of them S holds implied and round tripped: {exact} read back as themselves, {guarded} sent as S's form of what Calcite "
                 + $"reads of them, {cased} with a CASE ({declined.Count} of them declined beneath); {own} comparisons the atom's own; "
                 + $"{System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:F1} s with S defined");
             foreach (var shape in declined)
                 TestContext.Current.TestOutputHelper?.WriteLine($"declined beneath: {shape}");
             foreach (var shape in fields.Take(20))
-                TestContext.Current.TestOutputHelper?.WriteLine($"a test over a field: {shape}");
+                TestContext.Current.TestOutputHelper?.WriteLine($"a test of a path with no accessor re-typed ANY: {shape}");
             foreach (var problem in problems)
                 TestContext.Current.TestOutputHelper?.WriteLine(problem);
 
@@ -490,7 +489,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Every weakening S gives a residual over the pull request's inputs, built over its conjunct's own accessors and
         /// held to the round trip under its set, at the import of the bundle it was read from, a string's characters as
         /// <see cref="Ordered"/> keeps them, and printed as the filter beneath prints it (line 13, h15). One holding a test
-        /// over a field the builder writes nothing of is counted apart: production does not push it.
+        /// of a path the builder writes nothing of is counted apart: production does not push it; and one read back over an
+        /// element's raw value, which S declines beneath (h15b).
         /// </summary>
         internal static (int Weakenings, int Exact, int Guarded, int Own, int Cased, List<string> Declined, List<string> Fields, List<string> Elements, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null, bool first = false)
         {
@@ -508,9 +508,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     continue;
                 }
 
-                // An element's raw value the loader reads no reading of (its element guards, h15b): the filter beneath reads the
-                // weakening's tests over it as opaque, which the translator writes, as it wrote every element test before.
-                if (w.Mine!.Paths.Any(p => CosmosEval.PathOf(p).HasElement) && built(w.Mine!) is { } over && loading.Read(over).Subterms.Any(t => t is SqlPredicate.Opaque))
+                // A weakening read back over an element's raw value, the element reading no row measured (h15b): S proves no form
+                // of it beneath, and the split rule drops what that filter declines, RU, never rows.
+                if (built(w.Mine!) is { } over && loading.Read(over) is var back && ReadsTheElementReading(back) && Sent(back, w.Set, w.Claim?.Imports, Ordered(w.Set)) is null)
                 {
                     elements.Add(shown);
                     continue;
@@ -549,6 +549,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             return (weakenings.Count, exact, guarded, own, cased, declined, fields, elements, problems);
         }
+
+        /// <summary>
+        /// Whether a predicate reads a value the shared vocabulary reads as the element reading (h15b): a raw value of a path
+        /// holding an element, however written, or a reading written apart of one.
+        /// </summary>
+        static bool ReadsTheElementReading(SqlPredicate read) => read.Subterms.SelectMany(term => term switch
+        {
+            SqlPredicate.Compare c => [c.Left, c.Right],
+            SqlPredicate.In i => [i.Value],
+            SqlPredicate.IsNull n => [n.Value],
+            SqlPredicate.IsDefined d => [d.Value],
+            SqlPredicate.TypeTest t => [t.Value],
+            SqlPredicate.Affix a => [a.Value],
+            _ => Array.Empty<SqlValue>(),
+        }).Any(v => v.PathRead is { HasElement: true } && (v is SqlValue.Raw || v.Form is not null));
 
         /// <summary>
         /// Source A for a conjunct holding an opaque term, as line 1c judges one (<see cref="RenderingSoundnessTests.NoOpaqueWeakeningHasAWitnessInProcess"/>):
@@ -593,14 +608,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (weakenings, exact, guarded, own, cased, declined, fields, elements, problems) = Pushed();
             TestContext.Current.TestOutputHelper?.WriteLine($"{weakenings} weakenings: {exact} printed and read back as themselves, {guarded} sent as S's form of what Calcite "
-                + $"reads of them, {cased} with a CASE ({declined.Count} of them declined beneath), {fields.Count} holding a test over a field, not pushed, {elements.Count} "
-                + $"testing an element, the translator's beneath; {own} comparisons the conjunct's own");
+                + $"reads of them, {cased} with a CASE ({declined.Count} of them declined beneath), {fields.Count} holding a test of a path with no accessor re-typed ANY, not pushed, "
+                + $"{elements.Count} read beneath over an element's raw value, which S declines; {own} comparisons the conjunct's own");
             foreach (var weakening in declined)
                 TestContext.Current.TestOutputHelper?.WriteLine($"declined beneath: {weakening}");
             foreach (var weakening in fields)
-                TestContext.Current.TestOutputHelper?.WriteLine($"a test over a field: {weakening}");
+                TestContext.Current.TestOutputHelper?.WriteLine($"a test of a path with no accessor re-typed ANY: {weakening}");
             foreach (var weakening in elements)
-                TestContext.Current.TestOutputHelper?.WriteLine($"testing an element: {weakening}");
+                TestContext.Current.TestOutputHelper?.WriteLine($"over an element's raw value: {weakening}");
             foreach (var problem in problems)
                 TestContext.Current.TestOutputHelper?.WriteLine(problem);
 

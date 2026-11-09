@@ -219,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
-                Metadata.CosmosStrictness.Operators);
+                Metadata.CosmosStrictness.Operators, ReadCasts(axioms));
 
         /// <summary>
         /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'
@@ -273,7 +273,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> ReadCalciteThrough(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from through in axiom.Through ?? [] select (through.Reader, through.Test, through.Operand)).Distinct()];
 
-        /// <summary>One row per cast a <c>Calcite</c> row measured, by its target and the reading cast, citing the row (F3), S's <c>measuredcast</c>.</summary>
+        /// <summary>
+        /// One row per cast a <c>Calcite</c> row measured, by its target and the reading cast, citing the row (F3): both graphs'
+        /// <c>measuredcast</c>, which the shared cast rule reads (h15b), and the cast keys of the edges table.
+        /// </summary>
         public static IReadOnlyList<(string Target, string Reader, string Row)> ReadCasts(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from cast in axiom.Casts ?? [] select (cast.Target, cast.Reader, axiom.Id)).Distinct()];
 
@@ -347,12 +350,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// The cells of a key some outcome answers for a target that no outcome covers for it: unmeasured there, so no
         /// row, and S reads the service as answering anything. Declared, so that a cell is owed on purpose and one
-        /// dropped from a vector is caught. The probe account has run every witness the emulator runs (D7); what is owed is
-        /// the emulator's matcher for LIKE, whose reading of a stored escape no statement has measured, so S's LIKE form
-        /// answers anything over a string there (h07, <c>TODO.md</c>).
+        /// dropped from a vector is caught. The probe account has run every witness the emulator runs (D7), and none is owed
+        /// since h15b read the emulator's <c>LIKE</c> by its affixes' matcher, each <c>_</c> one code point of the stored
+        /// spelling, as rows2 measured it (<c>Service.LikeMatchesByCodePoint</c>, <c>Service.LikeOneOverEachClass</c>).
         /// </summary>
-        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } =
-            [(MeasuredKey.Of(CosmosServiceTest.Like, CosmosValueClass.String, CosmosValueClass.None), RenderingTarget.Emulator)];
+        public static IReadOnlyList<(MeasuredKey Key, RenderingTarget Target)> Owed { get; } = [];
 
     }
 

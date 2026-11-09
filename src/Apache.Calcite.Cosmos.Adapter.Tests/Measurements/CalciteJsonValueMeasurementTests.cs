@@ -494,7 +494,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
         /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
-        /// at the limit (<c>CosmosRexShapes.TryNumericCastOperand</c>). A double's parse reads every rendering of a
+        /// at the limit. A double's parse reads every rendering of a
         /// number. A string spelling a number is parsed as one, and anything else raises.
         /// </para>
         /// <para>

@@ -121,10 +121,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// An affix or <c>LIKE</c>: undefined over anything but a string (Service.StringPredicatesOverNonStringsAreUndefined);
         /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), a LIKE's pattern read by
-        /// the target's own rows of its units (Service.LikeReadsBracketsAsARange too, G7), on the emulator an affix matching
-        /// the stored string against the argument as sent in that spelling (Service.EmulatorComparesTheSpellingItIsSent).
-        /// None where the rows leave a unit unread or a unit's reading was not measured over a code point it reads, and for
-        /// the emulator's LIKE where either holds an escape, unmeasured. On Azure a CONTAINS, and the LIKE of one run between
+        /// the target's own rows of its units (Service.LikeReadsBracketsAsARange too, G7), on the emulator an affix and a LIKE
+        /// matching the stored string against the argument as sent in that spelling, each _ one code point of it
+        /// (Service.EmulatorComparesTheSpellingItIsSent, Service.LikeOneOverEachClass). None where the rows leave a unit
+        /// unread or a unit's reading was not measured over a code point it reads. On Azure a CONTAINS, and the LIKE of one run between
         /// two % it answers as one, reads the string only up to its first U+0000, and an argument holding one matches every
         /// string (Service.NulEndsWhatReplaceAndContainsRead).
         /// </summary>
@@ -139,8 +139,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             static ServiceOutcomes? Of(bool? match) => match is bool m ? Truth(m) : null;
             return target switch
             {
-                RenderingTarget.Emulator when form.Test == CosmosServiceTest.Like =>
-                    EmulatorStoredText.Escapes(s.Value) || EmulatorStoredText.Escapes(pattern.Written) ? null : Of(pattern.Matches(s.Value)),
                 RenderingTarget.Emulator => Of(pattern.Respelled(EmulatorStoredText.Of).Matches(EmulatorStoredText.Of(s.Value))),
                 _ when AffixPattern.Runs(pattern.Spelled) is ["", { Length: > 0 }, ""] => pattern.Written.Contains('\0') ? ServiceOutcomes.True : Of(pattern.Matches(s.Value.Split('\0')[0])),
                 _ => Of(pattern.Matches(s.Value)),

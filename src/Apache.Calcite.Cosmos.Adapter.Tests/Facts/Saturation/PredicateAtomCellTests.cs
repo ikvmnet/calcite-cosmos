@@ -40,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static readonly string[] TextPlaces = [PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TypedReader("CHAR")];
 
         /// <summary>The grid's readers, the typed text places, and a raw value and its cast to text through each column (rawtyped).</summary>
-        static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, "cast:INTEGER:raw", "cast:DOUBLE:raw", "cast:BIGINT:text", .. TextPlaces,
+        static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, .. TextPlaces,
             .. from column in PredicateAtom.RawColumns from reader in new[] { PredicateAtom.RawReader, "cast:VARCHAR:raw" } select PredicateAtom.InColumn(reader, column)];
 
         /// <summary>Literals where a number's double, its parse and a type's limits part cells.</summary>
@@ -200,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// (<c>Renderings.DoubleOf</c>); and the raw value, whose box holds a number not written as a long as its double.
         /// </summary>
         static bool Rounded(PredicateAtom atom, PathCell cell) => (cell.Coarse is PredicateAtom.State.AnyNumber || cell.Coarse is PredicateAtom.State.Scalar { Value: var v } && IsNumber(v))
-            && PredicateAtom.Columnless(atom.Reader) is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:raw" or "cast:DOUBLE:text" or PredicateAtom.RawReader;
+            && PredicateAtom.Columnless(atom.Reader) is "typed:INTEGER" or Bigint or "typed:DOUBLE" or "typed:DECIMAL" or "cast:DOUBLE:text" or PredicateAtom.RawReader;
 
         /// <summary>
         /// The raw reading's raises (<c>Calcite.RawNullIsSqlNull</c>): an ordering places a string by its units and a number
@@ -298,7 +298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>Each import, with either set of classes, cut at nothing and where the reader's edges cut it (<see cref="CutPoints"/>).</summary>
         static IEnumerable<(CellPartition Coarse, CellPartition Fine)> Partitions(PredicateAtom atom)
         {
-            var literals = CutPoints.Of(atom, ServiceForm.BareOf(SqlValue.Spell(A)), ReaderEdgesTable.Rows.GetValueOrDefault(atom.Reader) ?? new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty), FactsReadings.Rows);
+            var literals = CutPoints.Of(atom, ServiceForm.BareOf(SqlValue.Spell(A)), CosmosRendering.Definition.Edges.GetValueOrDefault(atom.Reader) ?? new(ValueSet<CutKind>.Empty, ValueSet<string>.Empty), FactsReadings.Rows);
             foreach (var values in Imports)
                 foreach (var classes in new[] { AllBands, NoBand })
                     yield return (PathCell.Split(SqlValue.Spell(A), values, classes, ValueSet<CutPoint>.Empty), PathCell.Split(SqlValue.Spell(A), values, classes, literals));

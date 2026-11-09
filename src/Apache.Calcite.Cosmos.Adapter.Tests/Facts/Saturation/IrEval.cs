@@ -172,6 +172,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _ => F,
                     };
 
+                // The in-process body takes apart no reading written apart, a field's, an item's, a cast's to ANY, and raises
+                // over each, whatever it holds (Calcite.TypeTestsAreTheirBodies, h15b).
+                case SqlPredicate.IsDefined { Value.Form: not null } or SqlPredicate.TypeTest { Value.Form: not null }:
+                    return R;
+
                 // The service's test of the document, which the in-process body reads too: a null is defined.
                 case SqlPredicate.IsDefined d:
                     return At(document, d.Value.PathRead!.Value) is null ? F : T;

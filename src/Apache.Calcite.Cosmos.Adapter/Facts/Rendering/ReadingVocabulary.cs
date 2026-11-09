@@ -54,6 +54,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             BoxNull = graph.DefineRelation<string>("boxnull", analysis);
             TakesConstant = graph.DefineRelation<string, bool, string>("takesconstant", analysis);
             StrictOp = graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>(), options: analysis);
+            // Read beside the terms by the shared cast rule (h15b).
+            MeasuredCast = graph.DefineRelation<string, string, string>("measuredcast", analysis);
         }
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
@@ -124,6 +126,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Whether Calcite answers null for an operator, by its name in the IR, over a null operand (<c>strictop</c>).</summary>
         public Function<string, bool> StrictOp { get; }
 
+        /// <summary>
+        /// The casts a <c>Calcite</c> row measured, by target and the reading cast, its column apart, citing the row: a cast is
+        /// a reading where one names it (the shared cast rule, h15b), and a cast no row names reads nothing.
+        /// </summary>
+        public Relation<string, string, string> MeasuredCast { get; }
+
         /// <summary>The facts a root holds: the rows, the truth table and the comparisons the cell decides, and the table empty.</summary>
         public IEnumerable<Fact> Facts(CalciteRows rows, IEnumerable<(CosmosServiceTest Test, string Read, Truths Truths)> truths, IEnumerable<(CosmosServiceTest Test, string Read)> compares)
         {
@@ -167,6 +175,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var (name, strict) in rows.StrictOperators)
                 yield return StrictOp.Of(name).Is(strict);
+
+            foreach (var (target, reader, row) in rows.Casts)
+                yield return MeasuredCast.Of(target, reader, row);
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

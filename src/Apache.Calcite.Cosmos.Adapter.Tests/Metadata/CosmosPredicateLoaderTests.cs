@@ -59,6 +59,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         RexNode TextField => _rex.makeInputRef(Sql(SqlTypeName.VARCHAR), 2);
 
+        /// <summary>The text field's reading, written apart as a field (h15b).</summary>
+        static SqlValue LabelField => new SqlValue.Text(Label) { Form = PredicateAtom.FieldForm };
+
         static java.util.List Nodes(params RexNode[] nodes)
         {
             var list = new java.util.ArrayList();
@@ -212,9 +215,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Load(Call(SqlStdOperatorTable.IS_NOT_TRUE, cast)).Conjuncts.Should().ContainSingle()
                 .Which.Should().Be(new SqlPredicate.Case(Cmp(parsed, "=", Lit(true)), new SqlPredicate.Constant(false), new SqlPredicate.Constant(true)));
 
-            // A text field cast is the same parse; a raw value's cast no row measures.
-            Load(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), TextField, false)).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Cast("BOOLEAN", Text(Label)), "=", Lit(true)));
-            Load(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), Variant, false)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>();
+            // A text field cast is the same parse; a raw value's cast is read as the conversion it is, which no row measures,
+            // so the shared cast rule reads nothing of it (measuredcast, h15b).
+            Load(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), TextField, false)).Conjuncts.Should().ContainSingle().Which.Should().Be(Cmp(new SqlValue.Cast("BOOLEAN", LabelField), "=", Lit(true)));
+            Load(_rex.makeAbstractCast(Sql(SqlTypeName.BOOLEAN), Variant, false)).Conjuncts.Should().ContainSingle()
+                .Which.Should().Be(Cmp(new SqlValue.Cast("BOOLEAN", new SqlValue.Raw(Category) { Column = "VARIANT" }), "=", Lit(true)));
         }
 
         /// <summary>
@@ -258,10 +263,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// <c>RETURNING DECIMAL</c> addresses no path — <see cref="CosmosRexShapes.IsParsingJsonValue"/> — and is read
-        /// through the cast of the text it is, <see cref="CosmosRexShapes.TryNumericCastOperand(RexNode, RexBuilder)"/>:
-        /// the reading whose meaning is the parse (<c>typed:DECIMAL</c>), with the literal cast to its scale read as the
-        /// casts' terms (G8), what each denotes the shared vocabulary's: one its whole digits do not fit denotes nothing.
+        /// <c>RETURNING DECIMAL</c> addresses no path to the translator — <see cref="CosmosRexShapes.IsParsingJsonValue"/> —
+        /// and is read as the accessor's own reading of the path it parses the rendering of, <c>typed:DECIMAL</c>, with the
+        /// literal cast to its scale read as the casts' terms (G8), what each denotes the shared vocabulary's: one its whole
+        /// digits do not fit denotes nothing.
         /// </summary>
         [Fact]
         public void ADecimalReturningIsTheParseOfTheText()
@@ -317,7 +322,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AFieldReadAsTextIsTheRendering()
         {
-            One(Call(SqlStdOperatorTable.EQUALS, TextField, Str("x"))).Should().Be(Eq(Text(Label), "x"));
+            One(Call(SqlStdOperatorTable.EQUALS, TextField, Str("x"))).Should().Be(Eq(LabelField, "x"));
+        }
+
+        /// <summary>
+        /// A field read as text or as a scalar type, an item chain and a cast to <c>ANY</c> are each written apart as its
+        /// form (h15b), which a test's body cannot take apart; the accessor re-typed <c>ANY</c> is the raw value itself, and a
+        /// path holding an element is read as any other, the element reading being the shared vocabulary's.
+        /// </summary>
+        [Fact]
+        public void EachReadingAFieldAnItemOrACastHoldsIsWrittenApart()
+        {
+            var ts = new CosmosPredicateLoader.Loading([CosmosPath.Root("c"), CosmosPath.Root("c").Property("_ts")], [CosmosReading.Typed, CosmosReading.Typed], "c");
+            ts.Statement(CosmosFilterStatement.ConjunctsOf(Call(SqlStdOperatorTable.EQUALS, _rex.makeInputRef(Sql(SqlTypeName.BIGINT), 1), Num(3)))).Conjuncts.Should().ContainSingle()
+                .Which.Should().Be(Eq(new SqlValue.Typed(P("_ts"), "BIGINT") { Form = PredicateAtom.FieldForm }, 3L));
+
+            var raw = _rex.makeCall(Sql(SqlTypeName.ANY), SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str("$.label")));
+            One(Call(CosmosOperators.IsString, _rex.makeAbstractCast(Sql(SqlTypeName.ANY), JsonValue("label"), false))).Should()
+                .Be(new SqlPredicate.TypeTest("IS_STRING", new SqlValue.Raw(Label) { Form = PredicateAtom.AnyCastForm }));
+            One(Call(CosmosOperators.IsString, raw)).Should().Be(new SqlPredicate.TypeTest("IS_STRING", Raw(Label)));
+
+            var tags = _rex.makeCall(Sql(SqlTypeName.ANY), SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str("$.tags")));
+            var item = _rex.makeCall(SqlStdOperatorTable.ITEM, tags, _rex.makeExactLiteral(java.math.BigDecimal.ONE));
+            One(Call(CosmosOperators.IsString, item)).Should().Be(new SqlPredicate.TypeTest("IS_STRING", new SqlValue.Raw(P("tags").Element(0)) { Form = PredicateAtom.ItemForm }),
+                "ITEM counts from one");
+            One(Call(SqlStdOperatorTable.EQUALS, _rex.makeCall(Sql(SqlTypeName.ANY), SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str("$.tags[0]"))), Str("x")))
+                .Should().Be(Eq(Raw(P("tags").Element(0)), "x"));
         }
 
         [Fact]

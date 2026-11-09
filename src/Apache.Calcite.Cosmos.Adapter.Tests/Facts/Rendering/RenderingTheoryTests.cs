@@ -57,9 +57,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 ["analyse"] =
                 [
+                    "the document holds no element",
+                    "a property of a path holding no element holds none",
+                    "an index holds an element",
+                    "every element holds one",
+                    "a property of a path holding an element holds one",
                     "text reads its path",
                     "a raw value reads its path",
                     "a raw value in a column reads its path through the column",
+                    "a raw value of a path holding an element reads the element reading",
+                    "a raw value in a column of a path holding an element reads the element reading",
+                    "a reading written apart reads what its reading reads where its path holds no element",
+                    "a reading written apart of a path holding an element reads the element reading",
                     "a test reads a call's place as every call's row says the body reads it",
                     "a literal a cast to DOUBLE converts denotes the number it spells",
                     "a literal a cast to a DECIMAL converts denotes the number it spells",
@@ -69,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a comparison with what a cast denotes is an atom of what it reads where its reading takes it",
                     "a returning reads its path as its type",
                     "a JSON_QUERY reads its path as its own reading",
-                    "a cast reads what it converts",
+                    "a cast a row measured reads what it converts",
                     "a comparison with a literal is an atom of what it reads",
                     "a comparison with a parameter is an atom of what it reads",
                     "a membership is an atom of what it reads",
@@ -79,6 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a test reads the path of a raw value in a column as its column's row says the body reads it",
                     "a test reads a returning's path as its row says the body reads it",
                     "a test reads a JSON_QUERY's path as its row says the body reads it",
+                    "a test reads the path of a reading written apart as its form's row says the body reads it",
                     "a definedness test is an atom of the reading it is asked over, read as its body reads it",
                     "a type test is an atom of the reading it is asked over, read as its body reads it, TRUE of the kinds its row says",
                     "an affix test with a literal pattern is an atom of what it reads",
@@ -373,7 +383,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(191);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(201);
         }
 
         /// <summary>
@@ -627,18 +637,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             // A numeric cast of the raw value is held back until a Calcite row measures it, through a column or not.
             var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)
                 || PredicateAtom.Columnless(reader) == PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)).ToList();
-            ReaderEdgesTable.Rows.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
+            Measured.Edges.Keys.Should().BeEquivalentTo(covered).And.BeSubsetOf(built);
             covered.Should().OnlyContain(reader => ProbeTheory.Theory.Check(Fact.Exists(ProbeTheory.Edges.Of(reader))));
         }
 
         /// <summary>
-        /// The casts the edges table names are the casts a <c>Calcite</c> row measured (<c>measuredcast</c>), each once: the
-        /// table writes their keys by hand until h15 derives them from those rows (<c>TODO.md</c>, the loader's cast
-        /// targets), so a cast measured or dropped without the table following fails here rather than drifting.
+        /// The casts the edges table names are the casts a <c>Calcite</c> row measured (<c>measuredcast</c>), each once: since
+        /// h15b the table derives their keys from those rows (<c>ReaderEdgesTable.Of</c>), each with its target type's edges,
+        /// so a cast measured or dropped moves the table with it.
         /// </summary>
         [Fact]
         public void TheEdgesTablesCastsAreTheMeasuredCasts() =>
-            ReaderEdgesTable.Rows.Keys.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) && PredicateAtom.ColumnOf(reader) is null)
+            Measured.Edges.Keys.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) && PredicateAtom.ColumnOf(reader) is null)
                 .Should().BeEquivalentTo(CosmosAxiomRows.ReadCasts(CosmosAxioms.All).Select(c => PredicateAtom.CastReader(c.Target, c.Reader)).Distinct());
 
     }

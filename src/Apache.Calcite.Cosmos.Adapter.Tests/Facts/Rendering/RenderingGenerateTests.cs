@@ -190,6 +190,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The units rule and the regroup rule rest only on an agreement a best may rest on (<c>lifted</c>), each the lift
+        /// lifted asking <c>vacuous</c> false or one the best rules made of those, so neither makes a best of a vacuous one:
+        /// over the leaf above, on whose every cell Calcite raises, a junction of its presence with its connective's unit and
+        /// one holding its presence twice are offered and agree there vacuously, and neither is folded or regrouped into a
+        /// best. The best stratum reads the relation, not <c>vacuous</c>, which it would read moving (<c>RenderingOrderTests</c>).
+        /// </summary>
+        [Fact]
+        public void TheFoldAndTheRegroupLiftNoVacuousAgreement()
+        {
+            var root = Cmp(Cast("INTEGER", Text(NPath)), "=", Lit(5));
+            var word = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(StringType)), PathValues.OneOf(ValueSet.Of(Of("abc"))));
+            var defined = Is(Op.IsDefined, N);
+            foreach (var planted in new[] { ServiceForm.Paired(Op.And, defined, ServiceForm.ConstantOf(true)), ServiceForm.Paired(Op.And, defined, defined) })
+            {
+                var graph = RenderingGenerateMutationTests.Graph(d => d, theory => theory.Graph.Rulesets.Single(r => r.Name == "spell").DefineRule("planted: an atom is offered a junction", r =>
+                {
+                    var (e, pos, p) = r.Vars<Pred, RenderPosition, JPath>("e", "pos", "p");
+                    var a = r.Var<PredicateAtom>("a");
+                    r.When(theory.At.Of(e, pos), theory.Ir.Atom.Of(e, p, a));
+                    r.Then(theory.Candidate.Of(e, pos, planted));
+                }));
+
+                var generated = Generate([root], theory: graph.Current(), values: new Dictionary<JsonDocumentPath, PathValues> { [NPath] = word });
+                generated.Agreed.Should().Contain((planted, Verdict.Equal), "Calcite raises on every cell: " + planted);
+                generated.Best(root)!.Form.Should().BeNull("neither rule lifts a vacuous agreement: " + planted);
+                generated.Answers.Single().Kind.Should().Be(RenderingVerdictKind.Unproven);
+            }
+        }
+
+        /// <summary>
         /// The band filter: a string ordering whose literal holds a character of a parting band is never sent, though over
         /// strings of no band the gate proves it exact; one whose literal holds none is.
         /// </summary>
@@ -316,7 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void NoSentinelIsEverLifted()
         {
             SqlPredicate[] roots = [Ne(Text(LabelPath), "bikes"), Eq(Text(KindPath), "true"), In(Raw(CategoryPath), "a", "b"), IsNull(Text(NPath)), Cmp(Cast("DOUBLE", Text(PricePath)), ">", Lit(50))];
-            var shapes = RenderingTemplateRows.Fits.Select(f => f.Shape).Distinct().ToList();
+            var shapes = Measured.Fits.Select(f => f.Shape).Distinct().ToList();
             var everything = RenderingTheory.Define(Measured with { Fits = [.. from id in System.Enum.GetValues<TemplateId>() from shape in shapes select (id, shape)] });
             var generated = Generate([.. roots, .. roots.Select(Not)], theory: everything);
 

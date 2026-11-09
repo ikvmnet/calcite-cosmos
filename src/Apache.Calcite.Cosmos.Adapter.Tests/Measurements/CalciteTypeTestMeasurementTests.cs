@@ -54,13 +54,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             read.Where(r => r.Value == PredicateAtom.RawReader).Select(r => r.Key.Reader).Distinct().Should().HaveCount(7, "the text, five RETURNINGs and a JSON_QUERY read the raw value");
             rows.Where(t => PredicateAtom.ColumnOf(t.Reader) != null || t.Reader == PredicateAtom.CallReaders).Should()
                 .HaveCount(PredicateAtom.Columns.Count() + 1).And.OnlyContain(t => t.As == PredicateAtom.RaisesReader, "the body raises over a field of every column and a call, each a row of its own");
+
+            // The forms the loader writes apart (h15b), each keyed by a row of its own that says the body raises over it, as
+            // measured over each writing: a field read as text (a VARCHAR column) or as a scalar type, an item and a cast to ANY.
+            var forms = new Dictionary<string, string[]>
+            {
+                [PredicateAtom.FieldForm] = [PredicateAtom.RawIn("VARCHAR"), ScalarField],
+                [PredicateAtom.ItemForm] = ["item:VARIANT"],
+                [PredicateAtom.AnyCastForm] = [PredicateAtom.CastReader("ANY", PredicateAtom.TextReader)],
+            };
+            rows.Where(t => forms.ContainsKey(t.Reader)).Select(t => (t.Reader, t.As)).Should().BeEquivalentTo(forms.Keys.Select(f => (f, PredicateAtom.RaisesReader)));
+            forms.SelectMany(f => f.Value.SelectMany(reader => ReadTests.Select(t => (f.Key, reader, t.Test, Read: read[(reader, t.Test)]))))
+                .Where(m => m.Read != "raises").Select(m => $"{m.Test} over {m.reader}, written as {m.Key}, reads {m.Read}").Should().BeEmpty();
         }
+
+        /// <summary>A field of a scalar type, as a <c>BIGINT</c> column holds <c>_ts</c>.</summary>
+        const string ScalarField = "field:BIGINT";
 
         /// <summary>
         /// Each reading of a path a one-place test is asked over, in process: its SQL over a document whose <c>v</c> holds the
         /// witness, or over a column of the document's value, and what the loader writes it as. The text and a
-        /// <c>RETURNING</c> of each type and a <c>JSON_QUERY</c> are an accessor the body takes apart; a raw value in each column, an item of one, a
-        /// cast to <c>ANY</c> and a call are not.
+        /// <c>RETURNING</c> of each type and a <c>JSON_QUERY</c> are an accessor the body takes apart; a raw value in each column, a field of a
+        /// scalar type, an item of one, a cast to <c>ANY</c> and a call are not.
         /// </summary>
         static readonly (string Reader, string Sql, SqlTypeName? Column)[] Readings =
         [
@@ -76,6 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (PredicateAtom.RawIn("ANY"), "\"v\"", SqlTypeName.ANY),
             (PredicateAtom.RawIn("VARCHAR"), "\"v\"", SqlTypeName.VARCHAR),
             (PredicateAtom.RawIn("CHAR"), "\"v\"", SqlTypeName.CHAR),
+            (ScalarField, "\"v\"", SqlTypeName.BIGINT),
             ("item:VARIANT", "\"v\"['x']", SqlTypeName.VARIANT),
             (PredicateAtom.CallReaders, "UPPER(JSON_VALUE(\"d\", '$.v'))", null),
         ];

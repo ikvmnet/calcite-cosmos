@@ -28,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary><c>JSON_VALUE(DOC, path)</c> read as text: a scalar's rendering, and SQL null for anything else.</summary>
         public sealed record Text(JsonDocumentPath Path) : SqlValue
         {
-            public override string ToString() => "text(" + Spell(Path) + ")";
+            public override string ToString() => "text(" + Spell(Path) + Apart + ")";
         }
 
         /// <summary>The value the service holds at a path: a promoted column, an <c>ANY</c>-typed accessor, <c>id</c>.</summary>
@@ -41,14 +41,14 @@ namespace Apache.Calcite.Cosmos.Facts
             /// </summary>
             public string? Column { get; init; }
 
-            public override string ToString() => "raw(" + Spell(Path) + (Column is { } column ? " " + column : "") + ")";
+            public override string ToString() => "raw(" + Spell(Path) + (Column is { } column ? " " + column : "") + Apart + ")";
 
         }
 
         /// <summary><c>JSON_VALUE(DOC, path RETURNING type)</c>: the stored scalar, asserted to be of the type.</summary>
         public sealed record Typed(JsonDocumentPath Path, string Type) : SqlValue
         {
-            public override string ToString() => "typed(" + Spell(Path) + " " + Type + ")";
+            public override string ToString() => "typed(" + Spell(Path) + " " + Type + Apart + ")";
         }
 
         /// <summary>
@@ -182,6 +182,17 @@ namespace Apache.Calcite.Cosmos.Facts
             public override string ToString() => "CASE(" + string.Join(", ", Conditions.Select((c, i) => "when " + c + " then " + Arms[i]).Append("else " + Arms[^1])) + ")";
 
         }
+
+        /// <summary>
+        /// The form a reading is written as apart from the accessor it reads (h15b), which a one-place test's in-process body
+        /// cannot take apart: a field of the input, an item chain, a cast to <c>ANY</c> (<c>PredicateAtom.FieldForm</c>,
+        /// <c>ItemForm</c>, <c>AnyCastForm</c>), each its own row of what the body reads (<c>testreads</c>); <c>null</c> for
+        /// an accessor the body takes apart and for every value that is no reading. What it reads is its reading's.
+        /// </summary>
+        public string? Form { get; init; }
+
+        /// <summary>The form, spelled after the path where there is one.</summary>
+        private protected string Apart => Form is { } form ? " " + form : "";
 
         /// <summary>
         /// Returns the literal of a scalar.

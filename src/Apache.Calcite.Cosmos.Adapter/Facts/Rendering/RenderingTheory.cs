@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // What Calcite makes of each reading, the facts graph's vocabulary too (G7), and the rows of G8 the shared
             // vocabulary's rules read beside the terms.
             Calcite = new ReadingVocabulary(Graph, TestKinds, TestReads);
-            Ir = new PredicateVocabulary(Graph, Calcite);
+            Ir = new PredicateVocabulary(Graph, Paths, Calcite);
 
             Outcome = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("outcome");
             Cites = Graph.DefineFunction<MeasuredKey, RenderingTarget, ValueSet<string>>("cites", ValueLattice.Union<string>());
@@ -70,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             PairReads = Graph.DefineRelation<CosmosServiceTest, bool, CosmosServiceTest>("pairreads");
             CalciteReads = Calcite.Reads;
             CalciteBands = Calcite.Bands;
-            MeasuredCast = Graph.DefineRelation<string, string, string>("measuredcast");
+            MeasuredCast = Calcite.MeasuredCast;
             // What each reading's order holds and the kind it compares as (G3): rows at the frozen root, read beside the terms
             // by the rule that makes two readings compared an atom, so held as analyses, as takesconstant is.
             ReaderOrder = Graph.DefineFunction<string, ValueSet<string>>("readerorder", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
@@ -670,7 +670,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The character classes a reading's witnesses of a kind held, beyond which it is unmeasured, G7's.</summary>
         public Function<string, CosmosValueClass, ValueSet<string>> CalciteBands { get; }
 
-        /// <summary>The casts a <c>Calcite</c> row measured, by target and the reading cast, citing the row, G8's.</summary>
+        /// <summary>The casts a <c>Calcite</c> row measured, by target and the reading cast, citing the row: the readings vocabulary's, which the shared cast rule reads (h15b).</summary>
         public Relation<string, string, string> MeasuredCast { get; }
 
         /// <summary>
@@ -3099,9 +3099,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     w.Assume(PairReads.Of(test, swapped, reads));
 
                 w.Assume([.. Calcite.Facts(definition.Calcite(), definition.ReadTruths, definition.ReadCompares)]);
-
-                foreach (var (target, reader, row) in definition.Casts)
-                    w.Assume(MeasuredCast.Of(target, reader, row));
 
                 // Every reading of a kind holds what its rows say of its order, and nothing where none says (G3).
                 foreach (var (reader, kind) in definition.ReaderKinds)

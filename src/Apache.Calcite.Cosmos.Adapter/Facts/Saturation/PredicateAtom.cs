@@ -78,6 +78,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string RaisesReader = "raises";
 
         /// <summary>
+        /// The forms a reading is written as apart from its accessor (<c>SqlValue.Form</c>, h15b), each keyed by its own row of
+        /// what a one-place test's body reads over it (<c>testreads</c>): a field of the input, an item chain, a cast to <c>ANY</c>.
+        /// </summary>
+        public const string FieldForm = "field", ItemForm = "item", AnyCastForm = "cast:ANY";
+
+        /// <summary>
+        /// A raw value, or any reading of a field, of a path holding an element, which no row measured as of a path holding
+        /// it (h15b): it reads its rows alone, which the cells read (<c>calcitereads</c>), a row no run measured as anything
+        /// and a raise (<c>Calcite.ItemIsNullWhereNoElementIs</c>).
+        /// </summary>
+        public const string ElementReader = "element";
+
+        /// <summary>
         /// <c>JSON_QUERY(DOC, path)</c> with no clause (G8): what it answers of each class is its row's alone
         /// (<c>Calcite.JsonQueryAnswersStructureOnly</c>, <c>calcitereads</c>), and no evaluator of its own reads it.
         /// </summary>
@@ -770,8 +783,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         ("VARCHAR", _) when raw => new RawText(reader),
                         ("CHAR", _) when raw => new Text(structures: true),
                         ("VARCHAR" or "CHAR", TextReader) => new Text(structures: false),
-                        ("INTEGER" or "BIGINT" or "DOUBLE", _) when raw => new NumberCast(target, false),
-                        ("INTEGER" or "BIGINT" or "DOUBLE", TextReader) => new NumberCast(target, true),
+                        ("INTEGER" or "BIGINT" or "DOUBLE", TextReader) => new NumberCast(target),
                         ("BOOLEAN", TextReader) => new BooleanCast(ReadingRows.None),
                         _ => null,
                     };
@@ -1309,7 +1321,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => new Typed(type, ValueSet.Of(IntegerType)),
                     "FLOAT" or "REAL" or "DOUBLE" => new Typed(type, ValueSet.Of(IntegerType, FractionType)),
-                    "DECIMAL" => new NumberCast("DECIMAL", overText: true),
+                    "DECIMAL" => new NumberCast("DECIMAL"),
                     "BOOLEAN" => new Typed(type, ValueSet.Of(BooleanType)),
                     _ => null,
                 };
@@ -1537,18 +1549,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             /// <summary>
-            /// A cast to <c>INTEGER</c>, <c>BIGINT</c> or <c>DOUBLE</c> over a document value, which converts a stored
-            /// number and a stored string alike; and <c>RETURNING DECIMAL</c>, which is a parse of the rendering too.
+            /// A cast of the text accessor to <c>INTEGER</c>, <c>BIGINT</c> or <c>DOUBLE</c>, the casts a row measured
+            /// (<c>measuredcast</c>), which parse a stored number's rendering and a stored string alike; and
+            /// <c>RETURNING DECIMAL</c>, which is a parse of the rendering too.
             /// </summary>
             /// <remarks>
             /// <para>
-            /// <b>What it does to a number was measured</b> (<c>CosmosRexShapes.TryNumericCastOperand</c>):
-            /// <c>INTEGER</c> and <c>BIGINT</c> truncate toward zero and saturate at their limits, and <c>DOUBLE</c> is the
-            /// number. So a number's converted value is known, and a range of numbers converts to a range. Over an <c>ANY</c>
-            /// column Calcite wraps a long beyond an int instead, and over a <c>VARIANT</c> raises (<c>TODO.md</c>).
+            /// <b>No cast of a raw value is one</b> (h15b): no row measured one, and what it does to a number is no window's,
+            /// over an <c>ANY</c> column a long beyond an int wrapping and over a <c>VARIANT</c> a raise.
             /// </para>
             /// <para>
-            /// <b>Over the text accessor it is a parse of the rendering</b>, which is another measurement
+            /// <b>It is a parse of the rendering</b>, which is a measurement
             /// (<c>CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering</c>): Java's integer parse
             /// for <c>INTEGER</c> and <c>BIGINT</c>, which raises on <c>30.0</c>, <c>2.5</c>, <c>1.0E30</c> and anything
             /// beyond the type, where a cast of the number would have truncated or saturated. The theory spells a stored
@@ -1569,7 +1580,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 static readonly ValueSet<string> Converts = ValueSet.Of(StringType, IntegerType, FractionType, BooleanType);
 
-                readonly bool _overText;
                 readonly (decimal Min, decimal Max)? _saturates;
 
                 /// <summary>
@@ -1595,7 +1605,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 static readonly ValueSet<string> DecimalRows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.ReturningDecimalParsesTheRendering",
                     "Calcite.ColumnReadsWholeNumbersAsItsType");
 
-                public override ValueSet<string> Rests => _parsesDecimal ? DecimalRows : _overText ? TextRows : ValueSet<string>.Empty;
+                public override ValueSet<string> Rests => _parsesDecimal ? DecimalRows : TextRows;
 
                 public override Truths EqualOn(PathCell cell, string literal) => On(cell, PredicateAtom.Equal, literal);
 
@@ -1626,8 +1636,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// <summary>
                 /// A cell's answer where the conversion places it one way: a string or a boolean over text by the reading's own
                 /// parse; a number by its double under <c>DOUBLE</c>, by its rendering under <c>DECIMAL</c>, and as written under
-                /// an integer type's parse; elsewhere, and over a raw value, which no cell is cut for (<c>ReaderEdgesTable</c>),
-                /// the state's.
+                /// an integer type's parse; elsewhere the state's.
                 /// </summary>
                 Truths Converted(PathCell cell, string op, string literal)
                 {
@@ -1640,7 +1649,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     {
                         // A boolean renders as text that spells no number, a NaN compares as nothing Java says alike, and BIGINT reads
                         // text shaped as a timestamp as one.
-                        case PathCell.Point { Value: var v } when _overText && (IsString(v) || TypeOf(v) == BooleanType):
+                        case PathCell.Point { Value: var v } when IsString(v) || TypeOf(v) == BooleanType:
                         {
                             var text = IsString(v) ? StringOf(v) : Renderings.BooleanText(v);
                             if (_saturates?.Max == long.MaxValue && Renderings.ReadsAsTimestamp(text))
@@ -1664,9 +1673,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             return Rendered(op, c, n.DoubleSide(DoubleBound.Of(c)), n.Integral ? [n.Side(c)] : []);
 
                         // Java's integer parse of a rendering reads an integer written so, and raises on any other.
-                        case PathCell.Point { Value: var v } when _overText && _saturates is not null && IsNumber(v):
+                        case PathCell.Point { Value: var v } when _saturates is not null && IsNumber(v):
                             return TryNumberOf(v, out var x) && x == decimal.Truncate(x) && x >= least && x <= most ? By(x.CompareTo(c), R) : R;
-                        case PathCell.Numbers n when _overText:
+                        case PathCell.Numbers n:
                             return n.Integral == false || n.Side(most) == 1 || n.Side(least) == -1 ? R
                                 : n.Side(least - 1) == 1 && n.Side(most + 1) == -1 ? By(n.Side(c), R) : Compare(cell.Coarse, op, literal);
 
@@ -1682,13 +1691,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 static Truths Rendered(string op, decimal c, int? doubled, int?[] digits) =>
                     Placed(op, [doubled == 0 ? (Math.Abs(c) < 1L << 53 ? 0 : null) : doubled, .. digits], Truths.None);
 
-                public NumberCast(string target, bool overText)
+                public NumberCast(string target)
                 {
-                    _overText = overText;
                     _parsesDecimal = target == "DECIMAL";
                     _saturates = target is "INTEGER" or "BIGINT" ? IntegerLimits(target) : null;
                     _roundsFrom = target == "DOUBLE" ? Renderings.DoubleUnitFrom : null;
-                    _parse = overText && _saturates is not null ? R : Truths.None;
+                    _parse = _saturates is not null ? R : Truths.None;
                 }
 
                 public override Truths Equal(State state, string literal) => Compare(state, PredicateAtom.Equal, literal);
@@ -1708,7 +1716,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     return state switch
                     {
                         State.Absent => U,
-                        State.Null or State.Structure => _overText ? U : U | R,
+                        State.Null or State.Structure => U,
                         State.Scalar { Value: var v } when IsNumber(v) && rescaled => T | F,
                         State.Scalar { Value: var v } when IsNumber(v) => (Holds(op, v, literal) is bool holds ? (holds ? T : F) : T | F) | _parse,
                         State.AnyNumber when rescaled => T | F,
@@ -1721,7 +1729,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override Truths Null(State state) => state switch
                 {
                     State.Absent => T,
-                    State.Null or State.Structure => _overText ? T : T | R,
+                    State.Null or State.Structure => T,
                     State.Scalar { Value: var v } when IsNumber(v) => F | _parse,
                     State.AnyNumber => F | _parse,
                     State.Scalar or State.AnyString => F | R,
@@ -1731,7 +1739,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override Truths Parameter(State state) => state switch
                 {
                     State.Absent => U,
-                    State.Null or State.Structure => _overText ? U : U | R,
+                    State.Null or State.Structure => U,
                     State.Scalar { Value: var v } when IsNumber(v) => T | F | U | _parse,
                     State.AnyNumber => T | F | U | _parse,
                     _ => Truths.Any | R,

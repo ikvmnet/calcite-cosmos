@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// readings, which the roles and pair rules read (<see cref="RenderingDefinition.WholeReadings"/> and its neighbours,
         /// G2 and G3): the definition a test that plants rows starts from.
         /// </summary>
-        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows) with
+        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows, Measured.Casts) with
         {
             Parts = Measured.Parts,
             Moves = Measured.Moves,

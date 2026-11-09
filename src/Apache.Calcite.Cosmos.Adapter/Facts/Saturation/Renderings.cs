@@ -38,8 +38,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <remarks>
         /// A cast to <c>DOUBLE</c> rounds a stored integer and the literal it is compared with by up to half of that unit
         /// each, so from here two whole numbers a unit apart may compare equal — measured, <c>= 2^60</c> keeps a stored
-        /// 2^60 + 1 — and no window a unit wide holds around a bound. <c>CosmosRexShapes.TryNumericCastOperand</c>
-        /// reports it as where the conversion rounds from; this is the one place it is written.
+        /// 2^60 + 1 — and no window a unit wide holds around a bound. The cast's reading reads it as where the conversion
+        /// rounds from; this is the one place it is written.
         /// </remarks>
         public const long DoubleUnitFrom = 1L << 52;
 

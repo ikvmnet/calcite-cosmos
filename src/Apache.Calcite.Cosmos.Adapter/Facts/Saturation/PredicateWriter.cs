@@ -158,12 +158,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Builds a value's term: a reading of a path, a cast, a literal, a parameter, or a call over its operands' terms.
+        /// Builds a value's term: a reading of a path, a cast, a literal, a parameter, or a call over its operands' terms; a
+        /// reading written apart as a form (<see cref="SqlValue.Form"/>) within its form's term.
         /// </summary>
         public ConstructorTerm<Val> Value(SqlValue value)
         {
             var r = _ir;
-            return value switch
+            var term = value switch
             {
                 SqlValue.Text t => r.Text.Of(_path(t.Path)),
                 SqlValue.Raw { Column: { } column } w => r.RawIn.Of(_path(w.Path), column),
@@ -180,6 +181,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 SqlValue.Case c => r.Call.Of("CASE", Operands(c.Arms, 0)),
                 _ => throw new NotSupportedException(value.GetType().Name),
             };
+
+            return value.Form is { } form ? r.Apart.Of(form, term) : term;
         }
 
         ConstructorTerm<Args> Operands(IReadOnlyList<SqlValue> operands, int from) =>

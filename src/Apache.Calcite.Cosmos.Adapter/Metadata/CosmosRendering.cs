@@ -24,7 +24,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         // Every template is asked since the switch (h15), the guarded comparison's and the affixes' among them: S writes the
         // WHERE it proves, and site W's weakening, which the Rex builder writes as the CASE only S reads.
-        static readonly System.Lazy<RenderingDefinition> Defined = new(() => RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All)) with
+        static readonly System.Lazy<RenderingDefinition> Defined = new(() => Define(RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All), CosmosAxiomRows.ReadCasts(CosmosAxioms.All))));
+
+        /// <summary>S as the registry and the host name it, beside the measured definition, whose edges its readings' kinds read.</summary>
+        static RenderingDefinition Define(RenderingDefinition measured) => measured with
         {
             StrictOperators = CosmosStrictness.Operators,
             StrictReaders = CosmosStrictness.Readers,
@@ -55,15 +58,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CalciteThrough = CosmosAxiomRows.ReadCalciteThrough(CosmosAxioms.All),
             LikeUnits = CosmosAxiomRows.ReadLikeUnits(CosmosAxioms.All),
             ServiceLikeUnits = CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All),
-            Casts = CosmosAxiomRows.ReadCasts(CosmosAxioms.All),
             Comparands = CosmosAxiomRows.ReadComparands(CosmosAxioms.All),
             ReaderOrders = CosmosAxiomRows.ReadReaderOrders(CosmosAxioms.All),
-            ReaderKinds = ReadReaderKinds(),
+            ReaderKinds = ReadReaderKinds(measured.Edges.Keys),
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             TestReads = CosmosAxiomRows.ReadTestReads(CosmosAxioms.All),
             ExactReadings = CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All),
             Templates = RenderingTemplateRows.Templates,
-        });
+        };
 
         /// <summary>The function rows S reads: the axioms', and those declared beside them (<see cref="CosmosAxiomRows.Declared"/>, G6).</summary>
         static IEnumerable<CosmosFunctionOutcome> FunctionOutcomes => [.. CosmosAxiomRows.OutcomesOf(CosmosAxioms.All), .. CosmosAxiomRows.Declared];
@@ -86,13 +88,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 select (type.getName(), kind)];
 
         /// <summary>
-        /// The kind each reading S cuts compares as (<see cref="ReaderEdgesTable"/>, G3): the family Calcite's type system
+        /// The kind each reading S cuts compares as (<see cref="ReaderEdgesTable.Of"/>, G3): the family Calcite's type system
         /// names the type the reading is of — the accessor's text <c>VARCHAR</c> (<c>Calcite.JsonValueRendersScalarsAsText</c>),
         /// a typed reading's its type, a cast's its target. A raw value is of no type, and has none. Read off Calcite once, by
         /// the definition, a constant of its type system.
         /// </summary>
-        internal static IReadOnlyList<(string Reader, string Kind)> ReadReaderKinds() =>
-            [.. from reader in ReaderEdgesTable.Rows.Keys
+        internal static IReadOnlyList<(string Reader, string Kind)> ReadReaderKinds(IEnumerable<string> cut) =>
+            [.. from reader in cut
                 let type = TypeOf(PredicateAtom.Outermost(reader))
                 where type is not null
                 let family = SqlTypeName.get(type)?.getFamily()
