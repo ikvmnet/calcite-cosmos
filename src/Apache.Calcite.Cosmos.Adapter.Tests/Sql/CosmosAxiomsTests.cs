@@ -553,7 +553,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var lines = AzureWitnessRecords().Where(l => Kept(l.Answer) == false).ToDictionary(l => (l.Row, l.Expression, l.Witness), l => l.Answer);
             foreach (var (row, functions, keys) in measured)
             {
-                // A spelling the probe account has not run measures nothing there, and its keys claim nothing on Azure.
+                // A spelling the probe account has not run measures nothing there, nor one it left unanswered over a witness
+                // (CosmosFunctionComparison.Judge), and its keys claim nothing on Azure.
                 var ran = functions.Where(f => keys.SelectMany(k => k.Witnesses).All(w => lines.ContainsKey((row, CosmosFunctionComparison.Spelled(f), w ?? "absent")))).ToList();
                 var asked = CosmosFunctionComparison.Spellings(ran)
                     .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
@@ -588,9 +589,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// A function key another row's measurement ran names a row measured on every target the key claims, whose pinning
-        /// test carries its id, and claims no target its own row's run measured: <c>SUBSTRING</c>'s length of 0 on Azure is
-        /// <c>Service.SubstringOfANegativeStartIsEmpty</c>'s window from 0 of length 0, where the probe account's record holds
-        /// no length below 1.
+        /// test carries its id, and claims no target its own row's run measured: <c>REPEAT</c>'s count of 0 and its result past
+        /// 10,000 code points on Azure are <c>Service.ReplicateStopsAtTenThousandCodePoints</c>'s, which no spelling of the
+        /// string function row sends. <c>SUBSTRING</c>'s length of 0 was <c>Service.SubstringOfANegativeStartIsEmpty</c>'s
+        /// window from 0 of length 0 until run 3 sent the row's own.
         /// </summary>
         [Fact]
         public void AFunctionKeyAnotherRowRanNamesARowMeasuredWhereItClaims()
@@ -608,8 +610,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
         }
 
-        /// <summary>The lines of every probe-account record the witness probe wrote: the row, the expression, the witness and the answer.</summary>
+        /// <summary>
+        /// A line two runs of the probe account both answered is answered alike by both, so the records read as one: run 3
+        /// sent run 1's string functions and run 2's cased letters again beside what it added. A line a run left unanswered
+        /// measures nothing (<see cref="CosmosWitnessProbe.Unanswered"/>): run 3's <c>LENGTH(c.v)</c> over <c>"a0b1c"</c>,
+        /// which run 1 answered 5.
+        /// </summary>
+        [Fact]
+        public void EveryLineTwoProbeRunsSentIsAnsweredAlike()
+        {
+            var lines = AzureRecordLines().ToList();
+            lines.GroupBy(l => (l.Row, l.Expression, l.Witness)).Where(g => g.Select(l => l.Record).Distinct().Count() > 1).Should().NotBeEmpty();
+            lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered).GroupBy(l => (l.Row, l.Expression, l.Witness, Kept(l.Answer))).Where(g => g.Select(l => l.Answer).Distinct().Count() > 1)
+                .Select(g => $"{g.Key.Row}: {g.Key.Expression} over {g.Key.Witness}: " + string.Join(", ", g.Select(l => $"{l.Answer} in {l.Record}")))
+                .Should().BeEmpty("the probe account answers a line as it did before");
+        }
+
+        /// <summary>
+        /// The lines of every probe-account record the witness probe wrote, each once however many runs sent it: the row,
+        /// the expression, the witness and the answer. A line one run left unanswered and another answered is the answer
+        /// alone, and one no run answered is <see cref="CosmosWitnessProbe.Unanswered"/>, which measures nothing.
+        /// </summary>
         static IEnumerable<(string Row, string Expression, string Witness, string Answer)> AzureWitnessRecords()
+        {
+            var lines = AzureRecordLines().Select(l => (l.Row, l.Expression, l.Witness, l.Answer)).Distinct().ToList();
+            var answered = lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered).Select(l => (l.Row, l.Expression, l.Witness)).ToHashSet();
+            return lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered || answered.Contains((l.Row, l.Expression, l.Witness)) == false);
+        }
+
+        /// <summary>The lines of every probe-account record the witness probe wrote, by record.</summary>
+        static IEnumerable<(string Record, string Row, string Expression, string Witness, string Answer)> AzureRecordLines()
         {
             var assembly = typeof(CosmosAxiomsTests).Assembly;
             foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
@@ -623,7 +653,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 {
                     f.Should().HaveCount(5, name);
                     f[0].Should().Be("Azure", name);
-                    yield return (f[1], f[2], f[3], f[4]);
+                    yield return (name, f[1], f[2], f[3], f[4]);
                 }
             }
         }

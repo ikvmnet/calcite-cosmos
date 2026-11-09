@@ -65,7 +65,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Each key's answer from what the service projected, by spelling (<see cref="Spellings"/>) and witness, against
         /// Calcite in process under each spelling's libraries: a probe's, or a run record's lines read again. A witness keys
         /// its operand by each atom of its kind it is in (<see cref="FunctionValueClasses"/>), and a spelling's literals are
-        /// keyed as it names them (<see cref="CosmosFunctionSpelling.Fixed"/>), over the witnesses of a string of no band.
+        /// keyed as it names them (<see cref="CosmosFunctionSpelling.Fixed"/>), over the witnesses of a string of no band. A
+        /// spelling the service left unanswered over any witness (<see cref="CosmosWitnessProbe.Unanswered"/>) measures
+        /// nothing, as one never sent does.
         /// </summary>
         public static IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> Judge(string row, IReadOnlyList<CosmosFunctionSpelling> functions,
             IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys, string[][] asked)
@@ -80,6 +82,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var function in functions)
                 {
                     var service = asked[Array.IndexOf(spellings, Spelled(function))];
+                    if (service.Contains(CosmosWitnessProbe.Unanswered))
+                        continue;
+
                     if (connections.TryGetValue(function.Library, out var connection) == false)
                         connections[function.Library] = connection = MaterialisedTable.Open(function.Library);
 

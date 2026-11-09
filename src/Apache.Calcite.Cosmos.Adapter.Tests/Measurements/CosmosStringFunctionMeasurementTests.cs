@@ -939,18 +939,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "false/F false/F false/F false/F false/F false/F");
         }
 
-        // ── The edges run 1 left unmeasured: the emulator at rows2, Azure at probe run 2 ──────
+        // ── The edges run 1 left unmeasured: the emulator at rows2, Azure at probe runs 2 and 3 ──
 
         /// <summary>
-        /// Cased letters of each band beyond ASCII, keyed by it: a Deseret pair, and letters Unicode cased after Java 8's
-        /// tables, Osage, Adlam and Medefaidrin; fullwidth Latin, and ligatures Java's full mapping writes as two; Latin-1
-        /// whose capitals lie outside it, Greek capitals ending in a sigma, the final sigma and U+0390, the Turkish dotted
-        /// capital and dotless small i, ß and its capital, a title-case letter, and Cherokee and Georgian, cased later.
+        /// Cased letters of each band beyond ASCII, keyed by it: a capital and a small letter of each supplementary script
+        /// Unicode 16 cases, Deseret's of Unicode 3.1 and 4.0, which Java 8's tables hold, and those cased after them,
+        /// Warang Citi (7.0), Old Hungarian (8.0), Osage and Adlam (9.0), Medefaidrin (11.0), Vithkuqi (14.0) and Garay
+        /// (16.0); fullwidth Latin, and ligatures Java's full mapping writes as two; Latin-1 whose capitals lie outside it,
+        /// Greek capitals ending in a sigma, the final sigma and U+0390, the Turkish dotted capital and dotless small i, ß
+        /// and its capital, a title-case letter, and Cherokee and Georgian, cased later.
         /// </summary>
+        /// <remarks>Deseret's OI, Warang Citi, Old Hungarian, Vithkuqi and Garay were added for probe run 3 (2026-11-09).</remarks>
         internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] CasedLetters =
         [
             (CosmosValueClass.String, JsonCharacterBand.None, [Json("aBc")]),
-            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("\U00010428\U00010400"), Json("a\U00010400b"), Json("\U000104B0\U000104D8"), Json("\U0001E900\U0001E922"), Json("\U00016E40\U00016E60")]),
+            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("\U00010428\U00010400"), Json("a\U00010400b"), Json("\U000104B0\U000104D8"), Json("\U0001E900\U0001E922"), Json("\U00016E40\U00016E60"),
+                Json("\U00010426\U0001044E"), Json("\U000118A0\U000118C0"), Json("\U00010C80\U00010CC0"), Json("\U00010570\U00010597"), Json("\U00010D50\U00010D70")]),
             (CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("\uFF21\uFF41"), Json("\uFB00"), Json("\uFB13")]),
             (CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("a\u00C9b"), Json("\u00FF"), Json("\u00B5"), Json("\u039F\u0394\u039F\u03A3"), Json("\u03C2"), Json("\u0390"),
                 Json("\u0130"), Json("\u0131"), Json("\u00DF"), Json("\u1E9E"), Json("\u01C5"), Json("\u13A0"), Json("\uAB70"), Json("\u10D0"), Json("\u1C90")]),
@@ -1107,7 +1111,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// probe account has not run and so claim nothing on Azure
         /// (<c>CosmosAxiomsTests.EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures</c>). Keyed the same day: a
         /// concatenation's and a repetition's literal apart from a stored operand (<see cref="FunctionKey.Literal"/>), and
-        /// <c>POSITION</c>'s needle, each as the spellings run 1 holds send it, so that its lines judge them on Azure.
+        /// <c>POSITION</c>'s needle, each as the spellings run 1 holds send it, so that its lines judge them on Azure. On
+        /// 2026-11-09 the repetition of a U+FDD0 before a 0 is spelled in Calcite with two Unicode literals: Calcite refuses
+        /// to validate <c>||</c> between a Unicode literal and a plain one, whose character sets it does not compare, so
+        /// the spelling with a plain <c>'0'</c> measured that refusal, not <c>REPEAT</c>, and parted wherever the service
+        /// answered. A stored operand beside a Unicode literal is refused alike, so the two concatenations with <c>||</c>
+        /// part on every target, as Calcite never asks them.
         /// </remarks>
         internal static readonly CosmosFunctionSpelling[] Functions =
         [
@@ -1149,7 +1158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
             new(StringCalls.NullAsEmpty, null, "CONCAT(CONCAT(s, U&'\\FDD0'), '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
             new("REPEAT", null, "REPEAT(U&'\\0000', 2)", "REPLICATE(\"\\u0000\", 2)", Fixed: [Key("REPEAT", FunctionKey.Literal, CosmosValueClass.String, JsonCharacterBand.Nul, FunctionValueClass.NonEmpty)]),
-            new("REPEAT", null, "REPEAT(U&'\\FDD0' || '0', 2)", "REPLICATE(CONCAT(\"\\uFDD0\", \"0\"), 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp, FunctionValueClass.NonEmpty)]),
+            new("REPEAT", null, "REPEAT(U&'\\FDD0' || U&'0', 2)", "REPLICATE(CONCAT(\"\\uFDD0\", \"0\"), 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp, FunctionValueClass.NonEmpty)]),
         ];
 
         static FunctionKey Key(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value) => FunctionKey.Of(function, ordinal, kind, band, value);

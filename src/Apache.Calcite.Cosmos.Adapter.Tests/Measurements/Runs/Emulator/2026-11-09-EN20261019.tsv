@@ -1,0 +1,18 @@
+# The emulator lines measured on 2026-11-09 (run 3) that its 2026-11-08 record lacks, each as its pinning test logged it
+# (CosmosWitnessProbe), run against mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview, release
+# EN20261019: the case mapping over the cased letters added for probe run 3, a capital and a small letter of Deseret's OI,
+# cased in Unicode 4.0, and of Warang Citi, Old Hungarian, Vithkuqi and Garay, cased after Java 8's tables. The emulator
+# maps the first four, Garay's alone left as Java 8's tables leave it. A function's answer is the projection. Release
+# EN20260907 answered every line alike, and both answered every other line of the class's case mapping and string
+# function rows as their earlier records hold them.
+release	row	expression	witness	answer
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐐦𐑎"	"𐐦𐐦"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𑢠𑣀"	"𑢠𑢠"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐲀𐳀"	"𐲀𐲀"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐕰𐖗"	"𐕰𐕰"
+EN20261019	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐵐𐵰"	"𐵐𐵰"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐐦𐑎"	"𐑎𐑎"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𑢠𑣀"	"𑣀𑣀"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐲀𐳀"	"𐳀𐳀"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐕰𐖗"	"𐖗𐖗"
+EN20261019	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐵐𐵰"	"𐵐𐵰"

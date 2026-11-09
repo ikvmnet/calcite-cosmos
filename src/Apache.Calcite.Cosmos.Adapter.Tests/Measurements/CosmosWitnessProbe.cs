@@ -27,7 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// A witness is a JSON text, or <c>null</c> for an absent path, and its answer is spelled <c>value/kept</c>: the
     /// projection's JSON or <c>undefined</c> where the object constructor omits it, then <c>T</c> where the <c>WHERE</c>
     /// keeps it, <c>F</c> where the <c>WHERE NOT</c> does, <c>U</c> where neither; <c>!</c> stands for either part where the
-    /// statement fails over that witness alone.
+    /// service refuses the statement over that witness alone, and the whole answer is <see cref="Unanswered"/> where it
+    /// leaves one unanswered twice.
     /// Every answer is appended to <c>TestResults/measurements/emulator-runs.tsv</c> with the release (CI's
     /// <c>COSMOS_EMULATOR_RELEASE</c>, else the endpoint), the row and the expression before any is asserted, which is what
     /// an emulator run record is built from.
@@ -42,6 +43,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     {
 
         static readonly object Log = new();
+
+        /// <summary>
+        /// The answer of a witness whose statement, asked of it alone, the service left unanswered twice (503 or 408): the
+        /// line measures nothing, where a <c>!</c> is the service's refusal. Probe run 3 left seven so.
+        /// </summary>
+        internal const string Unanswered = "unanswered";
 
         /// <summary>
         /// The release that answers: <c>COSMOS_EMULATOR_RELEASE</c>, which CI reads off the container's log, else the
@@ -106,13 +113,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public static Task<string[][]> Project(Container? container, string? unavailable, string row, IReadOnlyList<string?> witnesses, params string[] expressions) =>
             Over(container, unavailable, row, witnesses, expressions, false, async (pk, ids) =>
             {
-                var all = await Rows(container!, pk, "SELECT c.id, " + string.Join(", ", expressions.Select((e, i) => $"({e}) AS r{i}")) + " FROM c");
+                var (all, _) = await Rows(container!, pk, "SELECT c.id, " + string.Join(", ", expressions.Select((e, i) => $"({e}) AS r{i}")) + " FROM c");
                 var answers = new string[expressions.Length][];
                 for (var e = 0; e < expressions.Length; e++)
                 {
                     var rows = all is null ? await Each(container!, pk, ids, $"SELECT c.id, ({expressions[e]}) AS r{e} FROM c", id => $"SELECT c.id, ({expressions[e]}) AS r{e} FROM c WHERE c.id = \"{id}\"")
                         : ids.ToDictionary(id => id, id => (object?)all.GetValueOrDefault(id));
-                    answers[e] = [.. ids.Select(id => rows[id] is "!" ? "!" : rows[id] is JObject one && one.TryGetValue("r" + e, out var r) ? r.ToString(Formatting.None) : "undefined")];
+                    answers[e] = [.. ids.Select(id => rows[id] is string failed ? failed : rows[id] is JObject one && one.TryGetValue("r" + e, out var r) ? r.ToString(Formatting.None) : "undefined")];
                 }
 
                 return answers;
@@ -165,9 +172,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        /// <summary>What one witness answers: its row, <c>null</c> where none came back, or <c>!</c> where its statement failed.</summary>
+        /// <summary>
+        /// What one witness answers: its row, <c>null</c> where none came back, <c>!</c> where the service refused its
+        /// statement, and <see cref="Unanswered"/> whole where it left any of the three unanswered.
+        /// </summary>
         static string Answer(object? projected, object? kept, object? negated)
         {
+            if (projected is Unanswered || kept is Unanswered || negated is Unanswered)
+                return Unanswered;
+
             var value = projected is "!" ? "!" : projected is JObject row && row.TryGetValue("r", out var r) ? r.ToString(Formatting.None) : "undefined";
             var truth = kept is "!" || negated is "!" ? "!" : kept is not null ? negated is not null ? "?" : "T" : negated is not null ? "F" : "U";
             return value + "/" + truth;
@@ -180,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static async Task<Dictionary<string, object?>> Each(Container container, string pk, string[] ids, string sql, Func<string, string> alone)
         {
             var answers = new Dictionary<string, object?>(StringComparer.Ordinal);
-            if (await Rows(container, pk, sql) is { } rows)
+            if (await Rows(container, pk, sql) is ({ } rows, _))
             {
                 foreach (var id in ids)
                     answers[id] = rows.GetValueOrDefault(id);
@@ -188,29 +201,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             else
             {
                 foreach (var id in ids)
-                    answers[id] = await Rows(container, pk, alone(id)) is { } one ? one.GetValueOrDefault(id) : "!";
+                {
+                    var (one, failed) = await Rows(container, pk, alone(id));
+                    answers[id] = one is null ? failed : one.GetValueOrDefault(id);
+                }
             }
 
             return answers;
         }
 
-        /// <summary>Each row by its id, or <c>null</c> where the statement fails at the service.</summary>
-        static async Task<Dictionary<string, JObject>?> Rows(Container container, string pk, string sql)
+        /// <summary>
+        /// Each row by its id; or, where the statement fails at the service, what each witness it asked answers: <c>!</c>
+        /// where the service refused it, <see cref="Unanswered"/> where it left it unanswered twice (503 or 408). The
+        /// caller narrows either, so one failing expression or witness fails alone. Probe run 2's projection of every
+        /// string function went unanswered once, after 43 s, and answered nothing; run 3's, and two spellings asked alone,
+        /// went unanswered twice, the account refusing none.
+        /// </summary>
+        static async Task<(Dictionary<string, JObject>? Rows, string Failed)> Rows(Container container, string pk, string sql)
         {
-            var rows = new Dictionary<string, JObject>(StringComparer.Ordinal);
-            try
+            for (var attempt = 1; ; attempt++)
             {
-                using var iterator = container.GetItemQueryIterator<JObject>(new QueryDefinition(sql), requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });
-                while (iterator.HasMoreResults)
-                    foreach (var row in await iterator.ReadNextAsync())
-                        rows[(string)row["id"]!] = row;
-            }
-            catch (CosmosException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.InternalServerError)
-            {
-                return null;
-            }
+                var rows = new Dictionary<string, JObject>(StringComparer.Ordinal);
+                try
+                {
+                    using var iterator = container.GetItemQueryIterator<JObject>(new QueryDefinition(sql), requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });
+                    while (iterator.HasMoreResults)
+                        foreach (var row in await iterator.ReadNextAsync())
+                            rows[(string)row["id"]!] = row;
 
-            return rows;
+                    return (rows, "");
+                }
+                catch (CosmosException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.InternalServerError)
+                {
+                    return (null, "!");
+                }
+                catch (CosmosException e) when (e.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.RequestTimeout)
+                {
+                    if (attempt == 2)
+                        return (null, Unanswered);
+                }
+            }
         }
 
     }

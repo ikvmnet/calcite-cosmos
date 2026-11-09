@@ -3077,36 +3077,31 @@ across documents* and *A join of a container to itself* is the record.
   gate proves no conjunct's best with an affix there, so no affix S prints has run on the probe account as printed: what
   licenses one is N5–N7's lines alone. An input holding `STARTSWITH` or a `LIKE` over a path among the gate's
   conjuncts, run again before the switch, would give C6 one.
-- **Azure's case mapping over a surrogate rests on the scripts its witnesses held** — *small, a measurement.* Run 2
-  keyed Azure's `UPPER` and `LOWER` over a surrogate `Same` (`Service.CaseMappingOverCasedLetters`): Azure maps Deseret
-  as Java does and leaves Osage, Adlam and Medefaidrin, which Unicode cased after Java 8's tables, as Java does. The
-  supplementary scripts cased in Unicode 7 and 8, Warang Citi (U+118A0) and Old Hungarian (U+10C80), and those cased
-  since, Vithkuqi (U+10570) among them, were not sent; Azure leaves U+AB70, which Unicode 8 cased, and U+1E9E and
-  U+01C5, which older tables case, so its mapping looks older than either, but no line says so of them. Witnesses of
-  each, sent with the next probe run, settle it; until then the key rests on the scripts measured, as every band key
-  rests on its witnesses.
-- **Azure's operand keys are run 1's literals alone** — *small, the next probe run's.* Since fix6 the rows key `REPLACE`'s search and
-  replacement and `SUBSTRING`'s length (DESIGN.md, *The defects answered before h15*), measured on the emulator over
-  every kind and band, and on Azure only as run 1's spellings hold them, a search and a replacement that are strings of
-  no band and not empty and a length from 1, and as `Service.SubstringOfANegativeStartIsEmpty`'s window from 0 of length
-  0 holds it, a length of 0. A path keys those cells as a literal does where the declaration proves it present and every
-  string it may be one of them, so it pushes there. So under `Production` a `REPLACE` whose replacement is empty, whose
-  search or replacement holds any band, or which reads either from a path that may be absent is computed in process
-  until a run sends `CosmosStringFunctionMeasurementTests.Functions`' spellings after the trims to the probe account and
-  `CosmosAxioms` records what it answers (run 2 sent them, and the projection asking them failed with a 503 after 43 s,
-  so it answered nothing; a run of them alone costs about 1,000 RU, the class's setup among them, past what run 2 had
-  left); among them a replacement holding U+0000, which
-  `Service.NulEndsWhatReplaceAndContainsRead` measured written as it is, through a parameter no witness line records
-  (`CosmosRexTranslatorTests.Functions` holds both). Since g1's fix round a concatenation's and a repetition's literal
-  is keyed apart from a stored operand (`FunctionKey.Literal`), and `POSITION`'s pattern as the operand it is, each
-  with rows only as the runs sent it: on both targets a string of no band and not empty (`z`, `0`, `1`) and a count of
-  2, on Azure a count of 0 (`Service.ReplicateStopsAtTenThousandCodePoints`), and on the emulator the literals it
-  stores escaped. So on both targets a concatenation whose literal is empty or holds any band, a `REPEAT` of a literal
-  subject and a `POSITION` whose pattern is a path or a literal that is empty or holds any band are computed in
-  process, and on the emulator a `REPEAT` of a count of 0, until a run sends each: on the probe account
+- **Azure's search from a path went unanswered, and its literal operands stop where run 3 left them** — *small, the
+  next probe run's.* Since fix6 the rows key `REPLACE`'s search and replacement and `SUBSTRING`'s length (DESIGN.md,
+  *The defects answered before h15*), measured on the emulator over every kind and band, and since run 3 on Azure the
+  replacement over every kind and band and the length at 0 and below 0 too (DESIGN.md, *What the probe account answered
+  (run 3)*). Azure's search is measured only as run 1's literals hold it, a string of no band and not empty, and as one
+  holding U+0000, which replaces every byte: run 3 asked `REPLACE("a0b1c", c.v, "x")` over each witness, and the service
+  left it unanswered twice (503) over `"a0b1c"`, `"b"`, `""`, `"\u00001"`, 30 and 0.5, so that spelling measures
+  nothing (`CosmosFunctionComparison.Judge`). So under `Production` a `REPLACE` whose search holds any other band or is
+  read from a path that may be absent is computed in process until a run asks that spelling again, each
+  witness alone (about 700 RU, most of it the class's setup), and says whether the service leaves an empty search, or
+  one it reads to a U+0000 as empty, unanswered every time — those cells would then be `Fails` — or was busy, as
+  `LENGTH(c.v)` over `"a0b1c"`, left unanswered in the same run and answered 5 in run 1, suggests. Until it does, a
+  search read from a path the declaration proves present and every string it may be of no band and not empty pushes on
+  Azure on run 1's literal searches alone; the run settles whether it stays. Since g1's fix round a concatenation's and a
+  repetition's literal is keyed apart from a stored operand (`FunctionKey.Literal`), and `POSITION`'s pattern as the
+  operand it is, each with rows only as the runs sent it: on both targets a string of no band and not empty (`z`, `0`,
+  `1`) and a count of 2; on Azure a count of 0 (`Service.ReplicateStopsAtTenThousandCodePoints`) and, from run 3, a
+  concatenation's literal holding U+0000 or U+FDD0 and a repetition's holding U+0000, which pushes nothing alone, a
+  literal being keyed by no band as well and no run having sent a repetition one of no band; and on the emulator the
+  literals it stores escaped. So on both targets a concatenation whose literal is empty or holds any other band, a
+  `REPEAT` of a literal subject and a `POSITION` whose pattern is a path or a literal that is empty or holds any band are
+  computed in process, and on the emulator a `REPEAT` of a count of 0, until a run sends each: on the probe account
   `CosmosStringFunctionMeasurementTests.Functions`' spellings with literals of each band and empty, on the emulator a
-  count of 0. A path pattern keys as a literal does where the declaration proves it present and every string it may
-  be one of them.
+  count of 0. A path pattern keys as a literal does where the declaration proves it present and every string it may be
+  one of them.
 - **F still folds a cast comparand, and the legality and `Membership` read none** — *G8's remainder, h15's.* Since fix6's fix
   round a loading that reads places reads a number Calcite wrote cast as the casts' terms, and S's rules and rows derive
   what it denotes and which readings take it (DESIGN.md, *The comparand's casts are S's*), where `Comparand` decided both

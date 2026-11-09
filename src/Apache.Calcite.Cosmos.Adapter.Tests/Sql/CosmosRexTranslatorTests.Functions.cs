@@ -426,8 +426,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So S keys the result by its
             /// length against that bound, the longest string the facts allow times a literal count: the rows answer within it
             /// as Calcite does, and past it, or where nothing bounds it, Azure's answer is undefined and the emulator's
-            /// unmeasured (G6). A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), which no run
-            /// sent, so it stays in process whatever its length.
+            /// unmeasured (G6). A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), and as every
+            /// string is, by no band as well as by each band it holds: run 3 sent one holding U+0000, which Azure repeats as
+            /// Calcite does, but no run sent one of no band, so a literal subject stays in process whatever it holds and
+            /// whatever its length.
             /// </remarks>
             [Fact]
             public void ARepetitionPushesWhereTheCountKeepsItWithinWhatTheServiceRepeats()
@@ -441,18 +443,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");
                 Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeFalse("nothing bounds the string's length");
                 Pushes(OneOf("ab"), SqlLibraryOperators.REPEAT, Str(), Num()).Should().BeFalse("a count from a column may be anything");
-                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5000)).Should().BeFalse("no run sent a literal subject");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5000)).Should().BeFalse("no run sent a literal subject of no band");
                 Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5001)).Should().BeFalse();
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("a\0b"), Int(2)).Should().BeFalse("a literal holding U+0000 is keyed by no band too, which no run sent");
             }
 
             /// <remarks>
             /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
             /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
-            /// parameter may be empty until it is bound. Azure's answers were measured with searches and replacements that
-            /// are strings of no band holding something, as run 1's literals are, and a path keys that cell alone where the
-            /// declaration proves it present and every string it may be one of them, so it pushes there; a path that may be
-            /// absent keys a cell Azure has not measured, which is computed in process there until a run measures it
-            /// (TODO.md). The emulator's rows answer an absent operand as Calcite does.
+            /// parameter may be empty until it is bound. Azure's searches were measured as run 1's literals are, strings of
+            /// no band holding something, and a path keys that cell alone where the declaration proves it present and every
+            /// string it may be one of them, so it pushes there; a path that may be absent keys a cell Azure has not
+            /// measured, which is computed in process there until a run measures it (TODO.md: run 3 asked one read from a
+            /// path and was left unanswered, which measures nothing). Run 3 measured the replacement over every kind and
+            /// band, which Azure answers as Calcite does, so a replacement read from any path of strings pushes there. The
+            /// emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
             /// <remarks>
             /// A rank clause's keyword is held to S's image of the function computing it, as a column is (G6's check: the
@@ -475,12 +480,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void AReplacementPushesWhereTheSearchHoldsSomething()
             {
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue();
+                Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("")).Should().BeTrue("an empty replacement, which Azure answers as Calcite does (run 3)");
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")).Should().BeFalse("an empty search");
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Param(), Lit("b")).Should().BeFalse("a parameter may be empty");
                 Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
                 Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
                 Pushes(PresentOneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("the search is present and every string it may be is of no band and holds something, the cell Azure measured");
-                Pushes(PresentOneOf("x", "yz"), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a replacement read from a path keys the same cell");
+                Pushes(PresentOneOf("x", "yz"), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a replacement read from a path answers as Calcite's");
+                Pushes(Strings(), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("over every band, and absent, as run 3 measured it on Azure");
+                Pushes(Translator(JsonCharacterBand.Nul), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a U+0000 among them");
                 Pushes(PresentOneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
                 Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be absent, which Azure has not measured");
             }
@@ -488,8 +496,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// Azure's <c>REPLACE</c> reads its subject only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves
             /// <c>a</c>U+0000<c>b</c> as it is — and a search holding one replaces every byte; a replacement holding one is
-            /// written as it is. So the subject and the search are asked to hold none. The replacement's U+0000 was measured
-            /// through a parameter, which no witness line records, so its key is unmeasured on Azure until a run sends it (TODO.md).
+            /// written as it is. So the subject and the search are asked to hold none. Run 3 sent a replacement holding one, a
+            /// literal and a stored string, and Azure answered both as Calcite does, so a replacement holding U+0000 pushes.
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereNeitherTheSubjectNorTheSearchHoldsNul()
@@ -497,7 +505,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 const JsonCharacterBand Z = JsonCharacterBand.Nul;
 
                 Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue("the subject holds no U+0000");
-                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeFalse("no witness line records a replacement holding U+0000 on Azure");
+                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeTrue("Azure writes a replacement holding U+0000 as Calcite does (run 3)");
                 Pushes(Translator(Z), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("the subject may hold U+0000");
                 Pushes(Strings(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("nothing is known of the subject's characters");
                 Pushes(Translator(JsonCharacterBand.None), SqlStdOperatorTable.REPLACE, Str(), Lit("\0"), Lit("b")).Should().BeFalse("the search holds U+0000");

@@ -204,8 +204,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// D12, D13: the emulator's <c>REPLACE</c> works on the stored units, a search beginning <c>1</c> meeting U+FDD0's
         /// second unit, and a replacement holding U+0000 fails the statement: so it asks all three operands to hold neither.
-        /// Azure asks the subject to hold no U+0000, and the search and the replacement to be what run 1 measured them as, a
-        /// string of no band and not empty, until a run measures the rest; an empty search is undefined at both.
+        /// Azure asks the subject to hold no U+0000, and the search to be what run 1 measured it as, a string of no band and
+        /// not empty, until a run measures the rest (run 3's, read from a path, went unanswered); it asks nothing of the
+        /// replacement, which run 3 measured over every kind and band. An empty search is undefined at both.
         /// </summary>
         [Fact]
         public void AReplacementAsksEachOperandUnderTheEmulator()
@@ -219,16 +220,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(target, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("x")).Should().BeFalse($"{target}: a search that may be empty");
             }
 
-            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("Azure measured a replacement only as a string of no band and not empty");
+            Pushes(Azure, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("Azure answers a replacement holding U+0000 as Calcite does (run 3)");
+            Pushes(Azure, null, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("and one of any band");
             Pushes(Emulator, Z, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+0000 fails the statement");
             Pushes(Emulator, H, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeFalse("a replacement holding U+FDD0 mixes its spelling into the stored one");
             Pushes(Emulator, N, SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue();
         }
 
         /// <summary>
-        /// A window's length is keyed by its sign (F2): from 1 alike on both targets; 0 alike on both, Azure's measured as the
-        /// window from 0 of length 0 (<c>Service.SubstringOfANegativeStartIsEmpty</c>); below 0, which Calcite raises over,
-        /// parting on the emulator and unmeasured on Azure.
+        /// A window's length is keyed by its sign (F2): from 1 alike on both targets; 0 alike on both, the row's own
+        /// witnesses measuring it on Azure since run 3; below 0, which Calcite raises over and the service answers the empty
+        /// string, parting on both.
         /// </summary>
         [Fact]
         public void AWindowsLengthIsKeyedByItsSign()
@@ -240,14 +242,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             Pushes(Emulator, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("the emulator answers a length of 0 as Calcite does");
-            Pushes(Azure, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("Azure answers a length of 0 as Calcite does, measured as the window from 0");
+            Pushes(Azure, N, SqlStdOperatorTable.SUBSTRING, Str(), Int(2), Int(0)).Should().BeTrue("Azure answers a length of 0 as Calcite does (run 3)");
         }
 
         /// <summary>
         /// D13: a concatenation or a repetition joins what the emulator stores with what it makes, so every operand is
         /// asked to hold neither escape, a path among them (owner, 2026-11-01: "Cut it"). Azure asks nothing of a stored
         /// operand. A literal is keyed apart (<c>FunctionKey.Literal</c>), as the runs sent it: on both targets a string of
-        /// no band and not empty, and a count of 0 on Azure alone (<c>Service.ReplicateStopsAtTenThousandCodePoints</c>).
+        /// no band and not empty, and a count of 0 on Azure alone (<c>Service.ReplicateStopsAtTenThousandCodePoints</c>);
+        /// and on Azure (run 3) a string holding U+0000 or U+FDD0, which <c>CONCAT</c> answers as Calcite does, where
+        /// <c>||</c> beside one parts, Calcite refusing to validate it beside a <c>U&amp;</c> literal, and the emulator fails
+        /// the statement over U+0000.
         /// </summary>
         [Fact]
         public void AConcatenationAsksEveryOperandUnderTheEmulator()
@@ -257,6 +262,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
             Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("\u00e9")).Should().BeFalse("no run sent a literal beyond ASCII");
             Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("")).Should().BeFalse("no run sent an empty literal");
+            Pushes(Azure, null, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("\0")).Should().BeTrue("Azure answers CONCAT beside a literal holding U+0000 as Calcite does (run 3)");
+            Pushes(Azure, null, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Unicode("\uFDD0")).Should().BeTrue("and one holding U+FDD0");
+            Pushes(Azure, null, SqlStdOperatorTable.CONCAT, Str(), Lit("\0")).Should().BeFalse("|| beside one parts, Calcite refusing to validate it beside a U& literal");
+            Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("\0")).Should().BeFalse("the emulator fails the statement over one");
             Pushes(Emulator, null, SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeFalse("a path is asked as any operand is");
             Pushes(Emulator, JsonCharacterBand.None, SqlLibraryOperators.CONCAT_FUNCTION, Str(), Str(), Lit("!")).Should().BeTrue();
             Pushes(Emulator, Z, SqlStdOperatorTable.CONCAT, Str(), made).Should().BeFalse("UPPER's value may hold U+0000, made at the service");
@@ -436,8 +445,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// literal holds a surrogate pair, which the loader spells no place of, and four reversals, as deep as S images a
         /// place (<c>RenderingTheory.PlaceDepth</c>), are gathered with their images as any nested call is, and push where
         /// those were measured alike, where a fifth gets no image and stays in process; a replacement holding U+FDD0, which
-        /// the emulator stores escaped, is refused there, and on Azure, which measured a replacement only as the literal
-        /// <c>x</c>, a replacement of either band is.
+        /// the emulator stores escaped, is refused there, and on Azure, which run 3 measured a replacement of every band
+        /// over, a replacement of either band pushes.
         /// </summary>
         [Fact]
         public void ACallOverACallIsAskedWhateverTheLoaderMakesAPlaceOf()
@@ -460,9 +469,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue("the reversal of a replacement by a pair");
             Translator(Emulator, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("the emulator stores U+FDD0 escaped");
-            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeFalse("Azure measured no replacement by a pair");
-            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeFalse("nor one of the high band");
-            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("b")), out _).Should().BeTrue("a replacement of no band, as measured");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\U0001F600")), out _).Should().BeTrue("Azure answers a replacement by a pair as Calcite does (run 3)");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("\uFDD0")), out _).Should().BeTrue("and one of the high band");
+            Translator(Azure, JsonCharacterBand.None).TryTranslate(Call(SqlLibraryOperators.REVERSE, Replace("b")), out _).Should().BeTrue("and one of no band");
         }
 
         /// <summary>

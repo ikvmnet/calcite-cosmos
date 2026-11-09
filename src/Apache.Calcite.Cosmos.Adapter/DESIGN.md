@@ -8956,6 +8956,62 @@ licenses each today. So those seven names stand for the census's root alone: fro
 Calcite fails on every row fails as Calcite fails it, and the step recording that names them (`TODO.md`, *An ordering
 over a declared `VARIANT` column is vacuous*).
 
+### What the probe account answered (run 3)
+
+Run 3 sent the probe account the two tests of `CosmosStringFunctionMeasurementTests` that runs 1 and 2 left short on
+Azure (2026-11-09, the branch at `7344642` with run 3's witnesses, Release, one class in a database of 400 RU/s deleted
+when it ended; 1,576 RU of the 2,500 the owner approved on 2026-11-08), once both emulator images had answered its new
+witnesses alike: every spelling of `Functions` over its 26 witnesses, run 1's 16 again and the 11 since, and run 2's
+cased letters again beside a capital and a small letter of Warang Citi, Old Hungarian, Vithkuqi, Garay and Deseret's
+OI. The record is `Runs/2026-11-09-probe-account-run3.tsv`, 760 lines: the 464 runs 1 and 2 sent answer as they did but
+one, and 168 answer apart from EN20261019, each where the row says the targets part.
+
+- **Azure's case mapping beyond U+FFFF is Java 8's (`Service.CaseMappingOverCasedLetters`).** It maps Deseret, OI among
+  it, and leaves every other supplementary script Unicode 16 cases — Osage, Adlam and Medefaidrin (run 2), Warang Citi,
+  Old Hungarian, Vithkuqi and Garay (run 3) — as Java 8's tables do, so `UPPER` and `LOWER` over a surrogate stay `Same`
+  on Azure, now over a witness of every script that could part them. The emulator maps all of them but Garay, as tables
+  from before Unicode 16 do, and parts there as before. Run 3 found no difference of the case mapping's to name.
+- **A replacement answers as Calcite's over every kind and band.** `REPLACE("a0b1c", "b", c.v)`, empty, beyond ASCII,
+  holding U+0000 or U+FDD0, a null, an absent path, an object or an array, and the literal replacements holding U+0000
+  and U+FDD0, answer as Calcite's, undefined over a number and a boolean, which Calcite's text accessor reads as text; so
+  `REPLACE`'s replacement is keyed on both targets as every function's operand is (`StringFunction`), `Same` on Azure
+  over every band, where the emulator's parts over U+FDD0 and fails over U+0000.
+- **A search holding U+0000 replaces every byte, `Differs`** (`Operand`'s literal bands), as
+  `Service.NulEndsWhatReplaceAndContainsRead` measured through a parameter: `REPLACE(c.v, "\u0000", "x")` writes one `x`
+  for each byte Azure stores.
+- **A search read from a path went unanswered.** The projection of every spelling went unanswered twice (503), as run
+  2's had once, so the probe asked each spelling alone, and where one went unanswered, each witness alone:
+  `REPLACE("a0b1c", c.v, "x")` was left unanswered over `"a0b1c"`, `"b"`, `""`, `"\u00001"`, 30 and 0.5, and
+  `LENGTH(c.v)` over `"a0b1c"`, which run 1 answered 5. The account's metrics for the run count 71 queries answered and
+  21 answered 503, none refused. The probe spelled a refusal and a statement left unanswered twice alike, `!`; it now
+  writes the second `unanswered`, a line that measures nothing, and the record writes the seven so. A spelling left
+  unanswered over any witness measures nothing (`CosmosFunctionComparison.Judge`), as one never sent does, so `REPLACE`'s
+  search keeps run 1's literals on Azure; and a line one run left unanswered and another answered is that answer
+  (`CosmosAxiomsTests.AzureWitnessRecords`), so `LENGTH` keeps run 1's. Whether the service leaves an empty search, or
+  one it reads to a U+0000 as empty, unanswered every time, or was busy, is the next run's (`TODO.md`).
+- **A window's length at 0 and below 0.** At 0 the empty string, `Same` on both, now the row's own measurement rather
+  than `Service.SubstringOfANegativeStartIsEmpty`'s window from 0; below 0 the empty string where Calcite raises,
+  `Differs` on both.
+- **Literals holding U+0000 or U+FDD0 answer as written.** `CONCAT`, and the concatenation that reads a null as empty,
+  beside a stored operand, and `REPLICATE` of a literal holding U+0000, answer as Calcite's, where the emulator fails the
+  statement or reads an escape back (`Joined`, `FunctionKey.Literal`). `||` with such a literal parts on Azure too:
+  Calcite refuses to validate `||` between the stored text and a `U&` literal, whose character sets it does not compare,
+  so it never asks a target one.
+- **A spelling measured Calcite's validator, not `REPEAT`.** `REPEAT(U&'\FDD0' || '0', 2)`, which rows2 added for the
+  emulator, is refused by Calcite for the same reason, so it parted wherever the service answered, and over Azure's
+  answer, U+FDD0 `0` twice, would have taken `REPEAT`'s key over the high band from run 1's `Same` to `Differs`. It is
+  spelled `REPEAT(U&'\FDD0' || U&'0', 2)` now, which Calcite answers as the service's
+  `REPLICATE(CONCAT("\uFDD0", "0"), 2)` means: `Same` on Azure, `Differs` on the emulator still.
+
+**What it gives S.** The rows are cells S's rules already read — `REPLACE`'s replacement keyed as every function's
+operand is, the search's literal band, the window's lengths, and a literal's bands — so run 3 adds no rule and no branch.
+Under `Production` a `REPLACE` whose replacement is empty, holds any band or is read from a path of strings, and a
+`CONCAT` beside a literal holding U+0000 or a character from U+E000 up push, each computed in process before. A
+`REPEAT` of a literal holding U+0000 does not: a string is keyed by no band as well as by each band it holds
+(`RenderingImage.Keys`), and no run has sent `REPLICATE` a literal of no band. The plans do not move: the four digests
+over build 336 are post2's on both frameworks (`Production` `038034d1…`, `Emulator` `8c6dd98a…`, 3,492 statements
+each), and no line of the census moves, source (b) reading post2's capture.
+
 ### The raw reading through its column (rawtyped)
 
 **What moved.** Under S's reading alone (`places`), the loader names the column a declared field is read through,
@@ -9028,7 +9084,9 @@ the operand; and each case is declined under every set it asks.
   0 alike on both, Azure's as the window from 0 of length 0 `Service.SubstringOfANegativeStartIsEmpty` measured, the
   clip's spelling, which the row names as its evidence (`CosmosFunctionOutcome.Evidence`, a key another row's run
   measured); and below 0 parting on the emulator, which Calcite raising makes `Differs`, and unmeasured on Azure. `Spell`
-  writes every length and S declines what the rows part or leave unmeasured.
+  writes every length and S declines what the rows part or leave unmeasured. Since run 3 the row's own witnesses measure
+  both on Azure too, 0 alike and below 0 parting, and the evidence it named is gone (*What the probe account answered
+  (run 3)*).
 - **`RETURNING DOUBLE` against a literal cast to fewer decimals** (item 2). `Comparand`'s `truncates: reading is
   SqlValue.Typed` held for `RETURNING DOUBLE` too, so `= CAST(CAST(2.5 AS DECIMAL(19, 0)) AS DOUBLE)` was read as
   `= 2.5`, dropping `2.0`, which Calcite keeps. fix6 answered it with the report's narrow guard in C#; its fix round
@@ -9046,9 +9104,12 @@ the operand; and each case is declined under every set it asks.
   emulator from its 2026-11-06 record (`Runs/Emulator/2026-11-06-EN20261019.tsv`, both releases alike), an empty search
   `Undefined`, a search holding U+0000 `Differs`, a number or a boolean `Undefined`; on Azure only as the literals run
   1's spellings hold, a string of no band and not empty, so every other search and replacement is unmeasured there
-  and declined until a run sends them; run 2 did, and its projection failed with a 503, so they wait for the next. A path keys that cell as a literal does where the declaration proves it present and every
-  string it may be one of them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell`
-  writes an empty search, which the rows decline, where it refused one.
+  and declined until a run sends them; run 2 did, and its projection failed with a 503, so they wait for the next. A
+  path keys that cell as a literal does where the declaration proves it present and every string it may be one of
+  them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell` writes an empty search,
+  which the rows decline, where it refused one. Run 3 measured the replacement over every kind and band, as Calcite's
+  on Azure, and a search holding U+0000, which parts; a search read from a path went unanswered again, so the rest of
+  the search waits for the next run (*What the probe account answered (run 3)*).
 - **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
   where they said `Same` over witnesses that held no letter the mapping changes. rows2's cased witnesses
   (`Service.CaseMappingOverCasedLetters`) let the emulator's `LOWER` over the high band say `Same`; every other band
@@ -9404,7 +9465,9 @@ unpaired surrogate, which the SDK will not send (`unsent`), legality. A function
 ordinal, and at `FunctionKey.Literal` as well wherever they name it: a concatenation's and a repetition's rows were
 measured over a stored operand beside a literal held fixed, `z` and a count of 2, so a literal is keyed apart from a
 stored operand there, each row of it measured as the runs sent it, and one of a band no run sent, or empty, has no row
-and is no image (`RenderingImage.Keys`, the image rule's subset test). `POSITION`'s pattern is keyed as the operand it
+and is no image (`RenderingImage.Keys`, the image rule's subset test). A string is keyed by no band as well as by each
+band it holds, so a repetition's literal holding U+0000, which Azure answered as Calcite's in run 3, is no image while
+no run has sent one of no band. `POSITION`'s pattern is keyed as the operand it
 is, measured as the literal `0` and `1`, so a path there pushes only where the declaration proves it present and every
 string it may be one of no band that holds something, as `REPLACE`'s search does. The column bridge reads the same
 keys, so a call S declines this way is computed in process (docs/, the functions chapter). The emulator's rows over a
