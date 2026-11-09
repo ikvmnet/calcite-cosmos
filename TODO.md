@@ -3055,16 +3055,20 @@ across documents* and *A join of a container to itself* is the record.
   `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
   `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
   h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
-- **An ordering over a declared `VARIANT` column is vacuous** — *the owner's, before h15's switch.* Since rawtyped S
-  reads a declared field through its column (DESIGN.md, *The raw reading through its column*), and a `VARIANT` has no
-  ordering: Calcite compiles no `<` over one, so every cell of `c.category > 'a'` is a raise alone, the gate's agreement
-  with the text is vacuous, and S lifts nothing vacuous (*Vacuity is a table*). Eight `Production` type-test pushes at
-  the gate the union proved through its `ANY` column (partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863) are now
-  "S proves the text, and generates no form for it"; after h15 each stays in Calcite, which fails the statement where
-  the translator pushes it whole today. Three ways: accept them by name, the statement then failing as Calcite fails it
-  (permanent); lift an agreement whose cells are raises Calcite answers on real documents, none set aside, as decision 2
-  already lets any answer refine a raise (permanent, a change to the vacuity policy); or read a `VARIANT`'s ordering
-  through the union again (a bridge, until one of the others).
+- **A filter Calcite fails on every row is pushed until the switch** — *h15's.* The owner decided on 2026-11-08 that
+  such a filter fails as Calcite fails it (DESIGN.md, *Vacuity is a table*), and since the raises step S reads it so: a
+  test carries its reading's raise, a test of a raw value in a column or of a call raises over every value, and an
+  ordering over a declared `VARIANT` was a raise alone already, so S lifts no agreement resting on one and the census
+  declines each by name under the owner's reason (`OwnerDecisions`, DESIGN.md, *A test carries its reading's raise
+  (raises)*). The production path loads its statements as the legacy reading, which names no column and writes no test
+  of a call, and a type test is the translator's until the switch (`RenderingFamily.Owns`), so until h15 a statement
+  holding one is pushed as before, and the manual's account (Chapter 7.3 and 7.5, 8.2's table, 22, 23 and Appendix B.5)
+  holds from the switch. Most of the census's declines are a weakening's Rex, not a statement: `RenderingRexBuilder`
+  writes a type test over a path's raw value (DESIGN.md, *The weakening as a Rex*), which for a declared field is the
+  field itself, `IS_DEFINED($4)` over `c."$.category"`, and Calcite never evaluates it, rechecking the conjunct instead.
+  Read back where places are read, that Rex is one Calcite fails on, so once h15 reads a pushed weakening so, the
+  builder writes such a test over the path's accessor re-typed `ANY`, which the body takes apart, or the weakening is
+  not pushed: RU, never rows.
 - **A raw reading names its column only where a field declares one** — *small.* The loader names the column a declared
   field's type names under S's reading alone, `VARIANT`, `ANY`, `VARCHAR` or `CHAR`; an accessor, an item chain and the
   cast-to-`ANY` marker read the three columns' union as before (h12), and F reads every raw value through the union. A
@@ -3142,50 +3146,41 @@ across documents* and *A join of a container to itself* is the record.
   form; the text Unproven" to "the text and S's own form" and the `ir` with them, every best form unchanged. The
   patch is that form and applies on G8's second fix (`.claude/handoff/reports/stage3-3A/g8fix1/structure-h15.diff`);
   its arm in `RenderingFamily.Owns`, which keeps the null test the translator's as the type tests were, goes with
-  `Owns` at h15 (G10). h15's task carries the same instruction.
+  `Owns` at h15 (G10). h15's task carries the same instruction. Since the raises step a test's atom is of the reading
+  it is asked over, read as its row says, so a test of `query(path)` reads the `query` reading's null and then the raw
+  value's kind; the step renamed the atom rules and re-keyed `testreads`' rows, which the patch's vocabulary, axiom and
+  row-test hunks sit beside, so those apply by hand.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
   `<>` and null where the value is. A rule that reads two `boxof` rows apart makes it one, beside a row for a returning's
   box, which none names.
-- **A test of a raw value in a column, an item or a cast to `ANY` reads the raw value's row where its body raises** —
-  *medium, before h15: it waits on a test atom that carries its reading's raise.* `testreads` is measured in process
-  since rows2 (`CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess`): a type test and `IS_DEFINED` of
-  the text and of a `RETURNING` of each type read the raw value, and raise over a field of every type, an item and a
-  cast to `ANY`, the implementor taking apart a `JSON_VALUE` alone. No row names a column's reading, but the shared
-  vocabulary reads a test of a raw value in a column through the raw value's row, `testreads(raw, raw)`, and where
-  places are read the loader writes an item chain and a cast to `ANY` as the raw value too
-  (`CosmosPredicateLoader.Value`, `Cast`), so a test of any of the three is an atom Calcite never answers. Every verdict
-  resting on one is a push answering where Calcite raises, which any answer but a failure refines (decision 2), so none
-  is unsound; what is wrong is the reason. Keying a column's test by its own row, which none names, is the honest
-  reading, and rows2 tried it: with no atom for a test that raises, 103 of the census's pushes in
-  `coverage-type-tests.tsv` moved from Proven to Unproven (52 under the emulator, 51 under Production, among them
-  `raw($["category"] VARIANT) is defined`), and the emulator's triage line 6 failed. So the reading stays until the
-  test atom below carries the raise; then the column's rule reads its own row, a cast and an item are written apart (as
-  G8's other cast and item sites move at h15), and each test is an atom that raises, which decision 2's rows refine.
-  The raw value's own row stays for the accessor re-typed `ANY`, which the body does take apart, and F's reading until
-  h15.
-- **A test does not carry its operand's raise** — *medium, before h15.* A test of a `RETURNING` raises in process
-  wherever the `RETURNING` raises (`RETURNING INTEGER` over `true`, `RETURNING DOUBLE` over `1`), and a test of a field,
-  an item or a cast to `ANY` raises over every value, measured in rows2, but the test atom reads the raw value's kind
-  alone, so S reads it TRUE or FALSE there. A push answering where Calcite raises refines the raise (decision 2), so no
-  verdict is unsound, but a stratum's agreement is wider than Calcite's. The proper fix is a test atom that takes its
-  reading's raises — `Raises` where its reader's cell raises, and on every cell where the row says the body raises over
-  the reading — which the entry above waits on.
-- **`IS_DEFINED` of a computed call has no atom** — *small.* The bridge's presence test of a computed place,
-  `IS_DEFINED` over the call, is no atom: where places are read the loader writes it, and a type test, over any value,
-  but no `testreads` row names a call's reading, and the body raises over any operand but a `JSON_VALUE`, as rows2
-  measured over a cast, so the row it wants is that raise, read as no atom. Before G8 the loader wrote nothing for it
-  either; the digests were byte-equal.
-- **The loader's element guards and cast targets are G8's sites no step schedules** — *h15's.* Two branches stand for
+- **A test of an item chain, a cast to `ANY` or a field read as text or as a scalar type reads as the accessor it is
+  written as** — *h15b's, with the element guards.* `testreads` is measured in process since rows2
+  (`CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess`): the body takes apart a `JSON_VALUE` alone and
+  raises over anything else, and since the raises step a raw value in each column and a call are keyed by rows of their
+  own that say so, the test atom carrying the raise (DESIGN.md, *A test carries its reading's raise (raises)*). Four
+  writings still stand for an accessor the body does take apart: where places are read the loader writes an item chain
+  and a cast to `ANY` as the raw value (`CosmosPredicateLoader.Value`, `Cast`), a field read as text as the text
+  accessor, and a field of a scalar type, `_ts` among them, as a `RETURNING` (`Field`), so a test of any of the four
+  reads that accessor's row, an agreement Calcite never makes. Every verdict resting on one answers where Calcite
+  raises, which any answer but a failure refines (decision 2), so none is unsound; what is wrong is the reason, and the
+  manual's account of a test over them (Appendix B.5). No census line S reads holds one: every test it reads is of a
+  declared field or of a path an accessor in the line reads, and the one test of a cast to `ANY` the census lists is a
+  translator test's push, which S does not read. h15b writes each apart as a reading of its own whose row says the body
+  raises, the item chain and the cast to `ANY` beside the element guards (the entry below), and each such decline is
+  the owner's of 2026-11-08 by name. The raw value's own row stays for the accessor re-typed `ANY`, which the body takes
+  apart.
+- **The loader's element guards and cast targets are G8's sites no step schedules** — *h15b's.* Two branches stand for
   rows with no rule over them yet: the element guards, `HasElement` in the item chain's raw value, a field, an accessor's
   raw value and the cast to `ANY` (`CosmosPredicateLoader.Value`, `Field`, `Accessor`, `Cast`), which stand for
   `Calcite.ItemIsNullWhereNoElementIs` and the raw value of an element no row measured; and the numeric cast targets
   (`Cast`, `TryNumericCastOperand`, the `RETURNING DECIMAL` arm), which stand for `measuredcast`'s rows. Each changes F's
   terms or, read by the shared cast rule over `measuredcast`, F's analysis, so neither is a refactor before h15; both
-  move with h15's switch, the guards to an element reading S's cells read and the casts to the cast rule reading
-  `measuredcast`. This entry is all that carries them: the audit's plan lists neither before h15 (§3, item 5), and
-  h15's task names `Structure` alone of G8's sites. `ReaderEdgesTable`'s cast keys are a copy of the same rows
+  move after h15's switch, at h15b, the guards to an element reading S's cells read and the casts to the cast rule
+  reading `measuredcast`. The audit's plan lists neither (§3, item 5), and h15's task names `Structure` alone of G8's
+  sites. With the guards h15b writes the item chain and the cast to `ANY` apart from the raw value, so a test of either
+  raises as the body does (the entry above). `ReaderEdgesTable`'s cast keys are a copy of the same rows
   (`cast:VARCHAR:raw`, `cast:BOOLEAN:text`, `cast:INTEGER:text`, `cast:BIGINT:text`, `cast:DOUBLE:text`), and which
   cast readers have a key licenses four things: a cut, `RenderingFamily.HasEdges`, `CosmosRendering.ReadReaderKinds`
   and the templates' rows. They equal `measuredcast`'s rows, which `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts`

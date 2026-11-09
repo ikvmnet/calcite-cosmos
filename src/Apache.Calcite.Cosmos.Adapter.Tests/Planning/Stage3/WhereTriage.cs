@@ -31,9 +31,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
         /// <summary>
         /// What S says of one push under a set: the IR it reads, the claim's verdict at <c>Pos</c> and <c>Neg</c>, the least
-        /// refutation at <c>Pos</c>, generate mode's answer and form, and the form the text was read as.
+        /// refutation at <c>Pos</c>, generate mode's answer and form, the form the text was read as, whether the claim's
+        /// agreement at <c>Pos</c> is vacuous, and whether S read a test in the IR whose body raises over its reading.
         /// </summary>
-        internal sealed record Verdicts(string Ir, string Pos, string Neg, string Refutation, string Best, string BestForm, string Claimed, string Reason, string[]? Holds = null);
+        internal sealed record Verdicts(string Ir, string Pos, string Neg, string Refutation, string Best, string BestForm, string Claimed, string Reason, string[]? Holds = null,
+            bool Vacuous = false, bool Raises = false);
 
         /// <summary>
         /// A push's triage class and its reason: <i>Proven</i> where generate mode finds an exact form and the text is not
@@ -57,12 +59,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (own.Best == nameof(RenderingVerdictKind.Proven))
                 return ("Proven", own.Pos == nameof(RenderingVerdictKind.Proven) ? "the text and S's own form" : "S's own form; the text " + own.Pos);
 
-            // An ordering over a declared VARIANT column (rawtyped): Calcite compiles none, so each cell is a raise alone and
-            // the gate's agreement with the text is vacuous, which no lift takes (DESIGN.md, "Vacuity is a table").
+            // An agreement whose every cell is a raise alone is vacuous, which no lift takes (DESIGN.md, "Vacuity is a table"):
+            // an ordering over a declared VARIANT column, which Calcite compiles none of, and a test whose body raises over its
+            // reading; the statement stays in Calcite and fails as Calcite fails it (the owner, 2026-11-08).
             if (own.Pos == nameof(RenderingVerdictKind.Proven))
-                return ("Unproven closable", Regex.IsMatch(own.Ir, @"raw\([^()]* VARIANT\) (<|<=|>|>=) ")
-                    ? "an ordering over a VARIANT column: Calcite compiles none, so the agreement is vacuous and S lifts it not (the owner's)"
-                    : "S proves the text, and generates no form for it");
+                return own.Vacuous || own.Raises ? (Declined, FailsOnEveryRow) : (Closable, "S proves the text, and generates no form for it");
 
             return Unproven(push, own);
         }
@@ -75,10 +76,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         /// </summary>
         internal const string RunTwo = "run 2: the service differs";
 
+        /// <summary>
+        /// The owner's reason for a decline where Calcite fails the statement on every row (2026-11-08): S reads a test whose
+        /// body raises over its reading, a field's or a call's, or an agreement that is vacuous, as an ordering over a
+        /// <c>VARIANT</c> is. The vacuity rule stands, S lifts no such agreement, and the statement stays in Calcite and fails
+        /// as Calcite fails it, where the translator pushed it whole.
+        /// </summary>
+        internal const string FailsOnEveryRow = "owner 2026-11-08: Calcite fails on every row";
+
         /// <summary>The kind of a decline's reason: a correctness fix the owner names, waiting on Azure, or no piece in 3A.</summary>
         internal static string KindOf(string reason) =>
             reason.StartsWith("Q3", StringComparison.Ordinal) || reason.StartsWith("Q4", StringComparison.Ordinal) || reason.StartsWith("N12", StringComparison.Ordinal)
-                || reason.StartsWith("#246", StringComparison.Ordinal) || reason == RunTwo ? "correctness fix, the owner names it"
+                || reason.StartsWith("#246", StringComparison.Ordinal) || reason == RunTwo || reason == FailsOnEveryRow ? "correctness fix, the owner names it"
             : reason.Contains("h14b", StringComparison.Ordinal) ? "waits on probe run 1 (h14b)"
             : reason.Contains("(3B)", StringComparison.Ordinal) ? "another PR's"
             : "no piece in 3A, the owner overrides or keeps the code";
@@ -131,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             // A name no push answers to is stale: the push is gone, Proven, or read for another reason, and decides nothing.
             var answered = pushes.Where(p => p.Position == "where").Select(p => (p.Set, p.Text, Class(p).Reason)).ToHashSet();
             var stale = OwnerDecisions.Named.Where(d => answered.Contains((d.Set, d.Text, d.Reason)) == false).ToList();
-            text.Append($"## The owner's decisions by name (2026-11-03, 2026-11-04)\n\n{OwnerDecisions.Named.Count:N0} named: "
+            text.Append($"## The owner's decisions by name (2026-11-03, 2026-11-04, 2026-11-08)\n\n{OwnerDecisions.Named.Count:N0} named: "
                 + string.Join(", ", OwnerDecisions.Named.GroupBy(d => (d.Kind, d.Set)).Select(g => $"{g.Key.Kind} under {g.Key.Set} {g.Count():N0}")) + $". Answered by no push: {stale.Count:N0}.\n");
             foreach (var d in stale)
                 text.Append($"- {d.Kind} under {d.Set}, {d.Reason}: `{d.Text.Replace("`", "'")}`\n");
@@ -187,6 +196,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             bool Has(string prefix) => holds.Any(h => h.StartsWith(prefix, StringComparison.Ordinal));
             bool Rexes(string text) => rex.Contains(text, StringComparison.Ordinal);
             bool Matches(string pattern) => Regex.IsMatch(rex, pattern);
+
+            // A test whose body raises over its reading fails the statement in Calcite, whatever else the IR holds.
+            if (own.Raises)
+                return (Declined, FailsOnEveryRow);
 
             // Run 1 gave every row h14 waited on an Azure target (h14b): what stays Unproven is classed alike under both sets.
 
@@ -368,18 +381,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 var key = string.Join("\u0001", set, ir, Import(null, ir).Digest, claim.Text);
                 return Memo.GetOrAdd(key, _ =>
                 {
-                    RenderingVerdict Check(SqlPredicate p, ServiceForm f)
+                    // Beside the verdict, whether S read a test of the IR whose body raises over its reading (testreads).
+                    (RenderingVerdict Verdict, bool Raises) Check(SqlPredicate p, ServiceForm f)
                     {
                         using var bundle = Graph.Open(set);
                         var node = bundle.Write(p);
                         Import(bundle, p);
                         bundle.Claim(node, f);
                         bundle.Run(RenderingCheckRun.CheckLimit([f]));
-                        return bundle.Read(node, f, Verdict.Equal);
+                        return (bundle.Read(node, f, Verdict.Equal), bundle.Scope.Rows(bundle.Theory.Ir.Atom).Any(row => row.Keys[2] is PredicateAtom { Body: PredicateAtom.RaisesReader }));
                     }
 
-                    var pos = Check(ir, claim);
-                    var neg = Check(new SqlPredicate.Not(ir), ServiceForm.NotOf(claim));
+                    var (pos, raises) = Check(ir, claim);
+                    var neg = Check(new SqlPredicate.Not(ir), ServiceForm.NotOf(claim)).Verdict;
 
                     using var generate = Graph.Open(set);
                     var term = generate.Write(ir);
@@ -389,7 +403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                     var best = generate.ReadBest(term);
 
                     return new(ir.ToString(), pos.Kind.ToString(), neg.Kind.ToString(), pos.Refutation is { } r ? RenderingGenerateMutationTests.Show(r) : "",
-                        best.Kind.ToString(), best.Best?.Text ?? "", claim.Text, pos.Reason ?? best.Reason ?? "", [.. Holds(ir).Distinct().Order()]);
+                        best.Kind.ToString(), best.Best?.Text ?? "", claim.Text, pos.Reason ?? best.Reason ?? "", [.. Holds(ir).Distinct().Order()], pos.Vacuous, raises);
                 });
             }
             catch (Exception e)

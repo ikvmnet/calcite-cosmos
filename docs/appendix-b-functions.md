@@ -122,8 +122,20 @@ These are the service's own, with nothing of Calcite's to agree with, and are wr
 `IS_DEFINED`, `IS_NULL`, `IS_STRING`, `IS_NUMBER`, `IS_BOOL`, `IS_ARRAY`, `IS_OBJECT`, `IS_PRIMITIVE`.
 
 Each takes any expression and returns a non-null boolean. `IS_DEFINED` is the only way to tell an absent
-property from one holding JSON `null`. These also have in-process implementations that answer as the
-service does, so a predicate using one can be split and rechecked.
+property from one holding JSON `null`.
+
+In process each takes apart the `JSON_VALUE` or `JSON_QUERY` it is given and asks the document what it
+holds at that path, as the service does, so a predicate using one can be split and rechecked. It asks
+whatever the accessor returns — `IS_NUMBER(JSON_VALUE(c."DOC", '$.price'))` is true of a stored `30`,
+whose text is a string — but the statement fails wherever the accessor fails, as `RETURNING INTEGER`
+does over a stored `true` and `RETURNING DOUBLE` over a stored `30` (Chapter 7.4).
+
+Over anything else Calcite has no body for a test, and fails it on every row with *… is evaluated by
+the service and has no in-process body*: a promoted column such as `c."$.category"` or `c."id"`, an
+item taken with `[…]`, a cast, or a function's result such as `UPPER(JSON_VALUE(c."DOC", '$.name'))`. A
+filter holding one fails as it fails in Calcite: the adapter does not send it for the service to answer
+in Calcite's place. Test the path instead — `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`, or
+`'$.tags[0]'` for an element.
 
 ## B.6 Full text and vector (Cosmos functions)
 

@@ -277,6 +277,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Ir.Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
             });
 
+            // S's alone too, a computed place being the bundle's: a test of a call is keyed by every call's row, which says the
+            // body raises over it (measured in process); the bridge's presence question about a place is such a test.
+            Ir.Analyse.DefineRule("a test reads a call's place as every call's row says the body reads it", r =>
+            {
+                var (v, q) = r.Vars<Val, JPath>("v", "q");
+                var (f, k, rd) = r.Vars<string, string, string>("f", "k", "rd");
+                var a = r.Var<Args>("a");
+                r.When(v.Is(Ir.Call.Of(f, a)), Ir.Reads.Of(v, q, rd), TestReads.Of(PredicateAtom.CallReaders, k));
+                r.Then(Ir.TestRead.Of(v, q, k));
+            });
+
             Denotes = Graph.DefineRelation<Val, string, bool>("denotes", analysis);
             DefineComparands();
 

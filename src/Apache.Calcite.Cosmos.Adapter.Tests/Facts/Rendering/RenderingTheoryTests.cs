@@ -60,6 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "text reads its path",
                     "a raw value reads its path",
                     "a raw value in a column reads its path through the column",
+                    "a test reads a call's place as every call's row says the body reads it",
                     "a literal a cast to DOUBLE converts denotes the number it spells",
                     "a literal a cast to a DECIMAL converts denotes the number it spells",
                     "a cast to DOUBLE denotes what it converts denotes",
@@ -74,10 +75,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a null test is an atom of what it reads",
                     "a test reads the text's path as its row says the body reads it",
                     "a test reads a raw value's path as its row says the body reads it",
-                    "a test reads the path of a raw value in a column as its row says the body reads it",
+                    "a test reads the path of a raw value in a column as its column's row says the body reads it",
                     "a test reads a returning's path as its row says the body reads it",
-                    "a definedness test is an atom of what its body reads",
-                    "a type test is an atom of what its body reads, TRUE of the kinds its row says",
+                    "a definedness test is an atom of the reading it is asked over, read as its body reads it",
+                    "a type test is an atom of the reading it is asked over, read as its body reads it, TRUE of the kinds its row says",
                     "an affix test with a literal pattern is an atom of what it reads",
                     "a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading",
                     "a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value",
@@ -370,7 +371,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(188);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(189);
         }
 
         /// <summary>
@@ -512,9 +513,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// through it, and its null test, are atoms of the reading it holds, and a raw value compared with a literal boxed as
         /// values of the literal's own kind are is the raw value's comparison, which its cells decide; an order, a literal in
         /// another box and an <c>INTEGER</c>, boxed apart from a stored integer's <c>BIGINT</c>, are no atom. A one-place test
-        /// is an atom of what its body reads, by <c>Calcite.TypeTestsAreTheirBodies</c>' rows the raw value of a text, of a
-        /// raw value in a column and of a returning alike, and of no cast; over a column the body raises (measured, rows2), so
-        /// that atom stands until a test carries its reading's raise (TODO.md). A box's null test is what it holds where its type's
+        /// is an atom of the reading it is asked over, read as <c>Calcite.TypeTestsAreTheirBodies</c>' rows say its body reads
+        /// it: the raw value of a text, a raw value and a returning, and nothing over a field or a call, where the body raises
+        /// (measured, rows2); of no cast. It raises where its reading does and everywhere its body does, and elsewhere answers
+        /// the document's kind. A box's null test is what it holds where its type's
         /// row says so (<c>boxnull</c>), each type its own cell; and a comparison with SQL's null by an operator null over a null
         /// operand (<c>strictop</c>) is an atom UNKNOWN wherever it is read.
         /// </summary>
@@ -538,11 +540,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Atoms(new SqlPredicate.Compare("=", new SqlValue.Raw(t), new SqlValue.Box("BIGINT", OracleFixture.Lit(42m)))).Should().Equal(PredicateAtom.Compare(PredicateAtom.RawReader, "=", JsonValues.Of(42m)));
 
             var kinds = ProbeTheory.Theory.Get(ProbeTheory.TestKinds.Of("IS_STRING"));
-            foreach (var read in new SqlValue[] { new SqlValue.Text(t), new SqlValue.Raw(t), variant, new SqlValue.Typed(t, "VARCHAR") })
+            var upper = new SqlValue.Call("UPPER", [new SqlValue.Text(t)]) with { Type = "VARCHAR", Spelled = "UPPER(c.t)" };
+            foreach (var (read, reader, body) in new (SqlValue, string, string)[]
             {
-                Atoms(new SqlPredicate.TypeTest("IS_STRING", read)).Should().Equal([PredicateAtom.TypeTest(PredicateAtom.RawReader, "IS_STRING", kinds)], read.ToString());
-                Atoms(new SqlPredicate.IsDefined(read)).Should().Equal([PredicateAtom.IsDefined(PredicateAtom.RawReader)], read.ToString());
+                (new SqlValue.Text(t), PredicateAtom.TextReader, PredicateAtom.RawReader), (new SqlValue.Raw(t), PredicateAtom.RawReader, PredicateAtom.RawReader),
+                (new SqlValue.Typed(t, "VARCHAR"), PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.RawReader),
+                (variant, PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (upper, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.RaisesReader),
+            })
+            {
+                Atoms(new SqlPredicate.TypeTest("IS_STRING", read)).Should().Equal([PredicateAtom.TypeTest(reader, "IS_STRING", kinds, body)], read.ToString());
+                Atoms(new SqlPredicate.IsDefined(read)).Should().Equal([PredicateAtom.IsDefined(reader, body)], read.ToString());
             }
+
+            // A test raises where its reading does, and everywhere its body does; elsewhere it answers the document's kind.
+            var (one, truth) = (new PredicateAtom.State.Scalar(JsonValues.Of(1m)), new PredicateAtom.State.Scalar(JsonValues.Of(true)));
+            PredicateAtom.IsDefined(PredicateAtom.TypedReader("INTEGER"), PredicateAtom.RawReader).On(truth, ReaderRows).Should().Be(Truths.Raises, "RETURNING INTEGER raises over true");
+            PredicateAtom.IsDefined(PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.RawReader).On(one, ReaderRows).Should().Be(Truths.True | Truths.Raises, "RETURNING DOUBLE may raise over 1");
+            PredicateAtom.IsDefined(PredicateAtom.TypedReader("INTEGER"), PredicateAtom.RawReader).On(new PredicateAtom.State.Structure(JsonValues.ObjectType), ReaderRows).Should().Be(Truths.True, "a RETURNING reads a structure as null");
+            PredicateAtom.IsDefined(PredicateAtom.TextReader, PredicateAtom.RawReader).On(one, ReaderRows).Should().Be(Truths.True);
+            foreach (var state in new PredicateAtom.State[] { new PredicateAtom.State.Absent(), PredicateAtom.State.NullState, one, truth })
+                PredicateAtom.TypeTest(PredicateAtom.RawIn("VARIANT"), "IS_STRING", kinds, PredicateAtom.RaisesReader).On(state, ReaderRows).Should().Be(Truths.Raises, "the body raises over a field");
 
             Atoms(new SqlPredicate.IsDefined(new SqlValue.Cast("VARCHAR", new SqlValue.Text(t)))).Should().BeEmpty("a cast is no accessor the body takes apart");
 

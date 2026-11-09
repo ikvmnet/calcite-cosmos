@@ -67,6 +67,11 @@ concrete type is learned per row. In practice:
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
   service where the container's schema declares the path a string (Chapter 9).
+- **Ordering or type-testing it fails.** Calcite has no order for `VARIANT`, so `c."$.category" > 'a'`
+  does not compile in process, and a type test such as `IS_DEFINED(c."$.category")` has no in-process
+  body over a column (Appendix B.5). Calcite fails either on every row, and a filter holding one fails
+  as it fails in Calcite: the adapter does not send it for the service to answer instead. Compare or test
+  the path: `JSON_VALUE(c."DOC", '$.category') > 'a'`, `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`.
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **A string function over it does not push.** `UPPER(CAST(c."$.category" AS VARCHAR))` reads the column
@@ -237,7 +242,10 @@ WHERE NOT IS_DEFINED(JSON_VALUE(c."DOC", '$.discontinuedAt'))   -- absent
 ```
 
 `IS_DEFINED`, `IS_NULL`, `IS_STRING`, `IS_NUMBER`, `IS_BOOL`, `IS_ARRAY`, `IS_OBJECT` and
-`IS_PRIMITIVE` all take any expression ([Appendix B](appendix-b-functions.md)).
+`IS_PRIMITIVE` all take any expression ([Appendix B](appendix-b-functions.md)), but ask them of
+`JSON_VALUE` or `JSON_QUERY`, as above. In process each takes that accessor apart to ask the document
+what it holds; over a promoted column, an item taken with `[…]`, a cast or a function's result it has no
+body, and a filter holding one fails as it fails in Calcite (Appendix B.5).
 
 ## 7.6 Reading values in .NET
 

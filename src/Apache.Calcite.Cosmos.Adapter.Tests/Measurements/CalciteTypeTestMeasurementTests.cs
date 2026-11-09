@@ -52,14 +52,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             read.Where(r => r.Value != (rows.Where(t => t.Reader == r.Key.Reader || t.Reader == PredicateAtom.TypedReaders && r.Key.Reader.StartsWith(PredicateAtom.TypedReaders + ":", StringComparison.Ordinal))
                 .Select(t => t.As).SingleOrDefault() ?? "raises")).Select(r => $"{r.Key.Test} over {r.Key.Reader} reads {r.Value}").Should().BeEmpty();
             read.Where(r => r.Value == PredicateAtom.RawReader).Select(r => r.Key.Reader).Distinct().Should().HaveCount(6, "the text and five RETURNINGs read the raw value");
-            rows.Should().NotContain(t => PredicateAtom.ColumnOf(t.Reader) != null, "the body raises over a field, so no row names a column's reading");
+            rows.Where(t => PredicateAtom.ColumnOf(t.Reader) != null || t.Reader == PredicateAtom.CallReaders).Should()
+                .HaveCount(PredicateAtom.Columns.Count() + 1).And.OnlyContain(t => t.As == PredicateAtom.RaisesReader, "the body raises over a field of every column and a call, each a row of its own");
         }
 
         /// <summary>
         /// Each reading of a path a one-place test is asked over, in process: its SQL over a document whose <c>v</c> holds the
         /// witness, or over a column of the document's value, and what the loader writes it as. The text and a
-        /// <c>RETURNING</c> of each type are an accessor the body takes apart; a raw value in a column, an item of one and a
-        /// cast to <c>ANY</c> are not.
+        /// <c>RETURNING</c> of each type are an accessor the body takes apart; a raw value in each column, an item of one, a
+        /// cast to <c>ANY</c> and a call are not.
         /// </summary>
         static readonly (string Reader, string Sql, SqlTypeName? Column)[] Readings =
         [
@@ -73,7 +74,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (PredicateAtom.RawIn("VARIANT"), "\"v\"", SqlTypeName.VARIANT),
             (PredicateAtom.RawIn("ANY"), "\"v\"", SqlTypeName.ANY),
             (PredicateAtom.RawIn("VARCHAR"), "\"v\"", SqlTypeName.VARCHAR),
+            (PredicateAtom.RawIn("CHAR"), "\"v\"", SqlTypeName.CHAR),
             ("item:VARIANT", "\"v\"['x']", SqlTypeName.VARIANT),
+            (PredicateAtom.CallReaders, "UPPER(JSON_VALUE(\"d\", '$.v'))", null),
         ];
 
         /// <summary>The one-place tests whose readings are measured: the definedness test and two type tests.</summary>

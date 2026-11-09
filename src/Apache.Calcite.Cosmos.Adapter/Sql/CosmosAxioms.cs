@@ -581,7 +581,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "COALESCE is the CASE of its first operand that is not null: COALESCE(p, FALSE) is TRUE where p is and FALSE elsewhere, and an operand after one that is not null is not evaluated.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteCaseMeasurementTests.CoalesceIsACase"),
             new("Calcite.TypeTestsAreTheirBodies",
-                "In process the IS_* tests are their bodies (CosmosFunctionBodies), which answer over each kind of value at a path, and over an absent one, what the service answers (Service.TypeTestBodiesMatchTheService): a real boolean, never null. A test is handed the document and the path of the JSON_VALUE it is asked of, whatever that returns, so over the text and over a RETURNING of each type it asks what the document holds at the path, IS_NUMBER of the text true over a stored 30 whose text is a string, the statement raising where the RETURNING raises, as RETURNING INTEGER does over true; over a field of any type, an item and a cast to ANY it raises.",
+                "In process the IS_* tests are their bodies (CosmosFunctionBodies), which answer over each kind of value at a path, and over an absent one, what the service answers (Service.TypeTestBodiesMatchTheService): a real boolean, never null. A test is handed the document and the path of the JSON_VALUE it is asked of, whatever that returns, so over the text and over a RETURNING of each type it asks what the document holds at the path, IS_NUMBER of the text true over a stored 30 whose text is a string, the statement raising where the RETURNING raises, as RETURNING INTEGER does over true; over a field of any type, an item, a cast to ANY and a call it raises, whatever the field holds.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess",
                 [
                     new(Test.IsDefined, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=true true=true false=true number=true string=true object=true array=true"),
@@ -595,11 +595,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ],
                 // The body is handed the document and the path the accessor names, JSON_VALUE whatever it returns
                 // (CosmosTypeTestImplementor): a test of the text or of a RETURNING asks of the value at the path, measured in
-                // process (rows2), the statement raising where the RETURNING does. The body raises over a field, so a raw value
-                // in a column (raw:VARIANT) has no row of its own, and over an item and a cast to ANY, which the loader writes as
-                // the raw value: the raw value's row stands for the accessor re-typed ANY, which the body takes apart, and is read
-                // for those three until a test atom carries its reading's raise (TODO.md).
-                TestReads: [new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader)]),
+                // process (rows2), the statement raising where the RETURNING does, which the test atom carries. Over a raw value
+                // in a column and a call the body raises, each keyed by its own reading; an item and a cast to ANY, which the
+                // loader writes as the raw value, read the raw value's row, which stands for the accessor re-typed ANY, until
+                // h15b writes them apart (TODO.md).
+                TestReads:
+                [
+                    new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader),
+                    .. PredicateAtom.Columns.Select(column => new CosmosTestRead(PredicateAtom.RawIn(column), PredicateAtom.RaisesReader)),
+                    new(PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
+                ]),
             new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
                 "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, and a type test, which asks the document's kind, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Facts.Saturation.PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell",

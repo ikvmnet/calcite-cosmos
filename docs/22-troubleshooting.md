@@ -146,6 +146,9 @@ row identifies it), where in the value the bytes are, and the bytes themselves.
 **"… is evaluated by the service and has no in-process body."**
 A Cosmos-only function (full text, scoring, `REGEXMATCH`, the string conversions) could not be pushed
 — most often because its first argument is not a property path. Rewrite it so it can be. Chapter 17.
+A type test (`IS_DEFINED`, `IS_STRING`, …) has a body only over `JSON_VALUE` or `JSON_QUERY` of a path:
+over a promoted column, an item taken with `[…]`, a cast or a function's result Calcite fails it on every
+row, and so does the adapter. Test the path instead (Appendix B.5).
 
 **"Cosmos never returns a relevance score" / `ORDER BY FULLTEXTSCORE(…)` fails through a connection.**
 `ORDER BY RANK` cannot be recovered through a `CalciteConnection` ([#46](https://github.com/ikvmnet/calcite-cosmos/issues/46)).

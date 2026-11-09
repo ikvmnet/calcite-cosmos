@@ -6359,6 +6359,16 @@ gate writes `set-subset(classes, raiseonly)` beside it, and a junction or a nega
 derived too: the classes whose truths of Calcite's the policy sets aside whole, so a plant of `tolerated` moves it.
 `vacuous` is a `Max` over booleans, so a claim holds of nothing where any of its proofs does, whichever `Min` keeps.
 
+**A filter Calcite fails on every row fails as Calcite fails it** (the owner, 2026-11-08). Asked whether S should lift
+an agreement whose every cell is a raise alone, since decision 2 already lets any answer refine a raise, the owner kept
+the rule as written: S lifts no vacuous agreement, and a statement holding one stays in Calcite and fails as Calcite
+fails it, where the translator pushed it whole and the service answered. An ordering over a declared `VARIANT`, which
+Calcite compiles none of, is one; a one-place test whose in-process body raises over its reading, as over a field, an
+item, a cast and a call, is another, its atom carrying the raise over a field and a call, and over an item and a cast
+from h15b (*A test carries its reading's raise (raises)*). The census declines each by name under the owner's reason
+(`OwnerDecisions`, `owner 2026-11-08: Calcite fails on every row`), and the production path reads them so from the
+switch, where it reads places (`TODO.md`).
+
 **What the evaluation fills is held to one value a key.** `partition`, which cuts at the reader's edges, `svc` and
 `outcomes` have no lattice: each is computed once for each match of its rule, and a key two matches reach — a part two
 candidates sharing a partition both need — must come out one value, so a primitive that answered one key two ways faults
@@ -8122,7 +8132,9 @@ that the facts graph (F) learns from them:
 
 - the seven `IS_*` tests beside `IS_DEFINED`, over a reading of a path alone, as `TypeTest(test, raw(p))`: what one
   asks is the document's kind, whatever reads the path (`Calcite.TypeTestsAreTheirBodies`), so the raw value stands for
-  it. Over a call, or a cast, a test stays opaque: no row says what the body makes of a computed value.
+  it. Over a call, or a cast, a test stays opaque: no row says what the body makes of a computed value. (Where places
+  are read a test is written over any value since G8, and `testreads` says what its body reads; a test of a call is an
+  atom that raises since the raises step, *A test carries its reading's raise (raises)*.)
 - a boolean literal as `Constant`; `IS [NOT] TRUE`, `IS [NOT] FALSE`, `COALESCE(p, FALSE)`, the null test of a
   predicate and a boolean `CASE` as `case(c, then, else)`, each the case of its definition (`Calcite.TruthTestsAreCases`,
   `Calcite.CoalesceIsACase`), nested from the last arm; a missing `ELSE` is Calcite's `NULL`, read `Constant(null)`;
@@ -8953,8 +8965,8 @@ licenses each today. So those seven names stand for the census's root alone: fro
 
 **What stays open:** the eight `Production` orderings of a declared `VARIANT` column (type tests: partitions 42, 440,
 1569, 1570, 2392, 2548, 2549, 2863), each cell a raise alone, so vacuous. The owner decided on 2026-11-08 that a filter
-Calcite fails on every row fails as Calcite fails it, and the step recording that names them (`TODO.md`, *An ordering
-over a declared `VARIANT` column is vacuous*).
+Calcite fails on every row fails as Calcite fails it, and the raises step names them (*A test carries its reading's
+raise (raises)*).
 
 ### What the probe account answered (run 3)
 
@@ -9012,6 +9024,68 @@ Under `Production` a `REPLACE` whose replacement is empty, holds any band or is 
 over build 336 are post2's on both frameworks (`Production` `038034d1…`, `Emulator` `8c6dd98a…`, 3,492 statements
 each), and no line of the census moves, source (b) reading post2's capture.
 
+### A test carries its reading's raise (raises)
+
+**The owner's decision** (2026-11-08, *Vacuity is a table*): a filter Calcite fails on every row fails as Calcite fails
+it. The vacuity rule stands as written, S lifts no agreement whose every cell is a raise alone, and a statement holding
+one stays in Calcite where the translator pushed it whole. This step builds what S needs to read such a filter so.
+
+**The atom is of the reading it is asked over, read as its body reads it.** A one-place test's in-process body takes
+apart the `JSON_VALUE` it is handed and asks the document (`CosmosTypeTestImplementor`, *A one-place test is of the
+reading as it stands*), so the atom is `IsDefined(reader, body)` or `TypeTest(reader, test, kinds, body)`: the reader the
+value is read through (`reads`), which cuts the cells and whose raise the test carries, and the reading its `testreads`
+row says the body reads instead (`PredicateAtom.Body`). On a kind of document it raises where the reader does
+(`RETURNING INTEGER` over `true`, `RETURNING DOUBLE` over `1`), then where the body's reading does, and otherwise answers
+presence or the kinds its row says (`PredicateAtom.On`). `raises` is a reading of its own (`PredicateAtom.Reading.Raising`)
+that raises on every cell and keeps no row either way. The two atom rules join the value's `reads` beside its
+`testread`, renamed, in the vocabulary both graphs share: F's statements write a test over the raw value alone, whose
+atom, `raw` read as `raw`, answers as it did, and F's 51 rules are the same rules.
+
+**Each reading the body cannot take apart is a row of its own.** `testreads` names the column a field is read through,
+`raw:VARIANT`, `raw:ANY`, `raw:VARCHAR` and `raw:CHAR`, and every call, `call`, each read as `raises`
+(`CalciteTypeTestMeasurementTests.EachTypeTestAnswersItsRowInProcess`, which measures a `CHAR` field and a call beside
+rows2's readings). The vocabulary's rule for a raw value in a column reads its column's row where it read the raw
+value's (*a test reads the path of a raw value in a column as its column's row says the body reads it*), and S reads a
+call's place by the `call` row (*a test reads a call's place as every call's row says the body reads it*), its 189th
+rule. The text, a raw value and every `RETURNING` read the raw value as before; the raw value's own row stays for the
+accessor re-typed `ANY`, which the body takes apart.
+
+**What S reads.** A test of a field or a call raises on every cell, so an agreement that rests on one alone is vacuous
+and lifts nothing; a test of a `RETURNING` raises where it does, which any answer refines (decision 2). `IS_DEFINED` of
+a computed call, the bridge's presence question about a place (`RenderingOracle.ImageOf`), is that raise too: read by
+the atom it moves no line of the census, which reads the same with and without the `call` row, and no digest line, so
+it is read here rather than left to h15.
+
+**What the census declines.** Every push in which S reads a test of a declared field, and every ordering over a declared
+`VARIANT`: 127 pushes of the type-test row move to *Unproven declined* for the owner's reason
+(`WhereTriage.FailsOnEveryRow`), and `OwnerDecisions` accepts each by name, so line 6 passes on every judged row under
+both sets. 103 are the type tests rows2's trial moved over post2's capture, `Emulator` 52 and `Production` 51, each
+Proven before (the text and S's own form 25 and 24, S's own form alone 27 and 27); 16 more, `Emulator` 12 and
+`Production` 4, are pushes the census reads as captured (sources (b) and (d)) whose verdicts post2's capture held from
+before the raise was read, so the 42 tests whose records hold a test S reads were captured again on 8089 and merged
+over post2's; and eight are the `Production` orderings over a declared `VARIANT`, partitions 42, 440, 1569, 1570, 2392,
+2548, 2549 and 2863, closable for vacuity before. Each holds a test of `category` (`VARIANT`), `id` or `_etag`
+(`VARCHAR`), whose column row says the body raises. The row's `Portable` verdicts beside move with them (Proven 116 to
+68 under `Production`, 138 to 77 under `Emulator`). No line moves for any other reason but seven `Emulator` occurrence
+counts, 20 records of `EveryOrderIsOneCalciteAllows`'s narrowing, which counted 116 of the CLR runtime's own failures
+where post2's capture counted 118, as runs of one tree differ (h14's two captures, 118 and 117). Every test S reads in
+the census is of a declared field or of a path an accessor in its line reads, so no line rests on one of the four
+writings below.
+
+**What reaches a plan.** Nothing yet. The production path loads its statements as the legacy reading, which names no
+column and writes no test of a call, and a type test is the translator's until the switch (`RenderingFamily.Owns`): the
+digests over build 336, net10.0 and net8.0, are post2's (`Production` `038034d1…`, `Emulator` `8c6dd98a…`, 3,492
+statements each), and no input's sent floor moves at the pull request's size or the gate's. From the switch a statement holding such a filter
+stays in Calcite and fails as Calcite fails it, an ordering over a declared `VARIANT` and a test of a column among them,
+as the manual now says (Chapter 7.3 and 7.5, Appendix B.5); `TODO.md` carries it to h15.
+
+**What it leaves.** Four writings stand for an accessor the body takes apart: an item chain and a cast to `ANY`, which
+the loader writes as the raw value, a field read as text, written as the text accessor, and a field of a scalar type,
+`_ts` among them, written as a `RETURNING`. A test of one reads that accessor's row, an agreement where Calcite raises,
+sound by decision 2 and wrong in its reason; no census line S reads holds one (the one test of a cast to `ANY` the
+census lists is a translator test's push, which S does not read), and h15b writes each apart with the element guards
+(`TODO.md`).
+
 ### The raw reading through its column (rawtyped)
 
 **What moved.** Under S's reading alone (`places`), the loader names the column a declared field is read through,
@@ -9054,7 +9128,8 @@ differential's, is proved so.
 `c.category > 'a'` over a declared `VARIANT` is a raise alone, and the agreement the union proved through its `ANY`
 column is vacuous, which S lifts not (*Vacuity is a table*). Eight `Production` type-test pushes at the gate are so
 (partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863), the gate proving the text and S lifting no form. The vacuity
-policy is the owner's, so the column reads as the row says and the pushes wait on a decision (`TODO.md`).
+policy is the owner's, so the column reads as the row says; the owner decided on 2026-11-08 that such a filter fails as
+Calcite fails it, and the raises step names the eight (*Vacuity is a table*).
 
 **Population D through each column.** Each raw atom is drawn again through one column, bare and negated, after the rest
 so the stream before moves not, a `VARCHAR` beside a literal that is no string read as `ANY`, since the loader casts a
@@ -9187,11 +9262,12 @@ it stands, and S's rules read the row as a cell.
   type-test rules read it where they read `reads`; a cast names no row and is no atom, as before. rows2 measured the
   cell in process (`CalciteTypeTestMeasurementTests`): the text and a `RETURNING` of each type read the raw value, the
   statement raising where the `RETURNING` raises, and a field of every type, an item and a cast to `ANY` raise. No row
-  names a column's reading, but the vocabulary reads a test of a raw value in a column through the raw value's row, as
-  it reads an item and a cast to `ANY` the loader writes as the raw value: each is an agreement where Calcite raises,
+  named a column's reading, but the vocabulary read a test of a raw value in a column through the raw value's row, as
+  it reads an item and a cast to `ANY` the loader writes as the raw value: each an agreement where Calcite raises,
   sound while any answer but a failure refines a raise (decision 2), and wrong only in its reason. Keying a column by
   its own row with no atom for a test that raises moved 103 of the census's type-test pushes from Proven to Unproven
-  and failed the emulator's triage line 6, so it waits for a test atom that carries its reading's raise (`TODO.md`).
+  and failed the emulator's triage line 6, so it waited for a test atom that carries its reading's raise, which the
+  raises step built (*A test carries its reading's raise (raises)*); the item and the cast to `ANY` are h15b's.
 - *A comparison with SQL's null is read as written.* Where places are read a null literal is `null(type)`, and S's rule
   reads a comparison with it by an operator `strictop` says is null over a null operand as UNKNOWN wherever its reading
   is read, raising where reading it raises (`PredicateAtom.CompareNull`); `strictop` is an analysis now, which the
@@ -9798,8 +9874,8 @@ plan digests and the census are byte-equal to the parent's.
   class but U+0000's, so `LikePattern.Read` leaves such a pattern unread on Calcite's side: S proves nothing of it, and
   the translator, reading the same rows, computes it in process.
 - **A type test and `IS_DEFINED` over a computed place.** Where places are read the loader writes them over any value,
-  where it kept them to one that reads a path; whether one is an atom is `testreads`', which names no call's reading, so
-  none is yet.
+  where it kept them to one that reads a path; whether one is an atom is `testreads`', which named no call's reading
+  until the raises step's `call` row, whose test raises over every value (*A test carries its reading's raise (raises)*).
 - **A `CHAR` field.** Where places are read the loader names the column a declared field's type names, `CHAR` among
   them. No row measured `CHAR`'s padding, so `PredicateAtom.UnionColumns` holds it and S's rules read it as the
   measured columns' union (`unioncolumn`): its truths on each key (`rawunion`), what it reads each class as

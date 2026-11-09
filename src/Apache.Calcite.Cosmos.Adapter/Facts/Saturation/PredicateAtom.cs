@@ -68,6 +68,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Every <c>RETURNING</c>, whatever its type, as a row names them all (<c>testreads</c>, G8).</summary>
         public const string TypedReaders = "typed";
 
+        /// <summary>Every computed place's call, whatever its function, as a row names them all (<c>testreads</c>).</summary>
+        public const string CallReaders = "call";
+
+        /// <summary>
+        /// What a one-place test's body reads over a reading it cannot take apart, as a row says (<c>testreads</c>): nothing,
+        /// a raise on every value, as over a field of every type and a call, measured in process (rows2).
+        /// </summary>
+        public const string RaisesReader = "raises";
+
         /// <summary>Returns the reader of a <c>RETURNING</c> of a SQL type.</summary>
         public static string TypedReader(string type) => TypedReaders + ":" + type;
 
@@ -186,14 +195,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public static PredicateAtom IsDefined(string reader) => new(reader, DefinedTest, null, null, false);
 
+        /// <summary><see cref="IsDefined(string)"/> asked over a reading its body reads as <paramref name="body"/> (<see cref="Body"/>).</summary>
+        public static PredicateAtom IsDefined(string reader, string body) => IsDefined(reader) with { Body = body };
+
         /// <summary>
         /// A type test of the path the reader reads: what it asks is the document's kind, whatever the reading, as
-        /// <see cref="IsDefined"/>'s is; TRUE of the kinds its row says (<c>testkinds</c>, G7), absence never.
+        /// <see cref="IsDefined(string)"/>'s is; TRUE of the kinds its row says (<c>testkinds</c>, G7), absence never.
         /// </summary>
         public static PredicateAtom TypeTest(string reader, string test, ValueSet<string> kinds) => new(reader, test, null, null, false) { Kinds = kinds };
 
+        /// <summary><see cref="TypeTest(string, string, ValueSet{string})"/> asked over a reading its body reads as <paramref name="body"/> (<see cref="Body"/>).</summary>
+        public static PredicateAtom TypeTest(string reader, string test, ValueSet<string> kinds, string body) => TypeTest(reader, test, kinds) with { Body = body };
+
         /// <summary>The JSON kinds a type test is TRUE of, as its row says (<c>Calcite.TypeTestsAreTheirBodies</c>); none for every other atom.</summary>
         public ValueSet<string>? Kinds { get; init; }
+
+        /// <summary>
+        /// What a one-place test's in-process body reads in place of <see cref="Reader"/>, the reading it is asked over, as its
+        /// row says (<c>testreads</c>): the raw value, or <see cref="RaisesReader"/>; <c>null</c> for a test read as its own
+        /// reading, and for every other atom.
+        /// </summary>
+        public string? Body { get; init; }
 
         /// <summary>
         /// A match of the text read against a literal pattern: <c>LIKE</c>, TRUE or FALSE where the reading is not null and
@@ -342,20 +364,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>The truth values the atom may take on one kind of document, its class read as the readings rules say.</summary>
         internal Truths On(State state, ReadingTable readings)
         {
-            if (Test == DefinedTest)
-                return state is State.Absent ? Truths.False : state is State.Unknown ? Truths.True | Truths.False : Truths.True;
-
-            if (Kinds is { } kinds)
-                return state switch
-                {
-                    State.Absent => Truths.False,
-                    State.Null => kinds.Contains(NullType) ? Truths.True : Truths.False,
-                    State.Scalar s => kinds.Contains(TypeOf(s.Value)) ? Truths.True : Truths.False,
-                    State.AnyString => kinds.Contains(StringType) ? Truths.True : Truths.False,
-                    State.AnyNumber n => kinds.Contains(n.Integral ? IntegerType : FractionType) ? Truths.True : Truths.False,
-                    State.Structure s => kinds.Contains(s.Type) ? Truths.True : Truths.False,
-                    _ => Truths.True | Truths.False,
-                };
+            // A one-place test answers the document's kind through what reads it (Calcite.TypeTestsAreTheirBodies, rows2):
+            // the reading it is asked over, then its body's, raising where either raises, a body that raises everywhere among them.
+            if (Test == DefinedTest || Kinds is not null)
+                return WhereRead(EvaluatorOf(Reader, readings, State.ClassOf(state)).Reading.Null(state), WhereRead(Evaluate(Body ?? Reader, readings).Null(state), ByKind(state)));
 
             if (Against is not null || state is State.Unknown)
                 return Truths.Any;
@@ -386,6 +398,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     return Truths.Any;
             }
         }
+
+        /// <summary>What a one-place test asks of a kind of document: presence, or a kind its row says it is TRUE of.</summary>
+        Truths ByKind(State state) => Kinds is not { } kinds
+            ? state is State.Absent ? Truths.False : state is State.Unknown ? Truths.True | Truths.False : Truths.True
+            : state switch
+            {
+                State.Absent => Truths.False,
+                State.Null => kinds.Contains(NullType) ? Truths.True : Truths.False,
+                State.Scalar s => kinds.Contains(TypeOf(s.Value)) ? Truths.True : Truths.False,
+                State.AnyString => kinds.Contains(StringType) ? Truths.True : Truths.False,
+                State.AnyNumber n => kinds.Contains(n.Integral ? IntegerType : FractionType) ? Truths.True : Truths.False,
+                State.Structure s => kinds.Contains(s.Type) ? Truths.True : Truths.False,
+                _ => Truths.True | Truths.False,
+            };
+
+        /// <summary>An answer through a reading, by its null test's truths: the answer where it reads a value or null, a raise where it raises.</summary>
+        static Truths WhereRead(Truths isNull, Truths answer) => (isNull & Truths.Raises) | ((isNull & (Truths.True | Truths.False)) != 0 ? answer : Truths.None);
 
         /// <summary>
         /// The truth values the atom may take on one cell of a path's import: <see cref="On"/>'s, through the reading's cell
@@ -698,6 +727,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 if (reader == TextReader)
                     return new Text(structures: false);
 
+                if (reader == RaisesReader)
+                    return new Raising();
+
                 // The raw value, through every column's union or through the one its reader names (rawtyped).
                 if (IsRaw(reader))
                     return new Raw(reader);
@@ -817,6 +849,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override PathValues KeptNull(bool truth) => PathValues.Anything;
 
                 public override PathValues KeptParameter() => PathValues.Anything;
+
+            }
+
+            /// <summary>What a body that raises over every value reads (<see cref="RaisesReader"/>): nothing, so it keeps no row either way.</summary>
+            sealed class Raising : Reading
+            {
+
+                public override Truths Equal(State state, string literal) => R;
+
+                public override Truths Order(State state, string op, string literal) => R;
+
+                public override Truths Null(State state) => R;
+
+                public override Truths Parameter(State state) => R;
+
+                public override PathValues KeptEqual(string literal) => PathValues.OfKinds(ValueSet<string>.Empty);
+
+                public override PathValues KeptUnequal(string literal) => PathValues.OfKinds(ValueSet<string>.Empty);
+
+                public override PathValues KeptOrder(string op, string literal) => PathValues.OfKinds(ValueSet<string>.Empty);
+
+                public override PathValues KeptNull(bool truth) => PathValues.OfKinds(ValueSet<string>.Empty);
+
+                public override PathValues KeptParameter() => PathValues.OfKinds(ValueSet<string>.Empty);
 
             }
 

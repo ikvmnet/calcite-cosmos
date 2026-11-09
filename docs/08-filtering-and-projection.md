@@ -66,7 +66,7 @@ each is sent as the weakening proved for it and rechecked.
 | `CASE WHEN … THEN … ELSE … END` | nested `(cond ? a : b)` |
 | `COALESCE`, `NULLIF`, `NVL`, `IFNULL` | the `CASE` Calcite expands them to |
 | `SUBSTRING`, `POSITION`, `TRIM` (spaces), string, math and array functions | Cosmos functions — [Appendix B](appendix-b-functions.md) |
-| `IS_DEFINED(x)`, `IS_STRING(x)`, … | the same Cosmos functions |
+| `IS_DEFINED(x)`, `IS_STRING(x)`, … | the same Cosmos functions, over `JSON_VALUE` or `JSON_QUERY` of a path; over anything else the statement fails, as in Calcite (Appendix B.5) |
 
 `LIKE` has four refusals. A pattern containing `[` or `]` is declined — Cosmos reads a bracket as a
 character range, SQL reads it literally. `LIKE … ESCAPE` is declined, and so is a pattern holding
