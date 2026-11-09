@@ -1,0 +1,27 @@
+# What the probe account answered on 2026-11-09 (run 4), line by line: REPLACE's search read from a path,
+# REPLACE("a0b1c", c.v, "x"), over the six witnesses run 3 left unanswered twice (503), "a0b1c", "b", "", "\u00001"
+# (U+0000 then 1), 30 and 0.5, each asked alone in a statement of its own, and LENGTH(c.v) over "a0b1c", which run 3
+# left unanswered too and run 1 answered 5, asked before each search and after the last (CosmosStoredSearchProbeTests),
+# each line as the witness probe logged it (CosmosWitnessProbe.ProjectAlone), the release column Azure. A function's
+# answer is the projection; unanswered is a statement the service left unanswered each of the five times it was asked,
+# 2, 4, 8 and 16 s apart, which measures nothing.
+#
+# feature/stage3-run4-azure at 262d5e9, Release, net10.0, one database at 400 RU/s deleted when the class ended,
+# 2026-11-09T19:13:33Z to 19:17:32Z: 121.52 RU, 10.95 of them the class's setup and cleanup; the account held no
+# database at 19:17:34Z. The class passed.
+#
+# Five searches answered at the first asking, each as both emulator releases answer it: "a0b1c" "x" and "b" "a0x1c",
+# Calcite's answers; the empty search, 30 and 0.5 undefined, where Calcite answers "a0b1c". The search U+0000 then 1
+# went unanswered all five times (503, sub-status 20001 four times and 0 the fifth, 30 to 44 s each, charged nothing),
+# the length over "a0b1c" answering 5 just before the first and just after the fifth, so on Azure that statement fails
+# every time it is asked, where the emulator answers "a0b1c", Calcite's answer. The length answered 5 all seven times,
+# as run 1 did, the first time after the fifth failure in 30 s and every other time within 0.4 s. So run 3's other five
+# searches and its length met a busy service, and its search U+0000 then 1 a statement Azure does not answer.
+release	row	expression	witness	answer
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	5
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	"a0x1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	""	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	0.5	undefined
