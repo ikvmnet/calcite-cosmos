@@ -117,6 +117,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             return measured;
         }
 
+        /// <summary>
+        /// Calcite's answer in process to one spelling over each witness, under each reader the row names, spelled as the
+        /// probe spells the service's: what <see cref="Judge"/> holds each of the service's answers to.
+        /// </summary>
+        public static IReadOnlyList<(string Reader, string[] Answers)> CalciteAnswers(string row, CosmosFunctionSpelling function, IReadOnlyList<string?> witnesses)
+        {
+            var table = MaterialisedTable.Of(witnesses.Select(w => w is null ? "{}" : $"{{\"v\":{w}}}"));
+            using var connection = MaterialisedTable.Open(function.Library);
+            return [.. CosmosAxioms.Get(row).Readers!.Select(reader =>
+                (reader, table.Values(connection, function.Calcite.Replace("s", Read(reader), StringComparison.Ordinal)).Select(v => Spelled(v)).ToArray()))];
+        }
+
         static void Note(SortedDictionary<FunctionKey, CosmosFunctionAnswer> measured, FunctionKey key, CosmosFunctionAnswer answer) =>
             measured[key] = measured.TryGetValue(key, out var other) ? Worse(other, answer) : answer;
 
