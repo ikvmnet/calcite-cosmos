@@ -2895,9 +2895,6 @@ across documents* and *A join of a container to itself* is the record.
   declared owed (`CosmosAxiomRows.Owed`): no statement has measured what its `LIKE` makes of U+0000 or U+FDD0 stored
   escaped, so S writes a pattern of two runs or more as `LIKE` and proves it nowhere. A witness set like
   `TheEmulatorComparesWhatItIsSentWithWhatItStores`'s, over `LIKE` with runs beginning `0` and `1`, decides it.
-- **`LIKE`'s `_` is unmeasured over a line terminator** — *small, a measurement.* Calcite reads `_` as one code point that
-  is no line terminator; the service's `_` over U+000A and the rest is unmeasured, so no pattern holding `_` is written and
-  such a `LIKE` stays the translator's.
 - **The Rex builder writes no affix** — *small, h15.* `RenderingRexBuilder` has no Rex for an affix form, so a weakening
   holding one is not pushed; the switch writes `LIKE` over the reading the atom was judged over, or a call of
   `CosmosOperators`, whichever the loader reads back.
@@ -2926,6 +2923,20 @@ across documents* and *A join of a container to itself* is the record.
   process: RU, never rows. A function key carrying a magnitude, read at the literal's critical points, would prove
   `c.price + n` wherever a declared range bounds the column; no column in the corpus declares one, and it needs function
   rows and an Azure measurement.
+- **Run 2's declines are accepted by name, the case mapping's for the census alone** — *the owner's (2026-11-04);
+  permanent for `_`; the case mapping's names go when the census asks as the admission does.* Run 2 measured each target's case mapping over the cased letters
+  of every band and `LIKE`'s `_` over every class (`Service.CaseMappingOverCasedLetters`, `Service.LikeOneOverEachClass`):
+  outside ASCII below the surrogates both targets leave letters Java maps, Azure's `UPPER` leaves the high band's
+  ligatures, and the service's `_` matches a line terminator, which Calcite's never does. The owner accepted the declines
+  by name before the run, and the branch's triage lists each by its text (reason `run 2: the service differs`,
+  `OwnerDecisions`): at the gate over post2's capture, `_` 6 under `Production` and 3 under `Emulator`, the case mapping
+  4 and 3. A `_` is RU, never rows: the filter runs in process, and an unpaired surrogate, which no target stores as one,
+  would keep it there too. Every case mapping named is beneath a conjunct that narrows its path to letters each target
+  maps as Calcite does (differential 477, partitions 240 and 2763, `AFiltersValuesProveWhatAFunctionAsks` and a planted
+  `UPPER(category) <> 'SPRINT'`): the census asks it at the statement's root, where the path may hold any letter, while
+  S's admission states it beneath its round's node and proves it there, as the bridge licenses it today. From the switch
+  S pushes each, so a census that asks as the admission does finds those seven names answering no push, and they go
+  (DESIGN.md, *What line 6 asks after run 2*).
 - **Two declines are overridden for 3A, their translator code kept** — *Stage 3, 3D and 3E.* The owner overrode by name
   (2026-11-03) a value `CASE` compared (1 real push under `Production`, 2 under `Emulator`), which S reads at h31's
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose

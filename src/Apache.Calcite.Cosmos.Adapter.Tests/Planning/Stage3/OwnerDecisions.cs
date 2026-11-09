@@ -7,16 +7,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 {
 
     /// <summary>
-    /// Branch-only, deleted at h16: what the owner decided of h14's triage on 2026-11-03, and of post1's partitions 1792 on
-    /// 2026-11-04, each push by its set and text
+    /// Branch-only, deleted at h16: what the owner decided of h14's triage on 2026-11-03, and of post1's partitions 1792 and
+    /// of what run 2 would find on 2026-11-04, each push by its set and text
     /// (spec §7.2 step 4; line 6). Q3's declines are accepted by name, as correctness fixes: Calcite computes an
     /// <c>INTEGER</c>'s arithmetic in the column's type and wraps, the service never does, and no declared range bounds the
     /// column; the out-of-domain one is generated. A value <c>CASE</c> compared (3D, h31's <c>Yield</c>) and an unnest
     /// element (3D or 3E) are overridden by name for 3A, their translator code kept until then; a column compared with a
     /// text reading and <c>MOD</c>, whose pushes are the emulator's alone, are overridden under the emulator rule, until a
-    /// <c>Production</c> push of either appears. The case mapping beyond ASCII and #246's stored-order refusal are the
-    /// emulator rule's own refusals. A decision holds only for the reason it was taken for: a push read again for another
-    /// reason, or one no name lists, is open.
+    /// <c>Production</c> push of either appears. #246's stored-order refusal is the emulator rule's own. Where run 2 found
+    /// the service answering apart from Calcite, the case mapping beyond ASCII and <c>LIKE</c>'s <c>_</c> over a line
+    /// terminator, the owner accepted the declines by name before it ran (2026-11-04, <see cref="WhereTriage.RunTwo"/>);
+    /// under <c>Emulator</c> they are the emulator rule's own refusals. A decision holds only for the reason it was taken
+    /// for: a push read again for another reason, or one no name lists, is open.
     /// </summary>
     internal static class OwnerDecisions
     {
@@ -133,16 +135,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             new(Overridden, Emulator, "a column compared with a text reading: two readings of different kinds, no pair", @"(c.id > c.e)"),
             new(Overridden, Emulator, "a function no row names (MOD, ABS, CEIL, FLOOR, SIGN): new function rows", @"(IS_DEFINED((c.k % integer|3)) AND NOT IS_NULL((c.k % integer|3)))"),
             new(Overridden, Emulator, "a value CASE compared: 3D's Yield (no 3A piece)", @"(((c.category = string|bikes) ? integer|1 : integer|0) = integer|0)"),
-            new(Overridden, Emulator, "a value CASE compared: 3D's Yield (no 3A piece)", @"(((c.type = string|Link) AND (c.data.type = string|spot) AND (IS_DEFINED(c.data.guid) AND NOT IS_NULL(c.data.guid) AND IS_PRIMITIVE(c.data.guid))) ? (ST_DISTANCE(c.data.data.location, ?CosmosDynamicValue { Ordinal = 0, Form = , Rounding = None, Bound = None, Length = , Padded = False, VariableName = ?0 }) < integer|50000) : boolean|false)"),
+            new(Overridden, Emulator, "a value CASE compared: 3D's Yield (no 3A piece)", @"(((c.type = string|Link) AND (c.data.type = string|spot) AND (IS_DEFINED(c.data.guid) AND NOT IS_NULL(c.data.guid) AND IS_PRIMITIVE(c.data.guid))) ? (ST_DISTANCE(c.data.data.location, ?CosmosDynamicValue { Ordinal = 0, Form = , Rounding = None, Bound = None, Presence = False, Length = , Padded = False, VariableName = ?0 }) < integer|50000) : boolean|false)"),
             new(Overridden, Production, "a value CASE compared: 3D's Yield (no 3A piece)", @"(((c.category = string|bikes) ? integer|1 : integer|0) = integer|0)"),
             new(Overridden, Emulator, "an unnest element: S's places are rooted at the container (no piece)", @"(t0 = string|steel)"),
             new(Overridden, Emulator, "an unnest element: S's places are rooted at the container (no piece)", @"(t1 = string|L)"),
             new(Overridden, Production, "an unnest element: S's places are rooted at the container (no piece)", @"(t0 = string|bikes)"),
             new(Overridden, Production, "an unnest element: S's places are rooted at the container (no piece)", @"(t0 = string|steel)"),
             new(Overridden, Production, "an unnest element: S's places are rooted at the container (no piece)", @"(t1 = string|L)"),
-            new(EmulatorRule, Emulator, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured", @"(NOT IS_DEFINED(UPPER(c.category)) OR IS_NULL(UPPER(c.category)))"),
-            new(EmulatorRule, Emulator, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured", @"(UPPER(c.s) = string|ABC)"),
             new(EmulatorRule, Emulator, "the emulator's stored string order over U+0000 or the high band: refused under Emulator", @"(NOT (((c.label > string|Exact) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label)) OR (((c.label > string|Exact) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label)) AND (NOT IS_BOOL(c.label))) OR (((c.label > string|Exact) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label)) AND (NOT IS_NUMBER(c.label))) OR IS_NULL(c.label) OR (NOT IS_DEFINED(c.label)) OR (NOT IS_PRIMITIVE(c.label)) OR (IS_STRING(c.label) AND ((c.label > string|Exact) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label)))))"),
+            // 2026-11-04, accepted before run 2 ran, where it found the service answering apart from Calcite: the case mapping
+            // outside ASCII and LIKE's _ over a line terminator. Each case mapping here is asked at the statement's root, where its
+            // path may hold any letter; beneath the conjunct that narrows it S proves it (DESIGN.md, What line 6 asks after run 2).
+            new(Accepted, Production, WhereTriage.RunTwo, @"((NOT (c.id LIKE string|_prin_)) OR ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != string|Sprint!)) AND (IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != string|shoes))))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(NOT (NOT (c.category LIKE string|_ike_)))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(NOT (NOT (c.id LIKE string|_prin_)))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(NOT (c.category LIKE string|_ike_))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(NOT (c.id LIKE string|_prin_))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(c.s LIKE string|a_b)"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(NOT IS_DEFINED(UPPER(c.category)) OR IS_NULL(UPPER(c.category)))"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(UPPER(c.category) > string|bikes)"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(UPPER(c.s) = string|AB)"),
+            new(Accepted, Production, WhereTriage.RunTwo, @"(UPPER(c.s) = string|ABC)"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(c.t LIKE string|_)"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(c.t LIKE string|_0)"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(c.t LIKE string|a_b)"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND IS_PRIMITIVE(c.category) AND (UPPER(c.category) != string|SPRINT))"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(NOT IS_DEFINED(UPPER(c.category)) OR IS_NULL(UPPER(c.category)))"),
+            new(EmulatorRule, Emulator, WhereTriage.RunTwo, @"(UPPER(c.s) = string|ABC)"),
         ];
 
         static readonly Dictionary<(string Set, string Text), Decision> ByKey = Named.ToDictionary(d => (d.Set, d.Text));

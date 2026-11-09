@@ -67,10 +67,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             return Unproven(push, own);
         }
 
+        const string Declined = "Unproven declined", Closable = "Unproven closable";
+
+        /// <summary>
+        /// The owner's reason for a decline where run 2 found the service answering apart from Calcite (2026-11-04): the case
+        /// mapping beyond ASCII and <c>LIKE</c>'s <c>_</c>, which matches a line terminator where Calcite's matches none.
+        /// </summary>
+        internal const string RunTwo = "run 2: the service differs";
+
         /// <summary>The kind of a decline's reason: a correctness fix the owner names, waiting on Azure, or no piece in 3A.</summary>
         internal static string KindOf(string reason) =>
             reason.StartsWith("Q3", StringComparison.Ordinal) || reason.StartsWith("Q4", StringComparison.Ordinal) || reason.StartsWith("N12", StringComparison.Ordinal)
-                || reason.StartsWith("#246", StringComparison.Ordinal) || reason.StartsWith("the case mapping", StringComparison.Ordinal) ? "correctness fix, the owner names it"
+                || reason.StartsWith("#246", StringComparison.Ordinal) || reason == RunTwo ? "correctness fix, the owner names it"
             : reason.Contains("h14b", StringComparison.Ordinal) ? "waits on probe run 1 (h14b)"
             : reason.Contains("(3B)", StringComparison.Ordinal) ? "another PR's"
             : "no piece in 3A, the owner overrides or keeps the code";
@@ -136,31 +144,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             classed.Class is "Unproven declined" or "Unproven closable" ? OwnerDecisions.Of(push, classed.Reason)?.Kind : null;
 
         /// <summary>
-        /// Why an affix S reads stays Unproven, by its pattern and reading: a <c>_</c>, which no row measures the service's of
-        /// over a line terminator; under <c>Emulator</c> runs between and around <c>%</c>, a <c>LIKE</c> the emulator's
-        /// matcher reads over a stored escape, owed; under <c>Production</c> one run between two <c>%</c>, which Azure reads
-        /// only to a string's first U+0000; a pattern a number's rendering may match, which the service reads as no string; a
-        /// raw value cast to text that names no column (an accessor, an item chain), whose columns' union parts what a
-        /// negation keeps.
+        /// Why an affix S reads stays Unproven, by its pattern and reading: a <c>_</c>, which each target's row measured
+        /// matching a line terminator where Calcite's matches none (run 2), declined; under <c>Emulator</c> runs between and
+        /// around <c>%</c>, a <c>LIKE</c> the emulator's matcher reads over a stored escape, owed; under <c>Production</c> one
+        /// run between two <c>%</c>, which Azure reads only to a string's first U+0000; a pattern a number's rendering may
+        /// match, which the service reads as no string; a raw value cast to text that names no column (an accessor, an item
+        /// chain), whose columns' union parts what a negation keeps.
         /// </summary>
-        static string Affix(string rex, string ir, bool emulator)
+        static (string Class, string Reason) Affix(string rex, string ir, bool emulator)
         {
             if (Regex.Match(rex, @"LIKE\(.*, '((?:[^']|'')*)'\)") is not { Success: true } like)
-                return "an affix whose pattern the triage reads not";
+                return (Closable, "an affix whose pattern the triage reads not");
 
             var pattern = like.Groups[1].Value.Replace("''", "'", StringComparison.Ordinal);
             var canonical = Canonical(pattern);
             if (pattern.Contains('_'))
-                return "LIKE's _: one code point that is no line terminator, which no row measures the service at";
+                return (Declined, RunTwo);
             if (emulator && canonical is not null && AffixPattern.Runs(canonical) is not ([_] or ["", ""] or [_, ""] or ["", _] or ["", _, ""]))
-                return "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed";
+                return (Closable, "LIKE of runs around and between %: the emulator's matcher over a stored escape is owed");
             if (emulator == false && canonical is not null && AffixPattern.Runs(canonical) is ["", { Length: > 0 }, ""])
-                return "one run between two %: Azure's CONTAINS reads a string only to its first U+0000, so S answers either over one that may hold it (sound refusal)";
+                return (Closable, "one run between two %: Azure's CONTAINS reads a string only to its first U+0000, so S answers either over one that may hold it (sound refusal)");
             if (pattern.All(c => c == '%' || Renderings.MayBeNumberUnit(c)))
-                return "a pattern a number's rendering may match, over a path that may hold one: the service reads no number as a string (sound refusal)";
+                return (Closable, "a pattern a number's rendering may match, over a path that may hold one: the service reads no number as a string (sound refusal)");
             if (ir.Contains("cast(VARCHAR, raw(", StringComparison.Ordinal))
-                return "an affix over a raw value cast to text that names no column: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps";
-            return "an affix: Unproven otherwise";
+                return (Closable, "an affix over a raw value cast to text that names no column: the columns' union, ANY rendering a number or a boolean where VARIANT reads null, parts what a negation keeps");
+            return (Closable, "an affix: Unproven otherwise");
         }
 
         /// <summary>
@@ -174,7 +182,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
         static (string Class, string Reason) Unproven(TranslatorCensus.Push push, Verdicts own)
         {
-            const string Declined = "Unproven declined", Closable = "Unproven closable";
             var (rex, emulator) = (push.Rex, push.Set == nameof(RenderingSet.Emulator));
             var holds = (own.Holds ?? []).ToHashSet();
             bool Has(string prefix) => holds.Any(h => h.StartsWith(prefix, StringComparison.Ordinal));
@@ -227,8 +234,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
                 return (Declined, "Q3: arithmetic past 2^53 or its rounding (no magnitude class)");
             if (Has("fraction literal"))
                 return (Declined, "a fraction literal no double is: the service's double of it is placed against no cell (sound refusal)");
+            // The cased letters of each band (run 2, the emulator's at rows2): outside ASCII each target's case mapping parts
+            // from Calcite's somewhere, so a place over a path the statement's root may hold such a letter at has no image.
             if (Has("place:UPPER") || Has("place:LOWER"))
-                return (Declined, "the case mapping beyond ASCII: legality under every set until cased witnesses are measured");
+                return (Declined, RunTwo);
             // A raw reading under a function: the rows read a call's operand through the text, a typed VARCHAR, its cast or a
             // declared VARCHAR column alone (rawtyped), so one over another column or naming none stays.
             if (Has("place:") && Regex.IsMatch(own.Ir, @"(\|\||CONCAT|SUBSTRING|TRIM [A-Z]+|REPLACE|REVERSE|POSITION|CHAR_LENGTH)\(raw\("))
@@ -238,7 +247,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             if (Has("place:") && emulator == false)
                 return (Closable, "a computed place: Unproven otherwise, the function rows measured on both targets");
             if (Has("affix"))
-                return (Closable, Affix(rex, own.Ir, emulator));
+                return Affix(rex, own.Ir, emulator);
+            // A raw column against a text, which the loader reads since G3: two readings of different kinds, which S's pair
+            // rule pairs not (readerkind), the decline the owner overrode while the loader kept it opaque.
+            if (Has("pair") && Regex.IsMatch(own.Ir, @"^\(?(text\([^)]*\) [<>=]+ raw\(|raw\([^)]*\) [<>=]+ text\()"))
+                return (Closable, "a column compared with a text reading: two readings of different kinds, no pair");
             // Two texts ordered and Unproven under the emulator are its stored order over U+0000 (RenderingPairTests): a
             // pair's absent and null cells are read since post1, and two nulls the service keeps S refutes rather than leaves.
             if (Has("pair") && emulator && Regex.IsMatch(own.Ir, @"^\(?text\([^)]*\) (<|<=|>|>=) text\("))

@@ -8470,14 +8470,14 @@ reads. At a statement's root that node is the declaration's own fact set, whose 
 imports (*The declaration's `possible` rows: `D0`*); beneath it a stratum inherits them and narrows them, and nothing
 chooses between two nodes. F's characters read a raw reading through its column as the value it is, and its cast to
 text as the cast of that value, so a call the places loader reads holds its operands' characters, which S's computed
-places import too where they once keyed every band. S's admission still imports a computed atom's operands from the
-statement's root (`ArmImport` narrows only beneath an `OR`'s arm, and `ImportedChars` has no stratum), so beneath a
-conjunct that narrows a path the bridge pushes what S's admission does not yet prove: three corpus plans, `UPPER(s) =
-'ABC'` beneath `s IN ('aBc', 'axb')`, `UPPER(category) IS NULL` beneath `category IN ('true', '1.0E30')`, and on Azure
-`UPPER(category) > 'bikes'` beneath `category IS NULL`, each sound over its node's facts and each what S's image rule
-proves over that node's import (`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`).
-Before G6 asks S's image of each call, S's admission imports a computed atom's operands where its conjunct is rendered,
-as it states a one-path atom there (`TODO.md`).
+places import too where they once keyed every band. Beneath a conjunct that narrows a path the bridge pushes three
+corpus plans the statement's root holds no image for: `UPPER(s) = 'ABC'` beneath `s IN ('aBc', 'axb')`,
+`UPPER(category) IS NULL` beneath `category IN ('true', '1.0E30')`, and on Azure `UPPER(category) > 'bikes'` beneath
+`category IS NULL`, each sound over its node's facts and each what S's image rule proves over that node's import
+(`RenderingValuedTests.AnImportNarrowedWhereItsConjunctIsRenderedGivesThePlaceItsImage`). Since G6 S's admission states a
+later round's computed atom where its conjunct is rendered, as it states a one-path atom (above), so once it reads
+places, at the switch, it proves them there too; the census asks each atom at the root, and reads them as the root
+holds the path (*What line 6 asks after run 2*).
 
 **What does not move.** Arithmetic keys a number by kind alone, so the emulator's integer rows answer `Differs` or
 `Fails` and no arithmetic place has an image: the census's 143 arithmetic pushes are listed, not proven. Ranges are
@@ -8913,6 +8913,48 @@ Proven. At the gate, real pushes left neither Proven nor decided by name, h14b's
 - **`NOT STARTSWITH(c.category, '')`** under `Emulator`, the order differential's: the union again, `'%'` matching
   every rendering, a sound refusal.
 - **Partitions 1792**, under both: Q3's class, an `INTEGER` column multiplied and compared, but no name the owner gave.
+
+### What line 6 asks after run 2 (post2)
+
+Run 2's rows are cells S's rules already read, so post2 adds no rule and no branch for them: each target's case mapping
+keyed by its cased letters (`CasedLetters`), `RIGHT`'s cut inside a pair measured `Differs` on both and naming its row,
+the library's `LENGTH` keyed as `CHAR_LENGTH` is since rows2, judged against the same service lines, so under
+`Production` it pushes wherever they say `Same`, each target's `_` over the classes it was measured over (`likereads`),
+and Azure's prefix reading, `CONTAINS` and a one-run `LIKE` read only to a string's first U+0000, as `truncates` cells
+of Azure's alone, the emulator reading past it. The plans do not move: the eight digests are byte-equal to run 2's
+(`Production` `038034d1…`, `Emulator` `8c6dd98a…`).
+
+**The owner's names.** Where run 2 found the service answering apart from Calcite, the case mapping outside ASCII and
+`_` over a line terminator, the owner accepted the declines by name before it ran (2026-11-04). The branch's triage
+classes each such push `run 2: the service differs` and lists it by its text (`OwnerDecisions`): `_` 6 under
+`Production` and 3 under `Emulator`, the case mapping 4 and 3, accepted under `Production` and the emulator rule's own
+refusals under `Emulator`. A `_` stays in process for an unpaired surrogate too, which no target stores as one.
+
+**The census over a fresh capture.** Source (b)'s verdicts were rawtyped's capture's (2026-11-04), taken before the
+foundation, G1–G8, rows2 and run 2, so post2 captured the whole suite again (`20025d6`, EN20261019). At the gate, real
+pushes neither Proven nor decided by name, run 2's census to this one (`Production` / `Emulator`): type tests 8 / 0 to 8
+/ 0; H 1 / 0 to 0 / 0; F, G 7 / 3 to 0 / 0; I 0 / 0 to 0 / 0; J1 5 / 0 to 0 / 0. `c.flag = true` (H) is Proven, its old
+verdict the capture's; `ENDSWITH(c.category, 'KES', true)` no longer pushes, its fold computed in process; and the
+planted predicates hold a new one under `Emulator`, `UPPER(category) <> 'SPRINT'` beneath `category = 'a\0b' OR category
+= 'bikes'`. Two of the owner's earlier names answer their pushes again: the emulator's three raw columns against a text
+(`c.id <= c.e`), which the loader reads since G3 as two readings of different kinds where it kept them opaque, and the
+self-join's value `CASE`, whose parameter now prints whether it holds a value. 126 names, none answering no push.
+`Portable`, beside, proves 116 / 138 of the type tests, 38 / 55 of F, G's and 6 / 13 of J1's. No refutation, false or
+not yet reproduced.
+
+**The case mapping is proven beneath its round.** Every case mapping named is beneath a conjunct that narrows its path
+to letters each target maps as Calcite does: `UPPER(s) = 'ABC'` beneath `s IN ('aBc', 'axb')` (differential 477),
+`UPPER(s) = 'AB'` beneath `s IN ('ab', 'cd')`, `UPPER(category) IS NULL` beneath `category IN ('true', '1.0E30')`
+(partitions 240), `UPPER(category) > 'bikes'` beneath `category IS NULL` (2763), and the planted one above. The census
+asks each conjunct at the statement's root, where the path may hold a letter the targets map apart from Calcite (and
+240's and 2763's a number or a boolean, which the service's `UPPER` answers undefined); S's admission states a later
+round's computed atom beneath its round's node (*A computed value is a place*), and there it proves each, as the bridge
+licenses each today. So those seven names stand for the census's root alone: from the switch S pushes them (`TODO.md`).
+
+**What stays open:** the eight `Production` orderings of a declared `VARIANT` column (type tests: partitions 42, 440,
+1569, 1570, 2392, 2548, 2549, 2863), each cell a raise alone, so vacuous. The owner decided on 2026-11-08 that a filter
+Calcite fails on every row fails as Calcite fails it, and the step recording that names them (`TODO.md`, *An ordering
+over a declared `VARIANT` column is vacuous*).
 
 ### The raw reading through its column (rawtyped)
 
