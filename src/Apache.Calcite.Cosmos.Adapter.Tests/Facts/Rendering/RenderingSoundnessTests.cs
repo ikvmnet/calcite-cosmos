@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// by Calcite in process over source A's documents drawn from its weakening bundle's import widened to the paths the
         /// weakening reads, beside the literals the conjunct compares with; wherever Calcite keeps the row, the weakening
         /// keeps it on every target the set serves. A document no row is, a field typed never null absent from it, is left
-        /// out; a conjunct whose binding reads a field otherwise than as its type or as the document is counted and left out.
+        /// out; a conjunct Calcite cannot compile alone, or reading a field with no path, is counted and left out.
         /// </summary>
         [Fact(Explicit = true)]
         public void NoOpaqueWeakeningHasAWitnessInProcess()
@@ -181,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
             }
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, a field read as text or JSON");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, not compiled alone");
             judged.Should().BePositive();
             witnesses.Should().BeEmpty();
         }
@@ -190,9 +190,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Source A over generate bundles: each bundle's forms judged on documents drawn from its import, or a trial's declared
         /// ones. A form of a node whose atoms are stated beneath a stratum is exact where the conjuncts that stratum assumes
         /// hold in any mode, and held to no failure elsewhere. A form S would send that none of those measured is judged on
-        /// the bundle's cells (<see cref="OnCells"/>), and is vacuous where no cell meets its stratum. Returns each form S
-        /// would send — a root's best, a residual root's weakening — that no document measured and whose stratum some
-        /// document meets.
+        /// the bundle's cells (<see cref="OnCells"/>), and is vacuous where no cell meets its stratum. One over a node Calcite
+        /// fails on in every mode on every document drawn holds nothing to measure: Calcite keeps no row, and under the
+        /// owner's decision of 2026-11-08 the statement fails as Calcite fails it on each row the service sends; it is counted
+        /// apart (h15). Returns each form S would send — a root's best, a residual root's weakening — that no document
+        /// measured, whose stratum some document meets and whose node Calcite does not fail on throughout.
         /// </summary>
         internal static List<string> Generated(Tally tally, IEnumerable<RenderingGenerateRun.Bundle> bundles, string source, IReadOnlyList<J.Obj>? declared = null)
         {
@@ -201,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var (claim, world, targets) = (bundle.Claim!, new World(bundle.Id), ProbeRows.Measured.Serves[bundle.Set]);
                 var forms = bundle.Forms.Select(f => (Form: f, Assumes: Assumes(claim, f.Node), Sent: Sent(bundle, f))).ToList();
-                var (measured, drawn, ruledOut) = (new int[forms.Count], 0, 0);
+                var (measured, judged, failed, drawn, ruledOut) = (new int[forms.Count], new int[forms.Count], new int[forms.Count], 0, 0);
                 tally.Proofs += forms.Count;
 
                 void Judge(J.Obj document, IEnumerable<int> which)
@@ -212,9 +214,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         var first = forms[node.First()];
                         var (calcite, exact) = (Tally.Calcite(first.Form.Node, document, world), Holds(claim, document, world, first.Assumes));
                         foreach (var i in node)
+                        {
+                            judged[i]++;
+                            failed[i] += calcite is { Count: 0 } ? 1 : 0;
                             if (tally.Judge(calcite, forms[i].Form.Node, forms[i].Form.Form, forms[i].Form.Claim, forms[i].Form.Position, document, targets,
                                 $"{source} {bundle.Set} bundle {bundle.Id} ({forms[i].Form.What})", exact))
                                 measured[i]++;
+                        }
                     }
                 }
 
@@ -249,7 +255,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 tally.Vacuous += vacuous.Count;
-                unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0 && vacuous.Contains(i) == false)
+                var failing = Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0 && judged[i] > 0 && failed[i] == judged[i]).ToHashSet();
+                tally.Failing += failing.Count;
+                unmeasured.AddRange(Enumerable.Range(0, forms.Count).Where(i => forms[i].Sent && measured[i] == 0 && vacuous.Contains(i) == false && failing.Contains(i) == false)
                     .Select(i => $"{source} {bundle.Set} bundle {bundle.Id}: {forms[i].Form.What} {forms[i].Form.Form.Text} for {forms[i].Form.Node}, "
                         + $"{drawn} documents drawn, {ruledOut} ruled out, stratum assuming {string.Join(", ", forms[i].Assumes.Select(a => claim.Conjuncts[a]))}"));
             }
@@ -409,7 +417,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         internal sealed class Tally
         {
 
-            public int Statements, Unplanned, Proofs, Judged, Agreed, Unmeasured, Skipped, Vacuous;
+            public int Statements, Unplanned, Proofs, Judged, Agreed, Unmeasured, Skipped, Vacuous, Failing;
 
             public List<string> Witnesses { get; } = [];
 
@@ -431,6 +439,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             /// </summary>
             public static List<Truths>? Calcite(SqlPredicate ir, J.Obj document, World world, bool raises = false)
             {
+                // Every mode raises where the statement does not compile, whatever the document holds.
+                if (IrEval.FailsToCompile(ir))
+                    return [];
+
                 var calcite = new List<Truths>();
                 foreach (var (mode, column) in from mode in Modes from column in IrEval.RawModes(ir) select (mode, column))
                 {
@@ -510,7 +522,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             public override string ToString() => $"{Statements} statements ({Unplanned} not planned), {Proofs} proofs over {Judged} documents: {Agreed} agreed, "
-                + $"{Unmeasured} unmeasured, {Skipped} skipped, {Vacuous} beneath a stratum no cell meets, {Witnesses.Count} witnesses";
+                + $"{Unmeasured} unmeasured, {Skipped} skipped, {Vacuous} beneath a stratum no cell meets, {Failing} sent over a node Calcite fails on throughout, {Witnesses.Count} witnesses";
 
         }
 

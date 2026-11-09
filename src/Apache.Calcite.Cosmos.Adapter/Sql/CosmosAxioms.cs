@@ -612,7 +612,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
                 "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, and a type test, which asks the document's kind, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Facts.Saturation.PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell",
-                // Which stratum a later round's atoms are stated beneath reads these cells (RenderingFamily.ReadExactly): a
+                // Which stratum a later round's atoms are stated beneath reads these cells (the facts graph's inexact rule): a
                 // reading no cell names is read coarsely, and a stratum never rests on it.
                 ExactReadings:
                 [

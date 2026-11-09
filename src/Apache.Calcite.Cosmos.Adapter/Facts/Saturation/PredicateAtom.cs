@@ -232,6 +232,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Whether a string names a comparison operator.</summary>
         public static bool IsComparison(string op) => op is Equal or NotEqual or Less or LessOrEqual or Greater or GreaterOrEqual;
 
+        /// <summary>
+        /// Whether the facts graph reads the atom as Calcite does on TRUE and FALSE, by the rows of the readings it reads so
+        /// (<c>readsexactly</c>, <c>Calcite.TheFactsGraphReadsTheseReadingsExactly</c>): a presence test always, a type test by
+        /// the type tests' row whatever reads its path, and any other by its reading, its raw column apart, beside the class
+        /// of what it is compared with, <c>Number</c> where that holds a number and <c>None</c> otherwise.
+        /// </summary>
+        /// <param name="exact">The readings the rows say the facts graph reads exactly, beside each class.</param>
+        public bool ReadExactly(ValueSet<(string, CosmosValueClass)> exact) =>
+            Test == DefinedTest
+            || exact.Contains(Kinds is not null ? (RenderingFamily.TypeTest, CosmosValueClass.None)
+                : (Columnless(Reader), Operand is { } operand && IsNumber(operand) || Points is { } points && points.AsEnumerable().Any(IsNumber) ? CosmosValueClass.Number : CosmosValueClass.None));
+
         /// <summary>The operator whose truth is this one's falsehood, on a row where either is known.</summary>
         public static string Negate(string op) => op switch
         {

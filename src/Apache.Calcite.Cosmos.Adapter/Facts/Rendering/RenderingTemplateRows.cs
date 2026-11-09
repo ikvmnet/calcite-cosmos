@@ -41,13 +41,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static TemplateId[] AffixesRendered => [AffixRenderedEquality, AffixRenderedStartsWith, AffixRenderedEndsWith, AffixRenderedContains, AffixRenderedLike];
 
         /// <summary>
-        /// The guarded comparison's templates, which production asks only from the switch (spec §4.2 h15): a bridge, since
-        /// the Rex they are pushed as is a <c>CASE</c> only S reads, and site W asks the translator to write it until then.
-        /// The affix's, since S owns no affix until the switch and the translator writes one till then (h07).
-        /// </summary>
-        public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId>([KindRestrictedNumber, Window, TextAlternatives, .. Affixes, .. AffixesRendered]);
-
-        /// <summary>
         /// Each template and the shapes it fits. A <c>JSON_QUERY</c>'s reading is asked its own template alone, the form its
         /// row says it is (G8): every other template's proposes a value it has none of.
         /// </summary>

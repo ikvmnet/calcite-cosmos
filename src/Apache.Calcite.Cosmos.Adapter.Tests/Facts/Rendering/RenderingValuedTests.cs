@@ -36,9 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly JsonDocumentPath NamePath = JsonDocumentPath.Root.Property("name"), NPath = JsonDocumentPath.Root.Property("n");
 
-        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
-
-        static readonly CosmosPredicateLoader.Loading Legacy = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, legacy: true);
+        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 
         static RexNode Name => JsonValue("name", SqlTypeName.VARCHAR);
 
@@ -67,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static SqlValue.Call PlaceOf(SqlPredicate read) => read.Computed.Last();
 
-        /// <summary>The loader types a call the rows name and spells its place; the legacy reading S reads until h15 never does.</summary>
+        /// <summary>The loader types a call the rows name and spells its place.</summary>
         [Fact]
         public void TheLoaderTypesACallTheRowsName()
         {
@@ -77,7 +75,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             PlaceOf(read).Spelled.Should().Be("LOWER(" + SqlValue.Spell(NamePath) + ")");
             read.Places.Should().Equal(NamePath);
             read.Paths.Should().BeEmpty("F reads the paths a predicate compares, a call's operands no part of them");
-            Legacy.Read(lower).Computed.Should().BeEmpty();
             Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlLibraryOperators.SOUNDEX, Name), Lit("abc"))).Computed.Should().BeEmpty("no row names SOUNDEX");
         }
 

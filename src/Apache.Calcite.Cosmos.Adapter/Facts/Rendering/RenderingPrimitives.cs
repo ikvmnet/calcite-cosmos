@@ -134,6 +134,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static Primitive<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool> RexWritable { get; } =
             Primitive.Create<ServiceForm, PredicateAtom, RenderingRexGrammar.Value, bool>("rex-writable", (f, a, g) => g.Writes(f, a.Reader));
 
+        /// <summary>The Rex builder writes a form over a reading's reader: <c>rex-writable</c> asked of a reading rather than an atom.</summary>
+        public static Primitive<ServiceForm, string, RenderingRexGrammar.Value, bool> RexWritableOver { get; } =
+            Primitive.Create<ServiceForm, string, RenderingRexGrammar.Value, bool>("rex-writable-over", (f, k, g) => g.Writes(f, k));
+
         /// <summary>
         /// A cast to <c>DECIMAL(p, s)</c> holds a number's whole digits (G8): it is zero, or its digits before the point number
         /// no more than <c>p - s</c>. Calcite raises on a cast they do not fit (<c>Calcite.ReturningDecimalParsesTheRendering</c>,

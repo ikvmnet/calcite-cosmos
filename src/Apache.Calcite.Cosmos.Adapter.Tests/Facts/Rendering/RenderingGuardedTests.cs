@@ -26,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// text, which Calcite parses where the service compares no string, written only as its pair beside
     /// <c>IS_NUMBER(p)</c>; C4n built as the absorbing <c>CASE</c> and C2 as the opposite one, each read back by the loader
     /// and proven by S at the filter beneath; the literals the cut leaves Unproven there; the text alternatives; and
-    /// production asking the three templates only from the switch.
+    /// production asking every template since the switch (h15), these three among them.
     /// </summary>
     public sealed class RenderingGuardedTests
     {
@@ -122,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var conjunct = Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("text", SqlTypeName.VARCHAR), Rex.makeLiteral("30"));
             var atom = Loading.Read(conjunct);
-            using (var bundle = ProbeRows.SwitchedTheory.Open(RenderingSet.Production))
+            using (var bundle = ProbeRows.ProbeTheory.Open(RenderingSet.Production))
             {
                 var term = bundle.Write(atom);
                 foreach (var path in atom.Paths)
@@ -136,14 +136,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Production asks the guarded comparison's templates only from the switch (h15): until site W asks S of the filter
-        /// beneath, the translator writes no <c>CASE</c>, and a weakening holding one would be lost.
+        /// Production asks every template since the switch (h15), the guarded comparison's and the affixes' among them: site
+        /// W asks S of the filter beneath, which reads the <c>CASE</c> the guarded pair is pushed as, and S owns every affix.
         /// </summary>
         [Fact]
-        public void ProductionAsksTheGuardedTemplatesOnlyFromTheSwitch()
+        public void ProductionAsksEveryTemplate()
         {
-            CosmosRendering.Definition.Templates.Select(t => t.Item1).Should().NotContain(RenderingTemplateRows.FromTheSwitch);
-            ProbeRows.Switched.Templates.Select(t => t.Item1).Should().Contain(RenderingTemplateRows.FromTheSwitch);
+            CosmosRendering.Definition.Templates.Should().Equal(RenderingTemplateRows.Templates);
+            CosmosRendering.Definition.Templates.Select(t => t.Item1).Should().Contain([TemplateId.KindRestrictedNumber, TemplateId.Window, TemplateId.TextAlternatives,
+                TemplateId.AffixStartsWith, TemplateId.AffixRenderedLike]);
         }
 
     }

@@ -949,8 +949,9 @@ explained, and now every rule that reads a filter's facts asks it (*The oracle i
 **Eggnog decides what is true; the host decides what is written and what is legal; Volcano decides which plan.**
 The oracle loads a filter's conjuncts into the theory of JSON as terms, beside `JsonRules` in the same graph
 (`PredicateRules`), and answers with values: a verdict, a fact about a path, whether anything is left. It never
-answers with a term. Whether a conjunct renders is asked of today's translator, handed a `JsonFactSet` of the facts
-that question may use, and the translator's answer is the host's.
+answers with a term. Whether a conjunct renders is the rendering graph's to say since the switch (*The switch (h15)*),
+and for a conjunct holding a parameter or an opaque term still today's translator's, handed a `JsonFactSet` of the facts
+that question may use, whose answer is the host's.
 
 **A reading is a constructor, not a SQL type used as a tag.** `CosmosPredicateLoader` decodes Calcite's types once,
 into the typed IR's predicate subset (`SqlValue`, `SqlPredicate`):
@@ -971,7 +972,8 @@ nothing, and a weakening beside one kept a test the presence it states would hav
 `RETURNING DECIMAL` addresses no path: it is the cast of the rendering written as a clause, and
 `CosmosRexShapes.TryNumericCastOperand` reads it so, returning the text it converts. The loader asks that, and
 names the reading whose meaning is that parse, `typed(p, DECIMAL)`; a cast is read the same way, so what a
-conversion is and what it is compared with are the translator's to recognise and the atom's to say, once each.
+conversion is and what it is compared with are the shape readers' to recognise (`CosmosRexShapes`, which the loader and
+the translator share) and the atom's to say, once each.
 
 **What an atom means is written once.** `PredicateAtom` is a reading, a test and an operand, and it answers two
 questions. `Kept` is what a row on which the atom takes a truth value can hold at its path, which is what an assumed
@@ -1205,8 +1207,8 @@ Routing a statement that still applies its predicate reads every conjunct, a str
 skips holds no row the predicate keeps, so a key a sibling's kind declares routes as surely as one the predicate names
 — `kind <> 'b' AND kind <> 'c'` over a required enum routes to `a`. A point read, a batch of them and a
 whole-partition delete apply no predicate, so they read only the conjuncts that pin their keys
-(`CosmosStatementScope.IsPin`: an equality of what the path holds or reads as, with one literal, never through a
-cast), and every other conjunct has to be `Always` in that scope or the operation answers another question than the
+(`CosmosStatementScope.IsPin`: an equality of what the path holds or reads as, with one literal, or with one boxed, as
+a `VARIANT` field is compared with a literal since the switch (h15), never through a cast), and every other conjunct has to be `Always` in that scope or the operation answers another question than the
 query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
 `'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
 whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
@@ -1810,15 +1812,23 @@ was taken on the emulator.
 **Out-of-domain arithmetic fails the whole query.** `ASIN(2)`, `ACOS(2)`, `SQRT(-1)` and `LOG(0)`
 each return a 400 rather than yielding undefined for the offending row. Calcite evaluates all four
 as NaN, so pushing any of them down trades a row of NaN for a failed statement — over data no schema
-lets the adapter check first. They are pushed anyway, `SQRT` and `LOG` always having been, and this
-is recorded so that the consistency is a decision rather than an oversight.
+lets the adapter check first. They were pushed anyway, `SQRT` and `LOG` always having been, a recorded
+exception the owner reversed (Q3): S declines such a call unless it proves the operand within the
+domain. In a `WHERE` that holds since the switch (h15), where a call the service spells is a place of
+S's own and S, owning the conjunct, keeps one it proves nothing of in process and sends only what it
+proves the conjunct implies, the operand's presence say, as for `LOG(c.price) > 50`. A column
+pushes them still until the column switch (h36), and so does a conjunct the translator still writes, one
+holding a parameter until S reads parameters (3B) or an opaque term.
 
 **Integer overflow is computed, not wrapped.** The service's arithmetic is in doubles, so
 `price * 100000000` is the product, where Calcite's `INTEGER` arithmetic wraps as Java's does and SQL
 raises. A filter over it keeps rows the engine does not, and a projection of it fails the read, the
-product not being the `INTEGER` the plan declared. Pushed anyway, for the reasons under *A quotient is
-a double at the service*, and recorded here beside out-of-domain arithmetic for the same reason that
-is.
+product not being the `INTEGER` the plan declared. It was pushed anyway, for the reasons under *A
+quotient is a double at the service*, the second exception Q3 reversed: in a `WHERE` since the switch
+(h15) S declines a comparison over arithmetic it does not prove stays within its type, and nothing
+bounds a column yet, so an `INTEGER` column with an integer added, subtracted or multiplied is compared
+in process, RU and never rows, the pushes the owner accepted by name (*What the owner decided, by name
+(2026-11-03)*). A column, and a conjunct the translator writes, push it until h36 and 3B as above.
 
 **A number sent with a point is read as a double, and a stored integer is kept as one.** The SDK writes
 a `decimal` parameter with a point, and every exact literal was bound as one, so every exact literal
@@ -2210,6 +2220,12 @@ roughly the effort of populating a dialect's operator table, minus the intermedi
 it provides the natural place to **reject** unsupported operators so the planner falls back
 cleanly.
 
+**Since the switch (h15) a filter's conjuncts are S's.** What the sections below say the translator pushes, refuses or
+weakens in a `WHERE` is how a `WHERE` was written until then, and how a projection, a sort key and a filter's conjunct
+holding a parameter or an opaque term are written still. For every other conjunct S proves the form that is sent, the
+printer writes it, and its reasons are under *The rendering graph in generate mode* and *The switch (h15)*, where what
+the switch moved is listed.
+
 Specific obligations:
 
 - `RexInputRef` → a path expression (`c.prop`, `c.a.b`, `c["odd name"]`), not a quoted
@@ -2598,7 +2614,10 @@ beside the paths, derived as `CosmosProject` derives it — and the translator h
 text to every test it holds the accessor to: `CosmosRexPaths.IsTextRendering` is the accessor
 test in both spellings. So the comparison declines over the column exactly as over the accessor, and
 `CosmosFilterSplitRule` pushes the same guard above the projection, `NOT IS_STRING(c.name) OR
-STARTSWITH(c.name, 'Acadia')`, and rechecks the pattern in process.
+STARTSWITH(c.name, 'Acadia')`, and rechecks the pattern in process. A filter's half is S's now: the loader reads the
+field as its binding says, the text reading, as it reads the accessor, and for `LIKE 'st%'` over the view's column S
+sends the path's presence beneath the recheck (`LikeOverAViewsTextColumnSendsThePathsPresence`), its weakening of an
+affix over a path that may hold another kind (`TODO.md`).
 
 The raw value in that guard is named differently in the two spellings, and the difference is what
 survives a host. Over the accessor the rule re-types the call `ANY`, which says "the value at this
@@ -2885,6 +2904,9 @@ take `IS_DEFINED` beside the comparison under a `NOT`, where it would show.
 predicate's conjuncts — so a boolean declared only under a discriminator pushes beside the
 discriminator, by the sibling-conjunct argument the fact rewriter makes. The conjunct cannot certify
 itself: the cast resolves to no path, and the fact extractor reads nothing from a comparison over one.
+Since the switch (h15) a filter's cast is S's: the loader reads it as the parse it is, the text cast to `BOOLEAN`
+(`Calcite.CastToBooleanParses`), and S sends what it proves of it beneath the conjunct's stratum, as of any reading; the
+translator writes the table above in a projection and beside a parameter or an opaque term.
 
 **Which operands.** The bare accessor and a raw value typed `ANY` or `VARIANT`, and not a field a
 projection bound to an accessor, although the comparisons take one. A behaviour clause substitutes a
@@ -3229,8 +3251,9 @@ alone knew, so `JSON_VALUE(c."DOC", '$.tags[0]') < 'm'` was a string against a s
 `'true'` and the service across types, was lost, on the emulator and on Azure (bisected to the stage that first asked
 the question once). Read as a path that may hold anything, its rendering is refused, and until the switch the split
 rule sent J's weakening, `IS_DEFINED(c.tags[0]) AND (NOT IS_STRING(c.tags[0]) OR c.tags[0] < @p0)`, beneath the
-recheck; S reads an element path as opaque and sends nothing for it (O7); and two
-typed elements that may both hold a JSON null are not compared. Anything else is a value the service computes — an
+recheck; S read an element path as opaque and sent nothing for it (O7) until h15, which reads it as the loader has
+since h07 (`CosmosDocumentPaths.From`, its elements), so S sends that form again, its type test the translator's
+beneath until h15b's element guards; and two typed elements that may both hold a JSON null are not compared. Anything else is a value the service computes — an
 operator, a function, a `CASE`, a cast — which is Calcite's value where Calcite has one, and where Calcite reads null
 may be an undefined, a JSON null a `CASE` writes or a stored value one hands through, so its null class is every other
 type unless its SQL type admits no null: `CASE WHEN category = 'bikes' THEN NULL ELSE price END <= price` kept the
@@ -4570,8 +4593,17 @@ comparison is what renders as `CONTAINS(c.name, 'ACADIA', true)`, under `NOT IS_
 path is proved ASCII. Where it is not, the guarded comparison is refused with the fold, and the weakening is the
 presence it implies; it used to push the rewrite there, rechecked above, and the recheck could not restore the rows
 the service dropped.
-The case-*sensitive* `'%abc%'` and `'%abc'` still render as `LIKE`; whether the named functions are
-priced differently is the measurement `TODO.md` still asks for before they change.
+The case-*sensitive* `'%abc%'` and `'%abc'` rendered as `LIKE` until the switch, and are `CONTAINS` and
+`ENDSWITH` since, where the path is proved as each asks (below); whether the named functions are priced differently is
+the measurement `TODO.md` still asks for.
+
+**Since the switch (h15) a filter sends the fold as its call.** A `LIKE` in a `WHERE` is S's, proposed as every test
+that says its pattern and sent as the cheapest that agrees (`Priced`, *The switch (h15)*), and S's generate mode has no
+case-insensitive candidate yet (`TODO.md`, *S's generate mode has no folded affix*), so where the fold is proved S sends
+the `LIKE`'s own test over the fold's call, `CONTAINS(UPPER(c.a), @p0)` (`ALikeOverAPathDeclaredAStringPushesExactly`):
+exact, the fold computed at the service where the flag asked the stored text. The translator asks `FoldOf` still for a
+conjunct it writes, one holding a parameter or an opaque term; no digested statement sends the flag, before the switch
+or since.
 
 ### What is deliberately not done: inferring full text from a substring predicate
 
@@ -7613,8 +7645,9 @@ admit afresh — through the memo, or a bundle that could stop short and make `T
 pass, while it plans and while it implements: the capture now tells its observer once a round, with the round, so an
 admission is its first round. Of the 1,446 statements a pull request plans, each admits once, and three first while
 implementing: the unnest's element filters, which `CosmosUnnestRule` asks in planning under a placeholder alias, so
-implementation, binding the alias it allocates, finds no statement. Their element paths are opaque in the IR, so S owns
-none of them and the translator answers as it did; the test holds the rule for a statement with a conjunct S owns.
+implementation, binding the alias it allocates, finds no statement. Their paths, under the unnest's alias, are opaque in
+the IR, which reads an element of the root's path since h15 and none under another alias, so S owns none of them and
+the translator answers as it did; the test holds the rule for a statement with a conjunct S owns.
 
 **What runs unarmed.** A round allocates its record, the list of what is pending, the closure that names each
 conjunct's node, the list of what it admitted and the translator's answer, and makes one call; the capture's `volatile
@@ -7716,7 +7749,8 @@ those positions drops the restricted and completed templates from every weakenin
 Neither is needed: the guard costs no row a comparison keeps, since Calcite's comparison is unknown over a null whatever
 the reader, and S holds that of every shape.
 
-**What holds it** (line 13). `RenderingRexBuilderTests`:
+**What holds it** (line 13). `RenderingRexBuilderTests`, read back through the translator until the switch and through
+the printer since (*The switch (h15)*, *Line 13 is the printer's round trip*):
 - *The round trip.* The Rex's text reads back as the member with each comparison as the translator writes that
   comparison's own Rex where it stands, every other node, grouping and order the member's. Each comparison's text is
   proven `Equal` to the loader's reading of its Rex, so what is sent is what Calcite reads, and where the text is the
@@ -7800,7 +7834,7 @@ schema's answers can outnumber its memo, 4.5–5.2 KB each, where the memo has l
 that a statement Volcano reads again is handed what its terms were given, never a later answer to the same question.
 
 **W and P.** The split rule pushes S's weakening of every residual, built as a Rex over the conjunct's accessors and
-held by `IsApplied` and `TryTranslate` as J's was, and calls no J, which g18 deletes; implementation prints the form
+held by `IsApplied` and, until the switch (h15), `TryTranslate` as J's was, and calls no J, which g18 deletes; implementation prints the form
 admission kept into the statement's list, asking S nothing; the capture is told of S's prints as of the translator's
 texts. The residual projection rule fires where the split pushes nothing and a residual remains, so S's weakenings decide
 where it fires (spec §5.1); the switch's listing held each move as a *projection placement*.
@@ -8184,7 +8218,10 @@ two suite plans outside the digests' population beside them: a point read's `IS_
 `c."$.category" = 'bikes'` is deleted, a `VARIANT` equal to a boxed string being a string, so the read is the whole
 predicate and no residual is left to lift (respelled); and `JSON_VALUE(c."DOC", '$.name') > 'steel'` is weakened to
 `(c.name > 'steel' OR IS_BOOL(c.name)) AND (NOT IS_STRING(c.name) OR c.name > 'steel')` in place of admitting every
-defined value that is no string, since `true` renders past the literal and no number does (tighter).
+defined value that is no string, since `true` renders past the literal and no number does (tighter). Since the switch
+(h15) the first is not deleted: F reads a type test of a declared field as Calcite's body does, raising over every value
+(*A test carries its reading's raise*), so it is held back beside the read, where the statement fails as Calcite's
+does — the owner's reason of 2026-11-08 (`ATypeTestOfAFieldThePinnedHalfImpliesIsHeldBackAsCalciteRaisesIt`).
 
 ### A `CASE` in S: the tag, two-valuedness and each arm's strata (h08)
 
@@ -9299,8 +9336,8 @@ read by a reading only rows define; and the structure test under the null test, 
 for `IS NULL`, its own template, which the gate proves from the rows as any form. Built in G8's fix, it was no
 refactor: it proves the translator's text for the four census rows of `IS [NOT] NULL(JSON_QUERY(label))`
 (`coverage-FG.tsv` lines 62, 102, 222 and 274), each of whose positive and negative checks the type tests left
-Unproven, its best form unchanged and the digests, which read no places, byte-equal. So it waits for h15, whose census
-may move (`TODO.md`).
+Unproven, its best form unchanged and the digests, which read no places, byte-equal. So it waited for h15, whose first
+commit moved it and those four census lines (*The switch (h15)*).
 
 ### The switch (h15)
 
@@ -9333,6 +9370,126 @@ writes where it reads them, so the digests, which read none, are byte-equal.
   both graphs', over `boxof`, `seesthrough`, `boxnull`, `takesconstant` and `strictop`, which the readings vocabulary
   defines and `CalciteRows` carries to either root (F's from `CosmosReasoning.Rows`). F's statements hold none of those
   terms until the switch, so F's verdicts are what they were; F has 66 rules, S 191.
+
+**One reading, which S owns but for a parameter or an opaque term.** A filter's conjuncts are read once,
+`CosmosFilterStatement.Statement`, and both graphs read that reading: the legacy reading S read until now
+(`RenderingStatement`, the loader's `legacy` flag, which left opaque every shape S owned no family of) and the
+translator's own reading of places (`CosmosRexTranslator.Places`, the loader's `places` flag) are gone, so a raw reading
+through its column, a call the function rows name as a place, a boxed literal and a comparison with SQL's null are F's
+terms too. `RenderingFamily.Owns` is a walk for a parameter or an opaque term and nothing else, its refusing arm and its
+shape list (`Unboxed`, `HasEdges`) gone (G10): S owns every reading the loader makes, a type test, a `CASE`, a truth
+value, an affix, a call, a pair and an element among them, and within the family its Unproven is the answer (O2). A
+parameter stays the translator's until S reads one (3B), and an opaque term, of which S has no reading, for good; so
+admission reaches the translator for those alone, and implementation prints S's form for every other conjunct. The
+template rows' bridge (`RenderingTemplateRows.FromTheSwitch`: C4n, C2 and `TextAlternatives`) is gone with the reason it
+stood, a site W that pushed only what the translator wrote: production asks every template.
+
+**What F reads exactly is F's to say.** A later round rests only on a stratum whose assumptions F reads as Calcite does
+(§5.2), and which those are was C#'s walk to the atoms (`RenderingFamily.ReadExactly`), asking the rows of each and
+reading through a box by `Unboxed`. It is F's `Exactness` ruleset now, saturated beside `Decide`: nine rules derive
+`inexact` of a predicate holding an atom whose reading the rows do not say F reads exactly beside its operand's class
+(`PredicateAtom.ReadExactly` over `readsexactly`, one set value the readings vocabulary defines at both roots), and of
+each junction, negation and `CASE` holding one. `StatementTerms.ReadsExactly` asks it of a node once and keeps the
+answer with the terms. A presence test, two readings compared, an opaque term and a call no reading reads give F no
+atom to learn from, so each is read as exactly as the stratum above it. F has 66 rules beside the nine, S 191.
+
+**An arm is stated beneath its licence.** S writes a `CASE`'s arms beneath their conditions (`SqlPredicate.Beneath`,
+*A `CASE` in S*), and the licence that says what an arm may assume (`CosmosStatementScope.StratumFor`,
+`OracleLicence.RenderArm`) had no production caller. Now a question names each leaf of one path a conjunct reads
+beneath an arm (`RenderingBundle.ArmsOf`) and states it beneath the stratum the bundle opens for the arm's conditions
+(`ArmOf`, `ImportSource.Arm`), imported at the conjunct's node beneath what F reads of those conditions exactly; an arm
+two conjuncts open, which a bundle opens once for both, is stated beneath neither. The licence assumes only what F reads
+exactly, so a coarse condition never narrows what a row may hold: the label of
+`AStratumAConjunctReadCoarselyRestsOnIsNotRead` is sent as its text alternatives and its presence, the arm beneath
+`IS_NUMBER(label)` sending the number 7, which keeps a number label, and G16b's plant, every condition read exactly, is
+caught by source A the G12 way (`G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven`). This is P6
+(line 19), delivered and listed: its pushes reach the service through the arm's licence.
+
+**Site W pushes S's weakening, with no translator.** The split rule pushes each residual's weakening as the Rex
+`RenderingRexBuilder` writes of S's form, and of it only what the filter it is pushed in admits through S, read as
+`CosmosFilterRule` reads that filter, lowered and admitted stratum by stratum (`CosmosFilterSplitRule.Admitted`): of a
+member that statement declines, S's weakening there in its turn, each asked once, and nothing else. So the filter split
+off converts whole, and nothing of a weakening is kept in process, where it would restrict no row its conjunct does not
+and where its Rex, the service's form, may have no body: a Cosmos type test has an in-process body only where a schema
+declares its function, and Calcite orders a raw value by its runtime class, raising between two kinds. The switch's
+first build kept a declined member in process, and the partition gate over EN20260907 failed to implement seven
+predicates Calcite answers. The grammar still writes no type test over a reading its in-process body raises over
+(`RenderingRexGrammar.Raising`), and no ordering over a reading that has no order (`Unordered`: a raw value in a
+`VARIANT` column, which fails to compile whatever the rows hold); an ordering beside a `VARIANT` field is written over
+the raw value of the path's text where the conjunct reads one, and where it does not, through the conjunct's own cast
+of the field to a character type, `CAST($4 AS VARCHAR)`, which the filter beneath reads back as the conjunct reads it;
+never over the field. The switch's first build wrote such an ordering over the partition key's field for partitions 42 and 440
+(`$4 > 'a'`), which fails to compile wherever Calcite evaluates it, and later wrote none where the conjunct read the
+field only through its cast, so the whole weakening went unbuilt: partitions 1908 sent the key's equality alone where
+the translator had sent the ordering beside it, and line 13 at the gate's size found thirteen weakenings not built. A weakening that is one of the filter's own conjuncts, read through its
+loading (`IsOwn`) or equal to one, is not pushed: a filter of weakenings that does not admit one weakens it in turn,
+and to itself it would be pushed under that filter for ever; nor is one the filters beneath apply (`IsApplied` over
+`AlreadyApplied`), nor one of which all the filter beneath admits is applied there. The filter left above asks the
+same weakening, which is not applied where only a weaker form of it was pushed, and that form would be pushed under
+itself for ever: measured as a stack overflow on the rendering check's inputs, a `RETURNING DECIMAL` comparison or a
+number past 2^53 whose weakening's `CASE` the filter beneath declines and whose weaker form it admits
+(`AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther`). The capture is told S's weakening as the printer writes it
+(`PrintWeakening`) where something of it is pushed, which line 12 reads.
+
+**A filter folded onto a `WHERE` never fails where that `WHERE` excludes.** Filters stacked over one scan are conjoined
+(`Rel/CosmosFilter.cs`), which is sound at `Pos` for the truths, but the service then evaluates the upper form over every
+document the lower excludes, where a failure fails the statement and Calcite, never reading the upper filter over those
+rows, answers. The implementor marks a written `WHERE` (`CosmosClauses.Where`), and `CosmosFilterRule` folds a filter
+onto one only where its statement is `FailureFree`: every conjunct's form one S proved, whose agreement allows the
+service no failure on any cell the question imports from the root, the set-aside box among them. A conjunct the
+translator writes carries no such proof, so a filter holding one stays in process above a `WHERE`. Permanent.
+
+**The printer writes S's spellings.** `CosmosFilterStatement.Print` writes a form over each place its conjunct reads, a
+computed one's operands and each path an opaque term was read as reading among them, and a computed place as its call
+in the spelling S chose (`Admitted.Spellings`, the resolution's `Spellings`), or where S chose none in the one every call
+of its function takes; `Prints` asks the same before an admission stands, so a form the printer refuses is never
+admitted and voids no other's. A call only the service evaluates is asked nothing of by the translator: Calcite has no
+answer of it to part from, and neither graph reads it as a place.
+
+**Line 13 is the printer's round trip.** `RoundTrip` takes the printer in place of the translator: each pushed
+weakening's Rex is read back by the loader and printed as the filter beneath prints it, and must be the form, or S's
+best of what was read, which the conjunct implies: proven by the check, or, where claim mode leaves it unproven (a
+junction of two atoms of one path, a junction beside an opaque term), kept on every document source A draws from the
+weakening's bundle that the conjunct keeps, judged by Calcite in process where the conjunct holds an opaque term, as
+line 1c judges one. Of the 915 weakenings of the pull request's run under the asserted sets, 766 print and read back as
+themselves and 78 are sent as S's form of what Calcite reads of them; 20 of the 178 with a `CASE` are declined beneath,
+S proving no pair the gate holds implied there (`TODO.md`), and the split rule pushes only what the filter beneath
+admits of each (*Site W pushes S's weakening*); 17 holding a test over a declared field are not built, the test's body
+raising over the field, until h15b writes it over the accessor re-typed `ANY`; and 34 testing an element are read
+beneath as opaque, the translator's, until h15b's element guards. At the gate's size it reads 3,109: 2,604 read back as
+themselves, 343 sent as S's form of the reading, 425 with a `CASE` (the same 20 declined), 17 over a declared field and
+108 testing an element; of the 343 it judges seventeen on nothing, as Calcite in process compiles no conjunct for one
+statement, IrEval answers no document drawn for four, and S proves no exact form under the bundle alone for three that
+concatenate over `id`. Each was read by hand and keeps its conjunct's rows, and the partition gate runs them
+(`TODO.md`, *Line 13 judges seventeen of the gate's weakenings on nothing*).
+
+**What the switch moved is listed.** At the gate's size 1,208 of the 3,492 statements plan otherwise than at the raises
+step under `Production` and 1,101 under `Emulator` (`WriteDigests`, net10.0 and net8.0 byte-equal: `2ca17b45…` and
+`934ad625…`, where they were post2's `038034d1…` and `8c6dd98a…`). Each moved line is classed by reading the two
+`WHERE`s over documents drawn from the literals they name (`reports/stage3-3A/h15/listing.tsv`): under `Production` 446
+gains (a `WHERE`, or routing, where none was sent), 194 respelled (the same documents kept), 173 tighter (fewer kept),
+18 placement (the plan alone moved), 285 alike (the IR column alone, which spells what S reads) and 92 declined and
+listed; under `Emulator` 409, 134, 167, 29, 266 and 96. A declined line keeps more documents than at the base for a
+decline named: Q3's integer overflow (43, and 42 under `Emulator`); the owner's reason of 2026-11-08, that a filter
+Calcite fails on every row fails as Calcite fails it (20 and 21); run 2's service difference (6, `Production`'s); the
+emulator rule (1, `Emulator`'s); and h15b's, a weakening that needs a presence or null test of a declared field, which
+the builder writes no Rex for, so S implies none (20 and 29; *A weakening's test over a declared field is not pushed*,
+`TODO.md`); three more lines carry both of the last two. Each keeps its filter in process, so it costs RU and never
+rows. Three of them, partitions 1660, 1948 and 2515, lose the category's part for those reasons and gain a weakening of
+another conjunct. Every tighter line's statement kept a filter in process at the base, so what tightened was a
+weakening, and the answers are the partition gate's and the differential's to hold: on EN20261019 and EN20260907 alike
+1,336 partitions send a `WHERE`, the floor 983 (262 at the pull request's size, the floor 204), and none fails, line
+9c's `CASE` over each of the gate's 973 predicates takes the arm Calcite's condition chooses (902 sending the ternary),
+and the differential passes on EN20261019. The sent floors rose on every input as S came to own every reading the
+loader makes: at the gate's size the conjuncts sent exactly under `Production` went from 74 to 91 in the corpus, 388 to
+911 in the differential, 1,135 to 4,763 in the partitions and 7 to 13 in the probe (`Emulator` 74 to 91, 377 to 890,
+1,072 to 3,996, 7 to 13). Of the 35 and 36 names that send fewer exactly, 22 and 23 are declined lines; the rest send a
+tighter or the same `WHERE`, S's weakening in the round where the translator's had been read back and sent. The
+yardstick's pushes held under `Emulator` (sort 79, extreme 19 and page 3 at the gate, the floors 77, 18 and 3); at the
+gate's size it passes on EN20260907 and fails on EN20261019 the five statements it failed there before the switch, the
+image's 2^63 printed two ways by projections that send no `WHERE` (`TODO.md`, *The gate fails five statements over
+`v`*). The planted differential's D11 rows were restated over what S sends: a suffix as `ENDSWITH`, and no `_` over a
+text that may hold a line terminator (run 2's rows).
 
 ### The foundation's rows: refinements and operand keys (F1, F2)
 
@@ -9645,7 +9802,8 @@ holds such a number as the int64 it is, but S read that way alone moved what it 
 - under the emulator's set the generate simulation sent 375 differential conjuncts exactly against the parent's 377.
 
 The proper reading lands with witnesses that part the two orders, which the probe account's next run measures, and
-with h15's Rex builder (`TODO.md`, the two numeric orders).
+with the Rex builder writing such a comparison as S proves it, which the switch (h15) left waiting on them (`TODO.md`,
+the two numeric orders).
 
 **What a class is to the gate (G2).** `CellOutcomes.Of` pairs the two sides' answers as they are. It marks a class
 whose service value is no boolean (`CellClass.NonBoolean`), and a class only a document an earlier round drops holds
@@ -9869,11 +10027,11 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
   `LIKE` holding `_` stays unproven: every path it reads may hold a line terminator, which Calcite's `_` misses and each
   target's matches, a correctness-fix decline the owner accepted by name.
 
-**What did not move.** Which test a `LIKE`'s pattern is proposed as is still `AffixPattern.Written`'s, the narrowest:
-one template per test and a weight in `Priced` land with h15's templates (`TODO.md`). Which evaluator reads a
-reading's rows, the text's, a raw value's, a typed one's or a cast's, is still `Reading.Parse`'s by the spelling, and
-`EvaluatorOf` and `Kept` default to the reading's own (`TODO.md`). `LikeOn`'s number and structure misses are
-evaluation, as the audit found. Digests, the census and population D are byte-equal.
+**What did not move.** Which test a `LIKE`'s pattern is proposed as was still `AffixPattern.Written`'s, the narrowest:
+one template per test and a weight in `Priced` landed with h15's first commit (*The switch (h15)*). Which evaluator
+reads a reading's rows, the text's, a raw value's, a typed one's or a cast's, is still `Reading.Parse`'s by the
+spelling, and `EvaluatorOf` and `Kept` default to the reading's own (`TODO.md`). `LikeOn`'s number and structure misses
+are evaluation, as the audit found. Digests, the census and population D are byte-equal.
 
 ### What the re-audit moved into rules
 
@@ -9914,13 +10072,13 @@ plan digests and the census are byte-equal to the parent's.
   (`readerrows`), its strictness and its order the union's reading's, and its cuts the union's (`ReaderEdgesTable`). A
   row measuring `CHAR` replaces the union with its own.
 
-**What did not move.** Which test a `LIKE` is proposed as lands with h15's templates (`TODO.md`). `JSON_QUERY` under a
-null test moves with h15, where it changes four census lines. The translator writer's choice of which operand it sends
-in the stored spelling goes with the writer, `WHERE` at h16 and columns at h37; S's printer already spells every
-literal by its set. `ReaderEdgesTable`'s cast keys equal `measuredcast`'s rows, which
-`RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts` holds, and move with h15's cast targets (`TODO.md`). F's
-own verdict over `readsexactly`, a rule over a conjunct's atoms in place of `RenderingFamily.ReadExactly`'s walk, waits
-for h15, when F's terms are S's (`TODO.md`).
+**What did not move.** Which test a `LIKE` is proposed as, and `JSON_QUERY` under a null test, which changed four
+census lines, moved with h15's first commit, and F's own verdict over `readsexactly`, rules over a conjunct's atoms in
+place of `RenderingFamily.ReadExactly`'s walk, with the switch (*The switch (h15)*). The translator writer's choice of
+which operand it sends in the stored spelling goes with the writer, `WHERE` at h16 and columns at h37; S's printer
+already spells every literal by its set. `ReaderEdgesTable`'s cast keys equal `measuredcast`'s rows, which
+`RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts` holds, and move with the loader's cast targets, h15b's
+(`TODO.md`).
 
 ## Differential testing
 

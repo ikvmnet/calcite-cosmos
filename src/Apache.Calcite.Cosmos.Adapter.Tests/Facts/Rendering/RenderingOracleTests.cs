@@ -110,9 +110,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// An opaque term is numbered within its loading, so two conjuncts the loader reads apart may share a digest:
-        /// <c>UPPER(name) = 'X'</c> and <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c>, each alone. The value each was read
-        /// as is in the key, so the second is not handed the first's presence.
+        /// An opaque term is numbered within its loading, so two conjuncts the loader reads apart may share a digest: one
+        /// read as <c>UPPER(name) = 'X'</c>, built here since the loader reads that comparison (h10), and
+        /// <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c>, each alone. The value each was read as is in the key, so the
+        /// second is not handed the first's presence.
         /// </summary>
         [Fact]
         public void AnOpaquesReadingIsInTheKey()
@@ -121,9 +122,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var rex = new RexBuilder(types);
             var doc = rex.makeInputRef(types.createSqlType(SqlTypeName.VARCHAR), 0);
             RexNode Read(string path) => rex.makeCall(types.createSqlType(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_VALUE, java.util.Arrays.asList(doc, rex.makeLiteral("$." + path)));
-            // The legacy reading, production S's until h15: the non-legacy one reads UPPER(name) = 'X' as a computed place's (h10).
-            PredicateStatement Loaded(RexNode conjunct) => new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c", legacy: true).Statement([conjunct]);
-            var upper = Loaded(rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")));
+            var loading = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c");
+            PredicateStatement Loaded(RexNode conjunct) => new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement([conjunct]);
+            var compared = loading.ReadValue(rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")))!;
+            var upper = new PredicateStatement([new SqlPredicate.Opaque(0)], opaques: _ => compared);
             var unlisted = Loaded(rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlLibraryOperators.CONCAT_WS, rex.makeLiteral("-"), Read("name"), Read("sku")), rex.makeLiteral("x")));
             upper.Conjuncts.Single().Should().Be(unlisted.Conjuncts.Single(), "both are the loading's first opaque term");
 

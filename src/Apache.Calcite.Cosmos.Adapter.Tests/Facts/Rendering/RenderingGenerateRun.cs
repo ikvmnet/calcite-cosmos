@@ -107,15 +107,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         void ICosmosRenderingProbe.Opened(CosmosFilterStatement statement, CosmosFilterRendering.Question question, RenderingBundle bundle, IReadOnlyList<Pred> terms,
             ImportReport import, RenderingRun run, TimeSpan elapsed)
         {
-            var key = RenderingQuestionKey.Of(question.Roots, statement.RenderingStatement.Opaques, import, question.Set, RenderingAnswerMemo.DigestOf(bundle.Theory));
+            var key = RenderingQuestionKey.Of(question.Roots, statement.Statement.Opaques, import, question.Set, RenderingAnswerMemo.DigestOf(bundle.Theory));
             var id = Interlocked.Increment(ref _next);
             var nodes = question.Roots.SelectMany(r => r.Subterms).DistinctBy(n => n.Digest).ToList();
 
             // A node is its term again: made by get-or-add, the class the roots already hold.
-            var written = nodes.ToDictionary(n => n.Digest, n => bundle.Write(n, statement.RenderingStatement.Opaques));
+            var written = nodes.ToDictionary(n => n.Digest, n => bundle.Write(n, statement.Statement.Opaques));
             var answers = question.Roots.Select((r, i) => (r.Digest, Answer: bundle.ReadBest(terms[i]))).ToDictionary(a => a.Digest, a => a.Answer);
-            var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.RenderingStatement.Conjuncts[i]).ToList());
-            var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom) is var b
+            var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.Statement.Conjuncts[i]).ToList());
+            var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom || x.Atom is SqlPredicate.Beneath { Stratum: var arm, Leaf: var leaf }
+                && b.Atom == leaf && b.Source.Arm is { } conditions && bundle.Strata.TryGetValue(arm, out var at) && RenderingBundle.KeyOf(at) == RenderingBundle.KeyOf(conditions)) is var b
                 ? new RenderingMemo.Beneath(indices.IndexOf(b.Conjunct), x.Atom, b.Source, x.Assumed, [.. b.Stratum.Assumes.Select(a => indices.IndexOf(a))]) : null!).ToList();
             var proposed = (Candidates: bundle.Failure is null ? (int)bundle.Scope.CountRows(bundle.Theory.Candidate) : 0,
                 Atoms: nodes.Count(n => n is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)));
@@ -142,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var row in bundle.Scope.Rows(bundle.Theory.Disagrees).Where(r => Verdict.Equal.Equals(r.Keys[3])))
                     if (nodes.FirstOrDefault(n => written[n.Digest].Id.Equals(row.Keys[0])) is { } atom && row.Output is Refutation refutation)
                         refuted.Add(new Refuted(atom, (RenderPosition)row.Keys[1], (ServiceForm)row.Keys[2], refutation,
-                            refutation.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness())));
+                            refutation.Cells.Select(c => cells[c]).SelectMany(c => RenderingCheckRun.Witnessed(c.Path, c.Cell)).DistinctBy(w => w.Path).ToDictionary(w => w.Path, w => w.Witness)));
             }
 
             var distinct = forms.Distinct().ToList();
@@ -153,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 1 => literals[0],
                 _ => ServiceForm.JunctionOf(CosmosServiceTest.And, literals),
             }, [.. conjuncts.Select(_ => (ServiceForm?)null)], stated, null, statement.DeclarationForCheck.Rules) : null;
-            var witnesses = bundle.Failure is null ? RenderingCheckRun.Cells(bundle).Values.Select(c => (c.Path, Witness: c.Cell.Witness())).ToList() : [];
+            var witnesses = bundle.Failure is null ? RenderingCheckRun.Cells(bundle).Values.SelectMany(c => RenderingCheckRun.Witnessed(c.Path, c.Cell)).ToList() : [];
             var generated = new Bundle(id, question.Set, run, bundle.Failure, question.Roots, answers, distinct, claim, elapsed.TotalMilliseconds, proposed, refuted, bundle.Iterations,
                 key, witnesses);
             if (_opened.TryAdd(key, generated))
@@ -166,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         public void Read(RenderingInputs.Statement input, int index, CosmosFilterStatement statement)
         {
-            var (scope, conjuncts) = (statement.ScopeForCheck, statement.RenderingStatement.Conjuncts);
+            var (scope, conjuncts) = (statement.ScopeForCheck, statement.Statement.Conjuncts);
             int[] rounds = [.. Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf)];
             bool[] owned = [.. conjuncts.Select(RenderingFamily.Owns)];
             foreach (var set in _sets)
@@ -202,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     Declines.Enqueue($"{input.Input} {input.Name}/{index} {set}: {declined} {answer.Roots.Values.FirstOrDefault()?.Reason}");
             }
 
-            var conjuncts = statement.RenderingStatement.Conjuncts;
+            var conjuncts = statement.Statement.Conjuncts;
             for (var i = 0; i < conjuncts.Count; i++)
                 Sends.Enqueue(new(input.Input, input.Name, index, i, set, conjuncts[i].Digest, owned[i], rounds[i], resolution.Forms.GetValueOrDefault(i), statement));
 
@@ -233,12 +234,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var lowered = Enumerable.Range(0, rewritten.Conjuncts.Count).Where(i => before.Contains(rewritten.Conjuncts[i]) == false).ToList();
             for (var k = 0; k < originals.Count; k++)
             {
-                var original = statement.RenderingStatement.Conjuncts[originals[k]];
-                var made = k < lowered.Count && originals.Count == lowered.Count ? rewritten.RenderingStatement.Conjuncts[lowered[k]] : null;
+                var original = statement.Statement.Conjuncts[originals[k]];
+                var made = k < lowered.Count && originals.Count == lowered.Count ? rewritten.Statement.Conjuncts[lowered[k]] : null;
                 var source = ((org.apache.calcite.rex.RexNode)statement.Statement.Sources[originals[k]]!, statement.BindingForCheck);
                 foreach (var set in _sets)
                     Rewrites.Enqueue(made is null ? new(input.Input, input.Name, index, set, original, null, null, null, source)
-                        : Pair(input, index, statement, root, set, original, made, rewritten.RenderingStatement.Opaques, source));
+                        : Pair(input, index, statement, root, set, original, made, rewritten.Statement.Opaques, source));
             }
 
             GC.KeepAlive(rewritten);
@@ -250,7 +251,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             using var bundle = _graph.Open(set);
             var m = bundle.Write(made, opaques);
-            RenderingImporter.Import(bundle, new ImportSource(statement.RenderingStatement.Digest, "declaration", 1), root.Context, root.Rules, statement.DeclarationForCheck, made.Paths.Concat(original.Paths));
+
+            // The original is written beside it, so that its paths are spelled and the claim source A draws from carries their
+            // imports: one the rewrite made reading none of them, a tautology the declaration proves written TRUE, is otherwise
+            // judged over documents the declaration excludes (h15, where one reading writes the TRUE S now answers).
+            bundle.Write(original, statement.Statement.Opaques);
+            RenderingImporter.Import(bundle, new ImportSource(statement.Statement.Digest, "declaration", 1), root.Context, root.Rules, statement.DeclarationForCheck, made.Paths.Concat(original.Paths));
             bundle.Generate(m);
             bundle.RunGenerate(RenderingBundle.WidthOf([made]));
             var answer = bundle.ReadBest(m);

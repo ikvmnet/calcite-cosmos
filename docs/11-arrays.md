@@ -71,14 +71,15 @@ JSON_VALUE(c."DOC", '$.tags[0]')   →   (IS_PRIMITIVE(c.tags[0]) ? c.tags[0] : 
 Both name the first element. `ARRAY_SLICE` and `SUBSTRING` are adjusted for the origin the same way.
 
 An element holds whatever the document put there, and no declaration says otherwise: a schema states
-what a property holds, and none reaches an element. So an ordering of one read as text runs in process,
-the container read for it — `5` renders as `'5'`, which is below `'m'` in SQL and no string at all to
-Cosmos, and the adapter proves nothing of an element yet (Chapter 23); an equality with text no other
-value renders as is still sent:
+what a property holds, and none reaches an element. So an ordering of one read as text is sent as one
+over a property nothing declares: the string's comparison where the element holds a string, every other
+kind kept, and the ordering rechecked in process — `5` renders as `'5'`, which is below `'m'` in SQL and
+no string at all to Cosmos (Chapter 8.3). An equality with text no other value renders as is sent
+exactly:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.tags[0]') < 'm'
-→ (nothing sent)   -- compared in process
+→ WHERE (IS_DEFINED(c.tags[0]) AND ((NOT IS_STRING(c.tags[0])) OR (c.tags[0] < @p0)))   -- then rechecked
 
 WHERE JSON_VALUE(c."DOC", '$.tags[0]') = 'x'
 → WHERE (c.tags[0] = @p0)

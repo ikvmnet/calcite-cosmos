@@ -93,6 +93,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             AlwaysTrue = graph.DefineRelation<Pred>("always true");
             AlwaysFalse = graph.DefineRelation<Pred>("always false");
             NeverTrue = graph.DefineRelation<Pred>("never true");
+            Inexact = graph.DefineRelation<Pred>("inexact", analysis);
 
             // A value's characters: the facts graph's alone; the call terms they read are the vocabulary's.
             ValueChars = graph.DefineFunction<Val, ValueSet<string>>("value chars", ValueLattice.Intersect<string>());
@@ -102,11 +103,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             Establish = graph.DefineRuleset("establish");
             Decide = graph.DefineRuleset("decide");
+            Exactness = graph.DefineRuleset("exactness");
             Characters = graph.DefineRuleset("characters");
 
             DefineEstablish();
             DefineSplit();
             DefineDecide();
+            DefineExactness();
             DefineCharacters();
 
             // A question of a value's characters is asked in a context made for it, which assumes nothing: it reads the
@@ -134,11 +137,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var inArm = Schedule.Saturate(settle, Schedule.Split(arms, settle), Schedule.Split(json.QuerySplit, settle));
             var inDiscriminator = Schedule.Saturate(settle, Schedule.Split(json.QuerySplit, settle));
             QuerySaturation = Schedule.Saturate(settle, Schedule.Split(arms, inArm), Schedule.Split(json.QuerySplit, inDiscriminator));
-            Saturation = Schedule.Sequence(QuerySaturation, Schedule.Saturate(Decide));
+            Saturation = Schedule.Sequence(QuerySaturation, Schedule.Saturate(Decide, Exactness));
 
             // A context that assumes nothing learns nothing a split could prove that its parent's split has not lifted:
             // it reads its new terms, the paths they mention, and the verdicts.
-            Answer = Schedule.Sequence(Schedule.Saturate(json.Json, json.JsonSchema, Analyse), Schedule.Saturate(Decide));
+            Answer = Schedule.Sequence(Schedule.Saturate(json.Json, json.JsonSchema, Analyse), Schedule.Saturate(Decide, Exactness));
         }
 
         public EGraph Graph { get; }
@@ -192,6 +195,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Relation<Pred> NeverTrue { get; }
 
         /// <summary>
+        /// The predicate holds an atom the facts graph reads otherwise than Calcite (<see cref="PredicateAtom.ReadExactly"/>):
+        /// a stratum assuming it may say of the documents what is not so, and a statement's later rounds rest on none
+        /// (<c>StatementTerms.ReadsExactly</c>). Of the terms and the root's rows alone, alike in every context.
+        /// </summary>
+        public Relation<Pred> Inexact { get; }
+
+        /// <summary>
         /// If the value is a string, the classes its characters may be in: the theory's <c>chars</c>, said of a value
         /// rather than a path. A conjunction meets two, as it meets a path's.
         /// </summary>
@@ -217,6 +227,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>What the facts say of a predicate: one stratum, run after they settle.</summary>
         public Ruleset Decide { get; }
+
+        /// <summary>Which predicates hold an atom read otherwise than Calcite reads it (<see cref="Inexact"/>), run beside <see cref="Decide"/>.</summary>
+        public Ruleset Exactness { get; }
 
         /// <summary>The split over the arms of a junction that takes the truth value its arms decide.</summary>
         public SplitRule ByArm { get; private set; } = null!;
@@ -644,6 +657,57 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     r.Then(AlwaysTrue.Of(e));
                 });
             }
+        }
+
+        /// <summary>
+        /// Defines which predicates the facts graph reads otherwise than Calcite (<see cref="Inexact"/>): one holding an atom
+        /// whose reading the rows do not say it reads exactly beside its operand's class, and each connective holding one.
+        /// What a stratum assuming a predicate knows of the documents it learns from the predicate's atoms alone
+        /// (<see cref="DefineEstablish"/>), so a predicate holding none — a presence test, two readings compared, an opaque
+        /// term, a call no reading reads — is read as exactly as the stratum above it.
+        /// </summary>
+        void DefineExactness()
+        {
+            Exactness.DefineRule("an atom the facts graph reads otherwise than Calcite is read inexactly", r =>
+            {
+                var (e, p, a) = r.Vars<Pred, JPath, PredicateAtom>("e", "p", "a");
+                var x = r.Var<ValueSet<(string, CosmosValueClass)>>("x");
+                r.When(Atom.Of(e, p, a), x.Is(Json.Readings.ReadsExactly.Of()));
+                r.Where(a, x, (atom, exact) => atom.ReadExactly(exact) == false);
+                r.Then(Inexact.Of(e));
+            });
+
+            foreach (var left in new[] { true, false })
+            {
+                var side = left ? "left" : "right";
+                Exactness.DefineRule($"a conjunction whose {side} side is read inexactly is read inexactly", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    r.When(e.Is(And.Of(a, b)), Inexact.Of(left ? a : b));
+                    r.Then(Inexact.Of(e));
+                });
+                Exactness.DefineRule($"a disjunction whose {side} side is read inexactly is read inexactly", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    r.When(e.Is(Or.Of(a, b)), Inexact.Of(left ? a : b));
+                    r.Then(Inexact.Of(e));
+                });
+            }
+
+            Exactness.DefineRule("a negation of what is read inexactly is read inexactly", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                r.When(e.Is(Not.Of(a)), Inexact.Of(a));
+                r.Then(Inexact.Of(e));
+            });
+
+            foreach (var (part, name) in new[] { (0, "condition"), (1, "THEN"), (2, "ELSE") })
+                Exactness.DefineRule($"a CASE whose {name} is read inexactly is read inexactly", r =>
+                {
+                    var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                    r.When(e.Is(Ir.Case.Of(c, t, f)), Inexact.Of(part switch { 0 => c, 1 => t, _ => f }));
+                    r.Then(Inexact.Of(e));
+                });
         }
 
         /// <summary>

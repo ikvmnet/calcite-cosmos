@@ -32,16 +32,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void CaptureChangesNoPlanOverTwenty() => Unchanged(reasoning => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, reasoning).Where((_, i) => i % 59 == 0).Take(20));
 
         /// <summary>
-        /// Every shape the loader reads from h07 to h11 is the translator's until S's switch (h15): S reads each as it did,
-        /// opaque, so that it owns none and weakens none otherwise than before, and the plan is <c>main</c>'s (line 21,
-        /// spec F3). Each statement holds one: <c>LIKE</c>, a truth test, <c>COALESCE</c>, a boolean <c>CASE</c>, a
-        /// predicate's null test and an element, and the corpus's type tests, which the facts graph reads; and a call the
-        /// function rows name compared (h10) and two readings compared (h11), which only a loading that reads places reads,
-        /// so neither graph does. h09's number cast of a bound text is the <c>SqlValue.Cast</c> over a text S read before
-        /// h07, no new term.
+        /// Every shape the loader reads from h07 to h11 is S's since the switch (h15): one reading for both graphs, which
+        /// reads places, so that S owns each conjunct holding one, but one holding an opaque term, which S has no reading of
+        /// (<c>COALESCE</c>'s expansion casts its comparison to <c>BOOLEAN NOT NULL</c>). Each statement holds one: <c>LIKE</c>, a truth test,
+        /// <c>COALESCE</c>, a boolean <c>CASE</c>, a predicate's null test and an element, the corpus's type tests, a call the
+        /// function rows name compared (h10) and two readings compared (h11). h09's number cast of a bound text is the
+        /// <c>SqlValue.Cast</c> over a text S read before h07, no new term.
         /// </summary>
         [Fact]
-        public void EveryNewShapeIsTheTranslatorsUntilTheSwitch()
+        public void EveryNewShapeIsSSinceTheSwitch()
         {
             const string Where = "SELECT c.\"id\" FROM products AS c WHERE ";
             string[] sql =
@@ -61,23 +60,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var statement in RenderingInputs.Differential("h07", sql, RenderingInputs.Containers).Concat(RenderingInputs.Corpus().Where(s => s.Name == "Filter.TypeTests")))
                     statement.Plan();
 
-            var read = recorder.Read.SelectMany(s => s.Statement.Conjuncts.Select((f, i) => (Statement: s, F: f, S: s.RenderingStatement.Conjuncts[i]))).ToList();
-            read.Where(c => New(c.F)).Should().NotBeEmpty("the facts graph reads the new shapes");
-            read.Should().OnlyContain(c => New(c.S) == false, "S reads none of them");
-            read.Where(c => New(c.F)).Should().OnlyContain(c => RenderingFamily.Owns(c.S) == false, "so S owns none of them");
+            var read = recorder.Read.SelectMany(s => s.Statement.Conjuncts.Select((ir, i) => (Statement: s, Rex: s.Conjuncts[i], Ir: ir))).ToList();
+            read.Where(c => (New(c.Ir) || Placed(c.Ir)) && HoldsOpaque(c.Ir) == false).Should().NotBeEmpty().And.OnlyContain(c => RenderingFamily.Owns(c.Ir), "S owns every new shape");
             foreach (var kind in new[] { typeof(SqlPredicate.TypeTest), typeof(SqlPredicate.Affix), typeof(SqlPredicate.Case) })
-                read.Should().Contain(c => c.F.Subterms.Any(t => t.GetType() == kind), kind.Name);
-            read.Should().Contain(c => c.F.Paths.Any(p => p.HasElement), "an element");
+                read.Should().Contain(c => c.Ir.Subterms.Any(t => t.GetType() == kind), kind.Name);
+            read.Should().Contain(c => c.Ir.Paths.Any(p => p.HasElement), "an element");
+            read.Should().Contain(c => ComparesACall(c.Ir), "a call the rows name");
+            read.Should().Contain(c => ComparesTwoReadings(c.Ir), "two readings");
 
-            read.Should().OnlyContain(c => Placed(c.F) == false && Placed(c.S) == false, "neither graph reads a computed place or a pair until h15");
-            var places = recorder.Read.SelectMany(s => s.Conjuncts.Select(rex => new CosmosPredicateLoader.Loading(s.BindingForCheck.Fields, s.BindingForCheck.Readings, "c", places: true).Read(rex))).ToList();
-            places.Where(p => p is SqlPredicate.Compare { Left: SqlValue.Call { Type: not null } }).Should().NotBeEmpty("a call the rows name");
-            places.Where(p => p is SqlPredicate.Compare { Left.PathRead: not null, Right.PathRead: not null }).Should().NotBeEmpty("two readings");
+            // One reading: the loader's of each conjunct is the statement's, which both graphs read.
+            read.Where(c => c.Ir.Subterms.Any(t => t is SqlPredicate.Opaque) == false)
+                .Select(c => (c.Ir.Digest, Loaded: new CosmosPredicateLoader.Loading(c.Statement.BindingForCheck.Fields, c.Statement.BindingForCheck.Readings, "c").Read(c.Rex).Digest))
+                .Should().OnlyContain(c => c.Digest == c.Loaded, "the statement reads each conjunct as the loader does");
         }
 
+        /// <summary>Whether a conjunct holds a term S has no reading of, the translator's for good.</summary>
+        static bool HoldsOpaque(SqlPredicate conjunct) => conjunct.Subterms.Any(t => t is SqlPredicate.Opaque);
+
         /// <summary>Whether a conjunct holds a shape read from h10 or h11: a typed call, or a comparison of two readings.</summary>
-        static bool Placed(SqlPredicate conjunct) =>
-            conjunct.Subterms.Any(t => t is SqlPredicate.Compare { Left: SqlValue.Call { Type: not null } } or SqlPredicate.Compare { Left.PathRead: not null, Right.PathRead: not null });
+        static bool Placed(SqlPredicate conjunct) => ComparesACall(conjunct) || ComparesTwoReadings(conjunct);
+
+        static bool ComparesACall(SqlPredicate conjunct) => conjunct.Subterms.Any(t => t is SqlPredicate.Compare { Left: SqlValue.Call { Type: not null } });
+
+        static bool ComparesTwoReadings(SqlPredicate conjunct) => conjunct.Subterms.Any(t => t is SqlPredicate.Compare { Left.PathRead: not null, Right.PathRead: not null });
 
         /// <summary>Whether a conjunct holds a shape read from h07: a type test, a case, an affix, a constant or an element.</summary>
         static bool New(SqlPredicate conjunct) => conjunct.Paths.Any(p => p.HasElement)

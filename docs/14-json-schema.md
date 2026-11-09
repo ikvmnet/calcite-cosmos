@@ -99,8 +99,9 @@ the values do, which the form says too.
 A comparison over `JSON_VALUE` is normally sent in a longer form, or only as the property's presence,
 because the service orders values across JSON types where SQL compares their text (Chapter 8): an
 ordering with each other kind whose text SQL orders on its side, `(c.carrier >= @p0) OR IS_BOOL(c.carrier)` —
-on the emulator only where nothing at the path holds a U+0000 — and a `LIKE`, or an equality with text a
-number renders as, as `IS_DEFINED(c.carrier)` and a recheck. Where the schema says the path holds a
+on the emulator only where nothing at the path holds a U+0000 — an equality with text an integer renders
+as, as the string or the number and a recheck, and a `LIKE` a number's text or a boolean's may match, as
+`IS_DEFINED(c.carrier)` and a recheck. Where the schema says the path holds a
 string, there is no second type to disagree over: the cheapest exact form is the comparison as written,
 `c.carrier >= @p0`, it is sent with nothing rechecked, and a `FETCH` can travel with it. A `type`
 declaration earns its keep on its own. It also lets a string function over the path push —
@@ -357,10 +358,12 @@ push over the path:
 | anything but white space: `^[^\t\n\u000B\f\r\u0085\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]*$` | in process | in process | ✔ | in process |
 | anything: no pattern, or one not read | in process | in process | in process | in process |
 
-`UPPER(x) LIKE '%A%'` asks both its columns: the service's case-insensitive `CONTAINS` folds the
-service's way, so the string has to be ASCII, and it stops at a U+0000, so it has to hold none. The
-first two rows prove both, and it is sent as `CONTAINS(c.x, @p0, true)`; a `LIKE` of any other shape —
-`'a%'`, `'a_b'`, `'%a%b%'` — pushes over any declared string, `_` being one code point to both. On the
+`UPPER(x) LIKE '%A%'` asks both its columns: the service's `UPPER` folds the service's way, so the
+string has to be ASCII, and its `CONTAINS` stops at a U+0000, so it has to hold none. The first two rows
+prove both, and it is sent as `CONTAINS(UPPER(c.x), @p0)`; a `LIKE` of any other shape —
+`'a%'`, `'%a%b%'` — pushes over any declared string. One holding `_` — `'a_b'` — pushes only over a string
+proved to hold no line terminator, as the first row's are: the service's `_` matches one, which Calcite's
+never does (Chapter 8.2). On the
 emulator, which stores U+0000 and U+FDD0 as two units each, a count, a window, a `LIKE` holding `_`, `0`
 or `1` beyond a prefix, and the other functions Appendix B.2 names push only over strings holding neither,
 and U+FDD0 lies above U+E000, so the rows proving nothing beyond U+FFFF do not prove it (Appendix B.2).

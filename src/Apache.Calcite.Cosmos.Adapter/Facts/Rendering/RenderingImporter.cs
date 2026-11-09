@@ -51,7 +51,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// fact of it is met with the import's, and the cells it admits nothing of are set aside
         /// (<see cref="RenderingBundle.Assume"/>). A later round's computed atom has every path its call reads stated so, with
         /// its characters, a stratum of the round's own that S gathers the call's operands beneath
-        /// (<see cref="RenderingBundle.AssumeComputed"/>, G6).
+        /// (<see cref="RenderingBundle.AssumeComputed"/>, G6). An arm's atom, one its source names the conditions of
+        /// (<see cref="ImportSource.Arm"/>), is stated beneath the stratum the bundle opened for them, tagged with it, and
+        /// spelled by its conditions, which no bundle's numbering changes (h15).
         /// </summary>
         /// <param name="bundle">The bundle, not yet run; <c>null</c> for the report alone.</param>
         /// <param name="source">The node's statement, licence and round.</param>
@@ -95,7 +97,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 spelled.Add(JsonSerializer.Serialize<object?[]>([call.Spelled, call.Type, chars.AsEnumerable()]));
             }
             foreach (var (atom, origin, stratum, read) in beneath ?? [])
-                if (RenderingBundle.IsComputed(atom) && atom.Computed.Any() && origin.Stratum is null && atom is not SqlPredicate.Beneath)
+                if (origin.Arm is { } conditions)
+                {
+                    // An arm's leaf of one path, as its node holds the path; one over a computed place is read where its case is.
+                    if (RenderingBundle.IsComputed(atom) || atom.Places.ToList() is not [var armPath] || stratum is not { IsContradictory: false } || read is null
+                        || ReadOf(stratum, read, armPath, false, readings) is not { Values: { } armed } armIt)
+                        continue;
+
+                    var arm = bundle?.ArmOf(conditions);
+                    if (arm is { } opened)
+                        bundle!.Assume(origin with { Node = stratum, Stratum = opened, Arm = null }, new SqlPredicate.Beneath(opened, atom), armed);
+
+                    stated.Add((arm is { } tag ? new SqlPredicate.Beneath(tag, atom) : atom, armed));
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath " + JsonSerializer.Serialize(RenderingBundle.KeyOf(conditions)) + " " + armIt.Spelled);
+                }
+                else if (RenderingBundle.IsComputed(atom) && atom.Computed.Any() && origin.Stratum is null && atom is not SqlPredicate.Beneath)
                 {
                     if (stratum is not { IsContradictory: false } || read is null)
                         continue;

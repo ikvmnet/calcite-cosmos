@@ -77,6 +77,14 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         Recheck = 1 << 4,
 
+        /// <summary>
+        /// A <c>WHERE</c>. A filter folded onto it is conjoined with it, so the service reads the filter's form of every
+        /// document the <c>WHERE</c> excludes as well, where a failure fails the query: the filter's rule folds one only
+        /// where its form is one S proved, whose agreement allows the service no failure on any cell of the scan, a
+        /// set-aside one among them, and leaves any other in process (h15).
+        /// </summary>
+        Where = 1 << 5,
+
     }
 
 }

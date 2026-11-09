@@ -45,7 +45,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// The arm is read only where its conditions hold, and the conjunct it is part of is decided only where the siblings
         /// do; so a rewrite of the arm on facts that hold there changes the filter on no row it keeps. The conjunct's own
-        /// facts are not among them, for the reason a deletion's are not.
+        /// facts are not among them, for the reason a deletion's are not; nor is a sibling the facts graph reads coarsely,
+        /// nor a condition from the first so read on, which may say of the documents what is not so (h15).
         /// </remarks>
         public static OracleLicence Arm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
             new(OracleQuestion.Arm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));

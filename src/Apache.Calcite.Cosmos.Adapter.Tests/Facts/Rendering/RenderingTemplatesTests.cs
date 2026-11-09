@@ -34,8 +34,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Statements whose one conjunct the translator writes, each with the template whose form its text is: those whose
         /// reader, test and position no one-atom conjunct of the check run sends, which the run's own conjuncts hold the rest of.
         /// </summary>
-        static readonly (string Sql, TemplateId Template)[] Written = [("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" < 'm'", TemplateId.Bare)];
-
         /// <summary>
         /// Every template at both positions over every atom the inputs load, a synthetic atom of every shape and literal
         /// beside them, and a parameter atom, spells without throwing; and every pair the rows ask spells a form, not the
@@ -83,33 +81,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A1–A4 over single atoms are what the translator writes, beneath its <c>NOT</c> where an atom stands at <c>Neg</c>:
-        /// a sample statement's admitted conjunct, written by the translator from the statement's own stratum and read back,
-        /// is its template's form for the atom the loader reads. And every one-atom conjunct the check run's statements send
-        /// — S's print since the switch — is the form some template spells for that atom.
+        /// Every one-atom conjunct the check run's statements send — S's print — is the form some template spells for that
+        /// atom, most of them the one the translator wrote it by, A1–A4, beneath its <c>NOT</c> where an atom stands at
+        /// <c>Neg</c>. Since the switch (h15) the translator writes no atom S reads: a parameter's atom spells the sentinel
+        /// (<see cref="NoTemplateFitsAParameterAtom"/>), and an opaque conjunct holds none. S sends a <c>CASE</c>, a constant,
+        /// a comparison of two readings and an atom over a computed place too, which hold no one atom of one path a template
+        /// spells: their forms are its rules'.
         /// </summary>
         [Fact]
-        public void EveryTemplateSpellsWhatTheTranslatorWrites()
+        public void EverySentAtomIsATemplatesForm()
         {
-            foreach (var (sql, template) in Written)
-            {
-                var recorder = new RenderingRecorder();
-                using (recorder.Arm())
-                    RenderingInputs.Differential("templates", [sql], RenderingInputs.Containers).Single().Plan();
-
-                var admitted = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).ToList();
-                admitted.Should().ContainSingle(sql);
-                var (statement, conjunct, parameters) = (admitted[0].Statement, admitted[0].Conjunct, new Adapter.Sql.CosmosParameterList());
-                statement.TranslatorFor(conjunct, parameters).TryTranslateConjunct(statement.Conjuncts[conjunct], out var text).Should().BeTrue(sql);
-                var (spelled, read) = Respelled(statement.RenderingStatement.Conjuncts[conjunct], text!, parameters.Parameters);
-                spelled.Should().Be(read, $"{sql} wrote {text}");
-                Template(statement.RenderingStatement.Conjuncts[conjunct]).Should().Be(template, sql);
-                GC.KeepAlive(recorder);
-            }
-
             var run = RenderingCheckRun.PerPullRequest.Value;
             var sent = run.Conjuncts.Where(c => c.Site == 2 && c.Skip is null && Atom(run.Irs[c.Ir]) is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque))
-                .DistinctBy(c => c.Ir + " " + c.Text).Select(c => (c.Input, c.Name, c.Text, Ir: run.Irs[c.Ir], Forms: Respelled(run.Irs[c.Ir], c.Text, c.Bound!))).ToList();
+                .DistinctBy(c => c.Ir + " " + c.Text).Where(c => Atom(run.Irs[c.Ir]) is var atom && atom.Subterms.Any(t => t is SqlPredicate.Case or SqlPredicate.Constant) == false
+                    && atom.Computed.Any() == false && AtomsOf([atom]).Count == 1)
+                .Select(c => (c.Input, c.Name, c.Text, Ir: run.Irs[c.Ir], Forms: Respelled(run.Irs[c.Ir], c.Text, c.Bound!))).ToList();
             var other = sent.Where(c => c.Forms.Spelled.Equals(c.Forms.Read) == false).ToList();
             TestContext.Current.TestOutputHelper?.WriteLine($"{sent.Count} one-atom conjuncts sent, {other.Count} by another template than the translator's: " + string.Join("; ", other.Select(c => $"{c.Input} {c.Name} {c.Text}")));
             sent.Should().HaveCountGreaterThan(100);
@@ -310,9 +296,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The Rex builder writes a string comparison over any reader, a number over a <c>RETURNING</c> of a number type,
+        /// The Rex builder writes a string comparison over any reader but an ordering over a <c>VARIANT</c> field, which has no
+        /// order (h15), a number over a <c>RETURNING</c> of a number type,
         /// never over a cast of the text nor <c>RETURNING DECIMAL</c>, which parse a string the service compares as none, a
-        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test, constants and the connectives over them; nothing else.
+        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test but over a reading its body raises over, a raw
+        /// column's however cast (h15), the readings the test-reads row says so of, constants and the connectives over them;
+        /// nothing else.
         /// </summary>
         [Fact]
         public void RexWritableFollowsTheGrammar()
@@ -335,12 +324,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), integer, true),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), cast, false),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), integer, false),
+                (ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), PredicateAtom.RawIn("VARIANT"), false), (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.RawIn("VARCHAR"), false),
+                (ServiceForm.TestOf(CosmosServiceTest.IsString, Path), PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARIANT")), false),
+                (Any(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), Compare(s)), PredicateAtom.RawIn("VARIANT"), false), (Compare(s), PredicateAtom.RawIn("VARIANT"), false),
+                (ServiceForm.CompareOf(CosmosServiceTest.Equal, Path, s), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, s), PredicateAtom.RawIn("VARIANT"), true),
+                (Compare(s), PredicateAtom.RawIn("ANY"), true),
+                (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.CallReaders, false),
             };
 
             cases.Select(c => (c.Form.Text, c.Reader, Writes(c.Form, c.Reader))).Should().Equal(cases.Select(c => (c.Form.Text, c.Reader, c.Writes)));
             RenderingRexGrammar.Written.Tests.Should().BeEquivalentTo(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
                 "every IS_* test the translator writes has an in-process body");
             RenderingRexGrammar.Written.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
+            RenderingRexGrammar.Raising.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Where(t => t.As == PredicateAtom.RaisesReader).Select(t => t.Reader),
+                "the readings no test is written over are those the test-reads row says its body raises over");
+            RenderingRexGrammar.Unordered.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.Columns.Compiles
+                .Where(c => c.Test is CosmosServiceTest.Less && c.Compiles == false).Select(c => PredicateAtom.RawIn(c.Column)).Distinct(),
+                "the readings no ordering is written over are the raw columns whose rows say an ordering does not compile");
         }
 
         /// <summary>The sentinels are inert: claimed for an atom, neither agrees nor is refuted, at either verdict.</summary>

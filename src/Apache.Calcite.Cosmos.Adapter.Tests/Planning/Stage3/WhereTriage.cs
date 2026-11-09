@@ -16,16 +16,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
 
     /// <summary>
     /// Branch-only, deleted at h16: h14's triage (spec §4.2 h14, §7.2 steps 2-3). Each <c>WHERE</c> push the translator
-    /// wrote is asked of S as S reads it from the switch (the loader's reading with places, <see cref="ProbeRows.Switched"/>'s
-    /// templates): in check mode, the translator's text claimed for the conjunct at <c>Pos</c> and, beneath a <c>NOT</c>, at
+    /// wrote is asked of S as S reads it from the switch (the loader's one reading, production's templates, every one
+    /// since h15): in check mode, the translator's text claimed for the conjunct at <c>Pos</c> and, beneath a <c>NOT</c>, at
     /// <c>Neg</c>; and in generate mode, whether S finds an exact form of its own, which is what h15 sends. Imported from the
     /// statement's root, as the check run imports a sent <c>WHERE</c>.
     /// </summary>
     internal static class WhereTriage
     {
 
-        /// <summary>One S a process, with every template, as production defines it from h15.</summary>
-        static readonly RenderingGraph Graph = new(() => ProbeRows.Switched);
+        /// <summary>One S a process, production's, which asks every template since h15.</summary>
+        static readonly RenderingGraph Graph = new(() => ProbeRows.Measured);
 
         static readonly ConcurrentDictionary<string, Verdicts> Memo = new();
 
@@ -338,9 +338,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
         internal static IEnumerable<string> Explain(CosmosFilterStatement statement, int conjunct, string rootAlias, RenderingSet set)
         {
             var (fields, readings) = statement.BindingForCheck;
-            var ir = new CosmosPredicateLoader.Loading(fields, readings, rootAlias, places: true).Statement(statement.Conjuncts).Conjuncts[conjunct];
+            var ir = new CosmosPredicateLoader.Loading(fields, readings, rootAlias).Statement(statement.Conjuncts).Conjuncts[conjunct];
             var root = RenderingCheckRun.RootOf([statement.ScopeForCheck])!.Value;
-            var source = new ImportSource(statement.RenderingStatement.Digest, "triage", 1);
+            var source = new ImportSource(statement.Statement.Digest, "triage", 1);
             using var bundle = Graph.Open(set);
             var term = bundle.Write(ir);
             var report = RenderingImporter.Import(bundle, source, root.Context, root.Rules, statement.DeclarationForCheck, ir.Paths.Concat(ir.Places));
@@ -368,13 +368,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning.Stage3
             try
             {
                 var (fields, readings) = statement.BindingForCheck;
-                var ir = new CosmosPredicateLoader.Loading(fields, readings, rootAlias, places: true).Statement(statement.Conjuncts).Conjuncts[conjunct];
+                var ir = new CosmosPredicateLoader.Loading(fields, readings, rootAlias).Statement(statement.Conjuncts).Conjuncts[conjunct];
                 var read = CosmosSqlFormReader.Read(written, [.. parameters.Parameters]);
                 var claim = read.Written == written ? read.Form : ServiceForm.OpaqueOf(written, Eggnog.ValueSet<string>.Empty);
                 if (RenderingCheckRun.RootOf([statement.ScopeForCheck]) is not { } root)
                     return new(ir.ToString(), "", "", "", "", "", claim.Text, "rooted apart");
 
-                var source = new ImportSource(statement.RenderingStatement.Digest, "triage", 1);
+                var source = new ImportSource(statement.Statement.Digest, "triage", 1);
                 ImportReport Import(RenderingBundle? bundle, SqlPredicate p) =>
                     RenderingImporter.Import(bundle, source, root.Context, root.Rules, statement.DeclarationForCheck, p.Paths.Concat(p.Places));
 

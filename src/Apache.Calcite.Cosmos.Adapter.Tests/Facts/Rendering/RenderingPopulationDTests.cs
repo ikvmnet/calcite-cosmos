@@ -44,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void NoPlaceOrPairHasAWitnessAndEveryCellHoldsCalcite()
         {
-            var tally = Run(Trials, [ProbeTheory, SwitchedTheory], Sets);
+            var tally = Run(Trials, [ProbeTheory], Sets);
             Print(tally);
             tally.Forms.Witnesses.Should().BeEmpty();
             tally.Faults.Should().BeEmpty();

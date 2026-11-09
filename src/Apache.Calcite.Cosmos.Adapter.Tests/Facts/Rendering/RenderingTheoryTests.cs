@@ -304,7 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 [
                     "a reading Calcite answers null over an absent path is strict in its path",
                     "a call whose operator answers null for a null operand is strict in what an operand is strict in",
-                    "a predicate over a strict value implies its path present",
+                    "a predicate over a strict value implies its path present where a test is written over a reading of it",
                     "a box of a type null where what it holds is is strict in what it holds is strict in",
                 ],
                 ["best"] =

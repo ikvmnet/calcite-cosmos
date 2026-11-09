@@ -147,7 +147,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindTable(((Filter)call.rel(0)).getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
-            var (pushable, residual) = Split((Filter)call.rel(0), _convention.Container);
+            // Each weakening taken whole: what the filter beneath admits of it is onMatch's to ask, at a statement's cost.
+            var (pushable, residual) = Split((Filter)call.rel(0), _convention.Container, admit: false);
 
             return pushable.Count > 0 && residual.Count > 0;
         }
@@ -180,7 +181,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         /// <param name="filter">The filter.</param>
         /// <param name="container">The container it reads.</param>
-        internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
+        /// <param name="admit">Whether a weakening is pushed only as far as the filter beneath admits it (<see cref="Admitted"/>),
+        /// or whole, as <see cref="matches"/> asks it.</param>
+        internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit = true)
         {
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
@@ -216,7 +219,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
             // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
             // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
+            // Nor is one equal to a conjunct of this filter, which a filter not admitting it would push under
+            // itself for ever (h15). Equal, not implied: every weakening is implied by its own conjunct, which
+            // is not applied.
             List<RexNode>? beneath = null;
+            var own = Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition());
+
+            // What the filter split off holds beside a weakening: every conjunct admitted, and the weakenings pushed before it.
+            var held = Enumerable.Range(0, statement.Conjuncts.Count).Where(statement.IsAdmitted).Select(i => statement.Conjuncts[i]).ToList();
 
             for (var i = 0; i < statement.Conjuncts.Count; i++)
             {
@@ -235,29 +245,92 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (weakens == false)
                     continue;
 
-                // Written from what every pushed conjunct establishes: the stratum a conjunct no round
-                // admitted is read in, which is never its own facts.
-                var parameters = new CosmosParameterList();
-                var translator = statement.TranslatorFor(i, parameters);
-
-                // S's weakening of it, as the Rex it builds: none where S gave none or the builder writes none.
+                // S's weakening of it, read in the stratum a conjunct no round admitted is read in, which is never
+                // its own facts, as the Rex the builder writes: none where S gave none or the builder writes none.
                 if (statement.WeakeningOf(i).Rex is not RexNode weakened)
                     continue;
 
                 beneath ??= AlreadyApplied(filter.getInput()).ToList();
+                if (own.Contains(weakened) || statement.IsOwn(weakened) || statement.IsApplied(weakened, beneath))
+                    continue;
 
-                if (statement.IsApplied(weakened, beneath) == false && translator.TryTranslate(weakened, out var text))
+                // Of it, what the filter it is pushed in admits through S: a member that filter declined would stay in
+                // process beneath the conjunct it weakens, where it restricts nothing that conjunct does not, and where
+                // Calcite has no body for a Cosmos type test nor an order between a raw value's kinds (h15).
+                var kept = admit ? Admitted(weakened, held, beneath, fields, readings, container, rexBuilder) : new List<RexNode> { weakened };
+
+                // Nor where what is admitted of it is applied beneath, all of it: the filter left above is matched next and
+                // asks the same weakening, which is not applied where only what was admitted of it was pushed, and pushed
+                // again that would be under itself for ever (h15, measured as TryBindOutput recursing through the filters).
+                if (kept.Count == 0 || (admit && kept.All(k => statement.IsApplied(k, beneath))))
+                    continue;
+
+                pushable.AddRange(kept);
+                held.AddRange(kept);
+                beneath.AddRange(kept);
+
+                // The rendering check's third site, inert unless a test arms it: S's weakening as the printer writes it.
+                if (Metadata.CosmosRenderingCapture.Armed)
                 {
-                    pushable.Add(weakened);
-                    beneath.Add(weakened);
-
-                    // The rendering check's third site, inert unless a test arms it.
-                    if (Metadata.CosmosRenderingCapture.Armed)
-                        Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, text!, parameters);
+                    var parameters = new CosmosParameterList();
+                    if (statement.PrintWeakening(i, parameters) is { } text)
+                        Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, text, parameters);
                 }
             }
 
             return (pushable, residual);
+        }
+
+        /// <summary>
+        /// Returns the conjuncts of a weakening the filter it is pushed in admits through S, beside what that filter holds;
+        /// of each it declines, S's weakening there in its turn, to a fixed point; and nothing else of it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The filter is the one <see cref="CosmosFilterRule"/> converts, read as that rule reads it: its condition lowered
+        /// (<see cref="Metadata.CosmosFactRewriter"/>) and admitted stratum by stratum. So what is returned is what that
+        /// rule accepts whole, and the filter split off reaches the service entire (h15). A weakening is S's form, but the
+        /// Rex the builder writes of it is read back by the loader and proved again beneath, where S may decline a member:
+        /// a <c>CASE</c> it proves no exact form of, under one set or one image.
+        /// </para>
+        /// <para>
+        /// <b>What it declines is dropped, not kept in process.</b> Kept, it would sit beneath the conjunct it weakens, which
+        /// implies it, and restrict no row that conjunct does not; and it is the service's form written as a Rex, which
+        /// Calcite may not implement: a Cosmos type test has an in-process body only where a schema declares it, and an
+        /// ordering of a raw value raises between two kinds. Measured on the partition gate over EN20260907, seven
+        /// predicates failed so where Calcite answered. Dropped, the filter beneath restricts what S admits of it, which the
+        /// residual implies, and the residual is rechecked above as before. S's weakening of a member declined there is
+        /// asked in its stead, and so on, each asked once.
+        /// </para>
+        /// </remarks>
+        static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<CosmosPath?> fields,
+            IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
+        {
+            var kept = new List<RexNode>();
+            var asked = new HashSet<RexNode> { weakening };
+            for (var pending = new List<RexNode> { weakening }; pending.Count > 0;)
+            {
+                var condition = Metadata.CosmosFactRewriter.Rewrite(
+                    Compose(rexBuilder, [.. held, .. kept, .. pending]), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
+                var statement = Metadata.CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder);
+
+                var next = new List<RexNode>();
+                for (var k = 0; k < statement.Conjuncts.Count; k++)
+                {
+                    var conjunct = statement.Conjuncts[k];
+                    if (held.Contains(conjunct) || kept.Contains(conjunct))
+                        continue;
+
+                    if (statement.IsAdmitted(k))
+                        kept.Add(conjunct);
+                    else if (statement.WeakeningOf(k).Rex is RexNode weaker && asked.Add(weaker) && statement.IsOwn(weaker) == false && statement.IsApplied(weaker, beneath) == false)
+                        next.Add(weaker);
+                }
+
+                pending = next;
+            }
+
+            return kept;
         }
 
         /// <summary>

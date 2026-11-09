@@ -23,14 +23,29 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             if (leaf.Members.Count > 0)
                 throw new ArgumentException("A leaf tests one path; a connective is evaluated from its parts.", nameof(leaf));
-            if ((leaf.Kind == ServiceFormKind.ComparePaths ? PlaceSpellings.Of(leaf.Path!, leaf.Right!) : leaf.Path) is { } own && own != cells.Path)
-                throw new ArgumentException("A leaf is evaluated on its own path's cells, and the partition rule hands no other.", nameof(cells));
+
+            // A leaf over one of a pair's places is evaluated on that side of each pair cell: the partition rule hands a pair's
+            // atom a form reading either place, a comparison's weakening by each path's presence among them (h15).
+            var own = leaf.Kind == ServiceFormKind.ComparePaths ? PlaceSpellings.Of(leaf.Path!, leaf.Right!) : leaf.Path;
+            var side = own is null || own == cells.Path ? (bool?)null
+                : PlaceSpellings.Sides(cells.Path) is var (left, right) && (own == left || own == right) ? own == left
+                : throw new ArgumentException("A leaf is evaluated on its own path's cells or a side of its pair's, and the partition rule hands no other.", nameof(cells));
 
             // What licenses the leaf stands beside its table: S's rules found which rows (LeafReads.Licences, G3).
             var rows = new HashSet<string>(reads.Licences, StringComparer.Ordinal);
-            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, table, reads, rows), NonBoolean(leaf, cell))).ToList();
+            var outcomes = cells.Cells.Select(cell => side is bool onLeft ? Sided(leaf, cell, onLeft, table, reads, rows)
+                : new CellOutcome(Outcomes(leaf, cell, table, reads, rows), NonBoolean(leaf, cell))).ToList();
             return new OutcomeVector(cells, outcomes, ValueSet.From(rows));
         }
+
+        /// <summary>
+        /// A test on one side of a pair cell, read off its table as on that path's own cell; any other leaf there reads what
+        /// its rules found of the pair's place, not the side's, and answers anything.
+        /// </summary>
+        static CellOutcome Sided(ServiceForm leaf, PathCell cell, bool onLeft, ServiceTable table, LeafReads reads, ISet<string> rows) =>
+            cell is PathCell.Pair pair && leaf.Kind is ServiceFormKind.Test or ServiceFormKind.Bare && (onLeft ? pair.Left : pair.Right) is var one
+                ? new(Outcomes(leaf, one, table, reads, rows), NonBoolean(leaf, one))
+                : new(ServiceOutcomes.Widest, CosmosValueClass.None);
 
         static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, ServiceTable table, LeafReads reads, ISet<string> rows)
         {

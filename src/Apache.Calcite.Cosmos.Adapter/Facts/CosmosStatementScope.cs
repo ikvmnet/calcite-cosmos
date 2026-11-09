@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
-    /// arm of a <c>CASE</c> inside it is read under</description></item>
+    /// arm of a <c>CASE</c> inside it is read under, each the facts graph reads exactly (h15)</description></item>
     /// <item><term><see cref="OracleQuestion.RenderArm"/></term><description>the conjunct's render stratum, and the conditions
     /// an arm S writes is read under: never a sibling the render stratum does not hold (#117)</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
@@ -115,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Returns the stratum a round's atoms may be stated beneath in a bundle imported from the root (spec §5.2): the
         /// deepest node of the chain at or above <paramref name="node"/> every conjunct of which it assumes is in the bundle
-        /// and read exactly by the facts graph (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>), and the root, which
+        /// and read exactly by the facts graph there (<see cref="StatementTerms.ReadsExactly(StatementTerms.Node, SqlPredicate)"/>), and the root, which
         /// assumes none, otherwise and for a node not of the chain; with its depth in the chain, zero for the root, and the
         /// conjuncts it assumes by index. A coarse reading may leave out cells Calcite keeps, and a translator's conjunct rests
         /// on no proof S holds. Asked of the rounds so far while they run, by the renderer they hand a round.
@@ -126,25 +126,23 @@ namespace Apache.Calcite.Cosmos.Facts
         internal (StatementTerms.Node Node, int Depth, IReadOnlyList<int> Assumes) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool>? readExactly)
         {
             lock (_lock)
-                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly ?? ReadExactly);
+                return (_admitting ?? Admitted).StratumFor(node, inBundle, readExactly);
         }
-
-        /// <summary>Whether the facts graph reads every atom of a conjunct exactly, as the rows at its root say (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>).</summary>
-        bool ReadExactly(SqlPredicate conjunct) => RenderingFamily.ReadExactly(conjunct, _terms.ReadsExactly);
 
         /// <summary>
         /// Returns the licence an arm of a <c>CASE</c> in a conjunct may be read beneath (spec §4.2 h08): the conjunct's
         /// render stratum with the longest leading run of the arm's conditions the facts graph reads exactly
-        /// (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>), each condition beneath those before it; or
-        /// <c>null</c> where not even the first is, and the arm is read at the enclosing node. Dropping a condition widens
-        /// the cells an arm is held to, which is stricter and sound.
+        /// (<see cref="StatementTerms.ReadsExactly(SqlPredicate)"/>, read beneath the declaration), each condition beneath
+        /// those before it; or <c>null</c> where not even the first is, and the arm is read at the enclosing node. Dropping a
+        /// condition widens the cells an arm is held to, which is stricter and sound. Asked by a question's arms since the
+        /// switch (h15), which read the arm off the conjunct's own node beneath the licence's conditions.
         /// </summary>
         /// <param name="conjunct">The conjunct the arm is part of.</param>
         /// <param name="conditions">The conditions the arm is read under, outermost first.</param>
         /// <param name="readExactly">A plant's reading precision; none for the readings vocabulary's rows.</param>
         internal OracleLicence? StratumFor(int conjunct, IReadOnlyList<SqlPredicate> conditions, Func<SqlPredicate, bool>? readExactly)
         {
-            var exact = readExactly ?? ReadExactly;
+            var exact = readExactly ?? _terms.ReadsExactly;
             var kept = conditions.TakeWhile(exact).ToArray();
             return kept.Length == 0 ? null : OracleLicence.RenderArm(Check(conjunct), kept);
         }
@@ -292,13 +290,17 @@ namespace Apache.Calcite.Cosmos.Facts
             AdmissionRound Asked(int round, StatementTerms.Node node, IReadOnlyList<int> pending, bool again = false, bool closing = false) =>
                 new(round, node, pending, _scope._renderedFrom is { } planted ? i => planted(_scope._terms, node, _scope.Statement.Conjuncts[i]) : _ => node) { Again = again, Closing = closing };
 
-            public (StatementTerms.Node, int, IReadOnlyList<int>) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool> readExactly)
+            public (StatementTerms.Node, int, IReadOnlyList<int>) StratumFor(StatementTerms.Node node, Func<int, bool> inBundle, Func<SqlPredicate, bool>? readExactly)
             {
-                // The chain's j-th node assumes what rounds 1 to j admitted.
+                // The chain's j-th node assumes what rounds 1 to j admitted, and holds every conjunct's term: whether the facts
+                // graph reads one exactly is read off it, as its rules say (inexact), but where a test plants a precision.
                 var conjuncts = _scope.Statement.Conjuncts;
                 for (var j = _chain.LastIndexOf(node); j > 0; j--)
-                    if (Enumerable.Range(0, Round.Length).All(i => Round[i] == 0 || Round[i] > j || inBundle(i) && readExactly(conjuncts[i])))
-                        return (_chain[j], j, [.. Enumerable.Range(0, Round.Length).Where(i => Round[i] > 0 && Round[i] <= j)]);
+                {
+                    var at = _chain[j];
+                    if (Enumerable.Range(0, Round.Length).All(i => Round[i] == 0 || Round[i] > j || inBundle(i) && (readExactly?.Invoke(conjuncts[i]) ?? _scope._terms.ReadsExactly(at, conjuncts[i]))))
+                        return (at, j, [.. Enumerable.Range(0, Round.Length).Where(i => Round[i] > 0 && Round[i] <= j)]);
+                }
 
                 return (_chain[0], 0, []);
             }
@@ -369,8 +371,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     admitted.Where(i => Admitted.Chain.Count > StratumOf(i) && Admitted.Chain[StratumOf(i)].Complete).ToArray(),
                 OracleQuestion.DeleteConjunct =>
                     Beside(licence).ToArray(),
-                OracleQuestion.Siblings or OracleQuestion.Arm =>
+                OracleQuestion.Siblings =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
+                OracleQuestion.Arm =>
+                    all.Where(i => i != Check(licence.Conjunct) && _terms.ReadsExactly(Statement.Conjuncts[i])).ToArray(),
                 OracleQuestion.Kept =>
                     all.ToArray(),
                 OracleQuestion.PointRead =>
@@ -519,10 +523,15 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct));
                 }
 
+                // Only what the facts graph reads as Calcite does (h15): a sibling read coarsely may say of the documents what is
+                // not so, and a condition is assumed only while each before it is read exactly, as a rendered arm's are
+                // (StratumFor). A CASE answered by its ELSE beneath a typed kind = 5 dropped a number label Calcite keeps
+                // (G12). Assuming less is stricter, and sound.
                 case OracleQuestion.Arm:
                 {
                     var conjunct = Check(licence.Conjunct);
-                    return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct).Concat(licence.Given ?? Array.Empty<SqlPredicate>()));
+                    return _terms.Child(_terms.Root, conjuncts.Where((c, i) => i != conjunct && _terms.ReadsExactly(c))
+                        .Concat((licence.Given ?? Array.Empty<SqlPredicate>()).TakeWhile(_terms.ReadsExactly)));
                 }
 
                 case OracleQuestion.Kept:
@@ -544,16 +553,18 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Determines whether a conjunct pins one of a point read's keys: an equality of what the path holds, or reads as,
-        /// with one literal.
+        /// with one literal, or with one boxed, as a <c>VARIANT</c> field is compared with a literal (G8, read so by the
+        /// facts graph since the switch, h15).
         /// </summary>
         /// <remarks>
         /// Which conjuncts a pins-only scope assumes, and what <c>CosmosPartitionKeyExtractor</c> splits a filter by: one
         /// recogniser, so a conjunct the split rule calls a pin is one the point read's scope assumes. What value it pins,
-        /// if any, is the scope's to say — an equality over text a number renders as pins nothing.
+        /// if any, is the scope's to say — an equality over text a number renders as pins nothing, and a box's value is
+        /// what the box rules say it equals.
         /// </remarks>
         internal static bool IsPin(SqlPredicate conjunct, IReadOnlyList<JsonDocumentPath> pins) => conjunct switch
         {
-            SqlPredicate.Compare { Op: SqlPredicate.Compare.Equal, Left: var value, Right: SqlValue.Literal } =>
+            SqlPredicate.Compare { Op: SqlPredicate.Compare.Equal, Left: var value, Right: SqlValue.Literal or SqlValue.Box { Value: SqlValue.Literal } } =>
                 value is not SqlValue.Cast && value.PathRead is JsonDocumentPath p && pins.Contains(p),
             SqlPredicate.In { Value: var value, Points.Count: 1 } =>
                 value is not SqlValue.Cast && value.PathRead is JsonDocumentPath p && pins.Contains(p),

@@ -364,8 +364,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A text equality that the service cannot decide plans through a connection, pushes what is proved of it — the
-        /// string or the boolean that renders as it, or where a number may render otherwise only the property's presence —
-        /// and keeps the rows Calcite keeps.
+        /// string or the boolean that renders as it, or where a number may render otherwise the string or a number equal
+        /// to it beside the property's presence — and keeps the rows Calcite keeps.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -385,8 +385,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Since the switch the rendering graph writes it: for <c>'true'</c> and <c>'false'</c> the conjunct is sent whole,
         /// written at implementation as the string or the boolean, exact, so the plan's filter is the conjunct itself; for
-        /// <c>'30'</c>, which a stored 30.0 renders otherwise, the property's presence alone, O7's listed loss 1, its rows
-        /// the same.
+        /// <c>'30'</c>, which a stored 30.0 renders otherwise, the string or a number equal to it beside the property's
+        /// presence, the text-equality alternatives (h09), rechecked above, its rows the same.
         /// </para>
         /// </remarks>
         [Fact]
@@ -394,12 +394,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             RequireService();
 
+            const string Alternatives = "CosmosFilter(condition=[AND(OR(=(JSON_VALUE($0, '$.label'), '30'), CASE(IS_NUMBER(JSON_VALUE($0, '$.label')), "
+                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])";
             foreach (var (predicate, expected, pushed) in new[]
             {
-                ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }, "CosmosFilter(condition=[IS_DEFINED("),
+                ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }, Alternatives),
                 ("""JSON_VALUE(c."DOC", '$.label') = 'true'""", new[] { "t", "w" }, "CosmosFilter(condition=[=(JSON_VALUE($0, '$.label'), 'true')])"),
                 ("""JSON_VALUE(c."DOC", '$.label') = 'false'""", new[] { "f" }, "CosmosFilter(condition=[=(JSON_VALUE($0, '$.label'), 'false')])"),
-                ("""CAST(JSON_VALUE(c."DOC", '$.label') AS VARCHAR) = '30'""", new[] { "n", "s" }, "CosmosFilter(condition=[IS_DEFINED("),
+                ("""CAST(JSON_VALUE(c."DOC", '$.label') AS VARCHAR) = '30'""", new[] { "n", "s" }, Alternatives),
             })
             {
                 var sql = """SELECT c."id" FROM "labels" AS c WHERE """ + predicate;

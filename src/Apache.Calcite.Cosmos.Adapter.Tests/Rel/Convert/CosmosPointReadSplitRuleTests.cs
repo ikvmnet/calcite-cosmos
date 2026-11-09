@@ -279,12 +279,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
-        /// A type test the pinned half implies is no residual (h07, listed): a <c>VARIANT</c> equal to a boxed string is a
-        /// string, so the facts graph deletes <c>IS_STRING</c> as redundant, the read is the whole predicate, and nothing
-        /// is left to finish in process. The same rows.
+        /// A type test of a declared field is no test the pinned half implies away. Calcite's in-process body takes only a
+        /// document accessor apart and raises over a field whatever it holds (<c>Calcite.TypeTestsAreTheirBodies</c>), and
+        /// the facts graph reads it so since the switch (h15, listed under the owner's reason of 2026-11-08: a filter Calcite
+        /// fails on every row fails as Calcite fails it): it is not deleted, as it was (h07), nor sent, and is held back
+        /// beside the read, where the statement fails as Calcite's does. The read is still the pinned half's.
         /// </remarks>
         [Fact]
-        public void ATypeTestThePinnedHalfImpliesLeavesNoResidual()
+        public void ATypeTestOfAFieldThePinnedHalfImpliesIsHeldBackAsCalciteRaisesIt()
         {
             Use(SmallDocuments());
 
@@ -293,8 +295,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var query = Query(Find<CosmosFilter>(plan)!);
 
             query.PointReadId.Should().Be("x");
-            query.Sql.Should().NotContain("IS_STRING", "the test is redundant, and so neither sent nor held back");
-            Text(plan).Should().NotContain("ClrCursorFilter", "nothing is left to finish in process");
+            query.Sql.Should().NotContain("IS_STRING", "the service would answer where Calcite raises");
+            Text(plan).Should().Contain("ClrCursorFilter(condition=[IS_STRING($4)])", "it is Calcite's to raise, in process: " + Text(plan));
         }
 
         /// <remarks>

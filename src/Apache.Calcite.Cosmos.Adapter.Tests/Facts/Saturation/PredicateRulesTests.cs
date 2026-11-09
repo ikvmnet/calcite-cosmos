@@ -64,6 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(66, "the vocabulary's thirteen of G8 among them, which both graphs read since h15");
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
+            rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
         }
 
         // What a predicate that holds establishes.

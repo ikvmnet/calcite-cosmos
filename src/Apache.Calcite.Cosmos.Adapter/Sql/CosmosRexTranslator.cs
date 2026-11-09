@@ -584,11 +584,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Refuses a call its rows name that S gives no image (<see cref="Unimaged"/>); one no row names stays under the
-        /// spelling table's licence until h37 (<see cref="CosmosFunctionSpellings.Named"/>).
+        /// spelling table's licence until h37 (<see cref="CosmosFunctionSpellings.Named"/>). A call only the service evaluates,
+        /// or one over such a call, is asked nothing: Calcite has no answer of it to part from, the service's being the only
+        /// one, and since the switch (h15) neither graph reads it as a place (<see cref="Metadata.CosmosPredicateLoader"/>).
         /// </summary>
         void RequireImaged(RexCall call)
         {
-            if (CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
+            if (CosmosOperators.ReferencesServiceOnlyFunction(call) == false
+                && CosmosFunctionSpellings.KeyOf(call) is string function && CosmosFunctionSpellings.Named(Rendering, function)
                 && Unimaged(call) is string why)
                 throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}.");
         }
@@ -612,7 +615,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         Apache.Calcite.Cosmos.Facts.Saturation.PathValues? ImageOf(RexCall? call, out string? why, out long? spelling)
         {
             spelling = null;
-            if (call is null || Places.ReadValue(call) is not SqlValue.Call place)
+            if (call is null || Values.ReadValue(call) is not SqlValue.Call place)
             {
                 why = "it is no call S reads";
                 return null;
@@ -655,15 +658,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         Apache.Calcite.Cosmos.Facts.Rendering.RenderingDefinition Rendering => _container?.Reasoning?.Definition ?? Metadata.CosmosRendering.Definition;
 
         /// <summary>
-        /// Gets the reader of this translation's expressions as S reads them, made the first time it is asked for: as
-        /// <see cref="Values"/> reads them, and a raw reading through its column and a call the function rows name as a
-        /// place (h10).
-        /// </summary>
-        Metadata.CosmosPredicateLoader.Loading Places => _places ??= new(_fields, _readings, CosmosImplementor.DefaultRootAlias, places: true);
-
-        Metadata.CosmosPredicateLoader.Loading? _places;
-
-        /// <summary>
         /// Returns an expression the facts do not prove free of some classes of character, spelled, or <c>null</c> where
         /// they prove it.
         /// </summary>
@@ -703,7 +697,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Gets the reader of this translation's expressions as the theory's values, made the first time it is asked for:
-        /// over the same fields, read back the same way.
+        /// over the same fields, read back the same way, as both graphs read them (a raw reading through its column, a call
+        /// the function rows name as a place, h10).
         /// </summary>
         Metadata.CosmosPredicateLoader.Loading Values => _values ??= new(_fields, _readings, CosmosImplementor.DefaultRootAlias);
 
@@ -4281,7 +4276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="like">The <c>LIKE</c>.</param>
         (Apache.Calcite.Cosmos.Facts.Rendering.CosmosServiceTest Test, string Argument, long Operand)? FoldOf(RexCall like) =>
-            Images is { } images && Places.Read(like) is SqlPredicate.Affix { Value: SqlValue.Call } affix
+            Images is { } images && Values.Read(like) is SqlPredicate.Affix { Value: SqlValue.Call } affix
                 ? Metadata.CosmosRendering.FoldOf(images, Set, affix, ReadOf, CharsOf, _container?.Name).Fold
                 : null;
 

@@ -205,7 +205,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 opened?.Invoke(bundle, terms, import, run, Stopwatch.GetElapsedTime(started));
 
                 var declined = answers.Values.Any(a => a.Kind == RenderingVerdictKind.Conflict) ? Conflict : null;
-                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, TimeSpan.Zero));
+                var spellings = asked.SelectMany(r => r.Computed).Distinct().Select(c => (Call: c, Spelling: bundle.SpellingOf(c)))
+                    .Where(s => s.Spelling is not null).ToDictionary(s => s.Call, s => s.Spelling!.Value);
+                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, TimeSpan.Zero), spellings);
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
@@ -338,10 +340,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// What one bundle answered of each root, by its digest; why it declined, where it did, in which case no answer is
-        /// read as S's; the key it is filed under, none where S was unavailable; and what the question cost, a remembered
-        /// answer's its lookup alone.
+        /// read as S's; the key it is filed under, none where S was unavailable; what the question cost, a remembered
+        /// answer's its lookup alone; and the spelling S chose of each computed place's call its roots read
+        /// (<c>callspelling</c>, G6), which the printer writes, none for a call every spelling of whose function is one.
         /// </summary>
-        internal sealed record RenderingBundleAnswer(IReadOnlyDictionary<string, RenderingAnswer> Roots, string? Declined, RenderingQuestionKey? Key, RenderingCost Cost)
+        internal sealed record RenderingBundleAnswer(IReadOnlyDictionary<string, RenderingAnswer> Roots, string? Declined, RenderingQuestionKey? Key, RenderingCost Cost,
+            IReadOnlyDictionary<SqlValue.Call, long>? Spellings = null)
         {
 
             /// <summary>The answer of one root.</summary>

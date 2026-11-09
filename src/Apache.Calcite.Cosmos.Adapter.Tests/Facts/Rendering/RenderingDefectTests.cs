@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingDefectTests
     {
 
-        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
+        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 
         static readonly JsonDocumentPath S = JsonDocumentPath.Root.Property("s"), T = JsonDocumentPath.Root.Property("t");
 
@@ -154,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Each defect answers as Calcite: no proof whose form keeps another row than Calcite on a document, under any set
-        /// asked, through both theories; and none at all but under the sets a later measurement proves it under, each
+        /// asked, through production's theory; and none at all but under the sets a later measurement proves it under, each
         /// declined where its rows part, are unmeasured, or the loader reads no constant.
         /// </summary>
         [Theory]
@@ -174,36 +174,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (found, proven) = (new List<string>(), new List<string>());
             var places = defect.Read.Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
-            foreach (var theory in new[] { ProbeTheory, SwitchedTheory })
-                foreach (var set in defect.Sets)
-                {
-                    using var bundle = theory.Open(set);
-                    var term = bundle.Write(defect.Read);
-                    foreach (var path in defect.Read.Places)
-                        bundle.Import(Source, path, defect.Import(path).Values, ClassSet(defect.Import(path).Chars));
-                    foreach (var call in bundle.ComputedCalls)
-                        bundle.ImportComputed(call, ClassSet(defect.Import(defect.Read.Places.First()).Chars));
+            foreach (var set in defect.Sets)
+            {
+                using var bundle = ProbeTheory.Open(set);
+                var term = bundle.Write(defect.Read);
+                foreach (var path in defect.Read.Places)
+                    bundle.Import(Source, path, defect.Import(path).Values, ClassSet(defect.Import(path).Chars));
+                foreach (var call in bundle.ComputedCalls)
+                    bundle.ImportComputed(call, ClassSet(defect.Import(defect.Read.Places.First()).Chars));
 
-                    bundle.Generate(term);
-                    bundle.RunGenerate(RenderingBundle.WidthOf([defect.Read]));
-                    bundle.Failure.Should().BeNull();
-                    if (bundle.ReadBest(term) is not { Kind: RenderingVerdictKind.Proven, Best: { } best })
-                        continue;
+                bundle.Generate(term);
+                bundle.RunGenerate(RenderingBundle.WidthOf([defect.Read]));
+                bundle.Failure.Should().BeNull();
+                if (bundle.ReadBest(term) is not { Kind: RenderingVerdictKind.Proven, Best: { } best })
+                    continue;
 
-                    proven.Add($"{set}: {best.Text}");
-                    foreach (var document in defect.Documents)
-                        foreach (var target in Measured.Serves[set])
-                        {
-                            var calcite = defect.Calcite(document);
-                            var service = defect.Measured?.Invoke(document) ?? CosmosEval.On(best, document, target, places);
-                            if (calcite is Truths.True or Truths.False or Truths.Unknown && service is { } answer
-                                && (answer == ServiceOutcomes.Fails || (calcite == Truths.True) != (answer == ServiceOutcomes.True)))
-                                found.Add($"{set}, {target}: {best.Text} on {Documents.Json(document)}: Calcite {calcite}, the service {answer}");
-                        }
-                }
+                proven.Add($"{set}: {best.Text}");
+                foreach (var document in defect.Documents)
+                    foreach (var target in Measured.Serves[set])
+                    {
+                        var calcite = defect.Calcite(document);
+                        var service = defect.Measured?.Invoke(document) ?? CosmosEval.On(best, document, target, places);
+                        if (calcite is Truths.True or Truths.False or Truths.Unknown && service is { } answer
+                            && (answer == ServiceOutcomes.Fails || (calcite == Truths.True) != (answer == ServiceOutcomes.True)))
+                            found.Add($"{set}, {target}: {best.Text} on {Documents.Json(document)}: Calcite {calcite}, the service {answer}");
+                    }
+            }
 
             GC.KeepAlive(ProbeTheory);
-            GC.KeepAlive(SwitchedTheory);
             return (found, proven);
         }
 

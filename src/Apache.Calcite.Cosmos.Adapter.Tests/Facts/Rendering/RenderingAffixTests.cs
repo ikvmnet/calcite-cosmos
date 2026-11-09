@@ -35,9 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly JsonDocumentPath TPath = JsonDocumentPath.Root.Property("t"), NamePath = JsonDocumentPath.Root.Property("name"), RPath = JsonDocumentPath.Root.Property("r");
 
-        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
-
-        static readonly CosmosPredicateLoader.Loading Legacy = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, legacy: true);
+        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 
         static RexNode Name => JsonValue("name", SqlTypeName.VARCHAR);
 
@@ -58,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static RenderingAnswer Generate(SqlPredicate root, RenderingSet set, PathValues values, JsonCharacterBand chars = JsonCharacterBand.None)
         {
-            using var bundle = SwitchedTheory.Open(set);
+            using var bundle = ProbeTheory.Open(set);
             var term = bundle.Write(root);
             foreach (var path in root.Places)
                 bundle.Import(Source, path, values, ClassSet(chars));
@@ -247,27 +245,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The loader reads <c>LIKE</c> over the text and a cast of a raw value as it always has, and with places over a
-        /// <c>VARCHAR</c> column's raw value and a computed text place, which the legacy reading S reads until h15 never does.
+        /// The loader reads <c>LIKE</c> over the text, a cast of a raw value, a <c>VARCHAR</c> column's raw value and a
+        /// computed text place, one reading for both graphs, and S owns each (h15).
         /// </summary>
         [Fact]
         public void TheLoaderReadsAnAffixOfEveryReading()
         {
             Loading.Read(Like(JsonValue("t", SqlTypeName.VARCHAR), "a%")).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Text(TPath), "a%"));
             Loading.Read(Like(Column, "a%")).Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Raw(RPath) { Column = "VARCHAR" }, "a%"));
-            Legacy.Read(Like(Column, "a%")).Should().BeOfType<SqlPredicate.Opaque>();
 
             var upper = Loading.Read(Like(Rex.makeCall(SqlStdOperatorTable.UPPER, Name), "%B%"));
             upper.Should().BeOfType<SqlPredicate.Affix>().Which.Value.Should().BeOfType<SqlValue.Call>().Which.Spelled.Should().Be("UPPER(" + SqlValue.Spell(NamePath) + ")");
-            Legacy.Read(Like(Rex.makeCall(SqlStdOperatorTable.UPPER, Name), "%B%")).Should().BeOfType<SqlPredicate.Opaque>();
-            RenderingFamily.Owns(upper).Should().BeFalse("S owns no affix until the switch");
+            RenderingFamily.Owns(upper).Should().BeTrue("S owns every affix since the switch");
         }
 
         /// <summary>
         /// A bracket is a unit of a pattern like any where S reads (G8), the loader refusing none: Calcite's rows read it as
         /// itself, so a pattern an affix says is written as that affix, whose argument the service reads unit by unit as
-        /// itself, and one only the service's <c>LIKE</c> says is unread there, its rows reading the bracket as a range. The
-        /// legacy reading, and F's until h15, read none.
+        /// itself, and one only the service's <c>LIKE</c> says is unread there, its rows reading the bracket as a range.
         /// </summary>
         [Fact]
         public void ABracketIsReadAsItsRowsSay()
@@ -275,7 +270,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var t = JsonValue("t", SqlTypeName.VARCHAR);
             var prefix = Loading.Read(Like(t, "[a]%"));
             prefix.Should().Be(new SqlPredicate.Affix(PredicateAtom.LikeTest, new SqlValue.Text(TPath), "[a]%"));
-            Legacy.Read(Like(t, "[a]%")).Should().BeOfType<SqlPredicate.Opaque>();
 
             var answer = Generate(prefix, RenderingSet.Emulator, Strings);
             answer.Kind.Should().Be(RenderingVerdictKind.Proven, answer.Reason);

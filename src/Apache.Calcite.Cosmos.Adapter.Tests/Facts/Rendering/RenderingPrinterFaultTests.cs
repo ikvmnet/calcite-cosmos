@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             RenderingPrinterFault.M14 => form.Subforms.Any(f => f.Kind == ServiceFormKind.Not && f.Members[0].Kind == ServiceFormKind.Compare),
             RenderingPrinterFault.M15 => form.Subforms.Any(f => f.Kind == ServiceFormKind.In && f.Literals.Count > 1
                 || f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Members.Where(m => m.Kind == ServiceFormKind.Compare).Select(m => m.Literal).Distinct().Count() > 1),
-            _ => form.Paths.Any(p => paths[p].Names.Any(n => n.Length > 0 && char.IsLetter(n[0]))),
+            _ => form.Paths.Any(p => paths.TryGetValue(p, out var path) && path.Segments.OfType<string>().Any(n => n.Length > 0 && char.IsLetter(n[0]))),
         };
 
         /// <summary>
@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var fault in Faults)
                 using (RenderingPrinterFaults.Plant(fault))
                 {
-                    var parted = chosen.Select(c => (c, Parts: RenderingPrinterTests.RoundTrip(c.Form, c.Paths) is not null)).ToList();
+                    var parted = chosen.Select(c => (c, Parts: RenderingPrinterTests.RoundTrip(c.Form, c.Paths, c.Computed) is not null)).ToList();
                     caught[fault] = (chosen.Count(c => Meets(fault, c.Form, c.Paths)), parted.Count(p => p.Parts), parted.Count(p => p.Parts == false && Meets(fault, p.c.Form, p.c.Paths)));
                 }
 
@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Rex.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.SUBSTRING, JsonValue("name", org.apache.calcite.sql.type.SqlTypeName.VARCHAR),
                     Rex.makeExactLiteral(new java.math.BigDecimal(2)), Rex.makeExactLiteral(new java.math.BigDecimal(3))),
                 Rex.makeLiteral("abc"));
-            var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true).Read(window);
+            var read = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias).Read(window);
             var place = read.Computed.Last();
             string Print() => RenderingPrinter.Print(ServiceForm.CompareOf(CosmosServiceTest.Equal, place.Spelled!, JsonValues.Of("abc")), read.Places.ToDictionary(SqlValue.Spell), "c",
                 new CosmosParameterList(), computed: new Dictionary<string, SqlValue.Call> { [place.Spelled!] = place }, spellings: ChosenSpellings.Of(read, RenderingSet.Production));

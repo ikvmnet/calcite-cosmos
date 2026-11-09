@@ -74,6 +74,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The narrow else of a case is rooted beneath its condition's negation to this many conditions deep; wide alone below.</summary>
         internal const int NarrowDepth = 3;
 
+        /// <summary>The arm stratum a written case opened beneath these conditions, outermost first; none where no case opened it.</summary>
+        public long? ArmOf(IReadOnlyList<SqlPredicate> conditions) => _strataByKey.TryGetValue(KeyOf(conditions), out var stratum) ? stratum : null;
+
+        /// <summary>What names an arm's conditions, alike for each case that reads a leaf beneath them.</summary>
+        internal static string KeyOf(IReadOnlyList<SqlPredicate> conditions) => string.Join("; ", conditions.Select(c => c.ToString()));
+
+        /// <summary>
+        /// Each leaf a predicate reads beneath an arm, with the arm's conditions, outermost first, as <see cref="Chosen"/> tags
+        /// it when the predicate is written: a then-arm's beneath its condition, a narrow else's beneath the negation, to
+        /// <see cref="NarrowDepth"/> conditions; none where the leaf is read where the predicate is.
+        /// </summary>
+        internal static IEnumerable<(SqlPredicate Leaf, IReadOnlyList<SqlPredicate> Conditions)> ArmsOf(SqlPredicate predicate) => ArmsOf(predicate, []);
+
+        static IEnumerable<(SqlPredicate Leaf, IReadOnlyList<SqlPredicate> Conditions)> ArmsOf(SqlPredicate predicate, IReadOnlyList<SqlPredicate> at) => predicate switch
+        {
+            SqlPredicate.And a => a.Arms.SelectMany(x => ArmsOf(x, at)),
+            SqlPredicate.Or o => o.Arms.SelectMany(x => ArmsOf(x, at)),
+            SqlPredicate.Not n => ArmsOf(n.Operand, at),
+            SqlPredicate.Constant or SqlPredicate.Beneath => [],
+            SqlPredicate.Case c => ArmsOf(c.Condition, at).Concat(ArmsOf(c.Then, [.. at, c.Condition]))
+                .Concat(at.Count < NarrowDepth ? ArmsOf(c.Else, [.. at, new SqlPredicate.Not(c.Condition)]) : []).Concat(ArmsOf(c.Else, at)),
+            _ => at.Count == 0 ? [] : [(predicate, at)],
+        };
+
         /// <summary>
         /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads, and its syntax
         /// beside them: each leaf over the value it is, and each call's operands.
@@ -268,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (conditions.Count == 0)
                 return predicate;
 
-            var key = string.Join("; ", conditions.Select(c => c.ToString()));
+            var key = KeyOf(conditions);
             if (_strataByKey.TryGetValue(key, out var stratum) == false)
             {
                 _strataByKey.Add(key, stratum = _strataByKey.Count + 1);
@@ -378,7 +402,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_run is not null)
                 throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
 
-            var statement = _source is not null && _source.Statement.Split('+').Contains(source.Statement);
+            var statement = _source is not null && _source.Names(source.Statement);
             if (source.Stratum is { } arm)
             {
                 if (statement == false || source.Round != _source!.Round || _strata.ContainsKey(arm) == false || atom is not SqlPredicate.Beneath { Stratum: var tagged } || tagged != arm)
@@ -423,7 +447,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_run is not null)
                 throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
 
-            if (_source is null || _source.Statement.Split('+').Contains(source.Statement) == false || source.Stratum is not null || source.Round <= _source.Round)
+            if (_source is null || _source.Names(source.Statement) == false || source.Stratum is not null || source.Round <= _source.Round)
                 throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
 
             if (IsComputed(atom) == false || atom.Computed.Any() == false || atom is SqlPredicate.Beneath)

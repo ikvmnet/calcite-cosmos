@@ -2025,13 +2025,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
 
             // A leaf is over the value it is, a comparison the call of its operator: null where the path is absent, so neither
-            // TRUE nor FALSE there, it holds the path present wherever it is kept, at either position.
-            strict.DefineRule("a predicate over a strict value implies its path present", r =>
+            // TRUE nor FALSE there, it holds the path present wherever it is kept, at either position. Implied as every member
+            // is, only where the rows write it (rex-writable): over a reading of the path a test is written over, so never over
+            // a raw column's alone, whose test's body raises in process (RenderingRexGrammar.Raising, h15).
+            strict.DefineRule("a predicate over a strict value implies its path present where a test is written over a reading of it", r =>
             {
                 var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
-                var n = r.Var<string>("n");
-                r.When(At.Of(e, pos), Over.Of(e, v), Strict.Of(v, p), n.Is(Spelling.Of(p)));
-                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(Compute.Of(n, pos, ServiceForm.Presence))));
+                var (n, f) = r.Vars<string, ServiceForm>("n", "f");
+                var (w, k, g) = r.Vars<Val, string, RenderingRexGrammar.Value>("w", "k", "g");
+                r.When(At.Of(e, pos), Over.Of(e, v), Strict.Of(v, p), n.Is(Spelling.Of(p)), f.Is(Compute.Of(n, pos, ServiceForm.Presence)), Ir.Reads.Of(w, p, k),
+                    g.Is(RexGrammar.Of()));
+                r.Where(RenderingPrimitives.RexWritableOver.Of(f, k, g));
+                r.Then(Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(f)));
             });
         }
 

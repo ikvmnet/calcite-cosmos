@@ -36,9 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly JsonDocumentPath NamePath = JsonDocumentPath.Root.Property("name"), OtherPath = JsonDocumentPath.Root.Property("other");
 
-        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
-
-        static readonly CosmosPredicateLoader.Loading Legacy = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, legacy: true);
+        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 
         static readonly PathValues Strings = PathValues.OfKinds(ValueSet.Of(StringType));
 
@@ -84,21 +82,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Two readings compared are read as such outside the legacy reading; the legacy reading S reads until h15 keeps them
-        /// opaque. Whether two readings are a pair is S's, two raw readings among them (<see cref="APairIsReadByItsReadingsKindsAndOrders"/>).
-        /// A pair's atom is assumed by the rule, and S owns none.
+        /// Two readings compared are read as such. Whether two readings are a pair is S's, two raw readings among them
+        /// (<see cref="APairIsReadByItsReadingsKindsAndOrders"/>). A pair's atom is assumed by the rule, and S owns every pair
+        /// since the switch (h15).
         /// </summary>
         [Fact]
-        public void TheLoaderReadsTwoReadingsOutsideTheLegacyReading()
+        public void TheLoaderReadsTwoReadingsCompared()
         {
             var rex = Rex.makeCall(SqlStdOperatorTable.LESS_THAN, JsonValue("name", SqlTypeName.VARCHAR), JsonValue("other", SqlTypeName.VARCHAR));
             Loading.Read(rex).Should().Be(Pair(PredicateAtom.Less, NamePath, OtherPath));
             Loading.Read(rex).Places.Should().Equal(NamePath, OtherPath);
-            Legacy.Read(rex).Should().BeOfType<SqlPredicate.Opaque>();
             Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, JsonValue("name", SqlTypeName.ANY), JsonValue("other", SqlTypeName.ANY))).Should().BeOfType<SqlPredicate.Compare>()
                 .Which.Places.Should().Equal(NamePath, OtherPath);
             RenderingBundle.IsComputed(Pair(PredicateAtom.Equal, NamePath, OtherPath)).Should().BeTrue("a pair's atom is assumed by the rule");
-            RenderingFamily.Owns(Pair(PredicateAtom.Equal, NamePath, OtherPath)).Should().BeFalse("S owns no pair until the switch");
+            RenderingFamily.Owns(Pair(PredicateAtom.Equal, NamePath, OtherPath)).Should().BeTrue("S owns every pair since the switch");
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -43,8 +44,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ReadCompares = graph.DefineRelation<CosmosServiceTest, string>("readcompares");
             LikeUnits = graph.DefineRelation<LikeUnit, string>("likeunits");
             ReaderRows = graph.DefineFunction<ReadingTable>("readerrows", ReadingTable.Union);
-            ReadsExactly = graph.DefineFunction<string, CosmosValueClass, bool>("readsexactly", ValueLattice.Max<bool>(), analysis);
-            // Read beside the terms by the predicate vocabulary's G8 rules, which may read only terms and analyses.
+            graph.Values.Register<(string, CosmosValueClass)>("reading and class");
+            graph.Values.RegisterSet<(string, CosmosValueClass)>();
+            // Read beside the terms by the predicate vocabulary's G8 rules and the facts graph's exactness, which may read
+            // only terms and analyses.
+            ReadsExactly = graph.DefineFunction<ValueSet<(string, CosmosValueClass)>>("readsexactly", ValueLattice.Union<(string, CosmosValueClass)>(), options: analysis);
             BoxOf = graph.DefineRelation<string, string>("boxof", analysis);
             SeesThrough = graph.DefineRelation<string>("seesthrough", analysis);
             BoxNull = graph.DefineRelation<string>("boxnull", analysis);
@@ -95,10 +99,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<ReadingTable> ReaderRows { get; }
 
         /// <summary>
-        /// Whether the facts graph reads a reading as Calcite does beside a literal of a class, <c>Number</c> or <c>None</c>
-        /// for any other, a row's: what a statement's strata read before resting on an atom (<see cref="RenderingFamily.ReadExactly(SqlPredicate, Func{string, CosmosValueClass, bool})"/>).
+        /// The readings the facts graph reads as Calcite does beside a literal of a class, <c>Number</c> or <c>None</c> for any
+        /// other, in one value, the rows': what a statement's strata read before resting on an atom (<see cref="PredicateAtom.ReadExactly"/>,
+        /// <c>PredicateRules.Inexact</c>). One table, so that a rule reads an atom no row names as one read otherwise.
         /// </summary>
-        public Function<string, CosmosValueClass, bool> ReadsExactly { get; }
+        public Function<ValueSet<(string, CosmosValueClass)>> ReadsExactly { get; }
 
         /// <summary>The box each reading, kind of stored value or value cast is held in, cast to <c>VARIANT</c> (G8).</summary>
         public Relation<string, string> BoxOf { get; }
@@ -146,8 +151,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             foreach (var (reader, @as) in rows.TestReads)
                 yield return TestReads.Of(reader, @as);
 
-            foreach (var (reader, beside) in rows.Exact)
-                yield return ReadsExactly.Of(reader, beside).Is(true);
+            yield return ReadsExactly.Of().Is(ValueSet.From(rows.Exact.Select(e => (e.Reader, e.Beside))));
 
             foreach (var (kind, box) in rows.Boxes)
                 yield return BoxOf.Of(kind, box);

@@ -44,7 +44,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
             var values = paths.Select(p => Values(literals, typed).Concat((claim.Imports[p].Values.Values ?? ValueSet<string>.Empty).Select(PathCellTests.Decode))
                 .Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
-            if (values.Count == 0 || values.Any(v => v.Count == 0))
+
+            // A claim reading no path, a constant's, reads every document alike: the empty one measures it.
+            if (paths.Count == 0)
+            {
+                yield return Document(paths, []);
+                yield break;
+            }
+
+            if (values.Any(v => v.Count == 0))
                 yield break;
 
             // Every combination where they are few; otherwise each path's values in turn, then drawn.
@@ -79,31 +87,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             _ => [],
         });
 
-        /// <summary>A document holding each value at its path, an absent one left out, a path beneath a scalar not set.</summary>
+        /// <summary>
+        /// A document holding each value at its path, an absent one left out, a path beneath a scalar or a container of the
+        /// other kind not set. An element's path (h15) sets it in an array, the elements before it null; each value is
+        /// copied, so a container one path set and a longer one wrote into is this document's alone.
+        /// </summary>
         internal static J.Obj Document(IReadOnlyList<string> paths, IReadOnlyList<J?> values)
         {
             var root = new J.Obj(new(StringComparer.Ordinal));
             for (var i = 0; i < paths.Count; i++)
             {
-                if (values[i] is not { } value)
+                if (values[i] is not { } value || CosmosEval.PathOf(paths[i]).Segments.ToList() is not { Count: > 0 } segments)
                     continue;
 
-                var (names, current) = (CosmosEval.PathOf(paths[i]).Names.ToList(), root.Properties);
-                foreach (var name in names.Take(names.Count - 1))
-                {
-                    if (current.TryGetValue(name, out var child) == false)
-                        current[name] = child = new J.Obj(new(StringComparer.Ordinal));
-                    if (child is not J.Obj o)
-                        goto next;
-                    current = o.Properties;
-                }
-
-                current[names[^1]] = value;
-            next:;
+                J? current = root;
+                for (var s = 0; s < segments.Count - 1 && current is not null; s++)
+                    current = Child(current, segments[s], segments[s + 1] is long ? new J.Arr([]) : new J.Obj(new(StringComparer.Ordinal)));
+                if (current is not null)
+                    Put(current, segments[^1], Copy(value));
             }
 
             return root;
         }
+
+        /// <summary>The container at a step of one, the fresh one put there where it is absent; <c>null</c> where a value of another kind is.</summary>
+        static J? Child(J parent, object segment, J fresh) =>
+            Get(parent, segment) is { } child ? child is J.Obj or J.Arr && child.GetType() == fresh.GetType() ? child : null
+                : Put(parent, segment, fresh) ? fresh : null;
+
+        static J? Get(J parent, object segment) => (parent, segment) switch
+        {
+            (J.Obj o, string name) => o.Properties.GetValueOrDefault(name),
+            (J.Arr a, long index) => index < a.Elements.Count ? a.Elements[(int)index] : null,
+            _ => null,
+        };
+
+        /// <summary>Sets a step of a container, an array's elements before it null; <c>false</c> where the container is of the other kind.</summary>
+        static bool Put(J parent, object segment, J value)
+        {
+            switch (parent, segment)
+            {
+                case (J.Obj o, string name):
+                    o.Properties[name] = value;
+                    return true;
+                case (J.Arr a, long index) when index <= Most:
+                    while (a.Elements.Count <= index)
+                        a.Elements.Add(new J.Null());
+                    a.Elements[(int)index] = value;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        static J Copy(J value) => value switch
+        {
+            J.Obj o => new J.Obj(new(o.Properties.ToDictionary(p => p.Key, p => Copy(p.Value)), StringComparer.Ordinal)),
+            J.Arr a => new J.Arr([.. a.Elements.Select(Copy)]),
+            _ => value,
+        };
 
         static string Show(J? value) => value is null ? "absent" : Documents.Json(value);
 

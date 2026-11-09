@@ -107,7 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// in process, and what goes down is the presence the comparison implies, no narrower than the strings.
         /// </para>
         /// <para>
-        /// Over a path proved ASCII it is the service's own case-insensitive <c>CONTAINS</c>, exact
+        /// Over a path proved ASCII the fold is sent as its call, the containment over it, exact
         /// (<see cref="ALikeOverAPathDeclaredAStringPushesExactly"/>).
         /// </para>
         /// </remarks>
@@ -123,13 +123,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <para>
         /// A path declared a string renders as the string, so <c>LIKE</c> over its rendering is <c>LIKE</c> over the
-        /// value, and is pushed exactly as every other operator over one is: a prefix as <c>STARTSWITH</c>, any other
-        /// pattern as the service's <c>LIKE</c>, and a fold beneath one as its case-insensitive match where the path is
-        /// proved ASCII. It was refused as a rendering whatever was declared, and the filter read whole documents.
+        /// value, and is pushed exactly as every other operator over one is, as the cheapest test that says the pattern
+        /// (h15): a prefix as <c>STARTSWITH</c>, one run between two <c>%</c> as <c>CONTAINS</c>, any other pattern as the
+        /// service's <c>LIKE</c>, and a fold beneath one as the fold's call under the test where the path is proved ASCII.
+        /// It was refused as a rendering whatever was declared, and the filter read whole documents.
         /// </para>
         /// <para>
         /// A pattern the service answers as a <c>CONTAINS</c> reads the string only up to its first U+0000, so it asks the
-        /// path to hold none: <c>a</c>, printable ASCII, holds none, and <c>s</c>, declared nothing more, may.
+        /// path to hold none: <c>a</c>, printable ASCII, holds none, and <c>s</c>, declared nothing more, may. And the
+        /// service's <c>_</c> matches a line terminator, which Calcite's never does (run 2): over <c>a</c> a pattern holding
+        /// one is sent, and over <c>s</c>, which may hold one, it is kept in process, where until the switch the
+        /// translator sent it and the service kept <c>a</c>, a line feed and <c>b</c>, which Calcite does not.
         /// </para>
         /// </remarks>
         [Fact]
@@ -138,11 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Filtered($"{Of("s")} LIKE 'a%'", out var prefix).Should().Contain("WHERE STARTSWITH(c.s, @p0)");
             prefix.Should().NotContain("ClrCursorFilter", "the prefix is exact: " + prefix);
 
-            Filtered($"{Of("a")} LIKE '%b%'", out var contains).Should().Contain("WHERE (c.a LIKE @p0)");
+            Filtered($"{Of("a")} LIKE '%b%'", out var contains).Should().Contain("WHERE CONTAINS(c.a, @p0)");
             contains.Should().NotContain("ClrCursorFilter");
-            Filtered($"{Of("s")} LIKE 'a_b'", out _).Should().Contain("WHERE (c.s LIKE @p0)");
+            Filtered($"{Of("a")} LIKE 'a_b'", out var one).Should().Contain("WHERE (c.a LIKE @p0)");
+            one.Should().NotContain("ClrCursorFilter");
+            Filtered($"{Of("s")} LIKE 'a_b'", out var terminated).Should().NotContain("LIKE");
+            terminated.Should().Contain("ClrCursorFilter", "s may hold a line terminator, which the service's _ matches: " + terminated);
 
-            Filtered($"UPPER({Of("a")}) LIKE '%X%'", out var fold).Should().Contain("WHERE CONTAINS(c.a, @p0, true)");
+            Filtered($"UPPER({Of("a")}) LIKE '%X%'", out var fold).Should().Contain("WHERE CONTAINS(UPPER(c.a), @p0)");
             fold.Should().NotContain("ClrCursorFilter");
 
             Filtered($"{Of("s")} LIKE '%b%'", out var nul).Should().NotContain("LIKE");

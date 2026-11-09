@@ -45,7 +45,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>REVERSE</c>; D10, <c>POSITION</c>; D11, a <c>LIKE</c> whose <c>_</c>, <c>0</c> or <c>1</c> can meet one
         /// unit of an escape; D12, the fold's <c>ENDSWITH</c> and <c>CONTAINS</c> likewise; D13, a U+0000 made at the
         /// service, and <c>REPLACE</c>. Those are refused over text that may hold either character, and
-        /// <c>planted_text</c>'s <c>t</c>, which holds neither, is held to push each.
+        /// <c>planted_text</c>'s <c>t</c>, which holds neither, is held to push each but a <c>_</c>, which S declines
+        /// over any text that may hold a line terminator.
         /// </para>
         /// <para>
         /// <b>Not judged, and why.</b> No U+FDD0 literal can be written, Calcite casting it to ISO-8859-1, so U+FDD0 reaches
@@ -308,11 +309,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 yield return Case("D10", "POSITION('0')", $"SELECT c.\"id\", POSITION('0' IN {x}) {from}", Marked("INDEX_OF("));
                 yield return Case("D10", "POSITION('b') = 2", $"SELECT c.\"id\" {from} WHERE POSITION('b' IN {x}) = 2", Marked("INDEX_OF("));
 
-                foreach (var pattern in new[] { "_", "a_b", "_0", "%0", "%1" })
-                    yield return Case("D11", $"LIKE '{pattern}'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '{pattern}'", Marked(" LIKE "));
+                // Since the switch S sends a suffix as ENDSWITH, and declines a `_` over any text that may hold a line
+                // terminator, which the service's `_` matches and Calcite's never does (run 2's rows), t's among them.
+                foreach (var pattern in new[] { "_", "a_b", "_0" })
+                    yield return Case("D11", $"LIKE '{pattern}'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '{pattern}'", null);
+                foreach (var pattern in new[] { "%0", "%1" })
+                    yield return Case("D11", $"LIKE '{pattern}'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '{pattern}'", Marked("ENDSWITH("));
 
                 // Patterns that meet no escape's unit stay pushed over any text.
-                yield return Case("D11", "LIKE '%b'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '%b'", " LIKE ");
+                yield return Case("D11", "LIKE '%b'", $"SELECT c.\"id\" {from} WHERE {x} LIKE '%b'", "ENDSWITH(");
                 yield return Case("D11", "LIKE 'a%'", $"SELECT c.\"id\" {from} WHERE {x} LIKE 'a%'", "STARTSWITH(");
 
                 // D12: the fold's ENDSWITH and CONTAINS, over planted_text alone, the one text a pattern proves ASCII.

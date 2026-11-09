@@ -24,8 +24,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// Source C: the IR the non-legacy loader reads from h07 to h11 written straight to a bundle, which source B cannot
     /// plan until S reads that IR at h15. Each root's places are imported, S generates, and its best is judged at
     /// <c>Equal</c> and its weakening at <c>Implies</c> by <see cref="RenderingSoundnessTests.Tally"/>, IrEval against
-    /// CosmosEval on every target the set serves, under <c>Production</c>, the emulator and <c>Portable</c>, through the
-    /// probe theory and the switched one. Three populations: <c>CASE</c> trees over type tests, comparisons, null and
+    /// CosmosEval on every target the set serves, under <c>Production</c>, the emulator and <c>Portable</c>, through
+    /// production's theory, which asks every template since the switch (h15). Three populations: <c>CASE</c> trees over type tests, comparisons, null and
     /// presence tests, an affix and the truth constants; a numeric comparison under its <c>IS_NUMBER</c> guard through
     /// every numeric reader, at 2^53 and beside a fraction; and pairs of readings and computed places, the counts and an
     /// arithmetic operator among them, bare, negated, beneath a guard and as a condition, over strings of every band.
@@ -163,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Writes each root to a bundle under every set through both theories, imports its places as given, generates, and
+        /// Writes each root to a bundle under every set through production's theory, imports its places as given, generates, and
         /// judges what S answers on the documents; no witness may stand, and something must be proven.
         /// </summary>
         static void Judge(IEnumerable<(SqlPredicate Root, PathValues Values, ValueSet<string> Chars, List<J.Obj> Documents)> population)
@@ -171,32 +171,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var tally = new RenderingSoundnessTests.Tally();
             var (roots, proven) = (0, 0);
             foreach (var (root, values, chars, documents) in population)
-                foreach (var theory in new[] { ProbeTheory, SwitchedTheory })
+            {
+                roots++;
+                foreach (var set in Sets)
                 {
-                    roots++;
-                    foreach (var set in Sets)
+                    using var bundle = ProbeTheory.Open(set);
+                    var term = bundle.Write(root);
+                    foreach (var path in root.Places)
+                        bundle.Import(Source, path, values, chars);
+
+                    bundle.Generate(term);
+                    bundle.RunGenerate(RenderingBundle.WidthOf([root]));
+                    var answer = bundle.ReadBest(term);
+                    var world = new World(roots);
+                    if (answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
                     {
-                        using var bundle = theory.Open(set);
-                        var term = bundle.Write(root);
-                        foreach (var path in root.Places)
-                            bundle.Import(Source, path, values, chars);
-
-                        bundle.Generate(term);
-                        bundle.RunGenerate(RenderingBundle.WidthOf([root]));
-                        var answer = bundle.ReadBest(term);
-                        var world = new World(roots);
-                        if (answer is { Kind: RenderingVerdictKind.Proven, Best: { } best })
-                        {
-                            proven++;
-                            foreach (var document in documents)
-                                tally.Judge(RenderingSoundnessTests.Tally.Calcite(root, document, world), root, best, Verdict.Equal, RenderPosition.Pos, document, Measured.Serves[set], $"{set} best");
-                        }
-
-                        if (answer.Weakening is { } weakening)
-                            foreach (var document in documents)
-                                tally.Judge(RenderingSoundnessTests.Tally.Calcite(root, document, world), root, weakening, Verdict.Implies, RenderPosition.Pos, document, Measured.Serves[set], $"{set} weakening");
+                        proven++;
+                        foreach (var document in documents)
+                            tally.Judge(RenderingSoundnessTests.Tally.Calcite(root, document, world), root, best, Verdict.Equal, RenderPosition.Pos, document, Measured.Serves[set], $"{set} best");
                     }
+
+                    if (answer.Weakening is { } weakening)
+                        foreach (var document in documents)
+                            tally.Judge(RenderingSoundnessTests.Tally.Calcite(root, document, world), root, weakening, Verdict.Implies, RenderPosition.Pos, document, Measured.Serves[set], $"{set} weakening");
                 }
+            }
 
             TestContext.Current.TestOutputHelper?.WriteLine($"{roots} roots, {proven} proven: {tally}");
             tally.Witnesses.Should().BeEmpty();

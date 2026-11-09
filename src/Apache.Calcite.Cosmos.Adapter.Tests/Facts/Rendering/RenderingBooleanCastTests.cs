@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly JsonDocumentPath FlagPath = JsonDocumentPath.Root.Property("flag");
 
-        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias, places: true);
+        static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 
         static RexNode Flag => Rex.makeAbstractCast(RenderingRexBuilderTests.Types.createSqlType(SqlTypeName.BOOLEAN), JsonValue("flag", SqlTypeName.VARCHAR));
 

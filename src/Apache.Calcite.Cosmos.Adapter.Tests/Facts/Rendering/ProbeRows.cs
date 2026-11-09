@@ -57,17 +57,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
 
-        /// <summary>
-        /// Production's definition with the templates it asks only from the switch as well (<see cref="RenderingTemplateRows.FromTheSwitch"/>),
-        /// the definition production takes at h15.
-        /// </summary>
-        public static RenderingDefinition Switched => Measured with { Templates = RenderingTemplateRows.Templates };
-
-        static readonly System.Lazy<RenderingTheory> SwitchedProbe = new(() => RenderingTheory.Define(Switched));
-
-        /// <summary>S defined from <see cref="Switched"/>, once a run.</summary>
-        public static RenderingTheory SwitchedTheory => SwitchedProbe.Value;
-
         /// <summary>The raw columns' truths S's rule joins from the registry's row (h12), which a raw reading's cells read.</summary>
         public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
 

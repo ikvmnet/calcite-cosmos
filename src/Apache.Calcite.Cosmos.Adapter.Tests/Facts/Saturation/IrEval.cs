@@ -457,6 +457,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         var other => other,
                     };
 
+                // The cast to text of a raw value through a named column, as that column renders one (CastText), as its
+                // comparisons and LIKE read it; through none, or of a value no row measured, a coin.
+                case SqlValue.Cast { Target: "VARCHAR" or "CHAR", Value: SqlValue.Raw r }:
+                    return At(document, r.Path) is not { } stored ? SqlDatum.Null
+                        : Named(r.Column) is RawAs column && CastText(stored, column) is SqlDatum castText ? castText
+                        : world.Unread("cast " + r.Column + " " + Documents.Json(document));
+
                 // A VARCHAR column reads a string as itself, a null as null, and fails over anything else (Calcite.RawNullIsSqlNull).
                 case SqlValue.Raw { Column: "VARCHAR" } r:
                     return At(document, r.Path) switch { null or J.Null => SqlDatum.Null, J.Str s => new SqlDatum.Text(s.Value), _ => SqlDatum.Raise };
@@ -902,6 +909,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     throw new NotSupportedException(reading.ToString());
             }
         }
+
+        /// <summary>
+        /// Whether Calcite fails a predicate before it reads a row: it holds an ordering of a raw value read through a
+        /// <c>VARIANT</c> column, which has no order at run time and fails to compile (<see cref="RawLiteral"/>), whatever
+        /// else it holds and whatever a coin would say of its other readings.
+        /// </summary>
+        internal static bool FailsToCompile(SqlPredicate ir) => ir.Subterms.Any(t => t is SqlPredicate.Compare { Op: not (PredicateAtom.Equal or PredicateAtom.NotEqual) } c
+            && (c.Left is SqlValue.Raw { Column: "VARIANT" } || c.Right is SqlValue.Raw { Column: "VARIANT" }));
 
         /// <summary>
         /// What <c>=</c> or an ordering of a raw value with a literal answers through one column, as measured

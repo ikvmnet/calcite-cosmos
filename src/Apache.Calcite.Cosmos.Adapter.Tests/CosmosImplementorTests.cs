@@ -191,7 +191,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         /// <remarks>
         /// A projection rebinds the field ordinals, so a condition rendered afterwards must see
-        /// the new paths rather than the ones captured at construction.
+        /// the new paths rather than the ones captured at construction. A boolean column is written
+        /// as S proves it since the switch (h15), compared with a bound <c>true</c>.
         /// </remarks>
         [Fact]
         public void RebindingFieldsAffectsSubsequentTranslations()
@@ -199,10 +200,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var implementor = Implementor();
 
             implementor.Fields = new[] { CosmosPath.Root("c").Property("a") };
-            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("c.a");
+            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("(c.a = @p0)");
 
             implementor.Fields = new[] { CosmosPath.Root("c").Property("b") };
-            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("c.b");
+            implementor.TranslateCondition(Ref(0, SqlTypeName.BOOLEAN)).Should().Be("(c.b = @p1)");
+            implementor.Parameters.Parameters.Should().HaveCount(2).And.OnlyContain(p => Equals(p.Value, true));
         }
 
         /// <remarks>

@@ -344,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G9 over the answers a statement's terms keep, which hand a question asked before its answer with no key built: two
-        /// statements of one digest, each one opaque term — a <c>LIKE</c> with a bracket, outside the IR — differing in its reading alone,
+        /// statements of one digest, each one opaque term — a <c>LIKE</c> with an <c>ESCAPE</c>, outside the IR — differing in its reading alone,
         /// planned over one connection's containers, so that they share terms. As built each opens a bundle of its own; with
         /// the question's name planted without the opaque readings, the second is handed the first's answer and opens none.
         /// The strata's nodes and the junctions are named by content as the conjuncts are, so no two questions within one
@@ -353,7 +353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void G9_ATermsAnswersWithoutAnOpaquesReadingServeAnotherStatement()
         {
-            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a[x]%'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b[x]%'"];
+            string[] sql = ["SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'a%' ESCAPE '!'", "SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'b%' ESCAPE '!'"];
             var graph = new RenderingGraph(() => Measured);
             foreach (var planted in new[] { false, true })
             {
@@ -485,7 +485,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// 5.0000000000000001 as 5 too, beside a label the declaration leaves free. S states nothing beneath that stratum, so
         /// what it sends for the statement under each set — admitted forms and weakenings — keeps the document of kind
         /// 5.0000000000000001 and label 7, as Calcite does. The plant, a stratum read as exact whatever it rests on, sends
-        /// the bare label and drops it, and line 1 itself finds a document with the number 7 as its label.
+        /// the bare label and drops it, and line 1 itself finds a document with a number as its label: since the switch
+        /// S writes the label's string-or-number form beneath the planted stratum, which is wrong of a label 7.0.
         /// </summary>
         [Fact]
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
@@ -510,7 +511,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
                 }
 
-                SourceA(generated).Witnesses.Any(w => w.Contains("\"label\":7}", StringComparison.Ordinal)).Should().Be(planted, planted ? "planted" : "as built");
+                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().Be(planted, planted ? "planted" : "as built");
             }
         }
 
@@ -632,8 +633,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// G16b, its S half (h13): planted to read every condition exactly, <c>StratumFor</c> licenses a <c>CASE</c>'s arm
         /// beneath a coarse affix, the cast to text of a raw kind, whose stratum the facts graph would read as the kind's own;
-        /// as built it licenses none. Only the licence shows until h15: no production site asks an arm's stratum before the
-        /// switch, so no statement reaches the plant and source A has nothing to find.
+        /// as built it licenses none. Since the switch a question's arms ask the licence, and the plant is held to source A
+        /// (<see cref="G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven"/>).
         /// </summary>
         [Fact]
         public void G16b_ACoarseAffixLicensesNoArmUnlessPlanted()
@@ -645,6 +646,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             scope.StratumFor(0, [coarse], null).Should().BeNull("as built, a coarse affix opens no stratum");
             scope.StratumFor(0, [coarse], _ => true).Should().NotBeNull("planted, it licenses the arm beneath it");
             GC.KeepAlive(scope);
+        }
+
+        /// <summary>
+        /// G16b, its S half held to source A the G12 way (h15): G12's statement written as a <c>CASE</c>, the label compared
+        /// in the arm beneath the kind's column reading, which the facts graph reads as the integer 5 where a column reads
+        /// 5.0000000000000001 as 5 too. As built the arm's licence keeps no condition, the arm is read where its case is, and
+        /// what is sent under each set keeps the document of kind 5.0000000000000001 and label 7, as Calcite does. The plant,
+        /// every condition read exactly, states the arm beneath the kind's stratum, where the label is a string: S sends the
+        /// bare label, which drops it, and source A finds a document with a number as its label.
+        /// </summary>
+        [Fact]
+        public void G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven()
+        {
+            var container = new CosmosContainerMetadata("t", ["/kind"])
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]);
+            const string Sql = "SELECT c.\"id\" FROM t AS c WHERE CASE WHEN JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 THEN JSON_VALUE(c.\"DOC\", '$.label') = '7' ELSE FALSE END";
+            var document = new J.Obj(new(StringComparer.Ordinal) { ["kind"] = new J.Num(5.0000000000000001m), ["label"] = new J.Num(7m) });
+
+            foreach (var (planted, keeps) in new[] { (false, true), (true, false) })
+            {
+                var generated = new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, readExactly: planted ? _ => true : null);
+                RenderingCheckRun.Over(RenderingInputs.Differential("arm", [Sql], generated.Bind([container])), generated: generated);
+                generated.Asked.Should().Contain(a => a.Statement.Statement.Conjuncts.Any(c => c.Subterms.Any(t => t is SqlPredicate.Case)), "the statement holds its case");
+                foreach (var set in RenderingGenerateRun.AssertedSets)
+                {
+                    var sent = generated.Sends.Where(c => c.Set == set).Select(c => c.Form).Concat(generated.Weakenings.Where(w => w.Set == set && w.Residual).Select(w => w.Mine)).OfType<ServiceForm>().ToList();
+                    var kept = Measured.Serves[set].All(target => sent.All(f => CosmosEval.On(f, document, target) == ServiceOutcomes.True));
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")} {set}: {string.Join(" AND ", sent.Select(f => f.Text))}: keeps {kept}");
+                    kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
+                }
+
+                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().Be(planted, planted ? "planted" : "as built");
+            }
         }
 
         /// <summary>G2's graph: a planted template proposing, beside each template's form, that form with its null guard dropped, over a definition given.</summary>

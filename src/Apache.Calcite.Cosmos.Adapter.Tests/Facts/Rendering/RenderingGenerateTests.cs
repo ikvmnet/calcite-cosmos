@@ -235,7 +235,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Presence: a comparison read through a strict reading implies its path present at <c>Pos</c> and, beneath a
-        /// <c>NOT</c>, absent at <c>Neg</c>; and nothing where the definition names no reading strict.
+        /// <c>NOT</c>, absent at <c>Neg</c>; and nothing where the definition names no reading strict. Since the switch (h15)
+        /// the text's weakening keeps the string and the number it renders as beside the presence, as the translator's did.
         /// </summary>
         [Fact]
         public void AComparisonOverAStrictReadingImpliesItsPathPresent()
@@ -244,17 +245,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var generated = Generate(atom, Not(atom));
             generated.Implied(atom).Should().Contain(Is(Op.IsDefined, N));
             generated.Implied(atom, RenderPosition.Neg).Should().Contain(Negated(Is(Op.IsDefined, N)));
-            generated.Answers[0].Weakening.Should().Be(Is(Op.IsDefined, N));
+            generated.Answers[0].Weakening!.Text.Should().Be("((($[\"n\"] = \"string|1\") OR (IS_NUMBER($[\"n\"]) AND ($[\"n\"] = \"integer|1\"))) AND IS_DEFINED($[\"n\"]))");
 
             var none = RenderingTheory.Define(Measured with { StrictOperators = [], StrictReaders = [] });
-            Generate([atom], theory: none).Implied(atom).Should().BeEmpty("a definition strict in nothing");
+            Generate([atom], theory: none).Implied(atom).Should().NotContain(f => f.Subforms.Any(IsPresence), "a definition strict in nothing implies no presence");
         }
+
+        /// <summary>Whether a form is a presence test.</summary>
+        static bool IsPresence(ServiceForm form) => form.Kind == ServiceFormKind.Test && form.Test == Op.IsDefined;
 
         /// <summary>
         /// Presence through an opaque conjunct, read by the loader beside its term and written with it (spec g04), under the
-        /// registry's strictness: <c>UPPER(c.name) = 'X'</c> implies the name present at <c>Pos</c> and absent at
-        /// <c>Neg</c>; <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c> nothing, since no row names <c>CONCAT_WS</c>; and
-        /// beside it under a strict <c>||</c>, <c>UPPER(label)</c> its own path, though its sibling gives none.
+        /// registry's strictness: an opaque term read as <c>UPPER(c.name) = 'X'</c>, which the loader reads as a computed
+        /// place's comparison (h10) and so builds here, implies the name present at <c>Pos</c> and absent at <c>Neg</c>;
+        /// <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c> nothing, since no row names <c>CONCAT_WS</c>; and beside it under
+        /// a strict <c>||</c>, <c>UPPER(label)</c> its own path, though its sibling gives none.
         /// </summary>
         [Fact]
         public void AnOpaqueConjunctImpliesThePathsItsStrictCallsRead()
@@ -270,13 +275,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, concat, rex.makeLiteral("x")),
                 rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlStdOperatorTable.CONCAT, concat, rex.makeCall(SqlStdOperatorTable.UPPER, Read("label"))), rex.makeLiteral("x")),
             ];
-            // The legacy reading, production S's until h15: one that reads places reads UPPER(name) = 'X' as a computed place's (h10).
-            var statement = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c", legacy: true).Statement(conjuncts);
-            statement.Conjuncts.Should().AllBeOfType<SqlPredicate.Opaque>();
-            new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c", places: true).Statement(conjuncts).Conjuncts[0].Should().BeOfType<SqlPredicate.Compare>();
+            var loading = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c");
+            var statement = loading.Statement(conjuncts);
+            statement.Conjuncts[0].Should().BeOfType<SqlPredicate.Compare>("the loader reads a computed place's comparison (h10)");
+            statement.Conjuncts.Skip(1).Should().AllBeOfType<SqlPredicate.Opaque>();
 
-            var (upper, unlisted, sibling) = (statement.Conjuncts[0], statement.Conjuncts[1], statement.Conjuncts[2]);
-            var generated = Generate([upper, Not(upper), unlisted, sibling], opaques: statement.Opaques);
+            // An opaque term numbered past the loading's, read as the loader reads the comparison's value.
+            var upper = new SqlPredicate.Opaque(statement.Opaques.Keys.Max() + 1);
+            var opaques = statement.Opaques.ToDictionary(o => o.Key, o => o.Value);
+            opaques[upper.Id] = loading.ReadValue(conjuncts[0])!;
+            var (unlisted, sibling) = (statement.Conjuncts[1], statement.Conjuncts[2]);
+            var generated = Generate([upper, Not(upper), unlisted, sibling], opaques: opaques);
             generated.Run.Should().Be(Disciplined);
             generated.Implied(upper).Should().Equal(Is(Op.IsDefined, Name));
             generated.Implied(upper, RenderPosition.Neg).Should().Equal(Negated(Is(Op.IsDefined, Name)));
@@ -320,7 +329,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Probe T4, P5 as restated: <c>(kind = 'a' AND label = 'x') OR (kind = 'c' AND n = '1')</c> beside a declared
-        /// integer <c>n</c> has no exact form, and its weakening keeps arm 2's <c>c.kind = 'c'</c> beside <c>n</c>'s presence.
+        /// integer <c>n</c> has no exact form, and its weakening keeps arm 2's <c>c.kind = 'c'</c> beside <c>n</c>'s presence
+        /// and, since the switch (h15), the string and the number <c>n</c>'s text renders as.
         /// </summary>
         [Fact]
         public void T4sWeakeningKeepsTheSecondArmsKind()
@@ -329,29 +339,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var answer = Generate([root], values: new Dictionary<JsonDocumentPath, PathValues> { [NPath] = PathValues.OfTypes(ValueSet.Of(IntegerType)) }).Answers.Single();
             answer.Best.Should().BeNull();
             answer.Weakening!.Kind.Should().Be(ServiceFormKind.Or);
-            answer.Weakening.Members.Select(m => m.Members.ToHashSet()).Should().BeEquivalentTo(new[]
+            answer.Weakening.Members.Select(m => m.Members.Select(f => f.Text).ToHashSet()).Should().BeEquivalentTo(new[]
             {
-                new HashSet<ServiceForm> { Compare(Op.Equal, Kind, Of("a")), Compare(Op.Equal, Label, Of("x")) },
-                new HashSet<ServiceForm> { Compare(Op.Equal, Kind, Of("c")), Is(Op.IsDefined, N) },
+                new HashSet<string> { Compare(Op.Equal, Kind, Of("a")).Text, Compare(Op.Equal, Label, Of("x")).Text },
+                new HashSet<string> { Compare(Op.Equal, Kind, Of("c")).Text, Is(Op.IsDefined, N).Text,
+                    "(($[\"n\"] = \"string|1\") OR (IS_NUMBER($[\"n\"]) AND ($[\"n\"] = \"integer|1\")))" },
             });
         }
 
         /// <summary>
         /// P6: <c>NOT (c.category = 'bikes' AND CAST(price AS DOUBLE) &gt; 50)</c> weakens beneath its <c>NOT</c> at
-        /// <c>Neg</c>. No number comparison over the cast is a member: the cast parses a string Calcite then compares, where
-        /// the service compares no string, so no accessor of the conjunct writes <c>c.price &gt; 50</c> as it means, and
-        /// C4's <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> is O7's listed loss until Stage 3's guarded spelling
-        /// (<c>CASE WHEN IS_NUMBER(x) THEN … END</c>); no carrier is built. The cast's comparison weakens to its presence at
-        /// <c>Neg</c>.
+        /// <c>Neg</c>. Since the switch (h15) production's definition asks <c>KindRestrictedNumber</c> at <c>Neg</c>, so C4's
+        /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> is implied there beside the price's absence: false wherever
+        /// Calcite's comparison is, a string the cast parses being no number. The cast's comparison weakens to the two
+        /// together, which the Rex builder writes as the guarded spelling (<c>CASE WHEN IS_NUMBER(x) THEN … END</c>, P6
+        /// delivered).
         /// </summary>
         [Fact]
         public void P6WeakensAtNegToWhatTheRexBuilderWrites()
         {
+            const string guarded = "(IS_NUMBER($[\"price\"]) AND ($[\"price\"] > \"integer|50\"))";
             var (category, price) = (Eq(Text(CategoryPath), "bikes"), Cmp(Cast("DOUBLE", Text(PricePath)), ">", Lit(50)));
             var root = Not(And(category, price));
             var generated = Generate(root);
-            generated.Implied(price, RenderPosition.Neg).Should().Equal(Negated(Is(Op.IsDefined, Price)));
-            generated.Weakening(price, RenderPosition.Neg).Should().Be(Negated(Is(Op.IsDefined, Price)));
+            generated.Implied(price, RenderPosition.Neg).Select(f => f.Text).Should().BeEquivalentTo([guarded, Negated(Is(Op.IsDefined, Price)).Text]);
+            generated.Weakening(price, RenderPosition.Neg)!.Members.Select(f => f.Text).Should().BeEquivalentTo([guarded, Negated(Is(Op.IsDefined, Price)).Text]);
             var answer = generated.Answers.Single();
             answer.Best.Should().BeNull();
             var arms = ((SqlPredicate.And)((SqlPredicate.Not)root).Operand).Arms;

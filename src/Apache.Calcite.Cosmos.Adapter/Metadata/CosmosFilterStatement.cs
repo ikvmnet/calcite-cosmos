@@ -103,7 +103,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Conjuncts = ConjunctsOf(condition);
             Statement = _loading.Statement(Conjuncts);
-            RenderingStatement = new CosmosPredicateLoader.Loading(fields, readings, rootAlias, legacy: true).Statement(Conjuncts);
         }
 
         /// <summary>
@@ -184,15 +183,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public IReadOnlyList<RexNode> Conjuncts { get; }
 
         /// <summary>
-        /// Gets the conjuncts in the IR, parallel to <see cref="Conjuncts"/>.
+        /// Gets the conjuncts in the IR, parallel to <see cref="Conjuncts"/>: one reading, which both graphs read since the
+        /// switch (h15).
         /// </summary>
         public PredicateStatement Statement { get; }
-
-        /// <summary>
-        /// The conjuncts as S reads them until its switch (h15): what <see cref="Statement"/> reads that S owns no family of
-        /// left opaque, as it was, so that S neither owns nor weakens it.
-        /// </summary>
-        internal PredicateStatement RenderingStatement { get; }
 
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
 
@@ -260,7 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (round is not { Number: 1, Again: false, Closing: false } || _container.Reasoning is { RenderingOff: true })
                     return [];
 
-                _owned ??= [.. RenderingStatement.Conjuncts.Select(RenderingFamily.Owns)];
+                _owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)];
                 // Only the statement's own set's declines are counted: what a host's plan pays.
                 var probe = _container.Reasoning?.Probe;
                 _renderings = [.. new[] { CosmosRendering.SetFor(_container.ServiceTarget) }.Concat(probe?.Sets ?? []).Distinct()
@@ -275,28 +269,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 foreach (var i in ours)
                 {
                     var parameters = new CosmosParameterList();
-                    CosmosRenderingCapture.Observer?.Admitted(this, i, Print(i, _renderings[0].Admissions[i].Form, parameters), parameters);
+                    CosmosRenderingCapture.Observer?.Admitted(this, i, Print(i, _renderings[0].Admissions[i].Form, parameters, _renderings[0].Admissions[i].Spellings), parameters);
                 }
 
             return ours;
         }
 
-        /// <summary>Whether S owns a conjunct: syntactic on the IR, never S's answer (<see cref="RenderingFamily.Owns"/>).</summary>
-        bool Owned(int conjunct) => (_owned ??= [.. RenderingStatement.Conjuncts.Select(RenderingFamily.Owns)])[conjunct];
-
-        /// <summary>Prints a form S chose for a conjunct into a list, over the paths the conjunct reads.</summary>
-        string Print(int conjunct, ServiceForm form, CosmosParameterList parameters) =>
-            RenderingPrinter.Print(form, RenderingStatement.Conjuncts[conjunct].Paths.Distinct().ToDictionary(SqlValue.Spell), _rootAlias, parameters, CosmosRendering.StoresSpelled(_container.ServiceTarget));
+        /// <summary>Whether S owns a conjunct: syntactic on the IR, never S's answer (<see cref="RenderingFamily.Owns(SqlPredicate)"/>).</summary>
+        bool Owned(int conjunct) => (_owned ??= [.. Statement.Conjuncts.Select(RenderingFamily.Owns)])[conjunct];
 
         /// <summary>
-        /// Whether the printer writes a form S chose for a conjunct: legality, read before S's admission stands, so that
-        /// implementation never meets a form it cannot print for a plan Volcano chose.
+        /// Prints a form S chose for a conjunct, or its weakening, into a list: over each place the conjunct reads, a computed
+        /// one's operands among them, and each path what an opaque term of it was read as reads; a computed place (h10) as its
+        /// call, in the spelling S chose of it, or where S chose none the one every call of its function takes.
         /// </summary>
-        internal bool Prints(int conjunct, ServiceForm form)
+        internal string Print(int conjunct, ServiceForm form, CosmosParameterList parameters, IReadOnlyDictionary<SqlValue.Call, long>? spellings = null)
+        {
+            var read = Statement.Conjuncts[conjunct];
+            var opaque = read.Subterms.OfType<SqlPredicate.Opaque>().SelectMany(o => Statement.Opaques.TryGetValue(o.Id, out var value) ? value.PathsRead : []);
+            var paths = read.Places.Concat(opaque).Distinct().ToDictionary(SqlValue.Spell);
+            var computed = read.Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!);
+            return RenderingPrinter.Print(form, paths, _rootAlias, parameters, CosmosRendering.StoresSpelled(_container.ServiceTarget), computed,
+                spellings is null ? null : call => spellings.TryGetValue(call, out var spelling) ? spelling : null);
+        }
+
+        /// <summary>
+        /// Whether the printer writes a form S chose for a conjunct, in the spellings S chose: legality, read before S's
+        /// admission stands, so that implementation never meets a form it cannot print for a plan Volcano chose.
+        /// </summary>
+        internal bool Prints(int conjunct, ServiceForm form, IReadOnlyDictionary<SqlValue.Call, long>? spellings = null)
         {
             try
             {
-                _ = Print(conjunct, form, new CosmosParameterList());
+                _ = Print(conjunct, form, new CosmosParameterList(), spellings);
                 return true;
             }
             catch (Exception e) when (e is CosmosTranslationException or InvalidOperationException or ArgumentException)
@@ -330,6 +335,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             var form = RenderingFor(set)?.Resolution.Weakenings.GetValueOrDefault(conjunct);
             return (form, form is null ? null : RenderingRexBuilder.Build(form, _rexBuilder, AccessorsOf(conjunct)));
+        }
+
+        /// <summary>
+        /// S's weakening of a residual conjunct as the printer writes it, in the spellings S chose: what the split rule's
+        /// capture is told; none where S gave none or the printer writes none.
+        /// </summary>
+        internal string? PrintWeakening(int conjunct, CosmosParameterList parameters)
+        {
+            var resolution = RenderingFor(null)?.Resolution;
+            if (resolution?.Weakenings.GetValueOrDefault(conjunct) is not { } form || Prints(conjunct, form, resolution.Spellings) == false)
+                return null;
+
+            return Print(conjunct, form, parameters, resolution.Spellings);
         }
 
         /// <summary>Each path a conjunct reads, by its spelling, and its accessor: what the Rex builder writes its weakening over.</summary>
@@ -369,6 +387,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Determines whether a stratum admitted a conjunct: whether it reaches the service.
         /// </summary>
         public bool IsAdmitted(int conjunct) => StratumOf(conjunct) > 0;
+
+        /// <summary>
+        /// Whether the condition renders and the service never fails over its form on a document of the scan: every
+        /// conjunct's form is one S proved, whose agreement allows no failure on any cell the question imports from the
+        /// declaration's root, a set-aside one among them (<c>AgreementRows</c>). A conjunct the translator writes carries
+        /// no such proof. Read where a filter is conjoined onto a <c>WHERE</c> (<see cref="CosmosClauses.Where"/>).
+        /// </summary>
+        public bool FailureFree => Renders && Enumerable.Range(0, Conjuncts.Count).All(i => Form(i) is not null);
 
         /// <summary>
         /// Returns the round that admitted a conjunct, counting from one, or zero where none did: one renders from the
@@ -421,7 +447,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var conjunct = next++;
                 System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
                 // A conjunct S admitted prints the form it chose, no bundle and no question; the translator writes the rest.
-                var text = Form(conjunct) is { } form ? Print(conjunct, form, parameters) : TranslatorFor(conjunct, parameters).TranslateConjunct(node);
+                var text = Form(conjunct) is { } form ? Print(conjunct, form, parameters, RenderingFor(null)?.Resolution.Spellings) : TranslatorFor(conjunct, parameters).TranslateConjunct(node);
                 builder.Append(text);
                 if (CosmosRenderingCapture.Armed)
                     CosmosRenderingCapture.Observer?.Written(this, conjunct, text, parameters);
@@ -647,6 +673,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         // ── A weakening beside what is applied ───────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Determines whether a weakening is one of this statement's own conjuncts, read through its loading: the split
+        /// rule pushes none, since a weakening a filter of pushed weakenings did not admit is weakened there, and where to
+        /// itself would be pushed under that filter for ever (h15). Equal, not implied: every weakening its own conjunct
+        /// implies, which is not applied.
+        /// </summary>
+        public bool IsOwn(RexNode weakening) => Statement.Conjuncts.Contains(_loading.Read(weakening));
 
         /// <summary>
         /// Determines whether a weakening pushed beside this statement adds nothing to what is applied there: its admitted

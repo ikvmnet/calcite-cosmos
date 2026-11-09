@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Inside the arm of a <c>CASE</c> in a conjunct: every sibling, and the conditions the arm is read under, never
-        /// the conjunct itself.
+        /// the conjunct itself; of them, only what the facts graph reads exactly.
         /// </summary>
         Arm,
 

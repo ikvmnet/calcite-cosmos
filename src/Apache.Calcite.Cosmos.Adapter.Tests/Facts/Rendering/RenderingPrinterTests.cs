@@ -27,32 +27,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly string Alias = CosmosImplementor.DefaultRootAlias;
 
-        /// <summary>Every form S chose over the run's inputs, under each set, once a text: each root's best, with the paths its bundle's roots read.</summary>
-        internal static IReadOnlyList<(ServiceForm Form, IReadOnlyDictionary<string, JsonDocumentPath> Paths)> Chosen() =>
-            [.. RenderingCheckRun.PerPullRequest.Value.Generated!.Bundles.SelectMany(b => b.Answers.Values.Select(a => a.Best).OfType<ServiceForm>().Select(f => (f, PathsOf(b.Roots))))
+        /// <summary>
+        /// Every form S chose over the run's inputs, under each set, once a text: each root's best, with the paths its bundle's
+        /// roots read and the computed places they read (h10), each by its spelling.
+        /// </summary>
+        internal static IReadOnlyList<(ServiceForm Form, IReadOnlyDictionary<string, JsonDocumentPath> Paths, IReadOnlyDictionary<string, SqlValue.Call> Computed)> Chosen() =>
+            [.. RenderingCheckRun.PerPullRequest.Value.Generated!.Bundles.SelectMany(b => b.Answers.Values.Select(a => a.Best).OfType<ServiceForm>().Select(f => (f, PathsOf(b.Roots), ComputedOf(b.Roots))))
                 .DistinctBy(c => c.Item1.Text)];
 
-        /// <summary>Each path the predicates read, by its spelling.</summary>
+        /// <summary>Each computed place the predicates read, by its spelling.</summary>
+        internal static IReadOnlyDictionary<string, SqlValue.Call> ComputedOf(IEnumerable<SqlPredicate> predicates) =>
+            predicates.SelectMany(p => p.Computed).Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
+
+        /// <summary>Each path the predicates read, a computed place's operands among them (h10), by its spelling: S's imported places, which production prints over.</summary>
         internal static IReadOnlyDictionary<string, JsonDocumentPath> PathsOf(IEnumerable<SqlPredicate> predicates) =>
-            predicates.SelectMany(p => p.Paths).Distinct().ToDictionary(SqlValue.Spell, StringComparer.Ordinal);
+            predicates.SelectMany(p => p.Places).Distinct().ToDictionary(SqlValue.Spell, StringComparer.Ordinal);
 
         /// <summary>
         /// What a round trip finds wrong with a form, or <c>null</c>: its print read back as another form or written otherwise,
-        /// printed again from what was read as another text or other values, or not printed at all.
+        /// printed again from what was read as another text or other values, or not printed at all. A computed place is
+        /// printed as its call and read back by it (<see cref="CosmosSqlFormReader.PlacesOf"/>).
         /// </summary>
-        internal static string? RoundTrip(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths)
+        internal static string? RoundTrip(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, IReadOnlyDictionary<string, SqlValue.Call>? computed = null)
         {
             try
             {
                 var parameters = new CosmosParameterList();
-                var text = RenderingPrinter.Print(form, paths, Alias, parameters);
-                var read = CosmosSqlFormReader.Read(text, parameters.Parameters);
+                var text = RenderingPrinter.Print(form, paths, Alias, parameters, computed: computed);
+                var read = CosmosSqlFormReader.Read(text, parameters.Parameters, places: computed is null ? null : CosmosSqlFormReader.PlacesOf(computed.Values));
                 // The reader a member carries stays in process: the text is what is printed.
                 if (read.Form.Text != form.Text || read.Written != text)
                     return $"{form} printed {text}, read back as {read.Form} written {read.Written}";
 
                 var again = new CosmosParameterList();
-                var reprinted = RenderingPrinter.Print(read.Form, paths, Alias, again);
+                var reprinted = RenderingPrinter.Print(read.Form, paths, Alias, again, computed: computed);
                 return reprinted == text && again.Parameters.SequenceEqual(parameters.Parameters) ? null : $"{form} printed {text}, and again {reprinted}";
             }
             catch (Exception e) when (e is ArgumentException or CosmosTranslationException)
@@ -77,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             TestContext.Current.TestOutputHelper?.WriteLine($"{chosen.Count} forms chosen; their subforms by kind: {string.Join(", ", kinds.OrderBy(k => k.Key).Select(k => $"{k.Key} {k.Value}"))}");
 
             chosen.Should().HaveCountGreaterThan(200);
-            chosen.Select(c => RoundTrip(c.Form, c.Paths)).OfType<string>().Should().BeEmpty();
+            chosen.Select(c => RoundTrip(c.Form, c.Paths, c.Computed)).OfType<string>().Should().BeEmpty();
         }
 
         /// <summary>
@@ -98,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var theirs = new CosmosParameterList();
                 if (c.Source.TranslatorFor(c.Conjunct, theirs).TryTranslateConjunct(c.Source.Conjuncts[c.Conjunct], out var written)
                     && CosmosSqlFormReader.Read(written!, theirs.Parameters) is var read && read.Written == written && read.Form.Equals(c.Form))
-                    same.Add((c, c.Source.RenderingStatement.Conjuncts[c.Conjunct], written!, theirs.Parameters));
+                    same.Add((c, c.Source.Statement.Conjuncts[c.Conjunct], written!, theirs.Parameters));
             }
 
             same = [.. same.DistinctBy(c => (c.Ir.Digest, c.Text))];

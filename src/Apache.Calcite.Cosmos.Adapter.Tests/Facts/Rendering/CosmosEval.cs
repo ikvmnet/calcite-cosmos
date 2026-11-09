@@ -43,11 +43,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceFormKind.Affix => Read(document, form.Path!, target, places) is (true, var v) ? Affix(form, v, target) : null,
 
             // Service.TwoPathsCompareAsAPathAndALiteral, measured on both targets: the left against the right's value as a
-            // literal, but two numbers each as the service holds it, the diagonal a value against itself; nothing of a
-            // container on either side.
+            // literal, but two numbers each as the service holds it, the diagonal a value against itself, and against a null
+            // as the row's outcomes say, = true of a null alone, != of everything else, <= and >= true of a null and < and >
+            // false of one, each ordering undefined over the rest (C6 at h15, (c.k < c.k) over a null); nothing of a
+            // container on either side but against a null.
             ServiceFormKind.ComparePaths when IsPath(form.Path!) && IsPath(form.Right!) => (At(document, form.Path!), At(document, form.Right!)) switch
             {
                 (null, _) or (_, null) => ServiceOutcomes.Undefined,
+                (var left, J.Null) => (form.Test, left is J.Null) switch
+                {
+                    (CosmosServiceTest.Equal, var both) => Truth(both),
+                    (CosmosServiceTest.NotEqual, var both) => Truth(both == false),
+                    (CosmosServiceTest.LessOrEqual or CosmosServiceTest.GreaterOrEqual, true) => ServiceOutcomes.True,
+                    (CosmosServiceTest.Less or CosmosServiceTest.Greater, true) => ServiceOutcomes.False,
+                    _ => ServiceOutcomes.Undefined,
+                },
                 ({ IsScalar: false }, _) or (_, { IsScalar: false }) => null,
                 (J left and (J.Num or J.Huge), J.Num r) => Ordered(form.Test, Numeric(left, r.Value, Held(r.Value, target), target)),
                 var (left, right) => Compare(form.Test, left, right.Encoded, target),

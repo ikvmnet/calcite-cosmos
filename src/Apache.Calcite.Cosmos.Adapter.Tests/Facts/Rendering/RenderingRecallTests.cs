@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ["P4"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", [$"(NOT {Label})"], [Bikes], Array + "(U,t)", ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
             ["P5"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", [$"(NOT ({Label} AND {Category}))"], [Bikes, new("@p1", "a")], "$[\"category\"]=string|a; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "6", "7", "8", "9"], ["2", "3", "6", "7", "8", "9"]),
-            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], "$[\"category\"]=strings < \"b\" in [escape,high,lineterm,nonascii,nul,replacement,surrogate,trimmed,unpaired]; " + Array + "(U,t)",
+            ["P6"] = new(Typed + "NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", [$"(NOT ({Label} OR {Category}))"], [Bikes, new("@p1", "b")], "$[\"category\"]=array; " + Array + "(U,t)",
                 ["2", "3", "4", "5", "8", "9"], ["2", "3", "8", "9"]),
         };
 
@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static IEnumerable<Piece> Pieces(Case c)
         {
             var statement = Statement(c.Sql, c.Texts.Length);
-            var pieces = statement.RenderingStatement.Conjuncts.Zip(c.Texts, (ir, text) => Apart(ir, CosmosSqlFormReader.Read(text, c.Parameters).Form, RenderPosition.Pos)).SelectMany(x => x).ToList();
+            var pieces = statement.Statement.Conjuncts.Zip(c.Texts, (ir, text) => Apart(ir, CosmosSqlFormReader.Read(text, c.Parameters).Form, RenderPosition.Pos)).SelectMany(x => x).ToList();
             GC.KeepAlive(statement);
             return pieces;
         }
@@ -198,10 +198,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var statement = Statement(sql, texts.Count);
             var root = RenderingCheckRun.RootOf([statement.ScopeForCheck])!.Value;
-            var conjuncts = statement.RenderingStatement.Conjuncts;
+            var conjuncts = statement.Statement.Conjuncts;
             var claimed = CosmosSqlFormReader.Read(Where(texts), parameters);
             claimed.Written.Should().Be(Where(texts), "the text reads back as itself");
-            var source = new ImportSource(statement.RenderingStatement.Digest, "declaration", 1);
+            var source = new ImportSource(statement.Statement.Digest, "declaration", 1);
             var entry = (run ?? new RenderingCheckRun()).Check(conjuncts, claimed.Form, [.. texts.Select(t => CosmosSqlFormReader.Read(t, parameters).Form)], Verdict.Equal,
                 bundle => RenderingImporter.Import(bundle, source, root.Context, root.Rules, statement.DeclarationForCheck, conjuncts.SelectMany(c => c.Paths)),
                 rules: statement.DeclarationForCheck.Rules).Entry;
@@ -216,7 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             using (recorder.Arm())
                 RenderingInputs.Differential("recall", [sql], RenderingInputs.Containers).Single().Plan();
 
-            return recorder.Read.First(s => s.RenderingStatement.Conjuncts.Count == conjuncts);
+            return recorder.Read.First(s => s.Statement.Conjuncts.Count == conjuncts);
         }
 
         /// <summary>Conjuncts' texts joined as <c>Translate</c> joins them.</summary>

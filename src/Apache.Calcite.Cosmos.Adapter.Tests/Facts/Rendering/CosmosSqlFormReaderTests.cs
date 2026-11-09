@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void EveryCapturedTextReadsBackToItself()
         {
-            var captured = RenderingCheckRun.PerPullRequest.Value.Captured.Values.Select(c => (c.Text, c.InFamily, Read: CosmosSqlFormReader.Read(c.Text, c.Parameters))).ToList();
+            var captured = RenderingCheckRun.PerPullRequest.Value.Captured.Values.Select(c => (c.Text, c.InFamily, Read: CosmosSqlFormReader.Read(c.Text, c.Parameters, places: c.Places))).ToList();
 
             captured.Should().Contain(c => c.InFamily);
             captured.Where(c => c.Read.Written != c.Text).Select(c => c.Text + " read back as " + c.Read.Written).Should().BeEmpty();

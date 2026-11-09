@@ -22,8 +22,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     internal static class CosmosRendering
     {
 
-        // The guarded comparison's templates are asked from the switch (spec §4.2 h15), a bridge: until site W asks whether
-        // S owns the filter beneath, the translator writes no CASE they are pushed as, and a weakening holding one is lost.
+        // Every template is asked since the switch (h15), the guarded comparison's and the affixes' among them: S writes the
+        // WHERE it proves, and site W's weakening, which the Rex builder writes as the CASE only S reads.
         static readonly System.Lazy<RenderingDefinition> Defined = new(() => RenderingDefinition.Measured(CosmosAxiomRows.Read(CosmosAxioms.All)) with
         {
             StrictOperators = CosmosStrictness.Operators,
@@ -62,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             TestReads = CosmosAxiomRows.ReadTestReads(CosmosAxioms.All),
             ExactReadings = CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All),
-            Templates = [.. RenderingTemplateRows.Templates.Where(t => RenderingTemplateRows.FromTheSwitch.Contains(t.Item1) == false)],
+            Templates = RenderingTemplateRows.Templates,
         });
 
         /// <summary>The function rows S reads: the axioms', and those declared beside them (<see cref="CosmosAxiomRows.Declared"/>, G6).</summary>
