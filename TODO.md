@@ -2937,6 +2937,14 @@ across documents* and *A join of a container to itself* is the record.
   S's admission states it beneath its round's node and proves it there, as the bridge licenses it today. From the switch
   S pushes each, so a census that asks as the admission does finds those seven names answering no push, and they go
   (DESIGN.md, *What line 6 asks after run 2*).
+- **The manual says a `LIKE` holding `_` pushes over any declared string** — *h15's, with the switch's `LIKE`
+  sections.* Chapter 8.2 (`'a_b'` pushes "wherever `LIKE` does; `_` is one code point to both engines") and Chapter 14.4
+  (a `LIKE` of any other shape "pushes over any declared string, `_` being one code point to both") describe the
+  translator, which sends such a pattern exactly today (`ALikeOverAPathDeclaredAStringPushesExactly`). Each target's `_`
+  matches a line terminator, which Calcite's never does (run 2), so over a string that may hold one the service's answer
+  is not Calcite's, and from the switch S keeps that filter in process (*Run 2's declines are accepted by name*, above).
+  The switch restates both passages, Appendix B's `LIKE` row and Chapter 8.8's table by the `LIKE`s it moves, and that
+  test.
 - **Two declines are overridden for 3A, their translator code kept** — *Stage 3, 3D and 3E.* The owner overrode by name
   (2026-11-03) a value `CASE` compared (1 real push under `Production`, 2 under `Emulator`), which S reads at h31's
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
