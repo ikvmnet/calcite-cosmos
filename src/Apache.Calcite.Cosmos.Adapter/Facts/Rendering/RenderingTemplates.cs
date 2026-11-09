@@ -86,10 +86,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 TemplateId.ComparePaths => atom.Against is not null && Op(atom.Test) is { } compared && PlaceSpellings.Sides(path) is (var left, var right)
                     ? ServiceForm.ComparePathsOf(compared, left, right) : null,
                 _ when atom.Against is not null => null,
-                TemplateId.Affix when atom.Test == PredicateAtom.LikeTest => Affix(atom, units, path),
-                TemplateId.AffixRendered when atom.Test == PredicateAtom.LikeTest && Affix(atom, units, path) is { } matched =>
-                    All([ServiceForm.NotOf(number), ServiceForm.NotOf(ServiceForm.TestOf(IsBool, path)), matched]),
+                _ when AffixOf(id) is var (test, rendered) => atom.Test == PredicateAtom.LikeTest && Affix(test, atom, units, path) is { } matched
+                    ? rendered ? All([ServiceForm.NotOf(number), ServiceForm.NotOf(ServiceForm.TestOf(IsBool, path)), matched]) : matched : null,
                 TemplateId.NullTest => pos ? Any([ServiceForm.NotOf(defined), isNull, .. untyped]) : ServiceForm.NotOf(Restricted()),
+                TemplateId.StructureTest when atom.Test == PredicateAtom.NullTest => ServiceForm.NotOf(Any([ServiceForm.TestOf(IsArray, path), ServiceForm.TestOf(IsObject, path)])!),
                 _ when core is null => null,
                 TemplateId.Bare => core,
                 TemplateId.Restricted => All([.. Restricted().Members, core]),
@@ -119,14 +119,31 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         static ValueSet<string> Points(PredicateAtom atom) => atom.Points ?? ValueSet<string>.Empty;
 
+        /// <summary>The test an affix template writes a <c>LIKE</c> as, and whether over a rendering; none for any other template (B1).</summary>
+        static (CosmosServiceTest Test, bool Rendered)? AffixOf(TemplateId id) => id switch
+        {
+            TemplateId.AffixEquality => (Equal, false),
+            TemplateId.AffixStartsWith => (StartsWith, false),
+            TemplateId.AffixEndsWith => (EndsWith, false),
+            TemplateId.AffixContains => (Contains, false),
+            TemplateId.AffixLike => (Like, false),
+            TemplateId.AffixRenderedEquality => (Equal, true),
+            TemplateId.AffixRenderedStartsWith => (StartsWith, true),
+            TemplateId.AffixRenderedEndsWith => (EndsWith, true),
+            TemplateId.AffixRenderedContains => (Contains, true),
+            TemplateId.AffixRenderedLike => (Like, true),
+            _ => null,
+        };
+
         /// <summary>
-        /// A <c>LIKE</c>'s pattern, as Calcite's rows read it (G7), as the narrowest test that says it (<see cref="AffixPattern.Written"/>):
-        /// one of literal units alone the equality of its text. None for one the rows leave unread, and none for one no
-        /// statement can send, holding an unpaired surrogate: a writer's limit, not a reading.
+        /// A <c>LIKE</c>'s pattern, as Calcite's rows read it (G7), as a test where that test says it (<see cref="AffixPattern.Says"/>):
+        /// the equality of its text, an affix of its run, or <c>LIKE</c> of it. None for one the rows leave unread, and none for
+        /// one no statement can send, holding an unpaired surrogate: a writer's limit, not a reading.
         /// </summary>
-        static ServiceForm? Affix(PredicateAtom atom, ValueSet<LikeUnit> units, string path) =>
+        static ServiceForm? Affix(CosmosServiceTest test, PredicateAtom atom, ValueSet<LikeUnit> units, string path) =>
             atom.Operand is { } operand && JsonValues.StringOf(operand) is var text && JsonValues.IsEncodable(text) && LikePattern.Read(text, units) is { } pattern
-                ? AffixPattern.Written(pattern) is var (test, argument) ? ServiceForm.AffixOf(test, path, argument) : ServiceForm.CompareOf(Equal, path, JsonValues.Of(AffixPattern.Equality(pattern)))
+                && AffixPattern.Says(test, pattern) is { } argument
+                ? test == Equal ? ServiceForm.CompareOf(Equal, path, JsonValues.Of(argument)) : ServiceForm.AffixOf(test, path, argument)
                 : null;
 
         /// <summary>A5's equalities: the string, and the boolean Calcite renders as it.</summary>

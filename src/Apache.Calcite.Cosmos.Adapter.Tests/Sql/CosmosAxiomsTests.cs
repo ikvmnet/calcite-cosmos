@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
-                || a.NullThrough is not null || a.StructureOnly is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
+                || a.NullThrough is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
                 || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
@@ -240,12 +240,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
             CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
-                (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
+                (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
                 (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader) });
-            CosmosAxiomRows.ReadStructureOnly(all).Should().Equal("JSON_QUERY");
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
-            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(22).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(30).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
                 .And.Contain((PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself)).And.Contain((PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders))
                 .And.Contain((PredicateAtom.TextReader, Class.Absent, CosmosCalciteReading.Null))
                 .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises))

@@ -204,8 +204,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.IS_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue tested && IsPlace(tested)
                             ? new SqlPredicate.IsNull(tested)
-                            : Structure((RexNode)operands.get(0)) is SqlPredicate structure
-                                ? new SqlPredicate.Not(structure)
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var unknown
                                 ? new SqlPredicate.Case(unknown, False, new SqlPredicate.Case(new SqlPredicate.Not(unknown), False, True))
                                 : Opaque(node);
@@ -214,8 +212,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.IS_NOT_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue present && IsPlace(present)
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
-                            : Structure((RexNode)operands.get(0)) is SqlPredicate held
-                                ? held
                             : _legacy == false && IsPredicate((RexNode)operands.get(0)) && Predicate((RexNode)operands.get(0)) is var known
                                 ? new SqlPredicate.Case(known, True, new SqlPredicate.Case(new SqlPredicate.Not(known), True, False))
                                 : Opaque(node);
@@ -282,19 +278,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     : null;
 
             static readonly SqlPredicate True = new SqlPredicate.Constant(true), False = new SqlPredicate.Constant(false);
-
-            /// <summary>
-            /// Reads a plain <c>JSON_QUERY</c> of a path, under a null test, as the path holding a structure: it answers
-            /// an object or an array and null for anything else (<c>Calcite.JsonQueryAnswersStructureOnly</c>). Only S's
-            /// tests read it until its switch (h15), F's terms unchanged. It moves at h15, as a reading of its own whose
-            /// template writes the structure test (<c>TODO.md</c>): read so before h15 it proves four census rows the
-            /// translator's text, which a refactor may not.
-            /// </summary>
-            SqlPredicate? Structure(RexNode node) =>
-                _places && CosmosRexShapes.IsPlainJsonQuery(node) && Document(node) is JsonDocumentPath { HasElement: false } path
-                    ? SqlPredicate.AnyOf([new SqlPredicate.TypeTest(TypeTests[CosmosOperators.IsObject], new SqlValue.Raw(path)),
-                        new SqlPredicate.TypeTest(TypeTests[CosmosOperators.IsArray], new SqlValue.Raw(path))])
-                    : null;
 
             /// <summary>The service's type tests but <c>IS_DEFINED</c>, by operator, each read by its name.</summary>
             static readonly Dictionary<SqlOperator, string> TypeTests = new[] { CosmosOperators.IsNull, CosmosOperators.IsString, CosmosOperators.IsNumber,
@@ -616,6 +599,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     case RexCall call when call.getOperator().getName() == "JSON_VALUE":
                         return Accessor(call);
+
+                    // A JSON_QUERY with no clause, where places are read, is its own reading of the path (G8): what it answers
+                    // of each class its row's (Calcite.JsonQueryAnswersStructureOnly), an element's as of a path holding it
+                    // (Calcite.ReadingsOfAnIndexAreAsOfAPath), and how a test of it is written its template's. A clause answers
+                    // what the path does not hold (Calcite.JsonQueryClausesSubstitute), and is read as a call.
+                    case RexCall call when _places && CosmosRexShapes.IsPlainJsonQuery(call) && Document(call) is JsonDocumentPath query:
+                        return new SqlValue.Query(query);
 
                     case RexCall call when Cast(call) is SqlValue cast:
                         return cast;

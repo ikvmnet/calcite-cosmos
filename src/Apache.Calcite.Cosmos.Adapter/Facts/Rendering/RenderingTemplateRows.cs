@@ -29,23 +29,34 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             (ByKindBoolean, RenderPosition.Pos), (ByKindBoolean, RenderPosition.Neg), (ByKindNumber, RenderPosition.Pos), (ByKindNumber, RenderPosition.Neg),
             (StringBranch, RenderPosition.Pos), (KindRestricted, RenderPosition.Neg),
             (KindRestrictedNumber, RenderPosition.Neg), (Window, RenderPosition.Pos), (TextAlternatives, RenderPosition.Pos),
-            (ComparePaths, RenderPosition.Pos), (ComparePaths, RenderPosition.Neg), (Affix, RenderPosition.Pos), (Affix, RenderPosition.Neg), (AffixRendered, RenderPosition.Neg),
+            (ComparePaths, RenderPosition.Pos), (ComparePaths, RenderPosition.Neg),
+            .. Affixes.SelectMany(t => new[] { (t, RenderPosition.Pos), (t, RenderPosition.Neg) }), .. AffixesRendered.Select(t => (t, RenderPosition.Neg)),
+            (StructureTest, RenderPosition.Pos), (StructureTest, RenderPosition.Neg),
         ];
+
+        /// <summary>The templates of a <c>LIKE</c>, one a test that may say its pattern (B1).</summary>
+        static TemplateId[] Affixes => [AffixEquality, AffixStartsWith, AffixEndsWith, AffixContains, AffixLike];
+
+        /// <summary>The templates of a <c>LIKE</c> over a rendering, one a test as <see cref="Affixes"/>.</summary>
+        static TemplateId[] AffixesRendered => [AffixRenderedEquality, AffixRenderedStartsWith, AffixRenderedEndsWith, AffixRenderedContains, AffixRenderedLike];
 
         /// <summary>
         /// The guarded comparison's templates, which production asks only from the switch (spec §4.2 h15): a bridge, since
         /// the Rex they are pushed as is a <c>CASE</c> only S reads, and site W asks the translator to write it until then.
         /// The affix's, since S owns no affix until the switch and the translator writes one till then (h07).
         /// </summary>
-        public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId> { KindRestrictedNumber, Window, TextAlternatives, Affix, AffixRendered };
+        public static IReadOnlySet<TemplateId> FromTheSwitch { get; } = new HashSet<TemplateId>([KindRestrictedNumber, Window, TextAlternatives, .. Affixes, .. AffixesRendered]);
 
-        /// <summary>Each template and the shapes it fits.</summary>
+        /// <summary>
+        /// Each template and the shapes it fits. A <c>JSON_QUERY</c>'s reading is asked its own template alone, the form its
+        /// row says it is (G8): every other template's proposes a value it has none of.
+        /// </summary>
         public static IReadOnlyList<(TemplateId, string Shape)> Fits { get; } = [.. Rows().Distinct()];
 
         static IEnumerable<(TemplateId, string)> Rows()
         {
             string[] text = [PredicateAtom.TextReader], textual = [PredicateAtom.TextReader, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)];
-            string[] readers = [.. ReaderEdgesTable.Rows.Keys.Where(r => PredicateAtom.ColumnOf(r) is null), .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
+            string[] readers = [.. ReaderEdgesTable.Rows.Keys.Where(r => PredicateAtom.ColumnOf(r) is null && r != PredicateAtom.QueryReader), .. textual], strings = [StringKind, TruthKind, NumeralKind], literals = [.. strings, NumberKind, BooleanKind];
             string[] parsed = [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(t => PredicateAtom.CastReader(t, PredicateAtom.TextReader)), PredicateAtom.TypedReader("DECIMAL")];
             string[] orderings = [PredicateAtom.Less, PredicateAtom.LessOrEqual, PredicateAtom.Greater, PredicateAtom.GreaterOrEqual];
             string[] comparisons = [PredicateAtom.Equal, PredicateAtom.NotEqual, .. orderings], equalOrOrdering = [PredicateAtom.Equal, .. orderings];
@@ -65,8 +76,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Concat(Fit(KindRestrictedNumber, parsed, comparisons, [NumberKind])).Concat(Fit(Window, parsed, comparisons, [NumberKind]))
                 .Concat(Fit(TextAlternatives, text, [PredicateAtom.Equal], [NumeralKind]))
                 .Concat(Fit(ComparePaths, readers, comparisons, readers.Select(r => ReadingKind + r)))
-                .Concat(Fit(Affix, [.. textual, PredicateAtom.RawReader, PredicateAtom.TypedReader("VARCHAR")], [PredicateAtom.LikeTest], strings))
-                .Concat(Fit(AffixRendered, textual, [PredicateAtom.LikeTest], strings));
+                .Concat(Affixes.SelectMany(t => Fit(t, [.. textual, PredicateAtom.RawReader, PredicateAtom.TypedReader("VARCHAR")], [PredicateAtom.LikeTest], strings)))
+                .Concat(AffixesRendered.SelectMany(t => Fit(t, textual, [PredicateAtom.LikeTest], strings)))
+                .Concat(Fit(StructureTest, [PredicateAtom.QueryReader], [PredicateAtom.NullTest], [NoOperand]));
         }
 
     }

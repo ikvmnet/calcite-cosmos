@@ -172,6 +172,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 SqlValue.Cast c => r.Cast.Of(c.Target, Value(c.Value)),
                 SqlValue.DecimalCast d => r.DecimalCast.Of(d.Precision, d.Scale, Value(d.Value)),
                 SqlValue.Box b => r.Box.Of(b.Type, Value(b.Value)),
+                SqlValue.Query q => r.Query.Of(_path(q.Path)),
                 SqlValue.Null n => r.Null.Of(n.Type),
                 SqlValue.Literal l => r.Literal.Of(l.Value),
                 SqlValue.Parameter p => r.Parameter.Of(p.Ordinal, p.Type),

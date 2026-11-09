@@ -402,7 +402,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.JsonQueryAnswersStructureOnly",
                 "JSON_QUERY answers an object or an array as its JSON, written without the whitespace the document carried, and null for a scalar, a JSON null and an absent path.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 16), "Measurements.CalciteJsonValueMeasurementTests.JsonQueryAnswersStructureOnlyAndWritesItCompactly",
-                StructureOnly: ["JSON_QUERY"]),
+                // What the reading of a JSON_QUERY with no clause answers of each class, which S's template writes its null
+                // test by and the gate proves it from as any form (G8).
+                CalciteReadings: [new(PredicateAtom.QueryReader, Class.Object, CosmosCalciteReading.Renders), new(PredicateAtom.QueryReader, Class.Array, CosmosCalciteReading.Renders),
+                    .. new[] { Class.String, Class.Number, Class.True, Class.False, Class.Null, Class.Absent }.Select(kind => new CosmosCalciteReading(PredicateAtom.QueryReader, kind, CosmosCalciteReading.Null))]),
             new("Calcite.JsonQueryClausesSubstitute",
                 "A JSON_QUERY wrapper or behaviour clause answers a value the path does not hold.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 16), "Measurements.CalciteJsonValueMeasurementTests.JsonQueryWrapperAndBehaviourClausesAnswerSomethingElse"),
@@ -593,8 +596,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(Test.IsObject, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=true array=false"),
                     new(Test.IsArray, Class.None, CosmosAxiomTarget.Calcite, "absent=false null=false true=false false=false number=false string=false object=false array=true"),
                 ],
-                // The body is handed the document and the path the accessor names, JSON_VALUE whatever it returns
-                // (CosmosTypeTestImplementor): a test of the text or of a RETURNING asks of the value at the path, measured in
+                // The body is handed the document and the path the accessor names, JSON_VALUE whatever it returns and JSON_QUERY
+                // (CosmosTypeTestImplementor): a test of the text, of a RETURNING or of a JSON_QUERY asks of the value at the path, measured in
                 // process (rows2), the statement raising where the RETURNING does, which the test atom carries. Over a raw value
                 // in a column and a call the body raises, each keyed by its own reading; an item and a cast to ANY, which the
                 // loader writes as the raw value, read the raw value's row, which stands for the accessor re-typed ANY, until
@@ -602,6 +605,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 TestReads:
                 [
                     new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader),
+                    new(PredicateAtom.QueryReader, PredicateAtom.RawReader),
                     .. PredicateAtom.Columns.Select(column => new CosmosTestRead(PredicateAtom.RawIn(column), PredicateAtom.RaisesReader)),
                     new(PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
                 ]),

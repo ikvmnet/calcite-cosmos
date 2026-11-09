@@ -83,6 +83,16 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// <c>JSON_QUERY(DOC, path)</c> with no clause: what Calcite answers of each class of value is its row's
+        /// (<c>Calcite.JsonQueryAnswersStructureOnly</c>, read as the reading's <c>calcitereads</c>), and a null test of it is
+        /// written as the structure test its template says (G8). Read only where a loading reads places.
+        /// </summary>
+        public sealed record Query(JsonDocumentPath Path) : SqlValue
+        {
+            public override string ToString() => "query(" + Spell(Path) + ")";
+        }
+
+        /// <summary>
         /// SQL's null, as Calcite writes a literal of a type holding none: no JSON value, a JSON null being a literal of its
         /// own. What a comparison with it answers is S's rule over the operator's row (<c>strictop</c>, G8). Read only where a
         /// loading reads places.
@@ -186,6 +196,7 @@ namespace Apache.Calcite.Cosmos.Facts
             Text t => t.Path,
             Raw r => r.Path,
             Typed t => t.Path,
+            Query q => q.Path,
             Cast c => c.Value.PathRead,
             Box b => b.Value.PathRead,
             _ => null,

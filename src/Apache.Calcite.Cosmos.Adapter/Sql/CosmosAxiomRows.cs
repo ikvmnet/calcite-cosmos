@@ -190,10 +190,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static IReadOnlyList<string> ReadNullThrough(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from type in axiom.NullThrough ?? [] select type).Distinct()];
 
-        /// <summary>One row per function that answers a structure alone (F3), S's <c>structureonly</c>.</summary>
-        public static IReadOnlyList<string> ReadStructureOnly(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from function in axiom.StructureOnly ?? [] select function).Distinct()];
-
         /// <summary>
         /// One row per reading and kind of stored value a <c>Calcite</c> row measured in process, with what it answers (F3),
         /// S's <c>calcitereads</c>. It merges nothing.
@@ -222,7 +218,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
-                ReadTestReads(axioms), ReadExactReadings(axioms));
+                ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
+                Metadata.CosmosStrictness.Operators);
 
         /// <summary>
         /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'

@@ -77,6 +77,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public const string RaisesReader = "raises";
 
+        /// <summary>
+        /// <c>JSON_QUERY(DOC, path)</c> with no clause (G8): what it answers of each class is its row's alone
+        /// (<c>Calcite.JsonQueryAnswersStructureOnly</c>, <c>calcitereads</c>), and no evaluator of its own reads it.
+        /// </summary>
+        public const string QueryReader = "query";
+
         /// <summary>Returns the reader of a <c>RETURNING</c> of a SQL type.</summary>
         public static string TypedReader(string type) => TypedReaders + ":" + type;
 
@@ -828,9 +834,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>What a comparison answers of values on these sides of the literal, beside what else it may; either where a side is not told.</summary>
             static Truths Placed(string op, IEnumerable<int?> sides, Truths beside) => sides.Aggregate(beside, (truths, side) => truths | (side is int sign ? Ordered(op, sign) ? T : F : T | F));
 
-            /// <summary>A reading nothing defines (<see cref="Unread"/>).</summary>
+            /// <summary>
+            /// A reading nothing defines (<see cref="Unread"/>); read with rows that say what a test answers over a class
+            /// whatever the value, the reading its rows alone define (<see cref="Answered"/>).
+            /// </summary>
             sealed class Unknown : Reading
             {
+
+                public override Reading With(ReadingRows rows) => rows.Whole.Count == 0 && rows.Compared.Count == 0 ? this : new Answered(rows);
 
                 public override Truths Equal(State state, string literal) => Truths.Any | R;
 
@@ -847,6 +858,43 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 public override PathValues KeptOrder(string op, string literal) => PathValues.Anything;
 
                 public override PathValues KeptNull(bool truth) => PathValues.Anything;
+
+                public override PathValues KeptParameter() => PathValues.Anything;
+
+            }
+
+            /// <summary>
+            /// A reading no evaluator reads but its rows (G8), as <c>Calcite.JsonQueryAnswersStructureOnly</c>'s reading of a
+            /// <c>JSON_QUERY</c>: what a test answers over a class is what its rows say it answers whatever the value, and
+            /// anything and a raise over a class they leave to the value or say nothing of. Of a row it keeps, only where its
+            /// null test answers is said; a comparison keeps anything.
+            /// </summary>
+            sealed class Answered(ReadingRows rows) : Reading
+            {
+
+                public override Reading With(ReadingRows rows) => new Answered(rows);
+
+                /// <summary>What the test answers over the class, whatever the value, where the rows say; anything and a raise otherwise.</summary>
+                Truths Answer(CosmosValueClass? kind, CosmosServiceTest test) =>
+                    kind is { } k && rows.ComparedOf(k, test).Count == 0 && rows.WholeOf(k, test) is var whole && whole != Truths.None ? whole : Truths.Any | R;
+
+                public override Truths Equal(State state, string literal) => Answer(State.ClassOf(state), CosmosServiceTest.Equal);
+
+                public override Truths Order(State state, string op, string literal) => Answer(State.ClassOf(state), ServiceTestOf(op));
+
+                public override Truths Null(State state) => Answer(State.ClassOf(state), CosmosServiceTest.IsNull);
+
+                public override Truths Parameter(State state) => Answer(State.ClassOf(state), CosmosServiceTest.Equal) | ComparedWhereNotNull(Null(state));
+
+                public override PathValues KeptEqual(string literal) => PathValues.Anything;
+
+                public override PathValues KeptUnequal(string literal) => PathValues.Anything;
+
+                public override PathValues KeptOrder(string op, string literal) => PathValues.Anything;
+
+                public override PathValues KeptNull(bool truth) =>
+                    CosmosValueClasses.Kinds.AsEnumerable().Where(kind => (Answer(kind, CosmosServiceTest.IsNull) & (truth ? T : F)) != 0)
+                        .Aggregate(PathValues.OfKinds(ValueSet<string>.Empty), (kept, kind) => PathValues.Join(kept, PathValues.OfKinds(KindsOf([kind]))));
 
                 public override PathValues KeptParameter() => PathValues.Anything;
 

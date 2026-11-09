@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Rendering.LeafReads", ["None"], StaticFact, "the empty reads, immutable"),
             ("Facts.Rendering.LikeUnit", ["Ends"], StaticFact, "the run an affix test's definition puts at its argument's ends"),
             ("Facts.Rendering.KleeneTables", ["AbsorbingElse", "Booleans", "CaseArms", "CaseThen", "Compares", "Failing", "Identity", "Negations", "Operands", "Opposite", "OppositeElse", "Reads", "Rows", "Units", "Weakens"], StaticFact, "Kleene logic as rows"),
-            ("Facts.Rendering.Priced", ["Cheapest", "None", "Unpriced"], StaticFact, "sentinels, and the lattice that keeps the cheaper form"),
+            ("Facts.Rendering.Priced", ["Cheapest", "None", "Unpriced", "Weights"], StaticFact, "sentinels, the lattice that keeps the cheaper form, and each affix test's weight"),
             ("Facts.Rendering.RawAnswer", ["Fails", "OnTheCell", "Unanswered"], StaticFact, "the answers a raw rule states, and the lattice's top"),
             ("Facts.Rendering.RawColumnRows", ["None"], StaticFact, "no column"),
             ("Facts.Rendering.RawTruths", ["AnswerUnion", "Empty", "Union"], StaticFact, "the raw union's lattices and its bottom"),

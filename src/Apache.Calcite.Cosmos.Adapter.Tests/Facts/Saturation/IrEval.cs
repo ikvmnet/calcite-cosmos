@@ -438,6 +438,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Null:
                     return SqlDatum.Null;
 
+                // JSON_QUERY with no clause answers an object or an array as its JSON and null for anything else
+                // (Calcite.JsonQueryAnswersStructureOnly, G8).
+                case SqlValue.Query q:
+                    return At(document, q.Path) is J.Obj or J.Arr ? new SqlDatum.Text(Documents.Json(At(document, q.Path)!)) : SqlDatum.Null;
+
                 // A number Calcite wrote cast, as a loading that reads places reads one (G8): to DOUBLE the double nearest it.
                 case SqlValue.Cast { Target: "DOUBLE", PathRead: null } c:
                     return Read(c.Value, document, world, typed) is SqlDatum.Exact e

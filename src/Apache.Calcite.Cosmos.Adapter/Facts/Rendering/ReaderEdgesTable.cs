@@ -41,6 +41,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             // A computed text place's (h10), read as text.
             [PredicateAtom.TypedReader("VARCHAR")] = Row(),
             [PredicateAtom.TypedReader("CHAR")] = Row(),
+            // A JSON_QUERY's (G8): its answer changes with the class alone (Calcite.JsonQueryAnswersStructureOnly).
+            [PredicateAtom.QueryReader] = Row(),
             [PredicateAtom.TypedReader("TINYINT")] = Limits("TINYINT", CutKind.Double),
             [PredicateAtom.TypedReader("SMALLINT")] = Limits("SMALLINT", CutKind.Double),
             [PredicateAtom.TypedReader("INTEGER")] = Limits("INTEGER", CutKind.Double),

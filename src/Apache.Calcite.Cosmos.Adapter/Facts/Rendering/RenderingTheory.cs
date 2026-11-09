@@ -30,8 +30,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             TestKinds = Graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
             // The readings a test's body takes apart (G8), the vocabulary's test rules' to read: likewise an analysis.
             TestReads = Graph.DefineRelation<string, string>("testreads", new TableOptions { Role = TableRole.Analysis });
-            Ir = new PredicateVocabulary(Graph, TestKinds, TestReads);
             Register(Graph.Values);
+            // What Calcite makes of each reading, the facts graph's vocabulary too (G7), and the rows of G8 the shared
+            // vocabulary's rules read beside the terms.
+            Calcite = new ReadingVocabulary(Graph, TestKinds, TestReads);
+            Ir = new PredicateVocabulary(Graph, Calcite);
 
             Outcome = Graph.DefineFunction<MeasuredKey, RenderingTarget, CosmosAnswer>("outcome");
             Cites = Graph.DefineFunction<MeasuredKey, RenderingTarget, ValueSet<string>>("cites", ValueLattice.Union<string>());
@@ -65,19 +68,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Respelled = Graph.DefineFunction<RenderingSet, ValueSet<string>>("respelled", ValueLattice.Union<string>());
             Unsendable = Graph.DefineFunction<RenderingSet, ValueSet<string>>("unsendable", ValueLattice.Union<string>());
             PairReads = Graph.DefineRelation<CosmosServiceTest, bool, CosmosServiceTest>("pairreads");
-            // Read beside the terms by S's box rules in the vocabulary's ruleset (G8), which may read only terms and analyses.
-            BoxOf = Graph.DefineRelation<string, string>("boxof", new TableOptions { Role = TableRole.Analysis });
-            SeesThrough = Graph.DefineRelation<string>("seesthrough", new TableOptions { Role = TableRole.Analysis });
-            BoxNull = Graph.DefineRelation<string>("boxnull", new TableOptions { Role = TableRole.Analysis });
-            StructureOnly = Graph.DefineRelation<string>("structureonly");
-            // What Calcite makes of each reading, the facts graph's vocabulary too (G7).
-            Calcite = new ReadingVocabulary(Graph, TestKinds, TestReads);
             CalciteReads = Calcite.Reads;
             CalciteBands = Calcite.Bands;
             MeasuredCast = Graph.DefineRelation<string, string, string>("measuredcast");
-            // What a reader compares with a number Calcite wrote cast (G8): rows at the frozen root, read beside the terms by
-            // the rule that makes the comparison an atom, which may read only terms and analyses, so held as an analysis.
-            TakesConstant = Graph.DefineRelation<string, bool, string>("takesconstant", new TableOptions { Role = TableRole.Analysis });
             // What each reading's order holds and the kind it compares as (G3): rows at the frozen root, read beside the terms
             // by the rule that makes two readings compared an atom, so held as analyses, as takesconstant is.
             ReaderOrder = Graph.DefineFunction<string, ValueSet<string>>("readerorder", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
@@ -136,6 +129,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Rests = Graph.DefineFunction<Pred, ServiceForm, ValueSet<string>>("rests", ValueLattice.Union<string>());
             Agrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Proof>("agrees", ValueLattice.Min<Proof>());
             Vacuous = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, bool>("vacuous", ValueLattice.Max<bool>());
+            Lifted = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("lifted");
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
             RefutedAt = Graph.DefineRelation<ValueSet<string>, JPath>("refutedat");
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
@@ -152,8 +146,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Fits = Graph.DefineRelation<TemplateId, string>("fits");
             PartingBands = Graph.DefineFunction<RenderingSet, ValueSet<string>>("partingbands", ValueLattice.Union<string>());
             RexGrammar = Graph.DefineFunction<RenderingRexGrammar.Value>("rexgrammar");
-            // An analysis, which the vocabulary's ruleset reads of a comparison with SQL's null (G8).
-            StrictOp = Graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>(), options: new TableOptions { Role = TableRole.Analysis });
             StrictReader = Graph.DefineRelation<string>("strictreader");
             BestExact = Graph.DefineFunction<Pred, RenderPosition, Priced>("bestexact", ValueLattice.Min<Priced>());
             Implied = Graph.DefineFunction<Pred, RenderPosition, ValueSet<ServiceForm>>("implied", ValueLattice.Union<ServiceForm>());
@@ -269,27 +261,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineRaw(raw, readas);
             DefineReadings(reads);
 
-            // S's alone, in the vocabulary's ruleset: a declared field read through its column (rawtyped), which F never writes.
-            Ir.Analyse.DefineRule("a raw value in a column reads its path through the column", r =>
-            {
-                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
-                r.When(v.Is(Ir.RawIn.Of(p, c)));
-                r.Then(Ir.Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
-            });
-
-            // S's alone too, a computed place being the bundle's: a test of a call is keyed by every call's row, which says the
-            // body raises over it (measured in process); the bridge's presence question about a place is such a test.
-            Ir.Analyse.DefineRule("a test reads a call's place as every call's row says the body reads it", r =>
-            {
-                var (v, q) = r.Vars<Val, JPath>("v", "q");
-                var (f, k, rd) = r.Vars<string, string, string>("f", "k", "rd");
-                var a = r.Var<Args>("a");
-                r.When(v.Is(Ir.Call.Of(f, a)), Ir.Reads.Of(v, q, rd), TestReads.Of(PredicateAtom.CallReaders, k));
-                r.Then(Ir.TestRead.Of(v, q, k));
-            });
-
-            Denotes = Graph.DefineRelation<Val, string, bool>("denotes", analysis);
-            DefineComparands();
 
             var tag = Graph.DefineRuleset("tag");
             DefineTag(tag);
@@ -322,7 +293,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             DefineProposal(at, spell);
             DefineLifts(lift, strict);
             DefineBoxes(strict);
-            DefineNullComparison();
             DefineChoice(best, weaken);
             DefineCase(at, twovalued, best, weaken);
 
@@ -686,16 +656,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// The box each reading, kind of stored value or value cast is held in, cast to <c>VARIANT</c>, G8's: an analysis the
         /// box rules read beside the terms.
         /// </summary>
-        public Relation<string, string> BoxOf { get; }
+        public Relation<string, string> BoxOf => Calcite.BoxOf;
 
         /// <summary>The comparisons and tests that read the values inside one box, G8's: an analysis the box rules read.</summary>
-        public Relation<string> SeesThrough { get; }
+        public Relation<string> SeesThrough => Calcite.SeesThrough;
 
         /// <summary>The SQL types whose box is null where what it holds is, G8's: an analysis the box rules read.</summary>
-        public Relation<string> BoxNull { get; }
-
-        /// <summary>The functions that answer a structure alone, G8's, which no rule reads until h15.</summary>
-        public Relation<string> StructureOnly { get; }
+        public Relation<string> BoxNull => Calcite.BoxNull;
 
         /// <summary>What a reading answers over each kind of stored value in process, G7's.</summary>
         public Relation<string, CosmosValueClass, string> CalciteReads { get; }
@@ -711,14 +678,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// (<c>false</c>), and with one a cast that drops scale moved by less than one (<c>true</c>), which only a reader whose
         /// reading rescales the literal reads (<c>PredicateAtom</c>'s decimal parse). A reader no row names takes neither.
         /// </summary>
-        public Relation<string, bool, string> TakesConstant { get; }
+        public Relation<string, bool, string> TakesConstant => Calcite.TakesConstant;
 
         /// <summary>
         /// What a cast of a literal denotes, as the loader reads one where it reads places (G8): the number the literal spells,
         /// and whether a cast that drops scale moved Calcite's value from it; nothing where a cast's whole digits do not fit,
         /// which raises. Derived from the terms alone.
         /// </summary>
-        public Relation<Val, string, bool> Denotes { get; }
+        public Relation<Val, string, bool> Denotes => Ir.Denotes;
 
         /// <summary>
         /// What a reading's order holds in process, every reading a row names, and none for every other reading of a kind:
@@ -882,6 +849,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>Whether an agreement holds of nothing: by any of its proofs, Calcite raises on every row (a disjunction, by its lattice).</summary>
         public Function<Pred, RenderPosition, ServiceForm, Verdict, bool> Vacuous { get; }
+
+        /// <summary>
+        /// An exact agreement a best may rest on: one the lift lifted, no vacuous one and sendable, and each the best rules
+        /// compose, fold or regroup of those. A relation, so the best rules read it in the stratum that grows it.
+        /// </summary>
+        public Relation<Pred, RenderPosition, ServiceForm> Lifted { get; }
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Refutation> Disagrees { get; }
 
         /// <summary>The one location a refutation on an atom's cells sets, by its cells; a junction's sets two, and has none.</summary>
@@ -914,7 +887,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The bands a set's string comparators rank apart, which no string ordering's literal S sends under it holds.</summary>
         public Function<RenderingSet, ValueSet<string>> PartingBands { get; }
         public Function<RenderingRexGrammar.Value> RexGrammar { get; }
-        public Function<string, bool> StrictOp { get; }
+        public Function<string, bool> StrictOp => Calcite.StrictOp;
         public Relation<string> StrictReader { get; }
         public Function<Pred, RenderPosition, Priced> BestExact { get; }
         public Function<Pred, RenderPosition, ValueSet<ServiceForm>> Implied { get; }
@@ -1946,126 +1919,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        // S's alone, in the vocabulary's ruleset (G8): what a number Calcite wrote cast denotes, which the loader reads as the
-        // casts' terms where it reads places, and the atom of a comparison with it where a row says the reading takes it. A
-        // cast to a DECIMAL its whole digits do not fit raises in Calcite and denotes nothing; one whose scale is below the
-        // number's truncates it toward zero, by less than one, which only a reading that rescales its literal takes.
-        void DefineComparands()
-        {
-            Ir.Analyse.DefineRule("a literal a cast to DOUBLE converts denotes the number it spells", r =>
-            {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var c = r.Var<string>("c");
-                r.When(v.Is(Ir.Cast.Of("DOUBLE", w)), w.Is(Ir.Literal.Of(c)));
-                r.Then(Denotes.Of(w, c, false));
-            });
-            Ir.Analyse.DefineRule("a literal a cast to a DECIMAL converts denotes the number it spells", r =>
-            {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var (pr, sc, c) = r.Vars<long, long, string>("pr", "sc", "c");
-                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), w.Is(Ir.Literal.Of(c)));
-                r.Then(Denotes.Of(w, c, false));
-            });
-            Ir.Analyse.DefineRule("a cast to DOUBLE denotes what it converts denotes", r =>
-            {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var (c, m) = r.Vars<string, bool>("c", "m");
-                r.When(v.Is(Ir.Cast.Of("DOUBLE", w)), Denotes.Of(w, c, m));
-                r.Then(Denotes.Of(v, c, m));
-            });
-            Ir.Analyse.DefineRule("a cast to a DECIMAL that holds the number's digits denotes what it converts denotes", r =>
-            {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var (pr, sc) = r.Vars<long, long>("pr", "sc");
-                var (c, m) = r.Vars<string, bool>("c", "m");
-                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
-                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
-                r.Where(RenderingPrimitives.PlacesWithin.Of(c, sc));
-                r.Then(Denotes.Of(v, c, m));
-            });
-            Ir.Analyse.DefineRule("a cast to a DECIMAL that drops the number's places denotes it moved", r =>
-            {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var (pr, sc) = r.Vars<long, long>("pr", "sc");
-                var (c, m) = r.Vars<string, bool>("c", "m");
-                r.When(v.Is(Ir.DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
-                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
-                r.Where(RenderingPrimitives.PlacesBeyond.Of(c, sc));
-                r.Then(Denotes.Of(v, c, true));
-            });
-            Ir.Analyse.DefineRule("a comparison with what a cast denotes is an atom of what it reads where its reading takes it", r =>
-            {
-                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
-                var (op, c, k, o) = r.Vars<string, string, string, string>("op", "c", "k", "o");
-                var (m, p, row) = r.Vars<bool, JPath, string>("m", "p", "row");
-                r.When(e.Is(Ir.Compare.Of(op, v, w)), Denotes.Of(w, c, m), Ir.Reads.Of(v, p, k), o.Is(Compute.Of(k, PredicateAtom.Outermost)), TakesConstant.Of(o, m, row));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
-            });
-        }
-
-        void DefineNullComparison()
-        {
-            // A comparison with SQL's null by an operator Calcite answers null for over a null operand is UNKNOWN wherever its
-            // reading is read, by the operator's row (strictop), not by the loader's refusal of the null literal (G8).
-            Ir.Analyse.DefineRule("a comparison with SQL's null, by an operator null over a null operand, is an atom of what it reads", r =>
-            {
-                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
-                var (op, t, k) = r.Vars<string, string, string>("op", "t", "k");
-                var p = r.Var<JPath>("p");
-                r.When(e.Is(Ir.Compare.Of(op, v, w)), w.Is(Ir.Null.Of(t)), StrictOp.Of(op).Is(true), Ir.Reads.Of(v, p, k));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, PredicateAtom.CompareNull)));
-            });
-        }
-
-        // S's alone, in the vocabulary's ruleset (G8): a value cast to VARIANT, which the loader reads as the box it is where
-        // it reads places. A VARIANT equals a value only in its own box (Calcite.VariantEqualsOnlyItsOwnBox): within one, the
-        // comparisons its row says see through it read the values inside, and its null test is what it holds; boxes apart
-        // no rule reads, and the comparison is no atom. A text's box is the row's of its reading, a literal's of its SQL
-        // type, and a raw value's of the kind it holds, so a raw value compared with a literal boxed as values of the
-        // literal's own kind are reads as the raw value against the literal, every other kind in another box.
+        // S's alone: a box of a type null where what it holds is (boxnull) is strict where what it holds is; the box rules
+        // that make a comparison of one an atom are the shared vocabulary's (G8), both graphs'.
         void DefineBoxes(Ruleset strict)
         {
-            Ir.Analyse.DefineRule("a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading", r =>
-            {
-                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
-                var (u, l) = r.Vars<Val, Val>("u", "l");
-                var (op, t, lt, c) = r.Vars<string, string, string, string>("op", "t", "lt", "c");
-                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
-                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.Box.Of(t, u)), Ir.Reads.Of(u, p, k), BoxOf.Of(k, b),
-                    w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)), BoxOf.Of(lt, b));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
-            });
-
-            Ir.Analyse.DefineRule("a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
-            {
-                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
-                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
-                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
-                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.Raw.Of(p)), Ir.Reads.Of(v, p, k), w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)),
-                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), BoxOf.Of(kc, b), BoxOf.Of(lt, b));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
-            });
-            Ir.Analyse.DefineRule("a comparison that sees through a box, of a raw value in a column and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
-            {
-                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
-                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
-                var (k, b, col) = r.Vars<string, string, string>("k", "b", "col");
-                var p = r.Var<JPath>("p");
-                r.When(e.Is(Ir.Compare.Of(op, v, w)), SeesThrough.Of(op), v.Is(Ir.RawIn.Of(p, col)), Ir.Reads.Of(v, p, k), w.Is(Ir.Box.Of(lt, l)), l.Is(Ir.Literal.Of(c)),
-                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), BoxOf.Of(kc, b), BoxOf.Of(lt, b));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
-            });
-
-            // A box's null test is what it holds where its type's row says (boxnull), each type measured apart.
-            Ir.Analyse.DefineRule("a null test of a box of a type null where what it holds is is an atom of the reading it holds", r =>
-            {
-                var (e, v, u) = r.Vars<Pred, Val, Val>("e", "v", "u");
-                var (t, k) = r.Vars<string, string>("t", "k");
-                var p = r.Var<JPath>("p");
-                r.When(e.Is(Ir.IsNull.Of(v)), v.Is(Ir.Box.Of(t, u)), BoxNull.Of(t), Ir.Reads.Of(u, p, k));
-                r.Then(Ir.Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
-            });
-
             // Null where what it holds is, by the same row, so a comparison of a box is strict where its reading is.
             strict.DefineRule("a box of a type null where what it holds is is strict in what it holds is strict in", r =>
             {
@@ -2133,7 +1990,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     pb.Is(PartingBands.Of(s)), lc.Is(Compute.Of(f, LiteralClasses)), oc.Is(Compute.Of(f, OrderedLiteralClasses)));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(lc, ub)));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(oc, pb)));
-                r.Then(BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)));
+                r.Then(BestExact.Of(e, pos).Is(Compute.Of(f, Priced.Of)), Lifted.Of(e, pos, f));
             });
 
             lift.DefineRule("an implied agreement that rests on something, may be sent and can be written as a Rex is implied", r =>
@@ -2198,7 +2055,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(l.Is(Compute.Of(bx, Priced.FormOf)), m.Is(Compute.Of(by, Priced.FormOf)), px.Is(Agrees.Of(x, pos, l, Verdict.Equal)), py.Is(Agrees.Of(y, pos, m, Verdict.Equal)),
                     h.Is(Compute.Of(j, l, m, ServiceForm.Paired)));
                 Composes(r, j, null);
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Lifted.Of(e, pos, h));
             });
 
             best.DefineRule("a negation's best is its operand's best at the opposite position, negated", r =>
@@ -2210,7 +2068,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(RenderingPrimitives.PricedIsReal.Of(bq));
                 r.When(g.Is(Compute.Of(bq, Priced.FormOf)), pa.Is(Agrees.Of(a, q, g, Verdict.Equal)), h.Is(Compute.Of(g, ServiceForm.Strip)));
                 Composes(r, CosmosServiceTest.Not, null);
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(pa), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Lifted.Of(e, pos, h));
             });
 
             weaken.DefineRule("a leaf whose exact form can be written as a Rex weakens to it", r =>
@@ -2929,7 +2788,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(cf.Is(Compute.Of(bc, Priced.FormOf)), af.Is(Compute.Of(ba, Priced.FormOf)), pc.Is(Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)),
                     pa.Is(Agrees.Of(a, pos, af, Verdict.Equal)), nc.Is(Compute.Of(ng, cf, ServiceForm.Signed)), h.Is(Compute.Of(j, nc, af, ServiceForm.Paired)));
                 ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or, CosmosServiceTest.Not));
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(pc, pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(pc, pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Lifted.Of(e, pos, h));
             });
 
             // Where a two-valued condition is not TRUE it is FALSE, which one form exact at both positions says alike.
@@ -2950,39 +2810,44 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     pn.Is(Agrees.Of(c, RenderPosition.Neg, cf, Verdict.Equal)), pa.Is(Agrees.Of(a, pos, af, Verdict.Equal)), nc.Is(Compute.Of(ng, cf, ServiceForm.Signed)),
                     h.Is(Compute.Of(j, nc, af, ServiceForm.Paired)));
                 ComposesAll(r, ValueSet.Of(CosmosServiceTest.And, CosmosServiceTest.Or, CosmosServiceTest.Not));
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, pn, Proof.Join), pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, pn, Proof.Join), pa, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Lifted.Of(e, pos, h));
             });
 
             // A junction holding a constant its connective's rows make Kleene's, under a set whose rows measured the constant its
             // own truth, is what Kleene's logic folds it to: the junction without its identity, or its absorbing element (G4).
-            // Both agree, and the best keeps the cheaper, the fold having fewer nodes.
+            // Both agree, and the best keeps the cheaper, the fold having fewer nodes. Only an agreement a best may rest on is
+            // folded (lifted): no vacuous one, as the lift asks (Vacuity is a table).
             best.DefineRule("a junction holding its connective's unit agrees as Kleene's logic folds it", r =>
             {
                 var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
                 var (j, kc, u, pf) = r.Vars<CosmosServiceTest, bool, bool, Proof>("j", "kc", "u", "pf");
                 var (sk, lk) = r.Vars<RenderingSet, ValueSet<CosmosServiceTest>>("sk", "lk");
-                r.When(At.Of(e, pos), pf.Is(Agrees.Of(e, pos, f, Verdict.Equal)), Units.Of(j, kc, u), Under.Of(sk), lk.Is(Licensed.Of(sk)));
+                r.When(At.Of(e, pos), pf.Is(Agrees.Of(e, pos, f, Verdict.Equal)), Lifted.Of(e, pos, f), Units.Of(j, kc, u), Under.Of(sk), lk.Is(Licensed.Of(sk)));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormHolds.Of(f, Compute.Of(kc, ServiceForm.ConstantOf)));
                 r.Where(Primitives.Contains<CosmosServiceTest>().Of(lk, CosmosServiceTest.Constant));
                 r.When(g.Is(Compute.Of(f, kc, u, ServiceForm.Unit)));
                 Composes(r, j, null);
-                r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)),
+                    Lifted.Of(e, pos, g));
             });
 
             // A junction holding a junction of its own connective, or a part twice, under a set whose rows license the connective,
             // is what its associativity and idempotence regroup it to: flattened, one of each part kept (G4). The junction and
             // else rules join as the arms stand, and this regroups. Both agree, and the price keeps the regrouped: fewer nodes
-            // where a copy goes, and where only a junction is flattened, as many nodes in fewer groups (Priced).
+            // where a copy goes, and where only a junction is flattened, as many nodes in fewer groups (Priced). Only an agreement
+            // a best may rest on is regrouped (lifted), as the fold's.
             best.DefineRule("a junction holding its own connective or a part twice agrees as its connective's laws regroup it", r =>
             {
                 var (e, pos, f, g) = r.Vars<Pred, RenderPosition, ServiceForm, ServiceForm>("e", "pos", "f", "g");
                 var (j, pf) = r.Vars<CosmosServiceTest, Proof>("j", "pf");
-                r.When(At.Of(e, pos), pf.Is(Agrees.Of(e, pos, f, Verdict.Equal)));
+                r.When(At.Of(e, pos), pf.Is(Agrees.Of(e, pos, f, Verdict.Equal)), Lifted.Of(e, pos, f));
                 r.Where(RenderingPrimitives.FormIsGrouped.Of(f));
                 r.When(j.Is(Compute.Of(f, x => x.Test)), g.Is(Compute.Of(f, ServiceForm.Regrouped)));
                 Composes(r, j, null);
-                r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, g, Verdict.Equal).Is(pf), BestExact.Of(e, pos).Is(Compute.Of(g, Priced.Of)),
+                    Lifted.Of(e, pos, g));
             });
 
             // One template, written twice: the narrow else joined with the condition's two-valuedness, the wide else alone,
@@ -3002,7 +2867,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(At.Of(e, pos), e.Is(Ir.Truth.Of(kv)), Under.Of(sk), lk.Is(Licensed.Of(sk)), tc.Is(Compute.Of(kv, CosmosValueClasses.OfTruth)), Constants.Of(tc, b),
                     ev.Is(MeasuredCites.Of(CosmosServiceTest.Constant, tc, sk)), h.Is(Compute.Of(b, ServiceForm.ConstantOf)));
                 r.Where(Primitives.Contains<CosmosServiceTest>().Of(lk, CosmosServiceTest.Constant));
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(ev, Proof.Rests)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(ev, Proof.Rests)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)), Lifted.Of(e, pos, h),
                     Implied.Of(e, pos).Is(Primitives.Singleton<ServiceForm>().Of(h)));
             });
 
@@ -3073,7 +2938,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     pc.Is(Agrees.Of(c, RenderPosition.Pos, cf, Verdict.Equal)), px.Is(Agrees.Of(a, pos, af, Verdict.Equal)), py.Is(Agrees.Of(b, pos, bf, Verdict.Equal)),
                     h.Is(Compute.Of(cf, af, bf, ServiceForm.ChosenOf)));
                 Composes(r, CosmosServiceTest.Choose, null);
-                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, px, Proof.Join), py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
+                r.Then(Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(Compute.Of(pc, px, Proof.Join), py, Proof.Join)), BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)),
+                    Lifted.Of(e, pos, h));
             });
         }
 
@@ -3227,24 +3093,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (test, swapped, reads) in definition.PairReadings)
                     w.Assume(PairReads.Of(test, swapped, reads));
 
-                foreach (var (kind, box) in definition.Boxes)
-                    w.Assume(BoxOf.Of(kind, box));
-
-                foreach (var op in definition.SeesThrough)
-                    w.Assume(SeesThrough.Of(op));
-
-                foreach (var type in definition.NullThrough)
-                    w.Assume(BoxNull.Of(type));
-                foreach (var function in definition.StructureOnly)
-                    w.Assume(StructureOnly.Of(function));
-
                 w.Assume([.. Calcite.Facts(definition.Calcite(), definition.ReadTruths, definition.ReadCompares)]);
 
                 foreach (var (target, reader, row) in definition.Casts)
                     w.Assume(MeasuredCast.Of(target, reader, row));
-
-                foreach (var (reader, moved, row) in definition.Comparands)
-                    w.Assume(TakesConstant.Of(reader, moved, row));
 
                 // Every reading of a kind holds what its rows say of its order, and nothing where none says (G3).
                 foreach (var (reader, kind) in definition.ReaderKinds)

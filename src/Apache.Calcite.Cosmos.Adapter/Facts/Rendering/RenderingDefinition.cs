@@ -176,9 +176,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The SQL types whose box is null where what it holds is (<c>CosmosAxiomRows.ReadNullThrough</c>, F3), which S's box rules read (G8).</summary>
         public IReadOnlyList<string> NullThrough { get; init; } = [];
 
-        /// <summary>The functions that answer a structure alone (<c>CosmosAxiomRows.ReadStructureOnly</c>, F3); no rule reads it until h15.</summary>
-        public IReadOnlyList<string> StructureOnly { get; init; } = [];
-
         /// <summary>What a reading answers over each kind of stored value in process (<c>CosmosAxiomRows.ReadCalciteReadings</c>, F3): S's readings (G7).</summary>
         public IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> CalciteReadings { get; init; } = [];
 
@@ -207,7 +204,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(CosmosServiceTest Test, string Read)> ReadCompares { get; init; } = KleeneTables.Compares;
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
-        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings);
+        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
+            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators);
 
         /// <summary>
         /// The readings the facts graph reads as Calcite does beside a literal of a class (<c>CosmosAxiomRows.ReadExactReadings</c>):

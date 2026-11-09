@@ -68,6 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a cast to a DECIMAL that drops the number's places denotes it moved",
                     "a comparison with what a cast denotes is an atom of what it reads where its reading takes it",
                     "a returning reads its path as its type",
+                    "a JSON_QUERY reads its path as its own reading",
                     "a cast reads what it converts",
                     "a comparison with a literal is an atom of what it reads",
                     "a comparison with a parameter is an atom of what it reads",
@@ -77,6 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a test reads a raw value's path as its row says the body reads it",
                     "a test reads the path of a raw value in a column as its column's row says the body reads it",
                     "a test reads a returning's path as its row says the body reads it",
+                    "a test reads a JSON_QUERY's path as its row says the body reads it",
                     "a definedness test is an atom of the reading it is asked over, read as its body reads it",
                     "a type test is an atom of the reading it is asked over, read as its body reads it, TRUE of the kinds its row says",
                     "an affix test with a literal pattern is an atom of what it reads",
@@ -371,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(189);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(191);
         }
 
         /// <summary>
@@ -480,7 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var (d, s) = (Measured, ProbeTheory);
             new[] { d.Parts.Count, d.Moves.Count, d.StoredAs.Count, d.Truncations.Count, d.Rewrites.Count, d.Unsent.Count, d.PairReadings.Count, d.Boxes.Count,
-                d.SeesThrough.Count, d.NullThrough.Count, d.StructureOnly.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count,
+                d.SeesThrough.Count, d.NullThrough.Count, d.CalciteReadings.Count, d.CalciteBands.Count, d.Casts.Count, d.ReaderOrders.Count, d.TestKinds.Count, d.Comparands.Count,
                 d.TestReads.Count }
                 .Should().OnlyContain(n => n > 0);
 
@@ -495,7 +497,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.Boxes.Should().OnlyContain(r => s.Theory.Check(s.BoxOf.Of(r.Kind, r.Box)));
             d.SeesThrough.Should().OnlyContain(r => s.Theory.Check(s.SeesThrough.Of(r)));
             d.NullThrough.Should().OnlyContain(r => s.Theory.Check(s.BoxNull.Of(r)));
-            d.StructureOnly.Should().OnlyContain(r => s.Theory.Check(s.StructureOnly.Of(r)));
             d.CalciteReadings.Should().OnlyContain(r => s.Theory.Check(s.CalciteReads.Of(r.Reader, r.Kind, r.Answer)));
             d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
             d.Comparands.Should().OnlyContain(r => s.Theory.Check(s.TakesConstant.Of(r.Reading, r.Moved, r.Row)));
@@ -615,6 +616,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
                 // The text's parse as a boolean, which S's reading builds (h14's triage).
                 .Append(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader))
+                // A JSON_QUERY with no clause, which a loading reading places builds (G8).
+                .Append(PredicateAtom.QueryReader)
                 .ToList();
 
             // Each raw reading again through each declared column (rawtyped).

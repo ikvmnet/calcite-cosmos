@@ -44,6 +44,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             LikeUnits = graph.DefineRelation<LikeUnit, string>("likeunits");
             ReaderRows = graph.DefineFunction<ReadingTable>("readerrows", ReadingTable.Union);
             ReadsExactly = graph.DefineFunction<string, CosmosValueClass, bool>("readsexactly", ValueLattice.Max<bool>(), analysis);
+            // Read beside the terms by the predicate vocabulary's G8 rules, which may read only terms and analyses.
+            BoxOf = graph.DefineRelation<string, string>("boxof", analysis);
+            SeesThrough = graph.DefineRelation<string>("seesthrough", analysis);
+            BoxNull = graph.DefineRelation<string>("boxnull", analysis);
+            TakesConstant = graph.DefineRelation<string, bool, string>("takesconstant", analysis);
+            StrictOp = graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>(), options: analysis);
         }
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
@@ -94,6 +100,25 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public Function<string, CosmosValueClass, bool> ReadsExactly { get; }
 
+        /// <summary>The box each reading, kind of stored value or value cast is held in, cast to <c>VARIANT</c> (G8).</summary>
+        public Relation<string, string> BoxOf { get; }
+
+        /// <summary>The comparisons and tests that read the values inside one box (G8).</summary>
+        public Relation<string> SeesThrough { get; }
+
+        /// <summary>The SQL types whose box is null where what it holds is (G8).</summary>
+        public Relation<string> BoxNull { get; }
+
+        /// <summary>
+        /// The readers that compare with what a number Calcite wrote cast denotes (G8), citing the row: with the number itself
+        /// (<c>false</c>), and with one a cast that drops scale moved by less than one (<c>true</c>), which only a reader whose
+        /// reading rescales the literal reads (<c>PredicateAtom</c>'s decimal parse). A reader no row names takes neither.
+        /// </summary>
+        public Relation<string, bool, string> TakesConstant { get; }
+
+        /// <summary>Whether Calcite answers null for an operator, by its name in the IR, over a null operand (<c>strictop</c>).</summary>
+        public Function<string, bool> StrictOp { get; }
+
         /// <summary>The facts a root holds: the rows, the truth table and the comparisons the cell decides, and the table empty.</summary>
         public IEnumerable<Fact> Facts(CalciteRows rows, IEnumerable<(CosmosServiceTest Test, string Read, Truths Truths)> truths, IEnumerable<(CosmosServiceTest Test, string Read)> compares)
         {
@@ -123,6 +148,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var (reader, beside) in rows.Exact)
                 yield return ReadsExactly.Of(reader, beside).Is(true);
+
+            foreach (var (kind, box) in rows.Boxes)
+                yield return BoxOf.Of(kind, box);
+
+            foreach (var op in rows.SeesThrough)
+                yield return SeesThrough.Of(op);
+
+            foreach (var type in rows.NullThrough)
+                yield return BoxNull.Of(type);
+
+            foreach (var (reading, moved, row) in rows.Comparands)
+                yield return TakesConstant.Of(reading, moved, row);
+
+            foreach (var (name, strict) in rows.StrictOperators)
+                yield return StrictOp.Of(name).Is(strict);
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

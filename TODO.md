@@ -2955,8 +2955,8 @@ across documents* and *A join of a container to itself* is the record.
   kind it holds (*Boxes, one-place tests and `LIKE`'s brackets are cells S's rules read (G8)*): a stored integer is boxed
   `BIGINT` and the literal `INTEGER`, so the equality is `FALSE` over a stored 30 (`Calcite.VariantEqualsOnlyItsOwnBox`).
   That is the box's miss below, a cell no rule reads, so S reads no atom of it and it stays Unproven rather than read
-  wrong. F reads the boxed literal as the literal until it reads places at h15 (*F reads G8's branches as the loader did
-  until h15*), so its atom is TRUE or FALSE over a cell holding 30 where Calcite answers `FALSE`; F's statements are the
+  wrong. F reads the boxed literal as the literal until it reads places at h15 (*F reads the shared vocabulary's G8 rules
+  only where it reads places*), so its atom is TRUE or FALSE over a cell holding 30 where Calcite answers `FALSE`; F's statements are the
   digests', so that stays. Differential 237 and partitions 611 and 779, the `raw IN (n, 'n')` the text-equality
   alternatives write, stay in O2's residue on their merits: the production reading of them is F's, which strips the box,
   and the census, whose rows box a `CHAR` literal and a text alone, holds no number boxed. Under S each point is a
@@ -3124,32 +3124,13 @@ across documents* and *A join of a container to itself* is the record.
   `readerorder`, whose `reflexive` and typed `itself` rows g234 measured (DESIGN.md, *Answer roles, pairs and failure,
   S's (G2, G3, G4)*), and G7's `calcitereads`, `calcitebands` and `testkinds` (*Calcite's readings as rows (G7)*).
   G8 reads `boxof`, `seesthrough`, `boxnull` and `testreads` (*Boxes, one-place tests and `LIKE`'s brackets are cells
-  S's rules read (G8)*); `structureonly` waits on `Structure`'s move at h15 (below), which restates it as `calcitereads`,
+  S's rules read (G8)*); `structureonly` is the `query` reading's `calcitereads` since h15,
   and `measuredcast` on the cast targets' (below),
   and G6 the D class's `Defined`, which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
   `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
   `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
   the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
   first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
-- **`Structure` moves at h15, as a reading of its own** — *h15's; built by G8's fix, and no refactor.* `JSON_QUERY` of a
-  path under a null test is read as the type tests of the path by `CosmosPredicateLoader.Structure`, a branch standing
-  for `Calcite.JsonQueryAnswersStructureOnly`. Its form is chosen: `JSON_QUERY` with no clause is a reader of its own,
-  `query(path)` in the shared vocabulary beside the test-read rules, its test read as the raw value
-  (`testreads(query, raw)`), so F gains it when it reads places at h15; its template, the only one asked of it, writes
-  the structure test under the null test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))` for `IS NULL`; and the gate proves that
-  form from the row as it proves any form, from the reading's rows, the row's `structureonly` stated as the `query`
-  reading's `calcitereads` (an object and an array rendered, every other class null). Not an alias the atom rules read
-  through, and never a rewrite, which S's tripwire refuses; F's half stays behind places until h15. Built so it is no
-  refactor. No digest line moves, the digests reading no places. The census moves four rows of `coverage-FG.tsv`,
-  lines 62 and 222 (`IS NOT NULL(JSON_QUERY(label))`, differential/249, Emulator and Production) and 102 and 274
-  (`IS NULL`, differential/248): `pos`, `neg` and `portable pos` each Unproven to Proven, the reason from "S's own
-  form; the text Unproven" to "the text and S's own form" and the `ir` with them, every best form unchanged. The
-  patch is that form and applies on G8's second fix (`.claude/handoff/reports/stage3-3A/g8fix1/structure-h15.diff`);
-  its arm in `RenderingFamily.Owns`, which keeps the null test the translator's as the type tests were, goes with
-  `Owns` at h15 (G10). h15's task carries the same instruction. Since the raises step a test's atom is of the reading
-  it is asked over, read as its row says, so a test of `query(path)` reads the `query` reading's null and then the raw
-  value's kind; the step renamed the atom rules and re-keyed `testreads`' rows, which the patch's vocabulary, axiom and
-  row-test hunks sit beside, so those apply by hand.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
@@ -3191,16 +3172,13 @@ across documents* and *A join of a container to itself* is the record.
   a box by `Unboxed`. The proper form is a rule of F's over a conjunct's atoms, a lattice of the inexact ones keyed by
   the `StatementTerms.Node` chain `StratumFor` walks, which `StratumFor` and the arm licence read. It reads F's terms as
   S does, so it moves with h15's switch, where G10 removes `Unboxed`.
-- **A comparison with SQL's null is read by S alone** — *h15's.* Where places are read the loader writes a null literal
-  as `null(type)` and S's rule reads a comparison with it by an operator its `strictop` row says is null over a null
-  operand as UNKNOWN wherever its reading is read (G8). F's root holds no `strictop`, so F reads it as the loader did,
-  opaque; at h15 F reads places, and the rule and the rows move to the shared vocabulary.
-- **F reads G8's branches as the loader did until h15** — *h15's.* F's statements are the digests', so a loading without
-  places still writes `Raw(path)` in a one-place test, refuses a bracket in `LIKE` and a subject that is no text, reads a
-  literal boxed for a `VARIANT` as the literal, leaves a null test of a `JSON_QUERY` and a comparison with SQL's null
-  opaque. At h15 F reads places, and the box rules and the null comparison's, S's alone since they read `boxof`,
-  `seesthrough`, `boxnull` and `strictop`, which only S's root holds, move to the shared vocabulary with those rows in
-  F's root; the `JSON_QUERY` reader moves into the shared vocabulary then (*`Structure` moves at h15*).
+- **F reads the shared vocabulary's G8 rules only where it reads places** — *h15's switch.* Since h15's first commit
+  the box rules, the null comparison's over `strictop`, a cast number's `denotes` and its atom, a column's reading and a
+  call's test are the shared vocabulary's (DESIGN.md, *The switch (h15)*), their rows (`boxof`, `seesthrough`,
+  `boxnull`, `takesconstant`, `strictop`) at both roots. F's statements still load without places, so they hold none of
+  those terms: a one-place test over `Raw(path)`, a bracket in `LIKE` and a subject that is no text refused, a literal
+  boxed for a `VARIANT` read as the literal, and a comparison with SQL's null opaque. The switch loads one reading for
+  both graphs.
 - **`Portable` reads `_` by no row** — *small, S's.* Each target's `_` is measured over every class
   (`Service.LikeOneOverEachClass`; the emulator at rows2, Azure at run 2): one code point of each as written, line
   terminators and the trimmed class among them, where Calcite's `_` matches no line terminator, so a pattern holding
@@ -3213,11 +3191,6 @@ across documents* and *A join of a container to itself* is the record.
   code points each, as the affixes' `storedcodepoint` matcher reads them. Stating the `LIKE` outcome with that matcher,
   and `_` over the two escapes as the stored spelling, settles the cell; it moves the emulator's census rows of a
   `LIKE`, so it is a step of its own.
-- **A `LIKE` is proposed as the narrowest test only** — *small, with h15's templates.* `AffixPattern.Written` chooses,
-  in C#, the one test a pattern is written as: an equality, `STARTSWITH`, `ENDSWITH`, `CONTAINS` or `LIKE`.
-  The proper form is a template per test, each proposing the pattern as that test where it says it, and a weight per
-  test in `Priced`, so S's best chooses among the forms the gate holds. It lands with h15, when the templates production
-  asks change and a plan may; before it every move is a refactor and the plans would move with the choice.
 - **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
   reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
   text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the

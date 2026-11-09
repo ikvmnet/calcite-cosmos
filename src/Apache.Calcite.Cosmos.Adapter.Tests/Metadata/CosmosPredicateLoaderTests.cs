@@ -153,13 +153,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Cmp(Typed(N, "DOUBLE"), "=", Cast("DOUBLE", new SqlValue.DecimalCast(19, 0, Lit(2.5m)))), "the truncation is S's to read");
         }
 
+        /// <summary>
+        /// A <c>JSON_QUERY</c> with no clause is its own reading of the path where S reads (G8), tested for null as written:
+        /// what it answers of each class is its row's (<c>Calcite.JsonQueryAnswersStructureOnly</c>), the structure test its
+        /// template's. F's terms stay as they were until h15.
+        /// </summary>
         [Fact]
-        public void ANullTestOfJsonQueryAsksWhetherThePathHoldsAStructureWhereSReads()
+        public void AJsonQueryIsItsOwnReadingWhereSReads()
         {
             var query = _rex.makeCall(Sql(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_QUERY, Nodes(Doc, Str("$.label")));
-            var structure = SqlPredicate.AnyOf([new SqlPredicate.TypeTest("IS_OBJECT", new SqlValue.Raw(Label)), new SqlPredicate.TypeTest("IS_ARRAY", new SqlValue.Raw(Label))]);
-            LoadPlaces(Call(SqlStdOperatorTable.IS_NOT_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(structure);
-            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(structure));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NOT_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.Not(new SqlPredicate.IsNull(new SqlValue.Query(Label))));
+            LoadPlaces(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.IsNull(new SqlValue.Query(Label)));
             Load(Call(SqlStdOperatorTable.IS_NULL, query)).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.Opaque>("F's terms stay as they were until h15");
         }
 

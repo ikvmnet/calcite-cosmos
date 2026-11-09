@@ -9291,7 +9291,7 @@ what the box holds, whose spelling, imported characters (`RenderingImporter` key
 (`AccessorsOf` keeps a spelling's first node) it shares. The D class's image is every kind of its type and absent,
 what the service answers whatever its operands are, so the two calls being one in the service is all it says.
 
-`Structure`, `JSON_QUERY` under a null test read as a structure test, stays C#'s until h15, and moves then without a
+`Structure`, `JSON_QUERY` under a null test read as a structure test, stayed C#'s until h15, and moved then without a
 merge, which S's tripwire forbids and the plan's rewrite would have been: the `JSON_QUERY` a reader of its own,
 `query(path)` in the shared vocabulary so that F gains it when it reads places, whose answers are the row's, its
 `structureonly` stated as the reading's `calcitereads` (an object and an array rendered, every other class null) and
@@ -9301,6 +9301,38 @@ refactor: it proves the translator's text for the four census rows of `IS [NOT] 
 (`coverage-FG.tsv` lines 62, 102, 222 and 274), each of whose positive and negative checks the type tests left
 Unproven, its best form unchanged and the digests, which read no places, byte-equal. So it waits for h15, whose census
 may move (`TODO.md`).
+
+### The switch (h15)
+
+**Before the switch: what moved without moving a plan.** Four things land first, each reading only the places a loading
+writes where it reads them, so the digests, which read none, are byte-equal.
+- **`JSON_QUERY` is a reading of its own.** `CosmosPredicateLoader.Structure`, which read `JSON_QUERY` of a path under a
+  null test as the path's type tests, is gone. A `JSON_QUERY` with no clause is `query(path)` in the shared
+  vocabulary, read as its own reading (*a JSON_QUERY reads its path as its own reading*), whose answers are its rows':
+  `Calcite.JsonQueryAnswersStructureOnly` states them as the reading's `calcitereads`, an object and an array rendered
+  and every other class null, where `structureonly` stood. `PredicateAtom` reads the reading by its rows alone
+  (`Reading.Answered`), and a test of it as the raw value (`testreads(query, raw)`). Its one template,
+  `StructureTest`, writes the structure test under the null test, `NOT (IS_ARRAY(p) OR IS_OBJECT(p))` for `IS NULL`,
+  and the gate proves it from the rows as it proves any form; the census's four rows of
+  `IS [NOT] NULL(JSON_QUERY(label))` move from Unproven to Proven (`coverage-FG.tsv` lines 62, 102, 222 and 274).
+- **A `LIKE` is proposed as every test that says it, and the price chooses.** `AffixPattern.Written` chose in C# the
+  one test a pattern is written as. Now each test is a template of its own (`AffixStartsWith` to `AffixLike`, and
+  `AffixRendered`'s five beside them), each proposing the pattern as its test where the pattern says it
+  (`AffixPattern.Says`): an equality where every unit is literal, `STARTSWITH` where a run ends it, and so on, `LIKE`
+  for any. The gate proves each as any form, and `Priced` keeps the cheapest that agrees: fewer nodes, then a weight a
+  test (`STARTSWITH` 1, `ENDSWITH` 2, `CONTAINS` 3, `LIKE` 4, an equality none), then fewer groups. The weights are
+  the narrowest-first order `Written` held, now a value the best reads.
+- **No best rests on a vacuous agreement.** The lift asks `vacuous` false of every exact agreement it lifts (*Vacuity
+  is a table*), but the units and regroup rules read any exact agreement, so a vacuous one, folded or regrouped, became
+  a best the lift never lifted. They now read `lifted`, a relation of the exact agreements a best may rest on: each the
+  lift lifts, and each the best rules compose, fold or regroup of those. A relation, so the best stratum reads what it
+  grows (`RenderingOrderTests`, which refused `vacuous` read there).
+- **The G8 rules are the shared vocabulary's.** A raw value in a column read through its column, a test of a call's
+  place, what a cast number denotes and the atom of a comparison with it, a comparison with SQL's null by a `strictop`
+  operator, and the box rules were S's alone, reading rows only S's root held. They are `PredicateVocabulary`'s now,
+  both graphs', over `boxof`, `seesthrough`, `boxnull`, `takesconstant` and `strictop`, which the readings vocabulary
+  defines and `CalciteRows` carries to either root (F's from `CosmosReasoning.Rows`). F's statements hold none of those
+  terms until the switch, so F's verdicts are what they were; F has 66 rules, S 191.
 
 ### The foundation's rows: refinements and operand keys (F1, F2)
 

@@ -204,6 +204,31 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             };
         }
 
+        /// <summary>
+        /// The argument a test says a pattern as read with, where it says it (B1): <c>LIKE</c> the pattern as written, whatever
+        /// it holds; and where each run is of literal units, the equality its text where it is one run, <c>STARTSWITH</c> its
+        /// run where <c>%</c> alone follows it, <c>ENDSWITH</c> where <c>%</c> alone precedes it and <c>CONTAINS</c> where it
+        /// lies between two; none where the test says it not. Which of those the gate holds is sent is S's best's.
+        /// </summary>
+        public static string? Says(CosmosServiceTest test, LikePattern pattern)
+        {
+            if (test == CosmosServiceTest.Like)
+                return pattern.Written;
+
+            var runs = Runs(pattern.Spelled).Select(Unescaped).ToArray();
+            if (runs.Any(r => r is null))
+                return null;
+
+            return (test, runs) switch
+            {
+                (CosmosServiceTest.Equal, [var text]) => text,
+                (CosmosServiceTest.StartsWith, [var start, ""]) => start,
+                (CosmosServiceTest.EndsWith, ["", var end]) => end,
+                (CosmosServiceTest.Contains, ["", var run, ""]) => run,
+                _ => null,
+            };
+        }
+
         /// <summary>The text a pattern of literal units alone equals (<see cref="Written"/>'s <c>null</c>).</summary>
         public static string Equality(LikePattern pattern) => Unescaped(pattern.Spelled) ?? pattern.Written;
 

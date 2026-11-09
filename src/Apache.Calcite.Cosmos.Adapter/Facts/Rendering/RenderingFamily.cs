@@ -25,6 +25,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             SqlPredicate.TypeTest or SqlPredicate.Case or SqlPredicate.Affix or SqlPredicate.Constant => false,
             SqlPredicate.Compare c => Unboxed(c.Right) is SqlValue.Literal && HasEdges(Unboxed(c.Left)),
             SqlPredicate.In i => HasEdges(i.Value),
+            // A JSON_QUERY's null test, read until G8 as the type tests it is written as, stays the translator's with them.
+            SqlPredicate.IsNull { Value: SqlValue.Query } => false,
             SqlPredicate.IsNull n => HasEdges(Unboxed(n.Value)),
             SqlPredicate.IsDefined d => HasEdges(d.Value),
             _ => true,
@@ -75,6 +77,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             SqlValue.Raw { Column: { } column } => PredicateAtom.RawIn(column),
             SqlValue.Raw => PredicateAtom.RawReader,
             SqlValue.Typed t => PredicateAtom.TypedReader(t.Type),
+            SqlValue.Query => PredicateAtom.QueryReader,
             SqlValue.Cast c => ReaderOf(c.Value) is { } inner ? PredicateAtom.CastReader(c.Target, inner) : null,
             _ => null,
         };
