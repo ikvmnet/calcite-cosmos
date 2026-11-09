@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -125,8 +127,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 return answers;
             });
 
-        /// <summary>Writes the witnesses, asks, logs every answer and deletes the witnesses.</summary>
-        static async Task<string[][]> Over(Container? container, string? unavailable, string row, IReadOnlyList<string?> witnesses, string[] expressions, bool members, Func<string, string[], Task<string[][]>> ask)
+        /// <summary>
+        /// What each expression projects over a witness, each pair asked alone in a statement of its own in the order
+        /// <paramref name="statements"/> gives, spelled as <see cref="Project"/> spells it, and logged once: a pair asked
+        /// again is answered by a try the service answered, if any. Where the service leaves a statement unanswered (503 or
+        /// 408) it is asked again after a pause that doubles from <paramref name="pause"/>, at most <paramref name="tries"/>
+        /// times in all, so that a statement that fails every time is told from a busy service. Every try is appended to
+        /// <c>TestResults/measurements/tries.tsv</c>: when it ended, the release, the row, the statement's place, the
+        /// expression, the witness, the try, its status and sub-status, its charge, its milliseconds, and its answer or
+        /// the first line of why there is none. A pair no statement asks is <c>null</c>.
+        /// </summary>
+        public static Task<string[][]> ProjectAlone(Container? container, string? unavailable, string row, IReadOnlyList<string?> witnesses, string[] expressions,
+            IReadOnlyList<(int Expression, int Witness)> statements, int tries, TimeSpan pause) =>
+            Over(container, unavailable, row, witnesses, expressions, false, async (pk, ids) =>
+            {
+                var answers = expressions.Select(_ => new string[ids.Length]).ToArray();
+                for (var s = 0; s < statements.Count; s++)
+                {
+                    var (e, i) = statements[s];
+                    var (place, witness) = (s + 1, witnesses[i] is { Length: > 0 } w ? w : "absent");
+                    var (rows, failed) = await Rows(container!, pk, $"SELECT c.id, ({expressions[e]}) AS r FROM c WHERE c.id = \"{ids[i]}\"", tries, pause,
+                        (attempt, charge, took, error, answered) => Tried(row, place, expressions[e], witness, attempt, charge, took, error, answered is null ? null : Value(answered.GetValueOrDefault(ids[i]))));
+                    var answer = rows is null ? failed : Value(rows.GetValueOrDefault(ids[i]));
+                    if (answers[e][i] is null or Unanswered)
+                        answers[e][i] = answer;
+                }
+
+                return answers;
+            }, [.. statements.Distinct()]);
+
+        /// <summary>A row's projection <c>r</c> as <see cref="Project"/> spells it: its JSON, or <c>undefined</c> where the object constructor omits it.</summary>
+        static string Value(JObject? row) => row is not null && row.TryGetValue("r", out var r) ? r.ToString(Formatting.None) : "undefined";
+
+        /// <summary>Appends one try of a statement <see cref="ProjectAlone"/> asked to <c>TestResults/measurements/tries.tsv</c>.</summary>
+        static void Tried(string row, int place, string expression, string witness, int attempt, double charge, TimeSpan took, CosmosException? error, string? answer)
+        {
+            var status = error is null ? "200" : $"{(int)error.StatusCode}/{error.SubStatusCode}";
+            var why = error?.Message.Split('\n')[0].Replace('\t', ' ').Replace("\r", "") ?? "";
+            var outcome = answer ?? why[..Math.Min(why.Length, 240)];
+            lock (Log)
+            {
+                var path = Path.GetFullPath(Path.Combine("TestResults", "measurements", "tries.tsv"));
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.AppendAllLines(path, [string.Join('\t', DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture), Release, row,
+                    place.ToString(CultureInfo.InvariantCulture), expression, witness, attempt.ToString(CultureInfo.InvariantCulture), status,
+                    charge.ToString("F2", CultureInfo.InvariantCulture), ((long)took.TotalMilliseconds).ToString(CultureInfo.InvariantCulture), outcome)]);
+            }
+        }
+
+        /// <summary>
+        /// Writes the witnesses, asks, logs every answer and deletes the witnesses: each expression's over each witness, or
+        /// only the pairs <paramref name="pairs"/> names.
+        /// </summary>
+        static async Task<string[][]> Over(Container? container, string? unavailable, string row, IReadOnlyList<string?> witnesses, string[] expressions, bool members,
+            Func<string, string[], Task<string[][]>> ask, IReadOnlyList<(int Expression, int Witness)>? pairs = null)
         {
             if (container is null)
                 Assert.Skip("These need a service. " + unavailable);
@@ -143,9 +197,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             try
             {
                 var answers = await ask(pk, ids);
-                var lines = (from e in Enumerable.Range(0, expressions.Length)
-                             from i in Enumerable.Range(0, witnesses.Count)
-                             select (Expression: expressions[e], Witness: witnesses[i] is { Length: > 0 } w ? w : "absent", Answer: answers[e][i])).ToList();
+                var lines = (from p in pairs ?? [.. from e in Enumerable.Range(0, expressions.Length) from i in Enumerable.Range(0, witnesses.Count) select (e, i)]
+                             select (Expression: expressions[p.Expression], Witness: witnesses[p.Witness] is { Length: > 0 } w ? w : "absent", Answer: answers[p.Expression][p.Witness])).ToList();
                 lock (Log)
                 {
                     var path = Path.GetFullPath(Path.Combine("TestResults", "measurements", "emulator-runs.tsv"));
@@ -212,33 +265,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Each row by its id; or, where the statement fails at the service, what each witness it asked answers: <c>!</c>
-        /// where the service refused it, <see cref="Unanswered"/> where it left it unanswered twice (503 or 408). The
-        /// caller narrows either, so one failing expression or witness fails alone. Probe run 2's projection of every
-        /// string function went unanswered once, after 43 s, and answered nothing; run 3's, and two spellings asked alone,
-        /// went unanswered twice, the account refusing none.
+        /// where the service refused it, <see cref="Unanswered"/> where it left it unanswered <paramref name="tries"/> times
+        /// (503 or 408), pausing between them where <paramref name="pause"/> is more than nothing, each pause twice the one
+        /// before. The caller narrows either, so one failing expression or witness fails alone. Probe run 2's projection of
+        /// every string function went unanswered once, after 43 s, and answered nothing; run 3's, and two spellings asked
+        /// alone, went unanswered twice, the account refusing none. <paramref name="tried"/> hears each try: its number, its
+        /// charge, how long it took, the failure and the rows.
         /// </summary>
-        static async Task<(Dictionary<string, JObject>? Rows, string Failed)> Rows(Container container, string pk, string sql)
+        static async Task<(Dictionary<string, JObject>? Rows, string Failed)> Rows(Container container, string pk, string sql, int tries = 2, TimeSpan pause = default,
+            Action<int, double, TimeSpan, CosmosException?, Dictionary<string, JObject>?>? tried = null)
         {
             for (var attempt = 1; ; attempt++)
             {
                 var rows = new Dictionary<string, JObject>(StringComparer.Ordinal);
+                var (started, charge) = (Stopwatch.GetTimestamp(), 0d);
                 try
                 {
                     using var iterator = container.GetItemQueryIterator<JObject>(new QueryDefinition(sql), requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(pk) });
                     while (iterator.HasMoreResults)
-                        foreach (var row in await iterator.ReadNextAsync())
+                    {
+                        var page = await iterator.ReadNextAsync();
+                        charge += page.RequestCharge;
+                        foreach (var row in page)
                             rows[(string)row["id"]!] = row;
+                    }
 
+                    tried?.Invoke(attempt, charge, Stopwatch.GetElapsedTime(started), null, rows);
                     return (rows, "");
                 }
                 catch (CosmosException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.InternalServerError)
                 {
+                    tried?.Invoke(attempt, charge + e.RequestCharge, Stopwatch.GetElapsedTime(started), e, null);
                     return (null, "!");
                 }
                 catch (CosmosException e) when (e.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.RequestTimeout)
                 {
-                    if (attempt == 2)
+                    tried?.Invoke(attempt, charge + e.RequestCharge, Stopwatch.GetElapsedTime(started), e, null);
+                    if (attempt >= tries)
                         return (null, Unanswered);
+
+                    if (pause > TimeSpan.Zero)
+                        await Task.Delay(pause * Math.Pow(2, attempt - 1));
                 }
             }
         }
