@@ -271,7 +271,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 CaseSensitive = true,
             }.ConnectionString);
 
+            // The schema the model's factory made reasons in a reasoning of its own: its S build is awaited before anything
+            // plans, since a first question that waited past its bound would decline the id filter, and the statement
+            // would then read the whole container and fail on a document the test does not select. Both containers
+            // share the schema's reasoning, so one wait covers them.
             await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await TestReasoning.Ready(connection, "COSMOS", "numbers");
 
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
