@@ -218,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// S writes a <c>LIKE</c> over a fold as the case-insensitive affix its rows say matches alike over the fold's subject
-        /// (G6's <c>foldedas</c>): the pattern's narrowest affix, of an argument the fold leaves as it is, where nothing the
+        /// (G6's <c>foldedas</c>): of each affix that says the pattern, the cheapest, of an argument the fold leaves as it is, where nothing the
         /// facts hold of the subject parts; and none for an argument the fold changes or beyond ASCII, a subject that may hold
         /// a character beyond it, a pattern no affix says, a call that folds nothing, or rows that say nothing of the match.
         /// </summary>
@@ -442,14 +442,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The census's string-function pushes under the emulator (h05, <c>coverage-J1-where.tsv</c>), each over a path
-        /// imported an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
+        /// The string functions' pushes under the emulator, the statements the h05 census pushed, each over a path imported
+        /// an ASCII string: proven as the place's comparison, a window starting before 1 among them, spelled as the
         /// service's window from 0 (differential 488); but none over a path that may hold a number, and no window of a
         /// negative length, which Calcite raises over: its place is written, and its length keyed below 0, where the
         /// emulator's rows part and Azure's are unmeasured.
         /// </summary>
         [Fact]
-        public void TheCensusStringPushesAreProvenOverAsciiStrings()
+        public void TheStringFunctionsAreProvenOverAsciiStrings()
         {
             static RexNode Path(string name) => JsonValue(name, SqlTypeName.VARCHAR);
             var proven = new (string Name, RexNode Rex)[]

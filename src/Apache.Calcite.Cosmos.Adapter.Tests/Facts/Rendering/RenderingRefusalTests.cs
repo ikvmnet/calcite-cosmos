@@ -18,7 +18,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// conjunct of every statement its filter reads declined or S's proven form, never one the translator pushed. A
     /// deletion commit runs it against the refusals its members held (h16, h22, h27, h37, h42); h16's held none. Not
     /// here: a parameter's (h19), a column's (h31), a rank's, a geography's and a vector's (h40), a literal's
-    /// representation and a field with no path, which no <c>WHERE</c> over these containers spells.
+    /// representation and a field with no path, which no <c>WHERE</c> over these containers spells; an operand count
+    /// Calcite's validator fixes before a filter holds the call (<c>:3542</c>, <c>:5187</c>, <c>:5886</c>, <c>:6305</c>),
+    /// a <c>TRIM</c> specification SQL spells only as a constant of three (<c>:6270</c>, <c>:6282</c>), a cast of a
+    /// literal, which Calcite folds as it builds it (<c>:3957</c>); and <c>:5492</c>, which G6 deleted for the function
+    /// rows <c>:931</c>'s statement reaches.
     /// </summary>
     public sealed class RenderingRefusalTests
     {
@@ -30,6 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [
             (":883 text rendering, equality", W("typed", "JSON_VALUE(c.\"DOC\", '$.price') = '30'")),
             (":4026 text rendering, ordering", W("typed", "JSON_VALUE(c.\"DOC\", '$.label') < 'c'")),
+            (":4046 text rendering, inequality", W("typed", "JSON_VALUE(c.\"DOC\", '$.label') <> 'c'")),
             (":4989 text rendering, LIKE", W("typed", "JSON_VALUE(c.\"DOC\", '$.price') LIKE '3%'")),
             (":931 string function, unmeasured characters", W("strings", "UPPER(JSON_VALUE(c.\"DOC\", '$.s')) = 'ASSB'")),
             (":1081 unsupported node", W("products", "JSON_VALUE(c.\"DOC\", '$.name') SIMILAR TO 'K%'")),
@@ -48,15 +53,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (":4992 LIKE computed pattern", W("products", "JSON_VALUE(c.\"DOC\", '$.name') LIKE JSON_VALUE(c.\"DOC\", '$.category')")),
             (":4995 LIKE bracket", W("products", "JSON_VALUE(c.\"DOC\", '$.name') LIKE '[K]%'")),
             (":5114 ITEM with a computed subscript", W("products", "JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)[CHAR_LENGTH(c.\"id\")] = 'outdoor'")),
+            (":5121 ITEM over a call", W("products", "JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)[1] = 'outdoor'")),
+            (":5132 ITEM with a subscript below one", W("products", "c.\"$.category\"[0] = 'bikes'")),
             (":5937 CARDINALITY over a map", W("products", "CARDINALITY(MAP['k', JSON_VALUE(c.\"DOC\", '$.name')]) = 1")),
             (":5483 unsupported function", W("products", "SOUNDEX(JSON_VALUE(c.\"DOC\", '$.name')) = 'K523'")),
+            (":5487 a function's arity", W("products", "ROUND(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE), 1) = 120")),
             (":5511 REPEAT past the limit", W("products", "REPEAT(JSON_VALUE(c.\"DOC\", '$.name'), 20000) = 'x'")),
             (":5511 REPEAT negative", W("products", "REPEAT(JSON_VALUE(c.\"DOC\", '$.name'), -1) = ''")),
             (":5526 REPLACE empty search", W("products", "REPLACE(JSON_VALUE(c.\"DOC\", '$.name'), '', 'x') = 'Kickstand'")),
             (":5543 concatenation over a null", W("products", "JSON_VALUE(c.\"DOC\", '$.name') || JSON_VALUE(c.\"DOC\", '$.missing') = 'x'")),
             (":5814 SUBSTRING without a length", W("strings", "SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM 2) = 'Bc'")),
             (":5912 POSITION with a start", W("strings", "POSITION('b' IN JSON_VALUE(c.\"DOC\", '$.b') FROM 2) = 3")),
-            (":6270 TRIM of another character", W("strings", "TRIM(LEADING 'a' FROM JSON_VALUE(c.\"DOC\", '$.a')) = 'Bc'")),
+            (":6273 TRIM of another character", W("strings", "TRIM(LEADING 'a' FROM JSON_VALUE(c.\"DOC\", '$.a')) = 'Bc'")),
         ];
 
         static string W(string container, string where) => string.Format(Where, container) + where;
@@ -81,8 +89,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     recorder.Read.Should().NotBeEmpty("{0} reaches a filter under {1}", refusal, target);
                     foreach (var statement in recorder.Read)
                         for (var i = 0; i < statement.Conjuncts.Count; i++)
-                            if (statement.IsAdmitted(i) && (RenderingFamily.Owns(statement.Statement.Conjuncts[i]) == false || statement.Form(i) is null))
+                        {
+                            // Each conjunct each filter reads, as the tally DESIGN.md gives reads it: S's, admitted, proven.
+                            var (owns, admitted, form) = (RenderingFamily.Owns(statement.Statement.Conjuncts[i]), statement.IsAdmitted(i), statement.Form(i));
+                            TestContext.Current.TestOutputHelper?.WriteLine($"{target}\t{refusal}\towns={owns}\tadmitted={admitted}\tform={form is not null}\t{statement.Statement.Conjuncts[i].Digest}");
+                            if (admitted && (owns == false || form is null))
                                 pushed.Add($"{refusal} under {target}: {statement.Statement.Conjuncts[i].Digest}");
+                        }
                 }
             }
 

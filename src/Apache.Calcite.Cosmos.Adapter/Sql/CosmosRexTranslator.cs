@@ -189,31 +189,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal CosmosRexPaths Paths => _paths;
 
         /// <summary>
-        /// Attempts to translate <paramref name="node"/>.
-        /// </summary>
-        /// <remarks>
-        /// Parameters bound before a failure remain in the list. Callers that may discard the
-        /// result should translate into a throwaway <see cref="CosmosParameterList"/> and merge
-        /// on success.
-        /// </remarks>
-        /// <param name="node">The expression to translate.</param>
-        /// <param name="expression">On success, the Cosmos SQL text.</param>
-        /// <returns><c>true</c> if the expression was translated; otherwise <c>false</c>.</returns>
-        public bool TryTranslate(RexNode node, out string? expression)
-        {
-            try
-            {
-                expression = Translate(node);
-                return true;
-            }
-            catch (CosmosTranslationException)
-            {
-                expression = null;
-                return false;
-            }
-        }
-
-        /// <summary>
         /// Translates <paramref name="node"/> as a predicate, whose truth alone is read.
         /// </summary>
         /// <remarks>
@@ -4259,8 +4234,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>CONTAINS(x, 'ACADIA', true)</c> is the same question asked of the function that answers it. S's rows say the
         /// service's case-insensitive <c>STARTSWITH</c>, <c>ENDSWITH</c> and <c>CONTAINS</c> match as the test over Calcite's
         /// fold where neither side holds a character past ASCII (<c>Service.AffixesMatchByCodePoint</c>), so S answers one
-        /// where the pattern is the narrowest affix of an argument the fold leaves as it is and nothing the facts hold of
-        /// <c>x</c> parts:
+        /// where an affix says the pattern, the cheapest by its test's weight where two do, of an argument the fold leaves as
+        /// it is, and nothing the facts hold of <c>x</c> parts:
         /// <c>UPPER(x)</c> never holds a lowercase letter, so <c>LIKE '%acadia%'</c> stays a <c>LIKE</c>, which answers the
         /// same nothing, and beyond ASCII Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c>, which no case-insensitive
         /// comparison of the stored text reproduces. What the value folded has to be beside that is the column gate's
