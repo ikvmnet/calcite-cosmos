@@ -50,9 +50,8 @@
         <!--
         Calcite 1.43 is not released. The Apache.Calcite.* packages resolve calcite-core 1.43.0-SNAPSHOT,
         so the build needs the repository Apache publishes its snapshots to; central and jboss carry
-        1.42.0 and stop there. A project that uses the adapter needs the same repository, which the
-        READMEs and docs/02-installation.md say. A snapshot is a moving target rather than a
-        reproducible pin, so remove this the day 1.43.0 reaches central.
+        1.42.0 and stop there. A snapshot is a moving target rather than a reproducible pin, so remove
+        this the day 1.43.0 reaches central.
 
         Until then, keep the Apache.Calcite.* packages on a build made against the snapshot this
         resolves. Each of those builds is compiled against the snapshot that was newest when it was

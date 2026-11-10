@@ -8,9 +8,8 @@
 - **A data-plane identity for that account** — an account key, or a Microsoft Entra ID identity with
   a Cosmos DB data-plane role assignment (Chapter 5).
 
-There is no Java to install. When your project builds, IKVM fetches Calcite and its Java dependencies
-from Maven repositories and compiles them to .NET assemblies; IKVM itself arrives as an ordinary NuGet
-dependency.
+There is no Java to install. Calcite and its dependencies are compiled to .NET assemblies by IKVM and
+arrive as ordinary NuGet dependencies.
 
 ## 2.2 Packages
 
@@ -26,20 +25,8 @@ dotnet add package Apache.Calcite.Data
 itself, and the `Apache.Calcite.Extensions`, `Apache.Calcite.Geography` and `Apache.Calcite.FullText`
 packages it builds on.
 
-Calcite 1.43, which these packages build on, is not released yet, and they ask for its snapshot, which
-only Apache's snapshot repository serves. Maven Central carries no snapshots, so until 1.43.0 reaches
-it, name that repository in your project file, or in a `Directory.Build.props` beside it:
-
-```xml
-<PropertyGroup>
-    <MavenAdditionalRepositories>$(MavenAdditionalRepositories);apache-snapshots=https://repository.apache.org/content/repositories/snapshots;</MavenAdditionalRepositories>
-</PropertyGroup>
-```
-
 Keep `Apache.Calcite.Data` on the same `Apache.Calcite` version the adapter was built against (this
-manual describes 2.0.1-pre.282). Each `Apache.Calcite.*` build is compiled against the Calcite snapshot
-that was newest when it was made, and your project resolves one Calcite for all of them; a build made
-against an older snapshot can fail at run time with `MissingMethodException`.
+manual describes 2.0.1-pre.282). The packages share one Calcite, and mixing versions mixes two.
 
 ## 2.3 Name the factory assembly-qualified
 

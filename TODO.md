@@ -2561,10 +2561,9 @@ across documents* and *A join of a container to itself* is the record.
   and a pin made here would land in the adapter's own POM and name a build its users cannot download.
   The build becomes reproducible when the packages name the exact snapshot they were compiled against
   and that build is kept somewhere that serves it (calcite-dotnet's to do), or when Calcite 1.43.0
-  reaches central, which is when the `apache-snapshots` repository leaves `Directory.Build.props` and
-  a user's project no longer needs it. The workflow has no schedule, so until then a breaking
-  snapshot shows up on whichever run comes next, often an unrelated pull request; a scheduled run on
-  `main` would show it there first.
+  reaches central, which is when the `apache-snapshots` repository leaves `Directory.Build.props`.
+  The workflow has no schedule, so until then a breaking snapshot shows up on whichever run comes
+  next, often an unrelated pull request; a scheduled run on `main` would show it there first.
 
 ---
 

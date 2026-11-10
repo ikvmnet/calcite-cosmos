@@ -18,15 +18,6 @@ dotnet add package Apache.Calcite.Data
 
 `Apache.Calcite.Data` is the ADO.NET provider your code talks to; this package plugs Cosmos into it.
 
-Until Calcite 1.43.0 is released the packages build on its snapshot, so your project also needs
-Apache's snapshot repository:
-
-```xml
-<PropertyGroup>
-    <MavenAdditionalRepositories>$(MavenAdditionalRepositories);apache-snapshots=https://repository.apache.org/content/repositories/snapshots;</MavenAdditionalRepositories>
-</PropertyGroup>
-```
-
 ## Register a database
 
 ```json
