@@ -2551,6 +2551,15 @@ across documents* and *A join of a container to itself* is the record.
 - **Client disposal** — *small.* See *A rebuilt root leaks its client* in section 1.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
+- **The build follows Calcite's newest snapshot** — *small here; what blocks it is upstream.* The
+  `Apache.Calcite.*` packages declare `calcite-core` 1.43.0-SNAPSHOT, so every build of the adapter,
+  CI's and a user's alike, resolves whichever snapshot Apache published last, while the packages were
+  compiled against the one that was newest when they were made. A snapshot that changes a signature
+  they call fails plans at run time: CALCITE-7608 replaced the `Uncollect` constructor 2.0.1-pre.267
+  called. A pin from here cannot hold, since Apache deletes a snapshot days after the next one. The
+  build becomes reproducible when the packages name the exact snapshot they were compiled against and
+  that build is kept somewhere that serves it (calcite-dotnet's to do), or when Calcite 1.43.0 reaches
+  central; then the `apache-snapshots` repository leaves `Directory.Build.props`.
 
 ---
 

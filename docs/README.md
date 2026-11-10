@@ -112,6 +112,6 @@ matters.
 
 ## Version
 
-This manual describes the adapter as built against `Apache.Calcite` 2.0.1-pre.267 and the Cosmos DB
+This manual describes the adapter as built against `Apache.Calcite` 2.0.1-pre.282 and the Cosmos DB
 .NET SDK 3.63. It targets .NET 8 and runs on .NET 8 and later. The adapter is under active
 development; where behaviour is expected to change, the chapter says so and names the issue.
