@@ -27,15 +27,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A conjunct compiled once through its binding, to be asked of each document: Calcite's truth there, TRUE, FALSE or
         /// UNKNOWN, a raise where it throws; <c>null</c> where the document is no row the binding reads, a field its type
-        /// holds never null being absent there. <c>null</c> itself where a field it reads is read otherwise than as its type
-        /// or as the document, which this does not fill, or where Calcite cannot compile it alone.
+        /// holds never null being absent there. <c>null</c> itself where a field it reads has no path, or where Calcite
+        /// cannot compile it alone.
         /// </summary>
         public static Func<J.Obj, Truths?>? Compile(RexNode conjunct, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings)
         {
             var refs = new Dictionary<int, RexInputRef>();
             Collect(conjunct, refs);
-            // The document column is the document's text however it is read; any other field is filled as its type alone.
-            if (refs.Keys.Any(i => i >= fields.Count || fields[i] is not { } path || path.IsRoot == false && readings.Count > i && readings[i] != CosmosReading.Typed))
+            // The document column is the document's text however it is read; any other field is filled as its reading says.
+            if (refs.Keys.Any(i => i >= fields.Count || fields[i] is null))
                 return null;
 
             var (width, types) = (refs.Count == 0 ? 1 : refs.Keys.Max() + 1, new JavaTypeFactoryImpl());
@@ -61,7 +61,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     // The reader refuses a value its column's type does not hold, which fails the statement: a raise.
                     try
                     {
-                        record[index] = fields[index]!.IsRoot ? Documents.Json(document) : Read(fields[index]!, document, reference.getType().getSqlTypeName());
+                        record[index] = fields[index]!.IsRoot ? Documents.Json(document)
+                            : Read(fields[index]!, readings.Count > index ? readings[index] : CosmosReading.Typed, document, reference.getType().getSqlTypeName());
                     }
                     catch (CosmosMaterializationException)
                     {
@@ -89,15 +90,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             };
         }
 
-        /// <summary>What the reader makes of the value at a path: the value read as the field's type, or null where it is absent.</summary>
-        static object? Read(CosmosPath path, J.Obj document, SqlTypeName type)
+        /// <summary>
+        /// What the reader makes of the value at a path, or null where it is absent: read by the property reader the
+        /// converter calls for the field's reading (<c>CosmosConverters.ReadField</c>), over a row holding the value alone.
+        /// </summary>
+        static object? Read(CosmosPath path, CosmosReading reading, J.Obj document, SqlTypeName type)
         {
             J? value = document;
             foreach (var segment in path.Segments)
                 value = segment.IsIndex ? value is J.Arr a && segment.ArrayIndex < a.Elements.Count ? a.Elements[segment.ArrayIndex] : null
                     : value is J.Obj o && o.Properties.TryGetValue(segment.Name!, out var child) ? child : null;
 
-            return value is null ? null : CosmosJson.GetValue(JsonDocument.Parse(Documents.Json(value)).RootElement.Clone(), type);
+            if (value is null)
+                return null;
+
+            var row = JsonDocument.Parse("{\"f\":" + Documents.Json(value) + "}").RootElement.Clone();
+            return reading switch
+            {
+                CosmosReading.Text => CosmosJson.GetTextProperty(row, "f"),
+                CosmosReading.JsonText => CosmosJson.GetJsonTextProperty(row, "f"),
+                CosmosReading.Json => CosmosJson.GetJsonProperty(row, "f"),
+                _ => CosmosJson.GetValue(row.GetProperty("f"), type),
+            };
         }
 
         static void Collect(RexNode node, Dictionary<int, RexInputRef> refs)

@@ -334,6 +334,7 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | --- | --- |
 | `text(p)` | `JSON_VALUE(DOC, p)` read as text: a scalar's rendering, SQL null for anything else |
 | `raw(p)` | the value the service holds: a promoted `VARIANT` column, the accessor re-typed `ANY`, `id` |
+| `raw in(p, c)` | that value read through the column `c` a loading that reads places names (rawtyped): S's reading, and F's characters', never in F's statements |
 | `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
 | `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
 | `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
@@ -390,15 +391,18 @@ run does not complete. Every statement is rooted there, or at the context where 
 the declaration's own fact set, and a stratum's `possible` meets `D0`'s, which is no narrower, so no verdict or plan
 changes (`DESIGN.md`, *The declaration's `possible` rows: `D0`*).
 
-**What a computed string's characters are** (10 rules, ruleset `characters`), asked by a string function's rule of its
+**What a computed string's characters are** (13 rules, ruleset `characters`), asked by a string function's rule of its
 argument (`JsonFactSet.CharactersOf`), in a context made for the question beneath the one the facts are read from:
-- a reading of a path as text, and the value a path holds, hold the path's `chars`; the cast to text of that value
-  holds them where the path holds scalars alone, an object cast to text being the JSON of whatever it holds;
+- a reading of a path as text, and the value a path holds, plainly or through its column (`raw in`, what S's computed
+  places and the translator's bridge ask F of), hold the path's `chars`; the cast to text of that value holds them where
+  the path holds a kind the cast's root row names (`castsToText`, from `StringCalls.TextCasts`: `VARCHAR` and `CHAR`,
+  of scalars alone), an object cast to text being the JSON of whatever it holds;
 - a literal holds its own characters;
-- a call of a function `StringCalls` names walks its operands from the first, and draws from the last: from an operand
-  it reads, the image of that operand's classes — its own, and for `UPPER` from U+E000 also those below U+D800, U+FB13
-  upper-casing to Armenian — and nothing from one it does not; a call holds what it draws. A parameter, and a call of a
-  function the table does not name, are given no row: they may hold anything.
+- a call walks its operands from the first, its shape alone, and a call of a function a `StringCalls` row names draws
+  from the last, joining the root's rows by its name (`callDraws`, `callMaps`): from an operand the row names, by its
+  ordinal or as every one (`FunctionKey.Every`), the image of that operand's classes — its own, and for `UPPER` from
+  U+E000 also those below U+D800, U+FB13 upper-casing to Armenian — and nothing from one it names not; a call holds
+  what it draws. A parameter, and a call of a function no row names, are given no row: they may hold anything.
 
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
 then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the

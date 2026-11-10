@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// lack either band is one whose sorts, extremes and comparisons the service can be handed
     /// (<see cref="CosmosServiceOrder"/>); and for a string function, which counts, maps case or trims as Calcite's does
     /// only over strings lacking a surrogate, outside ASCII, or holding a character the service trims
-    /// (<c>Sql.CosmosStringFunctions</c>). <see cref="Strings"/> reads the language, for a stored form
+    /// (<c>Sql.CosmosFunctionSpellings</c>). <see cref="Strings"/> reads the language, for a stored form
     /// (<see cref="CosmosStoredForms"/>): a form is recognised where what the pattern admits is the form's language, which
     /// only a parse can say — matching the text against spellings could not, and was a second reader of the keyword that
     /// read some of it differently.

@@ -39,19 +39,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A text equality's weakening is the path's presence: implied by the conjunct, and not exact over the same import.
-        /// The translator kept the string and the number it renders as (8d57df0), which S does not prove, since a stored
-        /// 30.0 is kept by the number and rendered otherwise by Calcite: O7's listed loss 1.
+        /// A text equality's weakening is implied by the conjunct, and not exact over the same import. Since the switch (h15)
+        /// it keeps the string and the number the text renders as, as the translator's did (8d57df0), which is no exact
+        /// form, since a stored 30.0 is kept by the number and rendered otherwise by Calcite; the filter it is pushed in
+        /// admits what of it S proves there and weakens the rest again (site W), each weakening a record of its own: the
+        /// first implied, and the one given again over the Rex's cast of the text to <c>DOUBLE</c>, which the facts graph
+        /// reads coarsely, implied or unproven by the check, which proves no further there, and never refuted. Claimed
+        /// <c>Equal</c>, the weakening is never proven: a stored 30.0 is kept by the number and rendered otherwise, which the
+        /// check refutes no junction of two atoms of one path by (<c>TODO.md</c>), so it leaves the claim unproven.
         /// </summary>
         [Fact]
         public void ATextEqualitysWeakeningIsImpliedAndNotExact()
         {
             var run = Checked(Typed + "JSON_VALUE(c.\"DOC\", '$.label') = '30'");
-            var weakening = run.Conjuncts.Single(c => c.Site == 3);
-            (weakening.Text, Read(weakening)).Should().Be(("IS_DEFINED(c.label)", "Implied"));
+            var weakening = run.Conjuncts.Single(c => c.Site == 3 && c.Ir == "(text($[\"label\"]) = lit(\"string|30\"))");
+            (weakening.Text, Read(weakening)).Should().Be(("(((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", "Implied"));
+            run.Conjuncts.Where(c => c.Site == 3).Should().OnlyContain(c => Read(c) == "Implied" || Read(c) == "Unproven", "none is refuted");
 
             var form = weakening.Entry!.What!.Form;
-            run.Recheck(weakening.Entry.What, form, [form]).Asserted.Kind.Should().Be(RenderingVerdictKind.Refuted, "Equal is what a weakening does not claim: presence keeps every other label");
+            run.Recheck(weakening.Entry.What, form, [form]).Asserted.Kind.Should().NotBe(RenderingVerdictKind.Proven, "Equal is what a weakening does not claim: the number keeps a stored 30.0");
         }
 
         /// <summary>

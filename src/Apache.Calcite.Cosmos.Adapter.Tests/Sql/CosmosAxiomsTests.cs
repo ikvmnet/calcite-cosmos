@@ -48,7 +48,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// emulator keeps and Azure does not; and the string order, which Azure reads past U+0000 by code point and the
         /// emulator as it stores it. Two constants compared, the other known divergence, are no key S reads.
         /// </summary>
-        static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None)];
+        static readonly MeasuredKey[] Disagreements = [MeasuredKey.Of(Test.Range, Class.Parted, Class.Between), MeasuredKey.Of(Test.Order, Class.String, Class.None),
+            // The emulator matches an affix and a LIKE against the string it stores, Azure against the string as written (run 1, rows2).
+            MeasuredKey.Of(Test.StartsWith, Class.String, Class.None), MeasuredKey.Of(Test.EndsWith, Class.String, Class.None), MeasuredKey.Of(Test.Contains, Class.String, Class.None),
+            MeasuredKey.Of(Test.Like, Class.String, Class.None),
+            // The emulator holds a whole number written with a point as its double, Azure as the int64 it is (N11).
+            MeasuredKey.Of(Test.Order, Class.Number, Class.None)];
 
         static IEnumerable<CosmosAxiom> WithOutcomes => CosmosAxioms.All.Where(a => a.Outcomes is not null);
 
@@ -121,12 +126,180 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claims.Should().OnlyHaveUniqueItems();
         }
 
-        /// <summary>A row read as data, by its outcomes or its subjects, names a test that says it pins the row.</summary>
+        /// <summary>A row read as data, by its outcomes, its subjects, its function outcomes, its columns or its stored classes, names a test that says it pins the row.</summary>
         [Fact]
         public void EveryRowReadAsDataNamesAPinningTestThatCarriesItsId()
         {
-            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null))
+            foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
+                || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
+                || a.NullThrough is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
+                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
+        }
+
+        /// <summary>
+        /// A function row names each key once per target, within its row's targets, and reads back one row per key per
+        /// target, each key's function, kind and band as written and in the order the key compares by.
+        /// </summary>
+        [Fact]
+        public void TheFunctionRowsReadBackKeyByKey()
+        {
+            var outcomes = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] select (axiom, o)).ToList();
+            outcomes.Should().NotBeEmpty();
+            foreach (var (axiom, o) in outcomes)
+                (o.On != 0 && (o.On & ~axiom.MeasuredOn) == 0).Should().BeTrue($"{axiom.Id}'s {o.Function}/{o.Operand}/{o.Band} names {o.On}, within {axiom.MeasuredOn}");
+
+            var rows = CosmosAxiomRows.ReadFunctions(CosmosAxioms.All);
+            rows.Should().HaveCount(outcomes.Sum(x => System.Numerics.BitOperations.PopCount((uint)x.o.On)));
+            rows.Select(r => (r.Key, r.Target)).Should().OnlyHaveUniqueItems();
+            rows.Should().Contain((FunctionKey.Of("POSITION", 1, Class.String, JsonCharacterBand.Surrogates), RenderingTarget.Emulator, CosmosFunctionAnswer.Differs));
+            CosmosAxiomRows.ReadFunctionSubjects(CosmosAxioms.All).Should().Contain(("POSITION", 1L)).And.Contain(("POSITION", 0L)).And.Contain(("CONCAT", FunctionKey.Every))
+                .And.Contain(("CONCAT", FunctionKey.Literal)).And.Contain(("REPEAT", FunctionKey.Literal)).And.OnlyHaveUniqueItems();
+
+            // A row's band and class of value are read into its key (F1, F2).
+            var banded = CosmosAxioms.All.First(a => a.Outcomes is not null) with
+            {
+                Outcomes = [new CosmosOutcome(CosmosServiceTest.Contains, Class.String, CosmosAxiomTarget.Azure, "string=true", Band: JsonCharacterBand.Nul)],
+                FunctionOutcomes = [new CosmosFunctionOutcome("REPLACE", 1, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Undefined, CalciteYield.Value, FunctionValueClass.Empty)],
+            };
+            CosmosAxiomRows.Read([banded]).Select(r => r.Key).Should().Equal(MeasuredKey.Of(CosmosServiceTest.Contains, Class.String, Class.String, JsonCharacterBand.Nul));
+            CosmosAxiomRows.ReadFunctions([banded]).Select(r => r.Key).Should().Equal(FunctionKey.Of("REPLACE", 1, Class.String, JsonCharacterBand.None, FunctionValueClass.Empty));
+            rows.Select(r => r.Key).Order().Select(FunctionKey.FunctionOf).Should().BeInAscendingOrder(StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// Each axiom's readers are read for each function its rows compute, one row an axiom, and none is picked: two axioms
+        /// of one function give two rows, which S meets (<c>measuredreaders</c>, an intersection).
+        /// </summary>
+        [Fact]
+        public void EachAxiomsReadersAreReadForEachFunctionItsRowsCompute()
+        {
+            var row = CosmosAxioms.All.First(a => a.FunctionOutcomes is not null);
+            CosmosAxiomRows.ReadFunctionReads(CosmosAxioms.All).Select(r => r.Function).Should().OnlyHaveUniqueItems("no two axioms of the registry compute one function");
+            var outcome = new CosmosFunctionOutcome("F", 0, Class.String, JsonCharacterBand.None, CosmosAxiomTarget.Emulator, CosmosFunctionAnswer.Same, CalciteYield.Value);
+            var (one, two) = (row with { FunctionOutcomes = [outcome, outcome with { Band = JsonCharacterBand.Nul }], Readers = ["a", "b"] }, row with { FunctionOutcomes = [outcome], Readers = ["b"] });
+            CosmosAxiomRows.ReadFunctionReads([one, two]).Select(r => (r.Function, string.Join(",", r.Readers))).Should().Equal(("F", "a,b"), ("F", "b"));
+        }
+
+        /// <summary>
+        /// The classes a written string is stored holding are a <c>Service</c> row's cells, which name no target, since the
+        /// rules of JSON have none: an unpaired surrogate written, the high band and U+FFFD within it; a pair is stored as
+        /// written.
+        /// </summary>
+        [Fact]
+        public void TheStoredClassesAreReadOffTheirRow()
+        {
+            CosmosAxiomRows.ReadStored(CosmosAxioms.All).Should().BeEquivalentTo(new[]
+            {
+                new JsonClassMap(JsonValues.UnpairedClass, JsonValues.HighBand), new JsonClassMap(JsonValues.UnpairedClass, JsonValues.ReplacementClass),
+            });
+            global::Apache.Calcite.Cosmos.Adapter.Metadata.CosmosReasoning.Stored.Should().Equal(CosmosAxiomRows.ReadStored(CosmosAxioms.All));
+        }
+
+        /// <summary>
+        /// The structured cells that were a prose row's (F3) read back as written, each under its row: the bands each code
+        /// point order parts and the one the emulator's moves, what a lone surrogate is stored as on the target that stores
+        /// it so, what Azure's <c>CONTAINS</c> and a <c>LIKE</c> of one run read a string to, the mirror law, the boxes and
+        /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
+        /// classes its witnesses held, the casts each citing its row, the text reader's order, and the classes each type
+        /// test is true of in process; and G1's, the two characters the emulator's spelling rewrites and the unpaired
+        /// surrogate no parameter is sent holding on either target.
+        /// </summary>
+        [Fact]
+        public void TheFoundationsRowsReadBackAsWritten()
+        {
+            var all = CosmosAxioms.All;
+            CosmosAxiomRows.ReadParts(all).Should().BeEquivalentTo(new[]
+            {
+                (CosmosAnswer.CodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), (CosmosAnswer.CodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
+                (CosmosAnswer.StoredCodePoint, JsonValues.SurrogateBand, JsonValues.HighBand), (CosmosAnswer.StoredCodePoint, JsonValues.HighBand, JsonValues.SurrogateBand),
+            });
+            CosmosAxiomRows.ReadMoves(all).Should().Equal((CosmosAnswer.StoredCodePoint, JsonValues.NulClass));
+            CosmosAxiomRows.ReadStoredOn(all).Should().BeEquivalentTo(new[]
+            {
+                (RenderingTarget.Azure, JsonValues.UnpairedClass, JsonValues.HighBand), (RenderingTarget.Azure, JsonValues.UnpairedClass, JsonValues.ReplacementClass),
+            });
+            CosmosAxiomRows.ReadTruncations(all).Should().BeEquivalentTo(new[]
+            {
+                (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
+            });
+            CosmosAxiomRows.ReadRewrites(all).Should().BeEquivalentTo(new[] { (CosmosAnswer.StoredCodePoint, JsonValues.NulClass), (CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass) });
+            CosmosAxiomRows.ReadFolds(all).Should().BeEquivalentTo(
+                from target in new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
+                from test in new[] { Test.StartsWith, Test.EndsWith, Test.Contains }
+                from function in new[] { "UPPER", "LOWER" }
+                from band in new[] { JsonValues.SurrogateBand, JsonValues.HighBand, JsonValues.NonAsciiBand }
+                select (target, test, function, band));
+            CosmosAxiomRows.ReadUnsent(all).Should().BeEquivalentTo(new[] { (RenderingTarget.Azure, JsonValues.UnpairedClass), (RenderingTarget.Emulator, JsonValues.UnpairedClass) });
+
+            var mirror = CosmosAxiomRows.ReadPairReadings(all);
+            mirror.Should().HaveCount(12).And.Contain((Test.Less, true, Test.Greater)).And.Contain((Test.GreaterOrEqual, false, Test.GreaterOrEqual));
+            mirror.Select(r => (r.Test, r.Swapped)).Should().OnlyHaveUniqueItems();
+
+            CosmosAxiomRows.ReadBoxes(all).Should().HaveCount(9).And.Contain((PredicateAtom.TextReader, "VARCHAR")).And.Contain((JsonValues.IntegerType, "BIGINT"))
+                .And.Contain(("CHAR", "VARCHAR")).And.Contain((JsonValues.BooleanType, "BOOLEAN")).And.NotContain(b => b.Kind == "INTEGER", "an INTEGER is boxed apart from a stored integer");
+            CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
+            CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
+            CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
+                (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
+                (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
+                (PredicateAtom.FieldForm, PredicateAtom.RaisesReader), (PredicateAtom.ItemForm, PredicateAtom.RaisesReader), (PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader),
+                (PredicateAtom.TextCastForm, PredicateAtom.RaisesReader) });
+
+            var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
+            CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(30).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))
+                .And.Contain((PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself)).And.Contain((PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders))
+                .And.Contain((PredicateAtom.TextReader, Class.Absent, CosmosCalciteReading.Null))
+                .And.Contain((parse, Class.Absent, CosmosCalciteReading.Null)).And.Contain((parse, Class.Number, CosmosCalciteReading.Raises))
+                .And.Contain((parse, Class.Object, CosmosCalciteReading.Null)).And.Contain((PredicateAtom.TypedReader("VARCHAR"), Class.String, CosmosCalciteReading.Itself))
+                .And.Contain((PredicateAtom.TypedReader("CHAR"), Class.Absent, CosmosCalciteReading.Null));
+            CosmosAxiomRows.ReadCalciteBands(all).Should().BeEquivalentTo(new[] { (parse, Class.String, JsonValues.TrimmedClass), (parse, Class.String, JsonValues.NulClass) });
+            CosmosAxiomRows.ReadCasts(all).Should().HaveCount(5).And.Contain(("BOOLEAN", PredicateAtom.TextReader, "Calcite.CastToBooleanParses"))
+                .And.Contain(("DOUBLE", PredicateAtom.TextReader, "Calcite.CastOfTheAccessorParsesTheRendering")).And.Contain(("VARCHAR", PredicateAtom.RawReader, "Calcite.CastOfARawValueToText"));
+            var orders = CosmosAxiomRows.ReadReaderOrders(all);
+            orders.Where(o => o.Claim == CosmosReaderOrder.Itself).Select(o => o.Reader).Should().BeEquivalentTo(PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TypedReader("CHAR"));
+            orders.Where(o => o.Claim == CosmosReaderOrder.Reflexive).Should().HaveCount(16).And.Contain((PredicateAtom.InColumn(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader), "ANY"), CosmosReaderOrder.Reflexive))
+                .And.NotContain(o => o.Reader == PredicateAtom.CastReader("DOUBLE", PredicateAtom.TextReader) || o.Reader == PredicateAtom.TypedReader("DOUBLE") || o.Reader == PredicateAtom.TypedReader("FLOAT")
+                    || o.Reader == PredicateAtom.TypedReader("REAL"), "a double may hold a NaN, which compares as nothing alike");
+
+            var kinds = CosmosAxiomRows.ReadTestKinds(all);
+            kinds.Where(k => k.Test == Test.IsString).Select(k => k.Kind).Should().Equal(Class.String);
+            kinds.Where(k => k.Test == Test.IsDefined).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String, Class.Object, Class.Array]);
+            kinds.Where(k => k.Test == Test.IsPrimitive).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String]);
+        }
+
+        /// <summary>
+        /// The raw columns S answers keys from are two <c>Calcite</c> rows', read through the registry one fact a field (h12,
+        /// G5): what each reading reads each class as, the literals it is beside, the comparisons that compile, whether it
+        /// compares as the type or as text, and what it answers across types. What each key answers is S's rules' over them:
+        /// a VARIANT's number beside a string unequal and a VARCHAR column's raising; a VARIANT's ordering failing and an
+        /// ANY's left to the cell; an ordering across types failing; a null and an absent path SQL null; the cast's number
+        /// null through a VARIANT and its rendering through an ANY; a VARCHAR column beside nothing but a string.
+        /// </summary>
+        [Fact]
+        public void TheRawColumnsAreTwoCalciteRowsReadOneFactAField()
+        {
+            const Truths T = Truths.True, F = Truths.False, U = Truths.Unknown, R = Truths.Raises;
+            var rows = CosmosAxiomRows.ReadColumns(CosmosAxioms.All);
+            var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
+            (rows.Reads.Count, rows.Beside.Count, rows.Compiles.Count, rows.AsType.Count, rows.Across.Count).Should().Be((48, 18, 30, 6, 6));
+            rows.Reads.Select(r => (r.Reading, r.Column, r.Kind)).Should().OnlyHaveUniqueItems();
+            rows.Columns.Should().BeEquivalentTo("VARIANT", "ANY", "VARCHAR");
+            rows.Reads.Where(r => r.Kind is Class.Null or Class.Absent).Should().HaveCount(12).And.OnlyContain(r => r.Answer == CosmosCalciteReading.Null,
+                "a stored null and an absent path are SQL null in each column, read and cast alike (F3)");
+
+            var union = ProbeRows.Columns;
+            RawAnswer At(string reader, Class kind, Test test, Class operand, string column) => union[RawKey.Of(reader, kind, test, operand).In(column)];
+
+            (At("raw", Class.Number, Test.Equal, Class.String, "VARIANT"), At("raw", Class.Number, Test.Equal, Class.String, "VARCHAR")).Should().Be((RawAnswer.Stated(F), RawAnswer.Stated(R)));
+            (At("raw", Class.Number, Test.Less, Class.Number, "VARIANT"), At("raw", Class.Number, Test.Less, Class.Number, "ANY")).Should().Be((RawAnswer.Fails, RawAnswer.OnTheCell));
+            (At("raw", Class.True, Test.Equal, Class.False, "ANY"), At("raw", Class.Object, Test.Greater, Class.String, "ANY")).Should().Be((RawAnswer.OnTheCell, RawAnswer.Stated(R)));
+            (At("raw", Class.Null, Test.Equal, Class.String, "ANY"), At("raw", Class.Null, Test.IsNull, Class.None, "VARCHAR")).Should().Be((RawAnswer.Stated(U), RawAnswer.Stated(T)));
+            (At("raw", Class.Absent, Test.Equal, Class.String, "ANY"), At("raw", Class.Absent, Test.IsNull, Class.None, "VARIANT")).Should().Be((RawAnswer.Stated(U), RawAnswer.Stated(T)));
+            (At(cast, Class.Number, Test.Equal, Class.String, "VARIANT"), At(cast, Class.Number, Test.Equal, Class.String, "ANY"), At(cast, Class.Object, Test.IsNull, Class.None, "VARIANT"))
+                .Should().Be((RawAnswer.Stated(U), RawAnswer.OnTheCell, RawAnswer.Stated(R)));
+            At("raw", Class.Number, Test.Equal, Class.Number, "VARCHAR").Should().Be(RawAnswer.Unanswered, "a VARCHAR column is raw beside a string alone");
+            System.GC.KeepAlive(ProbeRows.ProbeTheory);
         }
 
         /// <summary>
@@ -151,7 +324,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void TheRowsLoadIntoS()
         {
             var rows = CosmosAxiomRows.Read(CosmosAxioms.All);
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(rows));
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(rows, CosmosAxiomRows.ReadCasts(CosmosAxioms.All)));
 
             foreach (var row in rows)
                 theory.Theory.Get(theory.Outcome.Of(row.Key, row.Target)).Should().Be(row.Answer, $"{row.AxiomId} at {row.Key} on {row.Target}");
@@ -209,7 +382,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
             var tables = new[] { (CosmosAxiomTarget.Emulator, RenderingSet.Emulator), (CosmosAxiomTarget.Azure, RenderingSet.Production) }
-                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2))));
+                .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2)), ProbeTheory.Theory.Get(ProbeTheory.ReaderClasses.Of())));
             var wrong = from axiom in WithOutcomes
                         from outcome in axiom.Outcomes!
                         where outcome.Formula is not null
@@ -218,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                         from cell in outcome.Cells
                         let measured = AnswerMeanings.Measured.Of(cell.Answer)
                         let cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell.Cell).Select(CellOf)))
-                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], ValueSet<string>.Empty).Outcomes.Select(o => o.Outcomes)
+                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], LeafReads.None).Outcomes.Select(o => o.Outcomes)
                         where composed != measured
                         select $"{axiom.Id}: {outcome.Formula} at {cell.Cell} on {target} is {measured}, composed {composed}";
 
@@ -311,7 +484,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                              where Enum.TryParse<CosmosAnswer>(r.Answer, out _) && declared.TryGetValue((r.Row, r.Key, r.Cell), out var operand)
                                  && split.Contains((r.Record, r.Row, r.Key, r.Cell)) == false && Witnessed(operand, r.Cell, r.Witnesses)
                              select (r.Row, r.Key, r.Cell, Answer: Enum.Parse<CosmosAnswer>(r.Answer))).ToList();
+            // A row the probe account's witness record holds is held to it below, line by line, not by the harness's cells.
+            var witnessed = AzureWitnessRecords().Select(l => l.Row).ToHashSet();
             var claims = (from axiom in WithOutcomes
+                          where witnessed.Contains(axiom.Id) == false
                           from outcome in axiom.Outcomes!
                           where outcome.On.HasFlag(CosmosAxiomTarget.Azure)
                           from cell in outcome.Cells
@@ -322,6 +498,205 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             claimable.Where(line => claims.Any(c => (c.Item1, c.Item2, c.Cell) == (line.Row, line.Key, line.Cell)
                 && (c.Answer == line.Answer || AnswerMeanings.Measured.Of(c.Answer) is var meant and not ServiceOutcomes.None
                     && (meant & ~AnswerMeanings.Measured.Of(line.Answer)) == ServiceOutcomes.None)) == false).Should().BeEmpty("no evidence a run read so is dropped");
+
+            // A row measured by the witness probe claims Azure only where the probe account's record holds every line its
+            // emulator record holds of each expression it ran, each answered alike but where the row says the two part; an
+            // expression it has not run claims nothing there (EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures).
+            var emulator = EmulatorRecords().Where(l => l.Release == "EN20261019").ToLookup(l => l.Row);
+            var azure = AzureWitnessRecords().ToLookup(l => l.Row);
+            var claiming = CosmosAxioms.All.Where(a => a.MeasuredOn.HasFlag(CosmosAxiomTarget.Azure) && emulator.Contains(a.Id)).Select(a => a.Id).ToList();
+            claiming.Should().BeEquivalentTo(azure.Select(g => g.Key), "a row the probe account ran claims Azure, and one it did not claims nothing");
+            foreach (var row in claiming)
+            {
+                var asked = azure[row].ToDictionary(l => (l.Expression, l.Witness, Kept(l.Answer)), l => l.Answer);
+                var ran = azure[row].Select(l => l.Expression).ToHashSet(StringComparer.Ordinal);
+                emulator[row].Where(l => ran.Contains(l.Expression)).Select(l => (l.Expression, l.Witness, Kept(l.Answer))).Except(asked.Keys)
+                    .Should().BeEmpty($"{row}: the probe account ran every line the emulator did of each expression it ran");
+                emulator[row].Where(l => asked.TryGetValue((l.Expression, l.Witness, Kept(l.Answer)), out var a) && a != l.Answer && Parted(row, l.Expression, l.Witness) == false)
+                    .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer} on the emulator, {asked[(l.Expression, l.Witness, Kept(l.Answer))]} on Azure").Should().BeEmpty($"{row} answers alike but where it says the targets part");
+            }
+        }
+
+        /// <summary>Whether a witness probe's answer is <c>value/kept</c>, not a projection alone.</summary>
+        static bool Kept(string answer) => answer.Length >= 2 && answer[^2] == '/' && "TFU!?".Contains(answer[^1]);
+
+        /// <summary>
+        /// Where a row measured by the witness probe says the targets part: a string holding U+0000 ordered against another
+        /// (<c>Service.StringOrderIsCodePoint</c>), 9007199254740993.0 held, % past 2^53, the string functions, whose keys
+        /// are each target's own (<see cref="EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures"/>), the case
+        /// mapping's and <c>RIGHT</c>'s own witnesses among them, and <c>_</c> over U+0000 and U+FDD0, which the emulator
+        /// stores as two.
+        /// </summary>
+        static bool Parted(string row, string expression, string witness) => row switch
+        {
+            "Service.TwoPathsCompareAsAPathAndALiteral" => witness.Contains("\\u0000", StringComparison.Ordinal) && witness.Contains("\"w\":\"", StringComparison.Ordinal),
+            "Service.IntegralNumbersReadBackAsHeld" => witness == "9007199254740993.0",
+            "Service.IntegerArithmeticIsExactWithinLong" => expression.Contains('%', StringComparison.Ordinal),
+            "Service.StringFunctionAnswersByBand" or "Service.CaseMappingOverCasedLetters" or "Service.RightOverASplitPair" => true,
+            "Service.LikeOneOverEachClass" => witness.Contains("\\u0000", StringComparison.Ordinal) || witness.Contains('﷐', StringComparison.Ordinal),
+            _ => false,
+        };
+
+        /// <summary>
+        /// A function outcome claims Azure only where the probe account's record holds its key's lines: those lines read
+        /// again through Calcite in process answer each key as the row records it on Azure, or better.
+        /// </summary>
+        [Fact]
+        public void EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures()
+        {
+            var measured = new (string Row, IReadOnlyList<CosmosFunctionSpelling> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
+            {
+                ("Service.StringFunctionAnswersByBand", CosmosStringFunctionMeasurementTests.Functions, CosmosStringFunctionMeasurementTests.FunctionWitnesses),
+                ("Service.IntegerArithmeticIsExactWithinLong", CosmosJsonTypeMeasurementTests.Arithmetic, CosmosJsonTypeMeasurementTests.ArithmeticWitnesses),
+            };
+
+            CosmosAxioms.All.Where(a => a.FunctionOutcomes?.Any(o => o.On.HasFlag(CosmosAxiomTarget.Azure)) == true).Select(a => a.Id)
+                .Should().BeSubsetOf(measured.Select(m => m.Row), "a function key claims Azure only where a committed run holds its answer");
+
+            var lines = AzureWitnessRecords().Where(l => Kept(l.Answer) == false).ToDictionary(l => (l.Row, l.Expression, l.Witness), l => l.Answer);
+            foreach (var (row, functions, keys) in measured)
+            {
+                // A spelling the probe account has not run measures nothing there, nor one it left unanswered over a witness
+                // (CosmosFunctionComparison.Judge), and its keys claim nothing on Azure.
+                var ran = functions.Where(f => keys.SelectMany(k => k.Witnesses).All(w => lines.ContainsKey((row, CosmosFunctionComparison.Spelled(f), w ?? "absent")))).ToList();
+                var asked = CosmosFunctionComparison.Spellings(ran)
+                    .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
+                // A key another row's witnesses measured is held to these lines too, where they measured it.
+                var judgedHere = CosmosFunctionComparison.Judge(row, ran, keys, asked);
+                CosmosFunctionComparison.Unsound(judgedHere, CosmosAxioms.Get(row).FunctionOutcomes!.Where(o => o.Evidence is null || judgedHere.Keys.Any(k => Covers(o, k))), CosmosAxiomTarget.Azure)
+                    .Should().BeEmpty(row);
+            }
+
+            // A row whose own witnesses measure another's keys (run 2): its lines read again answer each key it measured as
+            // the keyed row records it on Azure, or better.
+            var edges = new (string Row, IReadOnlyList<CosmosFunctionSpelling> Functions, IReadOnlyList<(Class Kind, JsonCharacterBand Band, string?[] Witnesses)> Keys)[]
+            {
+                ("Service.CaseMappingOverCasedLetters", CosmosStringFunctionMeasurementTests.CaseMappings, CosmosStringFunctionMeasurementTests.CasedLetters),
+                ("Service.RightOverASplitPair", CosmosStringFunctionMeasurementTests.SplitRights, CosmosStringFunctionMeasurementTests.SplitPairs),
+            };
+            foreach (var (row, functions, keys) in edges)
+            {
+                var asked = CosmosFunctionComparison.Spellings(functions)
+                    .Select(spelling => keys.SelectMany(k => k.Witnesses).Select(w => lines[(row, spelling, w ?? "absent")]).ToArray()).ToArray();
+                var judged = CosmosFunctionComparison.Judge(row, functions, keys, asked);
+                var keyed = CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
+                    .Where(o => o.Type is null && judged.Keys.Any(k => (k.Function, k.Ordinal, k.Kind, k.Band) == (o.Function, o.Subject, o.Operand, o.Band)));
+                CosmosFunctionComparison.Unsound(judged, keyed, CosmosAxiomTarget.Azure).Should().BeEmpty(row);
+            }
+        }
+
+        /// <summary>Whether a recorded outcome's key covers a measured atom's, as <see cref="CosmosFunctionComparison.Unsound"/> reads it.</summary>
+        static bool Covers(CosmosFunctionOutcome outcome, FunctionKey atom) =>
+            FunctionKey.Of(outcome.Name, outcome.Subject, outcome.Operand, outcome.Band, atom.Value) == atom
+            && FunctionValueClasses.Holding.Contains((atom.Kind, outcome.Value, atom.Value));
+
+        /// <summary>
+        /// A function key another row's measurement ran names a row measured on every target the key claims, whose pinning
+        /// test carries its id, and claims no target its own row's run measured: <c>REPEAT</c>'s count of 0 and its result past
+        /// 10,000 code points on Azure are <c>Service.ReplicateStopsAtTenThousandCodePoints</c>'s, which no spelling of the
+        /// string function row sends. <c>SUBSTRING</c>'s length of 0 was <c>Service.SubstringOfANegativeStartIsEmpty</c>'s
+        /// window from 0 of length 0 until run 3 sent the row's own.
+        /// </summary>
+        [Fact]
+        public void AFunctionKeyAnotherRowRanNamesARowMeasuredWhereItClaims()
+        {
+            var backed = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] where o.Evidence is not null select (axiom, o)).ToList();
+            backed.Should().NotBeEmpty();
+            foreach (var (axiom, o) in backed)
+            {
+                var evidence = CosmosAxioms.Get(o.Evidence!);
+                (evidence.MeasuredOn & o.On).Should().Be(o.On, $"{o} claims only where {o.Evidence} was measured");
+                (PinningTest(evidence)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(evidence.Id, evidence.PinnedBy);
+                axiom.FunctionOutcomes!.Where(other => other.Evidence is null && (other.On & o.On) != 0
+                    && FunctionKey.Of(other.Name, other.Subject, other.Operand, other.Band, other.Value) == FunctionKey.Of(o.Name, o.Subject, o.Operand, o.Band, o.Value))
+                    .Should().BeEmpty($"{o} is the key's one row on its targets");
+            }
+        }
+
+        /// <summary>
+        /// A line two runs of the probe account both answered is answered alike by both, so the records read as one: run 3
+        /// sent run 1's string functions and run 2's cased letters again beside what it added. A line a run left unanswered
+        /// measures nothing (<see cref="CosmosWitnessProbe.Unanswered"/>): run 3's <c>LENGTH(c.v)</c> over <c>"a0b1c"</c>,
+        /// which runs 1 and 4 answered 5, and its six searches read from a path, which run 4 answered, the one over U+0000
+        /// then 1 failing (<see cref="CosmosWitnessProbe.Failed"/>).
+        /// </summary>
+        [Fact]
+        public void EveryLineTwoProbeRunsSentIsAnsweredAlike()
+        {
+            var lines = AzureRecordLines().ToList();
+            lines.GroupBy(l => (l.Row, l.Expression, l.Witness)).Where(g => g.Select(l => l.Record).Distinct().Count() > 1).Should().NotBeEmpty();
+            lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered).GroupBy(l => (l.Row, l.Expression, l.Witness, Kept(l.Answer))).Where(g => g.Select(l => l.Answer).Distinct().Count() > 1)
+                .Select(g => $"{g.Key.Row}: {g.Key.Expression} over {g.Key.Witness}: " + string.Join(", ", g.Select(l => $"{l.Answer} in {l.Record}")))
+                .Should().BeEmpty("the probe account answers a line as it did before");
+        }
+
+        /// <summary>
+        /// The lines of every probe-account record the witness probe wrote, each once however many runs sent it: the row,
+        /// the expression, the witness and the answer. A line one run left unanswered and another answered, or failed, is
+        /// that answer alone, and one no run answered is <see cref="CosmosWitnessProbe.Unanswered"/>, which measures nothing.
+        /// </summary>
+        static IEnumerable<(string Row, string Expression, string Witness, string Answer)> AzureWitnessRecords()
+        {
+            var lines = AzureRecordLines().Select(l => (l.Row, l.Expression, l.Witness, l.Answer)).Distinct().ToList();
+            var answered = lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered).Select(l => (l.Row, l.Expression, l.Witness)).ToHashSet();
+            return lines.Where(l => l.Answer != CosmosWitnessProbe.Unanswered || answered.Contains((l.Row, l.Expression, l.Witness)) == false);
+        }
+
+        /// <summary>The lines of every probe-account record the witness probe wrote, by record.</summary>
+        static IEnumerable<(string Record, string Row, string Expression, string Witness, string Answer)> AzureRecordLines()
+        {
+            var assembly = typeof(CosmosAxiomsTests).Assembly;
+            foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
+            {
+                using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+                var lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').ToList();
+                if (lines[0] != WitnessHeader)
+                    continue;
+
+                foreach (var f in lines.Skip(1).Select(l => l.Split('\t')))
+                {
+                    f.Should().HaveCount(5, name);
+                    f[0].Should().Be("Azure", name);
+                    yield return (name, f[1], f[2], f[3], f[4]);
+                }
+            }
+        }
+
+        /// <summary>The header of a record the witness probe wrote, which <see cref="Records"/> leaves to <see cref="AzureWitnessRecords"/>.</summary>
+        const string WitnessHeader = "release\trow\texpression\twitness\tanswer";
+
+        /// <summary>
+        /// A row measured on the emulator since the run records began (2026-11-02) names its release in a committed
+        /// emulator record (<c>Measurements/Runs/Emulator</c>): every line its pinning test logged, with the release that
+        /// answered, so a later release that answers otherwise is read against what this one did.
+        /// </summary>
+        [Fact]
+        public void EveryEmulatorRowSinceTheRecordsBeganHasARecordedRelease()
+        {
+            var lines = EmulatorRecords().ToList();
+            lines.Should().NotBeEmpty();
+            lines.Select(l => l.Row).Should().BeSubsetOf(CosmosAxioms.All.Select(a => a.Id));
+            lines.Should().OnlyContain(l => Regex.IsMatch(l.Release, "^EN[0-9]{8}$"), "each line names the emulator release that answered it");
+
+            var recorded = lines.Select(l => l.Row).ToHashSet();
+            CosmosAxioms.All.Where(a => a.MeasuredOn.HasFlag(CosmosAxiomTarget.Emulator) && a.Measured >= new DateOnly(2026, 11, 2) && a.Id.StartsWith("Service.", StringComparison.Ordinal))
+                .Select(a => a.Id).Where(id => recorded.Contains(id) == false).Should().BeEmpty("an emulator row measured since 2026-11-02 has its release's record");
+        }
+
+        /// <summary>The lines of every emulator record: the release, the row, the expression, the witness and the answer.</summary>
+        static IEnumerable<(string Record, string Release, string Row, string Expression, string Witness, string Answer)> EmulatorRecords()
+        {
+            var assembly = typeof(CosmosAxiomsTests).Assembly;
+            foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("EmulatorRuns/", StringComparison.Ordinal)))
+            {
+                using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
+                foreach (var line in reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').Skip(1))
+                {
+                    var f = line.Split('\t');
+                    f.Should().HaveCount(5, $"{name}: {line}");
+                    yield return (name, f[0], f[1], f[2], f[3], f[4]);
+                }
+            }
         }
 
         /// <summary>
@@ -342,7 +717,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith("Runs/", StringComparison.Ordinal)))
             {
                 using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
-                foreach (var line in reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').Skip(1))
+                var lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l[0] != '#').ToList();
+                if (lines[0] == WitnessHeader)
+                    continue;
+
+                foreach (var line in lines.Skip(1))
                 {
                     var f = line.Split('\t');
                     f.Should().HaveCount(7, $"{name}: {line}");

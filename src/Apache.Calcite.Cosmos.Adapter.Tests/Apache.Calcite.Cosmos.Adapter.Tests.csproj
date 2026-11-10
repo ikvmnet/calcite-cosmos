@@ -43,6 +43,7 @@
         <!-- What a service answered on a run, as CosmosAxiomsTests reads it wherever the tests are unpacked; a C6 run's
              record is of printed forms, not the registry's rows, and is kept beside them unread. -->
         <EmbeddedResource Include="Measurements\Runs\*.tsv" Exclude="Measurements\Runs\*-conformance.tsv" LogicalName="Runs/%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Measurements\Runs\Emulator\*.tsv" LogicalName="EmulatorRuns/%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>

@@ -41,6 +41,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         static SqlValue Call(string function, params SqlValue[] operands) => new SqlValue.Call(function, operands);
 
+        /// <summary>A stated set as it is read, with the refinements of each class it names (F1).</summary>
+        static JsonCharacterBand Closed(JsonCharacterBand stated) => global::Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Closed(stated);
+
         /// <summary>Facts saying what <c>a</c> and <c>b</c> hold: characters of these classes, if strings.</summary>
         static JsonFactSet Holding(JsonCharacterBand a, JsonCharacterBand b, params JsonFact[] more) =>
             new JsonFactTheory(new[] { new JsonFact(A, new JsonClaim.Characters(a)), new JsonFact(B, new JsonClaim.Characters(b)) }.Concat(more)
@@ -51,8 +54,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var facts = Holding(S, W);
 
-            facts.CharactersOf(Call("||", Text(A), Text(B))).Should().Be(S | W);
-            facts.CharactersOf(Call("CONCAT", Text(A), Lit("xß"), Text(B))).Should().Be(S | N | W);
+            facts.CharactersOf(Call("||", Text(A), Text(B))).Should().Be(Closed(S | W));
+            facts.CharactersOf(Call("CONCAT", Text(A), Lit("xß"), Text(B))).Should().Be(Closed(S | N | W));
             facts.CharactersOf(Call("||", Lit("a"), Lit("b"))).Should().Be(JsonCharacterBand.None);
         }
 
@@ -65,9 +68,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var facts = Holding(H, S);
 
-            facts.CharactersOf(Call("UPPER", Text(A))).Should().Be(H | N);
-            facts.CharactersOf(Call("LOWER", Text(A))).Should().Be(H);
-            facts.CharactersOf(Call("UPPER", Text(B))).Should().Be(S);
+            facts.CharactersOf(Call("UPPER", Text(A))).Should().Be(Closed(H | N));
+            facts.CharactersOf(Call("LOWER", Text(A))).Should().Be(Closed(H));
+            facts.CharactersOf(Call("UPPER", Text(B))).Should().Be(Closed(S));
         }
 
         /// <summary>
@@ -79,13 +82,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var facts = Holding(S, N | W);
 
-            facts.CharactersOf(Call("SUBSTRING", Text(A), Number(2), Number(1))).Should().Be(S);
-            facts.CharactersOf(Call("LEFT", Text(B), Number(2))).Should().Be(N | W);
-            facts.CharactersOf(Call("REPLACE", Text(A), Text(B), Lit("!"))).Should().Be(S, "the search is replaced, and none of it is kept");
-            facts.CharactersOf(Call("REPLACE", Text(A), Lit("x"), Text(B))).Should().Be(S | N | W);
-            facts.CharactersOf(Call("TRIM BOTH", Lit(" "), Text(B))).Should().Be(N | W);
-            facts.CharactersOf(Call("CASE", Text(A), Lit("\0"))).Should().Be(S | Z);
-            facts.CharactersOf(Call("REVERSE", Call("REPEAT", Text(B), Number(2)))).Should().Be(N | W);
+            facts.CharactersOf(Call("SUBSTRING", Text(A), Number(2), Number(1))).Should().Be(Closed(S));
+            facts.CharactersOf(Call("LEFT", Text(B), Number(2))).Should().Be(Closed(N | W));
+            facts.CharactersOf(Call("REPLACE", Text(A), Text(B), Lit("!"))).Should().Be(Closed(S), "the search is replaced, and none of it is kept");
+            facts.CharactersOf(Call("REPLACE", Text(A), Lit("x"), Text(B))).Should().Be(Closed(S | N | W));
+            facts.CharactersOf(Call("TRIM BOTH", Lit(" "), Text(B))).Should().Be(Closed(N | W));
+            facts.CharactersOf(Call("CASE", Text(A), Lit("\0"))).Should().Be(Closed(S | Z));
+            facts.CharactersOf(Call("REVERSE", Call("REPEAT", Text(B), Number(2)))).Should().Be(Closed(N | W));
         }
 
         [Fact]
@@ -93,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var facts = Holding(H, JsonCharacterBand.None);
 
-            facts.CharactersOf(Call("UPPER", Call("||", Text(B), Text(A)))).Should().Be(H | N);
+            facts.CharactersOf(Call("UPPER", Call("||", Text(B), Text(A)))).Should().Be(Closed(H | N));
             facts.CharactersOf(Call("SUBSTRING", Call("LOWER", Text(B)), Number(1), Number(3))).Should().Be(JsonCharacterBand.None);
         }
 
@@ -115,15 +118,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         /// <summary>
         /// A cast to text of the value a path holds is the path's characters where it holds scalars alone: a number or a
-        /// boolean renders in ASCII, and an object as the JSON of whatever it holds.
+        /// boolean renders in ASCII, and an object as the JSON of whatever it holds. Which casts write text, and of which
+        /// kinds, are the root's rows (<c>StringCalls.TextCasts</c>): a cast to a type no row names is given nothing.
         /// </summary>
         [Fact]
         public void TheCastToTextOfAScalarHoldsThePathsCharacters()
         {
             var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(A));
+            var scalars = Holding(S, JsonCharacterBand.None, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true)));
 
-            Holding(S, JsonCharacterBand.None, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true))).CharactersOf(cast).Should().Be(S);
+            scalars.CharactersOf(cast).Should().Be(Closed(S));
+            scalars.CharactersOf(new SqlValue.Cast("CHAR", new SqlValue.Raw(A))).Should().Be(Closed(S));
+            scalars.CharactersOf(Call("REVERSE", new SqlValue.Cast("INTEGER", new SqlValue.Raw(A)))).Should().Be(JsonCharacterBand.Any, "no row says a cast to INTEGER writes text");
             Holding(S, JsonCharacterBand.None).CharactersOf(cast).Should().Be(JsonCharacterBand.Any, "the path may hold an object");
+        }
+
+        /// <summary>
+        /// The value a path holds read through its column, as a loading that reads places reads a declared field (rawtyped),
+        /// is that value: it holds the path's characters, and so does its cast to text, so a call over it draws them as a
+        /// call over the value read plainly does. What S's computed places and the translator's bridge ask of such a call.
+        /// </summary>
+        [Fact]
+        public void AValueReadThroughItsColumnHoldsThePathsCharacters()
+        {
+            var facts = Holding(S, N | W, new JsonFact(A, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+            var column = new SqlValue.Raw(A) { Column = "VARCHAR" };
+
+            facts.CharactersOf(Call("REVERSE", column)).Should().Be(Closed(S));
+            facts.CharactersOf(Call("UPPER", column)).Should().Be(facts.CharactersOf(Call("UPPER", new SqlValue.Raw(A))));
+            facts.CharactersOf(new SqlValue.Cast("VARCHAR", column)).Should().Be(Closed(S));
+            facts.CharactersOf(Call("||", column, new SqlValue.Raw(B) { Column = "VARIANT" })).Should().Be(Closed(S | N | W));
+            facts.CharactersOf(new SqlValue.Cast("VARCHAR", new SqlValue.Raw(B) { Column = "VARIANT" })).Should().Be(JsonCharacterBand.Any, "b may hold an object");
         }
 
         /// <summary>

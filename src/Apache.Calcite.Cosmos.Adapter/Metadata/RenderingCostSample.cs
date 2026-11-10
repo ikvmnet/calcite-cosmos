@@ -13,8 +13,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// One question a plan asked S, as the cost instrument read it (spec §6.4): the roots, what the oracle says it cost (a
     /// hit, a bundle or a decline, the run's iterations, S's time), the candidates its templates proposed, the bytes the
     /// thread allocated meanwhile, the generation's graph before and after, none before the first, and the thread's
-    /// processor time, where the measure was handed its clock and the oracle was asked.
+    /// processor time, where the measure was handed its clock and the oracle was asked; and whether the translator's bridge
+    /// asked it (<see cref="CosmosRendering.ImageOf"/>, <see cref="CosmosRendering.FoldOf"/>), its root a call's presence or a
+    /// <c>LIKE</c> over a fold, rather than a filter's conjuncts.
     /// </summary>
-    internal sealed record RenderingCostSample(IReadOnlyList<SqlPredicate> Roots, RenderingCost Cost, long Candidates, long Bytes, GraphUsage? Before, GraphUsage? After, TimeSpan? Thread = null);
+    internal sealed record RenderingCostSample(IReadOnlyList<SqlPredicate> Roots, RenderingCost Cost, long Candidates, long Bytes, GraphUsage? Before, GraphUsage? After, TimeSpan? Thread = null, bool Bridge = false);
 
 }

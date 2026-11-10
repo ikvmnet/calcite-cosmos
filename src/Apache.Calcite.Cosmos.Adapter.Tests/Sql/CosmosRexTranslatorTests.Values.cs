@@ -215,9 +215,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// too. So it addresses no path, in any clause, and is left to the engine.
         /// </para>
         /// <para>
-        /// The oracle's loader reads a comparison through it as the window a cast to a number puts a stored number in,
-        /// which S states and does not write (O7), and the value it converts is the accessor read as text — the operand a
-        /// cast would have had, written out because the clause adds none.
+        /// The oracle's loader reads it as the reading it is of the path, <c>typed:DECIMAL</c>, whose parse of the
+        /// rendering is its row's (<c>Calcite.ReturningDecimalParsesTheRendering</c>).
         /// </para>
         /// </remarks>
         [Fact]
@@ -232,9 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, price)).Should().BeFalse();
             Translator().TryTranslateProjection(price, out _, out _).Should().BeFalse();
 
-            CosmosRexShapes.TryNumericCastOperand(price, _rex).Should().Match<RexNode>(
-                rendering => CosmosRexShapes.IsTextJsonValue(rendering), "the value it converts is the rendering");
-            Translator().Paths.TryResolvePath(CosmosRexShapes.TryNumericCastOperand(price, _rex)!, out var path).Should().BeTrue();
+            Translator().Paths.TryResolveJsonPath((RexCall)price, out var path).Should().BeTrue("the oracle's loader reads the path it parses the rendering of");
             path!.ToString().Should().Be("c.price");
 
             CosmosRexShapes.IsParsingJsonValue(Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 10, 2)).Should().BeTrue("at any scale");
@@ -244,7 +241,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             CosmosRexShapes.IsParsingJsonValue(asserted).Should().BeFalse();
             Translate(Call(SqlStdOperatorTable.EQUALS, asserted, Num(2))).Should().Be("(c.price = @p0)");
-            CosmosRexShapes.TryNumericCastOperand(asserted, _rex).Should().BeNull("an asserted type is no conversion");
         }
 
     }

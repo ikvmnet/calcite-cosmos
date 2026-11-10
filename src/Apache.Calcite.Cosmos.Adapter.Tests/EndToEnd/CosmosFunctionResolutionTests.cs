@@ -88,15 +88,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <see cref="CosmosSchema"/>, so there is no schema declaring the functions and the operator
         /// table is the only thing that can answer for the name — which is what makes this a
         /// measurement of the table rather than of resolution in general. The other route, which is
-        /// the one a connection takes, is <c>CosmosSchemaFunctionTests</c>.
+        /// the one a connection takes, is <c>CosmosSchemaFunctionTests</c>. The test is over the accessor, which the
+        /// service is sent whole: one of the declared field raises in Calcite's body, so since the switch (h15) it is not
+        /// pushed (the owner's reason of 2026-11-08), and with no schema here to give the body, Calcite plans it nowhere.
         /// </remarks>
         [Fact]
         public void AFunctionNeedsSomethingToResolveAgainst()
         {
-            var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"$.category\")");
+            var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.category'))");
             withTable.Should().NotThrow();
 
-            var without = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"$.category\")", withOperatorTable: false);
+            var without = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.category'))", withOperatorTable: false);
             without.Should().Throw<Exception>("the standard table has nothing to resolve IS_DEFINED to, and no schema here declares it");
         }
 

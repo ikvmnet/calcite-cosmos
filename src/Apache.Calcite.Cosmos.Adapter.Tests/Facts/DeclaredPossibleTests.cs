@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
@@ -41,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             static PathValues Allowed(PathValues x) =>
                 x.Values is null ? x : x with { Values = ValueSet.From(x.Values.Where(v => x.Kinds.Contains(JsonValues.TypeOf(v)))) };
 
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             Theory().In(generations).Declaration()!.DeclaredPossible().Should().BeNull();
             var (compared, respelled) = (0, 0);
 
@@ -77,13 +78,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// The declaration's own facts, what a statement's root renders under, read each path's <c>possible</c> row off
+        /// <c>D0</c>, where S imports a statement's paths from at its root: the one node the translator's bridge reads there
+        /// (<c>CosmosRexTranslator.Gathered</c>). A path <c>D0</c> made no term for has none, and is the top, as the importer
+        /// reads it; a declaration that states nothing holds none.
+        /// </summary>
+        [Fact]
+        public void TheDeclarationsOwnFactsReadEachPathsPossibleRowOffD0()
+        {
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
+            Theory().In(generations).Declared.TryPossible(JsonDocumentPath.Root.Property("a"), out _).Should().BeFalse();
+            var read = 0;
+
+            foreach (var (name, theory) in Declarations(generations))
+            {
+                var declaration = theory.Declaration()!;
+                var rules = PredicateRules.Of(declaration.Generation.Contexts);
+                var d0 = declaration.DeclaredPossible()!;
+
+                foreach (var path in theory.MentionedPaths)
+                {
+                    d0.TryGet(rules.Possible.Of(JsonFactEncoding.Path(path).ToTerm(rules.Json)), out var declared).Should().BeTrue($"{name}: D0 declares {SqlValue.Spell(path)}");
+                    theory.Declared.TryPossible(path, out var possible).Should().BeTrue($"{name} at {SqlValue.Spell(path)}");
+                    possible.Should().Be(declared, $"{name} at {SqlValue.Spell(path)}");
+                    read++;
+                }
+
+                theory.Declared.TryPossible(JsonDocumentPath.Root.Property("nothing declares this"), out var top).Should().BeFalse(name);
+                top.Should().Be(PathValues.Anything, name);
+            }
+
+            read.Should().BePositive();
+        }
+
+        /// <summary>
         /// Sixteen threads asking for one declaration's <c>D0</c> at once get one context, built once: the declaration's
         /// context has one child.
         /// </summary>
         [Fact]
         public void SixteenThreadsBuildOneD0()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var declaration = Theory(Outright(P("a"), Present), When(P("kind"), "k", P("b"), Type(JsonType.String))).In(generations).Declaration()!;
             var seen = new Scope?[16];
 
@@ -112,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void AStatementIsRootedAtD0()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String))).In(generations);
             var statement = new PredicateStatement(new[] { Eq(Text(P("a")), "x") });
             var scope = new CosmosOracle(theory, generations).Admit(statement);

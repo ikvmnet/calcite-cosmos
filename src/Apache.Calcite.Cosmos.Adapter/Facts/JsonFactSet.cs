@@ -192,6 +192,23 @@ namespace Apache.Calcite.Cosmos.Facts
         };
 
         /// <summary>
+        /// Returns what a path may hold, as one value, where the context holds it: what it proved of the path's kinds, its
+        /// domain, its bounds and its presence, met by the predicate rules (<c>possible</c>), what S imports a path as
+        /// (<c>RenderingImporter</c>). A context holds one of a path an atom of its own reads or the declaration states a fact
+        /// of, beneath <c>D0</c>; the declaration's own facts read <c>D0</c>'s, where S imports a statement's paths from at its
+        /// root (<see cref="JsonFactTheory.Declared"/>).
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="values">What it may hold, or the top.</param>
+        /// <returns>Whether the context holds it.</returns>
+        internal bool TryPossible(JsonDocumentPath path, out PathValues values)
+        {
+            var held = Read<PathValues?>(null, t => t.TryPossible(path, out var possible) ? possible : null);
+            values = held ?? PathValues.Anything;
+            return held is not null;
+        }
+
+        /// <summary>
         /// Returns the fewest and the most UTF-16 units a path's string may hold, each where it is known.
         /// </summary>
         /// <remarks>

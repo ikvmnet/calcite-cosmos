@@ -71,17 +71,24 @@ JSON_VALUE(c."DOC", '$.tags[0]')   →   (IS_PRIMITIVE(c.tags[0]) ? c.tags[0] : 
 Both name the first element. `ARRAY_SLICE` and `SUBSTRING` are adjusted for the origin the same way.
 
 An element holds whatever the document put there, and no declaration says otherwise: a schema states
-what a property holds, and none reaches an element. So an ordering of one read as text runs in process,
-the container read for it — `5` renders as `'5'`, which is below `'m'` in SQL and no string at all to
-Cosmos, and the adapter proves nothing of an element yet (Chapter 23); an equality with text no other
-value renders as is still sent:
+what a property holds, and none reaches an element. So a comparison of one read as text is decided as
+one over a property nothing declares — `5` renders as `'5'`, which is below `'m'` in SQL and no string
+at all to Cosmos (Chapter 8.3). An equality with text no other value renders as is sent exactly, and so
+is an ordering whose answer the other kinds' renderings settle: every number's text sorts below `'BIKES'`
+and `'true'` and `'false'` above it, so `> 'BIKES'` is the string's comparison or a boolean. Any other
+ordering is not sent: what would be sent for it tests the element's kind, and what Calcite makes of an
+element's own value, and of a test of it, has not been measured, so it runs in process over every
+document:
 
 ```sql
-WHERE JSON_VALUE(c."DOC", '$.tags[0]') < 'm'
-→ (nothing sent)   -- compared in process
-
 WHERE JSON_VALUE(c."DOC", '$.tags[0]') = 'x'
 → WHERE (c.tags[0] = @p0)
+
+WHERE JSON_VALUE(c."DOC", '$.tags[0]') > 'BIKES'
+→ WHERE ((c.tags[0] > @p0) OR IS_BOOL(c.tags[0]))
+
+WHERE JSON_VALUE(c."DOC", '$.tags[0]') < 'm'
+→ (nothing sent; the ordering runs in process)
 ```
 
 ## 11.4 Array functions

@@ -4,6 +4,7 @@ using System.Linq;
 
 using Eggnog;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
@@ -27,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     public sealed class SoundnessTests
     {
 
-        static readonly JsonContexts Contexts = new();
+        static readonly JsonContexts Contexts = new(CosmosReasoning.Rows);
 
         static readonly JsonPathSpec[] Concrete =
             new[]

@@ -39,9 +39,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static readonly JsonCharacterBand Z = JsonCharacterBand.Nul;
 
-        static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternReader.Absent(pattern)?.ToArray();
+        // The five classes a claim names; the refinements beside them (F1) are held apart (ARangeIsReadForTheRefinementsItSpans).
+        static JsonCharacterBand[]? Absent(string pattern) => Five(CosmosPatternReader.Absent(pattern));
 
-        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => Five(CosmosPatternReader.Absent(pattern, unicode));
+
+        static JsonCharacterBand[]? Five(System.Collections.Generic.IReadOnlyList<JsonCharacterBand>? absent) =>
+            absent?.Where(c => global::Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Within(c) == c).ToArray();
+
+        static JsonCharacterBand[] Refinements(string pattern, bool unicode) =>
+            [.. CosmosPatternReader.Absent(pattern, unicode)!.Where(c => global::Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Within(c) != c)];
 
         /// <summary>
         /// The classes the theory says a path's stored strings hold no character of, the pattern's claim of what was
@@ -140,8 +147,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void ASurrogateAdmittedIsAHighUnitStored()
         {
             Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H, N, W, Z);
-            CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S) },
-                "the reader states what was written, a surrogate and nothing from U+E000");
+            CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S | JsonCharacterBand.Unpaired) },
+                "the reader states what was written, a surrogate, perhaps unpaired, and nothing from U+E000");
             Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new[] { N, W, Z }, "and the theory derives that what is stored may hold a high unit");
             Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S, N, W, Z }, "one written without a surrogate is stored as it was written");
         }
@@ -176,6 +183,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent("^[\\uE000-\\uFFFF]+$").Should().Equal(S, N, W, Z);
             Absent("^[\\u3001-\\uD7FF]+$").Should().Equal(S, H, W, Z);
             Absent("^[a-z\\t]+$").Should().Equal(S, H, N, Z);
+        }
+
+        /// <summary>
+        /// A range holds a refinement where it spans the refinement's characters (F1): U+FFFD and U+FDD0 one each, a line
+        /// terminator, and an unpaired surrogate where it spans U+D800 to U+DFFF themselves, which only a whole string can
+        /// show paired; a supplementary character read by code point holds a pair, never an unpaired one.
+        /// </summary>
+        [Fact]
+        public void ARangeIsReadForTheRefinementsItSpans()
+        {
+            var (replacement, escape, unpaired, lineterm) = (JsonCharacterBand.Replacement, JsonCharacterBand.Escape, JsonCharacterBand.Unpaired, JsonCharacterBand.LineTerminator);
+            Refinements("^[\\uE000-\\uFDCF]+$", unicode: false).Should().Equal(replacement, escape, unpaired, lineterm);
+            Refinements("^[\\uFDD0\\uFFFD]+$", unicode: false).Should().Equal(unpaired, lineterm);
+            Refinements("^[a-z\\n]+$", unicode: false).Should().Equal(replacement, escape, unpaired);
+            Refinements("^[\\u2028]+$", unicode: false).Should().Equal(replacement, escape, unpaired);
+            Refinements("^[\\uD800-\\uDFFF]+$", unicode: false).Should().Equal(replacement, escape, lineterm);
+            Refinements("^\\uD83D\\uDE00$", unicode: false).Should().Equal(replacement, escape, lineterm);
+            Refinements("^\\uD83D\\uDE00$", unicode: true).Should().Equal(replacement, escape, unpaired, lineterm);
         }
 
         /// <remarks>

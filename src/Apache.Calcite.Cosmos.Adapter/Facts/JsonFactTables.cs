@@ -81,6 +81,12 @@ namespace Apache.Calcite.Cosmos.Facts
         public abstract bool TryChars(JsonDocumentPath path, out ValueSet<string> bands);
 
         /// <summary>
+        /// Returns what a path may hold, as one value, where the context holds it: the predicate rules' <c>possible</c>, what
+        /// S imports a path as (<c>RenderingImporter</c>).
+        /// </summary>
+        public abstract bool TryPossible(JsonDocumentPath path, out PathValues values);
+
+        /// <summary>
         /// Returns the classes a value's characters may be in, if it is a string, where the theory derives them: the
         /// theory's <c>chars</c> said of a value, a computed one among them.
         /// </summary>

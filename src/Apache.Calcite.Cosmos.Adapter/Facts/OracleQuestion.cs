@@ -31,9 +31,15 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Inside the arm of a <c>CASE</c> in a conjunct: every sibling, and the conditions the arm is read under, never
-        /// the conjunct itself.
+        /// the conjunct itself; of them, only what the facts graph reads exactly.
         /// </summary>
         Arm,
+
+        /// <summary>
+        /// An arm of a <c>CASE</c> S writes: the stratum its conjunct renders from, and the conditions it is read under, so
+        /// that no sibling's facts reach it and #117's circle stays closed.
+        /// </summary>
+        RenderArm,
 
         /// <summary>What a point read may rely on, which applies no predicate: the pins alone.</summary>
         PointRead,

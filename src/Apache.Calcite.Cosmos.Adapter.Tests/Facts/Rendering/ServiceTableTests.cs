@@ -15,7 +15,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// A table is equal to another by its entries: Eggnog interns a value by its equality, and the probe's table, equal by
-    /// its size, would have let a bundle read another set's rows.
+    /// its size, would have let a bundle read another set's rows. An entry is changed by a row it cites, which a failing
+    /// side's entry, already answering a failure (G4), would not be by one.
     /// </summary>
     public sealed class ServiceTableTests
     {
@@ -29,9 +30,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var kept = entries.Where(_ => random.Next(2) == 0).ToList();
                 var changed = kept[random.Next(kept.Count)];
-                var other = kept.Select(e => e == changed ? e with { Answers = e.Answers.Add(CosmosAnswer.Fails), Outcomes = e.Outcomes | ServiceOutcomes.Fails } : e).ToList();
+                var other = kept.Select(e => e == changed ? e with { Evidence = e.Evidence.Add("Service.Planted") } : e).ToList();
 
-                var (a, again, b) = (ServiceTable.Of(ValueSet.From(kept)), ServiceTable.Of(ValueSet.From(kept.ToArray())), ServiceTable.Of(ValueSet.From(other)));
+                var (a, again, b) = (ServiceTable.Of(ValueSet.From(kept), ProbeRows.ReaderClasses), ServiceTable.Of(ValueSet.From(kept.ToArray()), ProbeRows.ReaderClasses), ServiceTable.Of(ValueSet.From(other), ProbeRows.ReaderClasses));
                 if (equal(a, again) == false || hash(a) != hash(again))
                     faults.Add($"a table of {kept.Count} entries is not equal to itself built again");
                 if (equal(a, b))
@@ -54,9 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var entries = ProbeRows.Table.Entries;
             var first = entries.First();
             using var scope = graph.Root.CreateChild();
-            scope.Assume(table.Of("t").Is(ServiceTable.Of(entries)));
-            scope.Assume(table.Of("t").Is(ServiceTable.Of(ValueSet.From(entries.ToArray()))));
-            scope.Invoking(s => s.Assume(table.Of("t").Is(ServiceTable.Of(entries.Remove(first).Add(first with { Evidence = ValueSet.Of("Service.Planted") })))))
+            scope.Assume(table.Of("t").Is(ServiceTable.Of(entries, ProbeRows.ReaderClasses)));
+            scope.Assume(table.Of("t").Is(ServiceTable.Of(ValueSet.From(entries.ToArray()), ProbeRows.ReaderClasses)));
+            scope.Invoking(s => s.Assume(table.Of("t").Is(ServiceTable.Of(entries.Remove(first).Add(first with { Evidence = ValueSet.Of("Service.Planted") }), ProbeRows.ReaderClasses))))
                 .Should().Throw<FactConflictException>();
         }
 

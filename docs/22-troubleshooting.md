@@ -70,7 +70,10 @@ stored form, or the statement's own `IN (…)`. In a projection the property alo
 service, and only the function runs in process; in a filter the comparison runs in process, over the
 documents the rest of the filter keeps, which are read whole. `REPLACE` and `REPEAT` ask something of
 their other operands as well, a search that is not empty and a count the service repeats as far as
-Calcite does. Chapter 14.4 and Appendix B.2 say which pattern lets which function push.
+Calcite does; on both targets `REPLACE`'s search holds no U+0000, which the service answers otherwise
+than Calcite over and Azure fails some statements over, its replacement may be any string on Azure, and a
+`SUBSTRING`'s length is at least 0. Chapter 14.4 and Appendix B.2 say which pattern lets which function
+push.
 
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**
 The container does not declare the stored form, or the query reads it with a spelling that cannot push.
@@ -143,6 +146,9 @@ row identifies it), where in the value the bytes are, and the bytes themselves.
 **"… is evaluated by the service and has no in-process body."**
 A Cosmos-only function (full text, scoring, `REGEXMATCH`, the string conversions) could not be pushed
 — most often because its first argument is not a property path. Rewrite it so it can be. Chapter 17.
+A type test (`IS_DEFINED`, `IS_STRING`, …) has a body only over `JSON_VALUE` or `JSON_QUERY` of a path:
+over a promoted column, an item taken with `[…]`, a cast or a function's result Calcite fails it on every
+row, and so does the adapter. Test the path instead (Appendix B.5).
 
 **"Cosmos never returns a relevance score" / `ORDER BY FULLTEXTSCORE(…)` fails through a connection.**
 `ORDER BY RANK` cannot be recovered through a `CalciteConnection` ([#46](https://github.com/ikvmnet/calcite-cosmos/issues/46)).

@@ -437,6 +437,9 @@ namespace Apache.Calcite.Cosmos.Adapter
                     if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container) == false)
                         return false;
 
+                    // A filter onto it is conjoined with it: see CosmosClauses.Where.
+                    written |= CosmosClauses.Where;
+
                     // A comparison a parameter's value decides is rechecked by the reader, row by row, which only rows
                     // the WHERE filtered can be: see CosmosClauses.Recheck.
                     if (CosmosRexTranslator.MayRecheck(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder()))

@@ -144,6 +144,11 @@ jobs:
         for i in $(seq 1 60); do
           if curl -ksf -o /dev/null http://localhost:8081/; then
             echo "emulator ready after ${i}s"
+            # The release answers the emulator rows; the witness probe logs it and holds a release its record names
+            # to that record (Measurements/Runs/Emulator).
+            release=$(docker logs cosmos-emulator 2>&1 | grep -o 'Release Version: EN[0-9]*' | head -1 | sed 's/.*: //')
+            echo "emulator release ${release:-unknown}"
+            if [ -n "$release" ]; then echo "COSMOS_EMULATOR_RELEASE=$release" >> "$GITHUB_ENV"; fi
             exit 0
           fi
           sleep 1

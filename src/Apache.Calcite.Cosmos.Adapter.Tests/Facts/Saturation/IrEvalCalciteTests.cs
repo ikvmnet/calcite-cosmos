@@ -138,14 +138,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// The cast of a raw value to text through each column (<c>Calcite.CastOfARawValueToText</c>): every value in one
         /// statement a column but those the evaluator says raise, two of which are asked alone; an <c>ANY</c>'s structure,
-        /// a coin, is left out.
+        /// a coin, is left out, but where <c>LIKE</c>'s pattern misses every text between its brackets.
         /// </summary>
         [Fact]
         public void TheCastOfARawValueToTextAgreesWithCalcite()
         {
             var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(Declaration.A));
             SqlPredicate[] predicates = [new SqlPredicate.IsNull(cast),
-                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text))];
+                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text)),
+                .. from pattern in new[] { "bi%", "x%", "%x", "{%", "%}", "[%", "%]", "{}", "[]", "%x%", "%" } select new SqlPredicate.Affix("LIKE", cast, pattern)];
             var documents = Values.Append(new J.Num(99999999999999999999m)).Append(new J.Num(long.MaxValue)).Select(v => new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = v }))
                 .Append(new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal))).ToArray();
             var (world, mismatches, compared) = (new World(0), new List<string>(), 0);
@@ -184,6 +185,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             TestContext.Current.TestOutputHelper?.WriteLine($"{compared:N0} answers compared over three columns");
             if (mismatches.Count > 0)
                 Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(20)));
+        }
+
+        /// <summary>
+        /// The text cast to <c>BOOLEAN</c> (<c>Calcite.CastToBooleanParses</c>), the way a view types a boolean column: a
+        /// boolean, a string spelling one however padded and cased, every other string and a number, each asked under the
+        /// truth tests the loader reads and the null test; every document the evaluator answers in one statement, and each
+        /// one it says raises alone.
+        /// </summary>
+        [Fact]
+        public void TheCastOfTheTextToBooleanAgreesWithCalcite()
+        {
+            var cast = new SqlValue.Cast("BOOLEAN", new SqlValue.Text(Declaration.A));
+            SqlPredicate[] predicates = [new SqlPredicate.IsNull(cast), new SqlPredicate.Compare("=", cast, SqlValue.Of(true)), new SqlPredicate.Compare("=", cast, SqlValue.Of(false)),
+                new SqlPredicate.Compare("<>", cast, SqlValue.Of(true)), new SqlPredicate.Compare("<", cast, SqlValue.Of(true))];
+            string[] texts = ["true", "TRUE", "True", " false ", "FALSE ", "\tTRUE", "true\t", "\u0001true", "true\u0000", "falſe", "ﬁ", "t", "1", "0", "yes", "", "  ", "x"];
+            var documents = Values.Concat(texts.Select(t => (J)new J.Str(t))).Concat([new J.Bool(true), new J.Bool(false), new J.Num(1m), new J.Num(0m), new J.Num(2.5m)])
+                .Select(v => new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = v })).Append(new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal))).ToArray();
+            var (world, drawn, mismatches, compared, statements) = (new World(0), new Drawn(IrEval.TypedAs.Returning, IrEval.RawAs.Any), new List<string>(), 0, 0);
+
+            using var connection = MaterialisedTable.Open();
+            foreach (var predicate in predicates)
+            {
+                var truths = documents.Select(d => IrEval.Truth(predicate, d, world)).ToArray();
+                var answered = Enumerable.Range(0, documents.Length).Where(i => truths[i] != Truths.Raises).ToArray();
+                statements++;
+                if (Ask(connection, predicate, drawn, [.. answered.Select(i => documents[i])]) is { } rows)
+                    for (var k = 0; k < answered.Length; k++)
+                    {
+                        compared++;
+                        if (rows[k] != Letter(truths[answered[k]]))
+                            mismatches.Add($"{predicate} is {rows[k]} of {Documents.Json(documents[answered[k]])} in Calcite, and {truths[answered[k]]} to the evaluator");
+                    }
+                else
+                    foreach (var i in Raising(connection, predicate, drawn, answered, documents, ref statements))
+                        mismatches.Add($"{predicate} raises over {Documents.Json(documents[i])} in Calcite, and is {truths[i]} to the evaluator");
+
+                foreach (var i in Enumerable.Range(0, documents.Length).Where(i => truths[i] == Truths.Raises))
+                {
+                    statements++;
+                    compared++;
+                    if (Ask(connection, predicate, drawn, [documents[i]]) is { } answer)
+                        mismatches.Add($"{predicate} is {answer[0]} of {Documents.Json(documents[i])} in Calcite, and raises to the evaluator");
+                }
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{compared:N0} answers compared in {statements:N0} statements");
+            if (mismatches.Count > 0)
+                Assert.Fail($"{mismatches.Count} disagreements with Calcite:\n  " + string.Join("\n  ", mismatches.Take(30)));
         }
 
         /// <summary>
@@ -356,6 +405,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             SqlPredicate.Compare c => $"({Sql(c.Left, drawn)} {c.Op} {Sql(c.Right, drawn, c.Left)})",
             SqlPredicate.In i => $"({Sql(i.Value, drawn)} IN ({string.Join(", ", i.Points.Select(p => Sql(new SqlValue.Literal(p), drawn, i.Value)))}))",
             SqlPredicate.IsNull n => $"({Sql(n.Value, drawn)} IS NULL)",
+            SqlPredicate.Affix { Op: "LIKE" } a => $"({Sql(a.Value, drawn)} LIKE '{a.Pattern.Replace("'", "''")}')",
             SqlPredicate.Not n => $"(NOT {Sql(n.Operand, drawn)})",
             SqlPredicate.And a => "(" + string.Join(" AND ", a.Arms.Select(arm => Sql(arm, drawn))) + ")",
             SqlPredicate.Or o => "(" + string.Join(" OR ", o.Arms.Select(arm => Sql(arm, drawn))) + ")",

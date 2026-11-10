@@ -49,7 +49,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// absence. A node that keeps no document imports nothing. Beside an atom <paramref name="beneath"/> names, what its
         /// path may hold where its conjunct was rendered, a stratum beneath this node, read by that atom's cells alone: no
         /// fact of it is met with the import's, and the cells it admits nothing of are set aside
-        /// (<see cref="RenderingBundle.Assume"/>).
+        /// (<see cref="RenderingBundle.Assume"/>). A later round's computed atom has every path its call reads stated so, with
+        /// its characters, a stratum of the round's own that S gathers the call's operands beneath
+        /// (<see cref="RenderingBundle.AssumeComputed"/>, G6). An arm's atom, one its source names the conditions of
+        /// (<see cref="ImportSource.Arm"/>), is stated beneath the stratum the bundle opened for them, tagged with it, and
+        /// spelled by its conditions, which no bundle's numbering changes (h15).
         /// </summary>
         /// <param name="bundle">The bundle, not yet run; <c>null</c> for the report alone.</param>
         /// <param name="source">The node's statement, licence and round.</param>
@@ -64,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <exception cref="FactConflictException">A path was imported with another value.</exception>
         public static ImportReport Import(RenderingBundle? bundle, ImportSource source, Scope? node, PredicateRules? rules,
             JsonFactTheory? declaration, IEnumerable<JsonDocumentPath> paths, IEnumerable<(SqlPredicate Atom, ImportSource Source, Scope? Node, PredicateRules? Rules)>? beneath = null,
-            NodeReadings? readings = null)
+            NodeReadings? readings = null, IEnumerable<SqlValue.Call>? computed = null)
         {
             // ContextFor hands back no context where the licence keeps nothing; with rules, something was known.
             if (rules is not null && node is null or { IsContradictory: true })
@@ -84,8 +88,40 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
 
             var (count, stated) = (spelled.Count, new List<(SqlPredicate, PathValues)>());
+
+            // A computed place's characters, F's for the call at the root (h10), spelled into the key with its spelling.
+            foreach (var call in (computed ?? bundle?.ComputedCalls ?? []).Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled, StringComparer.Ordinal).OrderBy(c => c.Spelled, StringComparer.Ordinal))
+            {
+                var chars = (node is not null && rules is not null ? ValueCharsOf(node, rules, call) : null) ?? JsonValues.AllBands;
+                bundle?.ImportComputed(call, chars);
+                spelled.Add(JsonSerializer.Serialize<object?[]>([call.Spelled, call.Type, chars.AsEnumerable()]));
+            }
             foreach (var (atom, origin, stratum, read) in beneath ?? [])
-                if (atom.Paths.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false, readings) is { Values: { } narrower } beneathIt)
+                if (origin.Arm is { } conditions)
+                {
+                    // An arm's leaf of one path, as its node holds the path; one over a computed place is read where its case is.
+                    if (RenderingBundle.IsComputed(atom) || atom.Places.ToList() is not [var armPath] || stratum is not { IsContradictory: false } || read is null
+                        || ReadOf(stratum, read, armPath, false, readings) is not { Values: { } armed } armIt)
+                        continue;
+
+                    var arm = bundle?.ArmOf(conditions);
+                    if (arm is { } opened)
+                        bundle!.Assume(origin with { Node = stratum, Stratum = opened, Arm = null }, new SqlPredicate.Beneath(opened, atom), armed);
+
+                    stated.Add((arm is { } tag ? new SqlPredicate.Beneath(tag, atom) : atom, armed));
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath " + JsonSerializer.Serialize(RenderingBundle.KeyOf(conditions)) + " " + armIt.Spelled);
+                }
+                else if (RenderingBundle.IsComputed(atom) && atom.Computed.Any() && origin.Stratum is null && atom is not SqlPredicate.Beneath)
+                {
+                    if (stratum is not { IsContradictory: false } || read is null)
+                        continue;
+
+                    // Each path the call reads as the round's node holds it, the root's import of a table it holds no row of.
+                    var operands = atom.Places.OrderBy(SqlValue.Spell, StringComparer.Ordinal).Select(p => (Path: p, Read: ReadOf(stratum, read, p, true, readings))).ToList();
+                    bundle?.AssumeComputed(origin with { Node = stratum }, atom, [.. operands.Select(o => (o.Path, o.Read.Values, o.Read.Chars))]);
+                    spelled.Add(JsonSerializer.Serialize(atom.ToString()) + " beneath [" + string.Join(",", operands.Select(o => o.Read.Spelled)) + "]");
+                }
+                else if (atom.Places.ToList() is [var path] && stratum is { IsContradictory: false } && read is not null && ReadOf(stratum, read, path, false, readings) is { Values: { } narrower } beneathIt)
                 {
                     bundle?.Assume(origin with { Node = stratum }, atom, narrower);
                     stated.Add((atom, narrower));
@@ -96,6 +132,26 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         /// <summary>One path's import as JSON, every value quoted, so that two imports that differ never spell alike.</summary>
+        /// <summary>
+        /// F's characters for a value at a node, asked as <c>JsonScopeTables</c> asks them: a child mentioning the paths it
+        /// reads, the value's term made and the character rules run; <c>null</c> where that does not complete.
+        /// </summary>
+        static ValueSet<string>? ValueCharsOf(Scope node, PredicateRules rules, SqlValue value)
+        {
+            if (node.IsContradictory)
+                return null;
+
+            using var child = node.CreateChild();
+            JsonContexts.Mention(rules.Json, child, value.PathsRead.Distinct().Select(JsonFactEncoding.Path));
+            var term = rules.Term(value);
+            child.Make(term);
+            var report = child.Run(rules.CharacterSaturation, new RunOptions { StopOnContradiction = true });
+            if (report.StopReason != RunStopReason.Completed || child.IsContradictory)
+                return null;
+
+            return child.TryGet(rules.ValueChars.Of(term), out ValueSet<string> held) ? held : null;
+        }
+
         internal static string Spell(JsonDocumentPath path, PathValues values, ValueSet<string> chars) => JsonSerializer.Serialize<object?[]>(
         [
             SqlValue.Spell(path), values.Kinds.AsEnumerable(), values.Values?.AsEnumerable(), values.Excluded.AsEnumerable(),

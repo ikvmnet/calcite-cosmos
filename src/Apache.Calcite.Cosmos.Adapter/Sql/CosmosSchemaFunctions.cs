@@ -46,6 +46,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal static Multimap Instance { get; } = Build();
 
         /// <summary>
+        /// Whether a call's operator is Calcite's wrapping of one of these declarations of an operator: by reference, the
+        /// declaration this table holds, never another function of the name, which a schema could mean otherwise.
+        /// </summary>
+        /// <param name="called">The operator a call carries.</param>
+        /// <param name="op">The operator a declaration presents.</param>
+        /// <returns><c>true</c> where the call is one of this table's declarations of <paramref name="op"/>.</returns>
+        internal static bool Presents(SqlOperator? called, SqlFunction op) =>
+            called is org.apache.calcite.sql.validate.SqlUserDefinedFunction user && user.getFunction() is CosmosSchemaFunction declared
+            && ReferenceEquals(declared.Operator, op) && Instance.containsEntry(op.getName(), declared);
+
+        /// <summary>
         /// Declares each operator once per arity it accepts.
         /// </summary>
         /// <remarks>

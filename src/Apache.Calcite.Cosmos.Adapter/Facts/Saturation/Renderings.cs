@@ -5,6 +5,8 @@ using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
@@ -36,10 +38,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <remarks>
         /// A cast to <c>DOUBLE</c> rounds a stored integer and the literal it is compared with by up to half of that unit
         /// each, so from here two whole numbers a unit apart may compare equal — measured, <c>= 2^60</c> keeps a stored
-        /// 2^60 + 1 — and no window a unit wide holds around a bound. <c>CosmosRexShapes.TryNumericCastOperand</c>
-        /// reports it as where the conversion rounds from; this is the one place it is written.
+        /// 2^60 + 1 — and no window a unit wide holds around a bound. The cast's reading reads it as where the conversion
+        /// rounds from; this is the one place it is written.
         /// </remarks>
         public const long DoubleUnitFrom = 1L << 52;
+
+        /// <summary>Whether a unit may be in a stored number's rendering: a digit, a point, an exponent's letter, a sign (<see cref="MayBeNumberText"/>).</summary>
+        public static bool MayBeNumberUnit(char unit) => unit is (>= '0' and <= '9') or '.' or 'e' or 'E' or '+' or '-';
 
         /// <summary>
         /// Determines whether text is in the grammar a stored number renders in: digits, a point, an exponent, a sign.
@@ -141,6 +146,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static bool MayRenderStructure(string type, string text) =>
             type == ArrayType ? text.StartsWith('[') : type == ObjectType && text.StartsWith('{');
 
+        /// <summary>
+        /// Determines whether a structure's rendering, <c>[…]</c> or <c>{…}</c>, may match a pattern as read (G7): its
+        /// first unit, where read as itself, the opening bracket and its last the closing one, and two units at least where
+        /// none is a run.
+        /// </summary>
+        public static bool MayRenderStructureLike(string type, LikePattern pattern)
+        {
+            if (type is not (ArrayType or ObjectType) || pattern.Units.Count == 0)
+                return false;
+
+            var (open, close) = type == ArrayType ? ("[", "]") : ("{", "}");
+            bool May(int i, string bracket) => pattern.Units[i].Row.Reads != LikeUnit.Itself || pattern.Units[i].Unit == bracket;
+            return May(0, open) && May(pattern.Units.Count - 1, close) && (pattern.Units.Count >= 2 || pattern.Units[0].Row.Reads == LikeUnit.Run);
+        }
+
         /// <summary>Determines whether two scalars may be one value: numbers by their value, anything else by its spelling.</summary>
         public static bool SameValue(string a, string b) => IsNumber(a) && IsNumber(b) ? SameNumber(a, b) : a == b;
 
@@ -174,7 +194,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         // which reads this class, builds none.
         static string Trimmed(string text) => text.Trim(JavaTrims);
 
-        static readonly char[] JavaTrims = [.. Enumerable.Range(0, ' ' + 1).Select(c => (char)c)];
+        /// <summary>What Java's <c>String.trim</c> takes off either end: every character up to U+0020.</summary>
+        internal static readonly char[] JavaTrims = [.. Enumerable.Range(0, ' ' + 1).Select(c => (char)c)];
 
         /// <summary>
         /// Whether Calcite's cast of text to <c>BIGINT</c> reads it as a timestamp rather than parsing it: text that starts

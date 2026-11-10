@@ -40,6 +40,47 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>C4, at <c>Neg</c>: a text comparison where the path holds a string.</summary>
         KindRestricted,
 
+        /// <summary>C4n, at <c>Neg</c>: a number compared through a cast of the text or <c>RETURNING DECIMAL</c>, where the path holds a number.</summary>
+        KindRestrictedNumber,
+
+        /// <summary>C2, at <c>Pos</c>: the same comparison where the path holds a number, anything else present admitted.</summary>
+        Window,
+
+        /// <summary>At <c>Pos</c>: text equal to a string spelling a number as the string, or the number it spells.</summary>
+        TextAlternatives,
+
+        /// <summary>At both: a comparison of two readings as the comparison of their two paths (h11).</summary>
+        ComparePaths,
+        /// <summary>
+        /// At both: <c>LIKE</c> as the equality of its text, where its pattern holds literal units alone (h07). Each test that
+        /// may say a pattern is a template of its own (B1), so the gate holds each and S's best chooses among those it holds
+        /// by their price (<see cref="Priced"/>).
+        /// </summary>
+        AffixEquality,
+        /// <summary>At both: <c>LIKE</c> as <c>STARTSWITH</c> of its one run, where the run of literal units is followed by <c>%</c> alone.</summary>
+        AffixStartsWith,
+        /// <summary>At both: <c>LIKE</c> as <c>ENDSWITH</c> of its one run, where the run of literal units follows <c>%</c> alone.</summary>
+        AffixEndsWith,
+        /// <summary>At both: <c>LIKE</c> as <c>CONTAINS</c> of its one run, where the run of literal units lies between two <c>%</c>.</summary>
+        AffixContains,
+        /// <summary>At both: <c>LIKE</c> as itself, of the pattern as written, whatever runs it holds.</summary>
+        AffixLike,
+        /// <summary>At <c>Neg</c>: <see cref="AffixEquality"/> over a rendering, where the path holds neither a number nor a boolean, which it misses (h07).</summary>
+        AffixRenderedEquality,
+        /// <summary>At <c>Neg</c>: <see cref="AffixStartsWith"/> over a rendering, as <see cref="AffixRenderedEquality"/>.</summary>
+        AffixRenderedStartsWith,
+        /// <summary>At <c>Neg</c>: <see cref="AffixEndsWith"/> over a rendering, as <see cref="AffixRenderedEquality"/>.</summary>
+        AffixRenderedEndsWith,
+        /// <summary>At <c>Neg</c>: <see cref="AffixContains"/> over a rendering, as <see cref="AffixRenderedEquality"/>.</summary>
+        AffixRenderedContains,
+        /// <summary>At <c>Neg</c>: <see cref="AffixLike"/> over a rendering, as <see cref="AffixRenderedEquality"/>.</summary>
+        AffixRenderedLike,
+        /// <summary>
+        /// At both: a <c>JSON_QUERY</c>'s <c>IS NULL</c> as the path holding no structure, <c>NOT (IS_ARRAY(p) OR IS_OBJECT(p))</c>,
+        /// which its row says it answers null over (<c>Calcite.JsonQueryAnswersStructureOnly</c>, G8).
+        /// </summary>
+        StructureTest,
+
     }
 
 }

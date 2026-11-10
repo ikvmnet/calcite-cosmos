@@ -9,8 +9,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 using Apache.Calcite.Data;
 
@@ -115,6 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static CosmosClient? _client;
         static Database? _database;
         static string? _unavailable;
+        static CosmosRequestCharges? _charges;
 
         /// <summary>
         /// The status the service refused a document with, or <c>null</c> where it stored them all.
@@ -131,6 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             {
                 ConnectionMode = ConnectionMode.Gateway,
                 RequestTimeout = TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 5 : 30),
+                CustomHandlers = { (_charges = new(nameof(CosmosStringFunctionMeasurementTests))) },
             };
 
             if (CosmosEmulator.IsEmulator)
@@ -214,6 +218,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static void Cleanup()
         {
             try { _database?.DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+            if (_client is not null)
+                _charges?.Write();
             _client?.Dispose();
             _client = null;
             _database = null;
@@ -397,20 +403,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// The service maps case by a simple mapping, and its case-insensitive match folds the same way: over ASCII it
-        /// agrees with Java's full mapping, and outside it ß and U+FB00 stay as they are where Calcite writes <c>SS</c>
-        /// and <c>FF</c>. Azure also leaves U+017F, U+0130 and U+212A, which the emulator maps; there the test skips,
-        /// having asserted what both share.
+        /// agrees with Java's full mapping, its <c>CONTAINS</c>, <c>STARTSWITH</c> and <c>ENDSWITH</c> alike, and outside it ß
+        /// and U+FB00 stay as they are where Calcite writes <c>SS</c> and <c>FF</c>. Azure also leaves U+017F, U+0130 and
+        /// U+212A, which the emulator maps; there the test skips, having asserted what both share.
         /// </summary>
+        /// <remarks>
+        /// The prefix's and the suffix's lines were added on 2026-11-07, beside S's <c>foldsas</c> rows
+        /// (<c>Service.AffixesMatchByCodePoint</c>); the probe account passed them at run 2 (2026-11-09).
+        /// </remarks>
         [Fact]
         public async Task CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii()
         {
             var strings = Strings_();
 
             var mapped = await Values(strings, "SELECT VALUE [c.id, [UPPER(c.s), LOWER(c.s)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"longs\", \"idot\", \"kelvin\")");
-            var matched = await Values(strings, "SELECT VALUE [c.id, [CONTAINS(c.s, \"SS\", true), STARTSWITH(c.s, \"ASS\", true), CONTAINS(c.s, \"ff\", true), ENDSWITH(c.s, \"KB\", true), CONTAINS(c.s, \"aB\", true)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"kelvin\")");
+            var matched = await Values(strings, "SELECT VALUE [c.id, [CONTAINS(c.s, \"SS\", true), STARTSWITH(c.s, \"ASS\", true), CONTAINS(c.s, \"ff\", true), ENDSWITH(c.s, \"KB\", true), CONTAINS(c.s, \"aB\", true), STARTSWITH(c.s, \"Ab\", true), ENDSWITH(c.s, \"bC\", true)]] FROM c WHERE c.id IN (\"ascii\", \"sharp\", \"lig\", \"kelvin\")");
 
             mapped["ascii"].EnumerateArray().Select(Text).Should().Equal("ABC", "abc");
             matched["ascii"][4].GetBoolean().Should().BeTrue("ASCII folds alike at both ends");
+            matched["ascii"][5].GetBoolean().Should().BeTrue("the prefix folds alike");
+            matched["ascii"][6].GetBoolean().Should().BeTrue("and the suffix");
 
             mapped["sharp"][0].GetString().Should().Be("AßB", "Java maps ß to SS, and the service leaves it");
             mapped["lig"][0].GetString().Should().Be("AﬀB", "Java maps U+FB00 to FF, and the service leaves it");
@@ -477,7 +489,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// shape and a replacement holding U+0000 read past it. The emulator stores U+0000 as U+FDD0 followed by
         /// <c>0</c>, and there the test skips.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.NulEndsWhatReplaceAndContainsRead")]
         public async Task NulEndsWhatReplaceAndContainsRead()
         {
             var strings = Strings_();
@@ -538,7 +550,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// where Calcite's clips the window to the string; one starting at 0 of length 0 is the empty string, projected and
         /// in a <c>WHERE</c>, which is what the clip is written as.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.SubstringOfANegativeStartIsEmpty")]
         public async Task AWindowStartingBeforeTheStringIsEmpty()
         {
             var strings = Strings_();
@@ -556,7 +568,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// and defined up to them: <c>ab</c> 5,000 times is, 5,001 times is not, and a, U+1F600, b 3,333 times, 13,332
         /// UTF-16 units, is. The emulator has no such limit, and there the test skips.
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.ReplicateStopsAtTenThousandCodePoints")]
         public async Task ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints()
         {
             var strings = Strings_();
@@ -638,9 +650,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>=</c>, <c>IN</c>, <c>!=</c> and <c>STARTSWITH</c>, and so is one compared with a function of the path; under
         /// <c>ENDSWITH</c> and <c>CONTAINS</c>, both ways, unless it begins with <c>0</c> or <c>1</c>, which an escape's
         /// second unit matches. Sent as written, a value holding either character is kept nowhere, so <c>=</c> drops the row
-        /// and <c>!=</c> keeps it. Measured on both images on 2026-10-31.
+        /// and <c>!=</c> keeps it. Measured on both images on 2026-10-31. The row's rewrites, the two characters, are read as
+        /// data (G1).
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.EmulatorComparesTheSpellingItIsSent")]
         public async Task TheEmulatorComparesWhatItIsSentWithWhatItStores()
         {
             var spelling = await Spelling();
@@ -849,9 +862,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A parameter holding a lone surrogate is never sent: the SDK's UTF-8 encoder refuses it while it writes the
-        /// statement, so the statement fails on either target where Calcite answers it.
+        /// statement, so the statement fails on either target where Calcite answers it. The row's unsent class is read as
+        /// data (G1).
         /// </summary>
-        [Fact]
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LoneSurrogateParameterIsNeverSent")]
         public async Task ALoneSurrogateParameterFailsBeforeItIsSent()
         {
             var strings = Strings_();
@@ -864,6 +878,341 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 chain.Add(e);
 
             chain.Should().Contain(e => e is EncoderFallbackException, "the encoder refuses the unpaired unit before anything is sent");
+        }
+
+        // ── Affixes, LIKE and the functions by band, on the emulator (Azure at probe run 1) ──────────
+
+        /// <summary>Asks expressions over witnesses for a row, each answer spelled as <see cref="CosmosWitnessProbe"/> spells it, the witnesses' joined by spaces.</summary>
+        static async Task<string[]> Probe(string row, IReadOnlyList<string?> witnesses, params string[] expressions) =>
+            [.. (await CosmosWitnessProbe.Ask(Strings_(), _unavailable, row, witnesses, expressions)).Select(answers => string.Join(" ", answers))];
+
+        /// <summary>The affixes match code points as written, with no normalisation, a true third operand folding ASCII case.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.AffixesMatchByCodePoint")]
+        public async Task TheAffixesMatchByCodePoint()
+        {
+            string?[] witnesses = ["\"a\ud83d\ude00b\"", "\"\u00e9x\"", "\"e\u0301x\"", "\"ABC\"", "\"abc\"", "\"\ue000x\"", "\"\""];
+            (await Probe("Service.AffixesMatchByCodePoint", witnesses, "STARTSWITH(c.v, \"a\ud83d\ude00\")", "ENDSWITH(c.v, \"\ud83d\ude00b\")", "CONTAINS(c.v, \"\ud83d\ude00\")",
+                "STARTSWITH(c.v, \"\u00e9\")", "STARTSWITH(c.v, \"e\")", "STARTSWITH(c.v, \"a\")", "STARTSWITH(c.v, \"a\", false)", "STARTSWITH(c.v, \"a\", true)", "ENDSWITH(c.v, \"\")", "STARTSWITH(c.v, \"\ue000\")")).Should().Equal(
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "true/T false/F false/F false/F false/F false/F false/F",
+                "false/F true/T false/F false/F false/F false/F false/F",
+                "false/F false/F true/T false/F false/F false/F false/F",
+                "true/T false/F false/F false/F true/T false/F false/F",
+                "true/T false/F false/F false/F true/T false/F false/F",
+                "true/T false/F false/F true/T true/T false/F false/F",
+                "true/T true/T true/T true/T true/T true/T true/T",
+                "false/F false/F false/F false/F false/F true/T false/F");
+        }
+
+        /// <summary>
+        /// What <c>LikeMatchesByCodePoint</c> sends; what each target's <c>_</c> is read over is
+        /// <c>Service.LikeOneOverEachClass</c>'s, whose witnesses hold every class (<see cref="ClassWitnesses"/>).
+        /// </summary>
+        internal static readonly string[] LikeWitnesses = ["\"a\ud83d\ude00b\"", "\"axb\"", "\"axxb\"", "\"ab\"", "\"AXB\"", "\"a\u00e9b\"", "\"a\ue000b\""];
+
+        /// <summary><c>LIKE</c>'s <c>_</c> matches one code point and <c>%</c> any run, case sensitive.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeMatchesByCodePoint")]
+        public async Task LikeMatchesByCodePoint()
+        {
+            string?[] witnesses = LikeWitnesses;
+            (await Probe("Service.LikeMatchesByCodePoint", witnesses, "c.v LIKE \"a_b\"", "c.v LIKE \"a__b\"", "c.v LIKE \"a%b\"", "c.v LIKE \"a%\"", "c.v LIKE \"%b\"", "c.v LIKE \"%x%\"", "c.v LIKE \"axb\"")).Should().Equal(
+                "true/T true/T false/F false/F false/F true/T true/T",
+                "false/F false/F true/T false/F false/F false/F false/F",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "true/T true/T true/T true/T false/F true/T true/T",
+                "false/F true/T true/T false/F false/F false/F false/F",
+                "false/F true/T false/F false/F false/F false/F false/F");
+        }
+
+        /// <summary><c>LIKE</c> reads a bracket as a range or its complement, <c>[[]</c> as a literal, an unclosed bracket as matching nothing; <c>ESCAPE</c> makes the next character literal.</summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeReadsBracketsAsARange")]
+        public async Task LikeReadsBracketsAsARange()
+        {
+            string?[] witnesses = ["\"bikes\"", "\"[a-c]x\"", "\"dog\"", "\"[x\"", "\"a%\"", "\"ab\""];
+            (await Probe("Service.LikeReadsBracketsAsARange", witnesses, "c.v LIKE \"[a-c]%\"", "c.v LIKE \"[^a-c]%\"", "c.v LIKE \"[[]%\"", "c.v LIKE \"a!%\" ESCAPE \"!\"", "c.v LIKE \"[x\"")).Should().Equal(
+                "true/T false/F false/F false/F true/T true/T",
+                "false/F true/T true/T true/T false/F false/F",
+                "false/F true/T false/F true/T false/F false/F",
+                "false/F false/F false/F false/F true/T false/F",
+                "false/F false/F false/F false/F false/F false/F");
+        }
+
+        // ── The edges run 1 left unmeasured: the emulator at rows2, Azure at probe runs 2 and 3 ──
+
+        /// <summary>
+        /// Cased letters of each band beyond ASCII, keyed by it: a capital and a small letter of each supplementary script
+        /// Unicode 16 cases, Deseret's of Unicode 3.1 and 4.0, which Java 8's tables hold, and those cased after them,
+        /// Warang Citi (7.0), Old Hungarian (8.0), Osage and Adlam (9.0), Medefaidrin (11.0), Vithkuqi (14.0) and Garay
+        /// (16.0); fullwidth Latin, and ligatures Java's full mapping writes as two; Latin-1 whose capitals lie outside it,
+        /// Greek capitals ending in a sigma, the final sigma and U+0390, the Turkish dotted capital and dotless small i, ß
+        /// and its capital, a title-case letter, and Cherokee and Georgian, cased later.
+        /// </summary>
+        /// <remarks>Deseret's OI, Warang Citi, Old Hungarian, Vithkuqi and Garay were added for probe run 3 (2026-11-09).</remarks>
+        internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] CasedLetters =
+        [
+            (CosmosValueClass.String, JsonCharacterBand.None, [Json("aBc")]),
+            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("\U00010428\U00010400"), Json("a\U00010400b"), Json("\U000104B0\U000104D8"), Json("\U0001E900\U0001E922"), Json("\U00016E40\U00016E60"),
+                Json("\U00010426\U0001044E"), Json("\U000118A0\U000118C0"), Json("\U00010C80\U00010CC0"), Json("\U00010570\U00010597"), Json("\U00010D50\U00010D70")]),
+            (CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("\uFF21\uFF41"), Json("\uFB00"), Json("\uFB13")]),
+            (CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("a\u00C9b"), Json("\u00FF"), Json("\u00B5"), Json("\u039F\u0394\u039F\u03A3"), Json("\u03C2"), Json("\u0390"),
+                Json("\u0130"), Json("\u0131"), Json("\u00DF"), Json("\u1E9E"), Json("\u01C5"), Json("\u13A0"), Json("\uAB70"), Json("\u10D0"), Json("\u1C90")]),
+        ];
+
+        /// <summary>
+        /// <c>UPPER</c> and <c>LOWER</c> over cased letters of each band, against Calcite's, Java's full mapping: the keys of
+        /// <c>Service.StringFunctionAnswersByBand</c> this row's run measures, which name it beyond ASCII.
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.CaseMappingOverCasedLetters")]
+        public async Task CaseMappingOverCasedLetters()
+        {
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.CaseMappingOverCasedLetters", CaseMappings, CasedLetters);
+            CosmosFunctionComparison.Unsound(measured, KeysOf(measured), CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
+        }
+
+        /// <summary>The case mappings the cased letters are asked of, as Calcite and the service write them.</summary>
+        internal static readonly CosmosFunctionSpelling[] CaseMappings = [new("UPPER", 0, "UPPER(s)", "UPPER(s)"), new("LOWER", 0, "LOWER(s)", "LOWER(s)")];
+
+        /// <summary>The rows of <c>Service.StringFunctionAnswersByBand</c> of the functions, operands and bands a run measured.</summary>
+        static IEnumerable<CosmosFunctionOutcome> KeysOf(IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> measured) =>
+            CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
+                .Where(o => o.Type is null && measured.Keys.Any(k => (k.Function, k.Ordinal, k.Kind, k.Band) == (o.Function, o.Subject, o.Operand, o.Band)));
+
+        /// <summary>Strings whose count of units from the end falls inside a surrogate pair for some count of 1 to 3, and ASCII.</summary>
+        internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] SplitPairs =
+        [
+            (CosmosValueClass.String, JsonCharacterBand.None, [Json("abc")]),
+            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b"), Json("\U0001F600b"), Json("a\U0001F600"), Json("\U0001F600\U0001F600"), Json("\U00010400xy")]),
+        ];
+
+        /// <summary>The counts of 1 to 3 <c>RIGHT</c> is asked of, as Calcite and the service write them.</summary>
+        internal static readonly CosmosFunctionSpelling[] SplitRights = [new("RIGHT", 0, "RIGHT(s, 1)", "RIGHT(s, 1)"), new("RIGHT", 0, "RIGHT(s, 2)", "RIGHT(s, 2)"), new("RIGHT", 0, "RIGHT(s, 3)", "RIGHT(s, 3)")];
+
+        /// <summary>
+        /// <c>RIGHT</c> with its cut inside a surrogate pair, against Calcite's, which counts UTF-16 units and keeps the
+        /// half (<c>Calcite.StringCountsAreInUnits</c>): the key of <c>Service.StringFunctionAnswersByBand</c> no witness of
+        /// its own split a pair at. Both targets part: the emulator counts code points, and Azure counts units and sends the
+        /// half it cuts as U+FFFD (run 2).
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.RightOverASplitPair")]
+        public async Task RightWithItsCutInsideASurrogatePair()
+        {
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.RightOverASplitPair", SplitRights, SplitPairs);
+            CosmosFunctionComparison.Unsound(measured, KeysOf(measured), CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// What <c>_</c> is asked of, each between <c>a</c> and <c>b</c>: every Java line terminator and the pair U+000D
+        /// U+000A, a tab, U+000B, U+00A0 and U+3000, which the trim removes, U+FFFD, U+FDD0 and U+0000, a surrogate pair,
+        /// U+00E9 and U+E000, ASCII, and none.
+        /// </summary>
+        internal static readonly string[] ClassWitnesses =
+        [
+            Json("a\nb"), Json("a\rb"), Json("a\r\nb"), Json("a\u0085b"), Json("a\u2028b"), Json("a\u2029b"),
+            Json("a\tb"), Json("a\u000Bb"), Json("a\u00A0b"), Json("a\u3000b"),
+            Json("a\uFFFDb"), Json("a\uFDD0b"), Json("a\u0000b"),
+            Json("a\U0001F600b"), Json("a\u00E9b"), Json("a\uE000b"), Json("axb"), Json("ab"),
+        ];
+
+        /// <summary>
+        /// <c>LIKE</c>'s <c>_</c>, two of them, and <c>%</c> between two letters, over one character of each class, and over
+        /// an unpaired surrogate where the service stores one: what its <c>_</c> unit is read over on each target.
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeOneOverEachClass")]
+        public async Task LikeOneOverEachClass()
+        {
+            string[] expressions = ["c.v LIKE \"a_b\"", "c.v LIKE \"a__b\"", "c.v LIKE \"a%b\""];
+            var answers = (await Probe("Service.LikeOneOverEachClass", ClassWitnesses, expressions)).Select(a => a.Split(' ')).ToList();
+
+            // U+FDD0 and U+0000 are read as the target stores them: as written, one code point, or as the emulator's
+            // escape, two (Service.EmulatorComparesTheSpellingItIsSent); every other witness alike on both.
+            int[] stored = [11, 12];
+            answers.Select(a => string.Join(" ", a.Where((_, i) => stored.Contains(i) == false))).Should().Equal(LikeOneAnswers);
+            foreach (var i in stored)
+                new[] { WrittenEscapeAnswers, StoredEscapeAnswers }.Should().Contain(string.Join(" ", answers.Select(a => a[i])));
+
+            // A lone surrogate, written as JSON's escape, which the emulator refuses to store and Azure stores as U+FFFD
+            // (Service.LoneSurrogateIsStoredAsReplacement), so answers as U+FFFD does.
+            try
+            {
+                (await Probe("Service.LikeOneOverEachClass", ["\"a\\ud800b\""], expressions)).Should().Equal(answers.Select(a => a[10]));
+            }
+            catch (CosmosException e) when (e.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Forbidden)
+            {
+                // EN20261019 refuses the write as a bad request, EN20260907 as forbidden, failing to parse it.
+            }
+        }
+
+        /// <summary>
+        /// The answers of <c>a_b</c>, <c>a__b</c> and <c>a%b</c> over U+FDD0's and U+0000's witnesses read as written, one
+        /// code point each (Azure, run 2), and as the emulator stores them, U+FDD0 and a digit (rows2).
+        /// </summary>
+        internal const string WrittenEscapeAnswers = "true/T false/F true/T", StoredEscapeAnswers = "false/F true/T true/T";
+
+        /// <summary>The answers of <c>a_b</c>, <c>a__b</c> and <c>a%b</c> over each class's witness but U+FDD0's and U+0000's.</summary>
+        internal static readonly string[] LikeOneAnswers =
+        [
+            "true/T true/T false/F true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T false/F",
+            "false/F false/F true/T false/F false/F false/F false/F false/F false/F false/F false/F false/F false/F false/F false/F false/F",
+            "true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T true/T",
+        ];
+
+        /// <summary>
+        /// A <c>]</c> closing nothing and a backslash with no <c>ESCAPE</c>, beside a letter and before <c>%</c> and
+        /// <c>_</c>: whether either is read as the character itself.
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.LikeReadsALoneBracketAndABackslash")]
+        public async Task LikeReadsALoneBracketAndABackslash()
+        {
+            string?[] witnesses = [Json("a]b"), Json("]"), Json("a\\b"), Json("a\\%"), Json("a\\_"), Json("a%"), Json("a_"), Json("axb"), Json("\\")];
+            (await Probe("Service.LikeReadsALoneBracketAndABackslash", witnesses, "c.v LIKE \"a]b\"", "c.v LIKE \"]\"", "c.v LIKE \"a]%\"",
+                "c.v LIKE \"a\\\\b\"", "c.v LIKE \"a\\\\%\"", "c.v LIKE \"a\\\\_\"", "c.v LIKE \"\\\\\"")).Should().Equal(BracketAnswers);
+        }
+
+        static readonly string[] BracketAnswers =
+        [
+            "true/T false/F false/F false/F false/F false/F false/F false/F false/F",
+            "false/F true/T false/F false/F false/F false/F false/F false/F false/F",
+            "true/T false/F false/F false/F false/F false/F false/F false/F false/F",
+            "false/F false/F true/T false/F false/F false/F false/F false/F false/F",
+            "false/F false/F true/T true/T true/T false/F false/F false/F false/F",
+            "false/F false/F true/T true/T true/T false/F false/F false/F false/F",
+            "false/F false/F false/F false/F false/F false/F false/F false/F true/T",
+        ];
+
+        /// <summary>
+        /// <c>CONTAINS</c>, both modes, and a <c>LIKE</c> of one run between two <c>%</c>, over strings holding U+0000 before,
+        /// between and after the letter sought, which Azure reads only up to it (<c>Service.NulEndsWhatReplaceAndContainsRead</c>).
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.EmulatorContainsReadsPastNul")]
+        public async Task EmulatorContainsReadsPastNul()
+        {
+            if (CosmosEmulator.Endpoint is not null && CosmosEmulator.ServiceTarget != Apache.Calcite.Cosmos.Adapter.Metadata.CosmosServiceTarget.Emulator)
+                Assert.Skip("The emulator's row: Azure reads a string only up to its first U+0000 (Service.NulEndsWhatReplaceAndContainsRead).");
+
+            string?[] witnesses = [Json("a\u0000b"), Json("\u0000ab"), Json("ab\u0000"), Json("b\u0000a"), Json("ab")];
+            (await Probe("Service.EmulatorContainsReadsPastNul", witnesses, "CONTAINS(c.v, \"b\")", "CONTAINS(c.v, \"B\", true)", "c.v LIKE \"%b%\"", "c.v LIKE \"%a%\"")).Should().Equal(NulAnswers);
+        }
+
+        static readonly string[] NulAnswers =
+        [
+            "true/T true/T true/T true/T true/T",
+            "true/T true/T true/T true/T true/T",
+            "true/T true/T true/T true/T true/T",
+            "true/T true/T true/T true/T true/T",
+        ];
+
+        /// <summary>
+        /// Each function by the name its rule reads it by, as Calcite and as the service write it over <c>s</c>, the one
+        /// lower-case <c>s</c> in either, keyed at the operand <c>s</c> stands for; the other operands are adversarial on the
+        /// emulator, a <c>0</c> or a <c>1</c> its escapes' second units hold, each keyed as the literal it is where the row
+        /// names it, and a function spelled twice answers the worse of the two. The concatenation that reads a null as the
+        /// empty string is Calcite's <c>CONCAT</c> under PostgreSQL's library and Oracle's, the service's spelling CONCAT's.
+        /// </summary>
+        /// <remarks>
+        /// Added on 2026-11-06: the two concatenations that read a null as empty, whose service spelling is
+        /// <c>CONCAT</c>'s, so that run 1's lines of it judge them on Azure too; and the spellings after the trims, a search,
+        /// a replacement, a window's length and the literals the emulator stores escaped, each keyed as it is, which the
+        /// probe account has not run and so claim nothing on Azure
+        /// (<c>CosmosAxiomsTests.EveryAzureFunctionOutcomeIsWhatTheProbeAccountsRecordMeasures</c>). Keyed the same day: a
+        /// concatenation's and a repetition's literal apart from a stored operand (<see cref="FunctionKey.Literal"/>), and
+        /// <c>POSITION</c>'s needle, each as the spellings run 1 holds send it, so that its lines judge them on Azure. On
+        /// 2026-11-09 the repetition of a U+FDD0 before a 0 is spelled in Calcite with two Unicode literals: Calcite refuses
+        /// to validate <c>||</c> between a Unicode literal and a plain one, whose character sets it does not compare, so
+        /// the spelling with a plain <c>'0'</c> measured that refusal, not <c>REPEAT</c>, and parted wherever the service
+        /// answered. A stored operand beside a Unicode literal is refused alike, so the two concatenations with <c>||</c>
+        /// part on every target, as Calcite never asks them.
+        /// </remarks>
+        internal static readonly CosmosFunctionSpelling[] Functions =
+        [
+            new("CHAR_LENGTH", 0, "CHAR_LENGTH(s)", "LENGTH(s)"),
+            new("CHARACTER_LENGTH", 0, "CHARACTER_LENGTH(s)", "LENGTH(s)"),
+            new("LENGTH", 0, "LENGTH(s)", "LENGTH(s)"),
+            new("SUBSTRING", 0, "SUBSTRING(s FROM 2 FOR 2)", "SUBSTRING(s, 1, 2)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.AtLeastOne)]),
+            new("LEFT", 0, "LEFT(s, 2)", "LEFT(s, 2)"),
+            new("RIGHT", 0, "RIGHT(s, 2)", "RIGHT(s, 2)"),
+            new("UPPER", 0, "UPPER(s)", "UPPER(s)"),
+            new("LOWER", 0, "LOWER(s)", "LOWER(s)"),
+            new("REPLACE", 0, "REPLACE(s, '0', 'x')", "REPLACE(s, \"0\", \"x\")", Fixed: [Search, Replacement]),
+            new("REPLACE", 0, "REPLACE(s, '1', 'x')", "REPLACE(s, \"1\", \"x\")", Fixed: [Search, Replacement]),
+            new("POSITION", 1, "POSITION('0' IN s)", "INDEX_OF(s, \"0\") + 1", Fixed: [Needle]),
+            new("POSITION", 1, "POSITION('1' IN s)", "INDEX_OF(s, \"1\") + 1", Fixed: [Needle]),
+            new("REVERSE", 0, "REVERSE(s)", "REVERSE(s)"),
+            new("||", FunctionKey.Every, "s || 'z'", "CONCAT(s, \"z\")", Fixed: [Joined("||", JsonCharacterBand.None)]),
+            new("CONCAT", FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", Fixed: [Joined("CONCAT", JsonCharacterBand.None)]),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.None)]),
+            new(StringCalls.NullAsEmpty, FunctionKey.Every, "CONCAT(s, 'z')", "CONCAT(s, \"z\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.None)]),
+            new("REPEAT", 0, "REPEAT(s, 2)", "REPLICATE(s, 2)", Fixed: [Key("REPEAT", FunctionKey.Literal, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.AtLeastOne),
+                Key("REPEAT", FunctionKey.Result, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.WithinRepetitionBound)]),
+            new("TRIM BOTH", 1, "TRIM(BOTH ' ' FROM s)", "TRIM(s)"),
+            new("TRIM LEADING", 1, "TRIM(LEADING ' ' FROM s)", "LTRIM(s)"),
+            new("TRIM TRAILING", 1, "TRIM(TRAILING ' ' FROM s)", "RTRIM(s)"),
+            new("REPLACE", 1, "REPLACE('a0b1c', s, 'x')", "REPLACE(\"a0b1c\", s, \"x\")"),
+            new("REPLACE", 2, "REPLACE('a0b1c', 'b', s)", "REPLACE(\"a0b1c\", \"b\", s)"),
+            new("REPLACE", null, "REPLACE(s, U&'\\0000', 'x')", "REPLACE(s, \"\\u0000\", \"x\")", Fixed: [Search with { Band = JsonCharacterBand.Nul }]),
+            new("REPLACE", null, "REPLACE(s, 'a', U&'\\0000')", "REPLACE(s, \"a\", \"\\u0000\")", Fixed: [Replacement with { Band = JsonCharacterBand.Nul }]),
+            new("REPLACE", null, "REPLACE(s, 'a', U&'\\FDD0')", "REPLACE(s, \"a\", \"\\uFDD0\")", Fixed: [Replacement with { Band = JsonCharacterBand.HighBmp }]),
+            new("SUBSTRING", null, "SUBSTRING(s FROM 2 FOR 0)", "SUBSTRING(s, 1, 0)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.Zero)]),
+            new("SUBSTRING", null, "SUBSTRING(s FROM 2 FOR -1)", "SUBSTRING(s, 1, -1)", Fixed: [Key("SUBSTRING", 2, CosmosValueClass.Number, JsonCharacterBand.None, FunctionValueClass.Negative)]),
+            new("||", null, "s || U&'\\0000'", "CONCAT(s, \"\\u0000\")", Fixed: [Joined("||", JsonCharacterBand.Nul)]),
+            new("CONCAT", null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", Fixed: [Joined("CONCAT", JsonCharacterBand.Nul)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.Nul)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\0000')", "CONCAT(s, \"\\u0000\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.Nul)]),
+            new("||", null, "s || U&'\\FDD0' || '1'", "CONCAT(s, \"\\uFDD0\", \"1\")", Fixed: [Joined("||", JsonCharacterBand.HighBmp)]),
+            new("CONCAT", null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", Fixed: [Joined("CONCAT", JsonCharacterBand.HighBmp)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(s, U&'\\FDD0', '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "postgresql", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
+            new(StringCalls.NullAsEmpty, null, "CONCAT(CONCAT(s, U&'\\FDD0'), '1')", "CONCAT(s, \"\\uFDD0\", \"1\")", "oracle", [Joined(StringCalls.NullAsEmpty, JsonCharacterBand.HighBmp)]),
+            new("REPEAT", null, "REPEAT(U&'\\0000', 2)", "REPLICATE(\"\\u0000\", 2)", Fixed: [Key("REPEAT", FunctionKey.Literal, CosmosValueClass.String, JsonCharacterBand.Nul, FunctionValueClass.NonEmpty)]),
+            new("REPEAT", null, "REPEAT(U&'\\FDD0' || U&'0', 2)", "REPLICATE(CONCAT(\"\\uFDD0\", \"0\"), 2)", Fixed: [Key("REPEAT", 0, CosmosValueClass.String, JsonCharacterBand.HighBmp, FunctionValueClass.NonEmpty)]),
+        ];
+
+        static FunctionKey Key(string function, long ordinal, CosmosValueClass kind, JsonCharacterBand band, FunctionValueClass value) => FunctionKey.Of(function, ordinal, kind, band, value);
+
+        /// <summary>The search <c>REPLACE</c>'s first spellings hold, a <c>0</c> or a <c>1</c>, and their replacement, <c>x</c>: strings of no band, not empty.</summary>
+        static FunctionKey Search => Key("REPLACE", 1, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty);
+
+        static FunctionKey Replacement => Search with { Ordinal = 2 };
+
+        /// <summary>A concatenation's literal of one band, keyed apart from a stored operand (<see cref="FunctionKey.Literal"/>).</summary>
+        static FunctionKey Joined(string function, JsonCharacterBand band) => Key(function, FunctionKey.Literal, CosmosValueClass.String, band, FunctionValueClass.NonEmpty);
+
+        /// <summary>The needle <c>POSITION</c>'s spellings hold, a <c>0</c> or a <c>1</c>: a string of no band, not empty.</summary>
+        static FunctionKey Needle => Key("POSITION", 0, CosmosValueClass.String, JsonCharacterBand.None, FunctionValueClass.NonEmpty);
+
+        /// <summary>
+        /// The witnesses of each key: three strings of each band, holding that band's characters and ASCII alone, at either
+        /// end and inside, beside a <c>0</c> or a <c>1</c>; and a value of each other kind.
+        /// </summary>
+        internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] FunctionWitnesses =
+        [
+            (CosmosValueClass.String, JsonCharacterBand.None, [Json("a0b1c"), Json("b"), Json("")]),
+            (CosmosValueClass.String, JsonCharacterBand.Surrogates, [Json("a\U0001F600b0\U0001F600"), Json("\U0001F600"), Json("\U0001F600x1")]),
+            (CosmosValueClass.String, JsonCharacterBand.HighBmp, [Json("ab0ﬀ"), Json("﷐b1﷐"), Json("ﬀ")]),
+            (CosmosValueClass.String, JsonCharacterBand.NonAscii, [Json("aéb0ß"), Json("İb1"), Json("ß")]),
+            (CosmosValueClass.String, JsonCharacterBand.Trimmed, [Json("\tab0\u000B"), Json("\u000Cb1\r"), Json("\n")]),
+            (CosmosValueClass.String, JsonCharacterBand.Nul, [Json("a\u0000b0\u0000"), Json("\u0000"), Json("\u00001")]),
+            (CosmosValueClass.Number, JsonCharacterBand.None, ["30", "0.5"]),
+            (CosmosValueClass.True, JsonCharacterBand.None, ["true"]),
+            (CosmosValueClass.False, JsonCharacterBand.None, ["false"]),
+            (CosmosValueClass.Null, JsonCharacterBand.None, ["null"]),
+            (CosmosValueClass.Absent, JsonCharacterBand.None, [null]),
+            (CosmosValueClass.Object, JsonCharacterBand.None, ["{\"x\":\"a\"}"]),
+            (CosmosValueClass.Array, JsonCharacterBand.None, ["[\"a\"]"]),
+        ];
+
+        static string Json(string text) => Newtonsoft.Json.JsonConvert.ToString(text);
+
+        /// <summary>
+        /// Each string function over each band of a string's characters and each other kind of value answers against
+        /// Calcite's as <c>Service.StringFunctionAnswersByBand</c> records, or better (<see cref="CosmosFunctionComparison"/>):
+        /// Calcite's side reads the value as the text accessor does, in process.
+        /// </summary>
+        [Fact, Apache.Calcite.Cosmos.Adapter.Tests.Sql.CosmosPins("Service.StringFunctionAnswersByBand")]
+        public async Task EachStringFunctionAnswersItsRowByBand()
+        {
+            var measured = await CosmosFunctionComparison.Measure(Strings_(), _unavailable, "Service.StringFunctionAnswersByBand", Functions, FunctionWitnesses);
+            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!, CosmosJsonTypeMeasurementTests.Answering).Should().BeEmpty();
         }
 
         static string Spell(string text) => string.Concat(text.EnumerateRunes().Select(r => r.Value is >= 0x21 and <= 0x7E ? ((char)r.Value).ToString() : $"<U+{r.Value:X4}>"));

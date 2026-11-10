@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheKeyHoldsEveryValueTheImportReads()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present), Outright(P("a"), Type(JsonType.String)), Outright(P("o"), Type(JsonType.Object))).In(generations);
             var (first, second) = (Eq(Text(P("a")), "x"), Ne(Text(P("a")), "y"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { first, second, Eq(Text(P("o", "b")), "z") }), (i, _) => i == 0);
@@ -110,9 +110,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// An opaque term is numbered within its loading, so two conjuncts the loader reads apart may share a digest:
-        /// <c>UPPER(name) = 'X'</c> and <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c>, each alone. The value each was read
-        /// as is in the key, so the second is not handed the first's presence.
+        /// An opaque term is numbered within its loading, so two conjuncts the loader reads apart may share a digest: one
+        /// read as <c>UPPER(name) = 'X'</c>, built here since the loader reads that comparison (h10), and
+        /// <c>CONCAT_WS('-', name, sku) &lt;&gt; 'x'</c>, each alone. The value each was read as is in the key, so the
+        /// second is not handed the first's presence.
         /// </summary>
         [Fact]
         public void AnOpaquesReadingIsInTheKey()
@@ -121,8 +122,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var rex = new RexBuilder(types);
             var doc = rex.makeInputRef(types.createSqlType(SqlTypeName.VARCHAR), 0);
             RexNode Read(string path) => rex.makeCall(types.createSqlType(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_VALUE, java.util.Arrays.asList(doc, rex.makeLiteral("$." + path)));
+            var loading = new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c");
             PredicateStatement Loaded(RexNode conjunct) => new CosmosPredicateLoader.Loading([CosmosPath.Root("c")], [CosmosReading.Typed], "c").Statement([conjunct]);
-            var upper = Loaded(rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")));
+            var compared = loading.ReadValue(rex.makeCall(SqlStdOperatorTable.EQUALS, rex.makeCall(SqlStdOperatorTable.UPPER, Read("name")), rex.makeLiteral("X")))!;
+            var upper = new PredicateStatement([new SqlPredicate.Opaque(0)], opaques: _ => compared);
             var unlisted = Loaded(rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, rex.makeCall(SqlLibraryOperators.CONCAT_WS, rex.makeLiteral("-"), Read("name"), Read("sku")), rex.makeLiteral("x")));
             upper.Conjuncts.Single().Should().Be(unlisted.Conjuncts.Single(), "both are the loading's first opaque term");
 
@@ -220,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public async Task AFailedDefinitionDeclinesAndCounts()
         {
             var key = MeasuredKey.Of(CosmosServiceTest.NotEqual, CosmosValueClass.String, CosmosValueClass.Null);
-            var failed = new RenderingOracle(new RenderingGraph(() => RenderingDefinition.Measured([.. Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)])));
+            var failed = new RenderingOracle(new RenderingGraph(() => ProbeRows.Planted([.. Rows, new("Service.Planted", key, RenderingTarget.Azure, CosmosAnswer.False)])));
             await failed.Ready;
             foreach (var _ in Enumerable.Range(0, 2))
                 Ask(failed, [NotBikes]).Should().Match<RenderingOracle.RenderingBundleAnswer>(a => a.Declined == RenderingOracle.Unavailable && a.Key == null
@@ -281,7 +284,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public async Task AHitCostsMicroseconds()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var oracle = Oracle();
             var built = Stopwatch.GetTimestamp();
             await oracle.Ready;

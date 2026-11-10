@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceForm.JunctionOf(CosmosServiceTest.Or, [Leaf, ServiceForm.TestOf(CosmosServiceTest.IsNull, S)]),
         ];
 
-        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty);
+        static readonly ServiceTable Empty = ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, ProbeRows.ReaderClasses);
 
         static OutcomeVector Random(Random random, bool fails) => new(Cells, Cells.Cells.Select(_ =>
             new CellOutcome((ServiceOutcomes)random.Next(1, fails ? 16 : 8), random.Next(4) == 0 ? CosmosValueClass.String : CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);
@@ -98,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Append(new MeasuredOutcome("Service.Planted", and, RenderingTarget.Emulator, CosmosAnswer.False)));
 
             // The cells in order: absent, array, false, true, fractions, integers, null, object, 'bikes', the strings either side.
-            var bare = ServiceLeaf.On(Leaf, Cells, table, ValueSet<string>.Empty);
+            var bare = ServiceLeaf.On(Leaf, Cells, table, LeafReads.None);
             bare.Outcomes.Select(o => o.NonBoolean.ToString()).Should().Equal("Absent", "Array", "None", "None", "Number", "Number", "Null", "Object", "String", "String", "String");
 
             var truths = new OutcomeVector(Cells, Cells.Cells.Select(_ => new CellOutcome(ServiceOutcomes.True, CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);

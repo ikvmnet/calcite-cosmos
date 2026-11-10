@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// conjunct the tip sends that the plant declines. The rest are trusted: S sends or implies a wrong form, and source A,
     /// which shares none of S, finds its document.
     /// </summary>
-    public sealed class RenderingGenerateMutationTests
+    public sealed partial class RenderingGenerateMutationTests
     {
 
         const string Typed = "SELECT c.\"id\" FROM typed AS c WHERE ", Label = "JSON_VALUE(c.\"DOC\", '$.label')", Products = "SELECT c.\"id\" FROM products AS c WHERE ";
@@ -80,8 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A plant is caught. Untrusted, it proposed its forms, each trigger it was found by refutes the planted form at the
-        /// cell pinned, no root sends a refuted planted form, and source A finds nothing S sends or implies wrong. Trusted,
-        /// each trigger pinned has a witness at the value pinned under a set a leg plans under.
+        /// cell pinned, no root of the bundle that refuted a planted form sends it, and source A finds nothing S sends or
+        /// implies wrong. Trusted, each trigger pinned has a witness at the value pinned under a set a leg plans under.
         /// </summary>
         [Theory]
         [MemberData(nameof(Ten))]
@@ -93,6 +93,102 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         [Fact]
         public void M11IsCaughtBySourceAsImplies() => Caught(Run("M11"));
+
+        /// <summary>
+        /// The raw cast's triggers of h12's plant, over a key path read as a raw value: through its declared <c>VARIANT</c>
+        /// column since the switch (h15, rawtyped), where F's reading read it through the union until then.
+        /// </summary>
+        static readonly string[] RawCasts = [.. new[] { "= '30'", "= 'true'", "IS NULL", "<> 'bikes'" }.Select(t => $"SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) {t}")];
+
+        /// <summary>The raw casts planned unplanted, once a process.</summary>
+        static readonly Lazy<Planted> RawTip = new(() => Planned(new Plant("raw tip", true, d => d, _ => { }, [.. RawCasts.Select(t => (t, (string?)null))])));
+
+        /// <summary>The registry's definition with one raw column's rows dropped, which S's union then lacks.</summary>
+        static Plant Dropped(string column, params (string Sql, string? Caught)[] triggers) =>
+            new("drop " + column, true, d => d with { Columns = d.Columns.Without(column) }, _ => { }, triggers);
+
+        /// <summary>
+        /// h12's plant (line 34), a raw column's rows dropped from the definition, as the switch (h15) restates it: a declared
+        /// field is read through its own column (rawtyped), the key path's <c>VARIANT</c> among them, and only a reading
+        /// naming none, an item chain's or a cast to <c>ANY</c>'s, reads the union, which no statement of the corpus writes.
+        /// So <c>ANY</c> dropped reaches none of the raw casts, and S sends and implies over them what the tip does; and
+        /// <c>VARIANT</c> dropped leaves the key path's reading without its rows, so S proves less of it, and the loss shows
+        /// as what the tip sends, weakens to or implies that the plant does not. Nothing either sends is wrong; the union's
+        /// columns are caught at the cells (<see cref="RenderingPopulationDTests.ARawColumnDroppedFromTheUnionIsCaught"/>).
+        /// </summary>
+        [Fact]
+        public void ARawColumnDroppedReachesAKeyPathThroughItsOwnColumnAlone()
+        {
+            var triggers = RawCasts.Select(t => (t, (string?)null)).ToArray();
+            var tip = RawTip.Value;
+            var (any, variant) = (Planned(Dropped("ANY", triggers)), Planned(Dropped("VARIANT", triggers)));
+            foreach (var planted in new[] { tip, any, variant })
+            {
+                planted.Run.Failures.Should().BeEmpty(planted.Plant.Name);
+                foreach (var t in planted.Triggers)
+                    foreach (var c in t.Sends)
+                        TestContext.Current.TestOutputHelper?.WriteLine($"{planted.Plant.Name} {t.Sql} {c.Set} {c.Ir}: S {c.Form?.Text ?? "unsent"}");
+                planted.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty($"nothing {planted.Plant.Name} sends or implies is wrong");
+            }
+
+            Sent(any).Should().BeEquivalentTo(Sent(tip), "the key path reads no ANY");
+            var lost = Sent(tip).Except(Sent(variant)).ToList();
+            foreach (var l in lost)
+                TestContext.Current.TestOutputHelper?.WriteLine("  lost without VARIANT: " + l);
+            lost.Should().NotBeEmpty("the key path's VARIANT column holds what S proves of it");
+        }
+
+        /// <summary>The guarded number spelling's triggers (h13's M22): a parsed price's ordering, and its negation.</summary>
+        static readonly (string Sql, string? Caught)[] Guarded =
+            [(Products + "CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50", null), (Products + "NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", null)];
+
+        /// <summary>
+        /// M22 (h13, line 1c): the guarded number spelling's <c>IS_NUMBER</c> dropped, from <c>KindRestrictedNumber</c> at
+        /// <c>Neg</c> and from <c>Window</c>'s <c>NOT IS_NUMBER</c> at <c>Pos</c>, over production's definition, which asks
+        /// them since the switch (h15). Each proposes, no root sends it, source A finds nothing, and what the tip weakens to or
+        /// implies with the guard the plant does not; <c>KindRestrictedNumber</c>'s is refuted at the cell pinned.
+        /// </summary>
+        [Theory]
+        [InlineData("KindRestrictedNumber")]
+        [InlineData("Window")]
+        public void M22IsCaughtAtTheGate(string template)
+        {
+            var (id, at) = template == "Window" ? (TemplateId.Window, RenderPosition.Pos) : (TemplateId.KindRestrictedNumber, RenderPosition.Neg);
+            var tip = GuardedTip.Value;
+            tip.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("the guarded spelling is sound");
+            Caught(Planned(Template("M22 " + template, id, [at], f => f.Kind == ServiceFormKind.Test && f.Test == Op.IsNumber || f.Kind == ServiceFormKind.Not && f.Members[0] is { Kind: ServiceFormKind.Test, Test: Op.IsNumber },
+                M22Pinned[template], _ => ProbeRows.Measured)), tip);
+        }
+
+        /// <summary>
+        /// Each M22 template's triggers, the refutation pinned where the gate records one: <c>KindRestrictedNumber</c>'s bare
+        /// comparison at <c>Neg</c> on the string 50, whose text Calcite parses. <c>Window</c>'s, at <c>Pos</c>, keeps fewer
+        /// rows than Calcite and so is never a weakening; the gate declines it unrecorded, and its loss is what shows.
+        /// </summary>
+        static readonly Dictionary<string, (string Sql, string? Caught)[]> M22Pinned = new()
+        {
+            ["KindRestrictedNumber"] = [Guarded[0], (Guarded[1].Sql, "$[\"price\"]=string|50 (F,u)")],
+            ["Window"] = Guarded,
+        };
+
+        /// <summary>The guarded triggers planned over production's definition, unplanted.</summary>
+        static readonly Lazy<Planted> GuardedTip = new(() => Planned(new Plant("guarded tip", true, _ => ProbeRows.Measured, _ => { }, Guarded)));
+
+        /// <summary>
+        /// A <c>VARCHAR</c> column adds only raises to the union, which the agreement sets aside (<c>Tolerated</c>): dropped, S
+        /// sends and implies what it does unplanted, and the theory is another, so it keeps answers of its own. The cells see
+        /// it: <see cref="RenderingPopulationDTests.ARawColumnDroppedFromTheUnionIsCaught"/>.
+        /// </summary>
+        [Fact]
+        public void AVarcharColumnDroppedRaisesNothingSourceASees()
+        {
+            var triggers = RawCasts.Select(t => (t, (string?)null)).ToArray();
+            var (tip, dropped) = (RawTip.Value, Planned(Dropped("VARCHAR", triggers)));
+            dropped.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty();
+            Sent(dropped).Should().BeEquivalentTo(Sent(tip));
+            var theory = Graph(d => d with { Columns = d.Columns.Without("VARCHAR") }, _ => { }).Current();
+            RenderingAnswerMemo.DigestOf(theory).Should().NotBe(RenderingAnswerMemo.DigestOf(ProbeRows.ProbeTheory));
+        }
 
         /// <summary>
         /// Unplanted, S sends nothing wrong over every trigger, and what each trusted plant sends or implies is not what the
@@ -117,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>A plant's run, once a process: its triggers planned through it.</summary>
         internal static Planted Run(string fault) => Runs.GetOrAdd(fault, f => new Lazy<Planted>(() => Planned(Plants[f]))).Value;
 
-        static void Caught(Planted planted)
+        static void Caught(Planted planted, Planted? against = null)
         {
             var (plant, output) = (planted.Plant, TestContext.Current.TestOutputHelper);
             planted.Run.Failures.Should().BeEmpty();
@@ -138,10 +234,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var t in planted.Triggers.Where(t => t.Caught is not null))
                     Refuted(planted, t).Select(r => Show(r.Refutation)).Distinct().Should().Equal([t.Caught], t.Sql);
 
-                var refuted = planted.Triggers.SelectMany(t => Refuted(planted, t)).Select(r => r.Form).ToHashSet();
-                planted.Triggers.SelectMany(t => t.Bundles).SelectMany(b => b.Answers.Values).Select(a => a.Best).OfType<ServiceForm>()
-                    .Where(best => best.Subforms.Any(refuted.Contains)).Select(best => best.Text).Should().BeEmpty("no root sends a form the gate refuted");
+                // A refutation is of its bundle's strata: the same form proposed beneath a guard that masks the refuting cell,
+                // as round 1 asks a weakening holding IS_STRING(label) AND (...) since the switch (h15), is another claim,
+                // which the gate admits there and source A judges.
+                planted.Triggers.SelectMany(t => t.Bundles).SelectMany(b => (b.Refutations ?? []).Where(r => plant.Proposed.ContainsKey(r.Form)).Select(r => r.Form).ToHashSet() is var refuted
+                        ? b.Answers.Values.Select(a => a.Best).OfType<ServiceForm>().Where(best => best.Subforms.Any(refuted.Contains)).Select(best => $"bundle {b.Id}: {best.Text}")
+                        : [])
+                    .Should().BeEmpty("no root sends a form the gate refuted in its bundle");
                 planted.Triggers.SelectMany(t => t.Judged.Values).SelectMany(j => j.Witnesses).Should().BeEmpty("nothing S sends or implies is wrong");
+                if (against is not null)
+                {
+                    // Over a tip of its own the loss is any form the tip sends, weakens to or implies that the plant does not.
+                    var lost = Sent(against).Except(Sent(planted)).ToList();
+                    foreach (var l in lost)
+                        output?.WriteLine("  lost: " + l);
+                    lost.Should().NotBeEmpty("the loss shows as what the tip sends, weakens to or implies and the plant does not");
+                    return;
+                }
+
                 var tip = Tip.Value.Triggers.SelectMany(t => t.Sends.Where(c => c.Form is not null).Select(c => (t.Sql, c.Set, c.Ir))).ToHashSet();
                 planted.Triggers.SelectMany(t => t.Sends.Where(c => c.Owned && c.Form is null && tip.Contains((t.Sql, c.Set, c.Ir)))).Should().NotBeEmpty("the loss shows as a conjunct the tip sends declined");
                 return;
@@ -225,17 +335,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// An untrusted plant: a template's rows at the positions given replaced by a rule that proposes, of every shape the
         /// template fits, its form with the members the predicate names taken out.
         /// </summary>
-        static Plant Template(string name, TemplateId replaced, RenderPosition[] at, Func<ServiceForm, bool> dropped, (string, string?)[] triggers)
+        static Plant Template(string name, TemplateId replaced, RenderPosition[] at, Func<ServiceForm, bool> dropped, (string, string?)[] triggers, Func<RenderingDefinition, RenderingDefinition>? over = null)
         {
             Plant? plant = null;
-            return plant = new(name, false, d => d with { Templates = [.. d.Templates.Where(row => row.Item1 != replaced || at.Contains(row.Item2) == false)] }, t =>
+            return plant = new(name, false, d => (over?.Invoke(d) ?? d) is var b ? b with { Templates = [.. b.Templates.Where(row => row.Item1 != replaced || at.Contains(row.Item2) == false)] } : d, t =>
                 t.Graph.Rulesets.Single(r => r.Name == "spell").DefineRule($"planted {name}: {replaced} at {string.Join(" and ", at)}, its form written wrongly", r =>
                 {
                     var (e, p, a, pos) = r.Vars<Pred, JPath, PredicateAtom, RenderPosition>("e", "p", "a", "pos");
                     var (n, sh) = r.Vars<string, string>("n", "sh");
-                    r.When(t.At.Of(e, pos), t.Ir.Atom.Of(e, p, a), n.Is(t.Spelling.Of(p)), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), t.Fits.Of(replaced, sh));
+                    var rr = r.Var<ReadingTable>("rr");
+                    r.When(t.At.Of(e, pos), t.Ir.Atom.Of(e, p, a), n.Is(t.Spelling.Of(p)), sh.Is(Compute.Of(a, RenderingTemplates.ShapeOf)), t.Fits.Of(replaced, sh), rr.Is(t.ReaderRows.Of()));
                     r.Where(pos, x => at.Contains(x));
-                    r.Then(t.Candidate.Of(e, pos, Compute.Of(pos, a, n, (q, x, y) => plant!.Propose(Drop(RenderingTemplates.Spell(replaced, q, x, y), dropped)))));
+                    r.Then(t.Candidate.Of(e, pos, Compute.Of(pos, Compute.Of(a, rr, RenderingTemplates.Read), n, (q, x, y) => plant!.Propose(Drop(RenderingTemplates.Spell(replaced, q, x, y), dropped)))));
                 }), triggers);
         }
 
@@ -286,24 +397,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 r.Where(RenderingPrimitives.PricedIsReal.Of(bx));
                 r.Where(RenderingPrimitives.PricedIsReal.Of(by));
                 r.When(l.Is(Compute.Of(bx, Priced.FormOf)), m.Is(Compute.Of(by, Priced.FormOf)), px.Is(t.Agrees.Of(x, RenderPosition.Pos, l, Verdict.Equal)),
-                    py.Is(t.Agrees.Of(y, RenderPosition.Pos, m, Verdict.Equal)), h.Is(Compute.Of(j, l, m, ServiceForm.Joined)));
+                    py.Is(t.Agrees.Of(y, RenderPosition.Pos, m, Verdict.Equal)), h.Is(Compute.Of(j, l, m, ServiceForm.Paired)));
                 r.Then(t.Agrees.Of(e, pos, h, Verdict.Equal).Is(Compute.Of(px, py, Proof.Join)), t.BestExact.Of(e, pos).Is(Compute.Of(h, Priced.Of)));
             });
         }
 
         /// <summary>M6: text equal to <c>'true'</c> read as FALSE of the boolean true, which Calcite renders so.</summary>
-        static Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair) =>
-            (atom, vector, means, tolerated) => pair(atom, vector, means, tolerated) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
+        static Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> TrueTextIsFalseOfTrue(Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> pair) =>
+            (atom, columns, vector, readings) => pair(atom, columns, vector, readings) is var outcomes && atom is { Reader: PredicateAtom.TextReader, Test: PredicateAtom.Equal } && atom.Operand == JsonValues.Of("true")
                 ? Reclassed(outcomes, cell => cell is PathCell.Point { Value: var v } && v == JsonValues.Of(true), k => k with { Calcite = Truths.False })
                 : outcomes;
 
         /// <summary>M7 and M10: a reading Calcite's own (the text accessor's rendering, a <c>RETURNING DECIMAL</c>) read as the raw value.</summary>
-        static Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> ReadAsRaw(Func<PredicateAtom, OutcomeVector, AnswerMeanings, Truths, CellOutcomes> pair, string reader) =>
-            (atom, vector, means, tolerated) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, vector, means, tolerated);
+        static Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> ReadAsRaw(Func<PredicateAtom, RawTruths, OutcomeVector, ReadingTable, CellOutcomes> pair, string reader) =>
+            (atom, columns, vector, readings) => pair(atom.Reader == reader ? atom with { Reader = PredicateAtom.RawReader } : atom, columns, vector, readings);
 
         /// <summary>M8 and M9: the service's comparison of a boolean with a string, for the operators given, answered by the boolean's rendering.</summary>
-        static Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> leaf, Op[] ops) =>
-            (form, cells, table, parted) => leaf(form, cells, table, parted) is var vector && form.Kind == ServiceFormKind.Compare && ops.Contains(form.Test) && JsonValues.IsString(form.Literal!)
+        static Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> ByRendering(Func<ServiceForm, CellPartition, ServiceTable, LeafReads, OutcomeVector> leaf, Op[] ops) =>
+            (form, cells, table, reads) => leaf(form, cells, table, reads) is var vector && form.Kind == ServiceFormKind.Compare && ops.Contains(form.Test) && JsonValues.IsString(form.Literal!)
                 ? vector with
                 {
                     Outcomes = [.. vector.Outcomes.Zip(cells.Cells, (o, cell) => cell is PathCell.Point { Value: var v } && JsonValues.TypeOf(v) == JsonValues.BooleanType

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 
@@ -26,9 +27,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// against the service; see <c>DESIGN.md</c>.
         /// </summary>
         /// <remarks>
-        /// The mappings are written over a path declared ASCII, holding nothing the service trims beside a space, where
-        /// every string function computes what Calcite's does; what each asks of its arguments where they hold more is
-        /// held to the rule apart, below (<c>CosmosStringFunctions</c>).
+        /// The mappings are written over a path declared to hold strings of ASCII, holding nothing the service trims
+        /// beside a space, where every string function computes what Calcite's does; what each asks of its arguments where
+        /// they hold more is held to the rule apart, below (<c>CosmosStringFunctions</c>). Each declaration is a
+        /// container's, bound to the reasoning the fixtures share, since S keys what the declaration's root says a path
+        /// may hold: over a path not declared a string it keys a number and a boolean, which the rows answer undefined.
         /// </remarks>
         public class Functions
         {
@@ -52,12 +55,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             CosmosRexTranslator Translator() => Translator(JsonCharacterBand.None);
 
-            /// <summary>A translator whose facts say <c>c.s</c>'s strings hold characters of these classes alone.</summary>
-            CosmosRexTranslator Translator(JsonCharacterBand characters) => new(_rex, _fields, new CosmosParameterList(),
-                new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), new JsonClaim.Characters(characters))) }).Derive(null));
+            /// <summary>A translator whose container declares <c>c.s</c> to hold strings of characters of these classes alone.</summary>
+            CosmosRexTranslator Translator(JsonCharacterBand characters) => Declaring(new JsonClaim.OfType(JsonType.String), new JsonClaim.Characters(characters));
+
+            /// <summary>A translator whose container declares <c>c.s</c> to hold strings, of characters nothing is known of.</summary>
+            CosmosRexTranslator Strings() => Declaring(new JsonClaim.OfType(JsonType.String));
 
             /// <summary>A translator whose facts say nothing of what <c>c.s</c> holds.</summary>
             CosmosRexTranslator Undeclared() => new(_rex, _fields, new CosmosParameterList(), JsonFactSet.Empty);
+
+            /// <summary>A translator whose container declares these claims of <c>c.s</c>, outright, as S imports them.</summary>
+            CosmosRexTranslator Declaring(params JsonClaim[] claims) => Declaring(CosmosServiceTarget.Azure, claims);
+
+            /// <summary>A translator whose container, on this target, declares these claims of <c>c.s</c>.</summary>
+            CosmosRexTranslator Declaring(CosmosServiceTarget target, params JsonClaim[] claims)
+            {
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("functions")
+                    .WithFacts(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), claim))))).WithServiceTarget(target);
+                return new(_rex, _fields, new CosmosParameterList(), container.Facts.Declared, null, container);
+            }
 
             bool Pushes(CosmosRexTranslator translator, SqlOperator op, params RexNode[] operands) => translator.TryTranslate(_rex.makeCall(op, operands), out _);
 
@@ -288,7 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 {
                     Pushes(Translator(H | N | W), op, operands).Should().BeTrue(op.getName() + " over a string holding no surrogate");
                     Pushes(Translator(S), op, operands).Should().BeFalse(op.getName() + " over a string that may hold a surrogate");
-                    Pushes(Undeclared(), op, operands).Should().BeFalse(op.getName() + " over a string nothing is known of");
+                    Pushes(Strings(), op, operands).Should().BeFalse(op.getName() + " over a string nothing is known of");
                 }
             }
 
@@ -304,36 +320,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// A computed argument is asked through every input its characters come from: both sides of a concatenation,
             /// a literal's own characters, and a parameter, which may hold anything until it is bound. A count's other
-            /// operands are numbers and are asked nothing.
+            /// operands are numbers and are asked nothing. Two literals concatenate to a <c>CHAR</c>, a reading no row was
+            /// measured through, so S has no image of a count over them; a literal alone is counted by its own characters.
+            /// A concatenation's literal is keyed apart from a stored operand (<c>FunctionKey.Literal</c>), its rows measured
+            /// as a string of ASCII alone, so one holding <c>ß</c> beside a path stays in process.
             /// </remarks>
             [Fact]
             public void ACountAsksEveryInputOfAComputedArgument()
             {
-                var concatenated = _rex.makeCall(SqlStdOperatorTable.CONCAT, Str(), Lit("x\u00DF"));
+                var concatenated = _rex.makeCall(SqlStdOperatorTable.CONCAT, Str(), Lit("x"));
 
                 Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, concatenated).Should().BeTrue("both inputs hold no surrogate");
-                Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.UPPER, concatenated)).Should().BeFalse("UPPER asks ASCII of its argument, and ß is not");
+                Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.UPPER, concatenated)).Should().BeFalse("UPPER asks ASCII of its argument, and the path may hold more");
+                Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.CONCAT, Str(), Lit("x\u00DF"))).Should().BeFalse("no run sent a concatenation's literal beyond ASCII");
                 Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, Unicode("a\uD83D\uDE00")).Should().BeFalse("the literal holds a surrogate pair");
                 Pushes(Translator(N), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.CONCAT, Str(), Param())).Should().BeFalse("a parameter may hold anything");
-                Pushes(Translator(S), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.CONCAT, Lit("a"), Lit("b"))).Should().BeTrue("no path is counted");
+                Pushes(Translator(S), SqlStdOperatorTable.CHAR_LENGTH, _rex.makeCall(SqlStdOperatorTable.CONCAT, Lit("a"), Lit("b"))).Should().BeFalse("two literals concatenate to a CHAR");
+                Pushes(Translator(S), SqlStdOperatorTable.CHAR_LENGTH, Lit("ab")).Should().BeTrue("no path is counted");
             }
 
             /// <remarks>
-            /// Calcite maps case by Java's full mapping and the service by a simple one, and they agree over ASCII alone:
-            /// ß is <c>SS</c> to Calcite and stays at the service. A tab is ASCII, and a high unit, a surrogate and a
-            /// character below U+D800 outside ASCII are each reason enough to compute the mapping in process.
+            /// Calcite maps case by Java's full mapping and the service by a simple one, and they agree over ASCII and where
+            /// the cased letters measured each band alike (<c>Service.CaseMappingOverCasedLetters</c>): ß is <c>SS</c> to
+            /// Calcite and stays at the service, so a character below U+D800 outside ASCII computes the mapping in process.
+            /// On Azure (run 2) both map a surrogate as Java does, and LOWER the high band, where UPPER leaves the ligatures
+            /// Java writes as two; the emulator maps the scripts cased after Java 8's tables, so it parts over a surrogate.
             /// </remarks>
             [Fact]
-            public void ACaseMappingPushesOverAsciiAlone()
+            public void ACaseMappingPushesWhereTheCasedLettersAnswerAsCalcites()
             {
                 foreach (var op in new[] { SqlStdOperatorTable.UPPER, SqlStdOperatorTable.LOWER })
                 {
                     Pushes(Translator(W), op, Str()).Should().BeTrue(op.getName() + " over ASCII");
                     Pushes(Translator(N), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold ß");
-                    Pushes(Translator(H), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold a high unit");
-                    Pushes(Translator(S), op, Str()).Should().BeFalse(op.getName() + " over a string that may hold a surrogate");
-                    Pushes(Undeclared(), op, Str()).Should().BeFalse(op.getName() + " over a string nothing is known of");
+                    Pushes(Translator(S), op, Str()).Should().BeTrue(op.getName() + " over a string that may hold a surrogate, on Azure");
+                    Pushes(Declaring(CosmosServiceTarget.Emulator, new JsonClaim.OfType(JsonType.String), new JsonClaim.Characters(S)), op, Str()).Should().BeFalse(op.getName() + " over a surrogate, on the emulator");
+                    Pushes(Strings(), op, Str()).Should().BeFalse(op.getName() + " over a string nothing is known of");
                 }
+
+                Pushes(Translator(H), SqlStdOperatorTable.UPPER, Str()).Should().BeFalse("UPPER leaves U+FB00, which Java writes as two");
+                Pushes(Translator(H), SqlStdOperatorTable.LOWER, Str()).Should().BeTrue("the fullwidth capitals map as Java maps them");
             }
 
             /// <remarks>
@@ -348,22 +374,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 {
                     Pushes(Translator(S | H | N), SqlStdOperatorTable.TRIM, Flag(flag), Lit(" "), Str()).Should().BeTrue(flag + " over a string holding nothing the service trims");
                     Pushes(Translator(W), SqlStdOperatorTable.TRIM, Flag(flag), Lit(" "), Str()).Should().BeFalse(flag + " over a string that may hold a tab");
-                    Pushes(Undeclared(), SqlStdOperatorTable.TRIM, Flag(flag), Lit(" "), Str()).Should().BeFalse(flag + " over a string nothing is known of");
+                    Pushes(Strings(), SqlStdOperatorTable.TRIM, Flag(flag), Lit(" "), Str()).Should().BeFalse(flag + " over a string nothing is known of");
                 }
             }
 
             /// <remarks>
             /// Azure's <c>INDEX_OF</c> counts UTF-16 units, as Calcite's <c>POSITION</c> does, so it is pushed whatever
             /// the string holds; the emulator counts code points, a difference the registry records
-            /// (<c>Service.IndexOfCountsUnits</c>). So do the functions that agree everywhere.
+            /// (<c>Service.IndexOfCountsUnits</c>). So do the functions that agree everywhere. Over a path not declared a
+            /// string none does: a number or a boolean there is undefined to the service's function, and its text Calcite's.
+            /// <c>POSITION</c>'s pattern is keyed as the operand it is, measured as a string of ASCII alone that holds
+            /// something: a literal, or a path the declaration proves present and every string it may be such a one.
             /// </remarks>
             [Fact]
             public void WhatAgreesEverywherePushesWhateverTheStringHolds()
             {
-                Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Lit("b"), Str()).Should().BeTrue();
-                Pushes(Undeclared(), SqlLibraryOperators.REVERSE, Str()).Should().BeTrue();
-                Pushes(Undeclared(), SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
-                Pushes(Undeclared(), SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("!")).Should().BeTrue("MySQL's CONCAT is null over a null, as the service's is");
+                Pushes(Strings(), SqlStdOperatorTable.POSITION, Lit("b"), Str()).Should().BeTrue();
+                Pushes(Strings(), SqlLibraryOperators.REVERSE, Str()).Should().BeTrue();
+                Pushes(Strings(), SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
+                Pushes(Strings(), SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("!")).Should().BeTrue("MySQL's CONCAT is null over a null, as the service's is");
+
+                Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Lit("b"), Str()).Should().BeFalse("S keys a number and a boolean the path may hold, which the rows answer undefined");
+
+                Pushes(PresentOneOf("b", "cd"), SqlStdOperatorTable.POSITION, Str(), Lit("abc")).Should().BeTrue("a pattern read from a path present and one of strings of no band that hold something keys the cell measured");
+                Pushes(Strings(), SqlStdOperatorTable.POSITION, Str(), Lit("abc")).Should().BeFalse("a pattern read from a path may be empty or absent");
             }
 
             /// <remarks>
@@ -374,53 +408,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             [Fact]
             public void AConcatenationThatReadsANullAsEmptyIsComputedInProcess()
             {
-                Pushes(Undeclared(), SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("!")).Should().BeFalse();
-                Pushes(Undeclared(), SqlLibraryOperators.CONCAT2, Str(), Lit("!")).Should().BeFalse();
+                Pushes(Strings(), SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("!")).Should().BeFalse();
+                Pushes(Strings(), SqlLibraryOperators.CONCAT2, Str(), Lit("!")).Should().BeFalse();
             }
 
-            /// <summary>A translator whose facts say <c>c.s</c> is one of these strings.</summary>
-            CosmosRexTranslator OneOf(params string[] values) => new(_rex, _fields, new CosmosParameterList(),
-                new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()))) }).Derive(null));
+            /// <summary>A translator whose container declares <c>c.s</c> to be one of these strings.</summary>
+            CosmosRexTranslator OneOf(params string[] values) => OneOf(CosmosServiceTarget.Azure, values);
+
+            /// <summary>A translator whose container, on this target, declares <c>c.s</c> to be one of these strings.</summary>
+            CosmosRexTranslator OneOf(CosmosServiceTarget target, params string[] values) => Declaring(target, new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
+
+            /// <summary>A translator whose Azure container declares <c>c.s</c> present, and one of these strings.</summary>
+            CosmosRexTranslator PresentOneOf(params string[] values) => Declaring(new JsonClaim.Present(), new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()));
 
             /// <remarks>
             /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
-            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal,
-            /// and a positive one asks the subject's length to keep the repetition within the limit: a literal's own, or what
-            /// the facts bound a path's strings to — here a domain's, whose longest is three units, which bound three code
-            /// points or fewer. A count of 0 is the empty string at both ends.
+            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So S keys the result by its
+            /// length against that bound, the longest string the facts allow times a literal count: the rows answer within it
+            /// as Calcite does, and past it, or where nothing bounds it, Azure's answer is undefined and the emulator's
+            /// unmeasured (G6). A literal subject is keyed apart from a stored one (<c>FunctionKey.Literal</c>), and as every
+            /// string is, by no band as well as by each band it holds: run 3 sent one holding U+0000, which Azure repeats as
+            /// Calcite does, but no run sent one of no band, so a literal subject stays in process whatever it holds and
+            /// whatever its length.
             /// </remarks>
             [Fact]
             public void ARepetitionPushesWhereTheCountKeepsItWithinWhatTheServiceRepeats()
             {
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("3,333 times three is 9,999");
+                Pushes(OneOf("ab", "c\U0001F600e"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("a pair is one code point");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("3,334 times three is 10,002");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("both targets repeat that far");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("no run measured the emulator past it");
                 Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(-1)).Should().BeFalse("REPLICATE is undefined for a negative count");
-                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");
-                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeFalse("nothing bounds the string's length");
+                Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");
+                Pushes(Strings(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeFalse("nothing bounds the string's length");
                 Pushes(OneOf("ab"), SqlLibraryOperators.REPEAT, Str(), Num()).Should().BeFalse("a count from a column may be anything");
-                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5000)).Should().BeTrue("a literal's length is its own");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5000)).Should().BeFalse("no run sent a literal subject of no band");
                 Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5001)).Should().BeFalse();
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("a\0b"), Int(2)).Should().BeFalse("a literal holding U+0000 is keyed by no band too, which no run sent");
             }
 
             /// <remarks>
             /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
             /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
-            /// parameter may be empty until it is bound.
+            /// parameter may be empty until it is bound. Run 4 measured Azure's search read from a path over every kind and
+            /// band, beside runs 1 and 3's literals: a string of any band but U+0000 and an absent path answer as Calcite's,
+            /// as on the emulator, so a search read from a path that may be any of them pushes there; one that may hold
+            /// U+0000 stays in process, Azure replacing every byte of one and failing the statement over U+0000 then 1, and
+            /// one that may be a number is undefined there, where Calcite reads its text. Run 3 measured the replacement over
+            /// every kind and band, which Azure answers as Calcite does, so a replacement read from any path of strings pushes
+            /// there. The emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
+            /// <remarks>
+            /// A rank clause's keyword is held to S's image of the function computing it, as a column is (G6's check: the
+            /// gate had moved off the writer a rank clause writes through, which pushed both of these): a <c>REPLACE</c> of an
+            /// empty search and the concatenation that reads a null as empty stay in process, the plain one pushes.
+            /// </remarks>
+            [Fact]
+            public void ARankClausesKeywordIsHeldToTheFunctionRows()
+            {
+                string Rank(RexNode keyword) => Translator().TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Str(), keyword));
+
+                Rank(_rex.makeCall(SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b"))).Should().Be("FULLTEXTSCORE(c.s, REPLACE(c.s, @p0, @p1))");
+                var empty = () => Rank(_rex.makeCall(SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")));
+                empty.Should().Throw<CosmosTranslationException>().WithMessage("REPLACE is computed in process*");
+                var concat = () => Rank(_rex.makeCall(SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("!")));
+                concat.Should().Throw<CosmosTranslationException>().WithMessage("CONCAT is computed in process*");
+            }
+
             [Fact]
             public void AReplacementPushesWhereTheSearchHoldsSomething()
             {
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue();
+                Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("")).Should().BeTrue("an empty replacement, which Azure answers as Calcite does (run 3)");
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")).Should().BeFalse("an empty search");
                 Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Param(), Lit("b")).Should().BeFalse("a parameter may be empty");
-                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
-                Pushes(OneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
+                Pushes(OneOf(CosmosServiceTarget.Emulator, "ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(PresentOneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("the search is present and every string it may be is of no band and holds something, the cell Azure measured");
+                Pushes(PresentOneOf("x", "yz"), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a replacement read from a path answers as Calcite's");
+                Pushes(Strings(), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("over every band, and absent, as run 3 measured it on Azure");
+                Pushes(Translator(JsonCharacterBand.Nul), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a U+0000 among them");
+                Pushes(PresentOneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
+                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("the search may be absent, which Azure answers as Calcite does (run 4)");
+                Pushes(PresentOneOf("a\U0001F600b", "\uFDD0b", "a\u00E9b", "\tb"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("a search of any band but U+0000 answers as Calcite's on Azure");
+                Pushes(PresentOneOf("ab", "\u00001"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("a search that may hold U+0000 fails the statement on Azure (run 4)");
+                Pushes(Declaring(new JsonClaim.Present(), new JsonClaim.OneOf(["ab", 30L])), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!"))
+                    .Should().BeFalse("a search that may be a number is undefined on Azure, where Calcite reads its text (run 4)");
             }
 
             /// <remarks>
             /// Azure's <c>REPLACE</c> reads its subject only up to its first U+0000 — <c>REPLACE(s, 'b', '!')</c> leaves
             /// <c>a</c>U+0000<c>b</c> as it is — and a search holding one replaces every byte; a replacement holding one is
-            /// written as it is. So the subject and the search are asked to hold none, and the replacement nothing.
+            /// written as it is. So the subject and the search are asked to hold none. Run 3 sent a replacement holding one, a
+            /// literal and a stored string, and Azure answered both as Calcite does, so a replacement holding U+0000 pushes.
             /// </remarks>
             [Fact]
             public void AReplacementPushesWhereNeitherTheSubjectNorTheSearchHoldsNul()
@@ -428,23 +509,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 const JsonCharacterBand Z = JsonCharacterBand.Nul;
 
                 Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue("the subject holds no U+0000");
-                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeTrue("the replacement is written as it is");
+                Pushes(Translator(S | H | N | W), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("\0")).Should().BeTrue("Azure writes a replacement holding U+0000 as Calcite does (run 3)");
                 Pushes(Translator(Z), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("the subject may hold U+0000");
-                Pushes(Undeclared(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("nothing is known of the subject");
+                Pushes(Strings(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeFalse("nothing is known of the subject's characters");
                 Pushes(Translator(JsonCharacterBand.None), SqlStdOperatorTable.REPLACE, Str(), Lit("\0"), Lit("b")).Should().BeFalse("the search holds U+0000");
             }
 
             /// <remarks>
             /// A lone surrogate cannot be sent: the SDK's UTF-8 encoder refuses it while it writes the statement. Only a
             /// <c>U&amp;</c> literal holds one, inside <c>POSITION</c> or <c>REPLACE</c>, and wherever it stands the
-            /// expression is computed in process. A pair is a character and is sent.
+            /// expression is computed in process. A pair is a character and is sent, compared with a path; as
+            /// <c>POSITION</c>'s pattern, keyed as the operand it is and measured as a string of ASCII alone, it stays in
+            /// process.
             /// </remarks>
             [Fact]
             public void ALiteralHoldingALoneSurrogateIsNeverSent()
             {
-                Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Unicode("\uD83D"), Str()).Should().BeFalse();
-                Pushes(Undeclared(), SqlStdOperatorTable.REPLACE, Str(), Unicode("\uDE00"), Lit("!")).Should().BeFalse();
-                Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Unicode("\uD83D\uDE00"), Str()).Should().BeTrue("a pair is sent");
+                Pushes(Strings(), SqlStdOperatorTable.POSITION, Unicode("\uD83D"), Str()).Should().BeFalse();
+                Pushes(Strings(), SqlStdOperatorTable.REPLACE, Str(), Unicode("\uDE00"), Lit("!")).Should().BeFalse();
+                Pushes(Strings(), SqlStdOperatorTable.EQUALS, Str(), Unicode("\uD83D\uDE00")).Should().BeTrue("a pair is sent");
+                Pushes(Strings(), SqlStdOperatorTable.POSITION, Unicode("\uD83D\uDE00"), Str()).Should().BeFalse("no run sent a pattern beyond ASCII");
             }
 
             // ── Declined ──────────────────────────────────────────────────────────────

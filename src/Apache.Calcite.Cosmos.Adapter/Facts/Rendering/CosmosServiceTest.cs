@@ -43,6 +43,28 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Which comparator a type's values are ordered by: the answer names it.</summary>
         Order,
 
+        /// <summary>
+        /// The ternary <c>c ? a : b</c>: keyed by the condition's outcome alone, the answer <see cref="CosmosAnswer.True"/>
+        /// where it takes the then-arm and <see cref="CosmosAnswer.False"/> where it takes the else-arm.
+        /// </summary>
+        Choose,
+
+        /// <summary>
+        /// A comparison of two paths: keyed by nothing, the answer <see cref="CosmosAnswer.True"/> where it is measured to
+        /// answer as the left compared with the right's value, and mirrored where only the mirror's key is a row.
+        /// </summary>
+        ComparePaths,
+
+        /// <summary>
+        /// The affixes and <c>LIKE</c> (S's affix form): over a value that is no string keyed by its class; over a string by
+        /// whether it matches (<see cref="CosmosValueClass.Matching"/>) or not, and keyed by nothing, the answer naming the
+        /// matcher, as <see cref="Order"/> names a comparator.
+        /// </summary>
+        StartsWith,
+        EndsWith,
+        Contains,
+        Like,
+
     }
 
 }

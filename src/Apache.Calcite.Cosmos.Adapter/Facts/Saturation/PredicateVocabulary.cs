@@ -1,3 +1,5 @@
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 namespace Apache.Calcite.Cosmos.Facts.Saturation
@@ -11,8 +13,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class PredicateVocabulary
     {
 
-        public PredicateVocabulary(EGraph graph)
+        /// <param name="graph">The graph.</param>
+        /// <param name="paths">The graph's path terms, which say whether a path holds an element.</param>
+        /// <param name="readings">
+        /// What Calcite makes of each reading, the graph's own rows, analyses assumed at its root: the JSON kinds each type
+        /// test is TRUE of and the readings a one-place test's body takes apart (<c>Calcite.TypeTestsAreTheirBodies</c>, G7,
+        /// G8), the boxes a value cast to <c>VARIANT</c> is held in, which readings take what a cast number denotes, and which
+        /// operators answer null over a null operand, which the rules of G8 read.
+        /// </param>
+        public PredicateVocabulary(EGraph graph, PathVocabulary paths, ReadingVocabulary readings)
         {
+            Paths = paths;
+            Readings = readings;
+            TestKinds = readings.TestKinds;
+            TestReads = readings.TestReads;
             graph.DefineSort<Val>("Val");
             graph.DefineSort<Pred>("Pred");
             graph.DefineSort<Args>("Args");
@@ -25,8 +39,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             Text = graph.DefineConstructor<JPath, Val>("text", options: term);
             Raw = graph.DefineConstructor<JPath, Val>("raw", options: term);
+            RawIn = graph.DefineConstructor<JPath, string, Val>("raw in", options: term);
             Typed = graph.DefineConstructor<JPath, string, Val>("typed", options: term);
             Cast = graph.DefineConstructor<string, Val, Val>("cast", options: term);
+            DecimalCast = graph.DefineConstructor<long, long, Val, Val>("decimal cast", options: term);
+            Box = graph.DefineConstructor<string, Val, Val>("box", options: term);
+            Query = graph.DefineConstructor<JPath, Val>("query", options: term);
+            Apart = graph.DefineConstructor<string, Val, Val>("apart", options: term);
+            Null = graph.DefineConstructor<string, Val>("sql null", options: term);
             Literal = graph.DefineConstructor<string, Val>("literal", options: term);
             Parameter = graph.DefineConstructor<long, string, Val>("parameter", options: term);
             Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
@@ -40,10 +60,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Or = graph.DefineConstructor<Pred, Pred, Pred>("or", options: term);
             Not = graph.DefineConstructor<Pred, Pred>("not", options: term);
             Opaque = graph.DefineConstructor<long, Pred>("opaque", options: term);
+            TypeTest = graph.DefineConstructor<string, Val, Pred>("type test", options: term);
+            Case = graph.DefineConstructor<Pred, Pred, Pred, Pred>("case", options: term);
+            Affix = graph.DefineConstructor<string, Val, string, Pred>("affix", options: term);
+            Truth = graph.DefineConstructor<string, Pred>("truth", options: term);
 
             Point = graph.DefineRelation<Pred, string>("point", analysis);
             Reads = graph.DefineRelation<Val, JPath, string>("reads", analysis);
             Atom = graph.DefineRelation<Pred, JPath, PredicateAtom>("atom", analysis);
+            TestRead = graph.DefineRelation<Val, JPath, string>("testread", analysis);
+            Denotes = graph.DefineRelation<Val, string, bool>("denotes", analysis);
+            NoElement = graph.DefineRelation<JPath>("noelement", analysis);
+            HasElement = graph.DefineRelation<JPath>("haselement", analysis);
 
             Analyse = graph.DefineRuleset("analyse");
             DefineAnalysis();
@@ -55,11 +83,47 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>The value the service holds at a path.</summary>
         public Constructor<JPath, Val> Raw { get; }
 
+        /// <summary>
+        /// The value the service holds at a path, read through the column the loader knows it is in (rawtyped): a declared
+        /// field, read through its column's reading (<c>raw:VARIANT</c>), and by F's rules of a value's characters.
+        /// </summary>
+        public Constructor<JPath, string, Val> RawIn { get; }
+
         /// <summary><c>JSON_VALUE(DOC, path RETURNING type)</c>.</summary>
         public Constructor<JPath, string, Val> Typed { get; }
 
         /// <summary>A cast of a value to a SQL type.</summary>
         public Constructor<string, Val, Val> Cast { get; }
+
+        /// <summary>
+        /// A cast of a number to <c>DECIMAL(precision, scale)</c>, one a comparison's other side is made of: read by the rules
+        /// of what a cast of a literal denotes (<see cref="Denotes"/>, G8).
+        /// </summary>
+        public Constructor<long, long, Val, Val> DecimalCast { get; }
+
+        /// <summary>
+        /// A value cast to <c>VARIANT</c>: the SQL type of what it boxes, and that value, read by the rules of what a box
+        /// equals and where it is null (<c>boxof</c>, <c>seesthrough</c>, <c>boxnull</c>, G8). It reads no path of its own.
+        /// </summary>
+        public Constructor<string, Val, Val> Box { get; }
+
+        /// <summary>
+        /// <c>JSON_QUERY(DOC, path)</c> with no clause: it reads its path as its own reading, whose answers are its row's
+        /// (<c>Calcite.JsonQueryAnswersStructureOnly</c>, G8), and a test of it as its row says the body reads it
+        /// (<see cref="TestReads"/>).
+        /// </summary>
+        public Constructor<JPath, Val> Query { get; }
+
+        /// <summary>
+        /// A reading written as a form apart from its accessor (<see cref="SqlValue.Form"/>, h15b): it reads what its reading
+        /// reads, and a test of it as its form's row says the body reads it (<see cref="TestReads"/>).
+        /// </summary>
+        public Constructor<string, Val, Val> Apart { get; }
+
+        /// <summary>
+        /// SQL's null, of a SQL type: a comparison with it is read by the rule over the operator's row (<c>strictop</c>, G8).
+        /// </summary>
+        public Constructor<string, Val> Null { get; }
 
         /// <summary>A literal, in <see cref="JsonValues"/>' spelling.</summary>
         public Constructor<string, Val> Literal { get; }
@@ -100,6 +164,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A predicate the loader does not read: it proves nothing and decides nothing.</summary>
         public Constructor<long, Pred> Opaque { get; }
 
+        /// <summary>An <c>IS_*</c> test but <c>IS_DEFINED</c>: its name, and the value it tests.</summary>
+        public Constructor<string, Val, Pred> TypeTest { get; }
+
+        /// <summary>The JSON kinds each type test is TRUE of, by its name: the graph's rows, which the type-test rule reads.</summary>
+        public Function<string, ValueSet<string>> TestKinds { get; }
+
+        /// <summary>
+        /// The readings a one-place test's in-process body takes apart, by the constructor the IR writes each as, with the
+        /// reading it reads instead: the graph's rows, which the test-read rules read.
+        /// </summary>
+        public Relation<string, string> TestReads { get; }
+
+        /// <summary>
+        /// A <c>CASE</c> over predicates: its condition, then-arm and else-arm. No rule of the facts graph reads one, so it
+        /// learns of one what it learns of an opaque term.
+        /// </summary>
+        public Constructor<Pred, Pred, Pred, Pred> Case { get; }
+
+        /// <summary>A match of a value's text against a literal pattern: the operator, the value, the pattern.</summary>
+        public Constructor<string, Val, string, Pred> Affix { get; }
+
+        /// <summary>A truth value as a predicate: <c>true</c>, <c>false</c> or <c>unknown</c>.</summary>
+        public Constructor<string, Pred> Truth { get; }
+
         /// <summary>
         /// A literal an atom compares its value with: a comparison's, or each of a membership's. Stated by the writer beside
         /// the term, because a rule cannot take the members of a set one at a time.
@@ -112,11 +200,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A predicate over one path, as the atom that says what it means: an analysis of terms alone.</summary>
         public Relation<Pred, JPath, PredicateAtom> Atom { get; }
 
+        /// <summary>
+        /// The path a one-place test of a value asks of, and the reading it reads there: what the test's in-process body
+        /// takes the value's accessor apart into, or <see cref="PredicateAtom.RaisesReader"/> where it raises over the value,
+        /// as a row says (<see cref="TestReads"/>, G8).
+        /// </summary>
+        public Relation<Val, JPath, string> TestRead { get; }
+
+        /// <summary>What Calcite makes of each reading: the rows the rules of G8 read beside the terms.</summary>
+        public ReadingVocabulary Readings { get; }
+
+        /// <summary>The graph's path terms.</summary>
+        public PathVocabulary Paths { get; }
+
+        /// <summary>A path holding no element, read off its term.</summary>
+        public Relation<JPath> NoElement { get; }
+
+        /// <summary>A path holding an element, read off its term: one of its steps is an index.</summary>
+        public Relation<JPath> HasElement { get; }
+
+        /// <summary>
+        /// What a cast of a literal denotes (G8): the number the literal spells, and whether a cast that drops scale moved
+        /// Calcite's value from it; nothing where a cast's whole digits do not fit, which raises. Derived from the terms alone.
+        /// </summary>
+        public Relation<Val, string, bool> Denotes { get; }
+
         /// <summary>Reads terms into atoms.</summary>
         public Ruleset Analyse { get; }
 
         void DefineAnalysis()
         {
+            DefineElements();
+
             Analyse.DefineRule("text reads its path", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
@@ -126,8 +241,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Analyse.DefineRule("a raw value reads its path", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)));
+                r.When(v.Is(Raw.Of(p)), NoElement.Of(p));
                 r.Then(Reads.Of(v, p, PredicateAtom.RawReader));
+            });
+            // A declared field, read through its column (rawtyped).
+            Analyse.DefineRule("a raw value in a column reads its path through the column", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
+                r.When(v.Is(RawIn.Of(p, c)), NoElement.Of(p));
+                r.Then(Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
+            });
+            // An element's raw value, however written, which no row measured as of a path holding it as the text, a RETURNING
+            // and JSON_QUERY are (Calcite.ReadingsOfAnIndexAreAsOfAPath): the element reading, which reads its rows alone, a
+            // row no run measured as anything and a raise (Calcite.ItemIsNullWhereNoElementIs, h15b).
+            Analyse.DefineRule("a raw value of a path holding an element reads the element reading", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                r.When(v.Is(Raw.Of(p)), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+            });
+            Analyse.DefineRule("a raw value in a column of a path holding an element reads the element reading", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
+                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+            });
+            // A reading written apart, a field's, an item's, a cast's to ANY, reads what its reading reads (h15b); of a path
+            // holding an element, which no row measured of a field, the element reading.
+            Analyse.DefineRule("a reading written apart reads what its reading reads where its path holds no element", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k) = r.Vars<string, string>("f", "k");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), NoElement.Of(p));
+                r.Then(Reads.Of(v, p, k));
+            });
+            Analyse.DefineRule("a reading written apart of a path holding an element reads the element reading", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k) = r.Vars<string, string>("f", "k");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), HasElement.Of(p));
+                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
             Analyse.DefineRule("a returning reads its path as its type", r =>
             {
@@ -135,11 +288,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(Typed.Of(p, t)));
                 r.Then(Reads.Of(v, p, Compute.Of(t, PredicateAtom.TypedReader)));
             });
-            Analyse.DefineRule("a cast reads what it converts", r =>
+            Analyse.DefineRule("a JSON_QUERY reads its path as its own reading", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                r.When(v.Is(Query.Of(p)));
+                r.Then(Reads.Of(v, p, PredicateAtom.QueryReader));
+            });
+            // A cast is a reading where a row measured it, keyed by the reading it converts, its column apart (h15b): what a
+            // column's cast reads is the column's own rows. One no row names reads nothing, so no atom rests on it: over an ANY
+            // Calcite wraps a long beyond an int, so CAST(4294967297 AS INTEGER) is 1, which no window of the number holds.
+            Analyse.DefineRule("a cast a row measured reads what it converts", r =>
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
-                var (t, k) = r.Vars<string, string>("t", "k");
-                r.When(v.Is(Cast.Of(t, w)), Reads.Of(w, p, k));
+                var (t, k, kc, row) = r.Vars<string, string, string, string>("t", "k", "kc", "row");
+                r.When(v.Is(Cast.Of(t, w)), Reads.Of(w, p, k), kc.Is(Compute.Of(k, PredicateAtom.Columnless)), Readings.MeasuredCast.Of(t, kc, row));
                 r.Then(Reads.Of(v, p, Compute.Of(t, k, PredicateAtom.CastReader)));
             });
 
@@ -173,12 +335,248 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(e.Is(IsNull.Of(v)), Reads.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
             });
-            Analyse.DefineRule("a definedness test is an atom of what it reads", r =>
+            // A one-place test's body is handed the document and the path the accessor names, not the value it reads
+            // (Calcite.TypeTestsAreTheirBodies, G8): each accessor its row names is read as the reading the row says the body
+            // reads instead, one rule a constructor; a cast, which no row names, is no accessor, and its test is no atom.
+            Analyse.DefineRule("a test reads the text's path as its row says the body reads it", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(v.Is(Text.Of(p)), TestReads.Of(PredicateAtom.TextReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads a raw value's path as its row says the body reads it", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(v.Is(Raw.Of(p)), TestReads.Of(PredicateAtom.RawReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            // A field is keyed by its column's own reading, over which the body raises (measured in process, rows2).
+            Analyse.DefineRule("a test reads the path of a raw value in a column as its column's row says the body reads it", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, c, rc) = r.Vars<string, string, string>("k", "c", "rc");
+                r.When(v.Is(RawIn.Of(p, c)), rc.Is(Compute.Of(c, PredicateAtom.RawIn)), TestReads.Of(rc, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads a returning's path as its row says the body reads it", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, t) = r.Vars<string, string>("k", "t");
+                r.When(v.Is(Typed.Of(p, t)), TestReads.Of(PredicateAtom.TypedReaders, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            Analyse.DefineRule("a test reads a JSON_QUERY's path as its row says the body reads it", r =>
+            {
+                var (v, p, k) = r.Vars<Val, JPath, string>("v", "p", "k");
+                r.When(v.Is(Query.Of(p)), TestReads.Of(PredicateAtom.QueryReader, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            // A field, an item chain, a cast to ANY: what the body reads over each is its form's own row (h15b), not the row of
+            // the reading it reads, which stands for the accessor the body takes apart.
+            Analyse.DefineRule("a test reads the path of a reading written apart as its form's row says the body reads it", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k, rd) = r.Vars<string, string, string>("f", "k", "rd");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, rd), TestReads.Of(f, k));
+                r.Then(TestRead.Of(v, p, k));
+            });
+            // A computed place's call, read where a graph reads one (S's computed places): every call's row says the body
+            // raises over it (measured in process); the bridge's presence question about a place is such a test.
+            Analyse.DefineRule("a test reads a call's place as every call's row says the body reads it", r =>
+            {
+                var (v, q) = r.Vars<Val, JPath>("v", "q");
+                var (f, k, rd) = r.Vars<string, string, string>("f", "k", "rd");
+                var a = r.Var<Args>("a");
+                r.When(v.Is(Call.Of(f, a)), Reads.Of(v, q, rd), TestReads.Of(PredicateAtom.CallReaders, k));
+                r.Then(TestRead.Of(v, q, k));
+            });
+            // The atom is of the reading the test is asked over, which cuts its cells and whose raise it carries, read as its
+            // body reads it: a test raises wherever its reading or its body does (Calcite.TypeTestsAreTheirBodies, rows2).
+            Analyse.DefineRule("a definedness test is an atom of the reading it is asked over, read as its body reads it", r =>
             {
                 var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
-                var k = r.Var<string>("k");
-                r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
-                r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
+                var (k, rd) = r.Vars<string, string>("k", "rd");
+                r.When(e.Is(IsDefined.Of(v)), TestRead.Of(v, p, k), Reads.Of(v, p, rd));
+                r.Then(Atom.Of(e, p, Compute.Of(rd, k, PredicateAtom.IsDefined)));
+            });
+            Analyse.DefineRule("a type test is an atom of the reading it is asked over, read as its body reads it, TRUE of the kinds its row says", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (t, k, rd) = r.Vars<string, string, string>("t", "k", "rd");
+                var ks = r.Var<ValueSet<string>>("ks");
+                r.When(e.Is(TypeTest.Of(t, v)), TestRead.Of(v, p, k), Reads.Of(v, p, rd), ks.Is(TestKinds.Of(t)));
+                r.Then(Atom.Of(e, p, Compute.Of(rd, t, ks, k, PredicateAtom.TypeTest)));
+            });
+            Analyse.DefineRule("an affix test with a literal pattern is an atom of what it reads", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (op, c, k) = r.Vars<string, string, string>("op", "c", "k");
+                r.When(e.Is(Affix.Of(op, v, c)), Reads.Of(v, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Affix)));
+            });
+
+            DefineComparands();
+            DefineNullComparison();
+            DefineBoxes();
+        }
+
+        // Whether a path holds an element, read off its term, which a raw value's reading of it reads (h15b): the document and a
+        // property of a path holding none hold none, and an index, every element and a property of a path holding one, one.
+        void DefineElements()
+        {
+            Analyse.DefineRule("the document holds no element", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(p.Is(Paths.Root.Of()));
+                r.Then(NoElement.Of(p));
+            });
+            Analyse.DefineRule("a property of a path holding no element holds none", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var n = r.Var<string>("n");
+                r.When(p.Is(Paths.Prop.Of(q, n)), NoElement.Of(q));
+                r.Then(NoElement.Of(p));
+            });
+            Analyse.DefineRule("an index holds an element", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var i = r.Var<long>("i");
+                r.When(p.Is(Paths.Index.Of(q, i)));
+                r.Then(HasElement.Of(p));
+            });
+            Analyse.DefineRule("every element holds one", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                r.When(p.Is(Paths.Each.Of(q)));
+                r.Then(HasElement.Of(p));
+            });
+            Analyse.DefineRule("a property of a path holding an element holds one", r =>
+            {
+                var (p, q) = r.Vars<JPath, JPath>("p", "q");
+                var n = r.Var<string>("n");
+                r.When(p.Is(Paths.Prop.Of(q, n)), HasElement.Of(q));
+                r.Then(HasElement.Of(p));
+            });
+        }
+
+        // What a number Calcite wrote cast denotes, which the loader reads as the casts' terms, and the atom of a comparison
+        // with it where a row says the reading takes it (G8). A cast to a DECIMAL its whole digits do not fit raises in
+        // Calcite and denotes nothing; one whose scale is below the number's truncates it toward zero, by less than one,
+        // which only a reading that rescales its literal takes.
+        void DefineComparands()
+        {
+            Analyse.DefineRule("a literal a cast to DOUBLE converts denotes the number it spells", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var c = r.Var<string>("c");
+                r.When(v.Is(Cast.Of("DOUBLE", w)), w.Is(Literal.Of(c)));
+                r.Then(Denotes.Of(w, c, false));
+            });
+            Analyse.DefineRule("a literal a cast to a DECIMAL converts denotes the number it spells", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc, c) = r.Vars<long, long, string>("pr", "sc", "c");
+                r.When(v.Is(DecimalCast.Of(pr, sc, w)), w.Is(Literal.Of(c)));
+                r.Then(Denotes.Of(w, c, false));
+            });
+            Analyse.DefineRule("a cast to DOUBLE denotes what it converts denotes", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(Cast.Of("DOUBLE", w)), Denotes.Of(w, c, m));
+                r.Then(Denotes.Of(v, c, m));
+            });
+            Analyse.DefineRule("a cast to a DECIMAL that holds the number's digits denotes what it converts denotes", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc) = r.Vars<long, long>("pr", "sc");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
+                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
+                r.Where(RenderingPrimitives.PlacesWithin.Of(c, sc));
+                r.Then(Denotes.Of(v, c, m));
+            });
+            Analyse.DefineRule("a cast to a DECIMAL that drops the number's places denotes it moved", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var (pr, sc) = r.Vars<long, long>("pr", "sc");
+                var (c, m) = r.Vars<string, bool>("c", "m");
+                r.When(v.Is(DecimalCast.Of(pr, sc, w)), Denotes.Of(w, c, m));
+                r.Where(RenderingPrimitives.WholeDigitsFit.Of(c, pr, sc));
+                r.Where(RenderingPrimitives.PlacesBeyond.Of(c, sc));
+                r.Then(Denotes.Of(v, c, true));
+            });
+            Analyse.DefineRule("a comparison with what a cast denotes is an atom of what it reads where its reading takes it", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (op, c, k, o) = r.Vars<string, string, string, string>("op", "c", "k", "o");
+                var (m, p, row) = r.Vars<bool, JPath, string>("m", "p", "row");
+                r.When(e.Is(Compare.Of(op, v, w)), Denotes.Of(w, c, m), Reads.Of(v, p, k), o.Is(Compute.Of(k, PredicateAtom.Outermost)), Readings.TakesConstant.Of(o, m, row));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+        }
+
+        // A comparison with SQL's null by an operator Calcite answers null for over a null operand is UNKNOWN wherever its
+        // reading is read, by the operator's row (strictop), not by a refusal of the null literal (G8).
+        void DefineNullComparison()
+        {
+            Analyse.DefineRule("a comparison with SQL's null, by an operator null over a null operand, is an atom of what it reads", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (op, t, k) = r.Vars<string, string, string>("op", "t", "k");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(Compare.Of(op, v, w)), w.Is(Null.Of(t)), Readings.StrictOp.Of(op).Is(true), Reads.Of(v, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, PredicateAtom.CompareNull)));
+            });
+        }
+
+        // A value cast to VARIANT (G8). A VARIANT equals a value only in its own box (Calcite.VariantEqualsOnlyItsOwnBox):
+        // within one, the comparisons its row says see through it read the values inside, and its null test is what it
+        // holds; boxes apart no rule reads, and the comparison is no atom. A text's box is the row's of its reading, a
+        // literal's of its SQL type, and a raw value's of the kind it holds, so a raw value compared with a literal boxed as
+        // values of the literal's own kind are reads as the raw value against the literal, every other kind in another box.
+        void DefineBoxes()
+        {
+            var (boxOf, seesThrough, boxNull) = (Readings.BoxOf, Readings.SeesThrough, Readings.BoxNull);
+
+            Analyse.DefineRule("a comparison that sees through a box, of a reading and a literal boxed alike, is an atom of the reading", r =>
+            {
+                var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
+                var (u, l) = r.Vars<Val, Val>("u", "l");
+                var (op, t, lt, c) = r.Vars<string, string, string, string>("op", "t", "lt", "c");
+                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
+                r.When(e.Is(Compare.Of(op, v, w)), seesThrough.Of(op), v.Is(Box.Of(t, u)), Reads.Of(u, p, k), boxOf.Of(k, b),
+                    w.Is(Box.Of(lt, l)), l.Is(Literal.Of(c)), boxOf.Of(lt, b));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+            Analyse.DefineRule("a comparison that sees through a box, of a raw value and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
+            {
+                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
+                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
+                var (k, b, p) = r.Vars<string, string, JPath>("k", "b", "p");
+                r.When(e.Is(Compare.Of(op, v, w)), seesThrough.Of(op), v.Is(Raw.Of(p)), Reads.Of(v, p, k), w.Is(Box.Of(lt, l)), l.Is(Literal.Of(c)),
+                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), boxOf.Of(kc, b), boxOf.Of(lt, b));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+            Analyse.DefineRule("a comparison that sees through a box, of a raw value in a column and a literal boxed as a value of its kind is, is an atom of the raw value", r =>
+            {
+                var (e, v, w, l) = r.Vars<Pred, Val, Val, Val>("e", "v", "w", "l");
+                var (op, lt, c, kc) = r.Vars<string, string, string, string>("op", "lt", "c", "kc");
+                var (k, b, col) = r.Vars<string, string, string>("k", "b", "col");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(Compare.Of(op, v, w)), seesThrough.Of(op), v.Is(RawIn.Of(p, col)), Reads.Of(v, p, k), w.Is(Box.Of(lt, l)), l.Is(Literal.Of(c)),
+                    kc.Is(Compute.Of(c, JsonValues.TypeOf)), boxOf.Of(kc, b), boxOf.Of(lt, b));
+                r.Then(Atom.Of(e, p, Compute.Of(k, op, c, PredicateAtom.Compare)));
+            });
+
+            // A box's null test is what it holds where its type's row says (boxnull), each type measured apart.
+            Analyse.DefineRule("a null test of a box of a type null where what it holds is is an atom of the reading it holds", r =>
+            {
+                var (e, v, u) = r.Vars<Pred, Val, Val>("e", "v", "u");
+                var (t, k) = r.Vars<string, string>("t", "k");
+                var p = r.Var<JPath>("p");
+                r.When(e.Is(IsNull.Of(v)), v.Is(Box.Of(t, u)), boxNull.Of(t), Reads.Of(u, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
             });
         }
 

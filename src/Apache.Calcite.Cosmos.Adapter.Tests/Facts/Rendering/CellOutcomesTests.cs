@@ -35,14 +35,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly PredicateAtom Atom = PredicateAtom.Compare(PredicateAtom.TextReader, PredicateAtom.NotEqual, Of("bikes"));
 
         /// <summary>A form's vector on a partition, evaluated from its leaves up, as S's rules evaluate one.</summary>
-        internal static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table, ValueSet<string> parted) => form.Members.Count == 0
-            ? ServiceLeaf.On(form, cells, table, parted)
-            : ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table, parted), Evaluate(ServiceForm.Rest(form), cells, table, parted), table);
+        internal static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table, LeafReads reads) => form.Members.Count == 0
+            ? ServiceLeaf.On(form, cells, table, reads)
+            : ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table, reads), Evaluate(ServiceForm.Rest(form), cells, table, reads), table);
 
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
-            var cuts = CutPoints.Of(Atom, form, ReaderEdgesTable.Rows[PredicateAtom.TextReader]);
-            return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured, Truths.Raises);
+            var cuts = CutPoints.Of(Atom, form, Measured.Edges[PredicateAtom.TextReader], ReaderRows);
+            return CellOutcomes.Of(Atom, ProbeRows.Columns, Evaluate(form, PathCell.Split(Label, import, AllBands, cuts), ProbeRows.Table, LeafReads.None), ProbeRows.ReaderRows);
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);
@@ -62,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (guarded.Cells.Count, bare.Cells.Count).Should().Be((11, 11));
             guarded.Rows.Concat(bare.Rows).Should().NotContain(row => row.StartsWith("missing:"), "the probe's rows hold every key the two forms read");
-            guarded.Rows.Should().Contain(Atom.Rests);
+            guarded.Rows.Should().Contain(Atom.RestsOn(ProbeRows.ReaderRows));
         }
 
         [Fact]
@@ -77,15 +77,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A value that is no boolean reads as the meanings say where its row keeps it not, and what the row keeps, and a
-        /// failure, stand: a row that kept a number would refute what a narrowing to undefined would let pass.
+        /// A value that is no boolean is marked so on its class, its outcomes as the service gives them; the class S's rule
+        /// reads it as (<see cref="AnswerMeanings.Read"/>) reads as the meanings say where its row keeps it not, and what the
+        /// row keeps, and a failure, stand: a row that kept a number would refute what a narrowing to undefined would let pass.
         /// </summary>
         [Fact]
         public void AValueThatIsNoBooleanKeepsWhatItsRowKeeps()
         {
             var cells = PathCell.Split(Label, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands, ValueSet<CutPoint>.Empty);
             var vector = new OutcomeVector(cells, cells.Cells.Select(_ => new CellOutcome(t | f | E, CosmosValueClass.Number)).ToList(), ValueSet<string>.Empty);
-            CellOutcomes.Of(Atom, vector, AnswerMeanings.Measured, Truths.Raises).Classes.Should().OnlyContain(k => k.Service == (t | u | E));
+            var outcomes = CellOutcomes.Of(Atom, ProbeRows.Columns, vector, ProbeRows.ReaderRows);
+            outcomes.Classes.Should().OnlyContain(k => k.NonBoolean && k.Service == (t | f | E));
+            outcomes.Classes.AsEnumerable().Select(AnswerMeanings.Measured.Read).Should().OnlyContain(k => k.NonBoolean == false && k.Service == (t | u | E));
         }
 
     }

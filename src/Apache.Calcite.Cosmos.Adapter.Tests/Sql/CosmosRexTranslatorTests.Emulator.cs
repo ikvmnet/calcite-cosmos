@@ -34,13 +34,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosRexTranslator Translator(CosmosServiceTarget target)
             {
                 _t._parameters = new CosmosParameterList();
-                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, JsonFactSet.Empty, null, Container(target));
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, JsonFactSet.Empty, null, Container(target));
             }
 
             CosmosRexTranslator Translator(CosmosServiceTarget target, JsonFactSet facts)
             {
                 _t._parameters = new CosmosParameterList();
-                return new CosmosRexTranslator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, facts, null, Container(target));
+            }
+
+            /// <summary>A translator over a container declaring strings of these classes at field 0's path, the facts S imports.</summary>
+            CosmosRexTranslator Declared(CosmosServiceTarget target, JsonCharacterBand characters)
+            {
+                _t._parameters = new CosmosParameterList();
+                var container = TestReasoning.Bind(new CosmosContainerMetadata("products")
+                    .WithFacts(StringsOf(characters).Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim))))).WithServiceTarget(target);
+                return TranslatorRendering.Translator(_t._rex, _t._fields, _t._parameters, container.Facts.Declared, null, container);
             }
 
             RexNode Name => _t.Ref(0, SqlTypeName.VARCHAR);
@@ -80,22 +89,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
-            /// A prefix, a case-insensitive match and a <c>POSITION</c> pattern are compared positions too, the last over a
-            /// subject proved to hold neither escape (D10); <c>REPLACE</c>'s replacement and a generic <c>LIKE</c> pattern are
-            /// not, so a value holding U+0000 there stays in process.
+            /// A <c>LIKE</c> pattern holding U+0000 stays in process on every target, prefix or not: Calcite reads U+0000 as
+            /// the escape where none is written (<c>Calcite.LikeEscapesByNul</c>), so <c>'\0%'</c> matches <c>%</c> alone and
+            /// <c>'a_\0'</c> raises. So does a <c>POSITION</c> pattern holding one, which the rows key as the operand it is,
+            /// measured as a string of ASCII alone, as well as a subject that may hold either escape (D10).
             /// </summary>
             [Fact]
-            public void APatternIsBoundStoredAndAReplacementIsNot()
+            public void ALikeOrPositionPatternHoldingNulStaysInProcess()
             {
-                Translator(CosmosServiceTarget.Emulator).Translate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("\0%"))).Should().Be("STARTSWITH(c.name, @p0)");
-                _t._parameters.Parameters[0].Value.Should().Be("﷐0");
+                Translator(CosmosServiceTarget.Emulator).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("\0%")), out _).Should().BeFalse("Calcite reads U+0000 as the escape");
+                Translator(CosmosServiceTarget.Azure).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("\0%")), out _).Should().BeFalse("on Azure too");
 
-                Translator(CosmosServiceTarget.Emulator, Strings(JsonCharacterBand.None)).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
-                _t._parameters.Parameters[0].Value.Should().Be("a﷐0");
-                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name), out _).Should().BeFalse("the emulator counts a subject's stored units (D10)");
+                Declared(CosmosServiceTarget.Emulator, JsonCharacterBand.None).TryTranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a\0"), Name), out _).Should().BeFalse("no run sent a pattern holding U+0000");
+                Declared(CosmosServiceTarget.Emulator, JsonCharacterBand.None).TranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a"), Name)).Should().Be("(INDEX_OF(c.name, @p0) + 1)");
+                Translator(CosmosServiceTarget.Emulator).TryTranslateValue(_t.Call(SqlStdOperatorTable.POSITION, _t.Str("a"), Name), out _).Should().BeFalse("the emulator counts a subject's stored units (D10)");
 
                 Translator(CosmosServiceTarget.Emulator).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("a_\0")), out _).Should().BeFalse();
-                Translator(CosmosServiceTarget.Azure).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("a_\0")), out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Azure).TryTranslate(_t.Call(SqlStdOperatorTable.LIKE, Name, _t.Str("a_\0")), out _).Should().BeFalse("Calcite raises over an escape at the pattern's end");
             }
 
             /// <summary>

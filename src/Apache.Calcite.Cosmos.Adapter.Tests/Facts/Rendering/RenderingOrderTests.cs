@@ -42,18 +42,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     {
 
         /// <summary>What a bundle's own API writes; the theory's tables are those holding rows in the frozen theory.</summary>
-        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg"];
+        static readonly string[] BundleHost = ["spelling", "conjunct", "under", "imported", "importedchars", "assumed", "leaf", "over", "callarg", "nullwhereabsent"];
 
-        static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
+        static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within", "no-calcite-unknown"];
+
+        /// <summary>
+        /// The host's tables a computed place's rules write too (h10), for keys the host never writes: <c>imported</c> of a
+        /// <c>Valued</c> place, which no import names, <c>nullwhereabsent</c> of one beside it, which the writer states of
+        /// paths alone, and <c>assumed</c> of an atom over one, which <c>Run</c> skips. Each is then read as any
+        /// rule-written table is, complete only in the strata after its writer's.
+        /// </summary>
+        static readonly (string Ruleset, string Table)[] PlaceWrites = [("image", "imported"), ("image", "nullwhereabsent"), ("assume", "assumed")];
 
         static readonly string[] Narrowing = ["intersect", "min", PathValues.Lattice.Name];
 
         /// <summary>
         /// The filters that hold of the value they are handed however it moves on: <c>priced-is-real</c>, since a price
-        /// only lowers and <c>None</c> is the top, and <c>form-is-join-of</c>, which judges the forms at hand and concludes
-        /// nothing of the value they were read from.
+        /// only lowers and <c>None</c> is the top, and <c>same-form</c>, which judges the forms at hand and concludes nothing
+        /// of the value they were read from: what it admits rests on the agreements read beside it at both positions, each
+        /// sound alone.
         /// </summary>
-        static readonly string[] Monotone = ["priced-is-real", "form-is-join-of"];
+        static readonly string[] Monotone = ["priced-is-real", "same-form"];
 
         [Fact]
         public void TheScheduleReadsNoUniversalOverADomainThatMoves() => Violations(ProbeRows.ProbeTheory).Should().BeEmpty();
@@ -65,14 +74,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AChoiceOrAVacuityReadWhileItMovesIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             theory.Graph.Rulesets.Single(r => r.Name == "best").DefineRule("planted: a leaf weakens to its fold before its best is final", r =>
             {
                 var (e, pos) = r.Vars<Pred, RenderPosition>("e", "pos");
                 var (b, s) = r.Vars<Priced, ValueSet<ServiceForm>>("b", "s");
                 r.When(theory.Leaf.Of(e), b.Is(theory.BestExact.Of(e, pos)), s.Is(theory.Implied.Of(e, pos)));
                 r.Where(RenderingPrimitives.BestIsNotImplied.Of(b, s));
-                r.Then(theory.Weakening.Of(e, pos).Is(Compute.Of(s, pos, ServiceForm.Folded)));
+                r.Then(theory.Weakening.Of(e, pos).Is(Compute.Of(s, x => ServiceForm.Gathered(CosmosServiceTest.And, x, true))));
             });
             theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: an exact agreement not yet vacuous is a best", r =>
             {
@@ -87,14 +96,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The plant after F1: a stratum grows a set of classes and reads it with <c>set-subset</c>, so the universal may
-        /// fire before the set is whole.
+        /// fire before the set is whole. The gate's own stratum grows it, the cells' classes being complete before the gate
+        /// runs (G2).
         /// </summary>
         [Fact]
         public void AUniversalOverASetItsOwnStratumGrowsIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var seen = theory.Graph.DefineFunction<Pred, ValueSet<CellClass>>("seen", ValueLattice.Union<CellClass>());
-            theory.Graph.Rulesets.Single(r => r.Name == "classes").DefineRule("planted: a cell's class is seen", r =>
+            theory.Graph.Rulesets.Single(r => r.Name == "gate").DefineRule("planted: a cell's class is seen", r =>
             {
                 var (e, f, o) = r.Vars<Pred, ServiceForm, CellOutcomes>("e", "f", "o");
                 r.When(o.Is(theory.Outcomes.Of(e, f)));
@@ -113,13 +123,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The count guard excuses only the rule that states it: a gathering read by a universal with no
+        /// <c>set-length</c> of it equal to the call's arity may fire before the last operand is in (h10).
+        /// </summary>
+        [Fact]
+        public void AGatheringReadWithoutItsCountIsRefused()
+        {
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
+            var whole = theory.Graph.DefineRelation<Val, long>("whole");
+            theory.Graph.Rulesets.Single(r => r.Name == "image").DefineRule("planted: a gathering inside the call's keys", r =>
+            {
+                var (v, s) = r.Vars<Val, long>("v", "s");
+                var g = r.Var<ValueSet<PathImport>>("g");
+                r.When(g.Is(theory.Gathered.Of(s, v)));
+                r.Where(Primitives.IsSubsetOf<PathImport>().Of(g, g));
+                r.Then(whole.Of(v, s));
+            });
+
+            Violations(theory).Should().Equal("image/planted: a gathering inside the call's keys: set-subset reads gathered, which grows in its stratum");
+        }
+
+        /// <summary>
         /// A stratum narrows a set of character classes and reads it as the superset of <c>set-subset</c>, so the universal
         /// may hold of a set that later loses a member.
         /// </summary>
         [Fact]
         public void AUniversalOverATableItsOwnStratumNarrowsIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var chars = theory.Graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             theory.Graph.Rulesets.Single(r => r.Name == "partition").DefineRule("planted: a path's classes narrow", r =>
             {
@@ -142,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ALambdaFilterIsRefused()
         {
-            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var theory = RenderingTheory.Define(ProbeRows.Planted(ProbeRows.Rows));
             var proven = theory.Graph.DefineRelation<Pred>("proven");
             theory.Graph.Rulesets.Single(r => r.Name == "compose").DefineRule("planted: an agreement over some cell", r =>
             {
@@ -173,7 +204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var (stratum, name, read) in rules)
                 {
                     ValueLattice? Lattice(string table) => (tables[table] as FunctionHandle)?.Lattice;
-                    bool Grows(string table) => Lattice(table) is not null && writers[table].Any(w => w >= stratum);
+                    bool Grows(string table) => Lattice(table) is not null && writers[table].Any(w => w >= stratum) && read.Counted.Contains(table) == false;
                     bool Narrows(string table) => Narrowing.Contains(Lattice(table)?.Name) && writers[table].Any(w => w >= stratum);
                     void Refuse(string what, Node value, Func<string, bool> moves, string how) =>
                         violations.AddRange(read.Sources(value).Where(moves).Select(table => $"{name}: {what} reads {table}, which {how} in its stratum"));
@@ -207,7 +238,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     if (read.Writes.Contains("contradiction") && read.Ruleset != "conflict")
                         violations.Add($"{name}: derives the contradiction");
                     if (bundle)
-                        violations.AddRange(read.Writes.Intersect(owned).Select(table => $"{name}: writes {table}, which the host or the theory owns"));
+                        violations.AddRange(read.Writes.Intersect(owned).Where(table => PlaceWrites.Contains((read.Ruleset, table)) == false)
+                            .Select(table => $"{name}: writes {table}, which the host or the theory owns"));
                 }
             }
 
@@ -291,6 +323,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             readonly Dictionary<string, HashSet<string>> _sources = [];
 
+            readonly HashSet<string> _counted = [];
+
             public Reading(Node rule, IReadOnlyDictionary<string, TableHandle> tables)
             {
                 var (body, head) = (rule.Items![1].Items!, rule.Items[2].Items!);
@@ -317,6 +351,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     }
                 }
 
+                // The count guard (h10, invariant 3): a set whose length equals a lattice-free value, one element an ordinal
+                // below it (RenderingImage.Keys refuses any other gathering), is whole, so this rule reads it complete.
+                var direct = body.Where(f => f.Head == "=" && f.Items![1].Token is not null && f.Items[2].Head is { } t && tables.TryGetValue(t, out var handle) && handle is FunctionHandle { Lattice: null })
+                    .Select(f => f.Items![1].Token!).ToHashSet();
+                foreach (var (variable, value) in lets)
+                    if (value.Head == "set-length" && direct.Contains(variable) && value.Items![1].Token is { } counted)
+                        _counted.Add(counted);
+
                 // A let's value comes from its inputs' sources, which may be bound by a later let.
                 for (var changed = true; changed;)
                 {
@@ -326,6 +368,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 }
 
                 Calls.AddRange(lets.SelectMany(l => Applications(l.Value)));
+                Counted = [.. _counted.SelectMany(v => _sources.TryGetValue(v, out var from) && from.Count == 1 ? from : [])];
                 foreach (var item in head)
                 {
                     if (item.Head == "union")
@@ -346,6 +389,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             public string Ruleset { get; }
+
+            /// <summary>The tables a count guard makes whole in this rule.</summary>
+            public HashSet<string> Counted { get; } = [];
 
             public List<(string Primitive, List<Node> Arguments)> Calls { get; } = [];
 

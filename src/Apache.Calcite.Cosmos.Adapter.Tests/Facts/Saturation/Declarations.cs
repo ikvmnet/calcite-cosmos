@@ -237,15 +237,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// What a pattern's reader may state of a path: any set of the classes, ASCII and nothing the service trims among
-        /// them. Every value <see cref="Values"/> holds is ASCII and trims as Calcite's does, so a claim of them admits each
-        /// and never changes which declaration is drawn.
+        /// What a pattern's reader may state of a path: any set of the five classes a claim names, ASCII and nothing the
+        /// service trims among them, each read with its refinements. Every value <see cref="Values"/> holds is ASCII and
+        /// trims as Calcite's does, so a claim of them admits each and never changes which declaration is drawn.
         /// </summary>
         static IEnumerable<JsonClaim> Characters(Random bands, bool outright)
         {
             if (bands.Next(outright ? 6 : 12) == 0)
-                yield return new JsonClaim.Characters((JsonCharacterBand)bands.Next((int)JsonCharacterBand.Any + 1));
+                yield return new JsonClaim.Characters((JsonCharacterBand)bands.Next((int)Stated + 1));
         }
+
+        /// <summary>The five classes a claim names, the draw's range as it was before the refinements (F1), so the population is the same.</summary>
+        const JsonCharacterBand Stated = JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed | JsonCharacterBand.Nul;
 
         IEnumerable<JsonClaim> Claims(Random random, JsonDocumentPath path, bool outright)
         {

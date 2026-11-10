@@ -200,18 +200,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// Text a stored number renders as, so a document Calcite matches could be in another partition
-        /// — and the comparison itself would select differently at the service. Neither the predicate
-        /// nor the routing is taken, which is the container read whole, exactly as before.
+        /// Text a stored number renders as, which a <c>VARIANT</c> does not render: Calcite casts a <c>VARIANT</c>'s
+        /// number and boolean to null (<c>Calcite.CastOfARawValueToText</c>), so the cast's text is the stored string
+        /// alone, and since the switch (h15) S writes the comparison exact, where the translator refused it, reading the
+        /// cast as an accessor's text, which renders the number too
+        /// (<see cref="ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor"/>). The routing is not taken: the
+        /// facts graph reads the cast as the value's rendering, so the key may hold a stored 30 too and pins nothing
+        /// (TODO.md, <i>The facts graph reads a text cast of a raw value as its rendering</i>). RU, never rows.
         /// </remarks>
         [Fact]
-        public void ACastAgainstTextANumberRendersAsIsNotTaken()
+        public void ACastAgainstTextANumberRendersAsIsTakenOverAVariant()
         {
-            // No plan wholly in the convention exists, which is this harness's way of saying the filter
-            // declined: it stays above, and Calcite applies it to the whole container.
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'");
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'"));
 
-            plan.Should().Throw<java.lang.RuntimeException>();
+            query.PartitionKeyValues.Should().BeNull();
+            query.Sql.Should().Contain("WHERE (c.category = @p0)");
+            query.Parameters.Select(p => p.Value).Should().Equal("30");
         }
 
         /// <remarks>
@@ -229,23 +233,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // ── A number compared through a cast ──────────────────────────────────────
         //
         // A numeric cast of text and RETURNING DECIMAL parse a string Calcite then compares, where the service compares
-        // none, so no accessor writes the comparison as its form means, and S weakens it to the path's presence: an O7
-        // listed loss until Stage 3's guarded spelling (TODO.md, owner 2026-10-24). The translator's window, which bounded
-        // the raw value by what the cast moves it by, is not reproduced. RU, never rows: the comparison is Calcite's above.
+        // none. Since the switch (h15) S writes the guarded pair (C4n and C2 at h09, the owner's 2026-10-24 decision): the
+        // comparison where the path holds a number, every other defined value kept. Where S proves no pair implied beneath,
+        // past 2^53 and through RETURNING DECIMAL, the filter beneath declines the pair's CASE and the split rule pushes
+        // its weaker form, the path's presence (DESIGN.md, Site W). The translator's window, which bounded the raw value by
+        // what the cast moves it by, is not reproduced. RU, never rows: the comparison is Calcite's above.
 
         /// <summary>
-        /// A number compared through a numeric cast or <c>RETURNING DECIMAL</c> sends the path's presence alone, and is
-        /// rechecked above.
+        /// A number compared through a numeric cast within 2^53 sends the guarded pair, and is rechecked above.
         /// </summary>
         [Theory]
-        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30")]
-        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > 10")]
-        [InlineData("10 < CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER)")]
-        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) <= 30.5")]
-        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 2147483647")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30", "=")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > 10", ">")]
+        [InlineData("10 < CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER)", ">")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) <= 30.5", "<=")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 2147483647", "=")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 4503599627370495", "=")]
+        public void ANumberComparedThroughACastSendsTheGuardedPair(string comparison, string op)
+        {
+            var best = PlanToAsync($"SELECT * FROM products AS c WHERE {comparison}");
+            var query = Query(FindCosmos(best));
+
+            query.Sql.Should().EndWith($"WHERE (IS_DEFINED(c.price) AND (NOT IS_NUMBER(c.price) OR (c.price {op} @p0)))", query.Sql);
+            query.Parameters.Should().ContainSingle();
+            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's: " + Plan(best));
+        }
+
+        /// <summary>
+        /// One past 2^53, or through <c>RETURNING DECIMAL</c>, sends the path's presence alone, and is rechecked above.
+        /// </summary>
+        [Theory]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS BIGINT) = 9007199254740993")]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 1152921504606846976")]
-        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 4503599627370495")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 30")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) > 30")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 30.5")]
@@ -258,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync($"SELECT * FROM products AS c WHERE {comparison}");
             var query = Query(FindCosmos(best));
 
-            query.Sql.Should().EndWith("WHERE IS_DEFINED(c.price)", "no accessor writes the comparison as S proves it: " + query.Sql);
+            query.Sql.Should().EndWith("WHERE IS_DEFINED(c.price)", "S proves no pair implied beneath: " + query.Sql);
             query.Parameters.Should().BeEmpty();
             Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's: " + Plan(best));
         }
@@ -353,7 +372,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
 
             Render(FindCosmos(PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE {Price} <> 30"))).Should().EndWith("WHERE IS_DEFINED(c.price)");
-            Render(FindCosmos(PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE {Price} IS NOT NULL"))).Should().EndWith("WHERE (IS_DEFINED(c.price) AND (NOT IS_NULL(c.price)))");
+            Render(FindCosmos(PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE {Price} IS NOT NULL"))).Should().EndWith("WHERE (IS_DEFINED(c.price) AND NOT IS_NULL(c.price))");
 
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c")))
                 .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c", "an asserted type is the value at the path, where it is of that type");
@@ -914,6 +933,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Typed <c>NOT NULL</c>, SQL cannot answer it unknown, and a comparison of the id pushes as it
         /// did. In a <c>CASE</c> condition the truth alone selects an arm, and that pushes too.
         /// </para>
+        /// <para>
+        /// Compared with <c>FALSE</c> in a <c>WHERE</c>, the comparison is its falsity, which S reads since the switch
+        /// (h15) and writes exactly, the service's inequality negated: false over the null category and undefined over the
+        /// absent one, each discarded as SQL discards it, and nothing rechecked.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AComparisonReadAsAValueIsNotPushedDown()
@@ -922,7 +946,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(FindCosmos(projected)).Should().NotContain("(c.category = ", "the comparison's value is Calcite's: " + Render(FindCosmos(projected)));
 
             var compared = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') = FALSE");
-            Render(FindCosmos(compared)).Should().Be("SELECT VALUE c FROM products c WHERE IS_DEFINED(c.category)", "the split rule pushes what the predicate implies");
+            Render(FindCosmos(compared)).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE (NOT (c.category != @p0))", "the comparison with FALSE is its falsity");
 
             Render(PlanToCosmos("SELECT c.\"id\" = '3' AS \"b\" FROM products AS c"))
                 .Should().Be("SELECT VALUE { \"b\": (c.id = @p0) } FROM products c");
@@ -1568,10 +1592,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // text is what a boolean renders as, the two alternatives are exact, and S sends them whole.
 
         /// <summary>
-        /// A text equality against text a number renders as sends the path's presence, and is rechecked above.
+        /// A text equality against text an integer renders as sends the alternatives, the string or a number equal to it,
+        /// beside the path's presence (the text-equality alternatives, h09), and is rechecked above: a stored 30.0 renders
+        /// otherwise.
+        /// </summary>
+        [Fact]
+        public void ATextEqualityAgainstTextAnIntegerRendersAsSendsTheAlternatives()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'")));
+
+            query.Sql.Should().EndWith("WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", query.Sql);
+            query.Parameters.Select(p => p.Value).Should().Equal("30", 30m);
+        }
+
+        /// <summary>
+        /// One against text a double renders as, or a number past a double, sends the path's presence, S proving no
+        /// alternative of it, and is rechecked above.
         /// </summary>
         [Theory]
-        [InlineData("JSON_VALUE(c.\"DOC\", '$.label') = '30'")]
         [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.label') = '1E+400'")]
         public void ATextEqualityAgainstTextANumberRendersAsSendsThePathsPresence(string comparison)
@@ -1627,15 +1665,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// The presence is not the comparison, so the comparison is still made above it.
+        /// The alternatives are not the comparison, a stored 30.0 rendering otherwise, so the comparison is still made
+        /// above them.
         /// </remarks>
         [Fact]
-        public void TheComparisonStaysAboveThePresence()
+        public void TheComparisonStaysAboveTheAlternatives()
         {
             var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
 
             plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
-            plan.Should().Contain("CosmosFilter(condition=[IS_DEFINED(JSON_VALUE($0, '$.label'))])", plan);
+            plan.Should().Contain("CosmosFilter(condition=[AND(OR(=(JSON_VALUE($0, '$.label'), '30'), CASE(IS_NUMBER(JSON_VALUE($0, '$.label')), "
+                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])", plan);
         }
 
         /// <summary>
@@ -1656,18 +1696,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// Since the switch S writes the family: where the text is what a boolean renders as, the string or the boolean
-        /// is exact and sent whole, the host's fold of the equality with <c>TRUE</c> never reached; where a number
-        /// renders as it, or the value is a raw column, S sends the path's presence (O7's listed loss 1).
+        /// is exact and sent whole, the host's fold of the equality with <c>TRUE</c> never reached; where an integer
+        /// renders as it, the string or a number equal to it beside the path's presence, the text-equality alternatives
+        /// (h09), rechecked above; where a double does, the presence alone; and over a raw column cast to text, whose
+        /// number and boolean Calcite casts to null (<c>Calcite.CastOfARawValueToText</c>), the string alone, exact, where
+        /// the translator sent the presence. A number binds as the decimal it is, which an attribute cannot hold, so it is
+        /// compared as a double.
         /// </para>
         /// </remarks>
         [Theory]
-        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE IS_DEFINED(c.label)", new object[0])]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'", "WHERE IS_DEFINED(c.label)", new object[0])]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "true", true })]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'false'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "false", false })]
-        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE IS_DEFINED(c.label)", new object[0])]
-        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE IS_DEFINED(c.category)", new object[0])]
-        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE IS_DEFINED(c.category)", new object[0])]
+        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE (c.category = @p0)", new object[] { "30" })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE (c.category = @p0)", new object[] { "true" })]
         public void TheAlternativesPlanUnderAHostThatReducesExpressions(string sql, string where, object[] parameters)
         {
             foreach (var hostRewrites in new[] { false, true })
@@ -1675,7 +1719,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var query = Query(FindCosmos(PlanToAsync(sql, hostRewrites, reduce: true)));
 
                 query.Sql.Should().EndWith(where, "with host rewrites " + hostRewrites);
-                query.Parameters.Select(p => p.Value).Should().Equal(parameters, "with host rewrites " + hostRewrites);
+                query.Parameters.Select(p => p.Value is decimal d ? (object)(double)d : p.Value).Should().Equal(parameters, "with host rewrites " + hostRewrites);
             }
         }
 
@@ -2799,10 +2843,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// well formed and the rows being what disagreed.
         /// </para>
         /// <para>
-        /// S weakens the conjunction at its negated position: the negation of what makes it true, a defined price and a
-        /// bike, so a document with no price, or no bike, passes. The category's null guard is written twice — S's
-        /// guarded member, and the translator's guard around the opaque <c>IS_NULL</c> it writes back — a respelling
-        /// of one form (TODO.md).
+        /// S weakens the conjunction at its negated position, to the negation of where it may be other than false: a
+        /// bike, or a category that is null or absent, beside a price that is a number above 50 or absent. So a document
+        /// with no price, or no bike, passes. Since the switch (h15) the price is the guarded pair's, where it was its
+        /// absence alone, and the category's guard is written once, where the translator's guard was written around it
+        /// again: tighter. Since h15b the category's null test is written over its accessor re-typed <c>ANY</c>, read back
+        /// first (a respelling).
         /// </para>
         /// </remarks>
         [Fact]
@@ -2811,8 +2857,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE (NOT ((NOT IS_DEFINED(c.price)) AND (((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) "
-                + "OR IS_NULL(c.category) OR (NOT IS_DEFINED(c.category)))))", "a document with no price passes the negated conjunction's weakening");
+            Render(FindCosmos(best)).Should().EndWith("WHERE (NOT ((IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category)) "
+                + "AND ((IS_NUMBER(c.price) AND (c.price > @p1)) OR NOT IS_DEFINED(c.price))))", "a document with no price passes the negated conjunction's weakening");
         }
 
         /// <summary>
@@ -2836,13 +2882,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>CASE</c>. It was written in the position of the <c>NOT</c> above it, the inequality
         /// unguarded and so true over the null category: the then arm was taken where SQL takes the
         /// else, and measured against the emulator the document was kept. The arms stay in the
-        /// <c>NOT</c>'s position, which is where their value is negated.
+        /// <c>NOT</c>'s position, which is where their value is negated. The id is the service's, never null or absent,
+        /// so since the switch (h15) each arm's equality is written alone, where the translator wrote its null guard
+        /// beside it: a respelling.
         /// </remarks>
         [Fact]
         public void ACaseConditionUnderANegationIsWrittenPositively()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)"))
-                .Should().EndWith("WHERE (NOT ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? ((c.id = @p1) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id)) : ((c.id = @p2) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id))))");
+                .Should().EndWith("WHERE (NOT ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? (c.id = @p1) : (c.id = @p2)))");
         }
 
         /// <summary>
@@ -2925,9 +2973,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Contain("NOT IS_STRING(c.name)");
             sql.Should().Contain("c.name > @p0");
 
-            // The absent path is the one document the escape hatch need not admit: the accessor
-            // answers null there and no comparison keeps a null.
-            sql.Should().Contain("IS_DEFINED(c.name)");
+            // The escape hatch admits only what can render past the literal (h07, listed, tighter): `true`
+            // sorts after 'steel' and no number's rendering does, and the accessor answers null where the
+            // path is absent or null, which no comparison keeps.
+            sql.Should().Contain("IS_BOOL(c.name)");
+            sql.Should().NotContain("IS_DEFINED(c.name)");
         }
 
         /// <summary>
@@ -2942,27 +2992,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// An array's element is a path the IR reads as opaque, and its comparison sends nothing.
+        /// An array's element is a path S reads as any other, and its ordering is weakened as any path's is, but its
+        /// weakening's type tests read the element's raw value, which no row measured, so the filter beneath declines them.
         /// </summary>
         /// <remarks>
         /// <c>$.tags[0]</c> has no document path, and was read as a value its type alone knew: a string, which R1
         /// then proved against a literal below U+D800. So the comparison was sent exact, <c>WHERE c.tags[0] &lt; @p0</c>,
         /// with no type test and nothing rechecked, and a stored number or boolean, which Calcite compares as its text
         /// (<c>'5' &lt; 'm'</c>, <c>'true' &gt; 'BIKES'</c>) and the service across types, was lost — measured on the
-        /// emulator and on Azure. The IR reads an element as one opaque term, so S proves no weakening of it, where the
-        /// translator pushed the string case: an O7 listed loss until the IR reads an element path. RU, never rows.
+        /// emulator and on Azure. The IR read an element as one opaque term until the switch (h15), which reads its path
+        /// as the loader has since h07 (<c>CosmosDocumentPaths</c>), so S weakens the comparison as any path's: the
+        /// string's comparison beside its type test, and past the literal a boolean, which renders there, rechecked above.
+        /// The filter beneath read the test over an element as opaque, the translator's, until h15b's element guards, and
+        /// since h15b reads it as the element reading, which no row measured: <c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>
+        /// measured the text, a <c>RETURNING</c> and <c>JSON_QUERY</c> of an element as of a path holding it, not its raw
+        /// value nor a test of it. So the filter beneath declines the weakening's type tests and nothing is pushed, the
+        /// ordering Calcite's alone. RU, never rows; a row measuring the raw value of an element and a test of it gives the
+        /// weakening back (TODO.md).
         /// </remarks>
         [Theory]
         [InlineData("$.tags[0]", "<")]
         [InlineData("$.tags[0]", ">=")]
         [InlineData("$.a[0]", "<")]
         [InlineData("$.a.b[0]", "<")]
-        public void AnElementsRenderingSendsNothing(string path, string op)
+        public void AnElementsOrderingSendsNoTestOfItsUnmeasuredRawValue(string path, string op)
         {
             var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '{path}') {op} 'm'");
-            var sql = Render(FindCosmos(best));
 
-            sql.Should().NotContain("WHERE", "S proves nothing of an element: " + sql);
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c");
             Plan(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's to make: " + Plan(best));
         }
 
@@ -3056,21 +3113,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// <c>LIKE</c> over the accessor sends the path's presence, and is matched above.
+        /// <c>LIKE</c> over the accessor sends <c>STARTSWITH</c>, exact where no value of another kind renders as its prefix.
         /// </summary>
         /// <remarks>
         /// Measured: <c>label LIKE '3%'</c> matches the stored number 30, which renders as
         /// <c>30</c>, and the service's <c>STARTSWITH</c> over a number is undefined rather than
-        /// true. The translator pushed the string case with <c>STARTSWITH</c>; <c>LIKE</c> is outside the IR, so S
-        /// sends the presence the accessor implies: O7's listed loss 4, until <c>LIKE</c> enters the IR (O3).
+        /// true. The translator pushed the string case with <c>STARTSWITH</c>, and S sent the presence until the switch
+        /// (h15), which reads <c>LIKE</c> of any place with an affix's template per test (<c>likeunits</c>,
+        /// <c>likereads</c>): no number or boolean renders as <c>st</c> leads, so <c>LIKE 'st%'</c> is the string's
+        /// <c>STARTSWITH</c>, and the statement is sent whole.
         /// </remarks>
         [Fact]
-        public void LikeOverATextAccessorSendsThePathsPresence()
+        public void LikeOverATextAccessorSendsStartsWith()
         {
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE 'st%'");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE IS_DEFINED(c.name)");
-            Plan(best).Should().Contain("ClrCursorFilter", "the pattern is Calcite's to match: " + Plan(best));
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE STARTSWITH(c.name, @p0)");
+            Plan(best).Should().NotContain("ClrCursorFilter", "the pattern is the service's to match: " + Plan(best));
         }
 
         // ── The same comparisons over a view's column ─────────────────────────────────
@@ -3089,15 +3148,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string View = "(SELECT JSON_VALUE(x.\"DOC\", '$.name' RETURNING VARCHAR) AS \"Name\" FROM products AS x WHERE JSON_VALUE(x.\"DOC\", '$.category' RETURNING VARCHAR) = 'bikes') AS p";
 
         /// <summary>
-        /// <c>LIKE</c> over the view's column sends what the accessor's spelling sends, and stays above it.
+        /// <c>LIKE</c> over the view's column sends what the accessor's spelling sends, <c>STARTSWITH</c>, exact.
         /// </summary>
         [Fact]
-        public void LikeOverAViewsTextColumnSendsThePathsPresence()
+        public void LikeOverAViewsTextColumnSendsStartsWith()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND IS_DEFINED(c.name))");
-            Plan(best).Should().Contain("ClrCursorFilter", "the pattern is Calcite's to match: " + Plan(best));
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND STARTSWITH(c.name, @p1))");
+            Plan(best).Should().NotContain("ClrCursorFilter", "the pattern is the service's to match: " + Plan(best));
         }
 
         /// <summary>
@@ -3105,10 +3164,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// transposed below the projection, the accessor inlined, the statement refused.
         /// </summary>
         /// <remarks>
-        /// What makes it survive is that a weakening names the raw value with a cast to <c>ANY</c>
-        /// rather than by re-typing the field: the transpose replaces the field with the projection's
-        /// expression and a re-typed field would lose the type that said it. See
-        /// <c>RenderingRexBuilder.RawValue</c>.
+        /// A weakening named the raw value with a cast to <c>ANY</c> rather than by re-typing the field, which is what
+        /// made it survive: the transpose replaces the field with the projection's expression and a re-typed field would
+        /// lose the type that said it (<c>RenderingRexBuilder.RawValue</c>). Since the switch (h15) the <c>LIKE</c> is
+        /// sent whole, exact, the transposed filter reading the inlined accessor as the same path.
         /// </remarks>
         [Fact]
         public void LikeOverAViewsTextColumnSurvivesAHostsTransposition()
@@ -3116,8 +3175,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'", hostRewrites: true);
             var plan = Plan(best);
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND IS_DEFINED(c.name))");
-            plan.Should().Contain("ClrCursorFilter", "the pattern is Calcite's to match: " + plan);
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND STARTSWITH(c.name, @p1))");
+            plan.Should().NotContain("ClrCursorFilter", "the pattern is the service's to match: " + plan);
         }
 
         /// <summary>
@@ -3152,15 +3211,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// And an equality against text a number renders as sends what the accessor's spelling sends: the path's
-        /// presence (O7's listed loss 1).
+        /// And an equality against text a number renders as sends what the accessor's spelling sends: the alternatives
+        /// beside the path's presence (h09, since the switch, h15).
         /// </summary>
         [Fact]
-        public void AnAmbiguousEqualityOverAViewsTextColumnSendsThePathsPresence()
+        public void AnAmbiguousEqualityOverAViewsTextColumnSendsTheAlternatives()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = '30'");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND IS_DEFINED(c.name))");
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND (((c.name = @p1) OR (IS_NUMBER(c.name) AND (c.name = @p2))) AND IS_DEFINED(c.name)))");
             Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
         }
 
@@ -3195,24 +3254,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
-        /// fold renders as the native function directly. What it folds is the value the service holds
-        /// there cast to text, whose characters are the path's only where it holds a scalar: an object
-        /// cast to text is the JSON of what it holds, which no pattern bounds. So the path is declared a
-        /// string beside its characters, and declared only its characters it is folded in process.
+        /// Over a path the row model types <c>ANY</c> the fold reads the value the service holds there
+        /// cast to text, whose characters are the path's only where it holds a scalar: an object cast
+        /// to text is the JSON of what it holds, which no pattern bounds. No row measured a string
+        /// function over a <c>VARIANT</c> column cast to text, so S has no image of the call, and the
+        /// fold and the pattern run in process however the path is declared, a string of ASCII among
+        /// them: no <c>ENDSWITH</c> goes down. A witness read through the cast gives it rows (TODO.md,
+        /// the string functions over a raw reading).
         /// </summary>
         [Fact]
-        public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
+        public void ACaseFoldedSuffixOverARawPathIsFoldedInProcess()
         {
-            _table = new CosmosTable(AsciiStringProducts);
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
-
-            Render(best).Should().Contain("ENDSWITH(c.category, @p0, true)").And.NotContain("IS_STRING");
-
-            _table = new CosmosTable(AsciiProducts);
-            var unproved = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
-            Render(FindCosmos(unproved)).Should().NotContain("ENDSWITH", "the path may hold an object");
-            Plan(unproved).Should().Contain("ClrCursorFilter");
+            foreach (var products in new[] { AsciiStringProducts, AsciiProducts })
+            {
+                _table = new CosmosTable(products);
+                var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+                Render(FindCosmos(best)).Should().NotContain("ENDSWITH").And.NotContain("UPPER(");
+                Plan(best).Should().Contain("ClrCursorFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
+            }
         }
 
         /// <summary>
@@ -3407,10 +3466,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         RelNode PlanToAsync(string sql, bool hostRewrites) => PlanToAsync(sql, hostRewrites, reduce: false);
 
-        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce)
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce) => PlanToAsync(sql, hostRewrites, reduce, null);
+
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce, RelOptListener? listener)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+            if (listener is not null)
+                planner.addListener(listener);
 
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
@@ -3490,24 +3553,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A branch that observes absence is weakened to what it implies, which here is nothing true.
+        /// A branch that observes a declared field's absence is not pushed: Calcite's test of the field raises.
         /// </summary>
         /// <remarks>
         /// Measured, and the reason the translator's rule was about absence rather than about polarity:
         /// <c>NOT IS_DEFINED(c.x)</c> is true exactly where the path is missing, so a branch containing
-        /// it cannot imply the path is there, and weakening it to <c>IS_DEFINED</c> lost rows. S reads the
+        /// it cannot imply the path is there, and weakening it to <c>IS_DEFINED</c> lost rows. S read the
         /// branch whole: its <c>INITCAP</c> needs the path defined and its test needs it absent, so the branch is
-        /// never true, and its weakening is that contradiction written out beside the bike's exact form.
+        /// never true. Since the raises step F reads a type test of a declared field as Calcite's body does, raising
+        /// over every value, and the owner decided on 2026-11-08 that a filter Calcite fails on every row fails as Calcite
+        /// fails it: since the switch (h15) nothing of the disjunction is pushed, and the statement fails in process as
+        /// Calcite's does.
         /// </remarks>
         [Fact]
-        public void ABranchThatObservesAbsenceIsWeakenedToWhatItImplies()
+        public void ABranchTestingADeclaredFieldIsNotPushed()
         {
             var best = PlanToAsync(
                 "SELECT * FROM products AS c " +
                 "WHERE c.\"$.category\" = 'bikes' OR (NOT IS_DEFINED(c.\"_etag\") AND INITCAP(c.\"_etag\") = 'X')");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) OR (IS_DEFINED(c._etag) AND NOT IS_DEFINED(c._etag)))");
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c");
             Plan(best).Should().Contain("ClrCursorFilter", "the disjunction is Calcite's to decide: " + Plan(best));
+        }
+
+        /// <summary>
+        /// The service's definedness test over a cast of the text to <c>VARCHAR</c> is not pushed, alone, negated, beside a
+        /// sibling either way, or over a path declared a required string: it is Calcite's, which cannot implement it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite's body takes apart only a <c>JSON_VALUE</c> or a <c>JSON_QUERY</c>, and fails the statement as it
+        /// implements a test over anything else (<c>CosmosTypeTestImplementor</c>), so nothing is sent. The loader read the
+        /// cast as the text it renders, as a comparison does, and the test over it as the text's, which the body takes apart,
+        /// so S sent <c>WHERE IS_DEFINED(c.v)</c> and answered every document holding <c>v</c>, and over a path declared
+        /// required sent no <c>WHERE</c> at all (review 3). The cast is a form of its own as a one-place test's operand
+        /// (<c>PredicateAtom.TextCastForm</c>), its row (<c>testreads</c>) the measured raise
+        /// (<c>CalciteTypeTestMeasurementTests</c>), and under the owner's decision of 2026-11-08 a filter Calcite fails
+        /// on every row fails as Calcite fails it: the test stays Calcite's, and the statement fails as Calcite's does.
+        /// </para>
+        /// <para>
+        /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
+        /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
+        /// required, the facts graph reads the conjunction as keeping no row and the filter is reduced to the empty
+        /// relation, F's reading of a raise, which is <c>TODO.md</c>'s (<i>A filter that raises is reduced as one that keeps
+        /// nothing</i>), not this test's.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("NOT IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("c.\"$.category\" = 'bikes' OR IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c WHERE (c.category = @p0)")]
+        [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR))", true, "SELECT VALUE c FROM products c")]
+        public void ADefinednessTestOverACastOfTheTextIsNotPushed(string condition, bool declared, string sent)
+        {
+            if (declared)
+                _table = new CosmosTable(Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                    """{ "type": "object", "required": ["category"], "properties": { "category": { "type": "string" } } }""")!)));
+
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE " + condition);
+
+            Render(FindCosmos(best)).Should().Be(sent, Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[", "the test is Calcite's, which cannot implement it: " + Plan(best))
+                .And.Contain("IS_DEFINED(CAST(JSON_VALUE($0, ", Plan(best));
         }
 
         /// <summary>
@@ -3519,7 +3627,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the path is missing — but its Rex operator belongs to the standard table rather than to the
         /// Cosmos family, so checking only the latter let it through. A branch containing one can be
         /// true with the path absent, and weakening it to <c>IS_DEFINED</c> would have discarded
-        /// exactly those rows. S keeps the null test as the branch's own exact form, true where the path is absent.
+        /// exactly those rows. S keeps the null test as the branch's own exact form, true where the path is absent. At the
+        /// switch (h15) that weakening tested two declared fields, which Calcite's in-process body raises over, so the Rex
+        /// builder wrote none of it and nothing was pushed; since h15b it writes each test over the path's accessor re-typed
+        /// <c>ANY</c> over the document column, <c>JSON_VALUE($0, '$.category')</c>, which the body takes apart, and the
+        /// weakening is pushed again.
         /// </remarks>
         [Fact]
         public void ABranchUsingSqlNullTestsIsWeakenedToItsNullTest()
@@ -3528,7 +3640,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "SELECT * FROM products AS c " +
                 "WHERE c.\"id\" = 'x' OR (c.\"$.category\" IS NULL AND INITCAP(c.\"_etag\") = 'X')");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.id = @p0) OR (((NOT IS_DEFINED(c.category)) OR IS_NULL(c.category)) AND IS_DEFINED(c._etag)))");
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.id = @p0) OR (IS_DEFINED(c._etag) AND (IS_NULL(c.category) OR NOT IS_DEFINED(c.category))))");
             Plan(best).Should().Contain("ClrCursorFilter", "the disjunction is Calcite's to decide: " + Plan(best));
         }
 
@@ -3556,18 +3668,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// The translator then pushed no presence for them; S weakens each negated branch to the negation of what makes
-        /// its compound true — a defined price or name for the first, a document with a defined price, or one whose id
-        /// is not above <c>'SPRINT'</c> or whose name is defined, for the second — so a document lacking the other
-        /// branches' paths still passes. The third's category guard is written twice, a respelling of one form.
+        /// its compound true — a defined price or name for the first; for the second, a document whose id is not above
+        /// <c>'SPRINT'</c> or whose name is defined — so a document lacking the other branches' paths still passes. Since
+        /// the switch (h15) the second's other branch, which needs a defined price, sent its element's comparison beside
+        /// it, S reading an element's path (tighter); the first is written flat, each guard once, and the third's category
+        /// guard once, where it was written twice (respellings). Since h15b the element's tests read its raw value, which no
+        /// row measured, so the filter beneath declines them and the second's branch sends its price alone (looser, RU);
+        /// and the id's own null test, which the service's id never meets, and the third's guard order are respelled.
         /// </para>
         /// </remarks>
         [Theory]
         [InlineData("NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))",
-            "WHERE ((IS_DEFINED(c.tags) AND (NOT IS_NULL(c.tags)) AND IS_PRIMITIVE(c.tags) AND (IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND (c.tags != @p0)) AND (IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND (c.tags != @p1)) AND (NOT (c.metadata.sku != @p2))) OR (NOT ((NOT IS_DEFINED(c.price)) AND (NOT IS_DEFINED(c.name)))))")]
+            "WHERE ((IS_PRIMITIVE(c.tags) AND IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND (c.tags != @p0) AND (c.tags != @p1) AND (NOT (c.metadata.sku != @p2))) OR (NOT (NOT IS_DEFINED(c.name) AND NOT IS_DEFINED(c.price))))")]
         [InlineData("NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))",
             "WHERE (IS_DEFINED(c.price) OR (NOT ((c.id > @p0) AND NOT IS_DEFINED(c.name))))")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')",
-            "WHERE ((c.price > @p0) OR (NOT ((((c.category = @p1) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) OR IS_NULL(c.category) OR (NOT IS_DEFINED(c.category))) AND (NOT IS_DEFINED(c.name)))))")]
+            "WHERE ((c.price > @p0) OR (NOT (NOT IS_DEFINED(c.name) AND (IS_NULL(c.category) OR (c.category = @p1) OR NOT IS_DEFINED(c.category)))))")]
         public void ADisjunctionWithANegatedCompoundBranchIsWeakenedBranchByBranch(string predicate, string where)
         {
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
@@ -3586,7 +3702,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>IS_DEFINED</c> of category, price and id and lost document 5, a shoe with no price whose
         /// conjunction is false and whose id is '5'; the second pushed category and price, and lost
         /// documents 5 and 7. What is left is the path the comparison's other side reads, which every
-        /// document has.
+        /// document has. Compared with <c>FALSE</c>, since the switch (h15) the conjunction is read for its falsity and
+        /// written exactly, the negation of where it may be other than false, which keeps document 5 as Calcite does.
         /// </remarks>
         [Fact]
         public void ACompoundReadAsAValueImpliesOnlyWhatEveryOperandNeeds()
@@ -3601,7 +3718,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var negated = Render(FindCosmos(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE")));
 
-            negated.Should().NotContain("IS_DEFINED", "the conjunction is false where either conjunct is: " + negated);
+            negated.Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE (NOT (((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) AND (c.price > @p1)))",
+                "the conjunction is false where either conjunct is");
         }
 
         /// <summary>
@@ -3638,7 +3756,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR " +
                 "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))")));
 
-            sql.Should().EndWith("WHERE ((c.price > @p0) OR (((c.category = @p1) OR (c.category = @p2)) AND IS_DEFINED(c.name)))");
+            sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND ((c.category = @p1) OR (c.category = @p2))))");
         }
 
         /// <summary>
@@ -3660,26 +3778,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// S reads a negated compound for its truth or falsity too, and weakens it more tightly: the category's own
-        /// exact form where the translator kept its presence. A compound compared with <c>TRUE</c> or <c>FALSE</c> the
-        /// IR reads as one opaque term, so S proves nothing of it, where the translator pushed both paths: an O7 listed
-        /// loss (a compound read for its truth) until the IR reads the comparison. RU, never rows.
+        /// exact form where the translator kept its presence. Since the switch (h15) the loader reads a compound compared
+        /// with <c>TRUE</c> or <c>FALSE</c>, or unequal to <c>FALSE</c>, as Calcite defines it, the compound or its
+        /// negation, and S weakens it so. One unequal to <c>TRUE</c> it reads no reading of, so S proves nothing of the
+        /// fifth, where the translator pushed both paths: what is left of O7's listed loss 3. RU, never rows. Since h15b
+        /// the category's null test is written over its accessor re-typed <c>ANY</c>, read back first (a respelling).
         /// </para>
         /// </remarks>
         [Theory]
         [InlineData("NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')",
-            "WHERE (NOT (((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)) OR IS_NULL(c.category) OR (NOT IS_DEFINED(c.category)) OR (NOT IS_DEFINED(c.metadata.sku))))")]
+            "WHERE (NOT (IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
         [InlineData("NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", "WHERE ((c.category = @p0) AND IS_DEFINED(c.metadata.sku))")]
-        [InlineData("(c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", null)]
-        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = FALSE", null)]
+        [InlineData("(c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", "WHERE ((c.category = @p0) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = FALSE",
+            "WHERE (NOT (IS_NULL(c.category) OR (c.category = @p0) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku)))")]
         [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> TRUE", null)]
-        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)", null)]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)",
+            "WHERE ((c.price > @p0) OR (NOT (IS_NULL(c.category) OR (c.category = @p1) OR NOT IS_DEFINED(c.category) OR NOT IS_DEFINED(c.metadata.sku))))")]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", "WHERE (IS_DEFINED(c.name) OR (c.price > @p0))")]
         public void ACompoundIsReadForItsTruthOrItsFalsity(string predicate, string? where)
         {
             var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate)));
 
             if (where is null)
-                sql.Should().NotContain("WHERE", "a compound compared with a truth value is opaque to S: " + sql);
+                sql.Should().NotContain("WHERE", "a compound unequal to TRUE is opaque to S: " + sql);
             else
                 sql.Should().EndWith(where);
         }
@@ -3876,6 +3998,128 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Plan(best).Split("CosmosFilter").Length.Should().Be(2);
         }
 
+        // ── Stacked filters and site W (h15) ──────────────────────────────────────
+
+        const string StackedView = "SELECT t.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE c.\"$.category\" = 'bikes') AS t WHERE ";
+
+        /// <summary>
+        /// A filter stacked onto a <c>WHERE</c> is conjoined into it, and the service then reads its form over the documents
+        /// that <c>WHERE</c> excludes as well: so it is folded in only where S proved every conjunct of it, whose form never
+        /// fails on a document of the scan (h15, <see cref="CosmosClauses.Where"/>). A view's filter and a comparison above
+        /// it S proved are both the service's; a parameter's, which the translator writes and nothing proves failure-free,
+        /// stays in process above the view's, and what goes down above the view's is S's weakening of it, which S proved.
+        /// </summary>
+        [Fact]
+        public void AFilterStackedOnAWhereIsFoldedOnlyWhereSProvedIt()
+        {
+            var proved = PlanToCosmos(StackedView + "t.\"n\" = 'Kickstand'");
+            Plan(proved).Split("CosmosFilter").Length.Should().Be(3, "both filters reach the service: " + Plan(proved));
+            Query(proved).Sql.Should().Contain("c.category = @p").And.Contain("c.name = @p");
+
+            var parameter = PlanToAsync(StackedView + "t.\"n\" = ?");
+            Plan(parameter).Should().Contain("ClrCursorFilter(condition=[=($1, ?0)])", "the parameter's filter is Calcite's to apply: " + Plan(parameter));
+            Render(FindCosmos(parameter)).Should().Contain("c.category = @p").And.Contain("IS_DEFINED(c.name)").And.NotContain("c.name = @p");
+        }
+
+        /// <summary>
+        /// Site W ends (h15): the split rule pushes, of S's weakening of a residual conjunct, what the filter it splits off
+        /// admits through S, and of a member that filter declines, S's weakening there in its turn; the rest is dropped,
+        /// not kept in process. So the filter split off is admitted whole, and split again it pushes no conjunct it did not
+        /// hold; and a weakening of which only part was pushed is not pushed again, all of it applied beneath. An element's
+        /// comparison, a case fold, a call S reads no reading of, and a <c>RETURNING DECIMAL</c> comparison, whose weakening's
+        /// <c>CASE</c> the filter beneath declines and whose weaker form it admits — pushed under itself for ever, the filter
+        /// left above asking the same weakening, until the rule asked whether what was admitted of it is applied — planned
+        /// under a host's rewrites too; the planner matches the rule a bounded number of times.
+        /// </summary>
+        [Theory]
+        [InlineData("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') < 'm'")]
+        [InlineData("SELECT c.\"id\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%'")]
+        [InlineData("SELECT c.\"id\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Kickstand' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 10")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'A') AS t WHERE INITCAP(t.\"n\") > 'B'")]
+        [InlineData("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 30")]
+        public void AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther(string sql)
+        {
+            var logical = PlanLogical(sql);
+            foreach (var filter in Filters(logical))
+            {
+                var (pushable, residual) = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(filter, _table.Container);
+                if (pushable.Count == 0 || residual.Count == 0)
+                    continue;
+
+                // The filter the rule splits off, as onMatch builds it, split again: whatever it does not admit stays
+                // residual in it, and nothing it pushes is a conjunct it did not already hold.
+                var inner = filter.copy(filter.getTraitSet(), filter.getInput(), org.apache.calcite.rex.RexUtil.composeConjunction(filter.getCluster().getRexBuilder(), Java(pushable)));
+                var held = CosmosFilterStatement.ConjunctsOf(inner.getCondition());
+                var again = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(inner, _table.Container);
+                TestContext.Current.TestOutputHelper?.WriteLine($"{filter.getCondition()}: pushes {string.Join(", ", pushable)}; split again pushes {string.Join(", ", again.Pushable)}, leaves {string.Join(", ", again.Residual)}");
+                again.Pushable.Should().OnlyContain(p => held.Contains(p), "a weakening the filter does not admit is pushed no further");
+
+                // The filter left above, split over what was split off, and again over what that pushes, as the planner
+                // matches it: it stops pushing once what it pushes is applied beneath.
+                var (input, above) = (inner, residual);
+                for (var round = 0; ; round++)
+                {
+                    round.Should().BeLessThan(4, "the filter left above stops pushing: " + filter.getCondition());
+                    var outer = filter.copy(filter.getTraitSet(), input, org.apache.calcite.rex.RexUtil.composeConjunction(filter.getCluster().getRexBuilder(), Java(above)));
+                    var next = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(outer, _table.Container);
+                    if (next.Pushable.Count == 0 || next.Residual.Count == 0)
+                        break;
+
+                    TestContext.Current.TestOutputHelper?.WriteLine($"  round {round} pushes {string.Join(", ", next.Pushable)}");
+                    input = filter.copy(filter.getTraitSet(), input, org.apache.calcite.rex.RexUtil.composeConjunction(filter.getCluster().getRexBuilder(), Java(next.Pushable)));
+                    above = next.Residual;
+                }
+            }
+
+            foreach (var rewrites in new[] { false, true })
+            {
+                var matches = new SplitMatches();
+                var best = PlanToAsync(sql, hostRewrites: rewrites, reduce: false, matches);
+                TestContext.Current.TestOutputHelper?.WriteLine($"host rewrites {rewrites}: the split rule matched {matches.Attempted} times: {Plan(best)}");
+                matches.Attempted.Should().BeLessThan(64, "the split rule ends");
+            }
+
+            static java.util.List Java(System.Collections.Generic.IEnumerable<RexNode> nodes)
+            {
+                var list = new java.util.ArrayList();
+                foreach (var node in nodes)
+                    list.add(node);
+                return list;
+            }
+        }
+
+        /// <summary>Every logical filter of a tree.</summary>
+        static System.Collections.Generic.IEnumerable<org.apache.calcite.rel.core.Filter> Filters(RelNode node)
+        {
+            if (node is org.apache.calcite.rel.core.Filter filter)
+                yield return filter;
+
+            var inputs = node.getInputs();
+            for (var i = 0; i < inputs.size(); i++)
+                foreach (var below in Filters((RelNode)inputs.get(i)))
+                    yield return below;
+        }
+
+        /// <summary>Counts each match the planner fires of the split rule.</summary>
+        sealed class SplitMatches : RelOptListener
+        {
+            public int Attempted { get; private set; }
+
+            public void relEquivalenceFound(RelOptListener.RelEquivalenceEvent e) { }
+
+            public void ruleAttempted(RelOptListener.RuleAttemptedEvent e)
+            {
+                if (e.isBefore() && e.getRuleCall().getRule() is Adapter.Rel.Convert.CosmosFilterSplitRule)
+                    Attempted++;
+            }
+
+            public void ruleProductionSucceeded(RelOptListener.RuleProductionEvent e) { }
+
+            public void relDiscarded(RelOptListener.RelDiscardedEvent e) { }
+
+            public void relChosen(RelOptListener.RelChosenEvent e) { }
+        }
+
         /// <summary>
         /// Returns the root of the pushed-down Cosmos subtree — the highest node in the convention,
         /// which is the one that renders the whole statement.
@@ -3991,13 +4235,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// over it was false of a stored string Calcite answers null for. A typed <c>RETURNING</c> is
         /// null wherever the value is not of its type — an object, which Calcite answers null for, and
         /// another scalar, which the standard answers null for and Calcite raises over. The raw value
-        /// is null only where it is absent or null, and keeps the two tests it always had.
+        /// is null only where it is absent or null, and keeps the two tests it always had. Since the switch (h15)
+        /// <c>JSON_QUERY</c>'s is written as the structure tests' negation alone, true over an absent path and a null as
+        /// the type tests never answer undefined: a respelling.
         /// </remarks>
         [Fact]
         public void TheNullTestReadsEachAccessorsOwnNullSet()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_QUERY(c.\"DOC\", '$.metadata') IS NULL"))
-                .Should().EndWith("WHERE (NOT IS_DEFINED(c.metadata) OR IS_NULL(c.metadata) OR NOT (IS_OBJECT(c.metadata) OR IS_ARRAY(c.metadata)))");
+                .Should().EndWith("WHERE (NOT (IS_ARRAY(c.metadata) OR IS_OBJECT(c.metadata)))");
 
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NOT NULL"))
                 .Should().EndWith("WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_NUMBER(c.metadata))");

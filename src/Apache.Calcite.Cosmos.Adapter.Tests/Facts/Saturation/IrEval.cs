@@ -113,11 +113,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlPredicate.Opaque o:
                     return world.Choose(T | F | U, "opaque#" + o.Id + "@" + Documents.Json(document));
 
+                // A value cast to VARIANT (Calcite.VariantEqualsOnlyItsOwnBox, G8): equal to a boxed literal within its own box,
+                // as what it holds is to the literal, and unequal to it in any other; a raw value is boxed by the kind it holds,
+                // so within the literal's kind's box the raw value compared with the literal decides. Null where it holds null.
+                case SqlPredicate.Compare { Op: PredicateAtom.Equal or PredicateAtom.NotEqual, Right: SqlValue.Box { Value: SqlValue.Literal literal } right } c:
+                {
+                    var held = c.Left is SqlValue.Box box ? box.Value : c.Left;
+                    var alike = c.Left is SqlValue.Box ? BoxOf(Apache.Calcite.Cosmos.Facts.Rendering.RenderingFamily.ReaderOf(held)) is { } own && own == BoxOf(right.Type)
+                        : BoxOf(literal.Kind) is { } kind && kind == BoxOf(right.Type);
+                    if (alike)
+                        return Truth(new SqlPredicate.Compare(c.Op, held, literal), document, world, typed, raw);
+
+                    var absent = IsRaw(held) ? At(document, PathOf(held)) is null or J.Null : Read(held, document, world, typed) is SqlDatum.NullDatum;
+                    return absent ? U : c.Op == PredicateAtom.Equal ? F : T;
+                }
+
+                case SqlPredicate.IsNull { Value: SqlValue.Box box }:
+                    return Truth(new SqlPredicate.IsNull(box.Value), document, world, typed, raw);
+
+                // A box no case above reads, its order or two readings boxed (G8): what Calcite answers no row says, so it is
+                // any answer, as the opaque conjunct the loader made of it before was.
+                case SqlPredicate.Compare c when c.Left is SqlValue.Box || c.Right is SqlValue.Box:
+                    return world.Choose(T | F | U, "box " + c + "@" + Documents.Json(document));
+
+                // A comparison with SQL's null (G8): UNKNOWN, raising where reading the other side raises.
+                case SqlPredicate.Compare { Right: SqlValue.Null } c:
+                    return IsRaw(c.Left) == false && Read(c.Left, document, world, typed) is SqlDatum.Raised ? R : U;
+
                 case SqlPredicate.Compare c when IsRaw(c.Left):
                     return RawCompare(c.Op, c.Left, c.Right, document, world, raw);
 
                 case SqlPredicate.Compare c:
-                    return Compare(c.Op, Read(c.Left, document, world, typed), Operand(c.Left, Read(c.Right, document, world, typed)));
+                    return Compare(c.Op, Read(c.Left, document, world, typed), c.Right is SqlValue.Literal or SqlValue.Parameter
+                        ? Operand(c.Left, Read(c.Right, document, world, typed)) : Read(c.Right, document, world, typed));
 
                 case SqlPredicate.In i when IsRaw(i.Value):
                     return Any(i.Points.Select(point => RawCompare(PredicateAtom.Equal, i.Value, new SqlValue.Literal(point), document, world, raw)).ToArray());
@@ -144,12 +172,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _ => F,
                     };
 
+                // The in-process body takes apart no reading written apart, a field's, an item's, a cast's to ANY, and raises
+                // over each, whatever it holds (Calcite.TypeTestsAreTheirBodies, h15b).
+                case SqlPredicate.IsDefined { Value.Form: not null } or SqlPredicate.TypeTest { Value.Form: not null }:
+                    return R;
+
                 // The service's test of the document, which the in-process body reads too: a null is defined.
                 case SqlPredicate.IsDefined d:
                     return At(document, d.Value.PathRead!.Value) is null ? F : T;
 
+                // The in-process bodies, by the kind at the path (Calcite.TypeTestsAreTheirBodies): never UNKNOWN.
+                case SqlPredicate.TypeTest t:
+                    return Kinds(t.Test, At(document, t.Value.PathRead!.Value)) ? T : F;
+
+                case SqlPredicate.Affix a:
+                    return Like(a, document, world, typed, raw);
+
+                // The first arm whose condition is TRUE, FALSE and UNKNOWN alike passing it by (Calcite.CaseTakesTheFirstTrueArm).
+                case SqlPredicate.Case c:
+                    return Truth(c.Condition, document, world, typed, raw) switch
+                    {
+                        T => Truth(c.Then, document, world, typed, raw),
+                        R => R,
+                        _ => Truth(c.Else, document, world, typed, raw),
+                    };
+
+                case SqlPredicate.Constant k:
+                    return k.Truth switch { true => T, false => F, null => U };
+
                 default:
                     throw new NotSupportedException(predicate.GetType().Name);
+            }
+        }
+
+        /// <summary>Whether a type test's body is TRUE of a stored value, <c>null</c> where the path is absent.</summary>
+        static bool Kinds(string test, J? stored) => (test, stored) switch
+        {
+            (_, null) => false,
+            ("IS_NULL", J.Null) or ("IS_STRING", J.Str) or ("IS_NUMBER", J.Num or J.Huge) or ("IS_BOOL", J.Bool) or ("IS_OBJECT", J.Obj) or ("IS_ARRAY", J.Arr) => true,
+            ("IS_PRIMITIVE", J.Null or J.Str or J.Num or J.Huge or J.Bool) => true,
+            ("IS_NULL" or "IS_STRING" or "IS_NUMBER" or "IS_BOOL" or "IS_OBJECT" or "IS_ARRAY" or "IS_PRIMITIVE", _) => false,
+            _ => throw new NotSupportedException(test),
+        };
+
+        /// <summary>
+        /// <c>LIKE</c> over text, as Calcite's runtime matches it: UNKNOWN over null. A cast to text of a raw value is read
+        /// through its column, or unnamed as either a <c>VARIANT</c> or an <c>ANY</c> reads it, an <c>ANY</c>'s structure as
+        /// Java's map or list renders, between its brackets, a coin where the pattern may match that; and a cast of a
+        /// rendering to a character type, whose length the IR does not keep, is a coin where it is not null.
+        /// </summary>
+        static Truths Like(SqlPredicate.Affix affix, J.Obj document, World world, TypedAs typed, RawAs? raw)
+        {
+            Truths Of(SqlDatum? text, J? stored = null) => text switch
+            {
+                null when stored is J.Obj or J.Arr => Bracketed(stored is J.Arr ? "[]" : "{}", affix.Pattern) ? T | F : F,
+                null => T | F,
+                SqlDatum.NullDatum => U,
+                SqlDatum.Raised => R,
+                SqlDatum.Text t => new org.apache.calcite.runtime.SqlFunctions.LikeFunction().like(t.Value, affix.Pattern) ? T : F,
+                _ => throw new InvalidOperationException($"{affix} reads no text."),
+            };
+
+            var question = affix + " @ " + Documents.Json(document);
+            switch (affix.Value)
+            {
+                case SqlValue.Cast { Value: SqlValue.Raw r }:
+                    raw = Own(r, raw);
+                    var stored = At(document, r.Path);
+                    return stored is null ? U : world.Choose(raw is RawAs one ? Of(CastText(stored, one), stored) : Of(CastText(stored, RawAs.Variant), stored) | Of(CastText(stored, RawAs.Any), stored), question);
+
+                case SqlValue.Cast { Value: SqlValue.Text text }:
+                    return Rendering(At(document, text.Path)) is null ? U : world.Choose(T | F, question);
+
+                default:
+                    return Of(Read(affix.Value, document, world, typed));
+            }
+
+            // Whether a pattern of runs and % may match some text between the brackets: its first run opens, its last closes.
+            static bool Bracketed(string brackets, string pattern)
+            {
+                var runs = pattern.Split('%');
+                return pattern.IndexOfAny(['_', '\\']) >= 0
+                    || (runs[0].Length == 0 || runs[0][0] == brackets[0]) && (runs[^1].Length == 0 || runs[^1][^1] == brackets[1]) && (runs.Length > 1 || pattern.Length >= 2);
             }
         }
 
@@ -162,7 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             static (SqlValue? Value, string[] Literals) Reading(SqlPredicate term) => term switch
             {
-                SqlPredicate.Compare c => (c.Left, c.Right is SqlValue.Literal l ? [l.Value] : []),
+                SqlPredicate.Compare c => (c.Left, c.Right is SqlValue.Literal l ? [l.Value] : Uncast(c.Right) is SqlValue.Literal u ? [u.Value] : []),
                 SqlPredicate.In i => (i.Value, i.Points.ToArray()),
                 SqlPredicate.IsNull n => (n.Value, []),
                 _ => (null, []),
@@ -176,6 +280,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             return read.Where(r => r.Value is SqlValue.Raw).SelectMany(r => r.Literals).All(IsString) ? [RawAs.Variant, RawAs.Any, RawAs.Varchar] : [RawAs.Variant, RawAs.Any];
         }
+
+        /// <summary>The box each reading, kind of stored value and value cast is held in, as its row says (G8).</summary>
+        static readonly IReadOnlyList<(string Kind, string Box)> Boxes = Apache.Calcite.Cosmos.Adapter.Sql.CosmosAxiomRows.ReadBoxes(Apache.Calcite.Cosmos.Adapter.Sql.CosmosAxioms.All);
+
+        static string? BoxOf(string? kind) => kind is null ? null : Boxes.Where(b => b.Kind == kind).Select(b => b.Box).FirstOrDefault();
+
+        /// <summary>The literal a number Calcite wrote cast casts (G8), or a box holds, or the value itself.</summary>
+        static SqlValue Uncast(SqlValue value) => value switch
+        {
+            SqlValue.Cast { PathRead: null } cast => Uncast(cast.Value),
+            SqlValue.DecimalCast cast => Uncast(cast.Value),
+            SqlValue.Box { PathRead: null } box => Uncast(box.Value),
+            _ => value,
+        };
 
         /// <summary><c>NOT</c>: TRUE and FALSE swap, UNKNOWN and a raise stay.</summary>
         public static Truths Swap(Truths truth) => truth == T ? F : truth == F ? T : truth;
@@ -215,8 +333,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public static J? At(J document, JsonDocumentPath path)
         {
             J? current = document;
-            foreach (var name in path.Names)
-                current = current is J.Obj o && o.Properties.TryGetValue(name, out var child) ? child : null;
+            foreach (var segment in path.Segments)
+                current = segment switch
+                {
+                    string name => current is J.Obj o && o.Properties.TryGetValue(name, out var child) ? child : null,
+                    long index => current is J.Arr a && index < a.Elements.Count ? a.Elements[(int)index] : null,
+                    _ => null,
+                };
 
             return current;
         }
@@ -298,6 +421,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Text t:
                     return Rendering(At(document, t.Path)) is string rendered ? new SqlDatum.Text(rendered) : SqlDatum.Null;
 
+                // RETURNING VARCHAR and CHAR read a string as itself, unpadded, and a null and an absent path as null
+                // (Calcite.TextPlacesCompareAsTheirStrings); what they make of any other class was not measured, a coin.
+                case SqlValue.Typed { Type: "VARCHAR" or "CHAR" } t when typed == TypedAs.Returning:
+                    return At(document, t.Path) switch
+                    {
+                        null or J.Null => SqlDatum.Null,
+                        J.Str s => new SqlDatum.Text(s.Value),
+                        var other => world.Unread(t.Type + " " + Documents.Json(document)),
+                    };
+
                 case SqlValue.Typed t:
                     return typed == TypedAs.Column ? Column(At(document, t.Path), t.Type) : Returning(At(document, t.Path), t.Type);
 
@@ -307,11 +440,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlValue.Literal l:
                     return Datum(l.Value);
 
+                case SqlValue.Null:
+                    return SqlDatum.Null;
+
+                // JSON_QUERY with no clause answers an object or an array as its JSON and null for anything else
+                // (Calcite.JsonQueryAnswersStructureOnly, G8).
+                case SqlValue.Query q:
+                    return At(document, q.Path) is J.Obj or J.Arr ? new SqlDatum.Text(Documents.Json(At(document, q.Path)!)) : SqlDatum.Null;
+
+                // A number Calcite wrote cast, as a loading that reads places reads one (G8): to DOUBLE the double nearest it.
+                case SqlValue.Cast { Target: "DOUBLE", PathRead: null } c:
+                    return Read(c.Value, document, world, typed) is SqlDatum.Exact e
+                        ? new SqlDatum.Double(double.Parse(e.Value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture))
+                        : Read(c.Value, document, world, typed);
+
+                case SqlValue.DecimalCast d:
+                    return Read(d.Value, document, world, typed) switch
+                    {
+                        SqlDatum.Exact number => CastDecimal(number.Value, d.Precision, d.Scale),
+                        SqlDatum.Double x when TryExactly(x.Value, out var exact) => CastDecimal(exact, d.Precision, d.Scale),
+                        var other => other,
+                    };
+
+                // The cast to text of a raw value through a named column, as that column renders one (CastText), as its
+                // comparisons and LIKE read it; through none, or of a value no row measured, a coin.
+                case SqlValue.Cast { Target: "VARCHAR" or "CHAR", Value: SqlValue.Raw r }:
+                    return At(document, r.Path) is not { } stored ? SqlDatum.Null
+                        : Named(r.Column) is RawAs column && CastText(stored, column) is SqlDatum castText ? castText
+                        : world.Unread("cast " + r.Column + " " + Documents.Json(document));
+
+                // A VARCHAR column reads a string as itself, a null as null, and fails over anything else (Calcite.RawNullIsSqlNull).
+                case SqlValue.Raw { Column: "VARCHAR" } r:
+                    return At(document, r.Path) switch { null or J.Null => SqlDatum.Null, J.Str s => new SqlDatum.Text(s.Value), _ => SqlDatum.Raise };
+
                 case SqlValue.Parameter p:
                     return world.Parameter(p);
 
                 case SqlValue.Call c:
                     return Call(c, document, world);
+
+                // The arm of the first condition that is TRUE, else the last.
+                case SqlValue.Case c:
+                {
+                    for (var i = 0; i < c.Conditions.Count; i++)
+                        switch (Truth(c.Conditions[i], document, world, typed))
+                        {
+                            case T:
+                                return Read(c.Arms[i], document, world, typed);
+                            case R:
+                                return SqlDatum.Raise;
+                        }
+
+                    return Read(c.Arms[^1], document, world, typed);
+                }
 
                 default:
                     throw new NotSupportedException(value.ToString());
@@ -319,9 +500,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// A number cast to <c>DECIMAL(p, s)</c> as Calcite casts one: set to <c>s</c> places rounding toward zero, and raising
+        /// where what that leaves has more than <c>p</c> digits (<c>CalciteJsonValueMeasurementTests</c>, the literal a
+        /// comparison through <c>RETURNING DECIMAL</c> casts down).
+        /// </summary>
+        static SqlDatum CastDecimal(decimal value, long precision, long scale)
+        {
+            var cast = new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)).setScale(checked((int)scale), java.math.RoundingMode.DOWN);
+            return cast.precision() > precision ? SqlDatum.Raise : new SqlDatum.Exact(decimal.Parse(cast.toPlainString(), CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
         /// A string function of values, as Calcite computes it in process: by its runtime's own functions
-        /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise. A
-        /// <c>CASE</c>, read as its arms, takes the arm a coin chooses, the conditions not being read.
+        /// (<c>org.apache.calcite.runtime.SqlFunctions</c>), null over a null operand, and raising where they raise; a
+        /// count in UTF-16 units and a position from 1, as exact numbers; and a typed arithmetic operator at the call's
+        /// type (<see cref="Arithmetic"/>). A <c>CASE</c> read as its arms alone, its conditions not read, takes the arm a
+        /// coin chooses.
         /// </summary>
         static SqlDatum Call(SqlValue.Call call, J.Obj document, World world)
         {
@@ -338,8 +532,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             string Text(int i) => operands[i] is SqlDatum.Text t ? t.Value : throw new InvalidOperationException($"{call} reads no text at {i}: the generator built a call the loader never does.");
             int Count(int i) => operands[i] is SqlDatum.Exact e ? (int)e.Value : throw new InvalidOperationException($"{call} reads no count at {i}.");
 
+            if (call.Function is "+" or "-" or "*" or "/" or "%" or "MOD")
+                return Arithmetic(call.Function, call.Type ?? throw new InvalidOperationException($"{call} has no type: the loader types every arithmetic place."), operands[0], operands[1]);
+
             try
             {
+                if (call.Function is "CHAR_LENGTH" or "CHARACTER_LENGTH" or "LENGTH")
+                    return new SqlDatum.Exact(org.apache.calcite.runtime.SqlFunctions.charLength(Text(0)));
+
+                if (call.Function == "POSITION")
+                    return new SqlDatum.Exact(org.apache.calcite.runtime.SqlFunctions.position(Text(0), Text(1)));
+
                 return new SqlDatum.Text(call.Function switch
                 {
                     "||" or "CONCAT" => string.Concat(Enumerable.Range(0, operands.Length).Select(Text)),
@@ -360,6 +563,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             catch (java.lang.RuntimeException)
             {
                 return SqlDatum.Raise;
+            }
+        }
+
+        /// <summary>
+        /// A typed arithmetic operator over two numbers as Calcite computes it at the call's type: an integer type wraps
+        /// at its width and divides truncating toward zero (<c>Calcite.IntegerArithmeticWraps</c>), raising over a zero
+        /// divisor; a <c>DECIMAL</c> is exact (<c>Calcite.DecimalArithmeticIsExact</c>), raising past what a decimal
+        /// holds and over a zero divisor; a double is IEEE's, an infinity over a zero divisor. A <c>DECIMAL</c> quotient
+        /// takes a scale this model does not, so it is not modelled.
+        /// </summary>
+        static SqlDatum Arithmetic(string op, string type, SqlDatum left, SqlDatum right)
+        {
+            static double Real(SqlDatum d) => d switch
+            {
+                SqlDatum.Exact e => (double)e.Value,
+                SqlDatum.Double x => x.Value,
+                SqlDatum.Decimal s => Renderings.ParseDouble(s.Spelled) ?? throw new InvalidOperationException($"{s} is no number."),
+                _ => throw new InvalidOperationException($"{d} is no number."),
+            };
+
+            static decimal Whole(SqlDatum d) => d is SqlDatum.Exact e ? e.Value : throw new NotSupportedException($"{d} is no exact number this model holds.");
+
+            switch (type)
+            {
+                case "DOUBLE" or "FLOAT" or "REAL":
+                {
+                    var (a, b) = (Real(left), Real(right));
+                    return new SqlDatum.Double(op switch { "+" => a + b, "-" => a - b, "*" => a * b, "/" => a / b, _ => a % b });
+                }
+
+                case "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT":
+                {
+                    var (a, b) = ((long)Whole(left), (long)Whole(right));
+                    if (op is "/" or "%" or "MOD" && b == 0)
+                        return SqlDatum.Raise;
+
+                    // Java wraps the one quotient C# refuses: the least long over -1 is itself, its remainder 0.
+                    var wide = a == long.MinValue && b == -1 ? (op == "/" ? a : 0)
+                        : unchecked(op switch { "+" => a + b, "-" => a - b, "*" => a * b, "/" => a / b, _ => a % b });
+                    return new SqlDatum.Exact(type switch { "TINYINT" => unchecked((sbyte)wide), "SMALLINT" => unchecked((short)wide), "INTEGER" => unchecked((int)wide), _ => wide });
+                }
+
+                case "DECIMAL" when op != "/":
+                {
+                    var (a, b) = (Whole(left), Whole(right));
+                    if (op is "%" or "MOD" && b == 0)
+                        return SqlDatum.Raise;
+
+                    try
+                    {
+                        return new SqlDatum.Exact(op switch { "+" => a + b, "-" => a - b, "*" => a * b, _ => a % b });
+                    }
+                    catch (OverflowException)
+                    {
+                        return SqlDatum.Raise;
+                    }
+                }
+
+                default:
+                    throw new NotSupportedException($"{op} at {type}");
             }
         }
 
@@ -495,8 +758,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 ? new SqlDatum.Exact(whole) : SqlDatum.Raise,
             "DOUBLE" => Renderings.ParseDouble(text) is double d ? new SqlDatum.Double(d) : SqlDatum.Raise,
             "DECIMAL" => Renderings.ParseDecimal(text) is string number ? IsExactNumber(number) ? Datum(number) : new SqlDatum.Decimal(text) : SqlDatum.Raise,
+            "BOOLEAN" => JavaBoolean(text) is bool truth ? new SqlDatum.Boolean(truth) : SqlDatum.Raise,
             _ => throw new NotSupportedException(target),
         };
+
+        /// <summary>
+        /// Calcite's parse of text as a boolean (<c>Calcite.CastToBooleanParses</c>): trimmed of every character up to
+        /// U+0020, as Java's <c>String.trim</c> trims, then <c>TRUE</c> or <c>FALSE</c> in any ASCII case, <c>"falſe"</c>
+        /// not folded; <c>null</c>, a raise, for anything else.
+        /// </summary>
+        static bool? JavaBoolean(string text)
+        {
+            var trimmed = text.Trim(Enumerable.Range(0, 33).Select(c => (char)c).ToArray());
+            static bool Same(string a, string b) => a.Length == b.Length && a.Zip(b).All(p => p.First < 128 && char.ToUpperInvariant(p.First) == p.Second);
+
+            return Same(trimmed, "TRUE") ? true : Same(trimmed, "FALSE") ? false : null;
+        }
 
         /// <summary>
         /// A comparison of two values: UNKNOWN where either is null, a raise where either raises.
@@ -548,6 +825,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         public static bool IsRaw(SqlValue value) => value is SqlValue.Raw or SqlValue.Cast { Value: SqlValue.Raw };
 
+        /// <summary>The column a raw reading names, which overrides the one asked for; the one asked for where it names none.</summary>
+        public static RawAs? Own(SqlValue reading, RawAs? raw) => Named((reading switch { SqlValue.Raw r => r, SqlValue.Cast { Value: SqlValue.Raw r } => r, _ => null })?.Column) ?? raw;
+
+        /// <summary>The column a raw reading's name for it stands for; <c>null</c> for none.</summary>
+        public static RawAs? Named(string? column) => column switch
+        {
+            "VARIANT" => RawAs.Variant,
+            "ANY" => RawAs.Any,
+            "VARCHAR" => RawAs.Varchar,
+            _ => null,
+        };
+
         static JsonDocumentPath PathOf(SqlValue value) => value.PathRead ?? throw new InvalidOperationException(value + " reads no path.");
 
         /// <summary>
@@ -555,7 +844,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static Truths RawCompare(string op, SqlValue reading, SqlValue operand, J.Obj document, World world, RawAs? raw)
         {
+            raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
+
+            // A number Calcite wrote cast (G8) is the value the cast makes, a cast that raises raising on every row; beside the
+            // raw value itself, whose box a column compares by, what it compares as is not modelled.
+            if (operand is SqlValue.Cast { PathRead: null } or SqlValue.DecimalCast)
+            {
+                var asked = reading + " " + op + " " + operand + " @ " + (stored is null ? "absent" : Documents.Json(stored));
+                switch (Read(operand, document, world))
+                {
+                    case SqlDatum.Raised:
+                        return R;
+                    case var _ when reading is SqlValue.Raw:
+                        return world.Choose(T | F | U | R, asked);
+                    case SqlDatum.Exact e:
+                        operand = new SqlValue.Literal(Of(e.Value));
+                        break;
+                    case SqlDatum.Double x:
+                        operand = new SqlValue.Literal(Of(x.Value));
+                        break;
+                    case var other:
+                        throw new NotSupportedException(other.ToString());
+                }
+            }
             if (reading is SqlValue.Raw && operand is SqlValue.Literal literal && (raw is not null || op is PredicateAtom.Equal or PredicateAtom.NotEqual))
             {
                 // <> is = swapped, on the one coin.
@@ -602,6 +914,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     throw new NotSupportedException(reading.ToString());
             }
         }
+
+        /// <summary>
+        /// Whether Calcite fails a predicate before it reads a row: it holds an ordering of a raw value read through a
+        /// <c>VARIANT</c> column, which has no order at run time and fails to compile (<see cref="RawLiteral"/>), whatever
+        /// else it holds and whatever a coin would say of its other readings.
+        /// </summary>
+        internal static bool FailsToCompile(SqlPredicate ir) => ir.Subterms.Any(t => t is SqlPredicate.Compare { Op: not (PredicateAtom.Equal or PredicateAtom.NotEqual) } c
+            && (c.Left is SqlValue.Raw { Column: "VARIANT" } || c.Right is SqlValue.Raw { Column: "VARIANT" }));
 
         /// <summary>
         /// What <c>=</c> or an ordering of a raw value with a literal answers through one column, as measured
@@ -731,6 +1051,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static Truths RawIsNull(SqlValue reading, J.Obj document, World world, RawAs? raw)
         {
+            raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
             var question = reading + " is null @ " + (stored is null ? "absent" : Documents.Json(stored));
             return (reading, stored) switch

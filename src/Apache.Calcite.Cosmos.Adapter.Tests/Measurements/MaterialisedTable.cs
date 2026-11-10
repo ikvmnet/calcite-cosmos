@@ -80,10 +80,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             return org.apache.calcite.linq4j.Linq4j.asEnumerable(rows);
         }
 
-        /// <summary>Opens a connection tables are asked over.</summary>
-        public static DbConnection Open()
+        /// <summary>Opens a connection tables are asked over, with the function libraries <paramref name="fun"/> names, or the standard ones.</summary>
+        public static DbConnection Open(string? fun = null)
         {
-            var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
+            var builder = new CalciteConnectionStringBuilder();
+            if (fun is not null)
+                builder.Fun = fun;
+
+            var connection = new CalciteConnection(builder.ConnectionString);
             connection.Open();
             return connection;
         }
@@ -110,6 +114,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             return letters.Select(l => new string(l)).ToArray();
+        }
+
+        /// <summary>The keys of the rows a predicate keeps as a <c>WHERE</c>, in key order. A statement that fails throws.</summary>
+        public int[] Keeps(DbConnection connection, string predicate)
+        {
+            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
+            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT \"k\" FROM \"{name}\" WHERE {predicate}";
+
+            var kept = new List<int>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                kept.Add(Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture));
+
+            return [.. kept.Order()];
+        }
+
+        /// <summary>
+        /// What an expression is over each row, in key order, <c>null</c> where it is null; a row whose evaluation raises
+        /// is asked alone, and its value is the innermost exception.
+        /// </summary>
+        public object?[] Values(DbConnection connection, string expression)
+        {
+            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
+            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
+
+            var values = new object?[_rows.Count];
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT \"k\", ({expression}) FROM \"{name}\"";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    values[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] = reader.IsDBNull(1) ? null : reader.GetValue(1);
+            }
+            catch (Exception)
+            {
+                for (var k = 0; k < _rows.Count; k++)
+                {
+                    try
+                    {
+                        using var command = connection.CreateCommand();
+                        command.CommandText = $"SELECT ({expression}) FROM \"{name}\" WHERE \"k\" = {k}";
+                        using var reader = command.ExecuteReader();
+                        values[k] = reader.Read() && !reader.IsDBNull(0) ? reader.GetValue(0) : null;
+                    }
+                    catch (Exception e)
+                    {
+                        while (e.InnerException is Exception inner)
+                            e = inner;
+
+                        values[k] = e;
+                    }
+                }
+            }
+
+            return values;
         }
 
         /// <summary>

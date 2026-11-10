@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
 
 using FluentAssertions;
@@ -89,8 +90,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         };
 
         static CosmosClient? _client;
+        static Database? _made;
         static Container? _container;
         static string? _unavailable;
+        static CosmosRequestCharges? _charges;
 
         static async Task Initialize()
         {
@@ -99,6 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 ConnectionMode = ConnectionMode.Gateway,
                 RequestTimeout = TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 5 : 30),
                 MaxRetryAttemptsOnRateLimitedRequests = 0,
+                CustomHandlers = { (_charges = new(nameof(CosmosJsonTypeMeasurementTests))) },
             };
 
             if (CosmosEmulator.IsEmulator)
@@ -119,6 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
                 _client = new CosmosClient(endpoint, key, options);
                 var database = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, cancellationToken: cts.Token)).Database;
+                _made = database;
 
                 try { await database.GetContainer("kinds").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
                 _container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("kinds", "/pk"), cancellationToken: cts.Token)).Container;
@@ -139,8 +144,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         static void Cleanup()
         {
-            try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+            // The database the class made, half made among them: none where it reached no service.
+            try { _made?.DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
+            if (_client is not null)
+                _charges?.Write();
             _client?.Dispose();
             _client = null;
         }
@@ -359,6 +367,191 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             (seen, disagreements.Count).Should().Be((witnesses.Count, 0), string.Join("; ", disagreements));
+        }
+
+        /// <summary>The target the service answering is, whose outcomes a row's test holds it to: the emulator wherever the endpoint is this machine's.</summary>
+        internal static CosmosAxiomTarget Answering => Facts.Rendering.CosmosEvalServiceTests.Target == RenderingTarget.Emulator ? CosmosAxiomTarget.Emulator : CosmosAxiomTarget.Azure;
+
+        /// <summary>A value of each kind at <c>c.v</c>, and none: true, false, null, absent, two numbers, two strings, an object and an array.</summary>
+        static readonly string?[] Kinds = ["true", "false", "null", null, "30", "30.5", "\"bikes\"", "\"true\"", "{\"x\":1}", "[1]"];
+
+        /// <summary>Asks expressions over witnesses for a row, each answer spelled as <see cref="CosmosWitnessProbe"/> spells it, the witnesses' joined by spaces.</summary>
+        static async Task<string[]> Probe(string row, IReadOnlyList<string?> witnesses, params string[] expressions) =>
+            [.. (await CosmosWitnessProbe.Ask(_container, _unavailable, row, witnesses, expressions)).Select(answers => string.Join(" ", answers))];
+
+        /// <summary>
+        /// The ternary and <c>IIF</c> take the then-arm where the condition is true and the else-arm over every other value,
+        /// an absent path and an undefined condition included: never undefined for a defined arm. The row's outcomes are
+        /// <c>c ? true : false</c> by the condition's class, which S's ternary licence reads.
+        /// </summary>
+        [Fact, CosmosPins("Service.TernaryTakesThenOnTrueAlone")]
+        public async Task TheTernaryTakesThenOnTrueAlone()
+        {
+            // Every probe is asked before any answer is asserted, so a run on an account records them all.
+            using var scope = new FluentAssertions.Execution.AssertionScope();
+            var row = CosmosAxioms.Get("Service.TernaryTakesThenOnTrueAlone").Outcomes!.Single(o => o.Test == CosmosServiceTest.Choose).Cells.ToDictionary(c => c.Cell, c => c.Answer);
+            CosmosValueClass[] classes = [CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null, CosmosValueClass.Absent, CosmosValueClass.Number, CosmosValueClass.Number,
+                CosmosValueClass.String, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array];
+            string Kept(CosmosValueClass cell) => row[cell] == CosmosAnswer.True ? "true/T" : "false/F";
+            (await Probe("Service.TernaryTakesThenOnTrueAlone", Kinds, "(c.v ? \"t\" : \"e\")", "IIF(c.v, \"t\", \"e\")", "(c.v ? true : false)", "(c.v ? c.v : false)")).Should().Equal(
+                "\"t\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U",
+                "\"t\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U \"e\"/U",
+                string.Join(" ", classes.Select(Kept)),
+                "true/T false/F false/F false/F false/F false/F false/F false/F false/F false/F");
+
+            // An undefined condition: an ordering across types, over a number (CosmosOutcomeWitnesses.Side).
+            (await Probe("Service.TernaryTakesThenOnTrueAlone", ["1"], "((c.v > \"\") ? true : false)")).Should().Equal(Kept(CosmosValueClass.Undefined));
+        }
+
+        /// <summary>
+        /// Two paths compare as the left with the right's value written as a literal, and as the right with the left's
+        /// with the comparator mirrored: each value at <c>v</c> against each at <c>w</c>, an absent path on either side, a
+        /// string holding U+0000, U+FFFF or a surrogate pair among them. Within strings the stored order is the Order row's,
+        /// so the literal is asked where the two differ in kind, or over a number, a boolean or a null. A side absent answers
+        /// undefined, and a right side null each comparator's answer over the literal null, as the row's outcomes claim.
+        /// </summary>
+        [Fact, CosmosPins("Service.TwoPathsCompareAsAPathAndALiteral")]
+        public async Task TwoPathsCompareAsAPathAndALiteral()
+        {
+            using var scope = new FluentAssertions.Execution.AssertionScope();
+            const string Row = "Service.TwoPathsCompareAsAPathAndALiteral";
+            CosmosAxioms.Get(Row).Outcomes!.Should().ContainSingle(o => o.Test == CosmosServiceTest.ComparePaths && o.Operand == CosmosValueClass.None, "the licence");
+            (string Op, string Mirror, CosmosServiceTest Test)[] ops = [("=", "=", CosmosServiceTest.Equal), ("!=", "!=", CosmosServiceTest.NotEqual), ("<", ">", CosmosServiceTest.Less),
+                ("<=", ">=", CosmosServiceTest.LessOrEqual), (">", "<", CosmosServiceTest.Greater), (">=", "<=", CosmosServiceTest.GreaterOrEqual)];
+            var outcomes = CosmosAxioms.Get(Row).Outcomes!;
+            string Claimed(CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell) => outcomes.Single(o => o.Test == test && o.Operand == operand).Cells.Single(c => c.Cell == cell).Answer switch
+            {
+                CosmosAnswer.True => "true/T",
+                CosmosAnswer.False => "false/F",
+                _ => "undefined/U",
+            };
+            string?[] lefts = [.. Kinds, "2.5", "\"a\"", "\"\\u0000\"", "\"\\uFFFF\"", "\"\\uD83D\\uDE00\""];
+            string?[] rights = ["null", null, "30", "\"bikes\"", "\"\\uFFFF\"", "true", "[1]", "{\"x\":1}"];
+            static CosmosValueClass Class(string? json) => json switch
+            {
+                null => CosmosValueClass.Absent,
+                "true" => CosmosValueClass.True,
+                "false" => CosmosValueClass.False,
+                _ => Enum.Parse<CosmosValueClass>(Kind(json), ignoreCase: true),
+            };
+            static string Kind(string? json) => json switch { null => "absent", "true" or "false" => "bool", _ => json[0] switch { '"' => "string", '{' => "object", '[' => "array", 'n' => "null", _ => "number" } };
+            var asked = 0;
+            foreach (var right in rights)
+            {
+                var literal = right is not null && Kind(right) is not ("object" or "array");
+                var witnesses = lefts.Select(l => string.Join(",", new[] { l is null ? null : "\"v\":" + l, right is null ? null : "\"w\":" + right }.OfType<string>())).ToList();
+                var expressions = ops.SelectMany(o => new[] { $"(c.v {o.Op} c.w)", $"(c.w {o.Mirror} c.v)" }.Concat(literal ? [$"(c.v {o.Op} {right})"] : [])).ToArray();
+                var answers = await CosmosWitnessProbe.AskMembers(_container, _unavailable, Row, witnesses, expressions);
+                var width = literal ? 3 : 2;
+                for (var o = 0; o < ops.Length; o++)
+                    for (var i = 0; i < lefts.Length; i++, asked++)
+                    {
+                        var direct = answers[o * width][i];
+                        answers[o * width + 1][i].Should().Be(direct, $"{expressions[o * width + 1]} answers as {expressions[o * width]} over {witnesses[i]}");
+                        if (lefts[i] is null || right is null)
+                            direct.Should().Be(Claimed(CosmosServiceTest.ComparePaths, CosmosValueClass.Absent, CosmosValueClass.None), $"{expressions[o * width]} has a side absent over {witnesses[i]}");
+                        else if (right == "null")
+                            direct.Should().Be(Claimed(ops[o].Test, CosmosValueClass.Null, Class(lefts[i])), $"{expressions[o * width]} is the left against null over {witnesses[i]}");
+                        if (literal && (Kind(lefts[i]) != Kind(right) || Kind(right) != "string"))
+                            answers[o * width + 2][i].Should().Be(direct, $"{expressions[o * width + 2]} answers as {expressions[o * width]} over {witnesses[i]}");
+                    }
+            }
+
+            asked.Should().Be(rights.Length * ops.Length * lefts.Length);
+        }
+
+        /// <summary>An index is an array's element from zero, and undefined over every other value, a string among them, and past the end.</summary>
+        [Fact, CosmosPins("Service.IndexOverANonArrayIsUndefined")]
+        public async Task AnIndexOverANonArrayIsUndefined()
+        {
+            (await Probe("Service.IndexOverANonArrayIsUndefined", [.. Kinds, "[1,2]", "[]", "\"ab\""], "c.v[0]", "c.v[1]", "IS_DEFINED(c.v[0])", "c.v[0] = 1")).Should().Equal(
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U 1/U 1/U undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U 2/U undefined/U undefined/U",
+                "false/F false/F false/F false/F false/F false/F false/F false/F false/F true/T true/T false/F false/F",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U true/T true/T undefined/U undefined/U");
+        }
+
+        /// <summary><c>IN</c> is membership by the kind-strict equality, false over every value no member equals and undefined over an absent path alone.</summary>
+        [Fact, CosmosPins("Service.InIsMembership")]
+        public async Task InIsMembership()
+        {
+            (await Probe("Service.InIsMembership", Kinds, "c.v IN (\"bikes\", 30)", "c.v IN (true)", "c.v IN (null)")).Should().Equal(
+                "false/F false/F false/F undefined/U true/T false/F true/T false/F false/F false/F",
+                "true/T false/F false/F undefined/U false/F false/F false/F false/F false/F false/F",
+                "false/F false/F true/T undefined/U false/F false/F false/F false/F false/F false/F");
+        }
+
+        /// <summary>The affixes and <c>LIKE</c> are undefined over every value that is no string, and true or false over a string.</summary>
+        [Fact, CosmosPins("Service.StringPredicatesOverNonStringsAreUndefined")]
+        public async Task TheStringPredicatesOverNonStringsAreUndefined()
+        {
+            (await Probe("Service.StringPredicatesOverNonStringsAreUndefined", Kinds, "STARTSWITH(c.v, \"b\")", "ENDSWITH(c.v, \"e\")", "CONTAINS(c.v, \"r\")", "c.v LIKE \"b%\"", "STARTSWITH(c.v, \"3\")", "c.v LIKE \"3%\"")).Should().Equal(
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U true/T false/F undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U false/F true/T undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U false/F true/T undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U true/T false/F undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U false/F false/F undefined/U undefined/U",
+                "undefined/U undefined/U undefined/U undefined/U undefined/U undefined/U false/F false/F undefined/U undefined/U");
+        }
+
+        /// <summary>
+        /// Each arithmetic operator by a typed name, as Calcite computes it over a value read as that type and as the
+        /// service writes it; <c>/</c> twice, by two and by zero.
+        /// </summary>
+        internal static readonly CosmosFunctionSpelling[] Arithmetic =
+        [
+            .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL(19, 2)", "DOUBLE" }
+               let x = $"CAST(s AS {type})"
+               let name = type.Split('(')[0]
+               from f in new[] { ("+", $"{x} + CAST(1 AS {type})", "s + 1"), ("-", $"{x} - CAST(1 AS {type})", "s - 1"), ("*", $"{x} * CAST(2 AS {type})", "s * 2"),
+                                 ("/", $"{x} / CAST(2 AS {type})", "s / 2"), ("/", $"{x} / CAST(0 AS {type})", "s / 0"), ("%", $"MOD({x}, CAST(2 AS {type}))", "s % 2") }
+               select new CosmosFunctionSpelling(f.Item1 + ":" + name, FunctionKey.Every, f.Item2, f.Item3),
+        ];
+
+        /// <summary>The witnesses of the arithmetic keys: numbers at 2^31 - 1, 2^53 and 2^63 - 1, near 1e308, negative and fractional; and a value of each other kind.</summary>
+        internal static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] ArithmeticWitnesses =
+        [
+            (CosmosValueClass.Number, JsonCharacterBand.None, ["7", "-7", "2147483647", "9007199254740992", "9223372036854775807", "1e308", "0.1", "7.5"]),
+            (CosmosValueClass.String, JsonCharacterBand.None, ["\"1\""]),
+            (CosmosValueClass.True, JsonCharacterBand.None, ["true"]),
+            (CosmosValueClass.Null, JsonCharacterBand.None, ["null"]),
+            (CosmosValueClass.Absent, JsonCharacterBand.None, [null]),
+            (CosmosValueClass.Object, JsonCharacterBand.None, ["{\"x\":1}"]),
+            (CosmosValueClass.Array, JsonCharacterBand.None, ["[1]"]),
+        ];
+
+        /// <summary>
+        /// The service adds, subtracts and multiplies integers exactly while the result fits int64, past 2^31 and 2^53,
+        /// and in doubles past it, where Calcite's INTEGER and BIGINT wrap; it divides in doubles; a result JSON cannot
+        /// hold, an infinity, fails the statement; and over anything but a number each is undefined. Then each typed
+        /// operator against Calcite's, as the row records or better.
+        /// </summary>
+        [Fact, CosmosPins("Service.IntegerArithmeticIsExactWithinLong")]
+        public async Task IntegerArithmeticIsExactWithinLong()
+        {
+            using var scope = new FluentAssertions.Execution.AssertionScope();
+            const string row = "Service.IntegerArithmeticIsExactWithinLong";
+            (await Probe(row, ["2147483647", "9007199254740992", "9223372036854775807", "1e308", "0.1", "\"1\"", "true", "null", null],
+                "c.v - 1", "c.v * 2", "c.v + 1 = 2147483648", "c.v + 1 = 9007199254740993", "c.v + 1 > 9223372036854775807", "c.v / 0")).Should().Equal(
+                "2147483646/U 9007199254740991/U 9223372036854775806/U 1E+308/U -0.9/U undefined/U undefined/U undefined/U undefined/U",
+                "4294967294/U 18014398509481984/U 1.8446744073709552E+19/U !/U 0.2/U undefined/U undefined/U undefined/U undefined/U",
+                "true/T false/F false/F false/F false/F undefined/U undefined/U undefined/U undefined/U",
+                "false/F true/T false/F false/F false/F undefined/U undefined/U undefined/U undefined/U",
+                "false/F false/F true/T true/T false/F undefined/U undefined/U undefined/U undefined/U",
+                "!/U !/U !/U !/U !/U undefined/U undefined/U undefined/U undefined/U");
+
+            var measured = await CosmosFunctionComparison.Measure(_container!, _unavailable, row, Arithmetic, ArithmeticWitnesses);
+            CosmosFunctionComparison.Unsound(measured, CosmosAxioms.Get(row).FunctionOutcomes!, Answering).Should().BeEmpty();
+        }
+
+        /// <summary>A number reads back, compares and tests as the service holds it: exactly as an int64 written without a point, and written with one as a double on the emulator and as an int64 where it is one on Azure.</summary>
+        [Fact, CosmosPins("Service.IntegralNumbersReadBackAsHeld")]
+        public async Task IntegralNumbersReadBackAsHeld()
+        {
+            (await Probe("Service.IntegralNumbersReadBackAsHeld", ["30", "30.0", "3e1", "300e-1", "-0", "-0.0", "1e20", "1E21", "9007199254740993", "9007199254740993.0", "1.5e300"], "c.v", "c.v = 30", "IS_INTEGER(c.v)")).Should().Equal(
+                "30/U 30/U 30/U 30/U 0/U 0/U 1E+20/U 1E+21/U 9007199254740993/U " + (Answering == CosmosAxiomTarget.Emulator ? "9007199254740992" : "9007199254740993") + "/U 1.5E+300/U",
+                "true/T true/T true/T true/T false/F false/F false/F false/F false/F false/F false/F",
+                "true/T true/T true/T true/T true/T true/T false/F false/F true/T true/T false/F");
         }
 
     }

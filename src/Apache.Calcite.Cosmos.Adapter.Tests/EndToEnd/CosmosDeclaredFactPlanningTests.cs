@@ -360,7 +360,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// Over a path declared an integer the cast is the value itself, and S sends the comparison whole, where the
         /// translator pushed its window beneath a residual. Where nothing says so, the comparison is one through a cast,
-        /// which S weakens to the path's presence (O7's listed loss until Stage 3's guarded spelling).
+        /// which S weakens to the guarded comparison since the switch (h15): the number compared where the path holds one,
+        /// and anything else the cast may parse kept, where it sent the path's presence before (O7's listed loss).
         /// </remarks>
         [Fact]
         public void ADeclaredTypeDeletesTheGuardThatAdmittedTheOtherTypes()
@@ -376,18 +377,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             with.Sql.Should().EndWith("WHERE (c.n = @p0)", "the cast of an integer is the integer");
 
             var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
-            without.Sql.Should().EndWith("WHERE IS_DEFINED(c.n)", "where nothing says so, the cast may parse a string");
+            without.Sql.Should().EndWith("WHERE (IS_DEFINED(c.n) AND (NOT IS_NUMBER(c.n) OR (c.n = @p0)))", "where nothing says so, the cast may parse a string");
         }
 
         /// <summary>
-        /// And a declared presence deletes the definedness test: the presence S sends for a comparison through a cast
-        /// restricts nothing where every document holds the path.
+        /// And a declared presence deletes the definedness test: the presence S sends beside the guarded comparison of a
+        /// comparison through a cast restricts nothing where every document holds the path.
         /// </summary>
         [Fact]
         public void ADeclaredPresenceDeletesTheDefinednessTest()
         {
             // required without a type: presence known, kind not, so the cast may parse a string and the comparison
-            // weakens to the path's presence, which the declaration makes vacuous.
+            // weakens to its guarded comparison and the path's presence, which the declaration makes vacuous.
             const string Present = """{ "required": ["n"] }""";
 
             var declared = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))
@@ -396,10 +397,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
 
             var with = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
-            with.Sql.Should().NotContain("WHERE", "nothing lacks the path: " + with.Sql);
+            with.Sql.Should().EndWith("WHERE (NOT IS_NUMBER(c.n) OR (c.n = @p0))", "nothing lacks the path: " + with.Sql);
 
             var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
-            without.Sql.Should().EndWith("WHERE IS_DEFINED(c.n)");
+            without.Sql.Should().EndWith("WHERE (IS_DEFINED(c.n) AND (NOT IS_NUMBER(c.n) OR (c.n = @p0)))");
         }
 
         /// <summary>

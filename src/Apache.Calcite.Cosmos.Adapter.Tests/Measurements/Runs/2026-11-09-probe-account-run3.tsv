@@ -1,0 +1,789 @@
+# What the probe account answered on 2026-11-09 (run 3), line by line: the two tests of
+# CosmosStringFunctionMeasurementTests that run 1 and run 2 left short on Azure, each line as its pinning test logged it
+# (CosmosWitnessProbe) before any assertion, the release column Azure. EachStringFunctionAnswersItsRowByBand sent every
+# spelling of its Functions over its 26 witnesses: run 1's 16 again, and the 11 after them, which hold a search, a
+# replacement and a window's length of 0 and below 0 as operands, and a concatenation's and a repetition's literals
+# holding U+0000 and U+FDD0. CaseMappingOverCasedLetters sent run 2's cased letters again beside a capital and a small
+# letter of each supplementary script Unicode cased after Java 8's tables that run 2 had not sent, Warang Citi, Old
+# Hungarian, Vithkuqi and Garay, and Deseret's OI, of Unicode 4.0. A function's answer is the projection; unanswered is
+# a statement the service left unanswered twice over that witness alone, which measures nothing.
+#
+# feature/stage3-where at 7344642 with this commit's cased letters and the probe's second asking of a statement left
+# unanswered, Release, net10.0, one database at 400 RU/s deleted when the class ended: 1,576.17 RU, 660.82 of them the
+# class's setup and cleanup. The case mapping passed. The string functions failed, as a run measuring keys no row yet
+# records on Azure does: their projection of every spelling went unanswered twice (503), so the probe asked each
+# spelling alone, and where LENGTH(c.v) and REPLACE("a0b1c", c.v, "x") went unanswered, each witness alone. Seven lines
+# went unanswered: LENGTH(c.v) over "a0b1c", which run 1 answered 5, and REPLACE("a0b1c", c.v, "x") over "a0b1c", "b",
+# "", "\u00001", 30 and 0.5. The probe as it ran wrote ! for each, its spelling then of a refusal and of a statement
+# unanswered twice alike; the account's metrics for the run count 71 queries answered and 21 answered 503, none refused
+# (400 or 500), so each is written unanswered here, as the probe now writes it.
+#
+# Of the 760 lines, the 464 run 1 or run 2 sent answer as they did but LENGTH(c.v) over "a0b1c", and 168 answer apart
+# from EN20261019, each where the row says the targets part: 23 of the case mapping's, run 2's 17 and 6 of Warang
+# Citi, Old Hungarian and Vithkuqi, which the emulator maps and Azure leaves as Java 8 does, both mapping Deseret's OI
+# and leaving Garay; run 1's 37 of the string functions' and the line above; and 107 of the spellings after them: a
+# U+0000 the emulator would make fails its statement where Azure answers (50, CONCAT 18, REPLICATE 26 and a
+# replacement 6), a U+FDD0 before a 0 or a 1 the emulator reads back as an escape's first unit (45, CONCAT 18,
+# REPLICATE 26 and a replacement 1), a search holding U+0000, which Azure reads to its first U+0000 and the emulator as
+# the longer string it stores (6), and the six of REPLACE("a0b1c", c.v, "x") unanswered.
+release	row	expression	witness	answer
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	unanswered
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"b"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	""	0
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a😀b0😀"	5
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"😀"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"😀x1"	3
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"ab0ﬀ"	5
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"﷐b1﷐"	4
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"ﬀ"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"aéb0ß"	5
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"İb1"	3
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"ß"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"\tab0\u000b"	5
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"\fb1\r"	4
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"\n"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a\u0000b0\u0000"	5
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"\u0000"	1
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"\u00001"	2
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"a0b1c"	"0b"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"b"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	""	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"a😀b0😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"😀"	"�"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"😀x1"	"�x"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"ab0ﬀ"	"b"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"﷐b1﷐"	"b1"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"ﬀ"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"aéb0ß"	"éb"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"İb1"	"b1"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"ß"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"\tab0\u000b"	"ab"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"\fb1\r"	"b1"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"a\u0000b0\u0000"	"\u0000b"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"\u0000"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	"\u00001"	"1"
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 2)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"a0b1c"	"a0"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	""	""
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"a😀b0😀"	"a�"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"😀x1"	"😀"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"ab0ﬀ"	"a"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"﷐b1﷐"	"﷐b"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"aéb0ß"	"aé"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"İb1"	"İb"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"\tab0\u000b"	"\ta"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"\fb1\r"	"\fb"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"a\u0000b0\u0000"	"a\u0000"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	LEFT(c.v, 2)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"a0b1c"	"1c"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	""	""
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"a😀b0😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"😀x1"	"x1"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"ab0ﬀ"	"0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"﷐b1﷐"	"1﷐"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"aéb0ß"	"0ß"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"İb1"	"b1"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"\tab0\u000b"	"0\u000b"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"\fb1\r"	"1\r"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"a\u0000b0\u0000"	"0\u0000"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	RIGHT(c.v, 2)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"a0b1c"	"A0B1C"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"b"	"B"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"a😀b0😀"	"A😀B0😀"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"😀x1"	"😀X1"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"ab0ﬀ"	"AB0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"﷐b1﷐"	"﷐B1﷐"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"aéb0ß"	"AÉB0ß"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"İb1"	"İB1"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"\tab0\u000b"	"\tAB0\u000b"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"\fb1\r"	"\fB1\r"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"a\u0000b0\u0000"	"A\u0000B0\u0000"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	UPPER(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"a0b1c"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"a😀b0😀"	"a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"ab0ﬀ"	"ab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"aéb0ß"	"aéb0ß"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"\tab0\u000b"	"\tab0\u000b"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"\fb1\r"	"\fb1\r"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	LOWER(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"a0b1c"	"axb1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"a😀b0😀"	"a😀bx😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"ab0ﬀ"	"abxﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"aéb0ß"	"aébxß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"\tab0\u000b"	"\tabx\u000b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"\fb1\r"	"\fb1\r"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "0", "x")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"a0b1c"	"a0bxc"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"a😀b0😀"	"a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"😀x1"	"😀xx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"ab0ﬀ"	"ab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"﷐b1﷐"	"﷐bx﷐"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"aéb0ß"	"aéb0ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"İb1"	"İbx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"\tab0\u000b"	"\tab0\u000b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"\fb1\r"	"\fbx\r"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "1", "x")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"a0b1c"	2
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"b"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	""	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"a😀b0😀"	5
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"😀"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"😀x1"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"ab0ﬀ"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"﷐b1﷐"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"ﬀ"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"aéb0ß"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"İb1"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"ß"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"\tab0\u000b"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"\fb1\r"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"\n"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"a\u0000b0\u0000"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"\u0000"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	"\u00001"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	30	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	true	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	false	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	null	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "0") + 1	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"a0b1c"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"b"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	""	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"a😀b0😀"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"😀"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"😀x1"	4
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"ab0ﬀ"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"﷐b1﷐"	3
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"ﬀ"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"aéb0ß"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"İb1"	3
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"ß"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"\tab0\u000b"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"\fb1\r"	3
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"\n"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"a\u0000b0\u0000"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"\u0000"	0
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	"\u00001"	2
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	30	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	true	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	false	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	null	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	INDEX_OF(c.v, "1") + 1	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"a0b1c"	"c1b0a"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"a😀b0😀"	"😀0b😀a"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"😀x1"	"1x😀"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"ab0ﬀ"	"ﬀ0ba"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"﷐b1﷐"	"﷐1b﷐"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"aéb0ß"	"ß0béa"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"İb1"	"1bİ"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"\tab0\u000b"	"\u000b0ba\t"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"\fb1\r"	"\r1b\f"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"a\u0000b0\u0000"	"\u00000b\u0000a"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	"\u00001"	"1\u0000"
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REVERSE(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"a0b1c"	"a0b1cz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"b"	"bz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	""	"z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"a😀b0😀"	"a😀b0😀z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"😀"	"😀z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"😀x1"	"😀x1z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"ab0ﬀ"	"ab0ﬀz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"﷐b1﷐"	"﷐b1﷐z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"ﬀ"	"ﬀz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"aéb0ß"	"aéb0ßz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"İb1"	"İb1z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"ß"	"ßz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"\tab0\u000b"	"\tab0\u000bz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"\fb1\r"	"\fb1\rz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"\n"	"\nz"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"a\u0000b0\u0000"	"a\u0000b0\u0000z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"\u0000"	"\u0000z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	"\u00001"	"\u00001z"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "z")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"a0b1c"	"a0b1ca0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"b"	"bb"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"a😀b0😀"	"a😀b0😀a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"😀"	"😀😀"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"😀x1"	"😀x1😀x1"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"ab0ﬀ"	"ab0ﬀab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"﷐b1﷐"	"﷐b1﷐﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"ﬀ"	"ﬀﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"aéb0ß"	"aéb0ßaéb0ß"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"İb1"	"İb1İb1"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"ß"	"ßß"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"\tab0\u000b"	"\tab0\u000b\tab0\u000b"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"\fb1\r"	"\fb1\r\fb1\r"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"\n"	"\n\n"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"a\u0000b0\u0000"	"a\u0000b0\u0000a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"\u0000"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	"\u00001"	"\u00001\u00001"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(c.v, 2)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"a0b1c"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"a😀b0😀"	"a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"ab0ﬀ"	"ab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"aéb0ß"	"aéb0ß"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"\tab0\u000b"	"ab0"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"\fb1\r"	"b1"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	TRIM(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"a0b1c"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"a😀b0😀"	"a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"ab0ﬀ"	"ab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"aéb0ß"	"aéb0ß"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"\tab0\u000b"	"ab0\u000b"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"\fb1\r"	"b1\r"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	LTRIM(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"a0b1c"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	""	""
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"a😀b0😀"	"a😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"ab0ﬀ"	"ab0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"aéb0ß"	"aéb0ß"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"\tab0\u000b"	"\tab0"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"\fb1\r"	"\fb1"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"a\u0000b0\u0000"	"a\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	RTRIM(c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	""	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a😀b0😀"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"😀"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"😀x1"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ab0ﬀ"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"﷐b1﷐"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ﬀ"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"aéb0ß"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"İb1"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"ß"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\tab0\u000b"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\fb1\r"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\n"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a\u0000b0\u0000"	"x"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u0000"	"xxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	30	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	0.5	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a0b1c"	"a0a0b1c1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"b"	"a0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	""	"a01c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a😀b0😀"	"a0a😀b0😀1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"😀"	"a0😀1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"😀x1"	"a0😀x11c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ab0ﬀ"	"a0ab0ﬀ1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"﷐b1﷐"	"a0﷐b1﷐1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ﬀ"	"a0ﬀ1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"aéb0ß"	"a0aéb0ß1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"İb1"	"a0İb11c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"ß"	"a0ß1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\tab0\u000b"	"a0\tab0\u000b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\fb1\r"	"a0\fb1\r1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\n"	"a0\n1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"a\u0000b0\u0000"	"a0a\u0000b0\u00001c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\u0000"	"a0\u00001c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	"\u00001"	"a0\u000011c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", "b", c.v)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a0b1c"	"xxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"b"	"x"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a😀b0😀"	"xxxxxxxxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"😀"	"xxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"😀x1"	"xxxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ab0ﬀ"	"xxxxxxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"﷐b1﷐"	"xxxxxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ﬀ"	"xxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"aéb0ß"	"xxxxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"İb1"	"xxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"ß"	"xx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\tab0\u000b"	"xxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\fb1\r"	"xxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\n"	"x"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"a\u0000b0\u0000"	"xxxxx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\u0000"	"x"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	"\u00001"	"xx"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "\u0000", "x")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a0b1c"	"\u00000b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a😀b0😀"	"\u0000😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ab0ﬀ"	"\u0000b0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"aéb0ß"	"\u0000éb0ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\tab0\u000b"	"\t\u0000b0\u000b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\fb1\r"	"\fb1\r"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"a\u0000b0\u0000"	"\u0000\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\u0000")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a0b1c"	"﷐0b1c"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"b"	"b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	""	""
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a😀b0😀"	"﷐😀b0😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"😀"	"😀"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"😀x1"	"😀x1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ab0ﬀ"	"﷐b0ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"﷐b1﷐"	"﷐b1﷐"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ﬀ"	"ﬀ"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"aéb0ß"	"﷐éb0ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"İb1"	"İb1"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"ß"	"ß"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\tab0\u000b"	"\t﷐b0\u000b"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\fb1\r"	"\fb1\r"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\n"	"\n"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"a\u0000b0\u0000"	"﷐\u0000b0\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\u0000"	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	"\u00001"	"\u00001"
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLACE(c.v, "a", "\uFDD0")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a0b1c"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"b"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	""	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a😀b0😀"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"😀"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"😀x1"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ab0ﬀ"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"﷐b1﷐"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ﬀ"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"aéb0ß"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"İb1"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"ß"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\tab0\u000b"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\fb1\r"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"a\u0000b0\u0000"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\u0000"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	"\u00001"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, 0)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a0b1c"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"b"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	""	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a😀b0😀"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"😀"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"😀x1"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ab0ﬀ"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"﷐b1﷐"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ﬀ"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"aéb0ß"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"İb1"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"ß"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\tab0\u000b"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\fb1\r"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\n"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"a\u0000b0\u0000"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\u0000"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	"\u00001"	""
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	30	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	true	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	false	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	null	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	SUBSTRING(c.v, 1, -1)	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a0b1c"	"a0b1c\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"b"	"b\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	""	"\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a😀b0😀"	"a😀b0😀\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"😀"	"😀\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"😀x1"	"😀x1\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ab0ﬀ"	"ab0ﬀ\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"﷐b1﷐"	"﷐b1﷐\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ﬀ"	"ﬀ\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"aéb0ß"	"aéb0ß\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"İb1"	"İb1\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"ß"	"ß\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\tab0\u000b"	"\tab0\u000b\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\fb1\r"	"\fb1\r\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\n"	"\n\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"a\u0000b0\u0000"	"a\u0000b0\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\u0000"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	"\u00001"	"\u00001\u0000"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\u0000")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a0b1c"	"a0b1c﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"b"	"b﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	""	"﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a😀b0😀"	"a😀b0😀﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"😀"	"😀﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"😀x1"	"😀x1﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ab0ﬀ"	"ab0ﬀ﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"﷐b1﷐"	"﷐b1﷐﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ﬀ"	"ﬀ﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"aéb0ß"	"aéb0ß﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"İb1"	"İb1﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"ß"	"ß﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\tab0\u000b"	"\tab0\u000b﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\fb1\r"	"\fb1\r﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\n"	"\n﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"a\u0000b0\u0000"	"a\u0000b0\u0000﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\u0000"	"\u0000﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	"\u00001"	"\u00001﷐1"
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	30	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	0.5	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	true	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	false	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	null	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	absent	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	{"x":"a"}	undefined
+Azure	Service.StringFunctionAnswersByBand	CONCAT(c.v, "\uFDD0", "1")	["a"]	undefined
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a0b1c"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"b"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	""	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a😀b0😀"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"😀"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"😀x1"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ab0ﬀ"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"﷐b1﷐"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ﬀ"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"aéb0ß"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"İb1"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"ß"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\tab0\u000b"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\fb1\r"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\n"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"a\u0000b0\u0000"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\u0000"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	"\u00001"	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	30	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	0.5	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	true	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	false	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	null	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	absent	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	{"x":"a"}	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE("\u0000", 2)	["a"]	"\u0000\u0000"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a0b1c"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"b"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	""	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a😀b0😀"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"😀"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"😀x1"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ab0ﬀ"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"﷐b1﷐"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ﬀ"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"aéb0ß"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"İb1"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"ß"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\tab0\u000b"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\fb1\r"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\n"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"a\u0000b0\u0000"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\u0000"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	"\u00001"	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	30	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	0.5	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	true	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	false	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	null	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	absent	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	{"x":"a"}	"﷐0﷐0"
+Azure	Service.StringFunctionAnswersByBand	REPLICATE(CONCAT("\uFDD0", "0"), 2)	["a"]	"﷐0﷐0"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aBc"	"ABC"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐐨𐐀"	"𐐀𐐀"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"a𐐀b"	"A𐐀B"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐒰𐓘"	"𐒰𐓘"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𞤀𞤢"	"𞤀𞤢"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𖹀𖹠"	"𖹀𖹠"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐐦𐑎"	"𐐦𐐦"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𑢠𑣀"	"𑢠𑣀"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐲀𐳀"	"𐲀𐳀"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐕰𐖗"	"𐕰𐖗"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"𐵐𐵰"	"𐵐𐵰"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ａａ"	"ＡＡ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ﬓ"	"ﬓ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"aÉb"	"AÉB"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ÿ"	"Ÿ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"µ"	"µ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΟΔΟΣ"	"ΟΔΟΣ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ς"	"ς"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ΐ"	"ΐ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"İ"	"İ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ı"	"ı"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ß"	"ß"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ẞ"	"ẞ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ǅ"	"ǅ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ꭰ"	"Ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ꭰ"	"ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"ა"	"ა"
+Azure	Service.CaseMappingOverCasedLetters	UPPER(c.v)	"Ა"	"Ა"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aBc"	"abc"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐐨𐐀"	"𐐨𐐨"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"a𐐀b"	"a𐐨b"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐒰𐓘"	"𐒰𐓘"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𞤀𞤢"	"𞤀𞤢"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𖹀𖹠"	"𖹀𖹠"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐐦𐑎"	"𐑎𐑎"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𑢠𑣀"	"𑢠𑣀"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐲀𐳀"	"𐲀𐳀"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐕰𐖗"	"𐕰𐖗"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"𐵐𐵰"	"𐵐𐵰"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ａａ"	"ａａ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬀ"	"ﬀ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ﬓ"	"ﬓ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"aÉb"	"aéb"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ÿ"	"ÿ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"µ"	"µ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΟΔΟΣ"	"οδοσ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ς"	"ς"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ΐ"	"ΐ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"İ"	"İ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ı"	"ı"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ß"	"ß"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ẞ"	"ẞ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ǅ"	"ǅ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ꭰ"	"Ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ꭰ"	"ꭰ"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"ა"	"ა"
+Azure	Service.CaseMappingOverCasedLetters	LOWER(c.v)	"Ა"	"Ა"

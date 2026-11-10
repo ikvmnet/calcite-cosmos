@@ -29,6 +29,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Text the reader could not read into a shape.</summary>
         Opaque,
 
+        /// <summary>The ternary <c>c ? a : b</c>, its members the condition and the two arms.</summary>
+        Choose,
+
+        /// <summary>A path compared with another path (h11): <see cref="ServiceForm.Path"/> against <see cref="ServiceForm.Right"/>.</summary>
+        ComparePaths,
+
+        /// <summary>A path matched against a literal: <c>STARTSWITH</c>, <c>ENDSWITH</c>, <c>CONTAINS</c> or <c>LIKE</c>, its test the one asked.</summary>
+        Affix,
+
     }
 
 }

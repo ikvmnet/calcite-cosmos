@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void TheCastLiteralIsBound()
             {
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
+                var translator = TranslatorRendering.Translator(_rex, _fields, parameters, JsonFactSet.Empty);
                 var distance = _rex.makeCall(CosmosOperators.VectorDistance, Path(), Path());
 
                 translator.Translate(_rex.makeCall(SqlStdOperatorTable.LESS_THAN, distance, Bound(0.5)));

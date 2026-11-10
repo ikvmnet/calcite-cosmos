@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 namespace Apache.Calcite.Cosmos.Facts.Saturation
@@ -77,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             Graph = graph;
             Json = json;
-            Ir = new PredicateVocabulary(graph);
+            Ir = new PredicateVocabulary(graph, json.Paths, json.Readings);
 
             var local = new TableOptions { Lift = false };
             var analysis = new TableOptions { Role = TableRole.Analysis };
@@ -91,6 +93,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             AlwaysTrue = graph.DefineRelation<Pred>("always true");
             AlwaysFalse = graph.DefineRelation<Pred>("always false");
             NeverTrue = graph.DefineRelation<Pred>("never true");
+            Inexact = graph.DefineRelation<Pred>("inexact", analysis);
 
             // A value's characters: the facts graph's alone; the call terms they read are the vocabulary's.
             ValueChars = graph.DefineFunction<Val, ValueSet<string>>("value chars", ValueLattice.Intersect<string>());
@@ -100,11 +103,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             Establish = graph.DefineRuleset("establish");
             Decide = graph.DefineRuleset("decide");
+            Exactness = graph.DefineRuleset("exactness");
             Characters = graph.DefineRuleset("characters");
 
             DefineEstablish();
             DefineSplit();
             DefineDecide();
+            DefineExactness();
             DefineCharacters();
 
             // A question of a value's characters is asked in a context made for it, which assumes nothing: it reads the
@@ -132,11 +137,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var inArm = Schedule.Saturate(settle, Schedule.Split(arms, settle), Schedule.Split(json.QuerySplit, settle));
             var inDiscriminator = Schedule.Saturate(settle, Schedule.Split(json.QuerySplit, settle));
             QuerySaturation = Schedule.Saturate(settle, Schedule.Split(arms, inArm), Schedule.Split(json.QuerySplit, inDiscriminator));
-            Saturation = Schedule.Sequence(QuerySaturation, Schedule.Saturate(Decide));
+            Saturation = Schedule.Sequence(QuerySaturation, Schedule.Saturate(Decide, Exactness));
 
             // A context that assumes nothing learns nothing a split could prove that its parent's split has not lifted:
             // it reads its new terms, the paths they mention, and the verdicts.
-            Answer = Schedule.Sequence(Schedule.Saturate(json.Json, json.JsonSchema, Analyse), Schedule.Saturate(Decide));
+            Answer = Schedule.Sequence(Schedule.Saturate(json.Json, json.JsonSchema, Analyse), Schedule.Saturate(Decide, Exactness));
         }
 
         public EGraph Graph { get; }
@@ -190,6 +195,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Relation<Pred> NeverTrue { get; }
 
         /// <summary>
+        /// The predicate holds an atom the facts graph reads otherwise than Calcite (<see cref="PredicateAtom.ReadExactly"/>):
+        /// a stratum assuming it may say of the documents what is not so, and a statement's later rounds rest on none
+        /// (<c>StatementTerms.ReadsExactly</c>). Of the terms and the root's rows alone, alike in every context.
+        /// </summary>
+        public Relation<Pred> Inexact { get; }
+
+        /// <summary>
         /// If the value is a string, the classes its characters may be in: the theory's <c>chars</c>, said of a value
         /// rather than a path. A conjunction meets two, as it meets a path's.
         /// </summary>
@@ -215,6 +227,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>What the facts say of a predicate: one stratum, run after they settle.</summary>
         public Ruleset Decide { get; }
+
+        /// <summary>Which predicates hold an atom read otherwise than Calcite reads it (<see cref="Inexact"/>), run beside <see cref="Decide"/>.</summary>
+        public Ruleset Exactness { get; }
 
         /// <summary>The split over the arms of a junction that takes the truth value its arms decide.</summary>
         public SplitRule ByArm { get; private set; } = null!;
@@ -277,44 +292,50 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Establish.DefineRule("an atom that takes a truth value only where its path is there says it is there", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).IsPresent);
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).IsPresent);
                 r.Then(json.Present.Of(p));
             });
             Establish.DefineRule("an atom that takes a truth value says what types its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Types.Count < JsonValues.AllTypes.Count);
-                r.Then(json.Types.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Types)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Types.Count < JsonValues.AllTypes.Count);
+                r.Then(json.Types.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Types)));
             });
             Establish.DefineRule("an atom that takes a truth value says what values its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Values is not null);
-                r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Values!)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Values is not null);
+                r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Values!)));
             });
             Establish.DefineRule("an atom that takes a truth value says how small a number its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Lower is not null);
-                r.Then(json.Lo.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Lower!.Value)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Lower is not null);
+                r.Then(json.Lo.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Lower!.Value)));
             });
             Establish.DefineRule("an atom that takes a truth value says how large a number its path may hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a));
-                r.Where(a, t, (atom, truth) => atom.Kept(truth).Upper is not null);
-                r.Then(json.Hi.Of(p).Is(Compute.Of(a, t, (atom, truth) => atom.Kept(truth).Upper!.Value)));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Upper is not null);
+                r.Then(json.Hi.Of(p).Is(Compute.Of(a, t, w, (atom, truth, table) => atom.Kept(truth, table).Upper!.Value)));
             });
             Establish.DefineRule("an atom that takes a truth value says which of its points its path does not hold", r =>
             {
                 var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
                 var v = r.Var<string>("v");
-                r.When(Holds.Of(e, t), Atom.Of(e, p, a), Point.Of(e, v));
-                r.Where(a, t, v, (atom, truth, point) => atom.Kept(truth).Excluded.Contains(point));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), Point.Of(e, v), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, t, v, w, (atom, truth, point, table) => atom.Kept(truth, table).Excluded.Contains(point));
                 r.Then(json.Ne.Of(p, v));
             });
 
@@ -351,14 +372,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds the
-        /// path's, a literal its own, and a call what it draws from its operands, by <see cref="StringCalls"/>. A parameter
-        /// and a call of a function the table does not name hold anything: no row is stated of them.
+        /// path's, through its column too, as does its cast to text where the path holds a kind the cast's row names
+        /// (<see cref="JsonRules.CastsToText"/>); a literal its own; and a call what it draws from its operands, by the rows
+        /// of <see cref="StringCalls"/> the root holds (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>).
+        /// A parameter and a call of a function no row names hold anything: no row is stated of them.
         /// </summary>
         /// <remarks>
         /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
-        /// a call draws from an operand on is the image of that operand's classes, where the function reads it, beside
-        /// what it draws from the operands after it. Every row only narrows, as the characters of what is read narrow, so
-        /// the run terminates over the terms it was given.
+        /// a call draws from an operand on is the image of that operand's classes, where its function's row names the
+        /// operand or every one, beside what it draws from the operands after it, and what it draws from the rest alone where
+        /// the row names neither. Every row only narrows, as the characters of what is read narrow, so the run terminates
+        /// over the terms it was given.
         /// </remarks>
         void DefineCharacters()
         {
@@ -378,14 +402,44 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
+
+            // A reading written apart, a field's, an item's, a cast's to ANY, is the value its reading is (h15b).
+            Characters.DefineRule("a reading written apart holds its reading's characters", r =>
+            {
+                var (v, w) = r.Vars<Val, Val>("v", "w");
+                var f = r.Var<string>("f");
+                var c = r.Var<ValueSet<string>>("c");
+                r.When(v.Is(ir.Apart.Of(f, w)), c.Is(ValueChars.Of(w)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+
+            // The value read through the column a loading that reads places names is the same value (rawtyped): what S's
+            // computed places and the translator's bridge ask of a call over one. F's statements never write one.
+            Characters.DefineRule("the value a path holds, read through its column, holds the path's characters", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
+                var n = r.Var<string>("n");
+                r.When(v.Is(ir.RawIn.Of(p, n)), c.Is(json.Chars.Of(p)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+
+            // Which casts write a value as text, and of which kinds, are the root's rows (StringCalls.TextCasts): a scalar's
+            // text holds its own characters, an object's the JSON of everything in it, which nothing here bounds.
             Characters.DefineRule("the cast to text of a scalar a path holds holds the path's characters", r =>
             {
-                // A number, a boolean or a string cast to text is digits, letters and signs or the string itself; an object
-                // or an array is the JSON text of everything in it, which nothing here bounds.
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
-                var (t, c, k) = r.Vars<string, ValueSet<string>, ValueSet<string>>("t", "c", "k");
-                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
-                r.Where(t, k, (target, types) => target is "VARCHAR" or "CHAR" && types.IsSubsetOf(JsonValues.Scalars));
+                var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+            Characters.DefineRule("the cast to text of a scalar a path holds, read through its column, holds the path's characters", r =>
+            {
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
+                var n = r.Var<string>("n");
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.RawIn.Of(p, n)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("a literal holds its own characters", r =>
@@ -395,11 +449,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(ValueChars.Of(v).Is(Compute.Of(s, value => JsonValues.CharactersOf(value))));
             });
 
-            Characters.DefineRule("a call of a function the theory reads walks its operands from the first", r =>
+            // The walk is the call's shape alone, an analysis of its terms; what it draws is the rows', joined below.
+            Characters.DefineRule("a call walks its operands from the first", r =>
             {
                 var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
                 r.When(v.Is(ir.Call.Of(f, a)));
-                r.Where(f, StringCalls.Knows);
                 r.Then(Walk.Of(v, 0L, a));
             });
             Characters.DefineRule("the walk steps past an operand", r =>
@@ -409,29 +463,45 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)));
                 r.Then(Walk.Of(v, Primitives.Add.Of(i, 1L), t));
             });
-            Characters.DefineRule("a call draws nothing past its last operand", r =>
+            Characters.DefineRule("a call of a function a row names draws nothing past its last operand", r =>
             {
-                var (v, a) = r.Vars<Val, Args>("v", "a");
-                var i = r.Var<long>("i");
-                r.When(Walk.Of(v, i, a), a.Is(ir.NoOperands.Of()));
+                var (v, a, x) = r.Vars<Val, Args, Args>("v", "a", "x");
+                var (i, f) = r.Vars<long, string>("i", "f");
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.NoOperands.Of()), v.Is(ir.Call.Of(f, x)), n.Is(json.CallDraws.Of(f)));
                 r.Then(Drawn.Of(v, a).Is(JsonValues.NoBand));
             });
-            Characters.DefineRule("a call draws nothing from an operand it does not read characters of", r =>
+            Characters.DefineRule("a call draws nothing from an operand its function's row names not, nor every one", r =>
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f, d) = r.Vars<long, Val, string, ValueSet<string>>("i", "h", "f", "d");
-                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), d.Is(Drawn.Of(v, t)));
-                r.Where(f, i, (function, operand) => StringCalls.Reads(function, operand) == false);
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), d.Is(Drawn.Of(v, t)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.IsEmpty<long>().Of(Primitives.Intersect<long>().Of(n,
+                    Primitives.Union<long>().Of(Primitives.Singleton<long>().Of(i), Primitives.Singleton<long>().Of(Rendering.FunctionKey.Every)))));
                 r.Then(Drawn.Of(v, a).Is(d));
             });
-            Characters.DefineRule("a call draws an operand's characters, as the function maps them", r =>
+            Characters.DefineRule("a call draws an operand its function's row names, as the function maps it", r =>
             {
                 var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
                 var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
                 var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
-                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)));
-                r.Where(f, i, StringCalls.Reads);
-                r.Then(Drawn.Of(v, a).Is(Compute.Of(f, c, d, StringCalls.Drawn)));
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(json.CallMaps.Of(f)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.Contains<long>().Of(n, i));
+                r.Then(Drawn.Of(v, a).Is(Compute.Of(c, m, d, StringCalls.Drawn)));
+            });
+            Characters.DefineRule("a call draws every operand of a function whose row names every one, as the function maps it", r =>
+            {
+                var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
+                var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
+                var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                var n = r.Var<ValueSet<long>>("n");
+                r.When(Walk.Of(v, i, a), a.Is(ir.Operand.Of(h, t)), v.Is(ir.Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)), m.Is(json.CallMaps.Of(f)), n.Is(json.CallDraws.Of(f)));
+                r.Where(Primitives.Contains<long>().Of(n, Rendering.FunctionKey.Every));
+                r.Then(Drawn.Of(v, a).Is(Compute.Of(c, m, d, StringCalls.Drawn)));
             });
             Characters.DefineRule("a call holds what it draws from its operands", r =>
             {
@@ -497,22 +567,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Decide.DefineRule("an atom true of everything its path may hold is always true", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.AlwaysTrue(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.AlwaysTrue(values, table));
                 r.Then(AlwaysTrue.Of(e));
             });
             Decide.DefineRule("an atom false of everything its path may hold is always false", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.AlwaysFalse(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.AlwaysFalse(values, table));
                 r.Then(AlwaysFalse.Of(e));
             });
             Decide.DefineRule("an atom true of nothing its path may hold is never true", r =>
             {
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.NeverTrue(values));
+                var w = r.Var<ReadingTable>("w");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()));
+                r.Where(a, x, w, (atom, values, table) => atom.NeverTrue(values, table));
                 r.Then(NeverTrue.Of(e));
             });
 
@@ -594,6 +667,57 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     r.Then(AlwaysTrue.Of(e));
                 });
             }
+        }
+
+        /// <summary>
+        /// Defines which predicates the facts graph reads otherwise than Calcite (<see cref="Inexact"/>): one holding an atom
+        /// whose reading the rows do not say it reads exactly beside its operand's class, and each connective holding one.
+        /// What a stratum assuming a predicate knows of the documents it learns from the predicate's atoms alone
+        /// (<see cref="DefineEstablish"/>), so a predicate holding none — a presence test, two readings compared, an opaque
+        /// term, a call no reading reads — is read as exactly as the stratum above it.
+        /// </summary>
+        void DefineExactness()
+        {
+            Exactness.DefineRule("an atom the facts graph reads otherwise than Calcite is read inexactly", r =>
+            {
+                var (e, p, a) = r.Vars<Pred, JPath, PredicateAtom>("e", "p", "a");
+                var x = r.Var<ValueSet<(string, CosmosValueClass)>>("x");
+                r.When(Atom.Of(e, p, a), x.Is(Json.Readings.ReadsExactly.Of()));
+                r.Where(a, x, (atom, exact) => atom.ReadExactly(exact) == false);
+                r.Then(Inexact.Of(e));
+            });
+
+            foreach (var left in new[] { true, false })
+            {
+                var side = left ? "left" : "right";
+                Exactness.DefineRule($"a conjunction whose {side} side is read inexactly is read inexactly", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    r.When(e.Is(And.Of(a, b)), Inexact.Of(left ? a : b));
+                    r.Then(Inexact.Of(e));
+                });
+                Exactness.DefineRule($"a disjunction whose {side} side is read inexactly is read inexactly", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    r.When(e.Is(Or.Of(a, b)), Inexact.Of(left ? a : b));
+                    r.Then(Inexact.Of(e));
+                });
+            }
+
+            Exactness.DefineRule("a negation of what is read inexactly is read inexactly", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                r.When(e.Is(Not.Of(a)), Inexact.Of(a));
+                r.Then(Inexact.Of(e));
+            });
+
+            foreach (var (part, name) in new[] { (0, "condition"), (1, "THEN"), (2, "ELSE") })
+                Exactness.DefineRule($"a CASE whose {name} is read inexactly is read inexactly", r =>
+                {
+                    var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                    r.When(e.Is(Ir.Case.Of(c, t, f)), Inexact.Of(part switch { 0 => c, 1 => t, _ => f }));
+                    r.Then(Inexact.Of(e));
+                });
         }
 
         /// <summary>

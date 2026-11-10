@@ -261,10 +261,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A type test is liftable, because <c>CosmosFunctionBodies</c> answers it in process and
         /// answers what the service answers — see <c>CosmosFunctionBodiesTests</c>. So the
         /// soft-delete shape issue #92 was really about, which asks <c>IS_NULL</c> rather than SQL's
-        /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query.
+        /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query. The test is of a
+        /// path the pinned half says nothing of, so it is a residual: one the pinned half implies leaves none (below).
         /// </remarks>
         [Fact]
         public void ATypeTestResidualIsLiftedBecauseItHasABody()
+        {
+            Use(SmallDocuments());
+
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(JSON_VALUE(c.\"DOC\", '$.name'))");
+
+            var query = Query(Find<CosmosFilter>(plan)!);
+
+            query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
+            query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
+            Text(plan).Should().Contain("ClrCursorFilter", "and finishes in process");
+        }
+
+        /// <remarks>
+        /// A type test of a declared field is no test the pinned half implies away. Calcite's in-process body takes only a
+        /// document accessor apart and raises over a field whatever it holds (<c>Calcite.TypeTestsAreTheirBodies</c>), and
+        /// the facts graph reads it so since the switch (h15, listed under the owner's reason of 2026-11-08: a filter Calcite
+        /// fails on every row fails as Calcite fails it): it is not deleted, as it was (h07), nor sent, and is held back
+        /// beside the read, where the statement fails as Calcite's does. The read is still the pinned half's.
+        /// </remarks>
+        [Fact]
+        public void ATypeTestOfAFieldThePinnedHalfImpliesIsHeldBackAsCalciteRaisesIt()
         {
             Use(SmallDocuments());
 
@@ -272,9 +294,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             var query = Query(Find<CosmosFilter>(plan)!);
 
-            query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
-            query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
-            Text(plan).Should().Contain("ClrCursorFilter", "and finishes in process");
+            query.PointReadId.Should().Be("x");
+            query.Sql.Should().NotContain("IS_STRING", "the service would answer where Calcite raises");
+            Text(plan).Should().Contain("ClrCursorFilter(condition=[IS_STRING($4)])", "it is Calcite's to raise, in process: " + Text(plan));
         }
 
         /// <remarks>

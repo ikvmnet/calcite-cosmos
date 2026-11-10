@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
@@ -78,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// An object, an array, a JSON null and an absent path all answer SQL null: the first two by
         /// the standard's error path, since neither is a scalar.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.JsonValueRendersScalarsAsText"), CosmosPins("Calcite.JsonValueReadsStructureAsNull")]
         public void TheBareAccessorRendersEveryScalarAsText()
         {
             var expected = new (string Json, string? Value)[]
@@ -109,6 +114,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             Ask("JSON_VALUE('{}', '$.v')").Value.Should().BeNull("an absent path answers null");
+
+            // What the two rows read into S say of each class (G5): a string itself, a number and a boolean rendered, and an
+            // object, an array, a null and an absent path null.
+            static IEnumerable<(CosmosValueClass, string)> Readings(string id) =>
+                (CosmosAxioms.All.Single(a => a.Id == id).CalciteReadings ?? []).Select(r => { r.Reader.Should().Be(PredicateAtom.TextReader); return (r.Kind, r.Answer); });
+            Readings("Calcite.JsonValueRendersScalarsAsText").Should().BeEquivalentTo([(CosmosValueClass.String, CosmosCalciteReading.Itself),
+                (CosmosValueClass.Number, CosmosCalciteReading.Renders), (CosmosValueClass.True, CosmosCalciteReading.Renders), (CosmosValueClass.False, CosmosCalciteReading.Renders)]);
+            Readings("Calcite.JsonValueReadsStructureAsNull").Should().BeEquivalentTo([(CosmosValueClass.Object, CosmosCalciteReading.Null),
+                (CosmosValueClass.Array, CosmosCalciteReading.Null), (CosmosValueClass.Null, CosmosCalciteReading.Null), (CosmosValueClass.Absent, CosmosCalciteReading.Null)]);
         }
 
         /// <summary>
@@ -154,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// for that reason.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.JsonQueryAnswersStructureOnly")]
         public void JsonQueryAnswersStructureOnlyAndWritesItCompactly()
         {
             const string Spaced = "'{\"v\": [ \"a\" ,   \"b\" ] , \"o\": { \"a\" : 1 }, \"s\": \"bikes\", \"n\": null }'";
@@ -293,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// rewriter answered with <c>FALSE</c>.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.ReturningDecimalParsesTheRendering")]
         public void ReturningDecimalParsesTheRendering()
         {
             Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "a string of digits is parsed");
@@ -480,7 +494,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
         /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
-        /// at the limit (<c>CosmosRexShapes.TryNumericCastOperand</c>). A double's parse reads every rendering of a
+        /// at the limit. A double's parse reads every rendering of a
         /// number. A string spelling a number is parsed as one, and anything else raises.
         /// </para>
         /// <para>
@@ -490,7 +504,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// the statement fails on.
         /// </para>
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.CastOfTheAccessorParsesTheRendering")]
         public void ACastOfTheAccessorToANumberParsesTheRendering()
         {
             Ask($"CAST(JSON_VALUE({Document("30")}, '$.v') AS INTEGER)").Value.Should().Be("30");
@@ -610,7 +624,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// ignoring case, so <c>"TRUE"</c> is true here and is a string at the service; and a number
         /// raises. Neither of those is the stored value, and only a declaration rules them out.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Calcite.CastToBooleanParses")]
         public void ACastToBooleanParsesTheRendering()
         {
             Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS BOOLEAN)").Value.Should().Be("True");
@@ -620,11 +634,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 answer => answer.Value == null && answer.Threw == null, "a JSON null is null");
             Ask("CAST(JSON_VALUE('{}', '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
                 answer => answer.Value == null && answer.Threw == null, "and so is an absent path");
+            foreach (var structure in new[] { "{\"a\":true}", "[true]" })
+                Ask($"CAST(JSON_VALUE({Document(structure)}, '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                    answer => answer.Value == null && answer.Threw == null, "and an object and an array, which the accessor reads as null");
 
             // What a declaration rules out.
             Ask($"CAST(JSON_VALUE({Document("\"TRUE\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "a string spelling a boolean is parsed, in any case");
             Ask($"CAST(JSON_VALUE({Document("\" false \"")}, '$.v') AS BOOLEAN)").Value.Should().Be("False", "and trimmed");
+            Ask($"CAST(JSON_VALUE({Document("\"\\tTRUE\\u0000\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "of every character up to U+0020, as String.trim trims");
+            Ask($"CAST(JSON_VALUE({Document("\"fal\\u017Fe\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("the case is ASCII's: a long s is no s");
+            Ask($"CAST(JSON_VALUE({Document("\"yes\"")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("and any other text raises");
             Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("a number raises");
+
+            // Standing alone, the null test of the cast is its operand's: FALSE over a string and a number it raises on.
+            Ask($"CAST(JSON_VALUE({Document("\"yes\"")}, '$.v') AS BOOLEAN) IS NULL").Value.Should().Be("False", "the null test is the accessor's");
+            Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN) IS NULL").Value.Should().Be("False", "over a number too");
         }
 
         /// <summary>

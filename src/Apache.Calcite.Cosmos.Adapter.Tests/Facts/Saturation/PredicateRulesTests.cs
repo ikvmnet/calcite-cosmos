@@ -1,5 +1,6 @@
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -56,13 +57,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void NothingIsExtractableAndTheRulesStayWithinTheirBudget()
         {
-            var rules = PredicateRules.Of(new JsonContexts());
+            var rules = PredicateRules.Of(new JsonContexts(CosmosReasoning.Rows));
 
-            new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque }
+            new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Box, rules.Ir.Query, rules.Ir.Apart, rules.Ir.Null, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(45);
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(76,
+                "the vocabulary's thirteen of G8, which both graphs read since h15, and h15b's ten of the element and the readings written apart among them");
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
+            rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
         }
 
         // What a predicate that holds establishes.
@@ -339,18 +342,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// A range the declared bounds satisfy is a tautology of the number, converted: through a cast of the raw value, or a
-        /// double's parse of the rendering. An integer's parse of the rendering raises on a stored <c>30.0</c> or
-        /// <c>3000000000</c>, which the declaration admits, so there it is decided neither way.
+        /// A range the declared bounds satisfy is a tautology of the number, converted by a double's parse of the rendering.
+        /// An integer's parse of the rendering raises on a stored <c>30.0</c> or <c>3000000000</c>, which the declaration
+        /// admits, so there it is decided neither way; and a cast of the raw value is decided neither way since h15b, being
+        /// each column's own, which no row measured (<c>measuredcast</c>): an <c>ANY</c> wraps a long beyond an int, so a
+        /// stored 2147483648 the bound admits casts to -2147483648
+        /// (<c>CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn</c>).
         /// </summary>
         [Fact]
         public void ARangeTheDeclaredBoundsSatisfyIsAlwaysTrue()
         {
             var scope = Declared(Theory(Outright(N, Present), Outright(N, Type(JsonType.Integer)), Outright(N, new JsonClaim.LowerBound(0m))));
 
-            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "an ANY wraps a stored 2147483648");
             scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
-            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
             scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
 
             scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");

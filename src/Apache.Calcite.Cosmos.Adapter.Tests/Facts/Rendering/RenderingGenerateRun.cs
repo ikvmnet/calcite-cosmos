@@ -57,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             (_graph, _sets, ReadExactly, RenderedFrom, Signature) = (graph ?? RenderingCheckRun.Measured, [.. sets ?? Sets], readExactly, renderedFrom, signature);
             Oracle = new RenderingOracle(_graph, remembered: 1 << 20, wait: Timeout.InfiniteTimeSpan);
-            Reasoning = new CosmosReasoning(new JsonFactGenerations(), Oracle, this);
+            Reasoning = new CosmosReasoning(new JsonFactGenerations(CosmosReasoning.Rows), Oracle, this);
         }
 
         /// <summary>The run's schema's oracle, over the run's graph: one bundle code path, production's.</summary>
@@ -115,7 +115,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var written = nodes.ToDictionary(n => n.Digest, n => bundle.Write(n, statement.Statement.Opaques));
             var answers = question.Roots.Select((r, i) => (r.Digest, Answer: bundle.ReadBest(terms[i]))).ToDictionary(a => a.Digest, a => a.Answer);
             var (indices, conjuncts) = (question.Conjuncts.ToList(), question.Conjuncts.Select(i => statement.Statement.Conjuncts[i]).ToList());
-            var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom) is var b
+            var stated = (import.Stated ?? []).Select(x => question.Beneath.First(b => b.Atom == x.Atom || x.Atom is SqlPredicate.Beneath { Stratum: var arm, Leaf: var leaf }
+                && b.Atom == leaf && b.Source.Arm is { } conditions && bundle.Strata.TryGetValue(arm, out var at) && RenderingBundle.KeyOf(at) == RenderingBundle.KeyOf(conditions)) is var b
                 ? new RenderingMemo.Beneath(indices.IndexOf(b.Conjunct), x.Atom, b.Source, x.Assumed, [.. b.Stratum.Assumes.Select(a => indices.IndexOf(a))]) : null!).ToList();
             var proposed = (Candidates: bundle.Failure is null ? (int)bundle.Scope.CountRows(bundle.Theory.Candidate) : 0,
                 Atoms: nodes.Count(n => n is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque)));
@@ -142,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 foreach (var row in bundle.Scope.Rows(bundle.Theory.Disagrees).Where(r => Verdict.Equal.Equals(r.Keys[3])))
                     if (nodes.FirstOrDefault(n => written[n.Digest].Id.Equals(row.Keys[0])) is { } atom && row.Output is Refutation refutation)
                         refuted.Add(new Refuted(atom, (RenderPosition)row.Keys[1], (ServiceForm)row.Keys[2], refutation,
-                            refutation.Cells.Select(c => cells[c]).ToDictionary(c => c.Path, c => c.Cell.Witness())));
+                            refutation.Cells.Select(c => cells[c]).SelectMany(c => RenderingCheckRun.Witnessed(c.Path, c.Cell)).DistinctBy(w => w.Path).ToDictionary(w => w.Path, w => w.Witness)));
             }
 
             var distinct = forms.Distinct().ToList();
@@ -153,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 1 => literals[0],
                 _ => ServiceForm.JunctionOf(CosmosServiceTest.And, literals),
             }, [.. conjuncts.Select(_ => (ServiceForm?)null)], stated, null, statement.DeclarationForCheck.Rules) : null;
-            var witnesses = bundle.Failure is null ? RenderingCheckRun.Cells(bundle).Values.Select(c => (c.Path, Witness: c.Cell.Witness())).ToList() : [];
+            var witnesses = bundle.Failure is null ? RenderingCheckRun.Cells(bundle).Values.SelectMany(c => RenderingCheckRun.Witnessed(c.Path, c.Cell)).ToList() : [];
             var generated = new Bundle(id, question.Set, run, bundle.Failure, question.Roots, answers, distinct, claim, elapsed.TotalMilliseconds, proposed, refuted, bundle.Iterations,
                 key, witnesses);
             if (_opened.TryAdd(key, generated))
@@ -250,6 +251,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             using var bundle = _graph.Open(set);
             var m = bundle.Write(made, opaques);
+
+            // The original is written beside it, so that its paths are spelled and the claim source A draws from carries their
+            // imports: one the rewrite made reading none of them, a tautology the declaration proves written TRUE, is otherwise
+            // judged over documents the declaration excludes (h15, where one reading writes the TRUE S now answers).
+            bundle.Write(original, statement.Statement.Opaques);
             RenderingImporter.Import(bundle, new ImportSource(statement.Statement.Digest, "declaration", 1), root.Context, root.Rules, statement.DeclarationForCheck, made.Paths.Concat(original.Paths));
             bundle.Generate(m);
             bundle.RunGenerate(RenderingBundle.WidthOf([made]));

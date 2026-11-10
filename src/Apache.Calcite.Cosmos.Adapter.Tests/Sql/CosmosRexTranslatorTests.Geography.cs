@@ -126,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 var parameter = _rex.makeDynamicParam(geometry, 0);
 
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
+                var translator = TranslatorRendering.Translator(_rex, _fields, parameters, JsonFactSet.Empty);
 
                 translator.Translate(_rex.makeCall(GeographyOperatorTable.ClrStGeogDistance, Geo(), _rex.makeAbstractCast(geometry, parameter)))
                     .Should().Be("ST_DISTANCE(c.location, @p0)");

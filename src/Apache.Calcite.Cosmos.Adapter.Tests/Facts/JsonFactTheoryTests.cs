@@ -233,6 +233,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// An element's segment, which the predicate loader alone asks for, round-trips: the statement's subscript is the
+        /// document path's index, unequal to a property named by its digits, spelled bare and encoded as the spec's index.
+        /// </summary>
+        [Fact]
+        public void AnIndexSegmentRoundTrips()
+        {
+            var element = JsonDocumentPath.Root.Property("tags").Element(0).Property("x");
+
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0).Property("x"), "c", elements: true).Should().Be(element);
+            element.Segments.Should().Equal("tags", 0L, "x");
+            element.HasElement.Should().BeTrue();
+            JsonDocumentPath.Root.Property("tags").Property("0").Property("x").Should().NotBe(element, "an index is no property named by its digits");
+            SqlValue.Spell(element).Should().Be("$[\"tags\"][0][\"x\"]");
+            JsonFactEncoding.Path(element).Should().Be(Cosmos.Facts.Saturation.JsonPathSpec.Root["tags"][0L]["x"]);
+            FluentActions.Invoking(() => element.Names).Should().Throw<System.InvalidOperationException>("a path holding an element has no names alone");
+        }
+
+        /// <summary>
         /// An integer is a number: a whole value, a domain of them, and the narrower type all establish
         /// <c>number</c>, and none of them excludes it. #217.
         /// </summary>
@@ -415,7 +433,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ATheoryAnswersAlikeInEveryGeneration()
         {
-            var generations = new JsonFactGenerations(internedLimit: 1);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, internedLimit: 1);
             var theory = new JsonFactTheory(new[] { new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) }, generations);
 
             var first = theory.Derive(new[] { Equals(Type, "ParkMap") });
@@ -441,8 +459,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         public void AGraphPastTheGaugeStartsTheNextGeneration()
         {
             var rules = new[] { JsonFactRule.Unconditional(Present(Type)), new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) };
-            var defined = new JsonFactGenerations().Current.Usage.FractionUsed;
-            var forced = new JsonFactGenerations(long.MaxValue, Math.BitIncrement(defined));
+            var defined = new JsonFactGenerations(CosmosReasoning.Rows).Current.Usage.FractionUsed;
+            var forced = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue, Math.BitIncrement(defined));
             var theory = new JsonFactTheory(rules, forced);
 
             var first = theory.Declaration()!;
@@ -451,7 +469,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             forced.Started.Should().Be(2, "the first generation was past the gauge, and the interned limit is never reached");
             first.Declared.Knows(Present(Type)).Should().BeTrue("a retired generation lives as long as an answer it gave");
 
-            var kept = new JsonFactGenerations(long.MaxValue);
+            var kept = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var again = new JsonFactTheory(rules, kept);
             again.Derive(new[] { Equals(Type, "ParkMap") });
             again.Derive(new[] { Equals(Type, "Park") });
@@ -469,7 +487,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var name = JsonDocumentPath.Root.Property("name");
             var absent = new JsonFact(name.Property("first"), new JsonClaim.OneOf(Array.Empty<JsonScalar>()));
             var declaration = new JsonFactTheory(new[] { JsonFactRule.Unconditional(Present(name)), JsonFactRule.Unconditional(new JsonFact(name, new JsonClaim.OfType(JsonType.String))) },
-                new JsonFactGenerations(long.MaxValue)).Declaration()!;
+                new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue)).Declaration()!;
 
             var ranOut = new JsonFactSet(new JsonScopeTables(declaration.Generation.Contexts.Rules, declaration.Context, owned: false,
                 mention: _ => throw new OverflowException("planted")), declaration.Vocabulary);

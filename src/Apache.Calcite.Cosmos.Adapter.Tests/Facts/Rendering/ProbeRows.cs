@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -32,11 +33,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static readonly System.Lazy<RenderingTheory> Probe = new(() => RenderingTheory.Define(Measured));
 
+        /// <summary>
+        /// S as measured from the rows given, with nothing the host names but the registry's rows of characters, which the
+        /// parted, sets and spell rules read (<see cref="RenderingDefinition.Parts"/> and its neighbours, F3 and G1), and of
+        /// readings, which the roles and pair rules read (<see cref="RenderingDefinition.WholeReadings"/> and its neighbours,
+        /// G2 and G3): the definition a test that plants rows starts from.
+        /// </summary>
+        public static RenderingDefinition Planted(IReadOnlyList<MeasuredOutcome> rows) => RenderingDefinition.Measured(rows, Measured.Casts) with
+        {
+            Parts = Measured.Parts,
+            Moves = Measured.Moves,
+            StoredAs = Measured.StoredAs,
+            Truncations = Measured.Truncations,
+            Folds = Measured.Folds,
+            Rewrites = Measured.Rewrites,
+            Unsent = Measured.Unsent,
+            WholeReadings = Measured.WholeReadings,
+            PairReadings = Measured.PairReadings,
+            ReaderOrders = Measured.ReaderOrders,
+            ReaderKinds = Measured.ReaderKinds,
+        };
+
         /// <summary>S defined from the registry, once a run.</summary>
         public static RenderingTheory ProbeTheory => Probe.Value;
 
-        /// <summary>The table S settles for the set CI asserts under.</summary>
-        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)));
+        /// <summary>The raw columns' truths S's rule joins from the registry's row (h12), which a raw reading's cells read.</summary>
+        public static RawTruths Columns => ProbeTheory.Theory.Get(ProbeTheory.RawUnion.Of());
+
+        /// <summary>Every reading's rows S's rules join from the registry's (G7), which Calcite's side of a cell evaluates a reading by.</summary>
+        public static ReadingTable ReaderRows => ProbeTheory.Theory.Get(ProbeTheory.ReaderRows.Of());
+
+        /// <summary>The table S settles for the set CI asserts under, with its pair table and the units its LIKE reads (G7).</summary>
+        public static ServiceTable Table => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(RenderingCheckRun.AssertedSet)), ReaderClasses,
+            ProbeTheory.Theory.Get(ProbeTheory.PairTable.Of(RenderingCheckRun.AssertedSet)), ProbeTheory.Theory.Get(ProbeTheory.LikesOf.Of(RenderingCheckRun.AssertedSet)));
+
+        /// <summary>The form a template proposes for an atom, its LIKE's pattern read by Calcite's rows as S's template rule reads it (G7).</summary>
+        public static ServiceForm Spell(TemplateId id, RenderPosition pos, PredicateAtom atom, string path) => RenderingTemplates.Spell(id, pos, RenderingTemplates.Read(atom, ReaderRows), path);
+
+        /// <summary>The tests and classes S found an entry's readers read (order comparators, affix matchers), derived from the registry's rows.</summary>
+        public static ValueSet<(CosmosServiceTest, CosmosValueClass)> ReaderClasses => ProbeTheory.Theory.Get(ProbeTheory.ReaderClasses.Of());
 
         public static readonly JsonDocumentPath LabelPath = P("label"), KindPath = P("kind"), CategoryPath = P("category"), MetadataPath = P("metadata"), FlagPath = P("flag");
 
@@ -61,9 +96,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public static readonly ServiceForm Guarded = ServiceForm.JunctionOf(CosmosServiceTest.And,
             [ServiceForm.TestOf(CosmosServiceTest.IsPrimitive, Label), ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Label)), Bare]);
 
-        /// <summary>A plant's table: one entry a key, holding every answer its rows give and every row's id.</summary>
-        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows) => ServiceTable.Of(ValueSet.From(rows.GroupBy(row => row.Key).Select(key =>
-            MeasuredEntry.Of(key.Key, ValueSet.From(key.Select(row => row.Answer)), ValueSet.From(key.Select(row => row.AxiomId)), AnswerMeanings.Measured))));
+        /// <summary>
+        /// A plant's table as S settles it, never as a test computes one: S defined from the rows given (<see cref="Planted"/>)
+        /// and viewed under a set (<see cref="RenderingTheory.View"/>). One entry a key every target the set serves measured,
+        /// holding their answers and rows, with the readers S's roles rules find; the key of a side that may fail where the
+        /// set settled every key it stands for, by S's failing rules; the classes the rows order placed; and the pair table.
+        /// </summary>
+        public static ServiceTable TableOf(IEnumerable<MeasuredOutcome> rows, RenderingSet set = RenderingSet.Emulator) => TableOf(Planted([.. rows]), set);
+
+        /// <summary>The table S settles under a set from a definition (<see cref="TableOf(IEnumerable{MeasuredOutcome}, RenderingSet)"/>), empty where it settled no key.</summary>
+        public static ServiceTable TableOf(RenderingDefinition definition, RenderingSet set)
+        {
+            var theory = RenderingTheory.Define(definition);
+            var table = ViewOf(theory, set) ?? ServiceTable.Of(ValueSet<MeasuredEntry>.Empty, theory.Theory.Get(theory.ReaderClasses.Of()));
+            GC.KeepAlive(theory);
+            return table;
+        }
+
+        /// <summary>Every set's table S settles from the rows given, where it settled any key.</summary>
+        public static IReadOnlyList<ServiceTable> TablesOf(IEnumerable<MeasuredOutcome> rows)
+        {
+            var definition = Planted([.. rows]);
+            var theory = RenderingTheory.Define(definition);
+            var tables = definition.Serves.Keys.Select(set => ViewOf(theory, set)).OfType<ServiceTable>().ToList();
+            GC.KeepAlive(theory);
+            return tables;
+        }
+
+        static ServiceTable? ViewOf(RenderingTheory theory, RenderingSet set) => theory.Theory.TryGet(theory.View.Of(set), out var view) ? view : null;
+
+        /// <summary>
+        /// Rows giving each key the answers listed, read under <see cref="RenderingSet.Portable"/>, which serves both targets: S
+        /// holds one answer a key on a target, so a key of two answers gives the emulator its first and Azure its second, and
+        /// a key of one answer both.
+        /// </summary>
+        public static IEnumerable<MeasuredOutcome> Portable(IEnumerable<(MeasuredKey Key, CosmosAnswer Answer)> answers) =>
+            from key in answers.GroupBy(each => each.Key, each => each.Answer)
+            let given = key.Distinct().ToList()
+            from target in given.Count <= 2 ? new[] { RenderingTarget.Emulator, RenderingTarget.Azure } : throw new ArgumentException($"{key.Key} is given {given.Count} answers, more than the two targets hold", nameof(answers))
+            select new MeasuredOutcome("Service.Planted", key.Key, target, given[target == RenderingTarget.Emulator ? 0 : given.Count - 1]);
 
         /// <summary>
         /// Checks a form claimed for a conjunct in a bundle of its own, every path imported as anything unless given, and

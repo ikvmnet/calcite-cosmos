@@ -16,17 +16,32 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class JsonContexts
     {
 
+        /// <param name="rows">The measured rows the root holds: what the service stores of a string written in a class, and
+        /// what each type test is TRUE of.</param>
         /// <param name="documentsAreObjects">Whether every document is an object, as every Cosmos DB item is.</param>
-        public JsonContexts(bool documentsAreObjects = true)
+        public JsonContexts(JsonRows rows, bool documentsAreObjects = true)
         {
             Graph = new EGraph();
             Rules = new JsonRules(Graph);
             Saturation = Rules.Settle;
 
-            // The rules of JSON hold everywhere: they are the graph's own, and the root is frozen with them.
+            // The rules of JSON hold everywhere: they are the graph's own, and the root is frozen with them, and with the
+            // rows they read: what the service stores, what each function Calcite computes makes of its operands, and what
+            // each type test is TRUE of, which the predicates' vocabulary reads once it is defined beneath (G7).
             var root = Graph.Root;
             if (documentsAreObjects)
                 root.Assume(Rules.Present.Of(Rules.Root.Of()), Rules.Types.Of(Rules.Root.Of()).Is(Types(ObjectType)));
+
+            ArgumentNullException.ThrowIfNull(rows);
+            root.Assume(Rules.StoredAs.Of().Is(ValueSet.From(rows.Stored)));
+            foreach (var (function, draws, maps) in StringCalls.Rows)
+                root.Assume(Rules.CallDraws.Of(function).Is(draws), Rules.CallMaps.Of(function).Is(maps));
+            foreach (var (target, kinds) in StringCalls.TextCasts)
+                root.Assume(Rules.CastsToText.Of(target).Is(kinds));
+
+            // What Calcite makes of each reading, as S's rules say from the same rows (G7), settled before the root freezes.
+            root.Assume([.. Rules.Readings.Facts(rows.Calcite, Rendering.KleeneTables.Reads, Rendering.KleeneTables.Compares)]);
+            root.Run(Schedule.Saturate(Rules.ReadingRules));
 
             root.Run(Saturation);
             root.Freeze();

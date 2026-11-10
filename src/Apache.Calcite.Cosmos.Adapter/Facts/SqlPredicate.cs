@@ -99,6 +99,57 @@ namespace Apache.Calcite.Cosmos.Facts
             protected override string Spell() => "(" + Value + " is defined)";
         }
 
+        /// <summary>
+        /// One of the service's <c>IS_*</c> tests but <c>IS_DEFINED</c>, of the path a value reads: what it asks is the
+        /// document's kind, true or false and never UNKNOWN (<c>Calcite.TypeTestsAreTheirBodies</c>), so the loader names
+        /// the raw value.
+        /// </summary>
+        public sealed record TypeTest(string Test, SqlValue Value) : SqlPredicate
+        {
+            protected override string Spell() => "(" + Test + " " + Value + ")";
+        }
+
+        /// <summary>
+        /// <c>CASE WHEN Condition THEN Then ELSE Else END</c> over predicates: TRUE, FALSE or UNKNOWN as the arm the first
+        /// TRUE condition takes, the else-arm where the condition is FALSE or UNKNOWN (<c>Calcite.CaseTakesTheFirstTrueArm</c>).
+        /// A <c>CASE</c> of more arms is one nested in its else-arm, and the truth tests and <c>COALESCE</c> are cases.
+        /// </summary>
+        public sealed record Case(SqlPredicate Condition, SqlPredicate Then, SqlPredicate Else) : SqlPredicate
+        {
+            protected override string Spell() => "case(" + Condition + ", " + Then + ", " + Else + ")";
+        }
+
+        /// <summary>
+        /// A match of the text a value reads against a literal pattern: <c>LIKE</c> with no <c>ESCAPE</c> written, each unit
+        /// of the pattern read as each target's rows read it (G7), a bracket among them, and a U+0000, Calcite's escape where
+        /// none is written, left unread by Calcite's (<c>Calcite.LikeEscapesByNul</c>).
+        /// </summary>
+        public sealed record Affix(string Op, SqlValue Value, string Pattern) : SqlPredicate
+        {
+            protected override string Spell() => "(" + Value + " " + Op + " " + SqlValue.Quote(Pattern) + ")";
+        }
+
+        /// <summary>A truth value: TRUE, FALSE, or UNKNOWN for <c>null</c>.</summary>
+        public sealed record Constant(bool? Truth) : SqlPredicate
+        {
+
+            /// <summary>The truth value's name, as the shared vocabulary's <c>truth</c> spells it.</summary>
+            public string Name => Truth switch { true => "true", false => "false", null => "unknown" };
+
+            protected override string Spell() => Name;
+
+        }
+
+        /// <summary>
+        /// A leaf of an arm of a <c>CASE</c> S writes, tagged with the stratum its bundle opened for the arm: written by the
+        /// bundle alone, never by the loader nor to the facts graph, so that one leaf spelled alike in a sibling and in an
+        /// arm, or in two arms, is two terms and two atoms, each read beneath its own stratum.
+        /// </summary>
+        public sealed record Beneath(long Stratum, SqlPredicate Leaf) : SqlPredicate
+        {
+            protected override string Spell() => "beneath#" + Stratum + "(" + Leaf + ")";
+        }
+
         /// <summary>A conjunction of two or more arms, in digest order.</summary>
         public sealed record And(IReadOnlyList<SqlPredicate> Arms) : SqlPredicate
         {
@@ -181,6 +232,8 @@ namespace Apache.Calcite.Cosmos.Facts
                     And a => a.Arms,
                     Or o => o.Arms,
                     Not n => new[] { n.Operand },
+                    Case c => new[] { c.Condition, c.Then, c.Else },
+                    Beneath b => new[] { b.Leaf },
                     _ => Array.Empty<SqlPredicate>(),
                 };
 
@@ -199,8 +252,39 @@ namespace Apache.Calcite.Cosmos.Facts
             In i => new[] { i.Value.PathRead },
             IsNull n => new[] { n.Value.PathRead },
             IsDefined d => new[] { d.Value.PathRead },
+            TypeTest t => new[] { t.Value.PathRead },
+            Affix a => new[] { a.Value.PathRead },
             _ => Array.Empty<JsonDocumentPath?>(),
         }).OfType<JsonDocumentPath>().Distinct();
+
+        /// <summary>
+        /// Gets every document path S imports for the predicate: <see cref="Paths"/>, and every path a computed place's
+        /// call reads (h10). F reads <see cref="Paths"/> alone.
+        /// </summary>
+        public IEnumerable<JsonDocumentPath> Places => Subterms.SelectMany(term => term switch
+        {
+            Compare c => c.Left.PlacesRead.Concat(c.Right.PlacesRead),
+            In i => i.Value.PlacesRead,
+            IsNull n => n.Value.PlacesRead,
+            IsDefined d => d.Value.PlacesRead,
+            TypeTest t => t.Value.PlacesRead,
+            Affix a => a.Value.PlacesRead,
+            _ => [],
+        }).Distinct();
+
+        /// <summary>
+        /// Gets every call the predicate reads as a computed place (<see cref="SqlValue.Call.Type"/>, h10), nested ones too.
+        /// </summary>
+        public IEnumerable<SqlValue.Call> Computed => Subterms.SelectMany(term => term switch
+        {
+            Compare c => new[] { c.Left, c.Right },
+            In i => [i.Value],
+            IsNull n => [n.Value],
+            IsDefined d => [d.Value],
+            TypeTest t => [t.Value],
+            Affix a => [a.Value],
+            _ => Array.Empty<SqlValue>(),
+        }).SelectMany(SqlValue.ComputedWithin).Distinct();
 
     }
 

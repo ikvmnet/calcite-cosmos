@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -33,7 +34,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Every input planned and implemented; every bundle the run opened, under the asserted set and the set beside it,
         /// completed within its count limits, still held one node per class, derived no contradiction and
         /// declined on no engine failure: so no verdict is <c>Incomplete</c> or a <c>Conflict</c>, and none is an Unproven
-        /// that S did not answer. The reports are written, and coverage is summarised.
+        /// that S did not answer; and the most rows any left in its scope are under <see cref="RenderingBundle.RowLimit"/>, recorded
+        /// (line 39). The reports are written, and coverage is summarised.
         /// </summary>
         [Fact]
         public void EveryBundleCompletesWithNoMergeAndNoConflict()
@@ -42,14 +44,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var folder = RenderingReports.Write(run);
             var sent = run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null).ToList();
             var unproven = sent.Count(c => c.Entry!.Asserted.Kind == RenderingVerdictKind.Unproven);
-            TestContext.Current.TestOutputHelper?.WriteLine($"reports in {folder}; {run.Memo.Entries.Count} checks; coverage {unproven} unproven of {sent.Count} sent conjuncts checked");
+            TestContext.Current.TestOutputHelper?.WriteLine($"reports in {folder}; {run.Memo.Entries.Count} checks; coverage {unproven} unproven of {sent.Count} sent conjuncts checked; "
+                + $"most rows a bundle {run.MostRows} of {RenderingBundle.RowLimit}");
 
             var disciplined = new RenderingRun(RunStopReason.Completed, true, false);
             run.Failures.Should().BeEmpty();
             run.Memo.Entries.Should().NotBeEmpty();
+            run.MostRows.Should().BePositive().And.BeLessThan(RenderingBundle.RowLimit);
             run.Memo.Entries.Where(e => e.AssertedRun != disciplined || e.BesideRun != disciplined || e.Failure is not null
                 || new[] { e.Asserted, e.Beside }.Concat(e.Alone).Any(v => v?.Kind is RenderingVerdictKind.Incomplete or RenderingVerdictKind.Conflict))
                 .Select(e => $"entry {e.Id}, {e.Key.Form}: {e.AssertedRun} {e.Asserted.Reason}; {e.BesideRun} {e.Beside.Reason}; {e.Failure?.Message}").Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// Line 39 over <c>CASE</c> (h13): a chain of <c>CASE</c>s as deep as five, each else-arm the next, its conditions and
+        /// arms over paths of their own, every path imported as anything. A chain past <see cref="RenderingBundle.NarrowDepth"/>
+        /// writes an else-arm both narrow beneath its negated conditions and wide, so the rows grow with the copies: each
+        /// bundle completes disciplined under each set with its rows under <see cref="RenderingBundle.RowLimit"/>, recorded.
+        /// The pull request's run reads the legacy reading, which holds a <c>CASE</c> opaque until h15, so these are its own.
+        /// </summary>
+        [Fact]
+        public void EveryCaseChainCompletesUnderTheRowLimit()
+        {
+            static SqlPredicate Chain(int depth, int at = 0) => depth == 0 ? Eq(Text(P("e" + at)), "x")
+                : new SqlPredicate.Case(Eq(Text(P("c" + at)), "a"), Ne(Text(P("t" + at)), "bikes"), Chain(depth - 1, at + 1));
+
+            var disciplined = new RenderingRun(RunStopReason.Completed, true, false);
+            var recorded = new List<string>();
+            foreach (var set in new[] { RenderingSet.Emulator, RenderingSet.Production })
+                for (var depth = 1; depth <= 5; depth++)
+                {
+                    var root = Chain(depth);
+                    using var bundle = ProbeTheory.Open(set);
+                    var term = bundle.Write(root);
+                    foreach (var path in root.Paths.Distinct())
+                        bundle.Import(Source, path, PathValues.Anything, JsonValues.AllBands);
+                    bundle.Generate(term);
+                    var run = bundle.RunGenerate(RenderingBundle.WidthOf([root]));
+                    recorded.Add($"{set} depth {depth}: {bundle.Rows} rows, {bundle.Strata.Count} strata, {bundle.ReadBest(term).Kind}");
+                    run.Should().Be(disciplined, $"{set} depth {depth}");
+                    bundle.Rows.Should().BePositive().And.BeLessThan(RenderingBundle.RowLimit, $"{set} depth {depth}");
+                }
+
+            TestContext.Current.TestOutputHelper?.WriteLine(string.Join(Environment.NewLine, recorded));
         }
 
         /// <summary>
@@ -146,7 +183,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ACheckIsImportedFromWhatAssumesNoConjunctItHolds()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(P("a"), Present)).In(generations);
             var (category, kind) = (Eq(Raw(CategoryPath), "bikes"), Eq(Raw(KindPath), "a"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { category, kind }), (i, _) => i == 0);
@@ -172,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void ALaterRoundIsReadBesideTheFactsItWasRenderedFrom()
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             var theory = Theory(Outright(KindPath, Present), When(KindPath, "a", LabelPath, Type(JsonType.String))).In(generations);
             var (kind, label) = (Eq(Text(KindPath), "a"), Eq(Text(LabelPath), "30"));
             var scope = new CosmosOracle(theory, generations).Admit(new PredicateStatement(new[] { kind, label }),
@@ -196,8 +233,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// reads a typed <c>INTEGER</c> = 5 as kind holding the integer 5 alone, where a column reads 5.0000000000000001 as 5
         /// too, beside a label the declaration leaves free. Read beneath that stratum the bare form would be exact and
         /// wrong. S states no round beneath it (<c>StratumFor</c> falls back to the root), where the label is not proven,
-        /// so S sends the kind alone and the label's presence beneath it, where the translator sent the bare label from
-        /// that stratum: a regression O2 lists, its reason a stratum read at the root.
+        /// so S sends the kind alone and, since the switch, the label's weakening beside it, where the translator sent the
+        /// bare label from that stratum: its text alternatives and its presence, each a conjunct of the filter it is pushed
+        /// in. The alternatives' guarded arm is admitted beneath <c>IS_NUMBER(label)</c>, which the facts graph reads
+        /// exactly, so the service is sent the number 7 there, and a number label is kept; the arm's licence assumes only
+        /// what the facts graph reads exactly (h15), so the coarse kind, which would rule the number out, is not assumed.
         /// </summary>
         [Fact]
         public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
@@ -210,8 +250,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             foreach (var c in checks)
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
-            RenderingFamily.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
-            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "IS_DEFINED(c.label)"], "the kind is sent, and the label's weakening beneath it");
+            Saturation.FactsReadings.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
+            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "((c.label = @p1) OR (IS_NUMBER(c.label) AND (c.label = @p2)))", "IS_DEFINED(c.label)"],
+                "the kind is sent, and the label's weakening beside it, which keeps a number label");
             checks.Should().OnlyContain(c => c.LaterRound == false && c.Import!.Digest.Contains(" beneath ") == false, "nothing is read beneath the coarse stratum");
         }
 

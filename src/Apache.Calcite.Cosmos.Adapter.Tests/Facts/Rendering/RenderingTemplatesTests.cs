@@ -34,8 +34,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Statements whose one conjunct the translator writes, each with the template whose form its text is: those whose
         /// reader, test and position no one-atom conjunct of the check run sends, which the run's own conjuncts hold the rest of.
         /// </summary>
-        static readonly (string Sql, TemplateId Template)[] Written = [("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" < 'm'", TemplateId.Bare)];
-
         /// <summary>
         /// Every template at both positions over every atom the inputs load, a synthetic atom of every shape and literal
         /// beside them, and a parameter atom, spells without throwing; and every pair the rows ask spells a form, not the
@@ -54,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     {
                         try
                         {
-                            RenderingTemplates.Spell(id, pos, atom, path);
+                            ProbeRows.Spell(id, pos, atom, path);
                         }
                         catch (Exception e)
                         {
@@ -64,11 +62,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             thrown.Should().BeEmpty();
 
-            var asked = from atom in Synthetic(plain: true) from fit in RenderingTemplateRows.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
+            var asked = from atom in Synthetic(plain: true) from fit in Measured.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
                         from row in RenderingTemplateRows.Templates where row.Item1 == fit.Item1 select (Id: fit.Item1, Pos: row.Item2, Atom: atom);
             asked.Should().NotBeEmpty();
-            asked.Where(a => RenderingTemplates.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
-            TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {RenderingTemplateRows.Fits.Count} fits rows");
+            asked.Where(a => ProbeRows.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
+            TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {Measured.Fits.Count} fits rows");
         }
 
         /// <summary>A parameter atom has its own shape, which no row names, and every template spells the sentinel for it.</summary>
@@ -77,43 +75,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var parameters = Synthetic(plain: true).Select(a => a with { Operand = null, Points = null, Parameter = true }).ToList();
             parameters.Select(RenderingTemplates.ShapeOf).Should().OnlyContain(s => s == RenderingTemplates.ParameterShape);
-            RenderingTemplateRows.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
-            (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select RenderingTemplates.Spell(id, pos, atom, Path))
+            Measured.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
+            (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
                 .Should().OnlyContain(f => f.Kind == ServiceFormKind.Opaque);
         }
 
         /// <summary>
-        /// A1–A4 over single atoms are what the translator writes, beneath its <c>NOT</c> where an atom stands at <c>Neg</c>:
-        /// a sample statement's admitted conjunct, written by the translator from the statement's own stratum and read back,
-        /// is its template's form for the atom the loader reads. And every one-atom conjunct the check run's statements send
-        /// — S's print since the switch — is the form some template spells for that atom.
+        /// Every one-atom conjunct the check run's statements send — S's print — is the form some template spells for that
+        /// atom, most of them the one the translator wrote it by, A1–A4, beneath its <c>NOT</c> where an atom stands at
+        /// <c>Neg</c>. Since the switch (h15) the translator writes no atom S reads: a parameter's atom spells the sentinel
+        /// (<see cref="NoTemplateFitsAParameterAtom"/>), and an opaque conjunct holds none. S sends a <c>CASE</c>, a constant,
+        /// a comparison of two readings and an atom over a computed place too, which hold no one atom of one path a template
+        /// spells: their forms are its rules'.
         /// </summary>
         [Fact]
-        public void EveryTemplateSpellsWhatTheTranslatorWrites()
+        public void EverySentAtomIsATemplatesForm()
         {
-            foreach (var (sql, template) in Written)
-            {
-                var recorder = new RenderingRecorder();
-                using (recorder.Arm())
-                    RenderingInputs.Differential("templates", [sql], RenderingInputs.Containers).Single().Plan();
-
-                var admitted = recorder.Records.Where(r => r.Site == 1).DistinctBy(r => r.Conjunct).ToList();
-                admitted.Should().ContainSingle(sql);
-                var (statement, conjunct, parameters) = (admitted[0].Statement, admitted[0].Conjunct, new Adapter.Sql.CosmosParameterList());
-                statement.TranslatorFor(conjunct, parameters).TryTranslateConjunct(statement.Conjuncts[conjunct], out var text).Should().BeTrue(sql);
-                var (spelled, read) = Respelled(statement.Statement.Conjuncts[conjunct], text!, parameters.Parameters);
-                spelled.Should().Be(read, $"{sql} wrote {text}");
-                Template(statement.Statement.Conjuncts[conjunct]).Should().Be(template, sql);
-                GC.KeepAlive(recorder);
-            }
-
             var run = RenderingCheckRun.PerPullRequest.Value;
             var sent = run.Conjuncts.Where(c => c.Site == 2 && c.Skip is null && Atom(run.Irs[c.Ir]) is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not or SqlPredicate.Opaque))
-                .DistinctBy(c => c.Ir + " " + c.Text).Select(c => (c.Input, c.Name, c.Text, Ir: run.Irs[c.Ir], Forms: Respelled(run.Irs[c.Ir], c.Text, c.Bound!))).ToList();
+                .DistinctBy(c => c.Ir + " " + c.Text).Where(c => Atom(run.Irs[c.Ir]) is var atom && atom.Subterms.Any(t => t is SqlPredicate.Case or SqlPredicate.Constant) == false
+                    && atom.Computed.Any() == false && AtomsOf([atom]).Count == 1)
+                .Select(c => (c.Input, c.Name, c.Text, Ir: run.Irs[c.Ir], Forms: Respelled(run.Irs[c.Ir], c.Text, c.Bound!))).ToList();
             var other = sent.Where(c => c.Forms.Spelled.Equals(c.Forms.Read) == false).ToList();
             TestContext.Current.TestOutputHelper?.WriteLine($"{sent.Count} one-atom conjuncts sent, {other.Count} by another template than the translator's: " + string.Join("; ", other.Select(c => $"{c.Input} {c.Name} {c.Text}")));
             sent.Should().HaveCountGreaterThan(100);
-            other.Where(c => System.Enum.GetValues<TemplateId>().Any(id => Spelled(c.Ir, id, c.Ir is SqlPredicate.Not ? RenderPosition.Neg : RenderPosition.Pos).Equals(c.Forms.Read)) == false)
+            other.Where(c => System.Enum.GetValues<TemplateId>().Any(id => Spelled(c.Ir, id, c.Ir is SqlPredicate.Not ? RenderPosition.Neg : RenderPosition.Pos).Text == c.Forms.Read.Text) == false)
                 .Select(c => $"{c.Input} {c.Name}: {c.Text} read {c.Forms.Read}, no template's").Should().BeEmpty();
         }
 
@@ -132,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static ServiceForm Spelled(SqlPredicate conjunct, TemplateId template, RenderPosition pos)
         {
             var (atom, path) = AtomsOf([Atom(conjunct)]).Single();
-            return RenderingTemplates.Spell(template, pos, atom, path);
+            return ProbeRows.Spell(template, pos, atom, path);
         }
 
         /// <summary>What the template spells for a conjunct's atom at its position, beside the text read back, beneath its <c>NOT</c> at <c>Neg</c>.</summary>
@@ -148,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         [Fact]
         public void NoTemplateWritesTwoOrderingsOfOnePath() => (from atom in Synthetic(plain: false) from id in System.Enum.GetValues<TemplateId>()
-                from pos in System.Enum.GetValues<RenderPosition>() select RenderingTemplates.Spell(id, pos, atom, Path))
+                from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
             .Where(f => f.Subforms.Count(g => RenderingPrimitives.StringOrdering.Function(g)) > 1).Select(f => f.Text).Should().BeEmpty();
 
         /// <summary>
@@ -185,11 +171,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// A join flattens a member of its connective, keeps one of each part in the arms' order, and folds Kleene's
-        /// constants at either position; its parts are the arms'; and a leaf's fold joins its implied set in order.
+        /// A junction is written as its arms stand (<see cref="ServiceForm.Paired"/>), a best's and a weakening's alike, and
+        /// what S's regroup and units rules rewrite it to, the cheapest kept (<see cref="Priced.Cheapest"/>), flattens a member
+        /// of its connective, keeps one of each part in the arms' order and folds Kleene's constants at either position:
+        /// fewer nodes where a copy or a constant goes, fewer groups where a junction is flattened (G4). A leaf's implied set
+        /// is gathered in order by its position's connective, its identity where it is empty.
         /// </summary>
         [Fact]
-        public void JoinedFlattensKeepsOnePerPartAndFoldsConstants()
+        public void APairRegroupedAndFoldedFlattensKeepsOnePerPartAndFoldsConstants()
         {
             var (a, b, c) = (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, JsonValues.Of("x")), ServiceForm.TestOf(CosmosServiceTest.IsString, Path));
             var (yes, no) = (ServiceForm.ConstantOf(true), ServiceForm.ConstantOf(false));
@@ -202,21 +191,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (and, yes, a, a), (and, a, no, no), (or, no, a, a), (or, a, yes, yes), (and, yes, yes, yes), (or, no, no, no), (and, no, yes, no),
             })
             {
-                ServiceForm.Joined(connective, l, m).Should().Be(joined, $"{l} {connective} {m}");
-                if (joined.Kind != ServiceFormKind.Constant && l.Kind != ServiceFormKind.Constant && m.Kind != ServiceFormKind.Constant)
-                    RenderingPrimitives.FormIsJoinOf.Function(joined, l, m).Should().BeTrue($"{joined} joins {l} and {m}");
+                var paired = ServiceForm.Paired(connective, l, m);
+                paired.Members.Should().Equal([l, m], "a junction is the arms as they stand");
+                Rewritten(paired).Should().Be(joined, $"{l} {connective} {m}");
+                if (joined.Equals(paired) == false)
+                    Priced.Of(joined).CompareTo(Priced.Of(paired)).Should().BeNegative($"{joined} is priced below {paired}");
+
+                if (new[] { joined, l, m }.Any(f => f.Subforms.Any(s => s.Kind == ServiceFormKind.Constant)))
+                    continue;
+
+                var grouped = RenderingPrimitives.FormIsGrouped.Function(paired);
+                (grouped ? ServiceForm.Regrouped(paired) : paired).Should().Be(joined, $"{paired} regrouped");
             }
 
-            ServiceForm.Joined(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction joins");
-            RenderingPrimitives.FormIsJoinOf.Function(All(a, b), a, c).Should().BeFalse();
-            RenderingPrimitives.FormIsJoinOf.Function(All(a, b, c), All(a, b), a).Should().BeFalse();
-            RenderingPrimitives.FormIsJoinOf.Function(Any(a, b), All(a, b), a).Should().BeFalse("an AND is no part of an OR's flattening");
+            ServiceForm.Paired(CosmosServiceTest.Not, a, b).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction pairs");
+            ServiceForm.Gathered(CosmosServiceTest.Not, ValueSet.Of(a, b), true).Kind.Should().Be(ServiceFormKind.Opaque, "only a junction gathers");
 
-            var implied = ValueSet.Of(b, a, All(a, ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), b));
-            ServiceForm.Folded(implied, RenderPosition.Pos).Should().Be(ServiceForm.Joined(and, ServiceForm.Joined(and, implied[0], implied[1]), implied[2]));
-            ServiceForm.Folded(implied, RenderPosition.Neg).Should().Be(Any([.. implied]));
-            (ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Pos), ServiceForm.Folded(ValueSet<ServiceForm>.Empty, RenderPosition.Neg)).Should().Be((yes, no));
-            ServiceForm.Folded(ValueSet.Of(a), RenderPosition.Neg).Should().Be(a);
+            // Flattened, a junction has as many nodes and one group fewer; with a copy gone, fewer nodes too.
+            var (nested, flat) = (All(a, All(b, c)), All(a, b, c));
+            (nested.Nodes, nested.Groups, flat.Nodes, flat.Groups).Should().Be((5, 2, 5, 1));
+            Priced.Of(flat).CompareTo(Priced.Of(nested)).Should().BeNegative("of one size, the flatter is kept, whatever its text");
+            Priced.Of(All(b, All(c, a))).CompareTo(Priced.Of(All(b, c, a))).Should().BePositive();
+
+            var notNull = ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path));
+            var implied = ValueSet.Of(b, a, All(a, notNull, b));
+            ServiceForm.Gathered(and, implied, true).Members.Should().Equal([.. implied], "gathered as they stand, in the set's order");
+            Rewritten(ServiceForm.Gathered(and, implied, true)).Should().Be(All([.. implied.AsEnumerable().SelectMany(f => f.Kind == ServiceFormKind.And ? f.Flat : [f]).Distinct()]));
+            Rewritten(ServiceForm.Gathered(or, implied, false)).Should().Be(Any([.. implied]));
+            (ServiceForm.Gathered(and, ValueSet<ServiceForm>.Empty, true), ServiceForm.Gathered(or, ValueSet<ServiceForm>.Empty, false)).Should().Be((yes, no));
+            ServiceForm.Gathered(or, ValueSet.Of(a), false).Should().Be(a);
+        }
+
+        /// <summary>
+        /// What S's units and regroup rules rewrite a junction to at one node, the cheapest kept as the weakening's lattice
+        /// keeps it: every regrouping of a grouped form and every fold of one holding a unit of its connective, from Kleene's
+        /// rows (<see cref="KleeneTables.Units"/>), until none is new.
+        /// </summary>
+        static ServiceForm Rewritten(ServiceForm form)
+        {
+            var (seen, frontier) = (new HashSet<ServiceForm> { form }, new Queue<ServiceForm>([form]));
+            while (frontier.TryDequeue(out var f))
+            {
+                var next = KleeneTables.Units.Where(u => RenderingPrimitives.FormHeads.Function(f, u.Connective) && RenderingPrimitives.FormHolds.Function(f, ServiceForm.ConstantOf(u.Constant)))
+                    .Select(u => ServiceForm.Unit(f, u.Constant, u.Absorbs));
+                if (RenderingPrimitives.FormIsGrouped.Function(f))
+                    next = next.Append(ServiceForm.Regrouped(f));
+
+                foreach (var g in next.Where(seen.Add))
+                    frontier.Enqueue(g);
+            }
+
+            return seen.Aggregate(Priced.Cheapest.Merge);
         }
 
         /// <summary>Negating folds both constants and strips one <c>NOT</c>; presence is <c>IS_DEFINED</c>, beneath a <c>NOT</c> its negation.</summary>
@@ -232,20 +257,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A literal with an unpaired surrogate is never sendable, at any depth, as <c>CosmosEncodable</c> says of it; a
         /// string ordering whose literal holds a supplementary or a high-band character is not either, and is beside an
-        /// equality, which parts no range.
+        /// equality, which parts no range. What S's lifts read, each set's from the rows its rules read (G1): the classes no
+        /// parameter is sent holding on a target the set serves (<c>Service.LoneSurrogateParameterIsNeverSent</c>), and the
+        /// bands its string comparators rank apart (<c>Service.StringOrderIsCodePoint</c>), against a form's literals.
         /// </summary>
         [Fact]
         public void ALoneSurrogateLiteralIsNotSendable()
         {
-            var bands = Measured.PartingBands;
+            foreach (var set in new[] { RenderingSet.Production, RenderingSet.Emulator, RenderingSet.Portable })
+            {
+                var (unsendable, bands) = (ProbeTheory.Theory.Get(ProbeTheory.Unsendable.Of(set)), ProbeTheory.Theory.Get(ProbeTheory.PartingBands.Of(set)));
+                unsendable.AsEnumerable().Should().Equal([JsonValues.UnpairedClass], set.ToString());
+                bands.AsEnumerable().Should().BeEquivalentTo([JsonValues.SurrogateBand, JsonValues.HighBand], set.ToString());
+                AreSendable(form => RenderingTheory.LiteralClasses(form).Overlaps(unsendable) == false && RenderingTheory.OrderedLiteralClasses(form).Overlaps(bands) == false);
+            }
+
+            ProbeTheory.Theory.Get(ProbeTheory.Unsendable.Of(RenderingSet.Calcite)).IsEmpty.Should().BeTrue("Calcite is sent nothing");
+        }
+
+        static void AreSendable(Func<ServiceForm, bool> sendable)
+        {
             bool Sendable(CosmosServiceTest op, string literal, bool nested = false) =>
-                RenderingPrimitives.Sendable.Function(nested ? Any(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), ServiceForm.CompareOf(op, Path, JsonValues.Of(literal))) : ServiceForm.CompareOf(op, Path, JsonValues.Of(literal)), bands);
+                sendable(nested ? Any(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), ServiceForm.CompareOf(op, Path, JsonValues.Of(literal))) : ServiceForm.CompareOf(op, Path, JsonValues.Of(literal)));
 
             foreach (var text in new[] { "\uD800", "a\uDC00", "\uDE00\uD83D", "x\uD83D" })
             {
                 (JsonValues.IsEncodable(text), CosmosEncodable.IsEncodable(text)).Should().Be((false, false));
                 (Sendable(CosmosServiceTest.Equal, text), Sendable(CosmosServiceTest.Equal, text, nested: true)).Should().Be((false, false), text);
-                RenderingPrimitives.Sendable.Function(ServiceForm.InOf(Path, ValueSet.Of(JsonValues.Of("ok"), JsonValues.Of(text))), bands).Should().BeFalse();
+                sendable(ServiceForm.InOf(Path, ValueSet.Of(JsonValues.Of("ok"), JsonValues.Of(text)))).Should().BeFalse();
             }
 
             foreach (var text in new[] { "", "bikes", "a😀b", "", "é" })
@@ -253,13 +292,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (Sendable(CosmosServiceTest.Less, "a😀b"), Sendable(CosmosServiceTest.GreaterOrEqual, "", nested: true), Sendable(CosmosServiceTest.Greater, "ébikes"))
                 .Should().Be((false, false, true), "a supplementary or high-band bound may part the orders; one of U+0080 to U+D7FF does not");
-            RenderingPrimitives.Sendable.Function(ServiceForm.CompareOf(CosmosServiceTest.Less, Path, JsonValues.Of(30m)), bands).Should().BeTrue();
+            sendable(ServiceForm.CompareOf(CosmosServiceTest.Less, Path, JsonValues.Of(30m))).Should().BeTrue();
         }
 
         /// <summary>
-        /// The Rex builder writes a string comparison over any reader, a number over a <c>RETURNING</c> of a number type,
+        /// The Rex builder writes a string comparison over any reader, an ordering over a <c>VARIANT</c> field among them, a
+        /// number over a <c>RETURNING</c> of a number type,
         /// never over a cast of the text nor <c>RETURNING DECIMAL</c>, which parse a string the service compares as none, a
-        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test, constants and the connectives over them; nothing else.
+        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test over any reading, a call's among them; constants and
+        /// the connectives over them; nothing else. What Calcite answers of a member written over a field or a call is not the
+        /// grammar's: the filter beneath proves the Rex again and drops what it declines.
         /// </summary>
         [Fact]
         public void RexWritableFollowsTheGrammar()
@@ -282,12 +324,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), integer, true),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.ConstantOf(true))), cast, false),
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), integer, false),
+                (ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.RawIn("VARCHAR"), true),
+                (ServiceForm.TestOf(CosmosServiceTest.IsString, Path), PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARIANT")), true),
+                (Any(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), Compare(s)), PredicateAtom.RawIn("VARIANT"), true), (Compare(s), PredicateAtom.RawIn("VARIANT"), true),
+                (ServiceForm.CompareOf(CosmosServiceTest.Equal, Path, s), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, s), PredicateAtom.RawIn("VARIANT"), true),
+                (Compare(s), PredicateAtom.RawIn("ANY"), true),
+                (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.CallReaders, true),
             };
 
             cases.Select(c => (c.Form.Text, c.Reader, Writes(c.Form, c.Reader))).Should().Equal(cases.Select(c => (c.Form.Text, c.Reader, c.Writes)));
             RenderingRexGrammar.Written.Tests.Should().BeEquivalentTo(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
                 "every IS_* test the translator writes has an in-process body");
             RenderingRexGrammar.Written.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
+            Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Select(t => t.Reader).Append(PredicateAtom.ElementReader)
+                .Where(reader => RenderingRexGrammar.Written.Tests.Any(test => Writes(ServiceForm.TestOf(test, Path), reader) == false)).Should().BeEmpty(
+                    "no reading is kept from a test by what its body answers, the filter beneath's to prove");
         }
 
         /// <summary>The sentinels are inert: claimed for an atom, neither agrees nor is refuted, at either verdict.</summary>
@@ -295,7 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void TheSentinelsAgreeWithNothingAndAreRefutedByNothing()
         {
             var atom = Ne(OracleFixture.Text(LabelPath), "bikes");
-            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), RenderingTemplates.Spell(TemplateId.BooleanAlternatives, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
+            foreach (var sentinel in new[] { Priced.FormOf(Priced.None), ProbeRows.Spell(TemplateId.BooleanAlternatives, RenderPosition.Neg, PredicateAtom.Compare(PredicateAtom.TextReader, "<>", JsonValues.Of("bikes")), Label) })
             {
                 sentinel.Kind.Should().Be(ServiceFormKind.Opaque);
                 var (equal, implies) = Check(atom, sentinel);
@@ -322,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         static IEnumerable<PredicateAtom> Synthetic(bool plain)
         {
-            var readers = ReaderEdgesTable.Rows.Keys.Concat(new[] { PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
+            var readers = Measured.Edges.Keys.Concat(new[] { PredicateAtom.CastReader("INTEGER", PredicateAtom.RawReader), "typed:DATE" });
             var literals = plain ? new[] { JsonValues.Of("bikes"), JsonValues.Of("true"), JsonValues.Of(30m), JsonValues.Of(true) }
                 : new[] { "bikes", "false", "", "\uD800", "x", "a😀" }.Select(JsonValues.Of)
                     .Concat(new[] { 0m, 2.5m, -1m, 9007199254740993m, decimal.MaxValue, decimal.MinValue, 0.1m, 1.9999999999999999m }.Select(JsonValues.Of))

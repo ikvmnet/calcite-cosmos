@@ -12,13 +12,17 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
 using Xunit;
+
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 {
@@ -76,6 +80,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// The forms <see cref="CosmosEval"/> gained with Stage 3, which the reader does not read, held to the service
+        /// (line 4b): the ternary (S1), an element of an array (M4) and two paths compared, each way round and on the
+        /// diagonal (<c>Service.TwoPathsCompareAsAPathAndALiteral</c>), 9007199254740993.0 against itself among them. Each
+        /// is built and printed as S prints it, over documents holding a second path <c>w</c>.
+        /// </summary>
+        [Fact]
+        public async Task EveryStageThreeFormIsKeptAsCosmosEvalSays()
+        {
+            if (_service.Container is null)
+                Assert.Skip("This needs a service. " + _service.Unavailable);
+
+            static string P(string name) => SqlValue.Spell(JsonDocumentPath.Root.Property(name));
+            static string E(long i) => SqlValue.Spell(JsonDocumentPath.Root.Property("v").Element(i));
+            CosmosServiceTest[] ops = [CosmosServiceTest.Equal, CosmosServiceTest.NotEqual, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual];
+            var forms = new List<ServiceForm>();
+            forms.AddRange(ops.Select(op => ServiceForm.ComparePathsOf(op, P("v"), P("w"))));
+            forms.AddRange(ops.Select(op => ServiceForm.NotOf(ServiceForm.ComparePathsOf(op, P("v"), P("w")))));
+            forms.AddRange(ops.Select(op => ServiceForm.ComparePathsOf(op, P("v"), P("v"))));
+            var (t, f) = (ServiceForm.ConstantOf(true), ServiceForm.ConstantOf(false));
+            foreach (var c in new[] { ServiceForm.BareOf(P("v")), ServiceForm.CompareOf(CosmosServiceTest.Equal, P("v"), Of(30m)), ServiceForm.TestOf(CosmosServiceTest.IsString, P("v")),
+                ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Less, P("v"), Of("b"))) })
+            {
+                forms.Add(ServiceForm.ChosenOf(c, t, f));
+                forms.Add(ServiceForm.ChosenOf(c, ServiceForm.CompareOf(CosmosServiceTest.Equal, P("w"), Of(30m)), ServiceForm.TestOf(CosmosServiceTest.IsNull, P("w"))));
+                forms.Add(ServiceForm.NotOf(ServiceForm.ChosenOf(c, ServiceForm.CompareOf(CosmosServiceTest.Less, P("w"), Of("b")), f)));
+            }
+
+            foreach (var i in new long[] { 0, 1 })
+            {
+                forms.Add(ServiceForm.TestOf(CosmosServiceTest.IsDefined, E(i)));
+                forms.Add(ServiceForm.CompareOf(CosmosServiceTest.Equal, E(i), Of(1m)));
+                forms.Add(ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Less, E(i), Of(2m))));
+            }
+
+            string[] others = ["null", "30", "2.5", "9007199254740993.0", "\"a\"", "\"b\"", "\"\\u0000\"", "\"\\uFFFF\"", "true", "[1]"];
+            var documents = await _service.Write("staged", Values.Concat(["[1,2]", "[2]"]).SelectMany(v => others.Select(w => $"{{\"v\":{v},\"w\":{w}}}").Append($"{{\"v\":{v}}}")));
+            var (wrong, judged) = (new List<string>(), 0);
+            foreach (var form in forms)
+            {
+                var parameters = new CosmosParameterList();
+                var text = RenderingPrinter.Print(form, form.Paths.ToDictionary(p => p, CosmosEval.PathOf), "c", parameters);
+                foreach (var (id, observed) in await _service.Observe("staged", text, parameters.Parameters))
+                    if (CosmosEval.On(form, documents[id], Target) is { } said && ++judged > 0 && said != observed)
+                        wrong.Add($"{text} over {Documents.Json(documents[id])}: the service {observed}, CosmosEval {said}");
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{forms.Count} forms over {documents.Count} documents, {judged} answers judged, {_service.Charged:F2} RU charged; {wrong.Count} divergences");
+            wrong.Should().BeEmpty();
+            judged.Should().BeGreaterThan(Target == RenderingTarget.Emulator ? 5_000 : 1_000);
+        }
+
+        /// <summary>
         /// The two targets' models part on these values, so the service holds one of them: the emulator's where the
         /// endpoint is one, a local one named by <c>COSMOS_TEST_ENDPOINT</c> among them.
         /// </summary>
@@ -96,12 +152,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
 
             readonly string _database;
+            readonly CosmosRequestCharges _charges;
             CosmosClient? _client;
             bool _created;
 
             public Fixture() : this("eval") { }
 
-            protected Fixture(string name) => _database = $"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
+            protected Fixture(string name) => (_database, _charges) = ($"calcite_cosmos_{name}_" + Regex.Replace(RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_"), new(name));
 
             public Container? Container { get; protected set; }
 
@@ -118,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return;
                 }
 
-                var options = new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway, MaxRetryAttemptsOnRateLimitedRequests = 0 };
+                var options = new CosmosClientOptions { ConnectionMode = ConnectionMode.Gateway, MaxRetryAttemptsOnRateLimitedRequests = 0, CustomHandlers = { _charges } };
                 if (CosmosEmulator.IsEmulator)
                     (options.LimitToEndpoint, options.ServerCertificateCustomValidationCallback) = (true, (_, _, _) => true);
 
@@ -147,6 +204,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (_created)
                     try { _client!.GetDatabase(_database).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
+                if (_client is not null)
+                    _charges.Write();
                 _client?.Dispose();
                 return default;
             }

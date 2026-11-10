@@ -51,6 +51,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A value outside a range's bounds.</summary>
         Outside,
 
+        /// <summary>A string an affix or a pattern matches, under the matcher its test's entry names.</summary>
+        Matching,
+
+        /// <summary>A string an affix or a pattern does not match.</summary>
+        Missing,
+
+        /// <summary>
+        /// A connective's side that may fail the statement, as an operand: it stands for every truth it could have given, beside
+        /// the failure (decision 2), which the rows S derives for it say (<see cref="KleeneTables.Failing"/>).
+        /// </summary>
+        Failing,
+
     }
 
 }

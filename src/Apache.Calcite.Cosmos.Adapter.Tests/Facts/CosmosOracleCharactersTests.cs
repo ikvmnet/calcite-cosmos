@@ -73,7 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var declared = Theory(Outright(S, Type(JsonType.String)), Outright(S, new JsonClaim.Characters(JsonCharacterBand.HighBmp)));
 
             Kept(declared, S, In(Text(S), "a", Emoji)).Should().Be(JsonCharacterBand.None);
-            Kept(declared, S, IsNotNull(Text(S))).Should().Be(JsonCharacterBand.HighBmp, "the declaration's alone");
+            Kept(declared, S, IsNotNull(Text(S))).Should().Be(global::Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Closed(JsonCharacterBand.HighBmp), "the declaration's alone, read with the refinements of what it names");
         }
 
         [Fact]
@@ -85,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 When(Kind, "k2", Label, new JsonClaim.Characters(JsonCharacterBand.HighBmp)));
 
             Kept(theory, Label, Eq(Text(Kind), "k1")).Should().Be(JsonCharacterBand.None);
-            Kept(theory, Label, In(Text(Kind), "k1", "k2")).Should().Be(JsonCharacterBand.HighBmp, "both kinds', joined");
+            Kept(theory, Label, In(Text(Kind), "k1", "k2")).Should().Be(global::Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Closed(JsonCharacterBand.HighBmp), "both kinds', joined, read with the refinements of what they name");
             Oracle(theory).Declared.CharactersOf(Label).Should().Be(JsonCharacterBand.Any, "a document of no kind may hold any");
         }
 

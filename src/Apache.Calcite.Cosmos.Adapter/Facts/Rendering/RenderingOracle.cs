@@ -31,18 +31,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// Why a question declined: no generation answered within the wait, or a definition threw; the engine failed the
-        /// bundle, or ran out of ids or epochs; or a rule merged two terms or the run agreed and refuted one claim.
+        /// bundle, or ran out of ids or epochs; a rule merged two terms or the run agreed and refuted one claim; or, of an
+        /// image (<see cref="ImageOf"/>), the run stopped before the place was read.
         /// </summary>
-        public const string Unavailable = "unavailable", Engine = "engine", Conflict = "conflict";
+        public const string Unavailable = "unavailable", Engine = "engine", Conflict = "conflict", Incomplete = "incomplete";
 
         /// <summary>How long a question waits for a generation where none answers: the first's build, or a spent one's successor.</summary>
         public static readonly TimeSpan DefaultWait = TimeSpan.FromSeconds(5);
 
         readonly RenderingGraph _graph;
         readonly TimeSpan _wait;
+        readonly int _remembered;
         readonly Func<int, int> _limit;
         readonly Func<RenderingQuestionKey, RenderingQuestionKey> _keyOf;
-        long _hits, _bundles, _declines;
+        long _hits, _bundles, _declines, _bridges;
 
         /// <param name="graph">The S it asks.</param>
         /// <param name="remembered">How many bundles' answers it remembers.</param>
@@ -52,6 +54,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public RenderingOracle(RenderingGraph graph, int remembered = 4096, TimeSpan? wait = null, Func<int, int>? limit = null, Func<RenderingQuestionKey, RenderingQuestionKey>? keyOf = null)
         {
             _graph = graph;
+            _remembered = remembered;
             Memo = new RenderingAnswerMemo(remembered);
             _wait = wait ?? DefaultWait;
             _limit = limit ?? RenderingBundle.GenerateLimit;
@@ -94,6 +97,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Questions the memo answered, bundles opened, and questions declined, since the oracle was made.</summary>
         public (long Hits, long Bundles, long Declines) Counts => (Interlocked.Read(ref _hits), Interlocked.Read(ref _bundles), Interlocked.Read(ref _declines));
 
+        /// <summary>Of <see cref="Counts"/>' bundles, those the translator's bridge opened (<see cref="ImageOf"/>, <see cref="FoldOf"/>).</summary>
+        public long Bridges => Interlocked.Read(ref _bridges);
+
         /// <summary>Starts the first generation's build on its dedicated thread, once, and returns at once.</summary>
         /// <remarks>Every table's <c>toRel</c> calls it: a schema's first plan starts its build.</remarks>
         public void Warm() => _graph.Warm();
@@ -122,14 +128,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Action<RenderingBundle, IReadOnlyList<Pred>, ImportReport, RenderingRun, TimeSpan>? opened = null)
         {
             var started = Stopwatch.GetTimestamp();
-            var paths = roots.SelectMany(r => r.Paths).ToList();
+            var paths = roots.SelectMany(r => r.Places).ToList();
             RenderingBundleAnswer? answer = null;
             var hit = false;
             ImportReport? import = null;
             try
             {
                 // The import is spelled from the node alone: the declaration's mentions only count its defaults.
-                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath, Readings);
+                import = RenderingImporter.Import(null, source, root, rules, null, paths, beneath, Readings, roots.SelectMany(r => r.Computed));
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
@@ -187,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 using var bundle = theory.Open(set);
                 var asked = roots.DistinctBy(r => r.Digest).ToList();
                 var terms = asked.Select(r => bundle.Write(r, opaques)).ToList();
-                var import = RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath, Readings);
+                var import = RenderingImporter.Import(bundle, source, root, rules, null, paths, beneath, Readings, roots.SelectMany(r => r.Computed));
                 foreach (var term in terms)
                     bundle.Generate(term);
 
@@ -199,7 +205,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 opened?.Invoke(bundle, terms, import, run, Stopwatch.GetElapsedTime(started));
 
                 var declined = answers.Values.Any(a => a.Kind == RenderingVerdictKind.Conflict) ? Conflict : null;
-                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, TimeSpan.Zero));
+                var spellings = asked.SelectMany(r => r.Computed).Distinct().Select(c => (Call: c, Spelling: bundle.SpellingOf(c)))
+                    .Where(s => s.Spelling is not null).ToDictionary(s => s.Call, s => s.Spelling!.Value);
+                return new(answers, declined, key, new(0, 1, declined is null ? 0 : 1, bundle.Iterations, TimeSpan.Zero), spellings);
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
@@ -207,15 +215,138 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             }
         }
 
+        /// <summary>
+        /// S's image of a call (G6): the call written as <c>IS_DEFINED</c> over it, each path it reads and each call within it
+        /// imported as the asker's facts hold them, run, and its place's import read. What the translator's column bridge asks
+        /// of each call it writes, until S writes the column (h37); <c>null</c> where S gives the call no image, with why. The
+        /// spelling S chose of the call where its function's rows give it more than one (<c>callspelling</c>, G6) is read off
+        /// the same run. Asked, counted and remembered as every bridge question is (<see cref="Bridged"/>).
+        /// </summary>
+        /// <param name="set">The set the statement is planned under.</param>
+        /// <param name="call">The call as the loader that reads places reads it, typed and spelled where it is a place.</param>
+        /// <param name="read">What the asker's facts hold of a path: its values, and the classes its characters may be in.</param>
+        /// <param name="chars">The classes the asker's facts hold a call's characters may be in.</param>
+        public RenderingBridgeAnswer ImageOf(RenderingSet set, SqlValue.Call call, Func<JsonDocumentPath, (PathValues Values, ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, ValueSet<string>> chars) =>
+            Bridged(set, new SqlPredicate.IsDefined(call), read, chars, (bundle, _, cost) => bundle.ImageOf(call) is { } image ? new(image, null, bundle.SpellingOf(call), null, cost) : null,
+                "S gives it no image over what the facts hold of its operands");
+
+        /// <summary>
+        /// The case-insensitive affix S says a <c>LIKE</c> over a fold answers as (<c>foldedas</c>, G6): the <c>LIKE</c> written,
+        /// each path and call in it imported as the asker's facts hold them, run, and read. What the translator writes such a
+        /// <c>LIKE</c> as in a conjunct S does not own (a parameter's, until 3B, or an opaque term's) and in a column (until
+        /// h37); <c>null</c> where S says none, with why. Asked, counted and remembered as every bridge question is
+        /// (<see cref="Bridged"/>).
+        /// </summary>
+        /// <param name="set">The set the statement is planned under.</param>
+        /// <param name="like">The <c>LIKE</c> as the loader that reads places reads it.</param>
+        /// <param name="read">What the asker's facts hold of a path: its values, and the classes its characters may be in.</param>
+        /// <param name="chars">The classes the asker's facts hold a call's characters may be in.</param>
+        public RenderingBridgeAnswer FoldOf(RenderingSet set, SqlPredicate.Affix like, Func<JsonDocumentPath, (PathValues Values, ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, ValueSet<string>> chars) =>
+            Bridged(set, like, read, chars, (bundle, term, cost) => bundle.FoldOf(term) is { } fold ? new(null, null, null, null, cost, fold) : null,
+                "S says no case-insensitive affix answers it alike");
+
+        /// <summary>
+        /// One question of the translator's bridge (G6): the atom written in a bundle opened under the set, each path it reads
+        /// and each call within it imported as the asker's facts hold them, run as the bridge runs
+        /// (<see cref="RenderingBundle.RunBridge"/>), and S's answer read. Remembered under the theory, the set, the atom and
+        /// the import, as a bundle's answer is, a decline never.
+        /// </summary>
+        /// <remarks>
+        /// Counted as a bundle's question is (<see cref="Counts"/>): a remembered answer a hit, a run a bundle, and a question
+        /// that found no generation within the wait, failed in the engine or whose run stopped short a decline, with its reason;
+        /// its runs are <see cref="Bridges"/> too.
+        /// </remarks>
+        /// <param name="answerOf">S's answer read off the run, <c>null</c> where it gives none.</param>
+        /// <param name="none">Why S gives none, where its run completed.</param>
+        RenderingBridgeAnswer Bridged(RenderingSet set, SqlPredicate atom, Func<JsonDocumentPath, (PathValues Values, ValueSet<string> Chars)> read,
+            Func<SqlValue.Call, ValueSet<string>> chars, Func<RenderingBundle, Pred, RenderingCost, RenderingBridgeAnswer?> answerOf, string none)
+        {
+            var started = Stopwatch.GetTimestamp();
+            var paths = atom.Places.Select(p => (Path: p, Read: read(p))).ToList();
+            var calls = atom.Computed.Select(c => (Call: c, Chars: chars(c))).ToList();
+            RenderingBridgeAnswer Counted(RenderingBridgeAnswer answer)
+            {
+                if (answer.Cost.Hits > 0)
+                    Interlocked.Increment(ref _hits);
+                else if (answer.Cost.Bundles > 0)
+                {
+                    Interlocked.Increment(ref _bundles);
+                    Interlocked.Increment(ref _bridges);
+                }
+
+                if (answer.Declined is not null)
+                    Interlocked.Increment(ref _declines);
+
+                return answer with { Cost = answer.Cost with { Elapsed = Stopwatch.GetElapsedTime(started) } };
+            }
+
+            if (_graph.TryCurrent(_wait, out var theory) == false)
+                return Counted(new(null, "S is unavailable: " + (_graph.Failure?.Message ?? "no generation within " + _wait), null, Unavailable, RenderingCost.None with { Declines = 1 }));
+
+            var key = string.Join("|", (IEnumerable<string>)[set.ToString(), RenderingAnswerMemo.DigestOf(theory), atom.Digest,
+                .. paths.Select(p => RenderingImporter.Spell(p.Path, p.Read.Values, p.Read.Chars)),
+                .. calls.Select(c => (c.Call.Type ?? "-") + ":" + (c.Call.Spelled ?? "-") + ":" + string.Join(",", c.Chars.AsEnumerable()))]);
+            if (_bridged.TryGetValue(key, out var known))
+                return Counted(known with { Cost = RenderingCost.None with { Hits = 1 } });
+
+            RenderingBridgeAnswer answer;
+            try
+            {
+                using var bundle = theory.Open(set);
+                var term = bundle.Write(atom);
+                var source = new ImportSource(atom.Digest, "column", 0);
+                foreach (var (path, (values, classes)) in paths)
+                    bundle.Import(source, path, values, classes);
+                foreach (var (computed, classes) in calls)
+                    bundle.ImportComputed(computed, classes);
+
+                var run = bundle.RunBridge();
+                var cost = new RenderingCost(0, 1, 0, bundle.Iterations, TimeSpan.Zero);
+                answer = answerOf(bundle, term, cost)
+                    ?? (bundle.Failure is { } failure ? Failed(failure, cost)
+                    : run.StopReason != RunStopReason.Completed ? new(null, "S's run stopped: " + run.StopReason, null, Incomplete, cost with { Declines = 1 })
+                    : new(null, none, null, null, cost));
+            }
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
+            {
+                answer = Failed(e, new RenderingCost(0, 1, 0, 0, TimeSpan.Zero));
+            }
+
+            RenderingBridgeAnswer Failed(Exception e, RenderingCost cost)
+            {
+                if (e is OverflowException)
+                    theory.RanOut = true;
+
+                return new(null, "S declined: " + e.GetType().Name + ": " + e.Message, null, Engine, cost with { Declines = 1 });
+            }
+
+            // A decline is the run's, never the question's: only an answer S read is remembered, and the memo starts over when full.
+            if (answer.Declined is null)
+            {
+                if (_bridged.Count >= _remembered)
+                    _bridged.Clear();
+
+                _bridged.TryAdd(key, answer);
+            }
+
+            return Counted(answer);
+        }
+
+        readonly ConcurrentDictionary<string, RenderingBridgeAnswer> _bridged = new(StringComparer.Ordinal);
+
         static RenderingBundleAnswer Declined(IReadOnlyList<SqlPredicate> roots, string reason, string why) => new(roots.DistinctBy(r => r.Digest)
             .ToDictionary(r => r.Digest, _ => new RenderingAnswer(RenderingVerdictKind.Unproven, null, null, null, "declined: " + reason + ": " + why)), reason, null, RenderingCost.None with { Declines = 1 });
 
         /// <summary>
         /// What one bundle answered of each root, by its digest; why it declined, where it did, in which case no answer is
-        /// read as S's; the key it is filed under, none where S was unavailable; and what the question cost, a remembered
-        /// answer's its lookup alone.
+        /// read as S's; the key it is filed under, none where S was unavailable; what the question cost, a remembered
+        /// answer's its lookup alone; and the spelling S chose of each computed place's call its roots read
+        /// (<c>callspelling</c>, G6), which the printer writes, none for a call every spelling of whose function is one.
         /// </summary>
-        internal sealed record RenderingBundleAnswer(IReadOnlyDictionary<string, RenderingAnswer> Roots, string? Declined, RenderingQuestionKey? Key, RenderingCost Cost)
+        internal sealed record RenderingBundleAnswer(IReadOnlyDictionary<string, RenderingAnswer> Roots, string? Declined, RenderingQuestionKey? Key, RenderingCost Cost,
+            IReadOnlyDictionary<SqlValue.Call, long>? Spellings = null)
         {
 
             /// <summary>The answer of one root.</summary>

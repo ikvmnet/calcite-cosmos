@@ -78,8 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             CosmosStoredForms.Definition("^[0-9]{4}-[0-9]{2}$").Characters.Should().Be(JsonCharacterBand.None);
             CosmosStoredForms.Definition("^[a-z\uE000]{3}$").Characters.Should().Be(JsonCharacterBand.HighBmp);
-            CosmosPatternClass.Range('\uD000', '\uE100').Characters.Should().Be(JsonCharacterBand.BeyondAscii,
-                "a range's bands are every unit's it spans, not its ends'");
+            CosmosPatternClass.Range('\uD000', '\uE100').Characters.Should().Be(JsonCharacterBand.BeyondAscii | JsonCharacterBand.Unpaired,
+                "a range's bands are every unit's it spans, not its ends', and one spanning the surrogates may hold a lone one");
             CosmosStoredForms.Definition("^[0-9]{2} [0-9]{2}$").Characters.Should().Be(JsonCharacterBand.None, "a space is ASCII, and not of the class the service trims beside it");
             CosmosStoredForms.CharactersOf(new CosmosRepresentation("no-family", PreservesEquality: true, PreservesOrder: false)).Should().Be(JsonCharacterBand.Any,
                 "a form no family defines says nothing");

@@ -441,7 +441,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                         found.Add(Extreme(aggregate, ((java.lang.Integer)call.getArgList().get(0)).intValue(), (string)aggregate.getRowType().getFieldNames().get(aggregate.getGroupCount() + i)));
 
             foreach (var filter in nodes.OfType<CosmosFilter>())
-                Comparisons(filter, filter.getCondition(), found);
+                Comparisons(filter, filter.getCondition(), found, Proven(filter), false);
 
             foreach (var project in nodes.OfType<Project>().Where(p => p is not CosmosRel))
                 Transposed(project, found);
@@ -598,13 +598,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
-        /// Every ordering comparison of text a pushed filter makes, and whether its two sides order alike.
+        /// Every ordering comparison of text a pushed filter makes, and whether its two sides order alike, or S proved the
+        /// conjunct it lies in (h15): S's form agrees with Calcite on every cell its question imports, however the two
+        /// orders part.
         /// </summary>
-        static void Comparisons(CosmosFilter filter, RexNode node, List<Pushed> found)
+        static void Comparisons(CosmosFilter filter, RexNode node, List<Pushed> found, IReadOnlySet<RexNode> proven, bool proved)
         {
             if (node is not RexCall call)
                 return;
 
+            proved |= proven.Contains(node);
             var kind = call.getKind();
             if (kind == org.apache.calcite.sql.SqlKind.LESS_THAN || kind == org.apache.calcite.sql.SqlKind.LESS_THAN_OR_EQUAL
                 || kind == org.apache.calcite.sql.SqlKind.GREATER_THAN || kind == org.apache.calcite.sql.SqlKind.GREATER_THAN_OR_EQUAL)
@@ -615,7 +618,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 if (IsText(left) || IsText(right))
                 {
                     var (a, b) = (Side(filter, left), Side(filter, right));
-                    found.Add(Agree(a, b) ? new("comparison: text whose characters agree", true)
+                    found.Add(proved ? new("comparison: text in a conjunct S proved", true)
+                        : Agree(a, b) ? new("comparison: text whose characters agree", true)
                         : (left is RexDynamicParam || right is RexDynamicParam) && Statement(filter)?.Order?.Comparisons.Count > 0
                             ? new("comparison: text against a parameter, checked against its value", true)
                             : new("comparison: text against text the two orders part over", false));
@@ -623,7 +627,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             }
 
             foreach (RexNode operand in call.getOperands().toArray())
-                Comparisons(filter, operand, found);
+                Comparisons(filter, operand, found, proven, proved);
+        }
+
+        /// <summary>The conjuncts of a filter's statement S proved and sends its form of (<see cref="CosmosFilterStatement.Form"/>), by reference.</summary>
+        static IReadOnlySet<RexNode> Proven(CosmosFilter filter)
+        {
+            if (PlannerHarness.TableOf(filter) is not CosmosTable table)
+                return new HashSet<RexNode>();
+
+            var rexBuilder = filter.getCluster().getRexBuilder();
+            var implementor = new CosmosImplementor(rexBuilder, table.Container);
+            implementor.Visit(filter.getInput());
+            var statement = CosmosFilterStatement.Of(filter.getCondition(), implementor.Fields, implementor.Readings, table.Container, rexBuilder, implementor.RootAlias);
+            return Enumerable.Range(0, statement.Conjuncts.Count).Where(i => statement.Form(i) is not null).Select(i => statement.Conjuncts[i]).ToHashSet<RexNode>(ReferenceEqualityComparer.Instance);
         }
 
         /// <summary>

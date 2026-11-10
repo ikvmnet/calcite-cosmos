@@ -75,7 +75,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // what its siblings applied beside it establish, and never what it does itself. So a
             // conjunct may lean on another that reaches the service with it, to any depth, and no
             // conjunct certifies itself (#117). The same strata render it at implementation.
-            return CosmosFilterStatement.Of(Pushed(convention, filter, fields, readings), fields, readings, convention.Container, filter.getCluster().getRexBuilder()).Renders;
+            var statement = CosmosFilterStatement.Of(Pushed(convention, filter, fields, readings), fields, readings, convention.Container, filter.getCluster().getRexBuilder());
+
+            // Onto a WHERE it is conjoined with it, and the service reads its form of the documents that WHERE excludes as
+            // well: folded only where that form never fails there (CosmosClauses.Where).
+            return statement.Renders && ((written & CosmosClauses.Where) == 0 || statement.FailureFree);
         }
 
         /// <summary>

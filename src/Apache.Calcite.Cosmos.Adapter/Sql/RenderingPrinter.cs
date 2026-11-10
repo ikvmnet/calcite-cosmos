@@ -30,13 +30,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="paths">Each path the form reads, by its spelling, as the conjunct's IR reads it.</param>
         /// <param name="rootAlias">The alias the statement reads the document under.</param>
         /// <param name="parameters">The list the literals are bound into.</param>
-        /// <param name="stored">Whether the statement's target stores a string in another spelling than it is sent
-        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(RenderingSet)"/>): then each literal, every one a compared
-        /// value, is bound in that spelling, which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>), and a path
-        /// naming a member holding either escape is refused.</param>
+        /// <param name="stored">Whether S derived that the statement's set is sent the spelling its target stores
+        /// (<see cref="Metadata.CosmosRendering.StoresSpelled(RenderingSet)"/>, <c>RenderingTheory.Sends</c>): then each
+        /// literal, every one a compared value, is bound in that spelling, the writer's (<see cref="EmulatorStoredText.Of"/>),
+        /// which is what S's leaf compares there (<c>ServiceLeaf.Compare</c>). A member's name is written as it is: whether a
+        /// place may be written is S's, which proposes no form over one naming a band the set respells
+        /// (<c>RenderingTheory.Writable</c>).</param>
+        /// <param name="computed">Each computed place the form reads (h10), its call by its spelling.</param>
+        /// <param name="spellings">
+        /// The spelling S chose of each such call (<see cref="RenderingBundle.SpellingOf"/>), which it is printed in; a call S
+        /// chose none of is printed in the one every call of its function takes.
+        /// </param>
         /// <exception cref="ArgumentException">The form is opaque, or reads a path <paramref name="paths"/> does not name.</exception>
         /// <exception cref="CosmosTranslationException">A literal no value the service can be sent compares as, or holding a lone surrogate.</exception>
-        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false)
+        public static string Print(ServiceForm form, IReadOnlyDictionary<string, JsonDocumentPath> paths, string rootAlias, CosmosParameterList parameters, bool stored = false,
+            IReadOnlyDictionary<string, SqlValue.Call>? computed = null, Func<SqlValue.Call, long?>? spellings = null)
         {
             object? Bound(string literal) => stored && ValueOf(literal) is string text ? EmulatorStoredText.Of(text) : ValueOf(literal);
 
@@ -44,16 +52,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             void Path(string spelled)
             {
+                // A computed place (h10) is its service call over its operands, each literal bound by the slot rule.
+                if (computed is not null && computed.TryGetValue(spelled, out var call))
+                {
+                    builder.Append(Place(call) ?? throw new ArgumentException($"The form reads {spelled}, which has no service spelling.", nameof(computed)));
+                    return;
+                }
+
                 if (paths.TryGetValue(spelled, out var path) == false)
                     throw new ArgumentException($"The form reads {spelled}, which the statement does not name.", nameof(paths));
 
                 builder.Append(rootAlias);
-                foreach (var name in path.Names)
-                    // A name is stored spelled too, so written as it is it reads nothing there.
-                    CosmosSql.WritePropertyAccess(builder, stored && EmulatorStoredText.Escapes(name)
-                        ? throw new CosmosTranslationException("The path names a member holding U+0000 or U+FDD0, which the target stores escaped.")
-                        : RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                foreach (var segment in path.Segments)
+                    if (segment is not string name)
+                        builder.Append('[').Append(((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                    else
+                        CosmosSql.WritePropertyAccess(builder, RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
             }
+
+            string? Place(SqlValue.Call call) => CosmosFunctionSpellings.Spell(call, operand =>
+            {
+                switch (operand)
+                {
+                    case SqlValue.Call { Spelled: { } inner } nested when computed!.ContainsKey(inner):
+                        return Place(nested);
+                    case SqlValue.Literal literal:
+                        return parameters.Add(Bound(literal.Value));
+                    case var _ when operand.PathRead is JsonDocumentPath read && paths.ContainsKey(SqlValue.Spell(read)):
+                        var at = builder.Length;
+                        Path(SqlValue.Spell(read));
+                        var text = builder.ToString(at, builder.Length - at);
+                        builder.Length = at;
+                        return text;
+                    default:
+                        return null;
+                }
+            }, spellings?.Invoke(call));
 
             void Compare(ServiceForm compare, bool parenthesised)
             {
@@ -75,10 +109,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     case ServiceFormKind.Compare:
                         Compare(f, parenthesised: true);
                         break;
+                    case ServiceFormKind.ComparePaths:
+                        // Two readings (h11): the right side a path as the left is, no literal bound.
+                        builder.Append('(');
+                        Path(f.Path!);
+                        builder.Append(' ').Append(ServiceForm.OperatorOf(f.Test)).Append(' ');
+                        Path(f.Right!);
+                        builder.Append(')');
+                        break;
                     case ServiceFormKind.In:
                         builder.Append('(');
                         Path(f.Path!);
                         builder.Append(" IN (").Append(string.Join(", ", Rotated([.. f.Literals]).Select(l => parameters.Add(Bound(l))))).Append("))");
+                        break;
+                    case ServiceFormKind.Affix when f.Test == CosmosServiceTest.Like:
+                        // LIKE as the translator writes it, the pattern a parameter.
+                        builder.Append('(');
+                        Path(f.Path!);
+                        builder.Append(" LIKE ").Append(parameters.Add(Bound(f.Literal!))).Append(')');
+                        break;
+                    case ServiceFormKind.Affix:
+                        // An affix, case sensitive, with no third operand, as the translator writes one (h07).
+                        builder.Append(ServiceForm.NameOf(f.Test)).Append('(');
+                        Path(f.Path!);
+                        builder.Append(", ").Append(parameters.Add(Bound(f.Literal!))).Append(')');
                         break;
                     case ServiceFormKind.Bare:
                         Path(f.Path!);
@@ -96,6 +150,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                             Compare(f.Members[0], parenthesised: false);
                         else
                             Write(f.Members[0]);
+                        builder.Append(')');
+                        break;
+                    case ServiceFormKind.Choose:
+                        builder.Append('(');
+                        Write(f.Members[0]);
+                        builder.Append(" ? ");
+                        Write(f.Members[1]);
+                        builder.Append(" : ");
+                        Write(f.Members[2]);
                         builder.Append(')');
                         break;
                     case ServiceFormKind.And or ServiceFormKind.Or:

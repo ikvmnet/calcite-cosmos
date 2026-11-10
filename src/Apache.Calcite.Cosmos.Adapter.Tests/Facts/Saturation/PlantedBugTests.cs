@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -54,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
                 r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
                 r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
-                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true).Values is { } preimage && held.All(preimage.Contains));
+                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, FactsReadings.Rows).Values is { } preimage && held.All(preimage.Contains));
                 r.Then(rules.AlwaysTrue.Of(e));
             })));
 
@@ -134,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AStratumAdmittingAConjunctWithItsOwnFactsIsCaught()
         {
-            var generations = new JsonFactGenerations();
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows);
             Caught(theory => new CosmosOracle(theory, generations) { RenderedFrom = (terms, stratum, conjunct) => terms.Child(stratum, new[] { conjunct }) });
         }
 
@@ -146,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AGuardedCharactersClaimReadOfEveryKindIsCaught()
         {
-            var generations = new JsonFactGenerations();
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows);
             Caught(theory => new CosmosOracle(new JsonFactTheory(theory.Rules.Select(rule =>
                 rule.Head.Claim is JsonClaim.Characters ? JsonFactRule.Unconditional(rule.Head) : rule)), generations), "fact");
         }
@@ -274,8 +275,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
                 var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
                 r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
-                r.Where(k, atom => atom.Kept(true).Values is not null);
-                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true).Values!))));
+                r.Where(k, atom => atom.Kept(true, FactsReadings.Rows).Values is not null);
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, FactsReadings.Rows).Values!))));
             })), "fact");
 
         /// <summary>
@@ -310,11 +311,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             })), "possible");
 
         /// <summary>
+        /// The type test's rule with its atom read as <c>IS_DEFINED</c>'s beside its own: a type test taken for the path's
+        /// presence, so that one FALSE says the path is absent, which a document holding another kind there refutes.
+        /// </summary>
+        [Fact]
+        public void ATypeTestReadAsPresenceIsCaught() => Caught(Planted(rules =>
+            rules.Analyse.DefineRule("planted: a type test is the atom of its path's presence", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (t, k) = r.Vars<string, string>("t", "k");
+                r.When(e.Is(rules.Ir.TypeTest.Of(t, v)), rules.Ir.Reads.Of(v, p, k));
+                r.Then(rules.Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
+            })));
+
+        /// <summary>
+        /// The affix's rule with its pattern's leading <c>%</c> dropped beside its own: a suffix or an infix read as a
+        /// prefix, so that <c>'%ikes'</c> is FALSE of a path holding <c>bikes</c>.
+        /// </summary>
+        [Fact]
+        public void AnAffixReadWithoutItsLeadingWildcardIsCaught() => Caught(Planted(rules =>
+            rules.Analyse.DefineRule("planted: an affix's pattern starts at its first character that is no %", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var (op, c, k) = r.Vars<string, string, string>("op", "c", "k");
+                r.When(e.Is(rules.Ir.Affix.Of(op, v, c)), rules.Ir.Reads.Of(v, p, k));
+                r.Where(c, pattern => pattern.StartsWith('%'));
+                r.Then(rules.Atom.Of(e, p, Compute.Of(k, op, c, (reader, test, pattern) => PredicateAtom.Affix(reader, test, pattern.TrimStart('%')))));
+            })));
+
+        /// <summary>
         /// The predicate rules of a graph of the test's own, planted.
         /// </summary>
         static Func<JsonFactTheory, CosmosOracle> Planted(Action<PredicateRules> plant)
         {
-            var generations = new JsonFactGenerations(long.MaxValue);
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
             plant(PredicateRules.Of(generations.Current.Contexts));
             return theory => new CosmosOracle(theory, generations);
         }

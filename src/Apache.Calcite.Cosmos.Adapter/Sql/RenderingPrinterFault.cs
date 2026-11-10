@@ -28,6 +28,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>A property name spelled wrongly: its first letter in upper case, which the service, case-sensitive, reads as another property.</summary>
         M16 = 1 << 4,
 
+        /// <summary>A window's start sent as the service's own base: <c>SUBSTRING</c> counted from 0 where SQL counts from 1, so it reads one unit on (spec h13, line 17).</summary>
+        M30 = 1 << 5,
+
     }
 
 }

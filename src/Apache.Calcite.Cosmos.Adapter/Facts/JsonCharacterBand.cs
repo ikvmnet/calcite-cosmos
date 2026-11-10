@@ -36,6 +36,14 @@ namespace Apache.Calcite.Cosmos.Facts
     /// (<see cref="Nul"/>).</description></item>
     /// </list>
     /// <para>
+    /// <b>Refinements beside them (F1).</b> Four classes lie within one of those five: U+FFFD and U+FDD0 within the high
+    /// band, an unpaired surrogate within the surrogates, a line terminator within the trimmed class. Each is emitted only
+    /// by the value reader (<c>JsonValues.MaskOf</c>), always with the class it lies within, so a reasoning that names only
+    /// the five reads what it read before; a set a person states names classes, and is read with the refinements of each
+    /// it names (<c>JsonValues.Closed</c>). A function row's band is one of the five, and a refinement keys under the band
+    /// it lies within (<c>JsonValues.Within</c>).
+    /// </para>
+    /// <para>
     /// <b>The adapter's spelling of a fact of the theory.</b> What characters a path's strings hold is the theory's
     /// <c>chars</c>, a set of these classes per path, as a type is a set of JSON types; <see cref="JsonClaim.Characters"/>
     /// states it and <see cref="JsonFactSet.CharactersOf(JsonDocumentPath)"/> reads it back. ASCII outside the trimmed class
@@ -90,6 +98,32 @@ namespace Apache.Calcite.Cosmos.Facts
         Nul = 16,
 
         /// <summary>
+        /// U+FFFD, within <see cref="HighBmp"/>: what Azure stores a lone surrogate as, and sends back a split pair as
+        /// (<c>Service.LoneSurrogateIsStoredAsReplacement</c>). A refinement: a string holding it holds the high band too.
+        /// </summary>
+        Replacement = 32,
+
+        /// <summary>
+        /// U+FDD0, within <see cref="HighBmp"/>: what the emulator stores U+0000 as, followed by <c>0</c>. A refinement: a
+        /// string holding it holds the high band too.
+        /// </summary>
+        Escape = 64,
+
+        /// <summary>
+        /// A surrogate no other completes, within <see cref="Surrogates"/>: what the SDK refuses to send
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>). A refinement read off a whole string, never off one unit or
+        /// a range of them alone, since a pair's units are surrogates too; a string holding it holds the surrogates too.
+        /// </summary>
+        Unpaired = 128,
+
+        /// <summary>
+        /// A line terminator as Java's pattern reads one, which Calcite's <c>LIKE</c> does not match by <c>_</c>: U+000A,
+        /// U+000D, U+0085, U+2028 and U+2029, within <see cref="Trimmed"/>. A refinement: a string holding it holds the
+        /// trimmed class too.
+        /// </summary>
+        LineTerminator = 256,
+
+        /// <summary>
         /// The surrogates and the high band: every unit from U+D800, the two whose meeting parts the service's order from
         /// Calcite's. A set without either holds only units below U+D800.
         /// </summary>
@@ -103,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Every class: what a string nothing states the characters of may hold.
         /// </summary>
-        Any = Surrogates | HighBmp | NonAscii | Trimmed | Nul,
+        Any = Surrogates | HighBmp | NonAscii | Trimmed | Nul | Replacement | Escape | Unpaired | LineTerminator,
 
     }
 

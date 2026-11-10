@@ -1,0 +1,16 @@
+# The emulator lines of probe run 4 on 2026-11-09, each as its test logged it (CosmosStoredSearchProbeTests, through
+# CosmosWitnessProbe.ProjectAlone), run against mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview,
+# release EN20261019: REPLACE's search read from a path, REPLACE("a0b1c", c.v, "x"), over the six witnesses run 3 left
+# unanswered on the probe account, each asked alone in a statement of its own, and LENGTH(c.v) over "a0b1c" beside them.
+# Every line answers as the records holding it hold it, where the row's own test asked them over every witness at
+# once: the length as 2026-11-03-EN20261019.tsv does, and the six searches as 2026-11-06-EN20261019.tsv, the record
+# that added this spelling, does; each statement at the first asking. Release EN20260907 answered every line alike.
+# A function's answer is the projection.
+release	row	expression	witness	answer
+EN20261019	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	5
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	"a0x1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	""	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	"a0b1c"
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	30	undefined
+EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	0.5	undefined

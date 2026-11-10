@@ -63,16 +63,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Meter.CreateCounter<long>("cosmos.responses", unit: "{response}", description: "Responses received from Cosmos.");
 
         /// <summary>
-        /// Questions the rendering graph declined while a filter was planned, by container and reason.
+        /// Questions the rendering graph declined while a statement was planned, by container and reason.
         /// </summary>
         /// <remarks>
         /// A filter's conjuncts in the family the rendering graph owns are sent only as it proves them, so a question it
         /// declines leaves them in process with no weakening: the plan is valid and nothing wrong is sent, but the
-        /// container is read for them. Tagged with the container and <c>cosmos.rendering.reason</c>, one of
+        /// container is read for them. The translator's bridge asks it too (G6): whether a function of a document value is
+        /// computed as Calcite computes it, a decline leaving the function in process over the value the service sends,
+        /// and what a <c>LIKE</c> over a case fold is sent as, a decline leaving it unrewritten as the service's
+        /// case-insensitive match. Tagged with the container and <c>cosmos.rendering.reason</c>, one of
         /// <see cref="RenderingReasons"/>.
         /// </remarks>
         public static readonly Counter<long> RenderingDeclines =
-            Meter.CreateCounter<long>("cosmos.rendering.declines", unit: "{decline}", description: "Questions the rendering graph declined while a filter was planned.");
+            Meter.CreateCounter<long>("cosmos.rendering.declines", unit: "{decline}", description: "Questions the rendering graph declined while a statement was planned.");
 
         /// <summary>
         /// Why the rendering graph declined a question (<see cref="RenderingDeclines"/>).

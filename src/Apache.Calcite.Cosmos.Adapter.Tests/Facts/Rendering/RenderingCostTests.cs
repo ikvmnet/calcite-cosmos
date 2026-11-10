@@ -135,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var kept = new List<object?>();
             for (var round = 0; round < 21; round++)
             {
-                var (generations, seen) = (new JsonFactGenerations(), new HashSet<object>(ReferenceEqualityComparer.Instance));
+                var (generations, seen) = (new JsonFactGenerations(CosmosReasoning.Rows), new HashSet<object>(ReferenceEqualityComparer.Instance));
                 foreach (var container in containers)
                 {
                     var theory = container.Facts.In(generations);

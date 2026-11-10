@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Facts.Rendering;
+
 using Eggnog;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
@@ -39,6 +41,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Graph = graph;
             Paths = new PathVocabulary(graph);
             graph.Values.Register<Bound>("bound");
+            graph.Values.Register<JsonClassMap>("class map");
+            graph.Values.RegisterSet<JsonClassMap>();
 
             Present = graph.DefineRelation<JPath>("present");
             Absent = graph.DefineRelation<JPath>("absent");
@@ -70,11 +74,29 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
             Written = graph.DefineFunction<JPath, ValueSet<string>>("written", ValueLattice.Intersect<string>());
+            StoredAs = graph.DefineFunction<ValueSet<JsonClassMap>>("storedAs", ValueLattice.Union<JsonClassMap>());
+            CallDraws = graph.DefineFunction<string, ValueSet<long>>("callDraws", ValueLattice.Union<long>());
+            CallMaps = graph.DefineFunction<string, ValueSet<JsonClassMap>>("callMaps", ValueLattice.Union<JsonClassMap>());
+            CastsToText = graph.DefineFunction<string, ValueSet<string>>("castsToText", ValueLattice.Union<string>());
+            // Read beside the terms by the vocabulary's type-test rule, which may read only terms and analyses (G7).
+            TestKinds = graph.DefineFunction<string, ValueSet<string>>("testkinds", ValueLattice.Union<string>(), options: new TableOptions { Role = TableRole.Analysis });
+            // Read beside the terms by the vocabulary's test rules, likewise (G8).
+            TestReads = graph.DefineRelation<string, string>("testreads", new TableOptions { Role = TableRole.Analysis });
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
+
+            // What Calcite makes of each reading, S's vocabulary too, settled once at the root (G7), over the values S registers.
+            graph.Values.RegisterEnum<CosmosValueClass>();
+            graph.Values.RegisterEnum<CosmosServiceTest>();
+            graph.Values.RegisterEnum<Truths>();
+            graph.Values.Register<ReadingTable>("reading table");
+            graph.Values.Register<LikeUnit>("like unit");
+            Readings = new ReadingVocabulary(graph, TestKinds, TestReads);
+            ReadingRules = graph.DefineRuleset("readings");
+            Readings.Define(ReadingRules);
 
             DefineValues();
             DefineNumbers();
@@ -95,6 +117,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>Gets the rules of JSON Schema: local to the JSON Schema context, so they hold in it and beneath it.</summary>
         public Ruleset JsonSchema { get; }
+
+        /// <summary>
+        /// What Calcite makes of each reading, as rules over its rows (G7): S's vocabulary, whose table the atom rules read, so
+        /// the facts graph reads an atom's readings as S's cells do.
+        /// </summary>
+        public ReadingVocabulary Readings { get; }
+
+        /// <summary>Gets the readings vocabulary's rules, which the root runs once over its rows.</summary>
+        public Ruleset ReadingRules { get; }
 
         /// <summary>Gets the terms of a path, which the rendering graph defines too; forwarded below.</summary>
         public PathVocabulary Paths { get; }
@@ -203,6 +234,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// which is of the document a validator checked, and from which <see cref="Chars"/>, what is stored, is derived.
         /// </summary>
         public Function<JPath, ValueSet<string>> Written { get; }
+
+        /// <summary>
+        /// What the service stores of a string written in a class, by its measured rows (<c>CosmosAxiomRows.ReadStored</c>),
+        /// every target's alike: the root's, assumed once, which the union holds.
+        /// </summary>
+        public Function<ValueSet<JsonClassMap>> StoredAs { get; }
+
+        /// <summary>
+        /// Which operands each function Calcite computes draws its value's characters from, by the loader's ordinals, and
+        /// <c>FunctionKey.Every</c> where it draws from each alike (<see cref="StringCalls"/>): the root's, assumed once a
+        /// function, which the union holds. A function with no row is one the theory reads no call of.
+        /// </summary>
+        public Function<string, ValueSet<long>> CallDraws { get; }
+
+        /// <summary>
+        /// What each function Calcite computes makes of an operand's classes beyond keeping them (<see cref="StringCalls"/>):
+        /// the root's, assumed once a function, which the union holds.
+        /// </summary>
+        public Function<string, ValueSet<JsonClassMap>> CallMaps { get; }
+
+        /// <summary>
+        /// The kinds of value a cast to each SQL type writes as text holding the value's own characters
+        /// (<see cref="StringCalls"/>): a string itself, and a number's or a boolean's digits, signs and letters, which hold
+        /// no class. The root's, assumed once a type, which the union holds; a type with no row casts nothing to text here.
+        /// </summary>
+        public Function<string, ValueSet<string>> CastsToText { get; }
+
+        /// <summary>
+        /// The JSON kinds each type test is TRUE of in process, by its name (<c>Calcite.TypeTestsAreTheirBodies</c>, G7): the
+        /// root's, assumed once a test, which the union holds, and which <see cref="PredicateVocabulary"/>'s type-test rule
+        /// reads. A test with no row is no atom.
+        /// </summary>
+        public Function<string, ValueSet<string>> TestKinds { get; }
+
+        /// <summary>
+        /// The readings a one-place test's in-process body takes apart, with the reading it reads instead
+        /// (<c>Calcite.TypeTestsAreTheirBodies</c>, G8): the root's, which <see cref="PredicateVocabulary"/>'s test rules read.
+        /// A reading no row names, a cast's, is no test's atom.
+        /// </summary>
+        public Relation<string, string> TestReads { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing
@@ -398,15 +469,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain))));
             });
             // What a validator checked is the string as written, and the service does not store every string as it was
-            // written: measured on the probe account, a lone surrogate written as a JSON escape is stored as U+FFFD, a unit
-            // of the high band (Service.LoneSurrogateIsStoredAsReplacement). A string written with a surrogate may have
-            // had a lone one, so what is stored may hold a high unit too; one written without holds what it was written
-            // with.
-            Rule("a string is stored as it was written, a lone surrogate as U+FFFD", r =>
+            // written: its rows say what a class written may be stored as (StoredAs; a lone surrogate written as a JSON
+            // escape is stored as U+FFFD, Service.LoneSurrogateIsStoredAsReplacement). What is stored holds what was
+            // written and what every row maps it to, at once, so the intersection never meets two rows apart.
+            Rule("a string is stored as it was written, and as its rows store a class", r =>
             {
                 var (p, w) = r.Vars<JPath, ValueSet<string>>("p", "w");
-                r.When(w.Is(Written.Of(p)));
-                r.Then(Chars.Of(p).Is(Compute.Of(w, Stored)));
+                var m = r.Var<ValueSet<JsonClassMap>>("m");
+                r.When(w.Is(Written.Of(p)), m.Is(StoredAs.Of()));
+                r.Then(Chars.Of(p).Is(Compute.Of(w, m, Mapped)));
             });
             SchemaRule("a stored form holds the characters it is written in", r =>
             {

@@ -52,6 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static readonly string? Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY");
 
         static CosmosClient? _client;
+        static Database? _made;
         static Container? _geography;
         static Container? _geometry;
         static string? _unavailable;
@@ -68,6 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             {
                 _client = new CosmosClient(Endpoint, Key);
                 var database = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName)).Database;
+                _made = database;
 
                 _geography = await Prepare(database, "geography", GeospatialType.Geography, boundingBox: false);
                 _geometry = await Prepare(database, "geometry", GeospatialType.Geometry, boundingBox: true);
@@ -83,9 +85,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             if (_client is null)
                 return;
 
+            // The database the class made, half made among them: none where it reached no service.
             try
             {
-                await _client.GetDatabase(DatabaseName).DeleteAsync();
+                if (_made is not null)
+                    await _made.DeleteAsync();
             }
             catch (CosmosException)
             {

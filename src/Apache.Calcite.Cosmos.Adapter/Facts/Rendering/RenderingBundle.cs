@@ -25,6 +25,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly RenderingTheory _theory;
         readonly Dictionary<JsonDocumentPath, PathValues> _imported = [];
         readonly Dictionary<SqlPredicate, PathValues?> _atoms = [];
+        readonly Dictionary<string, long> _strataByKey = new(StringComparer.Ordinal);
+        readonly Dictionary<long, IReadOnlyList<SqlPredicate>> _strata = [];
+        readonly Dictionary<SqlValue.Call, ConstructorTerm<Val>> _computed = [];
+        readonly Dictionary<(long Stratum, JsonDocumentPath Path), PathValues> _arms = [];
+        readonly Dictionary<(long Stratum, JsonDocumentPath Path), ValueSet<string>> _armChars = [];
+        readonly Dictionary<ImportSource, long> _rounds = [];
+        readonly Dictionary<SqlPredicate, long> _roundOf = [];
+        readonly Dictionary<string, ValueSet<string>> _chars = new(StringComparer.Ordinal);
+        readonly Dictionary<string, ValueSet<string>> _names = new(StringComparer.Ordinal);
         ImportSource? _source;
         RenderingRun? _run;
 
@@ -48,6 +57,48 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public int Iterations { get; private set; }
 
         /// <summary>
+        /// The rows its run left in its own scope, what <c>RowLimit</c> bounds, counted when read; none before a run (h11,
+        /// kill line 39).
+        /// </summary>
+        public long Rows => _run?.StopReason is null ? 0 : _theory.Graph.Tables.Sum(table => Scope.CountRows(table) - _theory.Theory.CountRows(table));
+
+        /// <summary>
+        /// Every arm stratum a written case opened, by id: the conditions it is read beneath, outermost first, each a
+        /// condition or its negation. Zero, the enclosing node, is none of them.
+        /// </summary>
+        public IReadOnlyDictionary<long, IReadOnlyList<SqlPredicate>> Strata => _strata;
+
+        /// <summary>Every atom written, an arm's tagged with its stratum (<see cref="SqlPredicate.Beneath"/>): what <see cref="Assume"/> names.</summary>
+        public IReadOnlyCollection<SqlPredicate> Atoms => _atoms.Keys;
+
+        /// <summary>The narrow else of a case is rooted beneath its condition's negation to this many conditions deep; wide alone below.</summary>
+        internal const int NarrowDepth = 3;
+
+        /// <summary>The arm stratum a written case opened beneath these conditions, outermost first; none where no case opened it.</summary>
+        public long? ArmOf(IReadOnlyList<SqlPredicate> conditions) => _strataByKey.TryGetValue(KeyOf(conditions), out var stratum) ? stratum : null;
+
+        /// <summary>What names an arm's conditions, alike for each case that reads a leaf beneath them.</summary>
+        internal static string KeyOf(IReadOnlyList<SqlPredicate> conditions) => string.Join("; ", conditions.Select(c => c.ToString()));
+
+        /// <summary>
+        /// Each leaf a predicate reads beneath an arm, with the arm's conditions, outermost first, as <see cref="Chosen"/> tags
+        /// it when the predicate is written: a then-arm's beneath its condition, a narrow else's beneath the negation, to
+        /// <see cref="NarrowDepth"/> conditions; none where the leaf is read where the predicate is.
+        /// </summary>
+        internal static IEnumerable<(SqlPredicate Leaf, IReadOnlyList<SqlPredicate> Conditions)> ArmsOf(SqlPredicate predicate) => ArmsOf(predicate, []);
+
+        static IEnumerable<(SqlPredicate Leaf, IReadOnlyList<SqlPredicate> Conditions)> ArmsOf(SqlPredicate predicate, IReadOnlyList<SqlPredicate> at) => predicate switch
+        {
+            SqlPredicate.And a => a.Arms.SelectMany(x => ArmsOf(x, at)),
+            SqlPredicate.Or o => o.Arms.SelectMany(x => ArmsOf(x, at)),
+            SqlPredicate.Not n => ArmsOf(n.Operand, at),
+            SqlPredicate.Constant or SqlPredicate.Beneath => [],
+            SqlPredicate.Case c => ArmsOf(c.Condition, at).Concat(ArmsOf(c.Then, [.. at, c.Condition]))
+                .Concat(at.Count < NarrowDepth ? ArmsOf(c.Else, [.. at, new SqlPredicate.Not(c.Condition)]) : []).Concat(ArmsOf(c.Else, at)),
+            _ => at.Count == 0 ? [] : [(predicate, at)],
+        };
+
+        /// <summary>
         /// Writes a conjunct as the shared vocabulary's terms, with the spelling of every path it reads, and its syntax
         /// beside them: each leaf over the value it is, and each call's operands.
         /// </summary>
@@ -59,19 +110,22 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public Pred Write(SqlPredicate predicate, IReadOnlyDictionary<long, SqlValue>? opaques)
         {
-            foreach (var atom in predicate.Subterms.Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)))
-                _atoms.TryAdd(atom, null);
+            Collect(predicate);
 
             var theory = _theory;
             var facts = new List<Fact>();
-            var writer = new PredicateWriter(theory.Ir, path =>
+            PredicateWriter? writer = null;
+            writer = new PredicateWriter(theory.Ir, path =>
             {
                 var term = JsonFactEncoding.Path(path).ToTerm(theory.Paths);
                 facts.Add(theory.Spelling.Of(term).Is(SqlValue.Spell(path)));
+                facts.Add(theory.NullWhereAbsent.Of(term));
                 return term;
             }, leaf: (term, values) => term is ConstructorTerm<Pred> leaf
                 ? values.Select(v => theory.Over.Of(leaf, v)).Prepend(theory.Leaf.Of(leaf))
-                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques);
+                : values.Select(v => theory.CallArg.Of((ConstructorTerm<Val>)term, v)), opaques: opaques,
+                beneath: (stratum, leaf) => theory.Beneath.Of(stratum, leaf),
+                @case: (stratum, chosen, bookkeeping) => Chosen(writer!, stratum, chosen, bookkeeping), computed: Computed);
 
             var term = writer.Term(predicate, facts);
             return Guard(() =>
@@ -85,6 +139,204 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
                 return root;
             });
+        }
+
+        /// <summary>
+        /// What the host writes of a call the loader read as a computed place (h10): its type, arity, operands by ordinal,
+        /// its place's spelling, and that it reads that place through its type's reader. The loader types a call it read
+        /// whole that the service can spell, where it reads places; whether the rows name it and its place has an import is
+        /// S's (G6). A call with no spelling has no place.
+        /// </summary>
+        IEnumerable<Fact> Computed(SqlValue.Call call, ConstructorTerm<Val> term, IReadOnlyList<ConstructorTerm<Val>> operands)
+        {
+            if (call.Spelled is not { } spelled)
+                return [];
+
+            _computed.TryAdd(call, term);
+            return
+            [
+                _theory.SqlType.Of(term).Is(call.Type!), _theory.Arity.Of(term).Is((long)operands.Count),
+                _theory.Spelling.Of(_theory.Valued.Of(term)).Is(spelled), _theory.Ir.Reads.Of(term, _theory.Valued.Of(term), PredicateAtom.TypedReader(call.Type!)),
+                .. operands.Select((operand, i) => _theory.CallArgAt.Of(term, (long)i, operand)),
+            ];
+        }
+
+        /// <summary>The classes the member names of a path hold characters of, which the writer's spelling of them reads (G1).</summary>
+        static ValueSet<string> NamesOf(JsonDocumentPath path) =>
+            path.Segments.OfType<string>().Aggregate(JsonValues.NoBand, (classes, name) => classes.Union(JsonValues.BandsOfText(name)));
+
+        /// <summary>The classes the member names of every path a value reads hold, however deep its calls.</summary>
+        static ValueSet<string> NamesOf(SqlValue value) =>
+            value.PathRead is JsonDocumentPath read ? NamesOf(read)
+            : value is SqlValue.Call call ? call.Operands.Aggregate(JsonValues.NoBand, (classes, operand) => classes.Union(NamesOf(operand)))
+            : JsonValues.NoBand;
+
+        /// <summary>The calls written as computed places.</summary>
+        public IReadOnlyCollection<SqlValue.Call> ComputedCalls => _computed.Keys;
+
+        /// <summary>
+        /// A computed place's import once a run completed, its call's image (G6); <c>null</c> where the bundle wrote no place
+        /// for the call, S gave it no image, or the run may not be read.
+        /// </summary>
+        public PathValues? ImageOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.Imported.Of(_theory.Valued.Of(term)), out var image) ? image : null)
+            : null;
+
+        /// <summary>
+        /// What S writes a <c>LIKE</c> over a fold as once a bridge run completed (<see cref="RunBridge"/>, its
+        /// <c>foldedas</c>, G6): the test whose case-insensitive form answers alike, the cheapest of those that say the
+        /// pattern, its argument, and the ordinal of the fold's operand it is asked over; <c>null</c> where S says none, says
+        /// one over more than one operand, as a fold over a function of two subjects may, or the run may not be read.
+        /// </summary>
+        /// <param name="like">The <c>LIKE</c> as the bundle wrote it.</param>
+        public (CosmosServiceTest Test, string Argument, long Operand)? FoldOf(Pred like) => _run is { StopReason: RunStopReason.Completed }
+            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0])).Take(2).ToList() is [var row] && row.Output is Priced { Form: { } form } best
+                ? ((CosmosServiceTest Test, string Argument, long Operand)?)(form.Test, AffixPattern.FoldedArgument(best), (long)row.Keys[1])
+                : null)
+            : null;
+
+        /// <summary>
+        /// The name S keys a computed place's call by once a run completed (its <c>callkey</c> rules over the rows' names,
+        /// G6); <c>null</c> where the rows name none, the bundle wrote no place for the call, or the run may not be read.
+        /// </summary>
+        public string? KeyOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.CallKey.Of(term), out var key) ? key : null)
+            : null;
+
+        /// <summary>
+        /// The spelling S chose of a computed place's call once a run completed (its <c>callspelling</c> rules, G6), the rank
+        /// the printer and the translator write; <c>null</c> where its function's rows give it none, the bundle wrote no place
+        /// for the call, or the run may not be read.
+        /// </summary>
+        public long? SpellingOf(SqlValue.Call call) => _run is { StopReason: RunStopReason.Completed } && _computed.TryGetValue(call, out var term)
+            ? Guard(() => Scope.TryGet(_theory.CallSpelling.Of(term), out var spelling) ? spelling : (long?)null)
+            : null;
+
+        /// <summary>
+        /// Imports a computed place's characters: F's for the call at the root (<c>ValueChars</c>), a superset beneath any
+        /// stratum. A call the bundle wrote no place for is ignored.
+        /// </summary>
+        public void ImportComputed(SqlValue.Call call, ValueSet<string> classes)
+        {
+            if (_run is not null)
+                throw new InvalidOperationException("An import after the run would be read by nothing the run derived.");
+
+            if (_computed.TryGetValue(call, out var term) == false)
+                return;
+
+            _chars.TryAdd(call.Spelled!, classes);
+            var names = NamesOf(call);
+            _names.TryAdd(call.Spelled!, names);
+            var place = _theory.Valued.Of(term);
+            try
+            {
+                if (Failure is null)
+                    Scope.Write(w => w.Assume(_theory.ImportedChars.Of(place).Is(classes), _theory.PartedLiterals.Of(place).Is(ValueSet<string>.Empty), _theory.NameChars.Of(place).Is(names)));
+            }
+            catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
+            {
+                Decline(e);
+            }
+        }
+
+        /// <summary>
+        /// Whether an atom compares a computed place, or two readings (h11): its <c>Assumed</c> is the assume rule's, not
+        /// the bundle's.
+        /// </summary>
+        internal static bool IsComputed(SqlPredicate atom) => atom switch
+        {
+            SqlPredicate.Beneath b => IsComputed(b.Leaf),
+            SqlPredicate.Compare c => IsPlace(c.Left) || IsPlace(c.Right) || IsPair(c),
+            SqlPredicate.In i => IsPlace(i.Value),
+            SqlPredicate.IsNull n => IsPlace(n.Value),
+            SqlPredicate.IsDefined d => IsPlace(d.Value),
+            SqlPredicate.TypeTest t => IsPlace(t.Value),
+            SqlPredicate.Affix a => IsPlace(a.Value),
+            _ => false,
+        };
+
+        static bool IsPlace(SqlValue value) => value is SqlValue.Call { Type: not null };
+
+        /// <summary>Whether a comparison reads a place on each side, a pair's atom: a path read or a computed place.</summary>
+        static bool IsPair(SqlPredicate.Compare compare) => IsReading(compare.Left) && IsReading(compare.Right);
+
+        static bool IsReading(SqlValue value) => value.PathRead is not null || IsPlace(value);
+
+        /// <summary>A reading's place and spelling: a path's, or a computed place's the bundle wrote; none otherwise.</summary>
+        (Term<JPath> Term, string Spelling)? PlaceOf(SqlValue value) => value.PathRead is { } path
+            ? (JsonFactEncoding.Path(path).ToTerm(_theory.Paths), SqlValue.Spell(path))
+            : value is SqlValue.Call { Spelled: { } spelled } call && _computed.TryGetValue(call, out var term) ? (_theory.Valued.Of(term), spelled) : null;
+
+        /// <summary>
+        /// A case beneath a stratum as S's <c>chosen</c>: the condition read where the case is, the then-arm beneath the
+        /// condition too, and the else-arm twice, narrow beneath its negation (to <see cref="NarrowDepth"/> conditions) and
+        /// wide where the case is. Each arm's atoms are collected as they are tagged.
+        /// </summary>
+        ConstructorTerm<Pred> Chosen(PredicateWriter writer, long stratum, SqlPredicate.Case chosen, List<Fact> bookkeeping)
+        {
+            var at = stratum == 0 ? Array.Empty<SqlPredicate>() : _strata[stratum];
+            var (condition, then, wide) = (Tagged(chosen.Condition, at), Tagged(chosen.Then, [.. at, chosen.Condition]), Tagged(chosen.Else, at));
+            var narrow = at.Count < NarrowDepth ? Tagged(chosen.Else, [.. at, new SqlPredicate.Not(chosen.Condition)]) : wide;
+            foreach (var part in new[] { condition, then, narrow, wide })
+                Collect(part);
+
+            return _theory.Chosen.Of(writer.Term(condition, bookkeeping), writer.Term(then, bookkeeping), writer.Term(narrow, bookkeeping), writer.Term(wide, bookkeeping));
+        }
+
+        /// <summary>
+        /// A predicate read beneath conditions: every leaf, and every case to be written there, beneath their stratum, its
+        /// junctions and negations kept and a constant untagged; itself beneath none.
+        /// </summary>
+        SqlPredicate Tagged(SqlPredicate predicate, IReadOnlyList<SqlPredicate> conditions)
+        {
+            if (conditions.Count == 0)
+                return predicate;
+
+            var key = KeyOf(conditions);
+            if (_strataByKey.TryGetValue(key, out var stratum) == false)
+            {
+                _strataByKey.Add(key, stratum = _strataByKey.Count + 1);
+                _strata.Add(stratum, conditions);
+            }
+
+            SqlPredicate Tag(SqlPredicate p) => p switch
+            {
+                SqlPredicate.And a => new SqlPredicate.And([.. a.Arms.Select(Tag)]),
+                SqlPredicate.Or o => new SqlPredicate.Or([.. o.Arms.Select(Tag)]),
+                SqlPredicate.Not n => new SqlPredicate.Not(Tag(n.Operand)),
+                SqlPredicate.Constant => p,
+                SqlPredicate.Beneath => throw new InvalidOperationException($"{p} is tagged already."),
+                _ => new SqlPredicate.Beneath(stratum, p),
+            };
+
+            return Tag(predicate);
+        }
+
+        /// <summary>
+        /// Notes every atom a predicate writes: each leaf as it is spelled, tagged or not; a case's are its arms', noted as
+        /// it is written.
+        /// </summary>
+        void Collect(SqlPredicate predicate)
+        {
+            switch (predicate)
+            {
+                case SqlPredicate.And a:
+                    foreach (var arm in a.Arms)
+                        Collect(arm);
+                    break;
+                case SqlPredicate.Or o:
+                    foreach (var arm in o.Arms)
+                        Collect(arm);
+                    break;
+                case SqlPredicate.Not n:
+                    Collect(n.Operand);
+                    break;
+                case SqlPredicate.Case or SqlPredicate.Beneath { Leaf: SqlPredicate.Case }:
+                    break;
+                default:
+                    _atoms.TryAdd(predicate, null);
+                    break;
+            }
         }
 
         /// <summary>
@@ -102,14 +354,30 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 throw new InvalidOperationException($"The bundle imports from {_source}, and one bundle holds one source's facts.");
 
             _source = source;
-            _imported.TryAdd(path, values);
             var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
 
-            // A differing second import is the importer's fault, not the engine's, and throws.
+            // A differing second import is the importer's fault, not the engine's, and throws: the table joins a computed
+            // place's images (G6), so the bundle holds a path to one import itself. An equal one is written once.
+            if (_imported.TryGetValue(path, out var held))
+            {
+                if (held != values)
+                    throw new FactConflictException(_theory.Imported, new object[] { term }, held, values);
+
+                if (_chars[SqlValue.Spell(path)] is var heldChars && heldChars.Equals(classes) == false)
+                    throw new FactConflictException(_theory.ImportedChars, new object[] { term }, heldChars, classes);
+
+                return;
+            }
+
+            _imported.Add(path, values);
+            _chars.TryAdd(SqlValue.Spell(path), classes);
+            var names = NamesOf(path);
+            _names.TryAdd(SqlValue.Spell(path), names);
             try
             {
                 if (Failure is null)
-                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty));
+                    Scope.Assume(_theory.Imported.Of(term).Is(values), _theory.ImportedChars.Of(term).Is(classes), _theory.PartedLiterals.Of(term).Is(ValueSet<string>.Empty),
+                        _theory.NameChars.Of(term).Is(names));
             }
             catch (Exception e) when (e is not FactConflictException && JsonFactTheory.IsEngineFailure(e))
             {
@@ -119,12 +387,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// States what an atom's path may hold where its conjunct was rendered: a later round of one of the statements the
-        /// import is the root of, which narrows the import and is read of nothing but that conjunct's atoms. Before the run
-        /// only; an atom no call names is read as anything there.
+        /// import is the root of, which narrows the import and is read of nothing but that conjunct's atoms; or an arm
+        /// stratum the bundle opened, of the root's own statement and round, read of nothing but the atoms tagged with it.
+        /// Before the run only; an atom no call names is read as anything there.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// The bundle has run; the stratum is no later round of the import's statements; the atom reads no imported path,
-        /// or was stated otherwise already.
+        /// The bundle has run; the stratum is no later round of the import's statements, nor an arm stratum the bundle
+        /// opened of its own round; the atom reads no imported path, is not tagged with the arm, or was stated otherwise
+        /// already.
         /// </exception>
         /// <exception cref="InvalidOperationException">The value admits what the import does not.</exception>
         public void Assume(ImportSource source, SqlPredicate atom, PathValues values)
@@ -132,19 +402,77 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (_run is not null)
                 throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
 
-            if (_source is null || source.Round <= _source.Round || _source.Statement.Split('+').Contains(source.Statement) == false)
+            var statement = _source is not null && _source.Names(source.Statement);
+            if (source.Stratum is { } arm)
+            {
+                if (statement == false || source.Round != _source!.Round || _strata.ContainsKey(arm) == false || atom is not SqlPredicate.Beneath { Stratum: var tagged } || tagged != arm)
+                    throw new InvalidOperationException($"{source} is no arm stratum the bundle opened of the round {_source} is the root of, or {atom} is not read beneath it.");
+            }
+            else if (statement == false || source.Round <= _source!.Round)
                 throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
 
-            if (atom.Paths.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)
+            if (atom.Places.ToList() is not [var path] || _imported.TryGetValue(path, out var imported) == false)
                 throw new InvalidOperationException($"{atom} reads no one path the bundle imported.");
 
             if (PathValues.Meet(values, imported) != values)
                 throw new InvalidOperationException($"{atom}'s stratum says {values}, which the import {imported} does not admit.");
 
+            // The path's import beneath the arm, which a computed place's operand there reads (h10); an atom over a
+            // computed place is assumed by the assume rule, not as its operand's values.
+            if (source.Stratum is { } beneath)
+                _arms.TryAdd((beneath, path), values);
+
+            if (IsComputed(atom))
+                return;
+
             if (_atoms.TryGetValue(atom, out var stated) && stated is not null && stated != values)
                 throw new InvalidOperationException($"{atom} is stated beneath two strata.");
 
             _atoms[atom] = values;
+        }
+
+        /// <summary>
+        /// States what a later round's computed atom's operands may hold where its conjunct was rendered (G6): a stratum of its
+        /// own, one a node, numbered below the root so no arm's is it, beneath which each operand path's import and characters
+        /// are that node's, the root's for one it reads no row of. The atom is read beneath it, as an arm's atom is beneath
+        /// the arm (<see cref="RenderingTheory.StratumId"/>). Before the run only.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The bundle has run; the source is no later round of the import's statements; the atom is no computed atom, is
+        /// read beneath an arm, reads a path the bundle did not import, or was stated beneath another round's node.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">A value admits what the import does not.</exception>
+        public void AssumeComputed(ImportSource source, SqlPredicate atom, IReadOnlyList<(JsonDocumentPath Path, PathValues? Values, ValueSet<string>? Chars)> operands)
+        {
+            if (_run is not null)
+                throw new InvalidOperationException("A stratum stated after the run would be read by nothing the run derived.");
+
+            if (_source is null || _source.Names(source.Statement) == false || source.Stratum is not null || source.Round <= _source.Round)
+                throw new InvalidOperationException($"{source} is no later round of the statements {_source} is the root of.");
+
+            if (IsComputed(atom) == false || atom.Computed.Any() == false || atom is SqlPredicate.Beneath)
+                throw new InvalidOperationException($"{atom} is no atom over a computed place read where its conjunct is.");
+
+            foreach (var (path, values, _) in operands)
+                if (_imported.TryGetValue(path, out var imported) == false)
+                    throw new InvalidOperationException($"{atom} reads {SqlValue.Spell(path)}, which the bundle did not import.");
+                else if (values is not null && PathValues.Meet(values, imported) != values)
+                    throw new InvalidOperationException($"{atom}'s stratum says {values} of {SqlValue.Spell(path)}, which the import {imported} does not admit.");
+
+            if (_rounds.TryGetValue(source, out var stratum) == false)
+                _rounds.Add(source, stratum = -(_rounds.Count + 1));
+
+            if (_roundOf.TryGetValue(atom, out var stated) && stated != stratum)
+                throw new InvalidOperationException($"{atom} is stated beneath two strata.");
+
+            _roundOf[atom] = stratum;
+            foreach (var (path, values, chars) in operands)
+            {
+                if (values is not null)
+                    _arms.TryAdd((stratum, path), values);
+                if (chars is not null)
+                    _armChars.TryAdd((stratum, path), chars);
+            }
         }
 
         /// <summary>
@@ -169,7 +497,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Runs the check within count limits, never time, and the tripwire after it. A run the engine failed has no stop
         /// reason.
         /// </summary>
-        public RenderingRun Run(int iterationLimit = 64) => Run(_theory.Check, iterationLimit);
+        public RenderingRun Run(int? iterationLimit = null) => Run(_theory.Check, iterationLimit ?? 64 + PlaceIterations + 8 * PastPlaceDepth(_atoms.Keys));
+
+        /// <summary>
+        /// Runs the translator's bridge's question as <see cref="Run(int?)"/> runs the check, one stage more
+        /// (<see cref="RenderingTheory.Bridge"/>, G6): what <see cref="FoldOf"/> reads.
+        /// </summary>
+        public RenderingRun RunBridge(int? iterationLimit = null) => Run(_theory.Bridge, iterationLimit ?? 64 + PlaceIterations + 8 * PastPlaceDepth(_atoms.Keys));
 
         /// <summary>
         /// Runs generate mode as <see cref="Run(int)"/> runs the check, within 80 iterations and 8 more for each unit of
@@ -182,19 +516,105 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         internal RenderingRun RunGenerateWithin(int iterationLimit) => Run(_theory.Generate, iterationLimit);
 
         /// <summary>The iterations a generate run of a width is allowed.</summary>
-        internal static int GenerateLimit(int width) => 80 + 8 * width;
+        internal static int GenerateLimit(int width) => 80 + 8 * width + PlaceIterations;
 
-        /// <summary>A generate run's width: the roots' atoms, every <c>IN</c>'s points, and the arms of each root that is a junction.</summary>
+        /// <summary>The most rows a run may leave in its scope before it stops Incomplete.</summary>
+        internal const int RowLimit = 50_000;
+
+        /// <summary>What the nested gathering of computed places may take: 16 an outer pass, four levels deep (h10, R7).</summary>
+        internal const int PlaceIterations = 16 * 4;
+
+        /// <summary>
+        /// A generate run's width: the roots' atoms, every <c>IN</c>'s points, the arms of each root that is a junction, and
+        /// each level an atom's calls nest past S's place depth (<see cref="PastPlaceDepth"/>).
+        /// </summary>
         public static int WidthOf(IEnumerable<SqlPredicate> roots)
         {
             var all = roots.ToList();
             var atoms = all.SelectMany(r => r.Subterms).Where(t => t is not (SqlPredicate.And or SqlPredicate.Or or SqlPredicate.Not)).Distinct().ToList();
-            return atoms.Count + atoms.OfType<SqlPredicate.In>().Sum(i => i.Points.Count) + all.Sum(r => r switch { SqlPredicate.And a => a.Arms.Count, SqlPredicate.Or o => o.Arms.Count, _ => 0 });
+            return atoms.Count + atoms.OfType<SqlPredicate.In>().Sum(i => i.Points.Count) + all.Sum(r => r switch { SqlPredicate.And a => a.Arms.Count, SqlPredicate.Or o => o.Arms.Count, _ => 0 })
+                + PastPlaceDepth(atoms);
+        }
+
+        /// <summary>
+        /// The levels the atoms' calls nest past <see cref="RenderingTheory.PlaceDepth"/>, each a unit of a run's width: S
+        /// images no place there, but reading each level of a term costs its analysis iterations still, so a call nested past
+        /// it leaves its own conjunct unproven within the run's budget rather than every answer of the bundle incomplete (G6).
+        /// </summary>
+        static int PastPlaceDepth(IEnumerable<SqlPredicate> atoms) => atoms.Sum(atom => Math.Max(0, atom.Subterms.SelectMany(term => term switch
+        {
+            SqlPredicate.Compare c => new[] { c.Left, c.Right },
+            SqlPredicate.In i => [i.Value],
+            SqlPredicate.IsNull n => [n.Value],
+            SqlPredicate.IsDefined d => [d.Value],
+            SqlPredicate.TypeTest t => [t.Value],
+            SqlPredicate.Affix a => [a.Value],
+            _ => Array.Empty<SqlValue>(),
+        }).Select(NestingOf).DefaultIfEmpty(0).Max() - RenderingTheory.PlaceDepth));
+
+        /// <summary>How deep a value's calls nest: a call one more than its deepest operand, a cast and a choice their values'.</summary>
+        static int NestingOf(SqlValue value) => value switch
+        {
+            SqlValue.Call call => 1 + call.Operands.Select(NestingOf).DefaultIfEmpty(0).Max(),
+            SqlValue.Cast cast => NestingOf(cast.Value),
+            SqlValue.Box box => NestingOf(box.Value),
+            SqlValue.Case choice => choice.Arms.Select(NestingOf).DefaultIfEmpty(0).Max(),
+            _ => 0,
+        };
+
+        /// <summary>
+        /// What the host writes for the computed places at the run (h10): each atom's stratum, each imported path's import
+        /// and characters beneath every stratum (the arm's or the round's where F read one, else the root's, a superset), each
+        /// computed place's characters likewise (G6), and each literal operand as its own single cell; and of each pair (h11),
+        /// its spelling and its places' characters, once both are known.
+        /// </summary>
+        IEnumerable<Fact> Places()
+        {
+            foreach (var compare in _atoms.Keys.Select(a => a is SqlPredicate.Beneath b ? b.Leaf : a).OfType<SqlPredicate.Compare>().Where(IsPair).Distinct())
+                if (PlaceOf(compare.Left) is (var left, var ls) && PlaceOf(compare.Right) is (var right, var rs) && _chars.TryGetValue(ls, out var lc) && _chars.TryGetValue(rs, out var rc))
+                {
+                    var pair = _theory.Paired.Of(left, right);
+                    yield return _theory.Spelling.Of(pair).Is(PlaceSpellings.Of(ls, rs));
+                    yield return _theory.ImportedChars.Of(pair).Is(lc.Union(rc));
+                    yield return _theory.PartedLiterals.Of(pair).Is(ValueSet<string>.Empty);
+                    yield return _theory.NameChars.Of(pair).Is(_names.GetValueOrDefault(ls, JsonValues.NoBand).Union(_names.GetValueOrDefault(rs, JsonValues.NoBand)));
+                }
+
+            var strata = _strata.Keys.Prepend(0L).Concat(_rounds.Values).ToList();
+            foreach (var atom in _atoms.Keys.Where(IsComputed))
+                yield return _theory.StratumId.Of(Write(atom)).Is(_roundOf.TryGetValue(atom, out var round) ? round : atom is SqlPredicate.Beneath b ? b.Stratum : 0L);
+
+            foreach (var (path, values) in _imported)
+            {
+                var term = JsonFactEncoding.Path(path).ToTerm(_theory.Paths);
+                var chars = _chars[SqlValue.Spell(path)];
+                foreach (var stratum in strata)
+                {
+                    yield return _theory.ArmImport.Of(stratum, term).Is(stratum == 0 ? values : _arms.GetValueOrDefault((stratum, path), values));
+                    yield return _theory.ArmChars.Of(stratum, term).Is(stratum == 0 ? chars : _armChars.GetValueOrDefault((stratum, path), chars));
+                }
+            }
+
+            foreach (var (call, term) in _computed)
+                if (call.Spelled is { } spelled && _chars.TryGetValue(spelled, out var chars))
+                    foreach (var stratum in strata)
+                        yield return _theory.ArmChars.Of(stratum, _theory.Valued.Of(term)).Is(chars);
+
+            foreach (var (call, term) in _computed)
+                for (var i = 0; i < call.Operands.Count; i++)
+                    if (call.Operands[i] is SqlValue.Literal literal)
+                    {
+                        var cell = PathImport.Literal(i, literal.Value);
+                        foreach (var stratum in strata)
+                            yield return _theory.Gathered.Of(stratum, term).Is(ValueSet.Of(cell));
+                    }
         }
 
         RenderingRun Run(Schedule schedule, int iterationLimit)
         {
-            var assumed = _atoms.ToList().Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
+            var assumed = _atoms.ToList().Where(a => IsComputed(a.Key) == false).Select(a => _theory.Assumed.Of(Write(a.Key)).Is(a.Value ?? PathValues.Anything)).ToList();
+            if (_computed.Count > 0 || _atoms.Keys.Any(IsComputed))
+                assumed.AddRange(Places());
             return _run = Guard(() =>
             {
                 Scope.Assume([.. assumed]);
@@ -204,7 +624,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         RenderingRun Ran(Schedule schedule, int iterationLimit)
         {
-            var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = 50_000 });
+            var report = Scope.Run(schedule, new RunOptions { IterationLimit = iterationLimit, RowLimit = RowLimit });
             Iterations = report.Iterations;
 
             // No rule merges two classes, so every term is its class's one node: a merge would make two terms one.

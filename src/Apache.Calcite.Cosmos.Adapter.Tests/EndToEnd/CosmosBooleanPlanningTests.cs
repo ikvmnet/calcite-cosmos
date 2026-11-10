@@ -137,21 +137,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Every test the issue names, written over the path, and nothing left in process.
         /// </summary>
         /// <remarks>
-        /// The positive tests compare the path with a bound boolean — <c>c.flag = true</c> — and the
-        /// negative ones keep the absent path by name, since a comparison over one is undefined rather
-        /// than false and <c>NOT</c> above it would drop a row SQL keeps. The bare column and
-        /// <c>NOT</c> are the path itself, the service's logic over what is not a boolean being SQL's
-        /// over unknown; <c>CosmosBooleanLogicMeasurementTests</c> measures both.
+        /// Written as S proves them since the switch (h15). The bare column, the positive tests and <c>NOT</c>
+        /// compare the path with a bound boolean — <c>c.flag = true</c>, <c>NOT (c.flag = true)</c> — which is
+        /// undefined over an absent flag, where SQL's is unknown and keeps nothing either. The negative truth
+        /// tests keep the absent path as SQL does, through the service's ternary, which takes its else over an
+        /// undefined condition: <c>(c.flag = true) ? false : true</c>. <c>CosmosBooleanLogicMeasurementTests</c>
+        /// measures the service's logic.
         /// </remarks>
         [Theory]
-        [InlineData("v.f", "WHERE c.flag", null)]
+        [InlineData("v.f", "WHERE (c.flag = @p0)", true)]
         [InlineData("v.f IS TRUE", "(c.flag = @p0)", true)]
         [InlineData("v.f = TRUE", "(c.flag = @p0)", true)]
-        [InlineData("v.f IS FALSE", "(c.flag = @p0)", false)]
+        [InlineData("v.f IS FALSE", "(NOT (c.flag = @p0))", true)]
         [InlineData("v.f = FALSE", "(c.flag = @p0)", false)]
-        [InlineData("NOT v.f", "(NOT c.flag)", null)]
-        [InlineData("v.f IS NOT TRUE", "(NOT IS_DEFINED(c.flag) OR (NOT (c.flag = @p0)))", true)]
-        [InlineData("v.f IS NOT FALSE", "(NOT IS_DEFINED(c.flag) OR (NOT (c.flag = @p0)))", false)]
+        [InlineData("NOT v.f", "(NOT (c.flag = @p0))", true)]
+        [InlineData("v.f IS NOT TRUE", "((c.flag = @p0) ? false : true)", true)]
+        [InlineData("v.f IS NOT FALSE", "((NOT (c.flag = @p0)) ? false : true)", true)]
         [InlineData("v.f IS NULL", "(NOT IS_DEFINED(c.flag) OR IS_NULL(c.flag))", null)]
         public void ADeclaredBooleanIsTestedAtTheService(string predicate, string rendered, bool? bound)
         {
@@ -172,14 +173,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>NOT (f IS TRUE AND k = 'x')</c> keeps a document with no flag — <c>IS TRUE</c> is false
         /// there, so the conjunction is — and the service's <c>NOT</c> over a bare comparison would be
         /// undefined there and keep nothing. Written inside a conjunction so that nothing folds the
-        /// negation into the test before it reaches the translator.
+        /// negation into the test before it reaches S, which writes the test as its two-valued ternary
+        /// since the switch (h15): false over an absent flag, so the conjunction is.
         /// </remarks>
         [Fact]
         public void UnderANegationATruthTestStaysTwoValued()
         {
             var (query, plan) = Plan("NOT (v.f IS TRUE AND v.k = 'x')", Unconditional);
 
-            query.Sql.Should().Contain("(IS_DEFINED(c.flag) AND (c.flag = @p", query.Sql);
+            query.Sql.Should().Contain("((c.flag = @p1) ? true : false)", query.Sql);
             plan.Should().NotContain("ClrCursorFilter", plan);
         }
 

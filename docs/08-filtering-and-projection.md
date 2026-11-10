@@ -33,14 +33,14 @@ is sent whole where every branch renders, and otherwise **weakened** — somethi
 is sent, and the disjunction is rechecked in process.
 
 **What is sent is proved first.** A conjunct over document values — comparisons with literals, `IN`
-lists, null tests, and `AND`, `OR` and `NOT` over them — is sent only in a form the adapter has proved
-keeps exactly the rows SQL keeps, on the service the schema names (`serviceTarget`, Chapter 4): the
-cheapest such form, with its guards. Where it proves none, the conjunct is kept in process and only
-what it proves the conjunct implies is sent as its weakening. A conjunct holding a parameter, a
-function, a `LIKE`, a `CASE` or an array's element is still written as the adapter writes it where
-that is exact — a parameter compared over a path the service types, a `LIKE` over a declared string;
-where it is not, what is sent is the weakening the adapter proves the conjunct implies: the property's
-presence for a parameter, a `LIKE` or a function, and nothing for an ordering over an array's element.
+lists, null tests, type tests, `LIKE`, functions, `CASE`, an array's element, and `AND`, `OR` and `NOT`
+over them — is sent only in a form the adapter has proved keeps exactly the rows SQL keeps, on the
+service the schema names (`serviceTarget`, Chapter 4): the cheapest such form, with its guards. Where it
+proves none, the conjunct is kept in process and only what it proves the conjunct implies is sent as its
+weakening, itself a filter proved as any other: a comparison the weakening guards with a type test, say
+`IS_NUMBER(c.price) AND c.price > 50`, is sent where its guard proves the comparison exact. A conjunct
+holding a parameter is still written as the adapter writes it where that is exact — a parameter compared
+over a path the service types; where it is not, the property's presence is sent as its weakening.
 
 **A conjunct the proof declines reads the container.** On a schema's first plan the proof waits for
 its reasoning to be built, at most five seconds; a statement whose question is too large to finish is
@@ -60,35 +60,47 @@ each is sent as the weakening proved for it and rechecked.
 | `x IS NULL` | `(NOT IS_DEFINED(x) OR IS_NULL(x))`, and over an accessor whatever else it reads as null (8.4) |
 | `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))`, likewise |
 | `x IN (a, b, c)`, `x BETWEEN a AND b` | equivalent comparisons — measured to cost exactly what the native forms cost |
-| `x LIKE 'abc%'` | `STARTSWITH(x, 'abc')` |
-| `x LIKE '%abc%'` (over `x` proved to hold no U+0000), other patterns | Cosmos `LIKE` |
-| `UPPER(x) LIKE '%ABC%'` (ASCII, over `x` proved ASCII and to hold no U+0000) | `CONTAINS(x, 'ABC', true)` — case-insensitive at the service |
+| `x LIKE 'abc%'`, `'%abc'`, `'%abc%'`, `'abc'` | `STARTSWITH(x, 'abc')`, `ENDSWITH`, `CONTAINS` (over `x` proved to hold no U+0000), `x = 'abc'` |
+| `x LIKE` any other pattern | Cosmos `LIKE` |
+| `UPPER(x) LIKE '%ABC%'` (ASCII, over `x` proved ASCII and to hold no U+0000) | `CONTAINS(UPPER(x), 'ABC')` — the fold computed at the service |
 | `CASE WHEN … THEN … ELSE … END` | nested `(cond ? a : b)` |
 | `COALESCE`, `NULLIF`, `NVL`, `IFNULL` | the `CASE` Calcite expands them to |
 | `SUBSTRING`, `POSITION`, `TRIM` (spaces), string, math and array functions | Cosmos functions — [Appendix B](appendix-b-functions.md) |
-| `IS_DEFINED(x)`, `IS_STRING(x)`, … | the same Cosmos functions |
+| `IS_DEFINED(x)`, `IS_STRING(x)`, … | the same Cosmos functions, over `JSON_VALUE` or `JSON_QUERY` of a path; over anything else the statement fails, as in Calcite (Appendix B.5) |
 
-`LIKE` has three refusals. A pattern containing `[` or `]` is declined — Cosmos reads a bracket as a
-character range, SQL reads it literally. `LIKE … ESCAPE` is declined. And a pattern that is not a
-literal is declined, because only a literal can be checked for brackets.
+`LIKE` has four refusals. A pattern containing `[` or `]` is never sent as Cosmos `LIKE` — Cosmos reads
+a bracket as a character range, SQL reads it literally — so it is sent only where an equality or a
+`STARTSWITH`, `ENDSWITH` or `CONTAINS` says it, a bracket in their text being itself to both:
+`LIKE 'a[1]%'` is `STARTSWITH(x, 'a[1]')`, and `LIKE 'a[1]_'` runs in process. `LIKE … ESCAPE` is
+declined, and so is a pattern holding
+U+0000, which Calcite reads as an escape where none is written — before `_`, `%` or another U+0000 it
+matches that character itself, and before anything else it fails the statement — where Cosmos reads
+U+0000 as a character. And a pattern that is not a literal is declined, because only a literal can be
+checked for brackets.
 
-The case-insensitive rewrite applies when the pattern is one leading and one trailing `%` around plain
-text, the text is already in the case `UPPER` (or `LOWER`) produces, the text is ASCII, and so is what
-it folds: what is known of `x` — a `pattern` such as `^[ -~]*$`, an `enum`, a sibling `x IN (…)` —
-says it holds ASCII alone (Chapter 14.4), and no U+0000, at which Azure's `CONTAINS` stops reading.
-`LIKE 'abc%'` and `LIKE '%abc'` under `UPPER` become `STARTSWITH(x, 'ABC', true)` and
-`ENDSWITH(x, 'ABC', true)`, which read past a U+0000 and ask only ASCII. This is the shape an ORM
-writes for a case-insensitive "contains", and it is served by the index.
+A `LIKE` over `UPPER(x)` or `LOWER(x)` is sent as the same narrowest test over the fold —
+`UPPER(x) LIKE '%ABC%'` is `CONTAINS(UPPER(x), 'ABC')`, `LIKE 'ABC%'` under it `STARTSWITH(UPPER(x),
+'ABC')` — where the fold is proved to be Calcite's: what is known of `x` — a `pattern` such as
+`^[ -~]*$`, an `enum`, a sibling `x IN (…)` — says it holds ASCII alone (Chapter 14.4), and, for one run
+between two `%`, no U+0000, at which Azure's `CONTAINS` stops reading. A run of `%` reads as one, so
+`'%%ABC%'` is `'%ABC%'`. This is the shape an ORM writes for a case-insensitive "contains". The service's
+case-insensitive form of the test, `CONTAINS(x, 'ABC', true)`, asks the same without computing the fold
+and is not sent in a filter yet. Where the reasoning that decides it declines (Chapter 20.2), the fold
+and the pattern run in process.
 
-A plain `LIKE` whose pattern is one run of text between two `%` is answered by the service as a
-`CONTAINS` too, and stops at the same U+0000: `'%b%'` does not find the `b` of `a`U+0000`b`. So that
-shape pushes where `x` is proved to hold none, and every other — `'a%'`, `'%a'`, `'a_b'`, `'%a%b%'` —
-wherever `LIKE` does; `_` is one code point to both engines.
+A plain `LIKE` is sent as the narrowest test that says its pattern: an equality for literal text alone,
+`STARTSWITH` for a prefix, `ENDSWITH` for a suffix, `CONTAINS` for one run of text between two `%`, and
+Cosmos `LIKE` for any other. One run between two `%` stops at the same U+0000 whichever is sent:
+`'%b%'` does not find the `b` of `a`U+0000`b`, so that shape pushes where `x` is proved to hold none.
+`_` is one code point to both engines, but the service's matches a line terminator and Calcite's never
+does, so a pattern holding `_` — `'a_b'` — pushes only where `x` is proved to hold no line terminator,
+and runs in process elsewhere. Every other shape — `'a%'`, `'%a'`, `'%a%b%'` — pushes wherever `LIKE`
+does.
 
 The value matters as much as the pattern. Calcite's `UPPER` is Java's, which writes `ß` as `SS`; the
-service's case-insensitive match leaves `ß` as it is, so `UPPER(x) LIKE '%SS%'` keeps `aßb` in Calcite
-and the rewrite loses it, and no check of the rows that come back can bring back a row that never
-arrives. Where nothing proves `x` ASCII, the fold and the pattern run in process, over the strings the
+service's `UPPER` and its case-insensitive match leave `ß` as it is, so `UPPER(x) LIKE '%SS%'` keeps
+`aßb` in Calcite and the service loses it, and no check of the rows that come back can bring back a row
+that never arrives. Where nothing proves `x` ASCII, the fold and the pattern run in process, over the strings the
 service sends.
 
 ## 8.3 Comparisons over document values
@@ -124,8 +136,9 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 ```
 
 An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
-text a number could render as — a stored `30.0` renders otherwise — sends only that the property is
-there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
+text an integer renders as is sent as the string or a number equal to it, beside the property's presence,
+and is rechecked — a stored `30.0` renders otherwise; one against text only a double renders as,
+`'1.0E30'`, sends only that the property is there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
 and compares what it is sent with that, a value holding either — a literal, a parameter, an `IN`
 member, a `LIKE 'abc%'` prefix — is sent in that spelling, so `=`, `IN`, `<>` and the prefix answer
 exactly; a value holding neither is sent as it is, and Azure is sent every value as written
@@ -136,7 +149,7 @@ WHERE JSON_VALUE(c."DOC", '$.code') = 'true'
 → WHERE ((c.code = @p0) OR (c.code = @p1))   -- "true", true
 
 WHERE JSON_VALUE(c."DOC", '$.code') = '30'
-→ WHERE IS_DEFINED(c.code)   -- then rechecked in process
+→ WHERE (((c.code = @p0) OR (IS_NUMBER(c.code) AND (c.code = @p1))) AND IS_DEFINED(c.code))   -- "30", 30, then rechecked
 ```
 
 An inequality against text only a string renders as is sent exactly, with the accessor's null guard;
@@ -149,8 +162,9 @@ and `false` above the digits and the capitals, so `> 'Trail'` is sent with the b
 — `> 'g'`, between `false` and `true` — or both kinds are kept, as by `< 'zzz'`, a weakening is sent and
 the ordering rechecked. On the emulator, which orders a U+0000 inside a string as stored, an ordering is
 sent only where nothing at the path can hold one (a `pattern`, Chapter 14.4); otherwise only the
-property's presence is, and the ordering is rechecked. `LIKE` sends that the property is there, and is
-matched in process:
+property's presence is, and the ordering is rechecked. `LIKE` is sent as the narrowest test that says
+its pattern where no number's text or boolean's can match it, and otherwise sends that the property is
+there, and is matched in process:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.name') <> 'Trail'
@@ -163,14 +177,20 @@ WHERE JSON_VALUE(c."DOC", '$.name') < 'Trail'
 → WHERE ((c.name < @p0) OR IS_NUMBER(c.name))
 
 WHERE JSON_VALUE(c."DOC", '$.name') LIKE 'Trail%'
-→ WHERE IS_DEFINED(c.name)   -- then rechecked
+→ WHERE STARTSWITH(c.name, @p0)
+
+WHERE JSON_VALUE(c."DOC", '$.name') LIKE '3%'
+→ WHERE IS_DEFINED(c.name)   -- then rechecked: a stored 30 renders as '30'
 ```
 
 **If the container declares that the path holds a string** (Chapter 14), there is no second type to
 disagree about: the comparison and the `LIKE` are sent as written, nothing is rechecked, and a row limit
-travels with them. A comparison over an array's element, `$.tags[0]`, runs in process whatever the
-container declares, except an equality with text only a string renders as, which is sent: a declaration
-states what a property holds, and none reaches an element (Chapter 11.3).
+travels with them. A comparison over an array's element, `$.tags[0]`, is decided as one over a property
+nothing declares, whatever the container declares: a declaration states what a property holds, and none
+reaches an element. An equality with text only a string renders as is sent exactly, and so is an ordering
+the other kinds' renderings settle; any other ordering runs in process, since what is sent beside one
+tests the element's kind, and what Calcite makes of an element's own value has not been measured
+(Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
 that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,
@@ -188,9 +208,9 @@ WHERE UPPER(JSON_VALUE(c."DOC", '$.status')) = 'OPEN'
 
 Declaring the path a string of ASCII characters (Chapter 14.4) sends the whole comparison:
 `WHERE (UPPER(c.status) = @p0)`. Declared a string and nothing more, the fold still runs in process:
-Calcite writes `ß` as `SS` and the service leaves it. `UPPER(…) LIKE '%ABC%'` takes its own rewrite
-(8.2) under the same proof, where it rules out U+0000 too: over `^[ -~]*$` it is sent as
-`WHERE CONTAINS(c.status, @p0, true)`, and nothing is rechecked. A `LIKE` with no function beneath it
+Calcite writes `ß` as `SS` and the service leaves it. `UPPER(…) LIKE '%ABC%'` is sent the same way
+(8.2), where the proof rules out U+0000 too: over `^[ -~]*$` it is `WHERE CONTAINS(UPPER(c.status), @p0)`,
+and nothing is rechecked. A `LIKE` with no function beneath it
 needs only the type: `LIKE 'Trail%'` over a declared string is `WHERE STARTSWITH(c.name, @p0)`.
 
 ### `RETURNING`: exact
@@ -203,8 +223,8 @@ WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 ```
 
 This is the spelling to use for numbers that are stored as numbers. **Except `RETURNING DECIMAL`**,
-which parses a stored string — `"2"` is 2 to it (Chapter 7) — and is handled as the cast to a number
-below: the property's presence is sent, and the comparison rechecked in process.
+which parses a stored string — `"2"` is 2 to it (Chapter 7) — as the cast to a number below does: only
+the property's presence is sent, and the comparison rechecked in process.
 
 ### `CAST` to text: exact
 
@@ -212,27 +232,31 @@ below: the property's presence is sent, and the comparison rechecked in process.
 string `'text'` when no other JSON value renders as that text — so the cast is dropped and the
 equality sent. This is what keeps a view's text columns filterable.
 
+Over a promoted column, which holds the stored value as it is, Calcite casts a number and a boolean to
+null, so `CAST(c."$.category" AS VARCHAR) = '30'` is true of the string `"30"` alone: it is sent
+exactly, and routed (8.5).
+
 Only a `VARCHAR` with no length. `CAST(x AS VARCHAR(3))` truncates and `CHAR(8)` pads, so
 `CAST(x AS VARCHAR(3)) = 'bik'` is true of a stored `'bikes'` and is evaluated in process; the service
 is sent only what it implies. The same holds for routing: a sized cast over the partition key does not
 route (8.5).
 
-### `CAST` to a number: the property's presence, then a recheck
+### `CAST` to a number: the comparison over a stored number, then a recheck
 
 `CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, and `30.7`,
 whose text is no integer, fails the statement (cast to `DOUBLE` to read it) — and the service cannot
 reproduce a conversion. What the adapter can prove the comparison implies is that the property is there,
-so that is sent, and the cast is rechecked in process:
+and that a stored number satisfies the comparison, so that is sent, and the cast is rechecked in process:
 
 ```
-→ WHERE IS_DEFINED(c.price)
+→ WHERE (IS_DEFINED(c.price) AND (NOT IS_NUMBER(c.price) OR (c.price > @p0)))
 ```
 
-Where the container declares the property an integer (Chapter 14), the cast is the value itself, and
-the comparison is sent exactly. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and `REAL`
-(which round), `DECIMAL` (which can raise) and to a date send nothing, and run in process. A bound on
-the stored number is not sent: no form the service runs means what the conversion does over a stored
-string, and only what is proved is sent (see Chapter 23).
+Against a literal past 2^53 only the property's presence is sent. Where the container declares the
+property an integer (Chapter 14), the cast is the value itself, and the comparison is sent exactly. Casts
+to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and `REAL` (which round), `DECIMAL` (which can raise)
+and to a date send nothing, and run in process. A stored string is kept whatever it holds: no form the
+service runs means what the conversion does over one, and only what is proved is sent (see Chapter 23).
 
 `RETURNING DECIMAL` is the same conversion written as a clause:
 
@@ -529,19 +553,23 @@ documents it has to read.
 | --- | --- |
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
-| `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
+| `LIKE` with a `[` no equality, `STARTSWITH`, `ENDSWITH` or `CONTAINS` says, `ESCAPE`, a computed pattern or U+0000 in the pattern | Cosmos reads `[…]` as a range, and Calcite reads U+0000 as an escape; a `]` that closes none and a backslash are themselves to both |
+| `LIKE` with a `_`, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2) |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
-| `UPPER`, `LOWER` and the case-insensitive `LIKE` rewrite over a string not proved ASCII; `CHAR_LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` over one that may hold a character beyond U+FFFF; `TRIM` over one that may hold a tab or other white space | Calcite's functions are Java's and the service's its own, and they part over those characters (Appendix B.2) |
+| `UPPER`, `LOWER` and the case-insensitive `LIKE` rewrite over a string not proved ASCII, but `LOWER` over one holding no other character than ASCII and those from U+E000 up, and on Azure both over one holding no other character than ASCII and those beyond U+FFFF; `CHAR_LENGTH`, the library's `LENGTH`, `SUBSTRING`, `LEFT` and `RIGHT` over one that may hold a character beyond U+FFFF; `TRIM` over one that may hold a tab or other white space | Calcite's functions are Java's and the service's its own, and they part over those characters (Appendix B.2) |
 | `REPLACE`, and a `LIKE` of the `'%abc%'` shape, over a string that may hold U+0000 | Azure reads the string only up to its first U+0000 in those (Appendix B.2) |
-| `REPLACE` whose search may be empty; `REPEAT` without a literal count, or over a subject not proved short enough; the `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries | the service answers undefined where Calcite answers the subject, the repetition, or the string beside a null (Appendix B.2) |
+| `REPLACE` whose search may be empty; `REPEAT` without a literal count, or over a subject not proved short enough for the repetition to stay within 10,000 code points; the `CONCAT` of the PostgreSQL, SQL Server and Oracle libraries | the service answers undefined where Calcite answers the subject, the repetition past 10,000 code points, or the string beside a null (Appendix B.2) |
+| `REPLACE` whose search may hold U+0000 | the service answers otherwise than Calcite over such a search, and Azure fails the statement over some (Appendix B.2) |
+| `POSITION` whose pattern is not proved a string of ASCII that holds something — a literal, or a `required` path whose `enum` lists only such strings; a literal beside a path in `CONCAT` or `\|\|` that is empty or holds anything beyond ASCII, but on Azure one in `CONCAT` holding U+0000 or characters from U+E000 up; `REPEAT` of a literal string; on the emulator, `REPEAT` of a count of 0 | the service's answers were measured with such patterns, literals, subjects and counts alone (Appendix B.2) |
+| `SUBSTRING` of a length below 0 | Calcite raises, where the service answers the empty string (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
 | on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text — a list among them — anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern, `MEMBER OF ?` | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
 | on the emulator, a property or a selected column whose name holds U+0000 or U+FDD0 | the emulator stores a name in that spelling too, so the name written as it is reads nothing; read over the whole document. A table column so named cannot be read there at all |
-| on the emulator, `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, `POSITION`, `REPLACE`, `\|\|`, `REPEAT`, and a `LIKE` whose pattern holds `_`, `0` or `1` beyond a prefix, over a string that may hold U+0000, U+FDD0 or another character from U+E000 up | the emulator's functions work on the two units it stores each escape as, and count, cut and match them as two (Appendix B.2) |
+| on the emulator, `CHAR_LENGTH`, `LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, `POSITION`, `REPLACE`, `\|\|`, `REPEAT`, and a `LIKE` whose pattern holds `_`, `0` or `1` beyond a prefix, over a string that may hold U+0000, U+FDD0 or another character from U+E000 up | the emulator's functions work on the two units it stores each escape as, and count, cut and match them as two (Appendix B.2) |
 | a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
@@ -552,20 +580,24 @@ documents it has to read.
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
 | a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |
+| `SUBSTRING`, `LEFT` or `RIGHT` whose start, length or count is not a literal — a column, a parameter, a `POSITION` — and a string function over the `VARIANT` partition key column | the service's answers were measured with literal bounds and over text alone (Appendix B.2) |
 | an array literal, `ARRAY['x', 'y']` | not rendered yet — so functions taking one stay in process too |
 | a relational join, `UNION`, `INTERSECT`, `EXCEPT` | no Cosmos equivalent (Chapter 12) |
 | a subquery (`EXISTS`, `IN (SELECT …)`) | Cosmos subqueries are document-scoped only |
 
 **Out-of-domain arithmetic fails the whole statement.** `SQRT(-1)`, `ASIN(2)` and `ACOS(2)` make Cosmos
-reject the query, where Calcite would produce `NaN` for that row. They are pushed anyway, consistently
-with how `SQRT` always has been; if your data can produce such inputs, guard them in the query.
+reject the query, where Calcite would produce `NaN` for that row. In a filter such a call is sent only
+where what is known of its operand keeps it within the domain, and is computed in process elsewhere. In a
+projection it is pushed anyway, consistently with how `SQRT` always has been; if your data can produce
+such inputs, guard them in the query.
 
 **Integer overflow is computed, not wrapped.** Cosmos does arithmetic in doubles, so
 `price * 100000000` is the true product. Calcite's `INTEGER` arithmetic wraps where SQL would raise,
-so the two disagree once a result passes about two billion: a filter keeps the rows the true product
-satisfies, and a selected product fails the statement, not being an `INTEGER`. If your data can get
-there, make an operand a `DOUBLE` — `CAST(100000000 AS DOUBLE)`. Reading the value `RETURNING BIGINT`
-pushes the same way, but in process it fails for every value within an `INTEGER`'s range (Chapter 7).
+so the two disagree once a result passes about two billion. A filter over such arithmetic is computed
+in process wherever nothing bounds the column, so it keeps what Calcite keeps; a selected product is
+pushed, and fails the statement, not being an `INTEGER`. If your data can get there, make an operand a
+`DOUBLE` — `CAST(100000000 AS DOUBLE)`. Reading the value `RETURNING BIGINT` pushes the same way, but in
+process it fails for every value within an `INTEGER`'s range (Chapter 7).
 
 ---
 

@@ -33,14 +33,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public sealed record Point(string Value) : PathCell;
 
         /// <summary>
-        /// The strings strictly between two, either of which may be missing, whose characters are of the classes, but these.
+        /// The strings strictly between two, either of which may be missing, whose characters are of the classes, but these;
+        /// and where an affix cut them (S's, spec §4.2 h07), those each pattern of <paramref name="Like"/> matches and none of
+        /// <paramref name="NotLike"/> does (<see cref="AffixPattern"/>).
         /// </summary>
-        public sealed record Strings(string? Low, string? High, ValueSet<string> Except, ValueSet<string> Classes) : PathCell
+        public sealed record Strings(string? Low, string? High, ValueSet<string> Except, ValueSet<string> Classes, ValueSet<string>? Like = null, ValueSet<string>? NotLike = null) : PathCell
         {
 
             internal bool Holds(string text) =>
                 (Low is null || string.CompareOrdinal(text, StringOf(Low)) > 0) && (High is null || string.CompareOrdinal(text, StringOf(High)) < 0)
-                && BandsOfText(text).IsSubsetOf(Classes);
+                && BandsOfText(text).IsSubsetOf(Classes)
+                && (Like is null || Like.All(p => AffixPattern.Matches(text, p))) && (NotLike is null || NotLike.All(p => AffixPattern.Matches(text, p) == false));
+
+            /// <summary>Whether an affix cut the cell.</summary>
+            internal bool Affixed => Like is not null || NotLike is not null;
 
         }
 
@@ -83,6 +89,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A kind the theory does not know, of which nothing is said.</summary>
         public sealed record Unknown : PathCell;
 
+        /// <summary>
+        /// A cell of a pair's product (S's alone, h11): a cell of each place, and where both are strings or both numbers, how
+        /// the left value lies against the right, -1, 0 or 1, by UTF-16 unit or by value, which parts the product where
+        /// a comparison of the two turns. <c>null</c> where the two are not parted so.
+        /// </summary>
+        public sealed record Pair(PathCell Left, PathCell Right, int? Order = null) : PathCell;
+
         /// <summary>The state the cell lies in, which the coarse reading answers on.</summary>
         public PredicateAtom.State Coarse => this switch
         {
@@ -95,6 +108,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             _ => new PredicateAtom.State.Unknown(),
         };
 
+        static readonly string[] OrderNames = ["below", "equal", "above"];
+
         /// <summary>The cell spelled one way, which it is ordered by.</summary>
         public string Text => this switch
         {
@@ -103,11 +118,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Structure s => s.Type,
             Point p => p.Value,
             Strings s => "strings" + (s.Low is null ? "" : " > " + SqlValue.Quote(StringOf(s.Low))) + (s.High is null ? "" : " < " + SqlValue.Quote(StringOf(s.High)))
-                + " in [" + string.Join(",", s.Classes.AsEnumerable()) + "]" + But(s.Except),
+                + " in [" + string.Join(",", s.Classes.AsEnumerable()) + "]" + But(s.Except)
+                + (s.Like is null ? "" : " like " + string.Join(", ", s.Like.Select(SqlValue.Quote))) + (s.NotLike is null ? "" : " not like " + string.Join(", ", s.NotLike.Select(SqlValue.Quote))),
             Numbers n => (n.Integral ? "integers" : "fractions") + (n.Lower is Bound l ? (l.Open ? " > " : " >= ") + Number(l.Value) : "")
                 + (n.Upper is Bound h ? (h.Open ? " < " : " <= ") + Number(h.Value) : "")
                 + (n.DoubleLow is double dl ? " double >= " + dl.ToString("R", CultureInfo.InvariantCulture) : "")
                 + (n.DoubleHigh is double dh ? " double <= " + dh.ToString("R", CultureInfo.InvariantCulture) : "") + But(n.Except),
+            Pair p => "(" + p.Left.Text + ") x (" + p.Right.Text + ")" + (p.Order is int o ? " " + OrderNames[o + 1] : ""),
             _ => "unknown",
         };
 
@@ -135,9 +152,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// Where the cell's numbers lie against a number as a box holds it: a whole number within a long by its value, its
-        /// double, or both, as the caller's row reads one, and any other by its double, by value. A side for each reading,
-        /// <c>null</c> where not every number lies one way; none for a cell of no number; and <c>null</c> for a number
-        /// neither a long nor a double, which no box holds as itself.
+        /// double, or both, as the caller's row reads one, anywhere by neither, and any other by its double, by value. A side
+        /// for each reading, <c>null</c> where not every number lies one way; none for a cell of no number; and <c>null</c>
+        /// for a number neither a long nor a double, which no box holds as itself.
         /// </summary>
         public int?[]? SidesOf(decimal c, bool byValue, bool byDouble)
         {
@@ -147,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (IsLong(c) == false && DoubleBound.Compare(d, c) != 0)
                 return null;
 
-            int?[] Whole(int? exact, int? rounded) => (byValue, byDouble) switch { (true, true) => [exact, rounded], (true, false) => [exact], _ => [rounded] };
+            int?[] Whole(int? exact, int? rounded) => (byValue, byDouble) switch { (true, true) => [exact, rounded], (true, false) => [exact], (false, true) => [rounded], _ => [null] };
             return this switch
             {
                 Point { Value: var v } when TryNumberOf(v, out var x) && IsLong(x) => Whole(x.CompareTo(c), new Numbers(true, Bound.AtLeast(x), Bound.AtMost(x), ValueSet<string>.Empty).RoundedSide(c)),
@@ -165,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Null => NullValue,
             Structure s => s.Type + "|",
             Point p => p.Value,
-            Strings s => LeastString(s),
+            Strings s => s.Affixed ? Matching(s) : LeastString(s),
             Numbers n when (n.DoubleLow ?? n.DoubleHigh) is not null => Rounded(n),
             Numbers { Integral: true } n => LeastInteger(n),
             Numbers n => SomeFraction(n),
@@ -187,9 +204,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (assumed == PathValues.Anything)
                 return cells;
 
+            // A cell an affix cut may be cut otherwise inside, where a witness was not found, so it holds what any string cell may.
+            static bool Holds(List<PathCell> inside, PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown
+                : cell.Contains(c.Witness()) || c is Strings a && cell is Strings b && (a.Affixed || b.Affixed));
+
+            // A pair's cell holds nothing of a product where a side of it holds nothing of that side's value.
+            if (assumed.Pair is { } narrower)
+            {
+                var (left, right) = (Split("", narrower.Left, narrower.LeftClasses, cuts).Cells.ToList(), Split("", narrower.Right, narrower.RightClasses, cuts).Cells.ToList());
+                return ValueSet.From(cells.Cells.Where(cell => cell is Pair p && (Holds(left, p.Left) == false || Holds(right, p.Right) == false))) is { Count: > 0 } apart
+                    ? cells with { Outside = apart } : cells;
+            }
+
             var inside = Split(cells.Path, assumed, classes, cuts).Cells.ToList();
-            bool Holds(PathCell cell) => inside.Any(c => c is Unknown ? cell is Unknown : cell.Contains(c.Witness()));
-            return ValueSet.From(cells.Cells.Where(cell => Holds(cell) == false)) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
+            return ValueSet.From(cells.Cells.Where(cell => Holds(inside, cell) == false)) is { Count: > 0 } outside ? cells with { Outside = outside } : cells;
         }
 
         /// <summary>
@@ -202,6 +230,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <param name="cuts">Where to cut it.</param>
         public static CellPartition Split(string path, PathValues x, ValueSet<string> classes, ValueSet<CutPoint> cuts)
         {
+            if (x.Pair is { } pair)
+                return Product(path, pair, cuts);
+
             bool Admits(string value) => x.Admits(value) && Within(value, x.Lower, x.Upper) && CharactersOf(value).IsSubsetOf(classes);
 
             var cells = new List<PathCell>();
@@ -235,15 +266,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     case StringType:
                     {
                         string? low = null;
-                        foreach (var high in cuts.Select(c => c.Value).Where(IsString).Distinct().OrderBy(v => v, StringComparer.Ordinal).Append<string?>(null))
+                        var strings = new List<PathCell>();
+                        foreach (var high in cuts.Where(c => c.Kind != CutKind.Affix).Select(c => c.Value).Where(IsString).Distinct().OrderBy(v => v, StringComparer.Ordinal).Append<string?>(null))
                         {
                             var between = new Strings(low, high, ValueSet<string>.Empty, classes);
-                            cells.Add(between with { Except = x.Excluded.Where(between.Contains) });
+                            strings.Add(between with { Except = x.Excluded.Where(between.Contains) });
                             if (high is not null && Admits(high))
-                                cells.Add(new Point(high));
+                                strings.Add(new Point(high));
                             low = high;
                         }
 
+                        cells.AddRange(ByAffix(strings, cuts.Where(c => c.Kind == CutKind.Affix).Select(c => StringOf(c.Value))));
                         break;
                     }
 
@@ -251,7 +284,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     {
                         var doubles = cuts.Where(c => c.Kind == CutKind.Double && IsExactNumber(c.Value)).Select(c => DoubleBound.Of(c.Value)).Distinct().Order().ToList();
                         var lower = x.Lower;
-                        foreach (var cut in cuts.Select(c => c.Value).Where(IsExactNumber).Select(NumberOf).Distinct().OrderBy(n => n).Select(n => (decimal?)n).Append(null))
+                        foreach (var cut in cuts.Where(c => c.Kind != CutKind.Affix).Select(c => c.Value).Where(IsExactNumber).Select(NumberOf).Distinct().OrderBy(n => n).Select(n => (decimal?)n).Append(null))
                         {
                             var upper = cut is decimal below ? (x.Upper is Bound u ? Bound.StricterUpper(Bound.Below(below), u) : Bound.Below(below)) : x.Upper;
                             foreach (var between in Slots(new Numbers(kind == IntegerType, lower, upper, ValueSet<string>.Empty), doubles))
@@ -274,6 +307,64 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
 
             return new CellPartition(path, ValueSet.From(cells.Where(c => c is not (Strings or Numbers) || c.Witness() is not null)));
+        }
+
+        /// <summary>
+        /// A pair's product: each side cut as its own import is, and every two cells paired, two strings parted by how the
+        /// left lies against the right where that may be either way, and a place paired with itself on its diagonal alone,
+        /// where it equals itself. A pair is kept where an inhabitant may lie in it.
+        /// </summary>
+        static CellPartition Product(string path, PathPair pair, ValueSet<CutPoint> cuts)
+        {
+            var sides = PlaceSpellings.Sides(path);
+            var left = Split(sides?.Left ?? path, pair.Left, pair.LeftClasses, cuts).Cells;
+            if (sides is (var l, var r) && l == r)
+                return new CellPartition(path, ValueSet.From(left.Select(cell => (PathCell)new Pair(cell, cell, 0))));
+
+            var right = Split(sides?.Right ?? path, pair.Right, pair.RightClasses, cuts).Cells;
+            return new CellPartition(path, ValueSet.From(from a in left from b in right from order in Orders(a, b) select (PathCell)new Pair(a, b, order)));
+        }
+
+        /// <summary>
+        /// How two cells of strings may lie, by UTF-16 unit: one way for two strings, the ways an inhabitant may take for an
+        /// interval; and none of these for any other two, which are not parted.
+        /// </summary>
+        static IEnumerable<int?> Orders(PathCell a, PathCell b)
+        {
+            // An affix's cell has no least string the interval's is.
+            if (a is Strings { Affixed: true } || b is Strings { Affixed: true } || Least(a) is not { } x || Least(b) is not { } y)
+                return [null];
+
+            if (a is Point && b is Point)
+                return [Math.Sign(string.CompareOrdinal(x, y))];
+
+            var equal = a is Point { Value: var u } ? b.Contains(u) : b is Point { Value: var v } ? a.Contains(v)
+                : Meet((Strings)a, (Strings)b) is { } meet && meet.Witness() is not null;
+            return new int?[] { -1, 0, 1 }.Where(o => o == 0 ? equal : o < 0 ? Rises(b, x) : Rises(a, y));
+        }
+
+        /// <summary>A string cell's least string, or <c>null</c> for any other cell.</summary>
+        static string? Least(PathCell cell) => cell switch
+        {
+            Point { Value: var v } when IsString(v) => StringOf(v),
+            Strings s => LeastString(s) is { } least ? StringOf(least) : null,
+            _ => null,
+        };
+
+        /// <summary>Whether a string cell may hold a string above another: a point above it, or an interval reaching past it.</summary>
+        static bool Rises(PathCell cell, string least) => cell switch
+        {
+            Point { Value: var v } => string.CompareOrdinal(StringOf(v), least) > 0,
+            Strings s => s.High is not { } high || string.CompareOrdinal(least, StringOf(high)) < 0,
+            _ => false,
+        };
+
+        /// <summary>The strings two intervals both hold.</summary>
+        static Strings? Meet(Strings a, Strings b)
+        {
+            var low = a.Low is null ? b.Low : b.Low is null ? a.Low : string.CompareOrdinal(StringOf(a.Low), StringOf(b.Low)) >= 0 ? a.Low : b.Low;
+            var high = a.High is null ? b.High : b.High is null ? a.High : string.CompareOrdinal(StringOf(a.High), StringOf(b.High)) <= 0 ? a.High : b.High;
+            return new Strings(low, high, a.Except.Union(b.Except), a.Classes.Intersect(b.Classes));
         }
 
         /// <summary>
@@ -310,6 +401,81 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 && (upper is not Bound hi || (hi.Open ? d < (double)hi.Value : d <= (double)hi.Value));
         }
 
+        /// <summary>
+        /// Interval cells cut by each affix's pattern into the strings it matches and those it misses (spec §4.2 h07), a cell
+        /// cut only where each half holds a witness found or is shown empty: one neither is left whole, which says less and
+        /// nothing false, since a search that misses shows nothing empty.
+        /// </summary>
+        static IEnumerable<PathCell> ByAffix(List<PathCell> cells, IEnumerable<string> patterns)
+        {
+            foreach (var pattern in patterns.Where(p => AffixPattern.Universal(p) == false))
+                cells = [.. cells.SelectMany(cell => cell is Strings s ? Parted(s, pattern) : [cell])];
+
+            return cells;
+        }
+
+        /// <summary>A cell as the strings a pattern matches and those it misses, a half a literal unit its classes forbid empty.</summary>
+        static IEnumerable<PathCell> Parted(Strings s, string pattern)
+        {
+            if (s.Like?.Contains(pattern) == true || s.NotLike?.Contains(pattern) == true)
+                return [s];
+
+            var matching = s with { Like = (s.Like ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
+            var missing = s with { NotLike = (s.NotLike ?? ValueSet<string>.Empty).Union(ValueSet.Of(pattern)) };
+            var allowed = Allowed(s.Classes);
+            var empty = AffixPattern.LiteralUnits(pattern).Any(unit => allowed[unit] == false);
+            return (empty ? false : matching.Witness() is not null ? true : (bool?)null, missing.Witness() is not null) switch
+            {
+                (true, true) => [matching, missing],
+                (false, true) => [missing],
+                _ => [s],
+            };
+        }
+
+        /// <summary>
+        /// A string of an affix's cell, searched for: the patterns it must match, their runs joined in each order, each
+        /// <c>_</c> a unit the classes allow, between fillers of a unit or none, after the interval's least string where it
+        /// has a low end. Every candidate is checked against the cell whole; <c>null</c> where none holds, which shows nothing
+        /// empty.
+        /// </summary>
+        static string? Matching(Strings s)
+        {
+            var allowed = Allowed(s.Classes);
+            var fillers = new List<string> { "" };
+            fillers.AddRange(new[] { 'x', 'a', '0', ' ' }.Where(u => allowed[u]).Select(u => u.ToString()));
+            if (Array.IndexOf(allowed, true) is var least and >= 0 && fillers.Contains(((char)least).ToString()) == false)
+                fillers.Add(((char)least).ToString());
+
+            var one = fillers.Count > 1 ? fillers[1] : "x";
+            var like = s.Like?.AsEnumerable().ToList() ?? [];
+            var seeds = new List<string>();
+            foreach (var order in like.Count <= 3 ? Orderings(like) : [like])
+                seeds.Add(string.Concat(order.Select(p => AffixPattern.Filled(p, one))));
+            seeds.AddRange(like.Select(p => AffixPattern.Filled(p, one)));
+            if (seeds.Count == 0)
+                seeds.Add("");
+
+            var bases = new List<string> { "" };
+            if (s.Low is not null && LeastString(new Strings(s.Low, s.High, ValueSet<string>.Empty, s.Classes)) is { } above)
+                bases.Add(StringOf(above));
+
+            foreach (var start in bases)
+                foreach (var seed in seeds.Distinct())
+                    foreach (var before in fillers)
+                        foreach (var after in fillers)
+                            if (Of(start + before + seed + after) is var candidate && s.Contains(candidate))
+                                return candidate;
+
+            return null;
+        }
+
+        static IEnumerable<List<string>> Orderings(List<string> items) => items.Count <= 1 ? [items]
+            : items.SelectMany((item, i) => Orderings([.. items.Take(i), .. items.Skip(i + 1)]).Select(rest => (List<string>)[item, .. rest]));
+
+        // A unit's own classes: a lone surrogate's unpaired class is a whole string's, which Contains asks of a candidate.
+        static bool[] Allowed(ValueSet<string> classes) =>
+            Units.GetOrAdd(classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => ClassSet(MaskOf((char)u)).IsSubsetOf(k)).ToArray());
+
         /// <summary>Which UTF-16 units each set of classes allows, read once a set.</summary>
         static readonly ConcurrentDictionary<ValueSet<string>, bool[]> Units = new();
 
@@ -320,7 +486,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         static string? LeastString(Strings s)
         {
-            var allowed = Units.GetOrAdd(s.Classes, k => Enumerable.Range(0, char.MaxValue + 1).Select(u => BandsOfText(((char)u).ToString()).IsSubsetOf(k)).ToArray());
+            var allowed = Allowed(s.Classes);
             var least = Array.IndexOf(allowed, true);
             for (var text = s.Low is null ? "" : Above(StringOf(s.Low), allowed, least); text is not null; text = least < 0 ? null : text + (char)least)
             {

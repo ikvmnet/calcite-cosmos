@@ -42,6 +42,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly HashSet<string> _held = new(StringComparer.Ordinal);
         readonly Dictionary<string, Node> _children = new(StringComparer.Ordinal);
         readonly Dictionary<string, OracleVerdict> _answers = new(StringComparer.Ordinal);
+        readonly Dictionary<string, bool> _exactly = new(StringComparer.Ordinal);
         readonly Lease _lease = new();
         readonly object _lock = new();
 
@@ -89,6 +90,63 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Gets the rules the contexts run, or <c>null</c> where the declaration could not be compiled.
         /// </summary>
         internal PredicateRules? Rules => _rules;
+
+        /// <summary>
+        /// Whether the facts graph reads every atom of a predicate as Calcite does on TRUE and FALSE, so that what a stratum
+        /// assuming it says of the documents is so: no atom in it the rows say is read otherwise (<see cref="PredicateRules.Inexact"/>),
+        /// read off a node that holds its term, or off a child made to hold it, asked and released, as <see cref="Judge"/>
+        /// reads one; never where nothing is known, nor of a node that keeps no row.
+        /// </summary>
+        internal bool ReadsExactly(Node node, SqlPredicate predicate)
+        {
+            if (node.Contradictory || node.Scope is null || _rules is null)
+                return false;
+
+            if (node.HoldsTerms && _held.Contains(predicate.Digest))
+                return Exact(node.Scope, predicate);
+
+            lock (_lock)
+            {
+                var transient = Open(node, node.Key + "!" + predicate.Digest, assumed: Array.Empty<SqlPredicate>(), made: new[] { predicate }, paths: predicate.Paths.ToArray(), holdsTerms: false, keep: false);
+                try
+                {
+                    return transient.Contradictory == false && transient.Complete && ReferenceEquals(transient.Scope, node.Scope) == false && Exact(transient.Scope!, predicate);
+                }
+                finally
+                {
+                    if (ReferenceEquals(transient.Scope, node.Scope) == false)
+                        transient.Scope?.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether the facts graph reads a predicate as Calcite does, read beneath the declaration: the inexact rule reads the
+        /// terms and the root's rows alone, alike in every context, so a predicate is asked once.
+        /// </summary>
+        internal bool ReadsExactly(SqlPredicate predicate)
+        {
+            lock (_lock)
+            {
+                if (_exactly.TryGetValue(predicate.Digest, out var known) == false)
+                    _exactly[predicate.Digest] = known = ReadsExactly(Root, predicate);
+
+                return known;
+            }
+        }
+
+        /// <summary>Whether a context holding a predicate's term derives no atom of it read otherwise than Calcite.</summary>
+        bool Exact(Scope scope, SqlPredicate predicate)
+        {
+            try
+            {
+                return scope.Check(_rules!.Inexact.Of(_writer!.Term(predicate, new List<Fact>()))) == false;
+            }
+            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// Returns the child of a context that assumes these predicates beside what it holds, made the first time it is
@@ -471,6 +529,12 @@ namespace Apache.Calcite.Cosmos.Facts
             public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands)
             {
                 bands = ValueSet<string>.Empty;
+                return false;
+            }
+
+            public override bool TryPossible(JsonDocumentPath path, out PathValues values)
+            {
+                values = PathValues.Anything;
                 return false;
             }
 

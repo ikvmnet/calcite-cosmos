@@ -695,6 +695,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             // last conjunct left in process goes (P9).
             "Filter.DeepConjunction",
             "Filter.TypeTests",
+            // Since the switch: every conjunct is S's, and the NOT LIKE over the sku's text is sent as
+            // NOT (NOT IS_NUMBER AND NOT IS_BOOL AND ENDSWITH), which keeps a number or a boolean, whose text never ends
+            // so, as Calcite keeps it, and drops a null, an absent sku or a structure, whose JSON_VALUE is NULL.
+            "Filter.RegexAndLike",
             "Filter.DisjunctionOfConjunctions",
             "Filter.NestedKeyContainer",
             "Filter.UnindexedPath",

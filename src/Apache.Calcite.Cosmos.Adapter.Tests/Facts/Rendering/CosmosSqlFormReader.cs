@@ -25,9 +25,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <para>
     /// The grammar is the service's, as measured (<see cref="Row"/>): <c>NOT</c> binds tighter than a comparison and than
     /// <c>AND</c>, and <c>AND</c> than <c>OR</c>, which the guards rely on (<c>IS_DEFINED(p) AND NOT IS_NULL(p) AND
-    /// (p != @p0)</c>); a primary is a parenthesised condition, an <c>IS_*</c> test of a path, or a path compared with a
-    /// parameter, so <c>NOT p = @v</c>, which compares <c>NOT p</c>, is no form. Grouping is kept as written: no junction is
-    /// flattened, regrouped or deduplicated, so that a form is the one sent.
+    /// (p != @p0)</c>); a primary is a parenthesised condition or ternary <c>(c ? t : e)</c>, a constant, an <c>IS_*</c> test
+    /// of a path, an affix or <c>LIKE</c> of one, a path compared with a parameter or with a path, a path's <c>IN</c> of
+    /// parameters, or a path alone, so <c>NOT p = @v</c>, which compares <c>NOT p</c>, is no form. A path is the root
+    /// alias's names and indexes, or a computed place's call (h10) where the caller names the places the text may read
+    /// (<see cref="PlacesOf"/>). Grouping is kept as written: no junction is flattened, regrouped or deduplicated, so that
+    /// a form is the one sent.
     /// </para>
     /// <para>
     /// Anything else is read as <see cref="ServiceFormKind.Opaque"/>, up to the next <c>AND</c>, <c>OR</c> or closing
@@ -52,21 +55,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ["IS_OBJECT"] = CosmosServiceTest.IsObject, ["IS_ARRAY"] = CosmosServiceTest.IsArray,
         };
 
+        /// <summary>The affixes the printer writes (h07), each of a path and a parameter, case sensitive with no third operand.</summary>
+        static readonly Dictionary<string, CosmosServiceTest> Affixes = new(StringComparer.Ordinal)
+        {
+            ["STARTSWITH"] = CosmosServiceTest.StartsWith, ["ENDSWITH"] = CosmosServiceTest.EndsWith, ["CONTAINS"] = CosmosServiceTest.Contains,
+        };
+
         static readonly Dictionary<string, CosmosServiceTest> Operators = new(StringComparer.Ordinal)
         {
             ["="] = CosmosServiceTest.Equal, ["!="] = CosmosServiceTest.NotEqual, ["<"] = CosmosServiceTest.Less,
             ["<="] = CosmosServiceTest.LessOrEqual, [">"] = CosmosServiceTest.Greater, [">="] = CosmosServiceTest.GreaterOrEqual,
         };
 
-        /// <summary>Reads a text the translator wrote, its parameters bound to the values given.</summary>
+        /// <summary>Reads a text the translator or the printer wrote, its parameters bound to the values given.</summary>
         /// <param name="text">The text.</param>
         /// <param name="parameters">The parameters its names are bound to.</param>
         /// <param name="notOverAnd">The plant "a reader that binds <c>NOT</c> looser than <c>AND</c>", for the precedence test alone.</param>
-        public static ReadForm Read(string text, IReadOnlyList<CosmosParameter> parameters, bool notOverAnd = false)
+        /// <param name="places">Each computed place the text may read, by its call as written with its parameters inlined (<see cref="PlacesOf"/>).</param>
+        public static ReadForm Read(string text, IReadOnlyList<CosmosParameter> parameters, bool notOverAnd = false, IReadOnlyDictionary<string, string>? places = null)
         {
-            var parser = new Parser(text, parameters, notOverAnd);
+            var parser = new Parser(text, parameters, notOverAnd, places);
             var (form, written) = parser.Whole();
             return new ReadForm(form, written);
+        }
+
+        /// <summary>
+        /// Each computed place a statement reads (h10), keyed by its call in each spelling the service may be sent
+        /// (<see cref="CosmosFunctionSpellings.Spellings"/>), its literals inlined as <see cref="Inline"/> writes them, and its
+        /// paths as the root alias's: what <see cref="Read"/> reads back as the place's spelling.
+        /// </summary>
+        public static IReadOnlyDictionary<string, string> PlacesOf(IEnumerable<SqlValue.Call> calls)
+        {
+            var computed = calls.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled).ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
+            var places = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var call in computed.Values)
+                foreach (var spelling in CosmosFunctionSpellings.Spellings.Where(s => s.Function == call.Function).Select(s => (long?)s.Spelling).Prepend(null).Distinct())
+                {
+                    var bound = new List<CosmosParameter>();
+                    string? Operand(SqlValue operand) => operand switch
+                    {
+                        SqlValue.Call { Spelled: { } inner } nested when computed.ContainsKey(inner) => CosmosFunctionSpellings.Spell(nested, Operand),
+                        SqlValue.Literal literal => Bind(literal.Value),
+                        _ when operand.PathRead is JsonDocumentPath read => Written(read),
+                        _ => null,
+                    };
+                    string Bind(string literal)
+                    {
+                        var name = "@q" + bound.Count.ToString(CultureInfo.InvariantCulture);
+                        bound.Add(new CosmosParameter(name, JsonValues.IsString(literal) ? JsonValues.StringOf(literal) : JsonValues.IsNumber(literal) ? JsonValues.NumberOf(literal)
+                            : literal == JsonValues.Of(true) ? true : literal == JsonValues.Of(false) ? false : null));
+                        return name;
+                    }
+
+                    if (CosmosFunctionSpellings.Spell(call, Operand, spelling) is { } text)
+                        places.TryAdd(Inline(text, bound), call.Spelled!);
+                }
+
+            return places;
+        }
+
+        /// <summary>A path from the root alias, as the printer and the translator write it.</summary>
+        static string Written(JsonDocumentPath path)
+        {
+            var written = new StringBuilder(CosmosImplementor.DefaultRootAlias);
+            foreach (var segment in path.Segments)
+                if (segment is string name)
+                    CosmosSql.WritePropertyAccess(written, name);
+                else
+                    CosmosSql.WriteIndexAccess(written, checked((int)(long)segment));
+
+            return written.ToString();
         }
 
         /// <summary>The parameter names a text holds.</summary>
@@ -112,14 +170,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             readonly string _text;
             readonly IReadOnlyList<CosmosParameter> _parameters;
             readonly bool _notOverAnd;
+            readonly IReadOnlyDictionary<string, string>? _places;
             readonly List<(string Text, int Start, int End)> _tokens = [];
             int _at;
 
-            public Parser(string text, IReadOnlyList<CosmosParameter> parameters, bool notOverAnd)
+            public Parser(string text, IReadOnlyList<CosmosParameter> parameters, bool notOverAnd, IReadOnlyDictionary<string, string>? places = null)
             {
                 _text = text;
                 _parameters = parameters;
                 _notOverAnd = notOverAnd;
+                _places = places;
                 Tokenize();
             }
 
@@ -164,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (ServiceForm, string) Primary()
             {
                 var start = _at;
-                if (TryPrimary() is { } read && Peek is null or ")" or "AND" or "OR")
+                if (TryPrimary() is { } read && Peek is null or ")" or "AND" or "OR" or "?" or ":")
                     return read;
 
                 _at = start;
@@ -173,11 +233,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             (ServiceForm, string)? TryPrimary()
             {
-                if (Accept("("))
+                // A parenthesis opens a condition, or a ternary the printer writes a CASE as, unless it opens a place's call.
+                if (PlaceAt(_at) is null && Accept("("))
                 {
                     var (inner, written) = Or();
+                    if (Accept("?"))
+                    {
+                        var (then, thenWritten) = Or();
+                        if (Accept(":") == false)
+                            return null;
+
+                        var (otherwise, otherwiseWritten) = Or();
+                        return Accept(")") ? (ServiceForm.ChosenOf(inner, then, otherwise), "(" + written + " ? " + thenWritten + " : " + otherwiseWritten + ")") : null;
+                    }
+
                     return Accept(")") ? (inner, "(" + written + ")") : null;
                 }
+
+                if (Peek is "true" or "false")
+                    return (ServiceForm.ConstantOf(_tokens[_at++].Text == "true"), _tokens[_at - 1].Text);
 
                 if (Peek is { } word && Tests.TryGetValue(word, out var test))
                 {
@@ -187,21 +261,106 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         : null;
                 }
 
-                if (TryPath() is not { } path || Peek is not { } op || Operators.TryGetValue(op, out var compare) == false)
+                if (Peek is { } name && Affixes.TryGetValue(name, out var affix))
+                {
+                    _at++;
+                    if (Accept("(") == false || TryPath() is not { } matched || Accept(",") == false || TryParameter() is not { } argument || Accept(")") == false)
+                        return null;
+
+                    var call = name + "(" + matched.Written + ", " + argument.Name + ")";
+                    return (matched.Spelled is { } spelled && Literal(argument.Value) is { } text && JsonValues.IsString(text) ? ServiceForm.AffixOf(affix, spelled, JsonValues.StringOf(text)) : Opaque(call), call);
+                }
+
+                var at = _at;
+                if (TryPath() is { } subject && Accept("LIKE"))
+                {
+                    if (TryParameter() is not { } pattern)
+                        return null;
+
+                    var like = subject.Written + " LIKE " + pattern.Name;
+                    return (subject.Spelled is { } spelled && Literal(pattern.Value) is { } text && JsonValues.IsString(text) ? ServiceForm.AffixOf(CosmosServiceTest.Like, spelled, JsonValues.StringOf(text)) : Opaque(like), like);
+                }
+
+                _at = at;
+                if (TryPath() is { } member && Accept("IN"))
+                {
+                    if (Accept("(") == false)
+                        return null;
+
+                    var points = new List<CosmosParameter>();
+                    do
+                    {
+                        if (TryParameter() is not { } point)
+                            return null;
+
+                        points.Add(point);
+                    }
+                    while (Accept(","));
+
+                    if (Accept(")") == false)
+                        return null;
+
+                    var @in = member.Written + " IN (" + string.Join(", ", points.Select(p => p.Name)) + ")";
+                    return (member.Spelled is { } spelled && points.Select(p => Literal(p.Value)).ToList() is var literals && literals.All(l => l is not null)
+                        ? ServiceForm.InOf(spelled, ValueSet.From(literals.OfType<string>())) : Opaque(@in), @in);
+                }
+
+                _at = at;
+                if (TryPath() is not { } path)
+                    return null;
+
+                // A path alone, a condition the service reads as itself (h14's bare reading).
+                if (Peek is null or ")" or "AND" or "OR" or "?" or ":")
+                    return path.Spelled is { } bare ? (ServiceForm.BareOf(bare), path.Written) : null;
+
+                if (Peek is not { } op || Operators.TryGetValue(op, out var compare) == false)
                     return null;
 
                 _at++;
+                // Two readings compared (h11), the right a path as the left is.
                 if (TryParameter() is not { } right)
-                    return null;
+                    return TryPath() is { } other ? (path.Spelled is { } l && other.Spelled is { } r ? ServiceForm.ComparePathsOf(compare, l, r) : Opaque(path.Written + " " + op + " " + other.Written),
+                        path.Written + " " + op + " " + other.Written) : null;
 
                 var comparison = path.Written + " " + op + " " + right.Name;
                 return (path.Spelled is { } compared && Literal(right.Value) is { } literal ? ServiceForm.CompareOf(compare, compared, literal) : Opaque(comparison), comparison);
             }
 
-            /// <summary>A path from the root alias, spelled as the IR spells it where every step is a name.</summary>
+            /// <summary>
+            /// The computed place whose call the tokens from one on spell, and the token after it, or <c>null</c>: a call or a
+            /// parenthesised operation whose text, its parameters inlined, the caller named a place by.
+            /// </summary>
+            (string Spelled, int End)? PlaceAt(int at)
+            {
+                if (_places is null || at >= _tokens.Count)
+                    return null;
+
+                var open = _tokens[at].Text == "(" ? at : at + 1 < _tokens.Count && IsWord(_tokens[at].Text) && _tokens[at + 1].Text == "(" ? at + 1 : -1;
+                if (open < 0)
+                    return null;
+
+                var depth = 0;
+                for (var i = open; i < _tokens.Count; i++)
+                {
+                    depth += _tokens[i].Text switch { "(" => 1, ")" => -1, _ => 0 };
+                    if (depth == 0)
+                        return _places.TryGetValue(Inline(_text[_tokens[at].Start.._tokens[i].End], _parameters), out var spelled) ? (spelled, i + 1) : null;
+                }
+
+                return null;
+            }
+
+            /// <summary>A path from the root alias, spelled as the IR spells it, an element's index among its steps; or a computed place's call.</summary>
             (string? Spelled, string Written)? TryPath()
             {
-                if (Peek is not { } alias || IsWord(alias) == false || Tests.ContainsKey(alias) || alias is "NOT" or "AND" or "OR")
+                if (PlaceAt(_at) is { } place)
+                {
+                    var call = _text[_tokens[_at].Start.._tokens[place.End - 1].End];
+                    _at = place.End;
+                    return (place.Spelled, call);
+                }
+
+                if (Peek is not { } alias || IsWord(alias) == false || Tests.ContainsKey(alias) || Affixes.ContainsKey(alias) || alias is "NOT" or "AND" or "OR" or "LIKE" or "IN" or "true" or "false")
                     return null;
 
                 _at++;
@@ -227,7 +386,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     {
                         _at += 3;
                         CosmosSql.WriteIndexAccess(written, index);
-                        path = null;
+                        path = path?.Element(index);
                     }
                     else
                         break;

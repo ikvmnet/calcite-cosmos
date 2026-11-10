@@ -6,6 +6,8 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -25,28 +27,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// What a <c>WHERE</c> makes of the form on the document, on a target: kept, kept by <c>NOT</c>, or neither; or
-        /// <c>null</c> where no row says, an <c>IN</c> and an opaque text among them.
+        /// <c>null</c> where no row says, an <c>IN</c>, an opaque text and a computed place <paramref name="places"/> does
+        /// not name among them.
         /// </summary>
-        public static ServiceOutcomes? On(ServiceForm form, J.Obj document, RenderingTarget target) => form.Kind switch
+        /// <param name="places">The calls the form's computed places spell, by spelling (<see cref="Place"/>).</param>
+        public static ServiceOutcomes? On(ServiceForm form, J.Obj document, RenderingTarget target, IReadOnlyDictionary<string, SqlValue.Call>? places = null) => form.Kind switch
         {
             // Service.AConstantIsItsOwnTruth.
             ServiceFormKind.Constant => form.Literal == Of(true) ? ServiceOutcomes.True : ServiceOutcomes.False,
 
             // Service.BarePathKeepsOnlyTrue, Service.NotOverAPathKeepsOnlyFalse: anything but a boolean is unknown.
-            ServiceFormKind.Bare => At(document, form.Path!) is J.Bool b ? Truth(b.Value) : ServiceOutcomes.Undefined,
-            ServiceFormKind.Test => Truth(Test(form.Test, At(document, form.Path!))),
-            ServiceFormKind.Compare => Compare(form.Test, At(document, form.Path!), form.Literal!, target),
+            ServiceFormKind.Bare => Read(document, form.Path!, target, places) is (true, var v) ? v is J.Bool b ? Truth(b.Value) : ServiceOutcomes.Undefined : null,
+            ServiceFormKind.Test => Read(document, form.Path!, target, places) is (true, var v) ? Truth(Test(form.Test, v)) : null,
+            ServiceFormKind.Compare => Read(document, form.Path!, target, places) is (true, var v) ? Compare(form.Test, v, form.Literal!, target) : null,
+            ServiceFormKind.Affix => Read(document, form.Path!, target, places) is (true, var v) ? Affix(form, v, target) : null,
+
+            // Service.TwoPathsCompareAsAPathAndALiteral, measured on both targets: the left against the right's value as a
+            // literal, but two numbers each as the service holds it, the diagonal a value against itself, and against a null
+            // as the row's outcomes say, = true of a null alone, != of everything else, <= and >= true of a null and < and >
+            // false of one, each ordering undefined over the rest (C6 at h15, (c.k < c.k) over a null); nothing of a
+            // container on either side but against a null.
+            ServiceFormKind.ComparePaths when IsPath(form.Path!) && IsPath(form.Right!) => (At(document, form.Path!), At(document, form.Right!)) switch
+            {
+                (null, _) or (_, null) => ServiceOutcomes.Undefined,
+                (var left, J.Null) => (form.Test, left is J.Null) switch
+                {
+                    (CosmosServiceTest.Equal, var both) => Truth(both),
+                    (CosmosServiceTest.NotEqual, var both) => Truth(both == false),
+                    (CosmosServiceTest.LessOrEqual or CosmosServiceTest.GreaterOrEqual, true) => ServiceOutcomes.True,
+                    (CosmosServiceTest.Less or CosmosServiceTest.Greater, true) => ServiceOutcomes.False,
+                    _ => ServiceOutcomes.Undefined,
+                },
+                ({ IsScalar: false }, _) or (_, { IsScalar: false }) => null,
+                (J left and (J.Num or J.Huge), J.Num r) => Ordered(form.Test, Numeric(left, r.Value, Held(r.Value, target), target)),
+                var (left, right) => Compare(form.Test, left, right.Encoded, target),
+            },
 
             // Service.NotOverUndefinedIsUndefined.
-            ServiceFormKind.Not => On(form.Members[0], document, target) switch
+            ServiceFormKind.Not => On(form.Members[0], document, target, places) switch
             {
                 ServiceOutcomes.True => ServiceOutcomes.False,
                 ServiceOutcomes.False => ServiceOutcomes.True,
                 var other => other,
             },
 
-            ServiceFormKind.And => Kleene(Arms(form, document, target), ServiceOutcomes.False, ServiceOutcomes.True),
-            ServiceFormKind.Or => Kleene(form.Members.Select(m => On(m, document, target)), ServiceOutcomes.True, ServiceOutcomes.False),
+            ServiceFormKind.And => Kleene(Arms(form, document, target, places), ServiceOutcomes.False, ServiceOutcomes.True),
+            ServiceFormKind.Or => Kleene(form.Members.Select(m => On(m, document, target, places)), ServiceOutcomes.True, ServiceOutcomes.False),
+
+            // Service.TernaryTakesThenOnTrueAlone, measured on both targets: the then-arm where the condition is true, the
+            // else-arm over every other value, undefined and an absent path among them.
+            ServiceFormKind.Choose => On(form.Members[0], document, target, places) switch
+            {
+                null => null,
+                ServiceOutcomes.True => On(form.Members[1], document, target, places),
+                _ => On(form.Members[2], document, target, places),
+            },
             _ => null,
         };
 
@@ -64,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// orders rank apart, which Service.RangeOverPartedBoundsIsEmpty reads as one range: undefined between them by code
         /// point, and over anything but a string; false outside.
         /// </summary>
-        static IEnumerable<ServiceOutcomes?> Arms(ServiceForm form, J.Obj document, RenderingTarget target)
+        static IEnumerable<ServiceOutcomes?> Arms(ServiceForm form, J.Obj document, RenderingTarget target, IReadOnlyDictionary<string, SqlValue.Call>? places)
         {
             var members = form.Flat.ToList();
             var orderings = target == RenderingTarget.Azure ? members.Where(Ordering).ToList() : [];
@@ -72,16 +107,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 && p.a.Test is CosmosServiceTest.Greater or CosmosServiceTest.GreaterOrEqual && p.b.Test is CosmosServiceTest.Less or CosmosServiceTest.LessOrEqual
                 && Math.Sign(string.CompareOrdinal(StringOf(p.a.Literal!), StringOf(p.b.Literal!))) != Math.Sign(ByCodePoint(StringOf(p.a.Literal!), StringOf(p.b.Literal!))));
             if (lower is null)
-                return members.Select(m => On(m, document, target));
+                return members.Select(m => On(m, document, target, places));
 
             var range = At(document, lower.Path!) is J.Str
                 ? Compare(lower.Test, At(document, lower.Path!), lower.Literal!, target) == ServiceOutcomes.True && Compare(upper.Test, At(document, upper.Path!), upper.Literal!, target) == ServiceOutcomes.True
                     ? ServiceOutcomes.Undefined : ServiceOutcomes.False
                 : ServiceOutcomes.Undefined;
-            return members.Where(m => m != lower && m != upper).Select(m => On(m, document, target)).Append(range);
+            return members.Where(m => m != lower && m != upper).Select(m => On(m, document, target, places)).Append(range);
 
             static bool Ordering(ServiceForm m) => m.Kind == ServiceFormKind.Compare && m.Test is not (CosmosServiceTest.Equal or CosmosServiceTest.NotEqual) && IsString(m.Literal!);
         }
+
+        /// <summary>
+        /// An affix or <c>LIKE</c>: undefined over anything but a string (Service.StringPredicatesOverNonStringsAreUndefined);
+        /// over one by code point (Service.AffixesMatchByCodePoint, Service.LikeMatchesByCodePoint), a LIKE's pattern read by
+        /// the target's own rows of its units (Service.LikeReadsBracketsAsARange too, G7), on the emulator an affix and a LIKE
+        /// matching the stored string against the argument as sent in that spelling, each _ one code point of it
+        /// (Service.EmulatorComparesTheSpellingItIsSent, Service.LikeOneOverEachClass). None where the rows leave a unit
+        /// unread or a unit's reading was not measured over a code point it reads. On Azure a CONTAINS, and the LIKE of one run between
+        /// two % it answers as one, reads the string only up to its first U+0000, and an argument holding one matches every
+        /// string (Service.NulEndsWhatReplaceAndContainsRead).
+        /// </summary>
+        static ServiceOutcomes? Affix(ServiceForm form, J? value, RenderingTarget target)
+        {
+            if (value is not J.Str s)
+                return ServiceOutcomes.Undefined;
+
+            if (form.PatternOf(LikeUnitsOn(target)) is not { } pattern)
+                return null;
+
+            static ServiceOutcomes? Of(bool? match) => match is bool m ? Truth(m) : null;
+            return target switch
+            {
+                RenderingTarget.Emulator => Of(pattern.Respelled(EmulatorStoredText.Of).Matches(EmulatorStoredText.Of(s.Value))),
+                _ when AffixPattern.Runs(pattern.Spelled) is ["", { Length: > 0 }, ""] => pattern.Written.Contains('\0') ? ServiceOutcomes.True : Of(pattern.Matches(s.Value.Split('\0')[0])),
+                _ => Of(pattern.Matches(s.Value)),
+            };
+        }
+
+        /// <summary>What a target's LIKE reads each unit of a pattern as, its rows' (CosmosAxiomRows.ReadServiceLikeUnits).</summary>
+        static Eggnog.ValueSet<LikeUnit> LikeUnitsOn(RenderingTarget target) =>
+            Eggnog.ValueSet.From(CosmosAxiomRows.ReadServiceLikeUnits(CosmosAxioms.All).Where(u => u.Target == target).Select(u => u.Unit));
 
         /// <summary>Service.IsDefined, Service.IsNull, Service.IsPrimitive, Service.KindTests: never undefined.</summary>
         static bool Test(CosmosServiceTest test, J? value) => test switch
@@ -129,17 +195,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 null => null,
                 int.MinValue => equality ? Truth(op == CosmosServiceTest.NotEqual) : ServiceOutcomes.Undefined,
-                var o => Truth(op switch
-                {
-                    CosmosServiceTest.Equal => o == 0,
-                    CosmosServiceTest.NotEqual => o != 0,
-                    CosmosServiceTest.Less => o < 0,
-                    CosmosServiceTest.LessOrEqual => o <= 0,
-                    CosmosServiceTest.Greater => o > 0,
-                    _ => o >= 0,
-                }),
+                int o => Ordered(op, o),
             };
         }
+
+        /// <summary>What a comparator answers of two values that stand in an order.</summary>
+        static ServiceOutcomes Ordered(CosmosServiceTest op, int o) => Truth(op switch
+        {
+            CosmosServiceTest.Equal => o == 0,
+            CosmosServiceTest.NotEqual => o != 0,
+            CosmosServiceTest.Less => o < 0,
+            CosmosServiceTest.LessOrEqual => o <= 0,
+            CosmosServiceTest.Greater => o > 0,
+            _ => o >= 0,
+        });
+
+        /// <summary>Whether the service holds a document's number as an int64: one written whole, and on Azure one written with a point too.</summary>
+        static bool Held(decimal x, RenderingTarget target) => x == decimal.Truncate(x) && x >= long.MinValue && x <= long.MaxValue && (target == RenderingTarget.Azure || x.Scale == 0);
 
         /// <summary>Strings by code point, a lone surrogate as U+FFFD.</summary>
         static int ByCodePoint(string a, string b)
@@ -198,14 +270,118 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         static ServiceOutcomes Truth(bool value) => value ? ServiceOutcomes.True : ServiceOutcomes.False;
 
-        /// <summary>The value at a path as a form spells it (<c>$["a"]["b"]</c>), or <c>null</c> where it is absent.</summary>
+        /// <summary>
+        /// The value at a path as a form spells it (<c>$["a"][0]</c>), or <c>null</c> where it is absent: an index the element
+        /// of an array, and absent over every value that is no array and past the end (Service.IndexOverANonArrayIsUndefined).
+        /// </summary>
         public static J? At(J.Obj document, string path) => IrEval.At(document, PathOf(path));
 
-        /// <summary>A path as a form spells it, read back.</summary>
-        public static JsonDocumentPath PathOf(string spelled) => Segment().Matches(spelled)
-            .Aggregate(JsonDocumentPath.Root, (path, m) => path.Property(JsonSerializer.Deserialize<string>(m.Groups[1].Value)!));
+        /// <summary>
+        /// What a form's path holds on a document as the service reads it: a path's value, or a computed place's where
+        /// <paramref name="places"/> names its call; unknown for any other spelling, which is never read as the path inside it.
+        /// </summary>
+        static (bool Known, J? Value) Read(J.Obj document, string path, RenderingTarget target, IReadOnlyDictionary<string, SqlValue.Call>? places) =>
+            places is not null && places.TryGetValue(path, out var call) ? Place(call, document, target) : IsPath(path) ? (true, At(document, path)) : (false, null);
 
-        [GeneratedRegex("""\[("(?:[^"\\]|\\.)*")\]""")]
+        /// <summary>Whether a form's path is a path, every segment a quoted name or an index, and not a computed place's spelling.</summary>
+        static bool IsPath(string spelled) => Whole().IsMatch(spelled);
+
+        /// <summary>
+        /// The service's value of a computed place, from the function rows alone (Service.StringFunctionAnswersByBand,
+        /// Service.IntegerArithmeticIsExactWithinLong) and never the settled table: each operand the rows key read as the
+        /// service holds it, a nested place by its own rows, keyed by its kind and by every band a string of it holds.
+        /// Undefined where a row says so; nothing over a null, an absent path or a structure, which a row reads Same as
+        /// Calcite's null; Calcite's value where every row is Same over a string or a number. Unknown where a row parts or
+        /// is missing, an operand the rows do not key is no literal, or Calcite raises.
+        /// </summary>
+        static (bool Known, J? Value) Place(SqlValue.Call call, J.Obj document, RenderingTarget target)
+        {
+            if (RowNames.KeyOf(CosmosRendering.Definition, call.Function, call.Type) is not string function || Subjects.Contains(function) == false)
+                return (false, null);
+
+            var subjects = Subjects[function].ToHashSet();
+
+            int[] keyed = [.. Enumerable.Range(0, call.Operands.Count).Where(i => subjects.Contains(FunctionKey.Every) || subjects.Contains(i)
+                || subjects.Contains(FunctionKey.Literal) && call.Operands[i] is SqlValue.Literal)];
+            if (call.Operands.Where((_, i) => keyed.Contains(i) == false).Any(o => o is not SqlValue.Literal))
+                return (false, null);
+
+            var (undefined, nothing) = (false, false);
+            foreach (var i in keyed)
+            {
+                var (known, value) = call.Operands[i] switch
+                {
+                    SqlValue.Literal l => (true, PathCellTests.Decode(l.Value)),
+                    SqlValue.Call { Spelled: not null } inner => Place(inner, document, target),
+                    SqlValue.Text or SqlValue.Raw or SqlValue.Typed => (true, IrEval.At(document, call.Operands[i].PathRead!.Value)),
+                    _ => (false, (J?)null),
+                };
+                if (known == false)
+                    return (false, null);
+
+                var (kind, mask) = value switch
+                {
+                    null => (CosmosValueClass.Absent, JsonCharacterBand.None),
+                    J.Null => (CosmosValueClass.Null, JsonCharacterBand.None),
+                    J.Bool b => (b.Value ? CosmosValueClass.True : CosmosValueClass.False, JsonCharacterBand.None),
+                    J.Num or J.Huge => (CosmosValueClass.Number, JsonCharacterBand.None),
+                    J.Str s => (CosmosValueClass.String, Within(MaskOf(s.Value))),
+                    J.Obj => (CosmosValueClass.Object, JsonCharacterBand.None),
+                    _ => (CosmosValueClass.Array, JsonCharacterBand.None),
+                };
+                // Every row that holds of the value: by its ordinal, by every operand and, a literal, by a literal, of no
+                // class and of each class the value is in. An operand the rows name that none holds of is unknown; rows
+                // that disagree with one another are too.
+                var spelled = value switch { J.Str s => Of(s.Value), J.Num n => Of(n.Value), J.Huge h => Of(h.Value), _ => null };
+                long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i, call.Operands[i] is SqlValue.Literal ? FunctionKey.Literal : (long)i }.Distinct().Where(subjects.Contains)];
+                FunctionValueClass[] classes = [.. Enum.GetValues<FunctionValueClass>().Where(c => c == FunctionValueClass.Any || spelled is not null && FunctionValueClasses.Holds(c, spelled))];
+                foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
+                    switch ((from subject in subjectsOf
+                             select (from @class in classes
+                                     where Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
+                                     select Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).ToList()).ToList() is var held
+                             && held.All(h => h.Count > 0) && held.SelectMany(h => h).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
+                    {
+                        case CosmosFunctionAnswer.Undefined:
+                            undefined = true;
+                            break;
+                        case CosmosFunctionAnswer.Same:
+                            nothing |= kind is not (CosmosValueClass.String or CosmosValueClass.Number);
+                            break;
+                        default:
+                            return (false, null);
+                    }
+            }
+
+            if (undefined || nothing)
+                return (true, null);
+
+            var world = new World(0);
+            return (IrEval.Read(call, document, world), world.Tossed) switch
+            {
+                (SqlDatum.Text t, 0) => (true, new J.Str(t.Value)),
+                (SqlDatum.Exact x, 0) => (true, new J.Num(x.Value)),
+                _ => (false, null),
+            };
+        }
+
+        /// <summary>The registry's function rows by key and target, which S reads (<see cref="CosmosRendering.Definition"/>).</summary>
+        static readonly IReadOnlyDictionary<(FunctionKey Key, RenderingTarget Target), CosmosFunctionAnswer> Rows =
+            CosmosRendering.Definition.Functions.ToDictionary(r => (r.Key, r.Target), r => r.Answer);
+
+        /// <summary>The operands each function's rows name, by the loader's ordinals, which S reads.</summary>
+        static readonly ILookup<string, long> Subjects = CosmosRendering.Definition.FunctionSubjects.ToLookup(f => f.Function, f => f.Subject, StringComparer.Ordinal);
+
+        [GeneratedRegex("""^\$(?:\[(?:"(?:[^"\\]|\\.)*"|[0-9]+)\])*$""")]
+        private static partial Regex Whole();
+
+        /// <summary>A path as a form spells it, read back: a quoted name a property, a bare number an element.</summary>
+        public static JsonDocumentPath PathOf(string spelled) => Segment().Matches(spelled)
+            .Aggregate(JsonDocumentPath.Root, (path, m) => m.Groups[1].Success
+                ? path.Property(JsonSerializer.Deserialize<string>(m.Groups[1].Value)!)
+                : path.Element(long.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture)));
+
+        [GeneratedRegex("""\[(?:("(?:[^"\\]|\\.)*")|([0-9]+))\]""")]
         private static partial Regex Segment();
 
     }

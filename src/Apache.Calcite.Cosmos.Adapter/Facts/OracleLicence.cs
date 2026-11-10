@@ -45,10 +45,22 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// The arm is read only where its conditions hold, and the conjunct it is part of is decided only where the siblings
         /// do; so a rewrite of the arm on facts that hold there changes the filter on no row it keeps. The conjunct's own
-        /// facts are not among them, for the reason a deletion's are not.
+        /// facts are not among them, for the reason a deletion's are not; nor is a sibling the facts graph reads coarsely,
+        /// nor a condition from the first so read on, which may say of the documents what is not so (h15).
         /// </remarks>
         public static OracleLicence Arm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
             new(OracleQuestion.Arm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));
+
+        /// <summary>
+        /// What an arm of a <c>CASE</c> in a conjunct S writes may be read beneath: <see cref="RenderConjunct"/>'s stratum, and
+        /// the conditions it is read under.
+        /// </summary>
+        /// <remarks>
+        /// Not <see cref="Arm"/>: a pushed arm read beneath the siblings would let two conjuncts each be sent exactly beneath
+        /// the other's facts, and a document both drop be kept by both forms (#117).
+        /// </remarks>
+        public static OracleLicence RenderArm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
+            new(OracleQuestion.RenderArm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));
 
         /// <summary>What a point read keyed on these paths may rely on: the conjuncts that pin them, and no other.</summary>
         public static OracleLicence PointRead(IReadOnlyList<JsonDocumentPath> pins) => new(OracleQuestion.PointRead, -1, pins ?? throw new ArgumentNullException(nameof(pins)));

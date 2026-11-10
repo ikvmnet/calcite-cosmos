@@ -23,9 +23,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// production's sites asked S in a schema of the run's own: P1 sent exactly, as the printer writes it; P2 and P3 exactly
     /// over a mixed-kind twin of <c>typed</c> whose declaration keeps U+0000 out of the label, and under <c>Production</c>;
     /// P4's comparisons weakened tighter than J weakened them at the switch, or as O7 lists; P5's second arm keeping its
-    /// kind, in the text its pushed Rex translates to; P6, O7's listed loss, its comparison over a cast no member the Rex
-    /// builder writes; P8 counted against the translator's text; P7, already pushed, not S's to regress. On a service each
-    /// exact gain keeps Calcite's rows.
+    /// kind, in the text its pushed weakening is printed as; P6 delivered as the guarded spelling (h15, listed); P8 counted
+    /// against the translator's text; P7, an affix, S's since the switch. On a service each exact gain keeps Calcite's rows.
     /// </summary>
     public sealed class RenderingGainsTests : IClassFixture<RenderingGainsTests.Fixture>
     {
@@ -92,7 +91,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             "SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') <> 'b' AND JSON_VALUE(c.\"DOC\", '$.kind') <> 'c'",
         ];
 
-        /// <summary>The statements planned over the differential's containers, and over the twin, each named by its place.</summary>
+        /// <summary>
+        /// P6 delivered as the guarded spelling (h13, line 19; listed at h15): production's definition asks
+        /// <c>KindRestrictedNumber</c> at <c>Neg</c> since the switch, so P6's weakening beneath the <c>NOT</c> holds C4's
+        /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> under each asserted set, the split rule pushes it, printed by S,
+        /// with the price compared beneath <c>IS_NUMBER</c>, and source A finds nothing in what the run proved. The pushed
+        /// filter is a statement S admits in its turn, its <c>CASE</c>'s then-arm read beneath the arm's licence, so the
+        /// service is sent the guarded comparison (h15).
+        /// </summary>
+        [Fact]
+        public void P6IsDeliveredAsTheGuardedSpelling()
+        {
+            const string guarded = "(IS_NUMBER($[\"price\"]) AND ($[\"price\"] > \"integer|50\"))";
+            Plain.Value.Failures.Should().BeEmpty();
+            foreach (var set in RenderingGenerateRun.AssertedSets)
+            {
+                var p6 = Plain.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6) && w.Mine is not null).Select(w => w.Mine!).ToList();
+                TestContext.Current.TestOutputHelper?.WriteLine($"{set} P6: " + string.Join("; ", p6.Select(w => w.Text)));
+                p6.Should().Contain(w => w.Subforms.Any(f => f.Text == guarded), $"P6's weakening holds the guarded comparison under {set}");
+            }
+
+            var pushed = Pushed(Plain.Value, NameOf(PlainSql, P6));
+            TestContext.Current.TestOutputHelper?.WriteLine("P6 pushed: " + string.Join("; ", pushed));
+            pushed.Should().Contain(t => t.Contains("IS_NUMBER(c.price)", StringComparison.Ordinal) && t.Contains("(c.price > @p", StringComparison.Ordinal),
+                "P6's pushed text compares the price beneath IS_NUMBER");
+
+            var sent = Plain.Value.Conjuncts.Where(c => c.Site == 2 && c.Name == NameOf(PlainSql, P6)).Select(c => c.Text).Distinct().ToList();
+            TestContext.Current.TestOutputHelper?.WriteLine("P6 sent: " + string.Join("; ", sent));
+            sent.Should().Contain(t => t.Contains("IS_NUMBER(c.price)", StringComparison.Ordinal) && t.Contains("(c.price > @p", StringComparison.Ordinal),
+                "the pushed filter is admitted beneath its arm, and the service is sent the guarded comparison");
+
+            var tally = new RenderingSoundnessTests.Tally();
+            RenderingSoundnessTests.Generated(tally, Plain.Value.Generated!.Bundles, "gains");
+            tally.Witnesses.Should().BeEmpty();
+        }
+
         static readonly List<string> PlainSql = [.. Exact.Where(e => e.Twin == false).Select(e => e.Sql).Distinct(), .. Weakened, P6, P7, .. Shorter],
             TwinSql = [.. Exact.Where(e => e.Twin).Select(e => e.Sql).Distinct()];
 
@@ -202,44 +235,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// P5 as restated (§4.3): probe T4's disjunction, each kind spelled per arm, has no exact form, and its weakening
-        /// keeps the second arm's <c>c.kind = 'c'</c>, in the text its Rex translates to as the split rule would push it. P6 is O7's listed loss until Stage 3: its weakening beneath the
-        /// <c>NOT</c> holds no comparison of the price with a number, since the cast parses a string Calcite then compares
-        /// where the service compares no string, so no accessor of the conjunct writes C4's
-        /// <c>IS_NUMBER(c.price) AND c.price &gt; 50</c> as it means. Stage 3's guarded spelling, once the loader reads
-        /// <c>IS_NUMBER</c> and <c>CASE</c>, delivers it. Under each set.
+        /// keeps the second arm's <c>c.kind = 'c'</c>, under each set, in the text S prints it as where the split rule pushes
+        /// it. P6, O7's listed loss until the switch, is delivered (<see cref="P6IsDeliveredAsTheGuardedSpelling"/>).
         /// </summary>
         [Fact]
-        public void P5IsWeakenedAndP6IsAListedLoss()
+        public void P5IsWeakened()
         {
             var kindC = ServiceForm.CompareOf(Op.Equal, Apache.Calcite.Cosmos.Facts.SqlValue.Spell(ProbeRows.KindPath), Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.Of("c"));
-            var price = Apache.Calcite.Cosmos.Facts.SqlValue.Spell(OracleFixture.P("price"));
             Probe.Value.Failures.Should().BeEmpty();
             foreach (var set in RenderingGenerateRun.Sets)
             {
                 var t4 = Probe.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Mine is { Kind: ServiceFormKind.Or }).ToList();
                 TestContext.Current.TestOutputHelper?.WriteLine($"{set} P5: " + string.Join("; ", t4.Select(w => w.Mine!.Text)));
                 t4.Should().NotBeEmpty().And.OnlyContain(w => w.Mine!.Members.Any(arm => arm.Subforms.Contains(kindC)), $"P5 under {set}");
-
-                var p6 = Plain.Value.Generated!.Weakenings.Where(w => w.Set == set && w.Name == NameOf(PlainSql, P6)).ToList();
-                TestContext.Current.TestOutputHelper?.WriteLine($"{set} P6: " + string.Join("; ", p6.Select(w => w.Mine?.Text)));
-                p6.Should().NotBeEmpty().And.OnlyContain(w => w.Mine == null || w.Mine.Subforms.All(f => f.Kind != ServiceFormKind.Compare || f.Path != price), $"P6 under {set}");
             }
 
-            // What the split rule pushed for each, under the statement's own set: the Rex S's weakening builds, as the
-            // translator writes it.
-            var (p5, p6Pushed) = (Pushed(Probe.Value, Probe.Value.Conjuncts.First().Name), Pushed(Plain.Value, NameOf(PlainSql, P6)));
-            TestContext.Current.TestOutputHelper?.WriteLine($"P5 pushed: {string.Join("; ", p5)}; P6 pushed: {string.Join("; ", p6Pushed)}");
+            // What the split rule pushed, under the statement's own set: S's weakening as the printer writes it (site W).
+            var p5 = Pushed(Probe.Value, Probe.Value.Conjuncts.First().Name);
+            TestContext.Current.TestOutputHelper?.WriteLine($"P5 pushed: {string.Join("; ", p5)}");
             p5.Where(t => t.Contains(" OR ", StringComparison.Ordinal)).Should().NotBeEmpty().And.OnlyContain(t => t.Contains("(c.kind = @p", StringComparison.Ordinal), "P5's pushed text");
-            p6Pushed.Should().OnlyContain(t => t.Contains("c.price >", StringComparison.Ordinal) == false, "P6's pushed text compares no price");
         }
 
         /// <summary>
         /// P8: a conjunct S sends exactly as a form of fewer nodes than the text the translator writes of it from the same
-        /// stratum, read back, under each set; and P7, <c>LIKE 'a%'</c> over a declared string, the translator's, pushed and
-        /// not S's.
+        /// stratum, read back, under each set; and P7, <c>LIKE 'a%'</c> over a declared string, S's since the switch (h15),
+        /// which owns every affix: sent as the affix S proves under <c>Production</c>.
         /// </summary>
         [Fact]
-        public void P8IsCountedAndP7IsTheTranslators()
+        public void P8IsCountedAndP7IsS()
         {
             var generated = Plain.Value.Generated!;
             foreach (var set in RenderingGenerateRun.Sets)
@@ -251,7 +274,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             }
 
             var p7 = generated.Sends.Where(c => c.Name == NameOf(PlainSql, P7)).ToList();
-            p7.Should().NotBeEmpty().And.OnlyContain(c => c.Owned == false && c.Round > 0, "P7 is pushed, and stays the translator's");
+            TestContext.Current.TestOutputHelper?.WriteLine("P7: " + string.Join("; ", p7.Select(c => $"{c.Set} {c.Form?.Text ?? "unsent"}")));
+            p7.Should().NotBeEmpty().And.OnlyContain(c => c.Owned, "S owns every affix since the switch");
+            p7.Where(c => c.Set == RenderingSet.Production).Should().NotBeEmpty().And.OnlyContain(c => c.Form != null, "P7 is sent as the affix S proves");
         }
 
         /// <summary>The form the translator writes a conjunct as from the stratum its statement renders it from, read back; none where it writes none, or one the reader does not read as written.</summary>

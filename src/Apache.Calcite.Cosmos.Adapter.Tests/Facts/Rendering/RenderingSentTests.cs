@@ -70,7 +70,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The bundles judged are production's: every question a site asked was answered under a key whose bundle the
-        /// oracle's hook let the run read, and the schema's oracle opened each once and no other — one bundle code path.
+        /// oracle's hook let the run read, and the schema's oracle opened each once and no other — one bundle code path — but
+        /// the questions the translator's bridge asked of what it wrote (G6), counted beside them.
         /// </summary>
         [Fact]
         public void TheRunJudgesTheBundlesProductionOpened()
@@ -82,8 +83,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             generated.Bundles.Should().OnlyContain(b => b.Key != null, "each bundle is filed under the oracle's key");
             keys.Count.Should().Be(generated.Bundles.Count, "a key's bundle is opened once");
             var (hits, bundles, declines) = generated.Oracle.Counts;
-            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Asked.Count} questions; the oracle: {hits} hits, {bundles} bundles, {declines} declines");
-            (bundles, declines).Should().Be((generated.Bundles.Count, 0L), "the oracle opened each bundle the run read, and no other");
+            var bridges = generated.Oracle.Bridges;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Asked.Count} questions; the oracle: {hits} hits, {bundles} bundles, {bridges} of them the translator's bridge's, {declines} declines");
+            (bundles - bridges, declines).Should().Be((generated.Bundles.Count, 0L), "the oracle opened each bundle the run read, and no other but the bridge's");
         }
 
         /// <summary>

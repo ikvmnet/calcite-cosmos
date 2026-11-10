@@ -27,10 +27,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// The corpus planned twice over one harness schema — a reasoning of its own, its build awaited first, and one
         /// harness's tables — each statement in a flow S writes through that schema's oracle, as production does since the
         /// switch — admission, and the split's weakenings, which read the closing bundle where one answers them — and
-        /// measures what S was asked: each statement's digest, the bundles its plan opened, and whether its plan holds a
+        /// measures what S was asked: each statement's digest, the bundles its plan opened, those its filters opened apart from
+        /// the questions the translator's bridge asked (<see cref="RenderingCostSample.Bridge"/>), and whether its plan holds a
         /// filter; and the harness's counts after both (line 22).
         /// </summary>
-        static readonly Lazy<((string Sql, string Line, int Bundles, bool Filtered)[][] Passes, (long Hits, long Bundles, long Declines) Counts)> Twice = new(() =>
+        static readonly Lazy<((string Sql, string Line, int Bundles, int Filters, bool Filtered)[][] Passes, (long Hits, long Bundles, long Declines) Counts)> Twice = new(() =>
         {
             var harness = new HarnessReasonings();
             var reasoning = harness.Make();
@@ -41,12 +42,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             }
         });
 
-        static (string, string, int, bool)[] Pass(IReadOnlyList<RenderingInputs.Statement> corpus) => [.. corpus.Select(statement =>
+        static (string, string, int, int, bool)[] Pass(IReadOnlyList<RenderingInputs.Statement> corpus) => [.. corpus.Select(statement =>
         {
             RelNode? planned = null;
             using var cost = CosmosRenderingCost.Measure(out var samples);
             var line = PlanDigests.Lines([statement with { Plan = () => planned = statement.Plan() }]).Single();
-            return (statement.Sql, line, samples.Sum(s => s.Cost.Bundles), planned is not null && PlanDigests.Filters(planned));
+            return (statement.Sql, line, samples.Sum(s => s.Cost.Bundles), samples.Where(s => s.Bridge == false).Sum(s => s.Cost.Bundles), planned is not null && PlanDigests.Filters(planned));
         })];
 
         /// <summary>
@@ -90,8 +91,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// Lines 26 and 27, riding the same two passes over one harness schema: the second plan of each statement opens no
-        /// bundle, every question a remembered answer; a statement whose plan holds no filter opens none in either; and no
-        /// question the harness's reasoning was asked declined (line 20).
+        /// bundle, every question a remembered answer, the translator's bridge's among them; a statement whose plan holds no
+        /// filter opens none for a filter in either; and no question the harness's reasoning was asked, the bridge's among
+        /// them, declined (line 20).
         /// </summary>
         [Fact]
         public void RepeatsOpenNoBundle()
@@ -101,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             TestContext.Current.TestOutputHelper?.WriteLine($"{first.Length} statements: {first.Sum(s => s.Bundles)} bundles first, {again.Sum(s => s.Bundles)} again; {unfiltered.Count} with no filter; the harness's reasoning: {Twice.Value.Counts}");
             Twice.Value.Counts.Declines.Should().Be(0, "no question declines in CI");
             again.Where(s => s.Bundles > 0).Select(s => $"{s.Bundles}: {s.Sql}").Should().BeEmpty("a plan again asks S only what it remembers");
-            first.Concat(again).Where(s => unfiltered.Contains(s.Sql) && s.Bundles > 0).Select(s => s.Sql).Should().BeEmpty("a statement with no filter asks S nothing");
+            first.Concat(again).Where(s => unfiltered.Contains(s.Sql) && s.Filters > 0).Select(s => s.Sql).Should().BeEmpty("a statement with no filter asks S of no filter");
             unfiltered.Should().NotBeEmpty();
             first.Sum(s => s.Bundles).Should().BePositive("S was asked");
         }

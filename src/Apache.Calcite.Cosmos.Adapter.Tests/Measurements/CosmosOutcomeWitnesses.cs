@@ -121,14 +121,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             edge is not null ? Edges[edge].Keys : outcome.Formula is not null ? Kinds.Keys : Cells(outcome.Test, outcome.Operand, RenderingTarget.Emulator);
 
         /// <summary>
-        /// The cells a key is read at on a target: a connective's and a range's, Kleene's expectations there; an order,
-        /// whole; a comparison with a string or a number, a value of its type by its side; the rest, by kind.
+        /// The cells a key is read at on a target: a connective's, a range's and the ternary's, Kleene's expectations there; an order
+        /// and two paths compared, whole; an affix over a string by its matcher and match, over the rest by kind; a comparison with a string or a number, a value of its type by its side; the rest, by kind.
         /// </summary>
         public static IEnumerable<CosmosValueClass> Cells(CosmosServiceTest test, CosmosValueClass operand, RenderingTarget target) => test switch
         {
-            CosmosServiceTest.Not or CosmosServiceTest.And or CosmosServiceTest.Or or CosmosServiceTest.Range =>
+            CosmosServiceTest.Not or CosmosServiceTest.And or CosmosServiceTest.Or or CosmosServiceTest.Range or CosmosServiceTest.Choose =>
                 KleeneTables.Rows.Where(k => k.Item1 == target && k.Item2.Test == test && k.Item2.Operand == operand).Select(k => k.Item2.Cell),
-            CosmosServiceTest.Order => [None],
+            CosmosServiceTest.Order or CosmosServiceTest.ComparePaths => [None],
+            // An affix over a string by the matcher and whether it matches; over anything else by kind.
+            CosmosServiceTest.StartsWith or CosmosServiceTest.EndsWith or CosmosServiceTest.Contains or CosmosServiceTest.Like =>
+                operand == String ? [None, Matching, Missing] : [.. Kinds.Keys.Where(kind => kind != String)],
             _ when operand is String or Number => [.. Kinds.Keys.Where(kind => kind != operand), Below, Equal, Above],
             _ => Kinds.Keys,
         };
