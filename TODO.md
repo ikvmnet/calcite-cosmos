@@ -3114,8 +3114,8 @@ across documents* and *A join of a container to itself* is the record.
   spec states the checkpoint against `821295f`, `origin/main` after #245, where its code was read, cumulative: h16 there
   is production +13,805 / −3,361, net +10,444, and tests +14,477 / −1,397, net +13,080. After review 3's follow-up
   production is +11,969 / −1,951, net +10,018, against `origin/main` (`aea0f71`) and +13,786 / −3,385, net +10,401,
-  against `821295f`, and tests +12,379 / −1,344, net +11,035, and +14,593 / −1,399, net +13,194: the follow-up itself
-  +101 / −144 (net −43) and tests +181 / −67 (net +114) against h16 (`504d52b`). It cut nothing for the checkpoint,
+  against `821295f`, and tests +12,395 / −1,344, net +11,051, and +14,609 / −1,399, net +13,210: the follow-up itself
+  +101 / −144 (net −43) and tests +198 / −68 (net +130) against h16 (`504d52b`). It cut nothing for the checkpoint,
   which the owner reads when the pull request opens (Q13).
 - **Every branch-only line goes at h16, checked by a grep** — *done at h16.* `CosmosRenderingCapture.Census` and its
   tee, the `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one
