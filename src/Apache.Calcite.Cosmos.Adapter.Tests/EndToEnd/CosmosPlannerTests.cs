@@ -3577,6 +3577,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The service's definedness test over a cast of the text to <c>VARCHAR</c> is not pushed, alone, negated, beside a
+        /// sibling either way, or over a path declared a required string: it is Calcite's, which cannot implement it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite's body takes apart only a <c>JSON_VALUE</c> or a <c>JSON_QUERY</c>, and fails the statement as it
+        /// implements a test over anything else (<c>CosmosTypeTestImplementor</c>), so nothing is sent. The loader read the
+        /// cast as the text it renders, as a comparison does, and the test over it as the text's, which the body takes apart,
+        /// so S sent <c>WHERE IS_DEFINED(c.v)</c> and answered every document holding <c>v</c>, and over a path declared
+        /// required sent no <c>WHERE</c> at all (review 3). The cast is a form of its own as a one-place test's operand
+        /// (<c>PredicateAtom.TextCastForm</c>), its row (<c>testreads</c>) the measured raise
+        /// (<c>CalciteTypeTestMeasurementTests</c>), and under the owner's decision of 2026-11-08 a filter Calcite fails
+        /// on every row fails as Calcite fails it: the test stays Calcite's, and the statement fails as Calcite's does.
+        /// </para>
+        /// <para>
+        /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
+        /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
+        /// required, the facts graph reads the conjunction as keeping no row and the filter is reduced to the empty
+        /// relation, F's reading of a raise, which is <c>TODO.md</c>'s (<i>A filter that raises is reduced as one that keeps
+        /// nothing</i>), not this test's.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("NOT IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("c.\"$.category\" = 'bikes' OR IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
+        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c WHERE (c.category = @p0)")]
+        [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR))", true, "SELECT VALUE c FROM products c")]
+        public void ADefinednessTestOverACastOfTheTextIsNotPushed(string condition, bool declared, string sent)
+        {
+            if (declared)
+                _table = new CosmosTable(Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                    """{ "type": "object", "required": ["category"], "properties": { "category": { "type": "string" } } }""")!)));
+
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE " + condition);
+
+            Render(FindCosmos(best)).Should().Be(sent, Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[", "the test is Calcite's, which cannot implement it: " + Plan(best))
+                .And.Contain("IS_DEFINED(CAST(JSON_VALUE($0, ", Plan(best));
+        }
+
+        /// <summary>
         /// SQL's own null tests observe absence, and a branch using one is weakened to the null test beside the
         /// presence its other conjunct needs.
         /// </summary>

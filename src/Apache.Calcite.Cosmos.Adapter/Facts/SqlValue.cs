@@ -185,8 +185,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// The form a reading is written as apart from the accessor it reads (h15b), which a one-place test's in-process body
-        /// cannot take apart: a field of the input, an item chain, a cast to <c>ANY</c> (<c>PredicateAtom.FieldForm</c>,
-        /// <c>ItemForm</c>, <c>AnyCastForm</c>), each its own row of what the body reads (<c>testreads</c>); <c>null</c> for
+        /// cannot take apart: a field of the input, an item chain, a cast to <c>ANY</c>, a test's cast of the text to
+        /// <c>VARCHAR</c> (<c>PredicateAtom.FieldForm</c>, <c>ItemForm</c>, <c>AnyCastForm</c>, <c>TextCastForm</c>), each its
+        /// own row of what the body reads (<c>testreads</c>); <c>null</c> for
         /// an accessor the body takes apart and for every value that is no reading. What it reads is its reading's.
         /// </summary>
         public string? Form { get; init; }

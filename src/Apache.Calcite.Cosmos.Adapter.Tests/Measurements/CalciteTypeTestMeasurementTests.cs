@@ -56,12 +56,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 .HaveCount(PredicateAtom.Columns.Count() + 1).And.OnlyContain(t => t.As == PredicateAtom.RaisesReader, "the body raises over a field of every column and a call, each a row of its own");
 
             // The forms the loader writes apart (h15b), each keyed by a row of its own that says the body raises over it, as
-            // measured over each writing: a field read as text (a VARCHAR column) or as a scalar type, an item and a cast to ANY.
+            // measured over each writing: a field read as text (a VARCHAR column) or as a scalar type, an item, a cast to ANY and a
+            // cast of the text to VARCHAR, which the loader reads as the text but for a test's operand.
             var forms = new Dictionary<string, string[]>
             {
                 [PredicateAtom.FieldForm] = [PredicateAtom.RawIn("VARCHAR"), ScalarField],
                 [PredicateAtom.ItemForm] = ["item:VARIANT"],
                 [PredicateAtom.AnyCastForm] = [PredicateAtom.CastReader("ANY", PredicateAtom.TextReader)],
+                [PredicateAtom.TextCastForm] = [PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
             };
             rows.Where(t => forms.ContainsKey(t.Reader)).Select(t => (t.Reader, t.As)).Should().BeEquivalentTo(forms.Keys.Select(f => (f, PredicateAtom.RaisesReader)));
             forms.SelectMany(f => f.Value.SelectMany(reader => ReadTests.Select(t => (f.Key, reader, t.Test, Read: read[(reader, t.Test)]))))
@@ -75,7 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Each reading of a path a one-place test is asked over, in process: its SQL over a document whose <c>v</c> holds the
         /// witness, or over a column of the document's value, and what the loader writes it as. The text and a
         /// <c>RETURNING</c> of each type and a <c>JSON_QUERY</c> are an accessor the body takes apart; a raw value in each column, a field of a
-        /// scalar type, an item of one, a cast to <c>ANY</c> and a call are not.
+        /// scalar type, an item of one, a cast to <c>ANY</c>, a cast of the text to <c>VARCHAR</c> and a call are not.
         /// </summary>
         static readonly (string Reader, string Sql, SqlTypeName? Column)[] Readings =
         [
@@ -86,6 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (PredicateAtom.TypedReader("DECIMAL"), "JSON_VALUE(\"d\", '$.v' RETURNING DECIMAL)", null),
             (PredicateAtom.TypedReader("BOOLEAN"), "JSON_VALUE(\"d\", '$.v' RETURNING BOOLEAN)", null),
             (PredicateAtom.CastReader("ANY", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS ANY)", null),
+            (PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS VARCHAR)", null),
             (PredicateAtom.QueryReader, "JSON_QUERY(\"d\", '$.v')", null),
             (PredicateAtom.RawIn("VARIANT"), "\"v\"", SqlTypeName.VARIANT),
             (PredicateAtom.RawIn("ANY"), "\"v\"", SqlTypeName.ANY),

@@ -594,8 +594,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // (CosmosTypeTestImplementor): a test of the text, of a RETURNING or of a JSON_QUERY asks of the value at the path, measured in
                 // process (rows2), the statement raising where the RETURNING does, which the test atom carries. Over a raw value
                 // in a column and a call the body raises, each keyed by its own reading; and over a field read as text or as a
-                // scalar type, an item chain and a cast to ANY, which the loader writes apart, each keyed by its form (h15b). The
-                // raw value's row stands for the accessor re-typed ANY alone.
+                // scalar type, an item chain, a cast to ANY and a cast of the text to VARCHAR, which the loader writes apart, each
+                // keyed by its form (h15b). The raw value's row stands for the accessor re-typed ANY alone.
                 TestReads:
                 [
                     new(PredicateAtom.TextReader, PredicateAtom.RawReader), new(PredicateAtom.RawReader, PredicateAtom.RawReader), new(PredicateAtom.TypedReaders, PredicateAtom.RawReader),
@@ -603,7 +603,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. PredicateAtom.Columns.Select(column => new CosmosTestRead(PredicateAtom.RawIn(column), PredicateAtom.RaisesReader)),
                     new(PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
                     new(PredicateAtom.FieldForm, PredicateAtom.RaisesReader), new(PredicateAtom.ItemForm, PredicateAtom.RaisesReader),
-                    new(PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader),
+                    new(PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader), new(PredicateAtom.TextCastForm, PredicateAtom.RaisesReader),
                 ]),
             new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
                 "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, a type test, which asks the document's kind, and a presence test, which asks whether it holds the path, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",

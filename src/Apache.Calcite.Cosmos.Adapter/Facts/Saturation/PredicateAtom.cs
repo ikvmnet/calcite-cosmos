@@ -79,9 +79,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// The forms a reading is written as apart from its accessor (<c>SqlValue.Form</c>, h15b), each keyed by its own row of
-        /// what a one-place test's body reads over it (<c>testreads</c>): a field of the input, an item chain, a cast to <c>ANY</c>.
+        /// what a one-place test's body reads over it (<c>testreads</c>): a field of the input, an item chain, a cast to <c>ANY</c>,
+        /// and a cast of the text to <c>VARCHAR</c> a test is asked over.
         /// </summary>
-        public const string FieldForm = "field", ItemForm = "item", AnyCastForm = "cast:ANY";
+        public const string FieldForm = "field", ItemForm = "item", AnyCastForm = "cast:ANY", TextCastForm = "cast:VARCHAR";
 
         /// <summary>
         /// A raw value, or any reading of a field, of a path holding an element, which no row measured as of a path holding

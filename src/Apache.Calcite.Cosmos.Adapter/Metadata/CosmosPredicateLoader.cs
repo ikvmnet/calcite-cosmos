@@ -241,18 +241,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     // whether it raises, is the vocabulary's test rules' over Calcite.TypeTestsAreTheirBodies' rows (testreads,
                     // G8), a reading no row names, a cast or a computed value's, leaving the atom unread.
                     case var _ when TypeTests.TryGetValue(call.getOperator(), out var test) && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { } typedValue ? new SqlPredicate.TypeTest(test, typedValue) : Opaque(node);
+                        return Tested((RexNode)operands.get(0)) is { } typedValue ? new SqlPredicate.TypeTest(test, typedValue) : Opaque(node);
 
                     // The service's test of the document, which a weakening writes and a caller may, read as the type tests
                     // are. A schema's own declaration of it is Calcite's wrapping, with the one body, read by reference too.
                     case var _ when (ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) || CosmosSchemaFunctions.Presents(call.getOperator(), CosmosOperators.IsDefined))
                         && operands.size() == 1:
-                        return Value((RexNode)operands.get(0)) is { } defined ? new SqlPredicate.IsDefined(defined) : Opaque(node);
+                        return Tested((RexNode)operands.get(0)) is { } defined ? new SqlPredicate.IsDefined(defined) : Opaque(node);
 
                     default:
                         return Bare(node) ?? Opaque(node);
                 }
             }
+
+            /// <summary>
+            /// Reads a one-place test's operand as it stands: a cast of the text to <c>VARCHAR</c>, which reads the text it
+            /// renders, written apart as a form of its own (<see cref="Cosmos.Facts.Saturation.PredicateAtom.TextCastForm"/>), which the
+            /// in-process body cannot take apart, as a field, an item and a cast to <c>ANY</c> are (h15b). What the test reads over
+            /// it is its row's (<c>testreads</c>); a comparison reads the cast as the text.
+            /// </summary>
+            SqlValue? Tested(RexNode operand) => Value(operand) is SqlValue.Text { Form: null } text
+                && (ReferenceEquals(CosmosRexShapes.StripRedundantTextCast(operand), operand) == false || CosmosRexShapes.TryTextCastValue(operand) is not null)
+                ? text with { Form = Cosmos.Facts.Saturation.PredicateAtom.TextCastForm } : Value(operand);
 
             /// <summary>
             /// Reads a truth reading written as a whole condition as its equality with <c>TRUE</c>, which Calcite defines it
