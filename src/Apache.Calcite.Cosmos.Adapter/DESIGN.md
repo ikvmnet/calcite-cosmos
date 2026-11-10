@@ -10323,10 +10323,17 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   `SMALLINT`, `INTEGER`, `BIGINT`, `FLOAT`, `REAL`, `DOUBLE`, `DECIMAL`, `BOOLEAN` and `VARIANT`; `JSON_QUERY`; and the
   accessor re-typed `ANY` with each of the eight type tests' bodies over it. No SQL text spells that last one, so
   Calcite's executor compiles it over a record (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING
-  VARIANT`'s value there too, which the client reads in no box. Every reading answers at the element what it answers at
+  VARIANT`'s value there alone, which the client reads in no box. Every reading answers at the element what it answers at
   `$.g`, a raise where it raises, so where there is no element it answers as over an absent path. The test fails if the
   cell names a reading that does not answer so, or leaves out one that does; a reading that raises on every document
   measures nothing, so it never counts as answering so.
+- **Its witnesses.** Each path holds a whole number beyond an int's range and a fraction beside 30, since `RETURNING
+  BIGINT`, `FLOAT` and `DOUBLE` raise over 30 and answer a value over those; the test holds that every `RETURNING`
+  answers a value at some element but `TINYINT`, `SMALLINT` and `REAL`, which answer none anywhere: Calcite casts the
+  number it parsed, an int, a long, a double or a decimal, to a byte, a short or a float, and raises over every number,
+  at the path as at the element. Which types are measured is one list beside the measurement, which
+  `CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder` holds equal to the types whose
+  accessor the loader reads as the text or a `RETURNING`, so a type the loader came to read would fail it until measured.
 - **The cell.** `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the readings measured so, by the names the vocabulary keys
   them by: the text, the typed readings (every `RETURNING`'s, under one name), `JSON_QUERY`'s and the raw value
   (`CosmosAxiom.AsOfAPath`). Both graphs assume them at the root as one set, `asofapath` (`ReadingVocabulary.AsOfAPath`,

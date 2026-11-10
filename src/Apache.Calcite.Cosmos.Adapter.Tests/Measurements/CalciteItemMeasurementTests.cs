@@ -93,14 +93,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             int[] numeric = [0, 2, 3, 5, 6, 7, 8, 9, 10, 11];
             MaterialisedTable.Of(numeric.Select(i => elements[i])).Ask(connection, typed).Should().Equal(MaterialisedTable.Of(numeric.Select(i => paths[i])).Ask(connection, Path(typed)));
 
-            // Each reading by the name the vocabulary keys it by, and each type test's body over it, at every path an element is
-            // read at, a raise where it raises: the text of each character type, a RETURNING of each type, and the accessor
-            // re-typed ANY, which no statement spells, by Calcite's executor. RETURNING VARIANT's value, which the client reads
-            // in no box, is compared by the executor too.
+            // Each reading by the name the vocabulary keys it by, and each type test's body over it, at every path an
+            // element is read at, a raise where it raises: the text of each character type, a RETURNING of each type,
+            // and the accessor re-typed ANY, which no statement spells, by Calcite's executor. RETURNING VARIANT's
+            // value, which the client reads in no box (it raises a mapping exception of its own over every scalar), is
+            // compared by the executor alone.
             var differs = new Dictionary<string, List<string>>
             {
-                [PredicateAtom.TextReader] = [.. Differing(connection, path => [.. Characters.Select(t => $"JSON_VALUE(\"d\", '{path}'{t})")])],
-                [PredicateAtom.TypedReaders] = [.. Differing(connection, path => [.. Returnings.Select(t => $"JSON_VALUE(\"d\", '{path}' RETURNING {t})")]),
+                [PredicateAtom.TextReader] = [.. Differing(connection, path => [.. Characters.Select(t => $"JSON_VALUE(\"d\", '{path}'{t.Returning})")])],
+                [PredicateAtom.TypedReaders] = [.. Differing(connection, path => [.. Returnings.Where(t => t != "VARIANT").Select(t => $"JSON_VALUE(\"d\", '{path}' RETURNING {t})")]),
+                                                   .. Differing(connection, path => [$"JSON_VALUE(\"d\", '{path}' RETURNING VARIANT)"], value: false),
                                                    .. ExecutedDiffering(SqlTypeName.VARIANT, ("RETURNING VARIANT", (_, value) => value))],
                 [PredicateAtom.QueryReader] = [.. Differing(connection, path => [$"JSON_QUERY(\"d\", '{path}')"])],
                 [PredicateAtom.RawReader] = [.. ExecutedDiffering(SqlTypeName.ANY, [.. TypeTests.Select(t => (t + "(raw)", Tested(t))).Prepend(("raw", (_, raw) => raw))])],
@@ -110,40 +112,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     TestContext.Current.TestOutputHelper?.WriteLine($"{reader}: {w}");
 
             // The raw value is the scalar the element holds, null elsewhere, and a test's body reads the element's kind.
-            Shown(Executed((_, raw) => raw, "$.f[0]", elements)).Should().Be("30,x,null,null,true,null,null,null,null,null,null,null");
-            Shown(Executed(Tested("IS_STRING"), "$.f[0]", elements)).Should().Be("false,true,false,false,false,false,false,false,false,false,false,false");
-            Shown(Executed(Tested("IS_DEFINED"), "$.f[0]", elements)).Should().Be("true,true,true,true,true,true,false,false,false,false,false,false");
+            Shown(Executed((_, raw) => raw, "$.f[0]", elements)).Should().Be("30,x,null,null,true,null,null,null,null,null,null,null,3000000000,2.5");
+            Shown(Executed(Tested("IS_STRING"), "$.f[0]", elements)).Should().Be("false,true,false,false,false,false,false,false,false,false,false,false,false,false");
+            Shown(Executed(Tested("IS_DEFINED"), "$.f[0]", elements)).Should().Be("true,true,true,true,true,true,false,false,false,false,false,false,true,true");
+
+            // Each RETURNING answers a value at some element, so its comparison with the path's compares one: a whole
+            // number beyond an int's range for BIGINT, a fraction for FLOAT and DOUBLE. TINYINT, SMALLINT and REAL
+            // answer none anywhere: Calcite casts the number it parsed, an int, a long, a double or a decimal, to a
+            // byte, a short or a float, and raises over every number, at the path as at the element.
+            Returnings.Where(t => t != "VARIANT" && Indexes.All(index => MaterialisedTable.Of(index.Elements)
+                .Values(connection, $"JSON_VALUE(\"d\", '{index.Path}' RETURNING {t})").All(v => v is null or Exception)))
+                .Should().BeEquivalentTo(["TINYINT", "SMALLINT", "REAL"], "every other RETURNING answers a value somewhere");
 
             CosmosAxioms.Get("Calcite.ReadingsOfAnIndexAreAsOfAPath").AsOfAPath.Should().BeEquivalentTo(differs.Where(d => d.Value.Count == 0).Select(d => d.Key),
                 "the cell names each reading an index reads as of a path, a test's body over it among it, and no other");
         }
 
         /// <summary>
-        /// Each path an element is read at, documents holding something there or nothing, and documents holding the same at
-        /// <c>$.g</c>, or nothing: an index over an element of each kind and over none, past the end, over a number, a string,
-        /// an object and a null, and no array; a later index; a property of an element; and an element of an element.
+        /// Each path an element is read at, documents holding something there or nothing, and documents holding the
+        /// same at <c>$.g</c>, or nothing: an index over an element of each kind and over none, past the end, over a
+        /// number, a string, an object and a null, and no array; a later index; a property of an element; and an
+        /// element of an element. Each holds a whole number beyond an int's range and a fraction too, over which
+        /// <c>RETURNING BIGINT</c>, <c>FLOAT</c> and <c>DOUBLE</c> answer a value, where they raise over 30.
         /// </summary>
         static readonly (string Path, string[] Elements, string[] Paths)[] Indexes =
         [
             ("$.f[0]",
-                ["{\"f\":[30]}", "{\"f\":[\"x\"]}", "{\"f\":[{\"a\":1}]}", "{\"f\":[null]}", "{\"f\":[true]}", "{\"f\":[[1]]}", "{\"f\":[]}", "{\"f\":30}", "{\"f\":\"ab\"}", "{\"f\":{\"a\":1}}", "{\"f\":null}", "{}"],
-                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{\"g\":null}", "{\"g\":true}", "{\"g\":[1]}", "{}", "{}", "{}", "{}", "{}", "{}"]),
+                ["{\"f\":[30]}", "{\"f\":[\"x\"]}", "{\"f\":[{\"a\":1}]}", "{\"f\":[null]}", "{\"f\":[true]}", "{\"f\":[[1]]}", "{\"f\":[]}", "{\"f\":30}", "{\"f\":\"ab\"}", "{\"f\":{\"a\":1}}", "{\"f\":null}", "{}",
+                    "{\"f\":[3000000000]}", "{\"f\":[2.5]}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{\"g\":null}", "{\"g\":true}", "{\"g\":[1]}", "{}", "{}", "{}", "{}", "{}", "{}",
+                    "{\"g\":3000000000}", "{\"g\":2.5}"]),
             ("$.f[1]",
-                ["{\"f\":[1,30]}", "{\"f\":[1,\"x\"]}", "{\"f\":[1,false]}", "{\"f\":[1,{\"a\":1}]}", "{\"f\":[1]}", "{\"f\":\"ab\"}"],
-                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":false}", "{\"g\":{\"a\":1}}", "{}", "{}"]),
+                ["{\"f\":[1,30]}", "{\"f\":[1,\"x\"]}", "{\"f\":[1,false]}", "{\"f\":[1,{\"a\":1}]}", "{\"f\":[1]}", "{\"f\":\"ab\"}", "{\"f\":[1,3000000000]}", "{\"f\":[1,2.5]}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":false}", "{\"g\":{\"a\":1}}", "{}", "{}", "{\"g\":3000000000}", "{\"g\":2.5}"]),
             ("$.f[0].a",
-                ["{\"f\":[{\"a\":30}]}", "{\"f\":[{\"a\":\"x\"}]}", "{\"f\":[{\"a\":null}]}", "{\"f\":[{\"a\":[1]}]}", "{\"f\":[{\"b\":1}]}", "{\"f\":[30]}", "{\"f\":[]}", "{\"f\":{\"a\":30}}"],
-                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":null}", "{\"g\":[1]}", "{}", "{}", "{}", "{}"]),
+                ["{\"f\":[{\"a\":30}]}", "{\"f\":[{\"a\":\"x\"}]}", "{\"f\":[{\"a\":null}]}", "{\"f\":[{\"a\":[1]}]}", "{\"f\":[{\"b\":1}]}", "{\"f\":[30]}", "{\"f\":[]}", "{\"f\":{\"a\":30}}",
+                    "{\"f\":[{\"a\":3000000000}]}", "{\"f\":[{\"a\":2.5}]}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":null}", "{\"g\":[1]}", "{}", "{}", "{}", "{}", "{\"g\":3000000000}", "{\"g\":2.5}"]),
             ("$.f[0][0]",
-                ["{\"f\":[[30]]}", "{\"f\":[[\"x\"]]}", "{\"f\":[[{\"a\":1}]]}", "{\"f\":[[]]}", "{\"f\":[30]}", "{\"f\":[\"ab\"]}"],
-                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{}", "{}", "{}"]),
+                ["{\"f\":[[30]]}", "{\"f\":[[\"x\"]]}", "{\"f\":[[{\"a\":1}]]}", "{\"f\":[[]]}", "{\"f\":[30]}", "{\"f\":[\"ab\"]}", "{\"f\":[[3000000000]]}", "{\"f\":[[2.5]]}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{}", "{}", "{}", "{\"g\":3000000000}", "{\"g\":2.5}"]),
         ];
 
-        /// <summary>The text accessor of each character type the loader reads as the text: the plain one, and a <c>RETURNING</c> of each.</summary>
-        static readonly string[] Characters = ["", " RETURNING VARCHAR(3)", " RETURNING CHAR(8)"];
+        /// <summary>
+        /// The text accessor of each character type the loader reads as the text, by its type: the plain one, and a
+        /// <c>RETURNING</c> of each
+        /// (<c>CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder</c>).
+        /// </summary>
+        internal static readonly (SqlTypeName Type, string Returning)[] Characters =
+            [(SqlTypeName.VARCHAR, ""), (SqlTypeName.VARCHAR, " RETURNING VARCHAR(3)"), (SqlTypeName.CHAR, " RETURNING CHAR(8)")];
 
-        /// <summary>Each type the loader reads a <c>RETURNING</c> of (<c>CosmosPredicateLoader</c>'s <c>Returning</c>).</summary>
-        static readonly string[] Returnings = ["TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN", "VARIANT"];
+        /// <summary>
+        /// Each type the loader reads a <c>RETURNING</c> of, all keyed by the one name <c>typed</c>
+        /// (<c>CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder</c>).
+        /// </summary>
+        internal static readonly string[] Returnings = ["TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN", "VARIANT"];
 
         /// <summary>The one-place tests whose bodies are measured over each reading of an element.</summary>
         static readonly string[] TypeTests = ["IS_DEFINED", "IS_NULL", "IS_PRIMITIVE", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_OBJECT", "IS_ARRAY"];
@@ -156,13 +179,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             new SqlUserDefinedFunction(new SqlIdentifier(test, SqlParserPos.ZERO), SqlKind.OTHER_FUNCTION, ReturnTypes.BOOLEAN, null, null, Declared(test)), node);
 
         /// <summary>
-        /// Each expression a reading writes at a path, and each type test over it, whose values over the documents holding an
-        /// element differ from those over the documents holding the same at <c>$.g</c>.
+        /// Each expression a reading writes at a path, its value where the client reads one, and each type test over
+        /// it, whose values over the documents holding an element differ from those over the documents holding the same
+        /// at <c>$.g</c>.
         /// </summary>
-        static IEnumerable<string> Differing(System.Data.Common.DbConnection connection, Func<string, string[]> expressions) =>
+        static IEnumerable<string> Differing(System.Data.Common.DbConnection connection, Func<string, string[]> expressions, bool value = true) =>
             from index in Indexes
             from expression in expressions(index.Path)
-            from asked in TypeTests.Select(t => $"{t}({expression})").Prepend(expression)
+            from asked in value ? TypeTests.Select(t => $"{t}({expression})").Prepend(expression) : TypeTests.Select(t => $"{t}({expression})")
             let a = MaterialisedTable.Of(index.Elements).Values(connection, asked)
             let b = MaterialisedTable.Of(index.Paths).Values(connection, asked.Replace(index.Path, "$.g"))
             where Same(a, b) == false

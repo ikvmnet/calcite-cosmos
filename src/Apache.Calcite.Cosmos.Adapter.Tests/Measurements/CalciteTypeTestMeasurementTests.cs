@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         [
             (PredicateAtom.TextReader, "JSON_VALUE(\"d\", '$.v')", null),
             // A RETURNING of each type the loader reads one of, VARIANT's among them, which holds no box.
-            .. new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN", "VARIANT" }
+            .. CalciteItemMeasurementTests.Returnings
                 .Select(t => (PredicateAtom.TypedReader(t), $"JSON_VALUE(\"d\", '$.v' RETURNING {t})", (SqlTypeName?)null)),
             (PredicateAtom.CastReader("ANY", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS ANY)", null),
             (PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS VARCHAR)", null),

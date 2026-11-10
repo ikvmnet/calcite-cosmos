@@ -350,6 +350,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
         }
 
+        /// <summary>
+        /// Every type <c>JSON_VALUE</c> may be typed whose accessor the loader reads as the text or a <c>RETURNING</c>
+        /// is one the in-process measurement of an index asks, and every one it asks the loader reads so: the cell
+        /// names the text and every <c>RETURNING</c> under one name each, so a type read and not measured would be
+        /// named unmeasured.
+        /// </summary>
+        [Fact]
+        public void EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder()
+        {
+            var (texts, returnings) = (new HashSet<string>(), new HashSet<string>());
+            foreach (var type in SqlTypeName.values())
+            {
+                org.apache.calcite.rel.type.RelDataType typed;
+                try
+                {
+                    typed = _types.createTypeWithNullability(Sql(type), true);
+                }
+                catch (System.Exception)
+                {
+                    continue;
+                }
+
+                var accessor = _rex.makeCall(typed, SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str("$.tags[0]")));
+                foreach (var read in Load(Call(SqlStdOperatorTable.IS_NULL, accessor)).Conjuncts.OfType<SqlPredicate.IsNull>().Select(n => n.Value))
+                {
+                    if (read is SqlValue.Text)
+                        texts.Add(type.getName());
+                    else if (read is SqlValue.Typed returning)
+                        returnings.Add(returning.Type);
+                }
+            }
+
+            texts.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Characters.Select(c => c.Type.getName()).Distinct());
+            returnings.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Returnings);
+        }
+
         [Fact]
         public void AFieldReadAsTextIsTheRendering()
         {
