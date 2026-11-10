@@ -10311,49 +10311,85 @@ From h15b a weakening's type test of an element was declined beneath. The Rex bu
 accessor re-typed `ANY`, `JSON_VALUE(DOC, '$.tags[0]')`, and the shared vocabulary read the raw value of any path
 holding an element as the element reading, which has no rows: no run had measured what Calcite makes of an index's raw
 value, or of a test's body over it. S proved nothing over it, so the split rule dropped the weakening, RU and never
-rows. Against h15's digests that cost 40 statements under `Production` and 42 under `Emulator` a `WHERE` they had sent.
+rows. Against h15's digests 40 statements under `Production` and 42 under `Emulator` sent less for it: 27 and 30 sent no
+`WHERE` where h15 sent one, and 13 and 12 a looser one.
 
-- **The measurement.** `CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath` runs in process and calls no
-  service. At four paths, an index, a later index, a property of an element and an element of an element, it reads
-  documents holding each kind of value at the element and documents holding none there (past the end, over a scalar, an
-  object or a null, or with no array at all), each beside a document holding the same value at `$.g`, or nothing. Over
-  each it asks the text accessor, a `RETURNING` of `INTEGER`, `BIGINT`, `DOUBLE`, `DECIMAL` and `BOOLEAN`, `JSON_QUERY`,
-  and the accessor re-typed `ANY` with each of the eight type tests' bodies over it. No SQL text spells that last one,
-  so Calcite's executor compiles it over a record (`RexExecutorImpl`, as line 1c does). Every reading answers at the
-  element what it answers at `$.g`, a raise where it raises, so where there is no element it answers as over an absent
-  path. The test fails if the cell names a reading that does not answer so, or leaves out one that does.
-- **The cell.** `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the readings measured so, by the names the vocabulary
-  keys them by: the text, the typed readings, `JSON_QUERY`'s and the raw value (`CosmosAxiom.AsOfAPath`). Both graphs
-  assume them at the root as one set, `asofapath` (`ReadingVocabulary.AsOfAPath`, from `CalciteRows.AsOfAPath`).
-- **The rules.** The vocabulary's two rules that read a raw value of a path holding an element as the element reading,
-  in a column or not, are four now. Where `asofapath` names the raw value's reading, it reads its path's reading as any
-  raw value does; where it does not, it reads the element reading as before. Eggnog has no negation, so "does not" is
-  the set's membership test answering false, as `readsexactly` is read. S has 203 rules and F 78.
+- **The measurement.** `CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath` runs in process and calls no service.
+  At four paths, an index, a later index, a property of an element and an element of an element, it reads documents
+  holding each kind of value at the element and documents holding none there (past the end, over a scalar, an object or
+  a null, or with no array at all), each beside a document holding the same value at `$.g`, or nothing. Over each it
+  asks every accessor the loader reads as a reading of a path: the text accessor, plain and `RETURNING VARCHAR(3)` and
+  `CHAR(8)`, which the loader reads as the text; a `RETURNING` of each type the loader reads one of, `TINYINT`,
+  `SMALLINT`, `INTEGER`, `BIGINT`, `FLOAT`, `REAL`, `DOUBLE`, `DECIMAL`, `BOOLEAN` and `VARIANT`; `JSON_QUERY`; and the
+  accessor re-typed `ANY` with each of the eight type tests' bodies over it. No SQL text spells that last one, so
+  Calcite's executor compiles it over a record (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING
+  VARIANT`'s value there too, which the client reads in no box. Every reading answers at the element what it answers at
+  `$.g`, a raise where it raises, so where there is no element it answers as over an absent path. The test fails if the
+  cell names a reading that does not answer so, or leaves out one that does; a reading that raises on every document
+  measures nothing, so it never counts as answering so.
+- **The cell.** `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the readings measured so, by the names the vocabulary keys
+  them by: the text, the typed readings (every `RETURNING`'s, under one name), `JSON_QUERY`'s and the raw value
+  (`CosmosAxiom.AsOfAPath`). Both graphs assume them at the root as one set, `asofapath` (`ReadingVocabulary.AsOfAPath`,
+  from `CalciteRows.AsOfAPath`).
+- **The rules.** Each accessor says what it reads of its path in one rule of its own, `accesses(v, p, reading, name)`:
+  the text, the raw value, a raw value in a column (`raw:` and its column), a `RETURNING` (`typed:` and its type, named
+  `typed`) and `JSON_QUERY`, each named as the cell keys it. Three rules read an access: over a path holding no element
+  it reads its reading; over a path holding an element it reads its reading where `asofapath` names it, and the element
+  reading where it does not. So every accessor of an element is read through the cell alike, where 13fd800's rules read
+  the text, a `RETURNING` and `JSON_QUERY` of an element as a path's whatever any row said. Eggnog has no negation, so
+  "does not" is the set's membership test answering false, as `readsexactly` is read. 13fd800's seven reading rules are
+  eight: S has 202 rules and F 77, where 13fd800 had 201 and 76.
+  `PredicateVocabularyTests.AnElementsAccessorIsAPathsWhereAnIndexReadsItSo` reads each accessor of an element under the
+  registry's cell and under one naming nothing, and a column's under the registry's and under one naming it.
+- **`RETURNING VARIANT` is a reading of its own.** The loader read `JSON_VALUE … RETURNING VARIANT` as the raw value, as
+  it reads the accessor re-typed `ANY`, so the box rules read `= CAST('bikes' AS VARIANT)` over it as the raw value's
+  equality and sent it exactly: `c.category = @p0` already at 13fd800, and `c.tags[0] = @p0` once the cell named the raw
+  value. Calcite holds what `RETURNING VARIANT` reads in no box, so it equals no value cast to `VARIANT`, a string, a
+  `BIGINT`, an `INTEGER` and a `BOOLEAN` among them: `=` is false and `<>` true wherever the path holds a scalar, and
+  both are null where it holds an object, a JSON null or nothing, where a `VARIANT` column holding the same value equals
+  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). The loader now writes
+  it as a `RETURNING` of `VARIANT`, `typed:VARIANT`, a reading no row measures, so S proves nothing over it and Calcite
+  compares it (`CosmosPlannerTests.AReturningVariantIsComparedByCalcite`, over a path and an element, `=` and `<>`). No
+  corpus statement reads one, so no digest line moves for it.
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
-  (`Calcite.ItemIsNullWhereNoElementIs`). A raw value in a column reads `raw:` and its column, which the cell does not
-  name, so that rule is in place but reads nothing today.
+  (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no
+  column's reading (`raw:` and its column), and so would any accessor the cell stopped naming.
 
-**What it moved.** Against 13fd800's digests (net10.0 and net8.0 byte-equal, `b761612a…` under `Production` and
-`fdcd03b8…` under `Emulator`) 49 statements move under `Production` and 53 under `Emulator`: 28 and 31 gains, 18 and 17
-tighter and 3 and 5 respelled, none looser and none incomparable (`reports/stage3-element/build/listing-13fd800.tsv`).
-Read against h15's, every one of h15b's 40 and 42 looser lines sends h15's documents again or fewer: 8 and 19
-byte-equal, 31 and 22 the same documents in S's spelling, and partitions 707 tighter under each, its second arm a
-contradiction S keeps nothing for. The three h15b traded an element's weakening for a declared field's test (partitions
-1608, 1660 and 1948) now send both, tighter than h15. The 1 and 4 respelled lines that dropped an element's test send
-h15's documents, and partitions 1909 under `Emulator` stays tighter than h15. The rest go past h15: partitions 261, 1600
-and 1947 under each set send a `WHERE`, or a tighter one, where h15 sent less, S reading an element's raw value inside a
-`CASE`'s condition, as `JSON_VALUE(…, '$.tags[0]') IS NULL` or the presence a function of it needs, and partitions 1908
-and 1909 under `Production` send h15's documents in S's spelling, an element's presence beside a branch no row reaches.
+**What it moved.** Against 13fd800's digests (`92d62c75…` under `Production` and `7fc46555…` under `Emulator`), this
+branch's (`b761612a…` and `fdcd03b8…`, net10.0 and net8.0 byte-equal) move 49 statements under `Production` and 53 under
+`Emulator`: 29 and 33 gains, 18 and 20 tighter and 2 and 0 respelled, none looser and none incomparable
+(`reports/stage3-element/fix1/listing-13fd800.tsv`). The listing's comparator is h15b's with the documents a random draw
+seldom makes added: the one lacking every path, each path alone, and each drawn document lacking each path in turn.
+h15b's draw alone had read six of these lines as respelled, partitions 488 under each set and 999, 1908, 1909 and 2435
+under `Emulator`; each sends a test of an element's presence, which only a document lacking it tells apart. Read against
+h15's, every one of h15b's 40 and 42 looser lines sends h15's documents again or fewer: 8 and 19 byte-equal, 31 and 22
+the same documents in S's spelling, and partitions 707 tighter under each, its second arm a contradiction S keeps
+nothing for. The three h15b traded an element's weakening for a declared field's test (partitions 1608, 1660 and 1948)
+now send both, tighter than h15. The 1 and 4 respelled lines that dropped an element's test send h15's documents
+(partitions 488 under each set, and 999 and 1908 under `Emulator`, the same documents and 2435 byte-equal), and
+partitions 1909 under `Emulator`, which h15b sent tighter than h15, is tighter than h15b too. The rest go past h15:
+partitions 261, 1600 and 1947 under each set send a `WHERE`, or a tighter one, where h15 sent less, S reading an
+element's raw value inside a `CASE`'s condition, as `JSON_VALUE(…, '$.tags[0]') IS NULL` or the presence a function of
+it needs, and partitions 1908 and 1909 under `Production` send h15's documents in S's spelling, an element's presence
+beside a branch no row reaches.
 
 **Floors and gates.** `EachInputSendsAtLeastItsFloor` passes at both sizes. Sent exactly at the pull request's size,
 13fd800 to now, under `Production` the corpus 93 to 93, the differential 929 to 974, the partitions 1,019 to 1,048 and
 the probe 13 to 13, and under `Emulator` 93, 905 to 915, 896 to 912 and 13; at the gate's size the partitions 5,066 to
 5,145 and 4,265 to 4,307. Line 13 at the pull request's size reads 1,066 weakenings, 951 back as themselves and 78 as
 S's form, 180 with a `CASE` (20 declined beneath), 17 not pushed and none over the element reading, where 13fd800 read
-35 there; at the gate's size it reads 3,561, none over the element reading where 13fd800 read 112, and fails on the
-four concatenations over `id` it failed on before (`TODO.md`, *Line 13 judges four of the gate's weakenings on
-nothing*). Line 1c at the gate's size judges 498 opaque weakenings over 26,067 documents and loses no row.
+35 there; at the gate's size it reads 3,561, none over the element reading where 13fd800 read 112, and fails on the four
+concatenations over `id` it failed on before (`TODO.md`, *Line 13 judges four of the gate's weakenings on nothing*). It
+reads fewer because S sends more conjuncts as they stand, each in a statement that reads an element. A conjunct testing
+an element's presence or kind beside other tests, which 13fd800's S weakened by dropping the element's tests, is sent
+whole and leaves no weakening to check: 60 fewer at the pull request's size, 30 under each set (partitions 261, 262, 274
+and 489 and differential 356, six statements each), and 198 at the gate's. Under `Emulator` a conjunct ordering an
+element against a string, alone or beside other tests, which 13fd800's S kept in process whole, is weakened now by the
+element's type test, where `Production` sends it exactly: 50 more at the pull request's size, all but one under
+`Emulator` (differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. The lists are
+diffed in `reports/stage3-element/fix1/line13-weakenings-*.txt`. Line 1c at the gate's size judges 498 opaque weakenings
+over 26,067 documents and loses no row.
 
 ## Differential testing
 

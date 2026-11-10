@@ -2694,6 +2694,11 @@ across documents* and *A join of a container to itself* is the record.
 - **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
   in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
   `c.pk = 42` is unchecked.
+- **`RETURNING VARIANT` is compared in process** — *small.* The loader reads `JSON_VALUE … RETURNING VARIANT` as a
+  `RETURNING` of `VARIANT` (`typed:VARIANT`), which no row measures, so S proves nothing over it and Calcite compares
+  it. Calcite holds what it reads in no box: it equals no value cast to `VARIANT`, `=` false and `<>` true where the
+  path holds a scalar and null where it holds none, and its null test is the path holding no scalar
+  (`Calcite.VariantEqualsOnlyItsOwnBox`). No rule reads those cells; rows of its own would let S send them.
 - **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
   `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,
   `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
@@ -3008,12 +3013,13 @@ across documents* and *A join of a container to itself* is the record.
   first. #246's refusals stand; nothing under `Production` would move.
 - **An element written apart or in a column is read as unmeasured** — *small, Stage 4 or with `ITEM`'s family.* An
   element is read through the text accessor, `RETURNING`, `JSON_QUERY` and the accessor re-typed `ANY`, each as of a
-  path holding it (`Calcite.ReadingsOfAnIndexAreAsOfAPath`). `ITEM` over a raw value, a field or a cast to `ANY` of an
-  element, and its raw value in a column, still read the element reading (`PredicateAtom.ElementReader`), a reading of
-  its own with no rows: an `ANY`'s `ITEM` raises over a scalar and a `VARIANT`'s element is unboxed
-  (`Calcite.ItemIsNullWhereNoElementIs`), and no run measured the rest, so both graphs read them as unmeasured. Rows of
-  their own would let F and S learn from them. `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a
-  declaration's facts about elements, a partition key and an order still refuse one.
+  path holding it where `Calcite.ReadingsOfAnIndexAreAsOfAPath` names it, as it names each today. `ITEM` over a raw
+  value, a field or a cast to `ANY` of an element, and its raw value in a column, still read the element reading
+  (`PredicateAtom.ElementReader`), a reading of its own with no rows: an `ANY`'s `ITEM` raises over a scalar and a
+  `VARIANT`'s element is unboxed (`Calcite.ItemIsNullWhereNoElementIs`), and no run measured the rest, so both graphs
+  read them as unmeasured. Rows of their own would let F and S learn from them. `CosmosDocumentPaths.From` reads a
+  subscript for the loader alone, so a declaration's facts about elements, a partition key and an order still refuse
+  one.
 - **`LIKE` with `_` or a backslash, and over a cast to `CHAR`, is never decided by F** — *small.* F decides a match only
   of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
   backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and
@@ -3606,23 +3612,27 @@ across documents* and *A join of a container to itself* is the record.
 - **The in-process judge of an opaque weakening fills typed fields alone** — *done at h15.* `CalciteInProcess` fills a
   field read as text or JSON, a view's column among them, as the reader renders it, so line 1c judges those conjuncts
   too: none is left out at the pull request's size.
-- **Line 13 judges four of the gate's weakenings on nothing** — *small, the round trip's.* At
-  `COSMOS_PARTITION_GATE=1` the round trip read 3,109 weakenings at h15, and of the 343 sent as S's form of what
-  Calcite reads of them it judged all but seventeen, from partitions 1909 (six statements), 2395, 2396, 2688 and 2689
-  under both sets and 2411, 2419 and 2420 under `Production`. Three gaps, each the judge's: the conjunct of 1909 holds
-  `tags[0]`, opaque, and Calcite in process returns no compiled conjunct for it (line 1c leaves 30 of its 407 opaque
-  weakenings out at the gate's size so, none at the pull request's); the conjuncts of 2395, 2396, 2688 and 2689 hold a
-  numeric cast of a `JSON_VALUE` or arithmetic over one, and no document source A draws is one IrEval answers in every
-  mode; and over 2411, 2419 and 2420, a concatenation over `id`, S proves under the weakening's own bundle no exact
-  form of what the built Rex reads, though the plan sends one. Each was read by hand: what is sent keeps every row its
-  conjunct keeps (`reports/stage3-3A/h15/line13-gate.txt`), and the partition gate runs every one of those statements
-  on both emulators. Since h15b it reads 3,691 and of its 343 judges all but four, under `Production`: 2411, 2419 and
-  2420, and 2410, whose weakening sends the category's test since h15b beside the same concatenation
-  (`reports/stage3-3A/h15b/line13-gate.txt`). 1909's six were read there as tests over an element's raw value, which
-  the filter beneath declined; since that raw value is measured as a path's it reads 3,561, none over the element
-  reading, and fails on the same four (`reports/stage3-element/build/tests/line13-gate.txt`). 2395, 2396, 2688 and 2689
-  are judged, each holding a type test the builder now writes over the accessor re-typed `ANY`. Line 13's leg is the pull request's size, where it passes. The fix is to judge in
-  process any conjunct IrEval measures on no document, and to claim as the filter beneath does.
+- **Line 13 judges four of the gate's weakenings on nothing** — *small, the round trip's.* At `COSMOS_PARTITION_GATE=1`
+  the round trip read 3,109 weakenings at h15, and of the 343 sent as S's form of what Calcite reads of them it judged
+  all but seventeen, from partitions 1909 (six statements), 2395, 2396, 2688 and 2689 under both sets and 2411, 2419 and
+  2420 under `Production`. Three gaps, each the judge's: the conjunct of 1909 holds `tags[0]`, opaque, and Calcite in
+  process returns no compiled conjunct for it (line 1c leaves 30 of its 407 opaque weakenings out at the gate's size so,
+  none at the pull request's); the conjuncts of 2395, 2396, 2688 and 2689 hold a numeric cast of a `JSON_VALUE` or
+  arithmetic over one, and no document source A draws is one IrEval answers in every mode; and over 2411, 2419 and 2420,
+  a concatenation over `id`, S proves under the weakening's own bundle no exact form of what the built Rex reads, though
+  the plan sends one. Each was read by hand: what is sent keeps every row its conjunct keeps
+  (`reports/stage3-3A/h15/line13-gate.txt`), and the partition gate runs every one of those statements on both
+  emulators. Since h15b it reads 3,691 and of its 343 judges all but four, under `Production`: 2411, 2419 and 2420, and
+  2410, whose weakening sends the category's test since h15b beside the same concatenation
+  (`reports/stage3-3A/h15b/line13-gate.txt`). 1909's six were read there as tests over an element's raw value, which the
+  filter beneath declined; since that raw value is measured as a path's it reads 3,561, none over the element reading,
+  and fails on the same four (`reports/stage3-element/fix1/tests/line13-gate.txt`). It reads 130 fewer, 198 weakenings
+  gone and 68 new, each in a statement that reads an element: S now sends whole a conjunct that tests an element beside
+  other tests, which it had weakened by dropping the element's tests, and under `Emulator` weakens one that orders an
+  element against a string, which it had kept in process (DESIGN.md, *An element's raw value is a path's*). 2395, 2396,
+  2688 and 2689 are judged, each holding a type test the builder now writes over the accessor re-typed `ANY`. Line 13's
+  leg is the pull request's size, where it passes. The fix is to judge in process any conjunct IrEval measures on no
+  document, and to claim as the filter beneath does.
 - **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
   Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.
