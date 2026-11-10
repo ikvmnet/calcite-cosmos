@@ -451,13 +451,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
             /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
-            /// parameter may be empty until it is bound. Azure's searches were measured as run 1's literals are, strings of
-            /// no band holding something, and a path keys that cell alone where the declaration proves it present and every
-            /// string it may be one of them, so it pushes there; a path that may be absent keys a cell Azure has not
-            /// measured, which is computed in process there until a run measures it (TODO.md: run 3 asked one read from a
-            /// path and was left unanswered, which measures nothing). Run 3 measured the replacement over every kind and
-            /// band, which Azure answers as Calcite does, so a replacement read from any path of strings pushes there. The
-            /// emulator's rows answer an absent operand as Calcite does.
+            /// parameter may be empty until it is bound. Run 4 measured Azure's search read from a path over every kind and
+            /// band, beside runs 1 and 3's literals: a string of any band but U+0000 and an absent path answer as Calcite's,
+            /// as on the emulator, so a search read from a path that may be any of them pushes there; one that may hold
+            /// U+0000 stays in process, Azure replacing every byte of one and failing the statement over U+0000 then 1, and
+            /// one that may be a number is undefined there, where Calcite reads its text. Run 3 measured the replacement over
+            /// every kind and band, which Azure answers as Calcite does, so a replacement read from any path of strings pushes
+            /// there. The emulator's rows answer an absent operand as Calcite does.
             /// </remarks>
             /// <remarks>
             /// A rank clause's keyword is held to S's image of the function computing it, as a column is (G6's check: the
@@ -490,7 +490,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Pushes(Strings(), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("over every band, and absent, as run 3 measured it on Azure");
                 Pushes(Translator(JsonCharacterBand.Nul), SqlStdOperatorTable.REPLACE, Lit("abc"), Lit("b"), Str()).Should().BeTrue("a U+0000 among them");
                 Pushes(PresentOneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
-                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be absent, which Azure has not measured");
+                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("the search may be absent, which Azure answers as Calcite does (run 4)");
+                Pushes(PresentOneOf("a\U0001F600b", "\uFDD0b", "a\u00E9b", "\tb"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("a search of any band but U+0000 answers as Calcite's on Azure");
+                Pushes(PresentOneOf("ab", "\u00001"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("a search that may hold U+0000 fails the statement on Azure (run 4)");
+                Pushes(Declaring(new JsonClaim.Present(), new JsonClaim.OneOf(["ab", 30L])), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!"))
+                    .Should().BeFalse("a search that may be a number is undefined on Azure, where Calcite reads its text (run 4)");
             }
 
             /// <remarks>

@@ -204,9 +204,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// D12, D13: the emulator's <c>REPLACE</c> works on the stored units, a search beginning <c>1</c> meeting U+FDD0's
         /// second unit, and a replacement holding U+0000 fails the statement: so it asks all three operands to hold neither.
-        /// Azure asks the subject to hold no U+0000, and the search to be what run 1 measured it as, a string of no band and
-        /// not empty, until a run measures the rest (run 3's, read from a path, went unanswered); it asks nothing of the
-        /// replacement, which run 3 measured over every kind and band. An empty search is undefined at both.
+        /// Azure asks the subject and the search to hold no U+0000, a search holding one replacing every byte and one read
+        /// from a path, U+0000 then 1, failing the statement (run 4), and nothing of the replacement, which run 3 measured
+        /// over every kind and band. An empty search is undefined at both.
         /// </summary>
         [Fact]
         public void AReplacementAsksEachOperandUnderTheEmulator()

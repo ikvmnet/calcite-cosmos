@@ -67,7 +67,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// its operand by each atom of its kind it is in (<see cref="FunctionValueClasses"/>), and a spelling's literals are
         /// keyed as it names them (<see cref="CosmosFunctionSpelling.Fixed"/>), over the witnesses of a string of no band. A
         /// spelling the service left unanswered over any witness (<see cref="CosmosWitnessProbe.Unanswered"/>) measures
-        /// nothing, as one never sent does.
+        /// nothing, as one never sent does; one it refused (<c>!</c>) or failed (<see cref="CosmosWitnessProbe.Failed"/>)
+        /// over a witness fails each key the witness is of.
         /// </summary>
         public static IReadOnlyDictionary<FunctionKey, CosmosFunctionAnswer> Judge(string row, IReadOnlyList<CosmosFunctionSpelling> functions,
             IReadOnlyList<(CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)> keys, string[][] asked)
@@ -191,7 +192,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static CosmosFunctionAnswer Answer(IEnumerable<(string Service, object? Calcite)> pairs)
         {
             var list = pairs.ToList();
-            return list.Any(p => p.Service == "!") ? CosmosFunctionAnswer.Fails
+            return list.Any(p => p.Service is "!" or CosmosWitnessProbe.Failed) ? CosmosFunctionAnswer.Fails
                 : list.All(p => Alike(p.Service, p.Calcite)) ? CosmosFunctionAnswer.Same
                 : list.All(p => Alike(p.Service, p.Calcite) || p.Service == "undefined") ? CosmosFunctionAnswer.Undefined
                 : CosmosFunctionAnswer.Differs;

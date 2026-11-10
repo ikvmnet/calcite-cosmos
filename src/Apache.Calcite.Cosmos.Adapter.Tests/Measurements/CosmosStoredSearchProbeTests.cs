@@ -36,13 +36,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// Each line is written beside Calcite's answer in process and the verdict of each key its witness alone measures
     /// (<see cref="CosmosFunctionComparison.Judge"/>), unmeasured where the service left it unanswered, to
     /// <c>TestResults/measurements/alone-answers.tsv</c>; the keys over every witness together to
-    /// <c>function-answers.tsv</c>, as the row's own test writes them; every try to <c>tries.tsv</c>.
+    /// <c>function-answers.tsv</c>, as the row's own test writes them; every try to <c>tries.tsv</c>. A search left
+    /// unanswered every time between two lengths answered is <see cref="CosmosWitnessProbe.Failed"/>, which fails its key.
     /// </para>
     /// <para>
     /// Explicit, as a probe of one account's open question is: CI's ordinary run never asks it, and a run names it with
-    /// <c>-explicit only</c>. One container in a database of 400 RU/s, holding the six witnesses alone, deleted when the
-    /// class ends: none of the row's own class's setup, which was 660.82 of run 3's 1,576.17 RU. <c>COSMOS_RU_CAP</c>,
-    /// where set, refuses every request but a delete once the class's charges pass it (<see cref="CosmosRequestCharges"/>).
+    /// <c>-explicit only</c>. One container in a database of 400 RU/s, holding the six witnesses alone, made when the test
+    /// first asks for it, so a run that does not ask, or reaches no service, makes nothing, and deleted when the class
+    /// ends: none of the row's own class's setup, which was 660.82 of run 3's 1,576.17 RU. <c>COSMOS_RU_CAP</c>, where
+    /// set, refuses every request but a delete once the class's charges pass it (<see cref="CosmosRequestCharges"/>).
     /// Written for probe run 4 (2026-11-09).
     /// </para>
     /// </remarks>
@@ -50,12 +52,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     {
 
         /// <summary>
-        /// The class's one-time setup and teardown.
+        /// The class's teardown; its setup is the test's first asking (<see cref="Searched"/>), since xUnit makes a class's
+        /// fixture whether or not an explicit test runs.
         /// </summary>
         public sealed class Fixture : IAsyncLifetime
         {
 
-            public async ValueTask InitializeAsync() => await Initialize();
+            public ValueTask InitializeAsync() => default;
 
             public ValueTask DisposeAsync() { Cleanup(); return default; }
 
@@ -88,10 +91,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 where held.Length > 0
                 select (key.Kind, key.Band, held)];
 
+        static Task? _asked;
         static CosmosClient? _client;
-        static Database? _database;
+        static Database? _made;
+        static Container? _container;
         static string? _unavailable;
         static CosmosRequestCharges? _charges;
+
+        /// <summary>The container, its database made at the first asking; <c>null</c> where no service made it.</summary>
+        static async Task<Container?> Searched()
+        {
+            await (_asked ??= Initialize());
+            return _container;
+        }
 
         static async Task Initialize()
         {
@@ -121,35 +133,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
                 try
                 {
-                    _database = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, 400, cancellationToken: cts.Token)).Database;
+                    _made = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, 400, cancellationToken: cts.Token)).Database;
                 }
                 catch (CosmosException e) when (e.StatusCode == HttpStatusCode.BadRequest)
                 {
                     // A serverless account takes no throughput.
-                    _database = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, cancellationToken: cts.Token)).Database;
+                    _made = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, cancellationToken: cts.Token)).Database;
                 }
 
-                await _database.CreateContainerIfNotExistsAsync(new ContainerProperties("search", "/pk"), cancellationToken: cts.Token);
+                _container = (await _made.CreateContainerIfNotExistsAsync(new ContainerProperties("search", "/pk"), cancellationToken: cts.Token)).Container;
             }
             catch (Exception e)
             {
                 _unavailable = e.Message;
-                _database = null;
+                _container = null;
             }
         }
 
-        /// <summary>Deletes the database by its name, made or half made, and writes what the class was charged.</summary>
+        /// <summary>
+        /// Deletes the database the class made, made or half made, and writes what the class was charged: a run that never
+        /// asked for one, or reached no service, made none and deletes nothing.
+        /// </summary>
         static void Cleanup()
         {
+            try { _made?.DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
             if (_client is not null)
-            {
-                try { _client.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
                 _charges?.Write();
-            }
 
             _client?.Dispose();
-            _client = null;
-            _database = null;
+            (_asked, _client, _made, _container) = (null, null, null, null);
         }
 
         /// <summary>
@@ -164,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             // The length over "a0b1c" before each search and after the last, the search over one witness at a time.
             var statements = Enumerable.Range(0, witnesses.Length).SelectMany(i => new[] { (0, 0), (1, i) }).Append((0, 0)).ToList();
-            var answers = await CosmosWitnessProbe.ProjectAlone(_database?.GetContainer("search"), _unavailable, Row, witnesses, [Length, Search], statements, Tries, Pause);
+            var answers = await CosmosWitnessProbe.ProjectAlone(await Searched(), _unavailable, Row, witnesses, [Length, Search], statements, Tries, Pause);
             answers[0][0].Should().NotBeNull();
             answers[1].Should().NotContainNulls();
 

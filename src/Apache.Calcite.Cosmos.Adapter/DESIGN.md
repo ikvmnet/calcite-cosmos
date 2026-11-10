@@ -9052,7 +9052,8 @@ one, and 168 answer apart from EN20261019, each where the row says the targets p
   unanswered over any witness measures nothing (`CosmosFunctionComparison.Judge`), as one never sent does, so `REPLACE`'s
   search keeps run 1's literals on Azure; and a line one run left unanswered and another answered is that answer
   (`CosmosAxiomsTests.AzureWitnessRecords`), so `LENGTH` keeps run 1's. Whether the service leaves an empty search, or
-  one it reads to a U+0000 as empty, unanswered every time, or was busy, is the next run's (`TODO.md`).
+  one it reads to a U+0000 as empty, unanswered every time, or was busy, run 4 answered (*What the probe account
+  answered (run 4)*): busy, but over U+0000 then 1, which fails every time.
 - **A window's length at 0 and below 0.** At 0 the empty string, `Same` on both, now the row's own measurement rather
   than `Service.SubstringOfANegativeStartIsEmpty`'s window from 0; below 0 the empty string where Calcite raises,
   `Differs` on both.
@@ -9075,6 +9076,44 @@ Under `Production` a `REPLACE` whose replacement is empty, holds any band or is 
 (`RenderingImage.Keys`), and no run has sent `REPLICATE` a literal of no band. The plans do not move: the four digests
 over build 336 are post2's on both frameworks (`Production` `038034d1…`, `Emulator` `8c6dd98a…`, 3,492 statements
 each), and no line of the census moves, source (b) reading post2's capture.
+
+### What the probe account answered (run 4)
+
+Run 4 asked the probe account the search run 3 left unanswered (2026-11-09, `CosmosStoredSearchProbeTests`, explicit,
+one container of the six witnesses in a database of 400 RU/s, made when the test asks and deleted when the class ends;
+121.52 RU, the account empty after): `REPLACE("a0b1c", c.v, "x")` over `"a0b1c"`, `"b"`, `""`, U+0000 then 1, 30 and
+0.5, each alone in a statement of its own, and `LENGTH(c.v)` over `"a0b1c"` before each and after the last, so a
+statement that fails every time is told from a busy service. A statement the service leaves unanswered (503 or 408) is
+asked again after a pause that doubles from 2 s, five times in all. Both emulator images answered every line first, as
+their records hold it. The record is `Runs/2026-11-09-probe-account-run4.tsv`.
+
+- **Run 3 met a busy service.** Every length answered 5, as run 1's; the search answered Calcite's over `"a0b1c"` and
+  `"b"`, `"x"` and `"a0x1c"`, and undefined over the empty search, 30 and 0.5, where Calcite answers the subject, each as
+  both emulator releases answer it, `Service.ReplaceOfAnEmptySearchIsUndefined` read from a path among them.
+- **A search of U+0000 then 1 read from a path fails the statement.** It went unanswered all five times (503, 30 to
+  44 s each, charged nothing), the length beside it answered just before the first and just after the fifth, where
+  both emulators answer Calcite's `"a0b1c"`. The probe writes such a line `failed` (`CosmosWitnessProbe.Failed`): a pair
+  every statement asking it left unanswered, each between two the service answered. `CosmosFunctionComparison.Judge`
+  reads it as a refusal, `Fails`; a line left unanswered beside another unanswered one stays `unanswered`, which
+  measures nothing. The probe as it ran wrote the line `unanswered`; the record writes it `failed`, as the probe now
+  writes it, run 3's precedent for a line the probe has since learned to spell.
+- **So the search from a path is measured on Azure over every kind and band.** With the six lines answered, the
+  spelling run 3 sent is no longer one left unanswered, and run 3's answers over the other witnesses read with them: a
+  surrogate, the high band, beyond ASCII and the trimmed class answer the subject, as Calcite's; a null, an absent path,
+  an object and an array undefined, Calcite's null; a boolean undefined, where Calcite reads its text; and U+0000
+  parting, `"x"` over `"a\u0000b0\u0000"` and `"xxxxx"` over `"\u0000"`, besides the failure. `REPLACE`'s search is keyed
+  on both targets as the emulator measured it (`Operand`), but over U+0000: `Differs` on the emulator, `Fails` on Azure.
+
+**What it gives S.** The rows are cells S's rules already read; run 4 adds no rule and no branch. Under `Production`,
+and under `Portable`, whose emulator cells already said so, a `REPLACE` whose search is read from a path pushes where
+every value the path may hold is a string of any band but U+0000, not empty, or absent, null, an object or an array,
+each of which Azure answers as Calcite does; one that may hold U+0000, be empty, a number or a boolean stays in Calcite
+as before. No push declines that pushed before: the search a path the declaration proves present and every string it may
+be of no band and not empty pushed on run 1's literals, and run 4 measured it `Same`, so the push stands, and every key
+that disagrees disagreed before (a search that may hold U+0000 parted from run 3's literal). `OwnerDecisions` takes no
+name for run 4. No corpus statement holds such a search: the digests are h15b's byte for byte under both sets, the
+floors are h15b's at both sizes, and the census moves one line, the translator test's `REPLACE(@p0, c.s, @p1)` pushed
+under `Production` twice more, over a search that may be absent and one of every band but U+0000.
 
 ### A test carries its reading's raise (raises)
 
@@ -9235,8 +9274,10 @@ the operand; and each case is declined under every set it asks.
   path keys that cell as a literal does where the declaration proves it present and every string it may be one of
   them, so it pushes there; one that may be absent keys a cell Azure has not measured. `Spell` writes an empty search,
   which the rows decline, where it refused one. Run 3 measured the replacement over every kind and band, as Calcite's
-  on Azure, and a search holding U+0000, which parts; a search read from a path went unanswered again, so the rest of
-  the search waits for the next run (*What the probe account answered (run 3)*).
+  on Azure, and a search holding U+0000, which parts; a search read from a path went unanswered again (*What the probe
+  account answered (run 3)*), and run 4 answered it over every kind and band, as the emulator does but over U+0000, so
+  the search's keys are the emulator's on Azure as well, a search U+0000 then 1 failing the statement there (*What the
+  probe account answered (run 4)*).
 - **The case mapping over the surrogate and high bands** (item 5). Since f345 the rows part there on both targets (F5),
   where they said `Same` over witnesses that held no letter the mapping changes. rows2's cased witnesses
   (`Service.CaseMappingOverCasedLetters`) let the emulator's `LOWER` over the high band say `Same`; every other band

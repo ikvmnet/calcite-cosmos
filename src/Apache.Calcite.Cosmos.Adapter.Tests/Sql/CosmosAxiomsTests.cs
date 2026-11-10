@@ -616,7 +616,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A line two runs of the probe account both answered is answered alike by both, so the records read as one: run 3
         /// sent run 1's string functions and run 2's cased letters again beside what it added. A line a run left unanswered
         /// measures nothing (<see cref="CosmosWitnessProbe.Unanswered"/>): run 3's <c>LENGTH(c.v)</c> over <c>"a0b1c"</c>,
-        /// which run 1 answered 5.
+        /// which runs 1 and 4 answered 5, and its six searches read from a path, which run 4 answered, the one over U+0000
+        /// then 1 failing (<see cref="CosmosWitnessProbe.Failed"/>).
         /// </summary>
         [Fact]
         public void EveryLineTwoProbeRunsSentIsAnsweredAlike()
@@ -630,8 +631,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// The lines of every probe-account record the witness probe wrote, each once however many runs sent it: the row,
-        /// the expression, the witness and the answer. A line one run left unanswered and another answered is the answer
-        /// alone, and one no run answered is <see cref="CosmosWitnessProbe.Unanswered"/>, which measures nothing.
+        /// the expression, the witness and the answer. A line one run left unanswered and another answered, or failed, is
+        /// that answer alone, and one no run answered is <see cref="CosmosWitnessProbe.Unanswered"/>, which measures nothing.
         /// </summary>
         static IEnumerable<(string Row, string Expression, string Witness, string Answer)> AzureWitnessRecords()
         {

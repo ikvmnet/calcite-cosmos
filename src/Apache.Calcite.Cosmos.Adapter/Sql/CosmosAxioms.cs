@@ -97,18 +97,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// A string function's keys on each target: <see cref="CosmosFunctionAnswer.Fails"/> over the bands it fails the
-        /// statement over on the emulator, <see cref="CosmosFunctionAnswer.Differs"/> over the bands named for it and the
+        /// statement over on each, <see cref="CosmosFunctionAnswer.Differs"/> over the bands named for it and the
         /// same over the rest of a string's, one outcome for both where the two agree; undefined over a number and a boolean,
         /// and over a null, an absent path, an object and an array what it answers there, the same unless it reads them as
         /// a value, on both. Calcite's call is a value over a string, and over a number and a boolean, which its text
         /// accessor reads as text; over the rest it is null, unless it reads them as a value (<paramref name="nullYields"/>).
         /// </summary>
         static IEnumerable<CosmosFunctionOutcome> StringFunction(string function, long subject, JsonCharacterBand differs, JsonCharacterBand azure,
-            JsonCharacterBand fails = JsonCharacterBand.None, CosmosFunctionAnswer overNull = CosmosFunctionAnswer.Same, CalciteYield nullYields = CalciteYield.Null) =>
+            JsonCharacterBand fails = JsonCharacterBand.None, CosmosFunctionAnswer overNull = CosmosFunctionAnswer.Same, CalciteYield nullYields = CalciteYield.Null,
+            JsonCharacterBand azureFails = JsonCharacterBand.None) =>
         [
             .. from band in Bands
                let emulator = Over(band, differs, fails)
-               let onAzure = Over(band, azure, JsonCharacterBand.None)
+               let onAzure = Over(band, azure, azureFails)
                from outcome in emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator, CalciteYield.Value)]
                    : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator, CalciteYield.Value), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure, CalciteYield.Value) }
                select outcome,
@@ -119,22 +120,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         ];
 
         /// <summary>
-        /// The keys of an operand the probe account measured only as the literals its spellings hold, a string of no band and
-        /// not empty, the same there on both targets, and one of the bands given (<paramref name="literals"/>), answering
-        /// there as on the emulator; and the emulator's over every kind, as <see cref="StringFunction"/> gives them, the
-        /// empty string answering what it is measured to.
+        /// An operand's keys, as <see cref="StringFunction"/> gives a subject's on both targets, parting over the bands
+        /// given, but that a string of no band is keyed by whether it is empty, the empty string answering what it is
+        /// measured to (<paramref name="empty"/>), and that Azure fails the statement over the bands given for it.
         /// </summary>
-        static IEnumerable<CosmosFunctionOutcome> Operand(string function, long ordinal, CosmosFunctionAnswer empty, JsonCharacterBand differs, JsonCharacterBand fails,
-            JsonCharacterBand literals = JsonCharacterBand.None) =>
+        static IEnumerable<CosmosFunctionOutcome> Operand(string function, long ordinal, CosmosFunctionAnswer empty, JsonCharacterBand differs, JsonCharacterBand azureFails) =>
         [
             new(function, ordinal, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
-            new(function, ordinal, Class.String, JsonCharacterBand.None, Emulator, empty, CalciteYield.Value, FunctionValueClass.Empty),
-            .. from band in Bands.Skip(1)
-               select new CosmosFunctionOutcome(function, ordinal, Class.String, band, literals.HasFlag(band) ? Both : Emulator, Over(band, differs, fails), CalciteYield.Value),
-            .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Undefined, CalciteYield.Value),
-            .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, ordinal, kind, JsonCharacterBand.None, Emulator, CosmosFunctionAnswer.Same, CalciteYield.Null),
+            new(function, ordinal, Class.String, JsonCharacterBand.None, Both, empty, CalciteYield.Value, FunctionValueClass.Empty),
+            .. StringFunction(function, ordinal, differs, differs, azureFails: azureFails).Where(o => (o.Operand, o.Band) != (Class.String, JsonCharacterBand.None)),
         ];
 
         /// <summary>
@@ -844,7 +838,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "REPLICATE is undefined for a negative count, where Calcite's REPEAT is the empty string, and the empty string for a count of 0; and undefined where the result would pass 10,000 code points, which it reaches inclusive: ab 5,000 times is 10,000 and 5,001 times undefined, and a, U+1F600, b 3,333 times, 13,332 UTF-16 units, is defined. The emulator has no limit.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.ARepetitionIsUndefinedForANegativeCountAndPastTenThousandCodePoints"),
             new("Service.StringFunctionAnswersByBand",
-                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, keyed apart, and a stored operand of either is read as parting still, as it was while a literal shared its key. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. A literal operand of CONCAT, || and REPEAT is keyed apart from a stored one, and POSITION's needle as the operand it is, each measured as the literal its spellings hold on both targets, z, a count of 2 and a 0 or a 1, strings of no band and not empty and a count from 1, and on the emulator as the literals it stores escaped; on Azure REPEAT's count of 0 as well, the empty string as Calcite's, as Service.ReplicateStopsAtTenThousandCodePoints measured it, and from run 3 the literals the emulator stores escaped, which Azure answers as Calcite's but where Calcite refuses to validate || between the stored text and a Unicode literal, which never reaches a target. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, the rest beyond ASCII answering as Calcite's, as Service.CaseMappingOverCasedLetters's cased letters measured; REPLACE over U+0000, its search measured as the literals run 1's spellings hold, strings of no band and not empty, and from run 3 as one holding U+0000, which replaces every byte, a search from a path having gone unanswered, and its replacement from run 3 over every kind and band as Calcite's; SUBSTRING's length from 1 and at 0 as Calcite's, and below 0 parting where Calcite raises; the trims over the trimmed class; RIGHT over a surrogate, a cut inside a pair sent as U+FFFD, as Service.RightOverASplitPair measured. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
+                "On the emulator each string function answers Calcite's over a string of ASCII alone, and parts from it over the bands its rule refuses there: the counts, SUBSTRING, LEFT, RIGHT and POSITION over a surrogate, U+0000 and the high band, which holds U+FDD0, counting the code points the emulator stores; UPPER over the first band and the high one and LOWER over the first, as measured, and each read as parting over the rest beyond ASCII, a surrogate and for LOWER the high band, whose witnesses held no letter the mapping changes, where Java's changes U+10428, U+10400 and U+FF21; REPLACE and REVERSE over U+0000 and the high band; the trims over the trimmed class; CONCAT, || and REPEAT over a stored operand of neither, but a literal they make U+0000 of fails the statement and a U+FDD0 they make before a 0 or a 1 is read back as an escape's first unit, keyed apart, and a stored operand of either is read as parting still, as it was while a literal shared its key. REPLACE's search and replacement and SUBSTRING's length are keyed as each is: an empty search is undefined and a search holding U+0000 replaces every unit, a replacement holding U+0000 fails the statement and one holding U+FDD0 before a 0 is read back as U+0000, each measured as the literal it is, a path's agreeing; a length of 0 answers the empty string as Calcite does, and one below 0 the empty string where Calcite raises. A literal operand of CONCAT, || and REPEAT is keyed apart from a stored one, and POSITION's needle as the operand it is, each measured as the literal its spellings hold on both targets, z, a count of 2 and a 0 or a 1, strings of no band and not empty and a count from 1, and on the emulator as the literals it stores escaped; on Azure REPEAT's count of 0 as well, the empty string as Calcite's, as Service.ReplicateStopsAtTenThousandCodePoints measured it, and from run 3 the literals the emulator stores escaped, which Azure answers as Calcite's but where Calcite refuses to validate || between the stored text and a Unicode literal, which never reaches a target. On Azure each parts over fewer: the counts, SUBSTRING, LEFT and RIGHT over a surrogate, Azure counting code points and sending a split pair as U+FFFD; UPPER over the first band and the high one and LOWER over the first, the rest beyond ASCII answering as Calcite's, as Service.CaseMappingOverCasedLetters's cased letters measured; REPLACE over U+0000, its search from run 4 over every kind and band as on the emulator but where it holds U+0000, which replaces every byte, a search of U+0000 then 1 read from a path failing the statement, which the service leaves unanswered every time while it answers the statements asked beside it, and its replacement from run 3 over every kind and band as Calcite's; SUBSTRING's length from 1 and at 0 as Calcite's, and below 0 parting where Calcite raises; the trims over the trimmed class; RIGHT over a surrogate, a cut inside a pair sent as U+FFFD, as Service.RightOverASplitPair measured. The concatenation that reads a null as the empty string, PostgreSQL's and SQL Server's CONCAT and Oracle's two-argument one, answers as CONCAT does over a string, the service's CONCAT spelling it. Each is undefined over a number and a boolean, which Calcite's text accessor reads as text, and null over a null, an absent path, an object and an array, as the accessor reads them, save that concatenation, which reads them as the empty string and so is undefined there.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosStringFunctionMeasurementTests.EachStringFunctionAnswersItsRowByBand",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)],
                 FunctionOutcomes:
@@ -868,11 +862,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. CasedLetters("LOWER", JsonCharacterBand.Surrogates | JsonCharacterBand.NonAscii, JsonCharacterBand.NonAscii),
                     .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Nul),
                     // A search and a replacement, keyed as each is (F2): the emulator's from its 2026-11-06 record, the literals it
-                    // stores escaped among them. On Azure a search as the literals run 1's spellings hold and, from run 3, one
-                    // holding U+0000, which replaces every byte; run 3 left its search from a path unanswered over six witnesses,
-                    // so that spelling measures nothing. A replacement over every kind and band from run 3, as Calcite's: a
-                    // path's, empty, holding U+0000 and holding U+FDD0, which the emulator reads otherwise.
-                    .. Operand("REPLACE", 1, CosmosFunctionAnswer.Undefined, JsonCharacterBand.Nul, JsonCharacterBand.None, literals: JsonCharacterBand.Nul),
+                    // stores escaped among them. On Azure the search over every kind and band, a path's from runs 3 and 4 and the
+                    // literals' from runs 1 and 3, as the emulator's but over U+0000: Azure replaces every byte of one, and a
+                    // search U+0000 then 1 read from a path fails the statement, unanswered every time where the length beside it
+                    // is answered (run 4). A replacement over every kind and band from run 3, as Calcite's: a path's, empty,
+                    // holding U+0000 and holding U+FDD0, which the emulator reads otherwise.
+                    .. Operand("REPLACE", 1, CosmosFunctionAnswer.Undefined, JsonCharacterBand.Nul, JsonCharacterBand.Nul),
                     .. StringFunction("REPLACE", 2, JsonCharacterBand.HighBmp, JsonCharacterBand.None, JsonCharacterBand.Nul),
                     // A window's length by its sign (F2): from 1 and at 0, the empty string as Calcite's, on both targets; and below
                     // 0, which Calcite raises over, on both, Azure's from run 3.

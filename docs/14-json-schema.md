@@ -377,13 +377,12 @@ does a statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A co
 every input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is
 proved of nothing. `POSITION`, `CONCAT`, `||` and `REVERSE` push over any string. Three ask something
 other than a character, where the service answers otherwise than Calcite: `REPLACE` needs its search
-proved to hold something, a literal that does or a path whose `enum` lists no empty string, and on Azure
-its search proved a string of ASCII that holds something, with no U+0000 and no white space but a space
-— a literal, or a `required` path whose `enum` lists only such strings — as measured there so far, its
-replacement any string; `REPEAT` a literal count, and a subject short enough that the result stays within
-Azure's 10,000 code points, which only an `enum`, a `const` or a literal proves yet (`maxLength` is not
-read); and a `SUBSTRING`, `LEFT` or `RIGHT` pushes with literal bounds alone, a start below one written
-with Calcite's clip to the string and a `SUBSTRING`'s length at least 0 (Appendix B.2).
+proved to hold something, a literal that does or a path whose `enum` lists no empty string, and to hold
+no U+0000, which the service answers otherwise than Calcite over and Azure fails some statements over,
+and on Azure its replacement any string; `REPEAT` a literal count, and a subject short enough that the
+result stays within Azure's 10,000 code points, which only an `enum`, a `const` or a literal proves yet
+(`maxLength` is not read); and a `SUBSTRING`, `LEFT` or `RIGHT` pushes with literal bounds alone, a start
+below one written with Calcite's clip to the string and a `SUBSTRING`'s length at least 0 (Appendix B.2).
 
 **How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
 whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one

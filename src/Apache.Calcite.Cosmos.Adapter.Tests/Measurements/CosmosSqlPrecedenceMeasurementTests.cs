@@ -43,7 +43,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             public ValueTask DisposeAsync()
             {
-                try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
+                // The database the class made, half made among them: none where it reached no service.
+                try { _made?.DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
                 _client?.Dispose();
                 return default;
             }
@@ -67,6 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         })];
 
         static CosmosClient? _client;
+        static Database? _made;
         static Container? _container;
         static string? _unavailable;
 
@@ -96,6 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CosmosEmulator.IsEmulator ? 10 : 120));
                 _client = new CosmosClient(endpoint, key, options);
                 var database = (await _client.CreateDatabaseIfNotExistsAsync(DatabaseName, cancellationToken: cts.Token)).Database;
+                _made = database;
                 try { await database.GetContainer("precedence").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
                 _container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("precedence", "/pk"), cancellationToken: cts.Token)).Container;
 

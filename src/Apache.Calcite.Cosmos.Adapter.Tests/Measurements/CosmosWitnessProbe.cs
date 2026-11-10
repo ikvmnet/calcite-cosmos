@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// projection's JSON or <c>undefined</c> where the object constructor omits it, then <c>T</c> where the <c>WHERE</c>
     /// keeps it, <c>F</c> where the <c>WHERE NOT</c> does, <c>U</c> where neither; <c>!</c> stands for either part where the
     /// service refuses the statement over that witness alone, and the whole answer is <see cref="Unanswered"/> where it
-    /// leaves one unanswered twice.
+    /// leaves one unanswered twice, or <see cref="Failed"/> where it answered the statements asked beside it.
     /// Every answer is appended to <c>TestResults/measurements/emulator-runs.tsv</c> with the release (CI's
     /// <c>COSMOS_EMULATOR_RELEASE</c>, else the endpoint), the row and the expression before any is asserted, which is what
     /// an emulator run record is built from.
@@ -51,6 +51,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// line measures nothing, where a <c>!</c> is the service's refusal. Probe run 3 left seven so.
         /// </summary>
         internal const string Unanswered = "unanswered";
+
+        /// <summary>
+        /// The answer of a witness whose statement the service left unanswered every time it was asked, while it answered the
+        /// statements <see cref="ProjectAlone"/> asked just before and just after it: not a busy service, a statement that
+        /// fails there, which reads as a <c>!</c> does (<see cref="CosmosFunctionComparison.Judge"/>). Probe run 4's search
+        /// U+0000 then <c>1</c>, read from a path, five times on the probe account.
+        /// </summary>
+        internal const string Failed = "failed";
 
         /// <summary>
         /// The release that answers: <c>COSMOS_EMULATOR_RELEASE</c>, which CI reads off the container's log, else the
@@ -132,7 +140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <paramref name="statements"/> gives, spelled as <see cref="Project"/> spells it, and logged once: a pair asked
         /// again is answered by a try the service answered, if any. Where the service leaves a statement unanswered (503 or
         /// 408) it is asked again after a pause that doubles from <paramref name="pause"/>, at most <paramref name="tries"/>
-        /// times in all, so that a statement that fails every time is told from a busy service. Every try is appended to
+        /// times in all, so that a statement that fails every time is told from a busy service: a pair every statement asking
+        /// it left unanswered, each between two the service answered, is <see cref="Failed"/>. Every try is appended to
         /// <c>TestResults/measurements/tries.tsv</c>: when it ended, the release, the row, the statement's place, the
         /// expression, the witness, the try, its status and sub-status, its charge, its milliseconds, and its answer or
         /// the first line of why there is none. A pair no statement asks is <c>null</c>.
@@ -141,16 +150,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             IReadOnlyList<(int Expression, int Witness)> statements, int tries, TimeSpan pause) =>
             Over(container, unavailable, row, witnesses, expressions, false, async (pk, ids) =>
             {
-                var answers = expressions.Select(_ => new string[ids.Length]).ToArray();
+                var said = new string[statements.Count];
                 for (var s = 0; s < statements.Count; s++)
                 {
                     var (e, i) = statements[s];
                     var (place, witness) = (s + 1, witnesses[i] is { Length: > 0 } w ? w : "absent");
                     var (rows, failed) = await Rows(container!, pk, $"SELECT c.id, ({expressions[e]}) AS r FROM c WHERE c.id = \"{ids[i]}\"", tries, pause,
                         (attempt, charge, took, error, answered) => Tried(row, place, expressions[e], witness, attempt, charge, took, error, answered is null ? null : Value(answered.GetValueOrDefault(ids[i]))));
-                    var answer = rows is null ? failed : Value(rows.GetValueOrDefault(ids[i]));
-                    if (answers[e][i] is null or Unanswered)
-                        answers[e][i] = answer;
+                    said[s] = rows is null ? failed : Value(rows.GetValueOrDefault(ids[i]));
+                }
+
+                // A pair takes a statement's answer where one was answered; else it failed where each statement asking it
+                // stood between two the service answered, and went unanswered where one beside it did too.
+                bool Beside(int s) => s > 0 && s + 1 < said.Length && said[s - 1] != Unanswered && said[s + 1] != Unanswered;
+                var answers = expressions.Select(_ => new string[ids.Length]).ToArray();
+                foreach (var pair in statements.Distinct())
+                {
+                    var asking = Enumerable.Range(0, statements.Count).Where(s => statements[s] == pair).ToList();
+                    answers[pair.Expression][pair.Witness] = asking.Select(s => said[s]).FirstOrDefault(a => a != Unanswered)
+                        ?? (asking.All(Beside) ? Failed : Unanswered);
                 }
 
                 return answers;

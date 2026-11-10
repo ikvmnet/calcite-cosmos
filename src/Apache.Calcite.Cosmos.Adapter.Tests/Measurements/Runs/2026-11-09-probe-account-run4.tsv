@@ -3,8 +3,10 @@
 # (U+0000 then 1), 30 and 0.5, each asked alone in a statement of its own, and LENGTH(c.v) over "a0b1c", which run 3
 # left unanswered too and run 1 answered 5, asked before each search and after the last (CosmosStoredSearchProbeTests),
 # each line as the witness probe logged it (CosmosWitnessProbe.ProjectAlone), the release column Azure. A function's
-# answer is the projection; unanswered is a statement the service left unanswered each of the five times it was asked,
-# 2, 4, 8 and 16 s apart, which measures nothing.
+# answer is the projection; failed is a statement the service left unanswered each of the five times it was asked,
+# 2, 4, 8 and 16 s apart, while it answered the statements asked just before and just after it, which fails there
+# (CosmosWitnessProbe.Failed). The probe as it ran wrote that line unanswered, as it wrote a busy service's, which
+# measures nothing; the length answered beside it, it is written failed here, as the probe now writes it.
 #
 # feature/stage3-run4-azure at 262d5e9, Release, net10.0, one database at 400 RU/s deleted when the class ended,
 # 2026-11-09T19:13:33Z to 19:17:32Z: 121.52 RU, 10.95 of them the class's setup and cleanup; the account held no
@@ -22,6 +24,6 @@ Azure	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	5
 Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"
 Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	"a0x1c"
 Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	""	undefined
-Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	unanswered
+Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"\u00001"	failed
 Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	30	undefined
 Azure	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	0.5	undefined
