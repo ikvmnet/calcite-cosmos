@@ -380,7 +380,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["fold"] =
                 [
-                    "a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject",
+                    "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
             ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(201);

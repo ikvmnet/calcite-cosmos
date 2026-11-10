@@ -182,29 +182,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             && Runs(spelled).Select((run, i) => (run: Unescaped(run) ?? "", i)).All(r => r.i == 0 || r.run.Length == 0 || r.run[0] is not ('0' or '1'));
 
         /// <summary>
-        /// The test and argument a pattern as read is written as, the narrowest that says it: a pattern of literal units
-        /// alone is no affix (<c>null</c>, an equality with <see cref="Equality"/>); <c>%</c> alone <c>STARTSWITH</c> of the
-        /// empty string; one run of literal units after <c>%</c> <c>ENDSWITH</c>, before it <c>STARTSWITH</c>, between two
-        /// <c>CONTAINS</c>; any other, one holding a <c>_</c> among them, <c>LIKE</c> of the pattern as written.
-        /// </summary>
-        public static (CosmosServiceTest Test, string Argument)? Written(LikePattern pattern)
-        {
-            var runs = Runs(pattern.Spelled);
-            if (runs.Any(r => Unescaped(r) is null))
-                return (CosmosServiceTest.Like, pattern.Written);
-
-            return runs.Select(r => Unescaped(r)!).ToArray() switch
-            {
-                [_] => null,
-                ["", ""] => (CosmosServiceTest.StartsWith, ""),
-                [var start, ""] => (CosmosServiceTest.StartsWith, start),
-                ["", var end] => (CosmosServiceTest.EndsWith, end),
-                ["", var run, ""] => (CosmosServiceTest.Contains, run),
-                _ => (CosmosServiceTest.Like, pattern.Written),
-            };
-        }
-
-        /// <summary>
         /// The argument a test says a pattern as read with, where it says it (B1): <c>LIKE</c> the pattern as written, whatever
         /// it holds; and where each run is of literal units, the equality its text where it is one run, <c>STARTSWITH</c> its
         /// run where <c>%</c> alone follows it, <c>ENDSWITH</c> where <c>%</c> alone precedes it and <c>CONTAINS</c> where it
@@ -229,20 +206,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             };
         }
 
-        /// <summary>The text a pattern of literal units alone equals (<see cref="Written"/>'s <c>null</c>).</summary>
-        public static string Equality(LikePattern pattern) => Unescaped(pattern.Spelled) ?? pattern.Written;
+        /// <summary>The fold's subject, as a fold's candidate names it: the translator writes the operand it is asked over in its place.</summary>
+        public const string FoldSubject = "subject";
 
         /// <summary>
-        /// The test a <c>LIKE</c>'s pattern is written as (<see cref="Written"/>), read by Calcite's units (<paramref name="rows"/>):
-        /// <see cref="CosmosServiceTest.Equal"/> for one of literal units alone, and <see cref="CosmosServiceTest.Like"/> for
-        /// one the units leave unread.
+        /// The tests the service asks case-insensitively, by a third operand: <c>STARTSWITH</c>, <c>ENDSWITH</c> and
+        /// <c>CONTAINS</c>, the one shape a fold's form is written in (legality, not a reading).
         /// </summary>
-        public static CosmosServiceTest WrittenTest(string pattern, ReadingTable rows) => LikePattern.Read(pattern, rows.Units) is not { } read ? CosmosServiceTest.Like
-            : Written(read) is var (test, _) ? test : CosmosServiceTest.Equal;
+        static readonly ValueSet<CosmosServiceTest> CaseInsensitive = ValueSet.Of(CosmosServiceTest.StartsWith, CosmosServiceTest.EndsWith, CosmosServiceTest.Contains);
 
-        /// <summary>The argument a <c>LIKE</c>'s pattern is written with (<see cref="Written"/>): the pattern itself where no affix says it.</summary>
-        public static string WrittenArgument(string pattern, ReadingTable rows) => LikePattern.Read(pattern, rows.Units) is { } read
-            ? Written(read) is var (_, argument) ? argument : Equality(read) : pattern;
+        /// <summary>
+        /// A test's candidate for a <c>LIKE</c> over a fold (<c>foldedas</c>, B1), as the <c>WHERE</c>'s affix templates propose
+        /// one per test: its form over the fold's subject, of the argument it says the pattern with as Calcite's units read it
+        /// (<see cref="Says"/>), priced as a template's form is (<see cref="Priced"/>); <see cref="Priced.None"/> where it says
+        /// it not, the units leave the pattern unread, or the test has no case-insensitive form to be written in.
+        /// </summary>
+        public static Priced Folded(CosmosServiceTest test, string pattern, ReadingTable rows) =>
+            CaseInsensitive.Contains(test) && LikePattern.Read(pattern, rows.Units) is { } read && Says(test, read) is { } argument
+                ? Priced.Of(ServiceForm.AffixOf(test, FoldSubject, argument)) : Priced.None;
+
+        /// <summary>A fold's candidate's argument (<see cref="Folded"/>); the empty string for <see cref="Priced.None"/>, which no rule keeps.</summary>
+        public static string FoldedArgument(Priced candidate) => candidate.Form?.Literal is { } literal ? JsonValues.StringOf(literal) : "";
 
     }
 

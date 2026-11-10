@@ -19,19 +19,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <remarks>
     /// <para>
     /// Over the conjunct's own accessors (<see cref="Accessor"/>): a comparison with a string over the path's raw value, an
-    /// ordering beside a <c>VARIANT</c> field, which has no order and fails to compile, over the raw value of the path's text,
-    /// or where the conjunct reads none, through its own text of the field, a cast to a character type (<c>CAST($4 AS
-    /// VARCHAR)</c>), and
+    /// ordering beside a <c>VARIANT</c> field over the raw value of the path's text, or where the conjunct reads none,
+    /// through its own text of the field, a cast to a character type (<c>CAST($4 AS VARCHAR)</c>), or the field itself, and
     /// with a number or a boolean over the accessor of the reader it was judged over (<see cref="ServiceForm.Reader"/>),
     /// as it stands; a number through a cast of the text, <c>RETURNING DECIMAL</c> or the text as its guarded pair,
     /// <c>CASE WHEN IS_NUMBER(raw) THEN acc op n ELSE FALSE END</c> in an <c>AND</c> beside <c>IS_NUMBER(p)</c> and
     /// <c>… ELSE TRUE END</c> in an <c>OR</c> beside <c>NOT IS_NUMBER(p)</c>, the guard then left to the <c>CASE</c>, so
     /// that Calcite parses no string and the Rex means the form on an absent path too; a type test as its
     /// <see cref="CosmosOperators"/> call over the path's accessor re-typed <c>ANY</c> (<see cref="Accessor.Tested"/>), the
-    /// document column's where the conjunct reads the path through a field, an item or a cast, which its body raises over
-    /// (h15b), and where the input holds no document column, or the place is a call's, not at all; a constant, <c>NOT</c>, <c>AND</c> and <c>OR</c> as Calcite's,
+    /// document column's where the conjunct reads the path through a field, an item or a cast (h15b), and where the input
+    /// holds no document column, or the place is a call's, over the field or the call; a constant, <c>NOT</c>, <c>AND</c> and <c>OR</c> as Calcite's,
     /// in the form's order, and the ternary as a <c>CASE</c>; an <c>IN</c> as its points' equalities, the membership the
-    /// loader reads back. No carrier operator: what reaches the service is the form S proves of the filter beneath.
+    /// loader reads back. No carrier operator: what reaches the service is the form S proves of the filter beneath, which
+    /// drops what it declines (<c>CosmosFilterSplitRule.Admitted</c>), a test over a node the body raises over among it, so
+    /// nothing here declines a member for what Calcite would answer of it.
     /// </para>
     /// <para>
     /// <b>Never a member left out.</b> Beneath an <c>OR</c> or an odd number of <c>NOT</c>s a member left out strengthens
@@ -64,13 +65,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             /// The node a type test, and a guarded pair's <c>IS_NUMBER</c>, is written over: the path's accessor re-typed
             /// <c>ANY</c> as the conjunct reads it, or the document column's (<see cref="Retyped"/>), or one typed as a number or
             /// a boolean, each a <c>JSON_VALUE</c> or <c>JSON_QUERY</c> the in-process body takes apart into the document and
-            /// the path; never a field, a cast, an item or a call, over which the body raises whatever the value holds
-            /// (<c>Calcite.TypeTestsAreTheirBodies</c>), so that where the filter beneath declines a weakening, Calcite keeps it
-            /// in process failing no row. Where there is none, a weakening holding a test of the path is not pushed (h15b).
+            /// the path, which the filter beneath reads back as a test of the path (h15b); and where there is none, the raw
+            /// value as it stands, a field or a call, which it reads back as a test of that, its body's raise a row
+            /// (<c>Calcite.TypeTestsAreTheirBodies</c>) S declines there and the split rule drops; <c>null</c> only where the
+            /// conjunct reads no node of the path.
             /// </summary>
             public RexNode? Tested => TakenApart(Raw) ? Raw : TakenApart(Retyped) ? Retyped
-                : Readers.Where(r => RenderingRexGrammar.TypeTests.ContainsKey(r.Key)).OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value).FirstOrDefault(TakenApart);
+                : Readers.Where(r => RenderingRexGrammar.TypeTests.ContainsKey(r.Key)).OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value).FirstOrDefault(TakenApart)
+                    ?? Raw ?? Readers.OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value).FirstOrDefault();
 
+            /// <summary>Whether the in-process body takes a node apart into the document and a path: an accessor, which the loader reads back as the path's.</summary>
             static bool TakenApart(RexNode? node) => node is RexCall call && call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY";
 
         }
@@ -132,9 +136,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // A string as Calcite writes one beside the raw value: boxed beside a VARIANT field, which Calcite compares with a
             // bare string on no row it reads (raw VARIANT = lit), so that the filter the weakening is pushed in, reading it
-            // back, reads the comparison its own conjunct holds; an ordering, which a VARIANT has none of and which would fail
-            // to compile, over the raw value of the path's text instead, as any other path's, or where the conjunct reads no
-            // text of it, through its own cast of the field to a character type (h15); none where neither.
+            // back, reads the comparison its own conjunct holds; an ordering over the raw value of the path's text, as any
+            // other path's, or where the conjunct reads no text of it, through its own cast of the field to a character type
+            // (h15), or where neither, over the field, which the filter beneath reads back as the raw column's ordering.
             RexNode? StringComparison(SqlOperator comparison, RexNode raw, Accessor accessor, string literal)
             {
                 var text = rexBuilder.makeLiteral(JsonValues.StringOf(literal));
@@ -147,9 +151,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (accessor.Readers.GetValueOrDefault(PredicateAtom.TextReader) is { } read)
                     return rexBuilder.makeCall(comparison, RawValue(rexBuilder, read), text);
 
-                return accessor.Readers.OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value)
-                    .FirstOrDefault(n => n.getType() is { } type && org.apache.calcite.sql.type.SqlTypeUtil.inCharFamily(type)) is { } cast
-                    ? rexBuilder.makeCall(comparison, cast, text) : null;
+                return rexBuilder.makeCall(comparison, accessor.Readers.OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value)
+                    .FirstOrDefault(n => n.getType() is { } type && org.apache.calcite.sql.type.SqlTypeUtil.inCharFamily(type)) ?? raw, text);
             }
 
             // Every member written or none: a junction with one unwritten is no junction of the form's.

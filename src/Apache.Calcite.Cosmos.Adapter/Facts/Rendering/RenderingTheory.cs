@@ -206,7 +206,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             FoldTargets = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<RenderingTarget>>("foldtargets", ValueLattice.Union<RenderingTarget>());
             FoldParts = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("foldparts", ValueLattice.Union<string>());
             Folds = Graph.DefineFunction<RenderingSet, CosmosServiceTest, string, ValueSet<string>>("folds");
-            FoldedAs = Graph.DefineRelation<Pred, CosmosServiceTest, string, long>("foldedas");
+            FoldedAs = Graph.DefineFunction<Pred, long, Priced>("foldedas", ValueLattice.Min<Priced>());
             // What each target's LIKE reads each unit of its pattern as, and a set's, settled where every target it serves reads it so (G7).
             LikeReads = Graph.DefineRelation<RenderingTarget, LikeUnit, string>("likereads");
             LikeTargets = Graph.DefineFunction<RenderingSet, LikeUnit, string, ValueSet<RenderingTarget>>("liketargets", ValueLattice.Union<RenderingTarget>());
@@ -618,9 +618,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// A <c>LIKE</c> over a fold answers as a test's case-insensitive form of an argument over the fold's operand at an
-        /// ordinal (G6): what the translator writes it as.
+        /// ordinal (G6): the cheapest of each test's candidate, by its price (<see cref="AffixPattern.Folded"/>), what the
+        /// translator writes it as.
         /// </summary>
-        public Relation<Pred, CosmosServiceTest, string, long> FoldedAs { get; }
+        public Function<Pred, long, Priced> FoldedAs { get; }
 
         /// <summary>How a comparison of two paths reads against a literal, the sides swapped or not: the mirror law, G3's.</summary>
         public Relation<CosmosServiceTest, bool, CosmosServiceTest> PairReads { get; }
@@ -2026,8 +2027,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             // A leaf is over the value it is, a comparison the call of its operator: null where the path is absent, so neither
             // TRUE nor FALSE there, it holds the path present wherever it is kept, at either position. Implied as every member
-            // is, only where the rows write it (rex-writable): over a reading of the path a test is written over, so never over
-            // a raw column's alone, whose test's body raises in process (RenderingRexGrammar.Raising, h15).
+            // is, only where the rows write it (rex-writable), over a reading of the path; whether the filter beneath admits the
+            // test so written is its own proof's (CosmosFilterSplitRule.Admitted), never Calcite's answer read here.
             strict.DefineRule("a predicate over a strict value implies its path present where a test is written over a reading of it", r =>
             {
                 var (e, pos, v, p) = r.Vars<Pred, RenderPosition, Val, JPath>("e", "pos", "v", "p");
@@ -2436,9 +2437,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         // The service's case-insensitive STARTSWITH, ENDSWITH and CONTAINS match as the test over Calcite's UPPER or LOWER of
         // both sides, outside the bands their rows say nothing of (Service.AffixesMatchByCodePoint's foldsas, G6): a set's
-        // fold is its every target's, settled at the frozen root, and a LIKE over a fold S images is that affix over the
-        // fold's subject, case-insensitive, where the pattern is the narrowest affix of an argument the fold leaves as it is
-        // and neither the subject nor the argument may hold a band the set's rows part at. Answering as the plain affix over
+        // fold is its every target's, settled at the frozen root, and a LIKE over a fold S images is an affix over the fold's
+        // subject, case-insensitive: each test a fold row names proposes the argument it says the pattern with, as the WHERE's
+        // affix templates do, where the fold leaves that argument as it is and neither the subject nor the argument may hold a
+        // band the set's rows part at, and the cheapest by its test's weight is kept (B1). Answering as the plain affix over
         // the place does: whether that says what Calcite does is the gate's (DESIGN.md, "A case fold under `LIKE` is the
         // service's case-insensitive match").
         void DefineFolds(Ruleset measure, Ruleset tabulate, Ruleset fold)
@@ -2463,7 +2465,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Folds.Of(s, t, f).Is(b));
             });
 
-            fold.DefineRule("a LIKE over a fold S images is the case-insensitive affix its set's rows match alike, over the fold's subject", r =>
+            fold.DefineRule("a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject", r =>
             {
                 var (e, v, w) = r.Vars<Pred, Val, Val>("e", "v", "w");
                 var (q, p) = r.Vars<JPath, JPath>("q", "p");
@@ -2472,15 +2474,16 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (i, s, t) = r.Vars<long, RenderingSet, CosmosServiceTest>("i", "s", "t");
                 var (b, ch) = r.Vars<ValueSet<string>, ValueSet<string>>("b", "ch");
                 var (sub, x) = r.Vars<ValueSet<long>, PathValues>("sub", "x");
-                var rr = r.Var<ReadingTable>("rr");
+                var (rr, f) = r.Vars<ReadingTable, Priced>("rr", "f");
                 r.When(e.Is(Ir.Affix.Of(PredicateAtom.LikeTest, v, c)), Ir.Reads.Of(v, q, kq), q.Is(Valued.Of(v)), x.Is(Imported.Of(q)), kn.Is(CallKey.Of(v)),
                     sub.Is(FunctionSubjects.Of(kn)), CallArgAt.Of(v, i, w), Ir.Reads.Of(w, p, k), ch.Is(ImportedChars.Of(p)), Under.Of(s), rr.Is(ReaderRows.Of()));
-                r.When(t.Is(Compute.Of(c, rr, AffixPattern.WrittenTest)), a.Is(Compute.Of(c, rr, AffixPattern.WrittenArgument)), b.Is(Folds.Of(s, t, kn)));
+                r.When(b.Is(Folds.Of(s, t, kn)), f.Is(Compute.Of(t, c, rr, AffixPattern.Folded)), a.Is(Compute.Of(f, AffixPattern.FoldedArgument)));
                 r.Where(Primitives.Contains<long>().Of(sub, i));
+                r.Where(RenderingPrimitives.PricedIsReal.Of(f));
                 r.Where(RenderingPrimitives.FoldsToItself.Of(kn, a));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(b, ch)));
                 r.Where(Primitives.IsEmpty<string>().Of(Primitives.Intersect<string>().Of(b, Compute.Of(a, JsonValues.BandsOfText))));
-                r.Then(FoldedAs.Of(e, t, a, i));
+                r.Then(FoldedAs.Of(e, i).Is(f));
             });
         }
 

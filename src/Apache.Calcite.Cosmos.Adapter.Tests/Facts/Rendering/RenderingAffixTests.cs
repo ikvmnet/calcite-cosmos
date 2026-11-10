@@ -95,18 +95,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 AffixPattern.Of(CosmosServiceTest.Like, "[a]%", target).Should().BeNull("and a bracket as a range");
             }
 
-            string? Written(string pattern) => AffixPattern.Written(LikePattern.Read(pattern, calcite)!) is var (test, argument) ? test + " " + argument : null;
-            Written("ab").Should().BeNull("literal units alone are an equality");
-            AffixPattern.Equality(LikePattern.Read("a\\b", calcite)!).Should().Be("a\\b");
-            Written("%").Should().Be("StartsWith ");
-            Written("ab%").Should().Be("StartsWith ab");
-            Written("%ab").Should().Be("EndsWith ab");
-            Written("%ab%").Should().Be("Contains ab");
-            Written("%a\\b%").Should().Be("Contains a\\b");
-            Written("%a[b%").Should().Be("Contains a[b");
-            Written("a%b").Should().Be("Like a%b");
-            Written("a_b%%").Should().Be("Like a_b%");
-            Written("%_%").Should().Be("Like %_%");
+            // A fold's candidates, one per test as the WHERE's templates propose them (B1), the cheapest by price kept: only an
+            // affix has a case-insensitive form, and of two that say a pattern, as STARTSWITH and ENDSWITH say %, the lighter.
+            string? Folded(string pattern) => new[] { CosmosServiceTest.Equal, CosmosServiceTest.StartsWith, CosmosServiceTest.EndsWith, CosmosServiceTest.Contains, CosmosServiceTest.Like }
+                .Select(test => AffixPattern.Folded(test, pattern, ReaderRows)).Where(p => p.Form is not null).Min() is { Form: { } form } best ? form.Test + " " + AffixPattern.FoldedArgument(best) : null;
+            Folded("ab").Should().BeNull("literal units alone are an equality, which has no case-insensitive form");
+            AffixPattern.Says(CosmosServiceTest.Equal, LikePattern.Read("a\\b", calcite)!).Should().Be("a\\b");
+            Folded("%").Should().Be("StartsWith ");
+            Folded("ab%").Should().Be("StartsWith ab");
+            Folded("%ab").Should().Be("EndsWith ab");
+            Folded("%ab%").Should().Be("Contains ab");
+            Folded("%a\\b%").Should().Be("Contains a\\b");
+            Folded("%a[b%").Should().Be("Contains a[b");
+            Folded("a%b").Should().BeNull("LIKE has no case-insensitive form");
+            Folded("a_b%%").Should().BeNull();
+            Folded("%_%").Should().BeNull();
+            AffixPattern.Says(CosmosServiceTest.Like, LikePattern.Read("a_b%%", calcite)!).Should().Be("a_b%");
 
             AffixPattern.StoredAlike("0%").Should().BeTrue("a string's first unit is never an escape's second");
             AffixPattern.StoredAlike("%0").Should().BeFalse();

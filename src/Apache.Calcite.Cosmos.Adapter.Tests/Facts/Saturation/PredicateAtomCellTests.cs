@@ -152,16 +152,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// the facts graph as its cells answer: the coarse answer on a cell's state holds every truth the cell gives, and
         /// what a row of each truth can be (<see cref="PredicateAtom.Kept"/>) admits every value Calcite gives that truth on,
         /// through every reader the reading stands for. So a stratum that assumes such an atom leaves out no document Calcite
-        /// keeps. Coins are left out, counted; the rows call some reading coarse that this would hold.
+        /// keeps. Coins are left out, counted; the rows call some reading coarse that this would hold. A presence test is
+        /// held over every reading of the grid, its row keyed as a type test's is, whatever reads the path.
         /// </summary>
         [Fact, CosmosPins("Calcite.TheFactsGraphReadsTheseReadingsExactly")]
         public void EveryExactReadingAnswersAsItsCell()
         {
             var (inexact, (asked, tossed)) = (new List<string>(), (0, 0));
-            var readers = new HashSet<string>();
-            foreach (var atom in Atoms(boundaries: true).Where(a => FactsReadings.ReadExactly(Predicate(a))))
+            var (readers, presences) = (new HashSet<string>(), new HashSet<string>());
+            foreach (var atom in Atoms(boundaries: true).Concat(Readers.Select(PredicateAtom.IsDefined)).Where(a => FactsReadings.ReadExactly(Predicate(a))))
             {
-                readers.Add(atom.Reader);
+                (atom.Test == PredicateAtom.DefinedTest ? presences : readers).Add(atom.Reader);
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
                 {
                     if ((atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows) & ~atom.On(cell.Coarse, FactsReadings.Rows) & (Truths.True | Truths.False)) != 0)
@@ -189,6 +190,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             inexact.Should().BeEmpty("a stratum resting on a reading called exact leaves out no document Calcite keeps");
             readers.Select(PredicateAtom.Columnless).Distinct().Should().BeEquivalentTo(
                 CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All).Select(r => r.Reader).Distinct().Where(Readers.Contains), "every row the grid reads is held");
+            presences.Should().BeEquivalentTo(Readers, "the presence tests' row names a presence test over any reading");
+            CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All).Should().Contain((RenderingFamily.PresenceTest, CosmosValueClass.None));
         }
 
         static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;
@@ -359,6 +362,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             return atom.Test switch
             {
                 _ when atom.Kinds is not null => new SqlPredicate.TypeTest(atom.Test, value),
+                PredicateAtom.DefinedTest => new SqlPredicate.IsDefined(value),
                 PredicateAtom.LikeTest => new SqlPredicate.Affix(atom.Test, value, StringOf(atom.Operand!)),
                 PredicateAtom.NullTest => new SqlPredicate.IsNull(value),
                 PredicateAtom.InTest => new SqlPredicate.In(value, atom.Points!),

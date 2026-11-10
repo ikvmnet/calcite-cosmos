@@ -184,14 +184,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// What S writes a <c>LIKE</c> over a fold as once a bridge run completed (<see cref="RunBridge"/>, its
-        /// <c>foldedas</c>, G6): the test whose case-insensitive form answers alike, its argument, and the ordinal of the
-        /// fold's operand it is asked over; <c>null</c> where S says none, says more than one, as a fold over a function of
-        /// two subjects may, or the run may not be read.
+        /// <c>foldedas</c>, G6): the test whose case-insensitive form answers alike, the cheapest of those that say the
+        /// pattern, its argument, and the ordinal of the fold's operand it is asked over; <c>null</c> where S says none, says
+        /// one over more than one operand, as a fold over a function of two subjects may, or the run may not be read.
         /// </summary>
         /// <param name="like">The <c>LIKE</c> as the bundle wrote it.</param>
         public (CosmosServiceTest Test, string Argument, long Operand)? FoldOf(Pred like) => _run is { StopReason: RunStopReason.Completed }
-            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0])).Take(2).ToList() is [var row]
-                ? ((CosmosServiceTest Test, string Argument, long Operand)?)((CosmosServiceTest)row.Keys[1], (string)row.Keys[2], (long)row.Keys[3])
+            ? Guard(() => Scope.Rows(_theory.FoldedAs).Where(row => like.Id.Equals(row.Keys[0])).Take(2).ToList() is [var row] && row.Output is Priced { Form: { } form } best
+                ? ((CosmosServiceTest Test, string Argument, long Operand)?)(form.Test, AffixPattern.FoldedArgument(best), (long)row.Keys[1])
                 : null)
             : null;
 

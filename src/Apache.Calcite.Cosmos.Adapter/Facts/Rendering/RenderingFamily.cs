@@ -44,6 +44,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The reading a type test's row is keyed by, whatever reads its path: what it asks is the document's kind (<c>Calcite.TypeTestsAreTheirBodies</c>).</summary>
         public const string TypeTest = "type test";
 
+        /// <summary>The reading a presence test's row is keyed by, whatever reads its path: what it asks is whether the document holds the path.</summary>
+        public const string PresenceTest = "presence test";
+
         /// <summary>A reading's reader as the vocabulary's analysis names it; <c>null</c> for a call, a literal and a parameter.</summary>
         internal static string? ReaderOf(SqlValue value) => value switch
         {

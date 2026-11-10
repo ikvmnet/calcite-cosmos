@@ -27,9 +27,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <c>RETURNING DECIMAL</c>, typed <c>DECIMAL(19, 0)</c>, a whole number alone (<c>Calcite.ReturningDecimalParsesTheRendering</c>).
     /// Each member is written through the reader it was judged over (<see cref="ServiceForm.Reader"/>). The type tests the
     /// translator writes, each with an in-process body (<c>CosmosTypeTestImplementor</c>), over any reading of a path, the
-    /// builder writing it over the path's accessor the body takes apart, the document column's where the conjunct reads the
-    /// path through a field alone (h15b), and over no call (<see cref="Value.Raising"/>); no ordering over a reading that has no order (<see cref="Value.Unordered"/>),
-    /// and the ternary as a <c>CASE</c>. The builder,
+    /// builder writing it over the path's accessor the body takes apart where there is one, the document column's where the
+    /// conjunct reads the path through a field alone (h15b), and otherwise over whatever node the path has, a field or a
+    /// call; every ordering, over the raw value; and the ternary as a <c>CASE</c>. Whether a member written over a node the
+    /// body raises over reaches the service is the filter beneath's: it proves the Rex again and drops what it declines
+    /// (<c>CosmosFilterSplitRule.Admitted</c>), so nothing here copies Calcite's raise. The builder,
     /// <c>RenderingRexBuilder</c>, writes every row, held by <c>RenderingRexBuilderTests</c> over every shape S can hold.
     /// </para>
     /// </remarks>
@@ -61,31 +63,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .SelectMany(r => new[] { r + "/" + JsonValues.IntegerType, r + "/" + JsonValues.FractionType })
                 .Append(PredicateAtom.TypedReader("DECIMAL") + "/" + JsonValues.IntegerType));
 
-        /// <summary>
-        /// The readings no test is written over: those a type test's in-process body raises over whatever they hold, keyed as
-        /// the test-reads row keys them (<c>Calcite.TypeTestsAreTheirBodies</c>, which <c>RenderingTemplatesTests</c> holds
-        /// these to), that have no accessor the body takes apart, a call's (h15): where the filter beneath declined it, the
-        /// body would fail every row in process, which no weakening may. A raw value in a column, a field's, has one, the
-        /// path's accessor over the document column re-typed <c>ANY</c>, which the builder writes a test over (h15b), and
-        /// pushes none of where the input holds no document column.
-        /// </summary>
-        public static ValueSet<string> Raising { get; } = ValueSet.Of(PredicateAtom.CallReaders);
-
-        /// <summary>
-        /// The readings no ordering is written over: a raw value in a <c>VARIANT</c> column, which has no order, so that an
-        /// ordering of one fails to compile whatever the rows hold (the raw column's rows, <c>Calcite.RawNullIsSqlNull</c>,
-        /// which <c>RenderingTemplatesTests</c> holds this to). A weakening is kept in process where the filter beneath
-        /// declines it, so it may hold nothing that fails where its conjunct does not (h15); an ordering a member was judged
-        /// over another reading of the path is written over the raw value of the path's text, or where the conjunct reads
-        /// none, through its own cast of the field to a character type (<c>RenderingRexBuilder</c>).
-        /// </summary>
-        public static ValueSet<string> Unordered { get; } = ValueSet.Of(PredicateAtom.RawIn("VARIANT"));
-
         /// <summary>The rows as one value, which <c>rex-writable</c> reads as <c>sendable</c> reads the parting bands.</summary>
         public static Value Written { get; } = new(
             ValueSet.Of(AnyReader + "/" + JsonValues.StringType, NumberReader + "/" + JsonValues.IntegerType, NumberReader + "/" + JsonValues.FractionType, BooleanReader + "/" + JsonValues.BooleanType),
             ValueSet.Of(CosmosServiceTest.IsDefined, CosmosServiceTest.IsNull, CosmosServiceTest.IsPrimitive, CosmosServiceTest.IsString, CosmosServiceTest.IsNumber,
-                CosmosServiceTest.IsBool, CosmosServiceTest.IsObject, CosmosServiceTest.IsArray), Guarded, Raising, Unordered);
+                CosmosServiceTest.IsBool, CosmosServiceTest.IsObject, CosmosServiceTest.IsArray), Guarded);
 
         /// <summary>
         /// The paths a junction guards: each <c>p</c> with <c>IS_NUMBER(p)</c> a member of an <c>AND</c>, or
@@ -110,12 +92,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         };
 
         /// <summary>
-        /// The grammar's rows as a value: comparisons spelled <c>reader class/literal type</c>, the tests, the guarded
-        /// comparisons spelled <c>reader/literal type</c>, the readings no test is written over (<see cref="RenderingRexGrammar.Raising"/>),
-        /// and those no ordering is (<see cref="RenderingRexGrammar.Unordered"/>).
+        /// The grammar's rows as a value: comparisons spelled <c>reader class/literal type</c>, the tests, and the guarded
+        /// comparisons spelled <c>reader/literal type</c>.
         /// </summary>
-        public sealed record Value(ValueSet<string> Comparisons, ValueSet<CosmosServiceTest> Tests, ValueSet<string> GuardedComparisons, ValueSet<string> Raising,
-            ValueSet<string> Unordered)
+        public sealed record Value(ValueSet<string> Comparisons, ValueSet<CosmosServiceTest> Tests, ValueSet<string> GuardedComparisons)
         {
 
             static readonly IReadOnlySet<string> Unguarded = new HashSet<string>();
@@ -123,16 +103,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             /// <summary>
             /// Whether the builder writes a form over a reader, each member over its own where it carries one: every
             /// comparison, membership and test in it, each guarded pair, and nothing else but constants, connectives and
-            /// ternaries. A test is written over no call, which the body raises over and which has no accessor it takes apart.
-            /// No ordering is written over a reading that has no order.
+            /// ternaries.
             /// </summary>
             public bool Writes(ServiceForm form, string reader) => Writes(form, reader, Unguarded);
 
             bool Writes(ServiceForm form, string reader, IReadOnlySet<string> guarded) => form.Kind switch
             {
-                ServiceFormKind.Test => Tests.Contains(form.Test) && Raising.Contains(PredicateAtom.ColumnOf(form.Reader ?? reader) is { } column ? PredicateAtom.RawIn(column) : form.Reader ?? reader) == false,
-                ServiceFormKind.Compare when form.Test is CosmosServiceTest.Less or CosmosServiceTest.LessOrEqual or CosmosServiceTest.Greater or CosmosServiceTest.GreaterOrEqual
-                    && Unordered.Contains(form.Reader ?? reader) => false,
+                ServiceFormKind.Test => Tests.Contains(form.Test),
                 ServiceFormKind.Compare or ServiceFormKind.In => form.Literals.All(l => Holds(AnyReader, l) || Holds(ClassOf(form.Reader ?? reader), l)
                     || form.Kind == ServiceFormKind.Compare && guarded.Contains(form.Path!) && IsGuarded(form.Reader ?? reader, l)),
                 ServiceFormKind.Constant => true,

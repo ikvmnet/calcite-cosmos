@@ -10,7 +10,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// graphs' <c>readsexactly</c>, which the facts graph's exactness rule reads and the statement's strata read through it
     /// (<see cref="Facts.Saturation.PredicateAtom.ReadExactly"/>, <c>inexact</c>).
     /// </summary>
-    /// <param name="Reader">The reading, its raw column apart, or <see cref="RenderingFamily.TypeTest"/> for a type test of any.</param>
+    /// <param name="Reader">The reading, its raw column apart, or <see cref="RenderingFamily.TypeTest"/> for a type test of any, or
+    /// <see cref="RenderingFamily.PresenceTest"/> for a presence test of any.</param>
     /// <param name="Beside">The class of the literal it is compared beside: <see cref="CosmosValueClass.Number"/>, or
     /// <see cref="CosmosValueClass.None"/> for any other literal and for none.</param>
     internal sealed record CosmosExactReading(string Reader, CosmosValueClass Beside);

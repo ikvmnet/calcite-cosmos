@@ -296,12 +296,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// The Rex builder writes a string comparison over any reader but an ordering over a <c>VARIANT</c> field, which has no
-        /// order (h15), a number over a <c>RETURNING</c> of a number type,
+        /// The Rex builder writes a string comparison over any reader, an ordering over a <c>VARIANT</c> field among them, a
+        /// number over a <c>RETURNING</c> of a number type,
         /// never over a cast of the text nor <c>RETURNING DECIMAL</c>, which parse a string the service compares as none, a
-        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test but over a call, which the test-reads row says its
-        /// body raises over and which has no accessor it takes apart (h15); a raw column's, however cast, is written over the
-        /// path's accessor re-typed <c>ANY</c> (h15b); constants and the connectives over them; nothing else.
+        /// boolean over <c>RETURNING BOOLEAN</c> alone, every type test over any reading, a call's among them; constants and
+        /// the connectives over them; nothing else. What Calcite answers of a member written over a field or a call is not the
+        /// grammar's: the filter beneath proves the Rex again and drops what it declines.
         /// </summary>
         [Fact]
         public void RexWritableFollowsTheGrammar()
@@ -326,22 +326,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 (All(ServiceForm.TestOf(CosmosServiceTest.IsNumber, Path), Any(ServiceForm.NotOf(Compare(n)), ServiceForm.BareOf(Path))), integer, false),
                 (ServiceForm.TestOf(CosmosServiceTest.IsNull, Path), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.RawIn("VARCHAR"), true),
                 (ServiceForm.TestOf(CosmosServiceTest.IsString, Path), PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARIANT")), true),
-                (Any(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), Compare(s)), PredicateAtom.RawIn("VARIANT"), false), (Compare(s), PredicateAtom.RawIn("VARIANT"), false),
+                (Any(ServiceForm.NotOf(ServiceForm.TestOf(CosmosServiceTest.IsNull, Path)), Compare(s)), PredicateAtom.RawIn("VARIANT"), true), (Compare(s), PredicateAtom.RawIn("VARIANT"), true),
                 (ServiceForm.CompareOf(CosmosServiceTest.Equal, Path, s), PredicateAtom.RawIn("VARIANT"), true), (ServiceForm.CompareOf(CosmosServiceTest.NotEqual, Path, s), PredicateAtom.RawIn("VARIANT"), true),
                 (Compare(s), PredicateAtom.RawIn("ANY"), true),
-                (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.CallReaders, false),
+                (ServiceForm.TestOf(CosmosServiceTest.IsDefined, Path), PredicateAtom.CallReaders, true),
             };
 
             cases.Select(c => (c.Form.Text, c.Reader, Writes(c.Form, c.Reader))).Should().Equal(cases.Select(c => (c.Form.Text, c.Reader, c.Writes)));
             RenderingRexGrammar.Written.Tests.Should().BeEquivalentTo(System.Enum.GetValues<CosmosServiceTest>().Where(test => test is >= CosmosServiceTest.IsDefined and <= CosmosServiceTest.IsArray),
                 "every IS_* test the translator writes has an in-process body");
             RenderingRexGrammar.Written.Tests.Where(test => Writes(ServiceForm.TestOf(test, Path), raw) == false).Should().BeEmpty();
-            RenderingRexGrammar.Raising.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Where(t => t.As == PredicateAtom.RaisesReader).Select(t => t.Reader)
-                .Where(r => PredicateAtom.ColumnOf(r) is null && r is not (PredicateAtom.FieldForm or PredicateAtom.ItemForm or PredicateAtom.AnyCastForm)),
-                "the readings no test is written over are those the test-reads row says its body raises over that have no accessor it takes apart: a raw column, a field, an item and a cast to ANY have the path's re-typed ANY");
-            RenderingRexGrammar.Unordered.Should().BeEquivalentTo(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.Columns.Compiles
-                .Where(c => c.Test is CosmosServiceTest.Less && c.Compiles == false).Select(c => PredicateAtom.RawIn(c.Column)).Distinct(),
-                "the readings no ordering is written over are the raw columns whose rows say an ordering does not compile");
+            Apache.Calcite.Cosmos.Adapter.Metadata.CosmosRendering.Definition.TestReads.Select(t => t.Reader).Append(PredicateAtom.ElementReader)
+                .Where(reader => RenderingRexGrammar.Written.Tests.Any(test => Writes(ServiceForm.TestOf(test, Path), reader) == false)).Should().BeEmpty(
+                    "no reading is kept from a test by what its body answers, the filter beneath's to prove");
         }
 
         /// <summary>The sentinels are inert: claimed for an atom, neither agrees nor is refuted, at either verdict.</summary>
