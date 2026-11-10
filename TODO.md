@@ -3089,11 +3089,11 @@ across documents* and *A join of a container to itself* is the record.
   `FILTER_PROJECT_TRANSPOSE` already pushed beneath is not pushed again (#210): a C# rule of where a weakening is asked.
   G10 deletes it with `AlreadyApplied` crossing a `Project` member and each conjunct bound through its own input; the
   plan's order puts it after the switch and before 3B closes, being precision, never an answer, and the switch left it.
-- **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
-  `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`
-  holds when its own IKVM caches refresh, so outputs drift apart. On 2026-11-05 build 341 (`20261105.194231`) replaced
-  336, and under it the corpus's `Composite.CatalogueReport` fails validation (`UNNEST(StringToArray(JSON_QUERY(…)))`,
-  line 7, column 57). 3A's byte-equal digests run over 336 until it is pinned or 1.43.0 is released.
+- **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
+  1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
+  newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with
+  pre.282, which `main` has moved to, they are byte-equal to those at `13fd800` for both targets. A step that records
+  digests names the snapshot it took them over.
 - **The string functions over a raw reading or a bound read off a path** — *rows owed, the owner's to schedule.* No row
   measured a string function through the cast to `ANY` (the split rule's spelling of a fold under a rendering), a
   `VARIANT` column cast to text (the partition key's `UPPER(c."$.category")`), or a count read through `typed:INTEGER`
