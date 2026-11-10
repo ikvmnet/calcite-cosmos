@@ -3018,9 +3018,9 @@ across documents* and *A join of a container to itself* is the record.
   value, a field or a cast to `ANY` of an element, and its raw value in a column, still read the element reading
   (`PredicateAtom.ElementReader`), a reading of its own with no rows: an `ANY`'s `ITEM` raises over a scalar and a
   `VARIANT`'s element is unboxed (`Calcite.ItemIsNullWhereNoElementIs`), and no run measured the rest, so both graphs
-  read them as unmeasured. Rows of their own would let F and S learn from them. `CosmosDocumentPaths.From` reads a
-  subscript for the loader alone, so a declaration's facts about elements, a partition key and an order still refuse
-  one.
+  read them as unmeasured, F holding nothing of their characters. Rows of their own would let F and S learn from them.
+  `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a declaration's facts about elements, a
+  partition key and an order still refuse one.
 - **`LIKE` with `_` or a backslash, and over a cast to `CHAR`, is never decided by F** — *small.* F decides a match only
   of the text accessor over a known string, against literals and `%`; `_` is one code point to Calcite's regex and a
   backslash may be its escape, and `CHAR` pads. Each is TRUE or FALSE where the text is not null, which is sound and

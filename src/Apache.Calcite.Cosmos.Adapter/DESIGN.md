@@ -10348,6 +10348,15 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   `BIGINT`, an `INTEGER` and a `BOOLEAN` among them: `=` is false and `<>` true wherever the path holds a scalar, and
   both are null where it holds an object, a JSON null or nothing, where a `VARIANT` column holding the same value equals
   its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). Its null test was sent
+- **Characters read the cell too.** F's rules of a value's characters read the same `reads`: the text, the raw value, a
+  column's reading and a cast to text of one hold the path's characters where they read the path, and a reading written
+  apart holds its reading's where it reads what its reading reads. Before, they matched the accessor's term, so an
+  element's text, raw value, column reading, field, item and cast to `ANY` held the element path's characters whatever
+  the cell named, and `JsonFactSet.CharactersOf` read a path's characters for any text or raw value in C#. It asks the
+  theory for every value now, whose question runs the analysis beside the rules of characters
+  (`PredicateRules.CharacterSaturation`). Under the registry's cell an element's text and raw value hold what they held;
+  its column reading, field, item and cast to `ANY` hold nothing, as they read nothing measured
+  (`ComputedCharactersTests.AnElementsCharactersAreItsPathsWhereAnIndexReadsItSo`).
   as the raw value's too, `NOT IS_DEFINED(c.category) OR IS_NULL(c.category)`, where Calcite's is TRUE over an object as
   well. The loader now writes it as a `RETURNING` of `VARIANT`, `typed:VARIANT`, whose value no row measures (a type
   test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over

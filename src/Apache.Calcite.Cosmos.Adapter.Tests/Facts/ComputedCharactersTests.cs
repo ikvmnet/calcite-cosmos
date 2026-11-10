@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -161,6 +162,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var facts = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(A, new JsonClaim.OneOf(new JsonScalar[] { "ab", "c" }))) }).Derive(null);
 
             facts.CharactersOf(Call("||", Text(A), Lit("!"))).Should().Be(JsonCharacterBand.None);
+        }
+
+        /// <summary>
+        /// A reading of a path holding an element holds the path's characters where the readings an index reads as of a
+        /// path name it (<c>asofapath</c>), and nothing is said of one they do not name, which reads the element
+        /// reading: the cell decides, as it decides what the reading is an atom of. A field, an item or a cast to
+        /// <c>ANY</c> of an element reads the element reading whatever the cell names. A path holding no element holds
+        /// its characters whatever the cell names.
+        /// </summary>
+        [Fact]
+        public void AnElementsCharactersAreItsPathsWhereAnIndexReadsItSo()
+        {
+            var element = JsonDocumentPath.Root.Property("tags").Element(0);
+            var rules = new[] { element, A }.SelectMany(p => new[] { new JsonFact(p, new JsonClaim.Characters(S)), new JsonFact(p, new JsonClaim.OfType(JsonType.String, OrNull: true)) })
+                .Select(JsonFactRule.Unconditional).ToArray();
+            var rows = Adapter.Metadata.CosmosReasoning.Rows;
+            JsonFactSet Under(params string[] named) =>
+                new JsonFactTheory(rules).In(new JsonFactGenerations(rows with { Calcite = rows.Calcite with { AsOfAPath = named } })).Derive(null);
+
+            SqlValue[] Readings(JsonDocumentPath p) =>
+                [Text(p), new SqlValue.Raw(p), new SqlValue.Cast("VARCHAR", new SqlValue.Raw(p)), Call("REVERSE", Text(p))];
+            SqlValue Column(JsonDocumentPath p) => new SqlValue.Raw(p) { Column = "VARCHAR" };
+            SqlValue[] Apart(JsonDocumentPath p) =>
+                [new SqlValue.Text(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm }, new SqlValue.Raw(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm }];
+
+            var registry = new JsonFactTheory(rules).Derive(null);
+            var none = Under();
+            var column = Under([.. rows.Calcite.AsOfAPath, Cosmos.Facts.Saturation.PredicateAtom.RawIn("VARCHAR")]);
+            try
+            {
+                foreach (var value in Readings(element))
+                {
+                    registry.CharactersOf(value).Should().Be(Closed(S), $"the registry's cell names the text and the raw value: {value}");
+                    none.CharactersOf(value).Should().Be(JsonCharacterBand.Any, $"named by no cell: {value}");
+                }
+
+                registry.CharactersOf(Column(element)).Should().Be(JsonCharacterBand.Any, "the registry's cell names no column's reading");
+                column.CharactersOf(Column(element)).Should().Be(Closed(S), "a cell naming the column's reading");
+                foreach (var value in Apart(element))
+                    column.CharactersOf(value).Should().Be(JsonCharacterBand.Any, $"a reading written apart of an element is the element reading: {value}");
+
+                foreach (var value in Readings(A).Append(Column(A)).Concat(Apart(A)))
+                    none.CharactersOf(value).Should().Be(Closed(S), $"a path holding no element: {value}");
+            }
+            finally
+            {
+                GC.KeepAlive(none);
+                GC.KeepAlive(column);
+            }
         }
 
     }
