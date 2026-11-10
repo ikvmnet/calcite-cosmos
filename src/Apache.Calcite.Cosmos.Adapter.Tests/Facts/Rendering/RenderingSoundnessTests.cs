@@ -352,8 +352,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (printed.Count == 0)
                     continue;
 
+                // A schema of the trial's own, its S build awaited: a trial whose one statement declined would check nothing,
+                // and every trial declined would leave source B no proof to judge.
                 var generate = generated ? new RenderingGenerateRun() : null;
-                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(generate?.Reasoning ?? new CosmosReasoning());
+                var container = new CosmosContainerMetadata("d", Keys.Select(k => "/" + k)).WithFacts(declaration.Rules).WithReasoning(generate?.Reasoning ?? TestReasoning.Own());
                 var run = RenderingCheckRun.Over(RenderingInputs.Differential("population", [$"SELECT c.\"id\" FROM d AS c WHERE {string.Join(" AND ", printed)}"], [container]),
                     generated: generate);
                 tally.Statements++;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
@@ -24,8 +25,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     internal static class RenderingInputs
     {
 
-        /// <summary>The differential's containers, each in a reasoning of its own: what the plants and the recall plan over.</summary>
-        public static readonly CosmosContainerMetadata[] Containers = [.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()))];
+        /// <summary>
+        /// The differential's containers, each in a reasoning of its own: what the plants and the recall plan over. Each
+        /// one's S build is awaited here, once, as <see cref="TestReasoning.Shared"/>'s is: the first plan over a container
+        /// would otherwise wait for it at most its bound and decline past it, and which test plans over it first is the
+        /// run's order.
+        /// </summary>
+        public static readonly CosmosContainerMetadata[] Containers = Built([.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()))]);
+
+        /// <summary>The containers, every one's S build started before any is awaited.</summary>
+        static CosmosContainerMetadata[] Built(CosmosContainerMetadata[] containers)
+        {
+            Task.WaitAll(containers.Select(c => c.Reasoning!.Rendering.Ready).ToArray());
+            return containers;
+        }
 
         /// <summary>Every input statement.</summary>
         /// <param name="partitionedPredicates">How many of the partition run's predicates to plan the statements of.</param>

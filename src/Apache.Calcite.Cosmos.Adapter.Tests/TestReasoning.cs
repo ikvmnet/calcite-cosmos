@@ -1,9 +1,12 @@
 using System;
+using System.Data.Common;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Data;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -41,12 +44,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         public static CosmosReasoning Shared => Made.Value;
 
-        static readonly Lazy<CosmosReasoning> Made = new(() =>
+        static readonly Lazy<CosmosReasoning> Made = new(Own);
+
+        /// <summary>
+        /// Makes a reasoning of a test's own, for a test about what a schema owns or that wants graphs apart, its S build
+        /// awaited as <see cref="Shared"/>'s is: a question waits for the first build at most its bound and declines past it,
+        /// so on a machine slow enough a plan made at once would send less than the test asserts, and fail for no row's
+        /// reason. A test whose reasoning holds a probe, rows or an oracle of its own awaits it where it makes it.
+        /// </summary>
+        /// <returns>The reasoning, its first generation built.</returns>
+        public static CosmosReasoning Own()
         {
             var reasoning = new CosmosReasoning();
             reasoning.Rendering.Ready.Wait();
             return reasoning;
-        });
+        }
+
+        /// <summary>
+        /// The S build of the reasoning a connection's Cosmos schema plans in, started where it was not, read off the root
+        /// the connection plans against: a schema a model's factory makes reasons in one of its own, made as the connection
+        /// opened, so that a test reading what a plan pushes awaits it before the plan, as a fixture's is awaited.
+        /// </summary>
+        /// <param name="connection">The connection, open.</param>
+        /// <param name="schema">The Cosmos schema's name in its root.</param>
+        /// <param name="table">One of its containers, whose reasoning is every one of the schema's.</param>
+        /// <returns>The build, done once a generation answers or the definition threw.</returns>
+        public static Task Ready(DbConnection connection, string schema, string table)
+        {
+            var cosmos = (org.apache.calcite.schema.Schema)((CalciteConnection)connection).RootSchema.subSchemas().get(schema)!;
+            return ((CosmosTable)cosmos.tables().get(table)!).Container.Reasoning!.Rendering.Ready;
+        }
 
         /// <summary>
         /// Returns the metadata bound to <see cref="Shared"/>, or as it is where a schema has bound it already.
