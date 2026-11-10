@@ -59,7 +59,11 @@ dotnet build Apache.Calcite.Cosmos.slnx
 ```
 
 The build resolves Calcite through IKVM's Maven support, including an Apache snapshot repository while
-the Calcite version the packages use is unreleased (see `Directory.Build.props`).
+the Calcite version the packages use is unreleased (see `Directory.Build.props`). It takes the newest
+snapshot there, and the `Apache.Calcite.*` packages were compiled against the one that was newest when
+they were built. A snapshot that changes a signature those packages call still builds, and then fails
+at run time with `MissingMethodException`; the cure is an `Apache.Calcite.*` build made against that
+snapshot.
 
 ## E.5 The test suite
 
