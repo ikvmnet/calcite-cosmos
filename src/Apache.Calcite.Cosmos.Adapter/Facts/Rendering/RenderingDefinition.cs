@@ -210,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// The readings an index reads as of a path holding the element, a test's body over each among it
         /// (<c>CosmosAxiomRows.ReadAsOfAPath</c>): the readings vocabulary's <c>asofapath</c>, which the predicate vocabulary's
-        /// element rules read. None in a definition that names none, where an element's raw value reads the element reading.
+        /// element rules read. None in a definition that names none, where every accessor of an element reads the element reading.
         /// </summary>
         public IReadOnlyList<string> AsOfAPath { get; init; } = [];
 

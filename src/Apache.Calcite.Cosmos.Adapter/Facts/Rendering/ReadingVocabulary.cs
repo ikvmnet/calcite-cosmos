@@ -136,8 +136,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// The readings a <c>Calcite</c> row says an index reads as of a path holding the element, a test's body over each among
-        /// it, in one value (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>): the predicate vocabulary's element rules read a raw
-        /// value of an element as a path's where it names the reading, and as the element reading where it does not.
+        /// it, in one value (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>): the predicate vocabulary's element rules read each
+        /// accessor of an element as a path's where it names the reading, and as the element reading where it does not.
         /// </summary>
         public Function<ValueSet<string>> AsOfAPath { get; }
 

@@ -62,13 +62,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "an index holds an element",
                     "every element holds one",
                     "a property of a path holding an element holds one",
-                    "text reads its path",
-                    "a raw value reads its path",
-                    "a raw value in a column reads its path through the column",
-                    "a raw value of a path holding an element reads its path where an index reads the raw value as of a path",
-                    "a raw value of a path holding an element reads the element reading where an index does not read the raw value as of a path",
-                    "a raw value in a column of a path holding an element reads its path through the column where an index reads the column as of a path",
-                    "a raw value in a column of a path holding an element reads the element reading where an index does not read the column as of a path",
+                    "text accesses its path as the text",
+                    "a raw value accesses its path as the raw value",
+                    "a raw value in a column accesses its path through the column",
+                    "a returning accesses its path as its type",
+                    "a JSON_QUERY accesses its path as its own reading",
+                    "an accessor of a path holding no element reads its path",
+                    "an accessor of a path holding an element reads its path where an index reads it as of a path",
+                    "an accessor of a path holding an element reads the element reading where an index does not read it as of a path",
                     "a reading written apart reads what its reading reads where its path holds no element",
                     "a reading written apart of a path holding an element reads the element reading",
                     "a test reads a call's place as every call's row says the body reads it",
@@ -78,8 +79,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a cast to a DECIMAL that holds the number's digits denotes what it converts denotes",
                     "a cast to a DECIMAL that drops the number's places denotes it moved",
                     "a comparison with what a cast denotes is an atom of what it reads where its reading takes it",
-                    "a returning reads its path as its type",
-                    "a JSON_QUERY reads its path as its own reading",
                     "a cast a row measured reads what it converts",
                     "a comparison with a literal is an atom of what it reads",
                     "a comparison with a parameter is an atom of what it reads",
@@ -385,7 +384,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(203);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(202);
         }
 
         /// <summary>

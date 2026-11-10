@@ -560,9 +560,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Whether a predicate reads a value the shared vocabulary reads as the element reading (h15b): a raw value of a path
-        /// holding an element whose reading the readings of an index do not name as of a path (<c>asofapath</c>), in a column
-        /// or not, or a reading written apart of one.
+        /// Whether the shared vocabulary reads an atom of a predicate as the element reading (h15b), asked of its rules over the
+        /// registry's rows rather than restated: which accessors of an element it reads so is the readings of an index's
+        /// (<c>asofapath</c>), and a reading written apart of one always. Only a value of a path holding an element can.
         /// </summary>
         static bool ReadsTheElementReading(SqlPredicate read) => read.Subterms.SelectMany(term => term switch
         {
@@ -573,11 +573,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             SqlPredicate.TypeTest t => [t.Value],
             SqlPredicate.Affix a => [a.Value],
             _ => Array.Empty<SqlValue>(),
-        }).Any(v => v.PathRead is { HasElement: true } && (v.Form is not null
-            || v is SqlValue.Raw raw && AsOfAPath.Contains(raw.Column is { } column ? PredicateAtom.RawIn(column) : PredicateAtom.RawReader) == false));
-
-        /// <summary>The readings an index reads as of a path, as the registry names them.</summary>
-        static readonly IReadOnlyList<string> AsOfAPath = CosmosAxiomRows.ReadAsOfAPath(CosmosAxioms.All);
+        }).Any(v => v.PathRead is { HasElement: true }) && PredicateVocabularyTests.AtomsIn(read).Any(a => a.Reader == PredicateAtom.ElementReader);
 
         /// <summary>
         /// Source A for a conjunct holding an opaque term, as line 1c judges one (<see cref="RenderingSoundnessTests.NoOpaqueWeakeningHasAWitnessInProcess"/>):

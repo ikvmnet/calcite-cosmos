@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Assume(facts.ToArray());
 
             scope.Run(Schedule.Saturate(ir.Analyse), cancellationToken: TestContext.Current.CancellationToken).StopReason.Should().Be(RunStopReason.Completed);
-            ir.Analyse.Rules.Should().HaveCount(42, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', ten h15b's, an element's and a form's, and two an element's raw value read as a path's, which this conjunct holds none of");
+            ir.Analyse.Rules.Should().HaveCount(41, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', ten h15b's, an element's and a form's, and each accessor's reading of an element as a path's or as the element reading, which this conjunct holds none of");
             scope.CountRows(ir.Atom).Should().Be(4);
             scope.CountRows(ir.Point).Should().Be(4, "'bikes', 'x', 'y' and 3, beside their atoms");
             junctions.Should().Equal(new[] { (true, 2), (false, 2), (false, 3) }, "the disjunction is written as an arm, before the conjunction it nests in");
@@ -105,11 +105,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             AtomsIn(Eq(Raw(element.Property("n")), "x")).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.RawReader, "a property of an element is a path holding one");
         }
 
+        /// <summary>
+        /// Every accessor of a path holding an element reads as a path's where the readings an index reads as of a path name
+        /// it (<c>asofapath</c>), and as the element reading where they do not, a test of it read as its body reads it: the
+        /// cell decides, never the accessor's kind. A path holding no element reads its own reading whatever the cell names.
+        /// </summary>
+        [Fact]
+        public void AnElementsAccessorIsAPathsWhereAnIndexReadsItSo()
+        {
+            var (element, path) = (P("tags").Element(0), P("a"));
+            var rows = Adapter.Sql.CosmosAxiomRows.ReadCalcite(Adapter.Sql.CosmosAxioms.All);
+            var accessors = new (Func<JsonDocumentPath, SqlValue> Of, string Reader)[]
+            {
+                (Text, PredicateAtom.TextReader), (Raw, PredicateAtom.RawReader), (p => Typed(p, "INTEGER"), PredicateAtom.TypedReader("INTEGER")),
+                (p => Typed(p, "VARIANT"), PredicateAtom.TypedReader("VARIANT")), (p => new SqlValue.Query(p), PredicateAtom.QueryReader),
+            };
+
+            foreach (var (of, reader) in accessors)
+            {
+                AtomsIn(new SqlPredicate.IsNull(of(element))).Should().ContainSingle().Which.Reader.Should().Be(reader, "the registry's cell names it");
+                AtomsIn(new SqlPredicate.IsNull(of(element)), rows with { AsOfAPath = [] }).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.ElementReader, $"{reader} named by no cell");
+                AtomsIn(new SqlPredicate.IsNull(of(path)), rows with { AsOfAPath = [] }).Should().ContainSingle().Which.Reader.Should().Be(reader, "a path holding no element");
+                AtomsIn(new SqlPredicate.TypeTest("IS_STRING", of(element)), rows with { AsOfAPath = [] }).Should().ContainSingle().Which.Should().Match<PredicateAtom>(
+                    a => a.Reader == PredicateAtom.ElementReader && a.Body == PredicateAtom.RawReader, $"a test of {reader} named by no cell is asked over the element reading");
+            }
+
+            // A column's reading of an element, which the registry's cell does not name, and named.
+            var column = new SqlValue.Raw(element.Property("n")) { Column = "VARIANT" };
+            AtomsIn(new SqlPredicate.IsNull(column)).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.ElementReader);
+            AtomsIn(new SqlPredicate.IsNull(column), rows with { AsOfAPath = [.. rows.AsOfAPath, PredicateAtom.RawIn("VARIANT")] }).Should().ContainSingle()
+                .Which.Reader.Should().Be(PredicateAtom.RawIn("VARIANT"), "a column the cell names is read through it");
+        }
+
         /// <summary>The atoms the vocabulary reads a conjunct into, beside the registry's rows of readings.</summary>
         static long AtomsOf(SqlPredicate conjunct) => AtomsIn(conjunct).Count;
 
-        /// <summary>The atoms themselves.</summary>
-        static IReadOnlyList<PredicateAtom> AtomsIn(SqlPredicate conjunct)
+        /// <summary>The atoms themselves, beside the registry's rows of readings or the rows given.</summary>
+        internal static IReadOnlyList<PredicateAtom> AtomsIn(SqlPredicate conjunct, CalciteRows? rows = null)
         {
             var graph = new EGraph();
             var paths = new PathVocabulary(graph);
@@ -127,7 +159,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             var facts = new List<Fact>();
             var scope = graph.Root;
-            scope.Assume([.. readings.Facts(Adapter.Sql.CosmosAxiomRows.ReadCalcite(Adapter.Sql.CosmosAxioms.All), KleeneTables.Reads, KleeneTables.Compares)]);
+            scope.Assume([.. readings.Facts(rows ?? Adapter.Sql.CosmosAxiomRows.ReadCalcite(Adapter.Sql.CosmosAxioms.All), KleeneTables.Reads, KleeneTables.Compares)]);
             scope.Run(Schedule.Saturate(reads), cancellationToken: TestContext.Current.CancellationToken).StopReason.Should().Be(RunStopReason.Completed);
             scope.Make(writer.Term(conjunct, facts));
             scope.Assume(facts.ToArray());
