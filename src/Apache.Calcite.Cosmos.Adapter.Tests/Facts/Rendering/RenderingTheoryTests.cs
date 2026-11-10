@@ -65,8 +65,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "text reads its path",
                     "a raw value reads its path",
                     "a raw value in a column reads its path through the column",
-                    "a raw value of a path holding an element reads the element reading",
-                    "a raw value in a column of a path holding an element reads the element reading",
+                    "a raw value of a path holding an element reads its path where an index reads the raw value as of a path",
+                    "a raw value of a path holding an element reads the element reading where an index does not read the raw value as of a path",
+                    "a raw value in a column of a path holding an element reads its path through the column where an index reads the column as of a path",
+                    "a raw value in a column of a path holding an element reads the element reading where an index does not read the column as of a path",
                     "a reading written apart reads what its reading reads where its path holds no element",
                     "a reading written apart of a path holding an element reads the element reading",
                     "a test reads a call's place as every call's row says the body reads it",
@@ -383,7 +385,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(201);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(203);
         }
 
         /// <summary>
@@ -511,6 +513,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             d.Casts.Should().OnlyContain(r => s.Theory.Check(s.MeasuredCast.Of(r.Target, r.Reader, r.Row)));
             d.Comparands.Should().OnlyContain(r => s.Theory.Check(s.TakesConstant.Of(r.Reading, r.Moved, r.Row)));
             d.TestReads.Should().OnlyContain(r => s.Theory.Check(s.TestReads.Of(r.Reader, r.As)));
+            d.AsOfAPath.Should().NotBeEmpty().And.BeEquivalentTo(s.Theory.Get(s.Calcite.AsOfAPath.Of()).AsEnumerable());
             foreach (var g in d.CalciteBands.GroupBy(r => (r.Reader, r.Kind)))
                 s.Theory.Get(s.CalciteBands.Of(g.Key.Reader, g.Key.Kind)).Should().BeEquivalentTo(g.Select(r => r.Band));
             foreach (var g in d.ReaderOrders.GroupBy(r => r.Reader))

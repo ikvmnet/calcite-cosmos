@@ -1,10 +1,21 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
+using org.apache.calcite.jdbc;
+using org.apache.calcite.rex;
+using org.apache.calcite.sql;
+using org.apache.calcite.sql.fun;
+using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.type;
+using org.apache.calcite.sql.validate;
 
 using Xunit;
 
@@ -57,15 +68,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A reading of an element answers what the same reading of a path holding the element answers: the text accessor,
-        /// a <c>RETURNING</c> and <c>JSON_QUERY</c> alike; and where there is no element, past the end or over a value that
-        /// is no array, what it answers over an absent path.
+        /// a <c>RETURNING</c>, <c>JSON_QUERY</c>, <c>JSON_EXISTS</c> and the accessor re-typed <c>ANY</c>, the raw value a
+        /// weakening's test is written over, alike, and each type test's body over the text, a <c>RETURNING</c>,
+        /// <c>JSON_QUERY</c> and the raw value; and where there is no element, past the end or over a value that is no array,
+        /// what it answers over an absent path. The cell names each reading measured so, and no other.
         /// </summary>
         [Fact, CosmosPins("Calcite.ReadingsOfAnIndexAreAsOfAPath")]
         public void AReadingOfAnIndexIsAsOfAPath()
         {
             using var connection = MaterialisedTable.Open();
-            string[] elements = ["{\"f\":[30]}", "{\"f\":[\"x\"]}", "{\"f\":[{\"a\":1}]}", "{\"f\":[null]}", "{\"f\":[]}", "{\"f\":30}", "{}"];
-            string[] paths = ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{\"g\":null}", "{}", "{}", "{}"];
+            var root = (org.apache.calcite.schema.SchemaPlus)((Apache.Calcite.Data.CalciteConnection)connection).RootSchema;
+            foreach (var test in TypeTests)
+                root.add(test, Declared(test));
+
+            var (_, elements, paths) = Indexes[0];
             string[] readings = ["JSON_VALUE(\"d\", '$.f[0]') = '30'", "JSON_VALUE(\"d\", '$.f[0]') IS NULL", "JSON_QUERY(\"d\", '$.f[0]') IS NULL", "JSON_EXISTS(\"d\", '$.f[0]')"];
             string Path(string reading) => reading.Replace("$.f[0]", "$.g");
 
@@ -73,9 +89,129 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             // A RETURNING raises over a scalar of another type, so it is asked over the rest.
             var typed = "JSON_VALUE(\"d\", '$.f[0]' RETURNING INTEGER) = 30";
-            int[] numeric = [0, 2, 3, 4, 5, 6];
+            int[] numeric = [0, 2, 3, 5, 6, 7, 8, 9, 10, 11];
             MaterialisedTable.Of(numeric.Select(i => elements[i])).Ask(connection, typed).Should().Equal(MaterialisedTable.Of(numeric.Select(i => paths[i])).Ask(connection, Path(typed)));
+
+            // Each reading by the name the vocabulary keys it by, and each type test's body over it, at every path an element is
+            // read at, a raise where it raises: a RETURNING of each type, and the accessor re-typed ANY, which no statement spells,
+            // by Calcite's executor.
+            var differs = new Dictionary<string, List<string>>
+            {
+                [PredicateAtom.TextReader] = [.. Differing(connection, path => [$"JSON_VALUE(\"d\", '{path}')"])],
+                [PredicateAtom.TypedReaders] = [.. Differing(connection, path => [.. new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" }.Select(t => $"JSON_VALUE(\"d\", '{path}' RETURNING {t})")])],
+                [PredicateAtom.QueryReader] = [.. Differing(connection, path => [$"JSON_QUERY(\"d\", '{path}')"])],
+                [PredicateAtom.RawReader] = [.. from index in Indexes
+                                                from asked in TypeTests.Select(t => (Name: t + "(raw)", Build: Tested(t))).Prepend(("raw", (_, raw) => raw))
+                                                let a = Executed(asked.Build, index.Path, index.Elements)
+                                                let b = Executed(asked.Build, "$.g", index.Paths)
+                                                where Same(a, b) == false
+                                                select $"{asked.Name} at {index.Path}: {Shown(a)} against {Shown(b)}"],
+            };
+            foreach (var (reader, wrong) in differs)
+                foreach (var w in wrong)
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{reader}: {w}");
+
+            // The raw value is the scalar the element holds, null elsewhere, and a test's body reads the element's kind.
+            Shown(Executed((_, raw) => raw, "$.f[0]", elements)).Should().Be("30,x,null,null,true,null,null,null,null,null,null,null");
+            Shown(Executed(Tested("IS_STRING"), "$.f[0]", elements)).Should().Be("false,true,false,false,false,false,false,false,false,false,false,false");
+            Shown(Executed(Tested("IS_DEFINED"), "$.f[0]", elements)).Should().Be("true,true,true,true,true,true,false,false,false,false,false,false");
+
+            CosmosAxioms.Get("Calcite.ReadingsOfAnIndexAreAsOfAPath").AsOfAPath.Should().BeEquivalentTo(differs.Where(d => d.Value.Count == 0).Select(d => d.Key),
+                "the cell names each reading an index reads as of a path, a test's body over it among it, and no other");
         }
+
+        /// <summary>
+        /// Each path an element is read at, documents holding something there or nothing, and documents holding the same at
+        /// <c>$.g</c>, or nothing: an index over an element of each kind and over none, past the end, over a number, a string,
+        /// an object and a null, and no array; a later index; a property of an element; and an element of an element.
+        /// </summary>
+        static readonly (string Path, string[] Elements, string[] Paths)[] Indexes =
+        [
+            ("$.f[0]",
+                ["{\"f\":[30]}", "{\"f\":[\"x\"]}", "{\"f\":[{\"a\":1}]}", "{\"f\":[null]}", "{\"f\":[true]}", "{\"f\":[[1]]}", "{\"f\":[]}", "{\"f\":30}", "{\"f\":\"ab\"}", "{\"f\":{\"a\":1}}", "{\"f\":null}", "{}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{\"g\":null}", "{\"g\":true}", "{\"g\":[1]}", "{}", "{}", "{}", "{}", "{}", "{}"]),
+            ("$.f[1]",
+                ["{\"f\":[1,30]}", "{\"f\":[1,\"x\"]}", "{\"f\":[1,false]}", "{\"f\":[1,{\"a\":1}]}", "{\"f\":[1]}", "{\"f\":\"ab\"}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":false}", "{\"g\":{\"a\":1}}", "{}", "{}"]),
+            ("$.f[0].a",
+                ["{\"f\":[{\"a\":30}]}", "{\"f\":[{\"a\":\"x\"}]}", "{\"f\":[{\"a\":null}]}", "{\"f\":[{\"a\":[1]}]}", "{\"f\":[{\"b\":1}]}", "{\"f\":[30]}", "{\"f\":[]}", "{\"f\":{\"a\":30}}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":null}", "{\"g\":[1]}", "{}", "{}", "{}", "{}"]),
+            ("$.f[0][0]",
+                ["{\"f\":[[30]]}", "{\"f\":[[\"x\"]]}", "{\"f\":[[{\"a\":1}]]}", "{\"f\":[[]]}", "{\"f\":[30]}", "{\"f\":[\"ab\"]}"],
+                ["{\"g\":30}", "{\"g\":\"x\"}", "{\"g\":{\"a\":1}}", "{}", "{}", "{}"]),
+        ];
+
+        /// <summary>The one-place tests whose bodies are measured over each reading of an element.</summary>
+        static readonly string[] TypeTests = ["IS_DEFINED", "IS_NULL", "IS_PRIMITIVE", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_OBJECT", "IS_ARRAY"];
+
+        /// <summary>The schema's own declaration of a test, the function whose body Calcite runs in process.</summary>
+        static org.apache.calcite.schema.Function Declared(string test) => (org.apache.calcite.schema.Function)CosmosSchemaFunctions.Instance.get(test).iterator().next();
+
+        /// <summary>A test over a node, as Calcite wraps the schema's declaration of it.</summary>
+        static Func<RexBuilder, RexNode, RexNode> Tested(string test) => (rex, node) => rex.makeCall(
+            new SqlUserDefinedFunction(new SqlIdentifier(test, SqlParserPos.ZERO), SqlKind.OTHER_FUNCTION, ReturnTypes.BOOLEAN, null, null, Declared(test)), node);
+
+        /// <summary>
+        /// Each expression a reading writes at a path, and each type test over it, whose values over the documents holding an
+        /// element differ from those over the documents holding the same at <c>$.g</c>.
+        /// </summary>
+        static IEnumerable<string> Differing(System.Data.Common.DbConnection connection, Func<string, string[]> expressions) =>
+            from index in Indexes
+            from expression in expressions(index.Path)
+            from asked in TypeTests.Select(t => $"{t}({expression})").Prepend(expression)
+            let a = MaterialisedTable.Of(index.Elements).Values(connection, asked)
+            let b = MaterialisedTable.Of(index.Paths).Values(connection, asked.Replace(index.Path, "$.g"))
+            where Same(a, b) == false
+            select $"{asked}: {Shown(a)} against {Shown(b)}";
+
+        /// <summary>
+        /// The path's accessor re-typed <c>ANY</c> over a document column, <c>JSON_VALUE(DOC, path)</c>, as the loader writes the
+        /// raw value a weakening's test is written over.
+        /// </summary>
+        static RexNode Retyped(RexBuilder rex, string path)
+        {
+            var operands = new java.util.ArrayList();
+            operands.add(rex.makeInputRef(rex.getTypeFactory().createSqlType(SqlTypeName.VARCHAR), 0));
+            operands.add(rex.makeLiteral(path));
+            return rex.makeCall(rex.getTypeFactory().createSqlType(SqlTypeName.ANY), SqlStdOperatorTable.JSON_VALUE, operands);
+        }
+
+        /// <summary>What a node built over the accessor re-typed <c>ANY</c> is over each document, by Calcite's executor: its value, or the innermost exception it raises.</summary>
+        static object?[] Executed(Func<RexBuilder, RexNode, RexNode> build, string path, string[] documents)
+        {
+            var types = new JavaTypeFactoryImpl();
+            var rex = new RexBuilder(types);
+            var executable = RexExecutorImpl.getExecutable(rex, java.util.Collections.singletonList(build(rex, Retyped(rex, path))),
+                types.builder().add("d", types.createSqlType(SqlTypeName.VARCHAR)).build());
+            var values = new object?[documents.Length];
+            for (var i = 0; i < documents.Length; i++)
+            {
+                try
+                {
+                    executable.setDataContext(new CalciteInProcess.Record([documents[i]], types));
+                    values[i] = executable.execute()?[0];
+                }
+                catch (Exception e)
+                {
+                    while (e.InnerException is Exception inner)
+                        e = inner;
+
+                    values[i] = e;
+                }
+            }
+
+            GC.KeepAlive(executable);
+            return values;
+        }
+
+        /// <summary>
+        /// Whether two rows of values are the same: each value equal and of one type, or a raise of one type; a row that raises
+        /// on every value measures nothing, and is the same as none.
+        /// </summary>
+        static bool Same(object?[] a, object?[] b) =>
+            a.Length == b.Length && a.Any(v => v is not Exception) && a.Zip(b).All(p => p.First is Exception x ? p.Second is Exception y && x.GetType() == y.GetType() : p.First?.GetType() == p.Second?.GetType() && Equals(p.First, p.Second));
+
+        static string Shown(object?[] values) => string.Join(",", values.Select(v => v is Exception e ? "!" + e.GetType().Name : v?.ToString() ?? "null"));
 
     }
 

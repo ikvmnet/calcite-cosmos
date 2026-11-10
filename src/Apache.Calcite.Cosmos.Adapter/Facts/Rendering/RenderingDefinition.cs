@@ -205,7 +205,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
         public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
-            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts);
+            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath);
+
+        /// <summary>
+        /// The readings an index reads as of a path holding the element, a test's body over each among it
+        /// (<c>CosmosAxiomRows.ReadAsOfAPath</c>): the readings vocabulary's <c>asofapath</c>, which the predicate vocabulary's
+        /// element rules read. None in a definition that names none, where an element's raw value reads the element reading.
+        /// </summary>
+        public IReadOnlyList<string> AsOfAPath { get; init; } = [];
 
         /// <summary>
         /// The readings the facts graph reads as Calcite does beside a literal of a class (<c>CosmosAxiomRows.ReadExactReadings</c>):

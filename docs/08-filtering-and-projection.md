@@ -188,9 +188,8 @@ disagree about: the comparison and the `LIKE` are sent as written, nothing is re
 travels with them. A comparison over an array's element, `$.tags[0]`, is decided as one over a property
 nothing declares, whatever the container declares: a declaration states what a property holds, and none
 reaches an element. An equality with text only a string renders as is sent exactly, and so is an ordering
-the other kinds' renderings settle; any other ordering runs in process, since what is sent beside one
-tests the element's kind, and what Calcite makes of an element's own value has not been measured
-(Chapter 11.3).
+the other kinds' renderings settle; any other ordering sends a weakening that tests the element's kind, as
+a property's does, and is rechecked (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
 that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,

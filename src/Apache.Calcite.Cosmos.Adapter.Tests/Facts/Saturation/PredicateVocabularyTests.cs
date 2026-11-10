@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Assume(facts.ToArray());
 
             scope.Run(Schedule.Saturate(ir.Analyse), cancellationToken: TestContext.Current.CancellationToken).StopReason.Should().Be(RunStopReason.Completed);
-            ir.Analyse.Rules.Should().HaveCount(40, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', and ten h15b's, an element's and a form's, which this conjunct holds none of");
+            ir.Analyse.Rules.Should().HaveCount(42, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', ten h15b's, an element's and a form's, and two an element's raw value read as a path's, which this conjunct holds none of");
             scope.CountRows(ir.Atom).Should().Be(4);
             scope.CountRows(ir.Point).Should().Be(4, "'bikes', 'x', 'y' and 3, beside their atoms");
             junctions.Should().Equal(new[] { (true, 2), (false, 2), (false, 3) }, "the disjunction is written as an arm, before the conjunction it nests in");
@@ -77,8 +77,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// A reading written apart reads what its reading reads, and a test of it as its form's row says the body reads it
         /// (h15b): a field read as text or as a scalar type, an item chain and a cast to <c>ANY</c> raise, the accessor
-        /// re-typed <c>ANY</c> reads the raw value. A raw value of a path holding an element, however written, and a field of
-        /// one, read the element reading, which no row measured; the text of one is as of a path holding it.
+        /// re-typed <c>ANY</c> reads the raw value. A raw value of a path holding an element reads the raw value, a test of it
+        /// read as its body reads it, as of a path holding it (<c>asofapath</c>), and its text likewise; one in a column, a field
+        /// of one and one written apart read the element reading, which no row measured.
         /// </summary>
         [Fact]
         public void AReadingWrittenApartIsItsReadingButToItsTest()
@@ -94,10 +95,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             AtomsIn(new SqlPredicate.TypeTest("IS_STRING", Raw(P("a")))).Should().ContainSingle().Which.Body.Should().Be(PredicateAtom.RawReader, "the accessor re-typed ANY is taken apart");
 
             var element = P("tags").Element(0);
-            foreach (var read in new SqlValue[] { Raw(element), new SqlValue.Raw(element) { Form = PredicateAtom.ItemForm }, new SqlValue.Raw(element.Property("n")) { Column = "VARIANT" },
+            foreach (var read in new SqlValue[] { new SqlValue.Raw(element) { Form = PredicateAtom.ItemForm }, new SqlValue.Raw(element.Property("n")) { Column = "VARIANT" },
                 new SqlValue.Text(element) { Form = PredicateAtom.FieldForm }, new SqlValue.Raw(element) { Form = PredicateAtom.AnyCastForm } })
                 AtomsIn(Eq(read, "x")).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.ElementReader, read.ToString());
             AtomsIn(Eq(Text(element), "x")).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.TextReader, "the text of an element is as of a path holding it");
+            AtomsIn(Eq(Raw(element), "x")).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.RawReader, "an element's raw value is as of a path holding it");
+            AtomsIn(new SqlPredicate.TypeTest("IS_STRING", Raw(element))).Should().ContainSingle().Which.Should().Match<PredicateAtom>(a => a.Reader == PredicateAtom.RawReader && a.Body == PredicateAtom.RawReader,
+                "a test's body over an element's raw value reads it as of a path holding it");
+            AtomsIn(Eq(Raw(element.Property("n")), "x")).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.RawReader, "a property of an element is a path holding one");
         }
 
         /// <summary>The atoms the vocabulary reads a conjunct into, beside the registry's rows of readings.</summary>

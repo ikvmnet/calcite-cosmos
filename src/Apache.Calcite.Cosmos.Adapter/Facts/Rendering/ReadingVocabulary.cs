@@ -56,6 +56,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             StrictOp = graph.DefineFunction<string, bool>("strictop", ValueLattice.Min<bool>(), options: analysis);
             // Read beside the terms by the shared cast rule (h15b).
             MeasuredCast = graph.DefineRelation<string, string, string>("measuredcast", analysis);
+            // Read beside the terms by the predicate vocabulary's element rules: one set, so a rule reads a reading it lacks.
+            AsOfAPath = graph.DefineFunction<ValueSet<string>>("asofapath", ValueLattice.Union<string>(), options: analysis);
         }
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
@@ -132,6 +134,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public Relation<string, string, string> MeasuredCast { get; }
 
+        /// <summary>
+        /// The readings a <c>Calcite</c> row says an index reads as of a path holding the element, a test's body over each among
+        /// it, in one value (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>): the predicate vocabulary's element rules read a raw
+        /// value of an element as a path's where it names the reading, and as the element reading where it does not.
+        /// </summary>
+        public Function<ValueSet<string>> AsOfAPath { get; }
+
         /// <summary>The facts a root holds: the rows, the truth table and the comparisons the cell decides, and the table empty.</summary>
         public IEnumerable<Fact> Facts(CalciteRows rows, IEnumerable<(CosmosServiceTest Test, string Read, Truths Truths)> truths, IEnumerable<(CosmosServiceTest Test, string Read)> compares)
         {
@@ -178,6 +187,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var (target, reader, row) in rows.Casts)
                 yield return MeasuredCast.Of(target, reader, row);
+
+            yield return AsOfAPath.Of().Is(ValueSet.From(rows.AsOfAPath));
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

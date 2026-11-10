@@ -760,8 +760,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (IsCharacter(type))
                     return new SqlValue.Text(path);
 
-                // An element's rendering and RETURNING are as of a path holding it (Calcite.ReadingsOfAnIndexAreAsOfAPath);
-                // its raw value, which no row measured, the shared vocabulary reads as the element reading (h15b).
+                // An element's rendering, RETURNING and raw value are as of a path holding it, and a test's body over the raw
+                // value (Calcite.ReadingsOfAnIndexAreAsOfAPath, which the shared vocabulary reads).
                 if (CosmosRexShapes.IsDocumentValueType(type))
                     return new SqlValue.Raw(path);
 

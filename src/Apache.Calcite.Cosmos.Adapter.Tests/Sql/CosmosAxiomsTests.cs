@@ -133,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.NullThrough is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
-                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null))
+                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null || a.AsOfAPath is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -201,8 +201,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// point order parts and the one the emulator's moves, what a lone surrogate is stored as on the target that stores
         /// it so, what Azure's <c>CONTAINS</c> and a <c>LIKE</c> of one run read a string to, the mirror law, the boxes and
         /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
-        /// classes its witnesses held, the casts each citing its row, the text reader's order, and the classes each type
-        /// test is true of in process; and G1's, the two characters the emulator's spelling rewrites and the unpaired
+        /// classes its witnesses held, the casts each citing its row, the text reader's order, the classes each type test is
+        /// true of in process, and the readings an index reads as of a path, its raw value among them; and G1's, the two characters the emulator's spelling rewrites and the unpaired
         /// surrogate no parameter is sent holding on either target.
         /// </summary>
         [Fact]
@@ -240,6 +240,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .And.Contain(("CHAR", "VARCHAR")).And.Contain((JsonValues.BooleanType, "BOOLEAN")).And.NotContain(b => b.Kind == "INTEGER", "an INTEGER is boxed apart from a stored integer");
             CosmosAxiomRows.ReadSeesThrough(all).Should().BeEquivalentTo(PredicateAtom.Equal, PredicateAtom.NotEqual);
             CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
+            CosmosAxiomRows.ReadAsOfAPath(all).Should().BeEquivalentTo(PredicateAtom.TextReader, PredicateAtom.TypedReaders, PredicateAtom.QueryReader, PredicateAtom.RawReader);
+            CosmosAxiomRows.ReadCalcite(all).AsOfAPath.Should().Contain(PredicateAtom.RawReader, "an element's raw value, and a test's body over it, are as of a path holding it");
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
                 (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
                 (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader),

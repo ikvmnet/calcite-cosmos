@@ -219,7 +219,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
-                Metadata.CosmosStrictness.Operators, ReadCasts(axioms));
+                Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms));
+
+        /// <summary>
+        /// One row per reading a <c>Calcite</c> row says an index reads as of a path holding the element, a test's body over it
+        /// among it, both graphs' <c>asofapath</c>: which readings of an element the predicate vocabulary reads as a path's.
+        /// </summary>
+        public static IReadOnlyList<string> ReadAsOfAPath(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from reader in axiom.AsOfAPath ?? [] select reader).Distinct()];
 
         /// <summary>
         /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'

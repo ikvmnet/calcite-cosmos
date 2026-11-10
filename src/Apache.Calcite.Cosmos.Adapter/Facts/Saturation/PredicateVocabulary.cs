@@ -251,23 +251,44 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(v.Is(RawIn.Of(p, c)), NoElement.Of(p));
                 r.Then(Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
             });
-            // An element's raw value, however written, which no row measured as of a path holding it as the text, a RETURNING
-            // and JSON_QUERY are (Calcite.ReadingsOfAnIndexAreAsOfAPath): the element reading, which reads its rows alone, a
-            // row no run measured as anything and a raise (Calcite.ItemIsNullWhereNoElementIs, h15b).
-            Analyse.DefineRule("a raw value of a path holding an element reads the element reading", r =>
+            // An element's raw value reads as a path's where the readings an index reads as of a path name its reading
+            // (asofapath, Calcite.ReadingsOfAnIndexAreAsOfAPath): the accessor re-typed ANY, and a test's body over it, are
+            // measured so. One they do not name reads the element reading, which reads its rows alone, a row no run measured
+            // as anything and a raise (h15b): a column's reading of an element, which no run measured.
+            Analyse.DefineRule("a raw value of a path holding an element reads its path where an index reads the raw value as of a path", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)), HasElement.Of(p));
+                var s = r.Var<ValueSet<string>>("s");
+                r.When(v.Is(Raw.Of(p)), HasElement.Of(p), s.Is(Readings.AsOfAPath.Of()));
+                r.Where(Primitives.Contains<string>().Of(s, PredicateAtom.RawReader));
+                r.Then(Reads.Of(v, p, PredicateAtom.RawReader));
+            });
+            Analyse.DefineRule("a raw value of a path holding an element reads the element reading where an index does not read the raw value as of a path", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (s, named) = r.Vars<ValueSet<string>, bool>("s", "named");
+                r.When(v.Is(Raw.Of(p)), HasElement.Of(p), s.Is(Readings.AsOfAPath.Of()), named.Is(Primitives.Contains<string>().Of(s, PredicateAtom.RawReader)), named.Is(false));
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
-            Analyse.DefineRule("a raw value in a column of a path holding an element reads the element reading", r =>
+            Analyse.DefineRule("a raw value in a column of a path holding an element reads its path through the column where an index reads the column as of a path", r =>
             {
-                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
-                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p));
+                var (v, p, c, k) = r.Vars<Val, JPath, string, string>("v", "p", "c", "k");
+                var s = r.Var<ValueSet<string>>("s");
+                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p), k.Is(Compute.Of(c, PredicateAtom.RawIn)), s.Is(Readings.AsOfAPath.Of()));
+                r.Where(Primitives.Contains<string>().Of(s, k));
+                r.Then(Reads.Of(v, p, k));
+            });
+            Analyse.DefineRule("a raw value in a column of a path holding an element reads the element reading where an index does not read the column as of a path", r =>
+            {
+                var (v, p, c, k) = r.Vars<Val, JPath, string, string>("v", "p", "c", "k");
+                var (s, named) = r.Vars<ValueSet<string>, bool>("s", "named");
+                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p), k.Is(Compute.Of(c, PredicateAtom.RawIn)), s.Is(Readings.AsOfAPath.Of()),
+                    named.Is(Primitives.Contains<string>().Of(s, k)), named.Is(false));
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
             // A reading written apart, a field's, an item's, a cast's to ANY, reads what its reading reads (h15b); of a path
-            // holding an element, which no row measured of a field, the element reading.
+            // holding an element, the element reading, whatever its reading reads: no run measured a form of an element, and an
+            // item of one is no path's (Calcite.ItemIsNullWhereNoElementIs).
             Analyse.DefineRule("a reading written apart reads what its reading reads where its path holds no element", r =>
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");

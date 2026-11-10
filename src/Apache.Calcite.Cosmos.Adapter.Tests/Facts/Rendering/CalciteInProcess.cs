@@ -134,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         };
 
         /// <summary>The input record Calcite's executor reads a conjunct's fields from.</summary>
-        sealed class Record(object?[] record, JavaTypeFactoryImpl types) : org.apache.calcite.DataContext
+        internal sealed class Record(object?[] record, JavaTypeFactoryImpl types) : org.apache.calcite.DataContext
         {
 
             public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;

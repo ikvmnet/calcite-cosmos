@@ -625,8 +625,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "ITEM over a raw value is its element, counted from one, and null wherever there is no element: past the end, at zero, over an object, a null and an absent path. Over a scalar a VARIANT's is null too and an ANY's raises. An ANY's element is the value the reader built, and a VARIANT's is no box: unequal to every boxed value, and a cast of it raises.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AnItemIsNullWhereNoElementIs"),
             new("Calcite.ReadingsOfAnIndexAreAsOfAPath",
-                "A reading of an element, the text accessor, a RETURNING, JSON_QUERY and JSON_EXISTS alike, answers what the same reading of a path holding the element answers, and where there is no element, past the end or over a value that is no array, what it answers over an absent path.",
-                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath"),
+                "A reading of an element, the text accessor, a RETURNING, JSON_QUERY, JSON_EXISTS and the accessor re-typed ANY, the raw value a weakening's test is written over, alike, and each type test's body over any of them but JSON_EXISTS, answers what the same reading of a path holding the element answers, and where there is no element, past the end or over a value that is no array, what it answers over an absent path.",
+                CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath",
+                // The readings measured so, by the names the vocabulary keys them by, a test's body over each among it: its
+                // element rules read the raw value of an element as a path's where this names the raw reading (asofapath).
+                AsOfAPath: [PredicateAtom.TextReader, PredicateAtom.TypedReaders, PredicateAtom.QueryReader, PredicateAtom.RawReader]),
             new("Calcite.VariantEqualsOnlyItsOwnBox",
                 "A VARIANT equals a value cast to VARIANT only in its own box: a stored integer, boxed BIGINT, the integer cast to BIGINT and nothing else, a fraction, boxed DOUBLE, a DOUBLE, a boolean, boxed BOOLEAN, a BOOLEAN, and a string a string, a CHAR literal among them; so an IN of a number and its spelling keeps each in its own box alone. A text cast to VARIANT is a string box, equal to a boxed string where the text is that string; and a VARCHAR, a BOOLEAN, an INTEGER, a BIGINT, a DOUBLE and a DECIMAL cast to VARIANT are each null where the value is null.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteVariantMeasurementTests.AVariantEqualsOnlyItsOwnBox",
