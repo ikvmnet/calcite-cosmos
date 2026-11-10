@@ -2550,14 +2550,21 @@ across documents* and *A join of a container to itself* is the record.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
 - **The build follows Calcite's newest snapshot** — *small here; what blocks it is upstream.* The
-  `Apache.Calcite.*` packages declare `calcite-core` 1.43.0-SNAPSHOT, so every build of the adapter,
-  CI's and a user's alike, resolves whichever snapshot Apache published last, while the packages were
+  `Apache.Calcite.*` packages declare `calcite-core` 1.43.0-SNAPSHOT, which outranks the 1.42.0 the
+  adapter names, so every fresh build of the adapter, CI's on every run and a user's on a new machine
+  or after a clean, resolves whichever snapshot Apache published last, while the packages were
   compiled against the one that was newest when they were made. A snapshot that changes a signature
   they call fails plans at run time: CALCITE-7608 replaced the `Uncollect` constructor 2.0.1-pre.267
-  called. A pin from here cannot hold, since Apache deletes a snapshot days after the next one. The
-  build becomes reproducible when the packages name the exact snapshot they were compiled against and
-  that build is kept somewhere that serves it (calcite-dotnet's to do), or when Calcite 1.43.0 reaches
-  central; then the `apache-snapshots` repository leaves `Directory.Build.props`.
+  called. That also breaks an adapter already published, which keeps the packages it was packed
+  with, for anyone who restores it afresh until a release made against the new snapshot goes out.
+  A pin from here cannot hold: Apache keeps a superseded snapshot only a few days, and a pin made
+  here would land in the adapter's own POM and name a build its users cannot download. The build
+  becomes reproducible when the packages name the exact snapshot they were compiled against and that
+  build is kept somewhere that serves it (calcite-dotnet's to do), or when Calcite 1.43.0 reaches
+  central, which is when the `apache-snapshots` repository leaves `Directory.Build.props` and a
+  user's project no longer needs it. Until then the workflow runs only on a push or a pull request,
+  so a breaking snapshot shows up on whichever pull request runs next; a scheduled run on `main`
+  would show it there first.
 
 ---
 

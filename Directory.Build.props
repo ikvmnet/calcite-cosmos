@@ -55,11 +55,12 @@
 
         Until then, keep the Apache.Calcite.* packages on a build made against the snapshot this
         resolves. Each of those builds is compiled against the snapshot that was newest when it was
-        made, and this resolves the one that is newest now: when a snapshot changes a signature the
-        packages call, the build still succeeds and every plan that reaches the call fails with
-        MissingMethodException. CALCITE-7608 did that to Uncollect's constructor in snapshot 346, which
-        2.0.1-pre.267 called. A timestamped snapshot is no pin either: Apache's repository deletes
-        each one days after a newer one is published, and the pin would stop resolving.
+        made, and a fresh build resolves the one that is newest now: when a snapshot changes a
+        signature the packages call, the build still succeeds and every plan that reaches the call
+        fails at run time, with MissingMethodException for a changed method or constructor.
+        CALCITE-7608 did that to Uncollect's constructor in snapshot 346, which 2.0.1-pre.267 called.
+        A timestamped snapshot is no pin either: Apache's repository keeps a superseded snapshot only
+        a few days, and the pin would stop resolving.
         -->
         <MavenAdditionalRepositories>$(MavenAdditionalRepositories);apache-snapshots=https://repository.apache.org/content/repositories/snapshots;</MavenAdditionalRepositories>
     </PropertyGroup>
