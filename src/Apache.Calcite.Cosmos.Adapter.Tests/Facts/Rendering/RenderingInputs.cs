@@ -33,8 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         public static readonly CosmosContainerMetadata[] Containers = Built([.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()))]);
 
-        /// <summary>The containers, every one's S build started before any is awaited.</summary>
-        static CosmosContainerMetadata[] Built(CosmosContainerMetadata[] containers)
+        /// <summary>
+        /// The containers, every one's S build started before any is awaited and all of them awaited: for a test that binds
+        /// containers to reasonings of its own.
+        /// </summary>
+        public static CosmosContainerMetadata[] Built(CosmosContainerMetadata[] containers)
         {
             Task.WaitAll(containers.Select(c => c.Reasoning!.Rendering.Ready).ToArray());
             return containers;

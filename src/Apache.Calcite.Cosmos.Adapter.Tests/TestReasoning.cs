@@ -62,8 +62,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         /// <summary>
         /// The S build of the reasoning a connection's Cosmos schema plans in, started where it was not, read off the root
-        /// the connection plans against: a schema a model's factory makes reasons in one of its own, made as the connection
-        /// opened, so that a test reading what a plan pushes awaits it before the plan, as a fixture's is awaited.
+        /// the connection plans against: a schema a model's factory makes reasons in one of its own, made once for the data
+        /// source that every connection with an equivalent connection string shares, so that a test reading what a plan
+        /// pushes awaits it before the plan, as a fixture's is awaited.
         /// </summary>
         /// <param name="connection">The connection, open.</param>
         /// <param name="schema">The Cosmos schema's name in its root.</param>

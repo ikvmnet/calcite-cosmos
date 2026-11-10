@@ -326,7 +326,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 CaseSensitive = true,
             }.ConnectionString);
 
+            // The schema the model's factory made reasons in a reasoning of its own: its S build is awaited before anything
+            // plans, since a first question that waited past its bound would decline and keep every call in process, and
+            // the test would pass with nothing sent, even where the emulator's POSITION should make it skip.
             await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await TestReasoning.Ready(connection, "COSMOS", "strings");
 
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
