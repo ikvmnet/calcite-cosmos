@@ -744,10 +744,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads <c>JSON_VALUE</c>: the plain accessor typed as text is a rendering, re-typed <c>ANY</c> it is the raw
-            /// value, and under a scalar <c>RETURNING</c> it is that reading of the path, <c>RETURNING DECIMAL</c> among them,
+            /// value, and under any other <c>RETURNING</c> it is that reading of the path, <c>RETURNING DECIMAL</c> among them,
             /// whose parse of the rendering is the reading's own (<c>Calcite.ReturningDecimalParsesTheRendering</c>), though
             /// the translator addresses no path through it (<see cref="CosmosRexShapes.IsParsingJsonValue"/>).
             /// </summary>
+            /// <remarks>
+            /// <c>RETURNING VARIANT</c> is a <c>RETURNING</c> like the rest, not the raw value: it holds what it reads in no box,
+            /// so it equals no value cast to <c>VARIANT</c>, where a <c>VARIANT</c> column holding the same equals its own
+            /// (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>). Read as the raw value, <c>= 'bikes'</c> over it was sent exactly
+            /// and kept the documents Calcite drops.
+            /// </remarks>
             SqlValue? Accessor(RexCall call)
             {
                 if (CosmosRexShapes.IsPlainJsonValue(call) == false || CosmosRexShapes.IsArrayReturningJsonValue(call))
@@ -756,16 +762,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if ((_paths.TryResolveJsonPath(call, out var addressed) ? Addressed(addressed) : null) is not JsonDocumentPath path)
                     return null;
 
+                // Whether an element's reading is as of a path holding it is the shared vocabulary's, over the readings an
+                // index reads so (Calcite.ReadingsOfAnIndexAreAsOfAPath).
                 var type = call.getType()?.getSqlTypeName();
                 if (IsCharacter(type))
                     return new SqlValue.Text(path);
 
-                // An element's rendering, RETURNING and raw value are as of a path holding it, and a test's body over the raw
-                // value (Calcite.ReadingsOfAnIndexAreAsOfAPath, which the shared vocabulary reads).
-                if (CosmosRexShapes.IsDocumentValueType(type))
+                if (type == SqlTypeName.ANY)
                     return new SqlValue.Raw(path);
 
-                return Scalar(type) is string scalar ? new SqlValue.Typed(path, scalar) : null;
+                return Returning(type) is string returned ? new SqlValue.Typed(path, returned) : null;
             }
 
             /// <summary>
@@ -868,6 +874,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" or "FLOAT" or "REAL" or "DOUBLE" or "DECIMAL" or "BOOLEAN" => type.getName(),
                 _ => null,
             };
+
+            /// <summary>The type a <c>RETURNING</c> is read as: a scalar's, and <c>VARIANT</c>'s, which holds no box.</summary>
+            static string? Returning(SqlTypeName? type) => type == SqlTypeName.VARIANT ? type.getName() : Scalar(type);
 
             /// <summary>
             /// Numbers what is not read by the node itself, so that one predicate is one term and two are two.

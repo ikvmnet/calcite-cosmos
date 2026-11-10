@@ -225,6 +225,11 @@ This is the spelling to use for numbers that are stored as numbers. **Except `RE
 which parses a stored string — `"2"` is 2 to it (Chapter 7) — as the cast to a number below does: only
 the property's presence is sent, and the comparison rechecked in process.
 
+**And except `RETURNING VARIANT`.** Calcite does not wrap the value it reads in a `VARIANT` box, so it
+equals no value cast to `VARIANT`: `JSON_VALUE(c."DOC", '$.category' RETURNING VARIANT) = 'bikes'` is
+false even where the category is `"bikes"`, where the service's `c.category = "bikes"` is true. The
+comparison runs in process, so the answer is Calcite's.
+
 ### `CAST` to text: exact
 
 `CAST(x AS VARCHAR) = 'text'`, over a document value, selects exactly the documents storing the
@@ -556,6 +561,7 @@ documents it has to read.
 | `LIKE` with a `_`, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2) |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| `JSON_VALUE(… RETURNING VARIANT)` in a comparison | Calcite holds its value in no `VARIANT` box, so it equals no value cast to one, where the service compares the stored value (8.3) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |

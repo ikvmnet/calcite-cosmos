@@ -3024,6 +3024,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// <c>RETURNING VARIANT</c> holds what it reads in no box, so its equality with a string is FALSE and its inequality
+        /// TRUE wherever the path holds the string, and the comparison is Calcite's, of a path and of an element alike.
+        /// </summary>
+        /// <remarks>
+        /// The loader read the accessor typed <c>VARIANT</c> as the raw value, as it reads the one re-typed <c>ANY</c>, so the
+        /// equality was sent exactly, <c>WHERE (c.category = @p0)</c>, keeping the bikes Calcite drops, and the inequality
+        /// dropped the documents Calcite keeps; once an element's raw value was read as a path's, an element's was sent so
+        /// too. It is a <c>RETURNING</c> of its own type, which no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
+        /// </remarks>
+        [Theory]
+        [InlineData("$.category", "=")]
+        [InlineData("$.category", "<>")]
+        [InlineData("$.tags[0]", "=")]
+        [InlineData("$.tags[0]", "<>")]
+        public void AReturningVariantIsComparedByCalcite(string path, string op)
+        {
+            var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '{path}' RETURNING VARIANT) {op} 'bikes'");
+
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c", "no reading of the path is sent: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
+        }
+
+        /// <summary>
         /// Two typed accessors over elements are two paths no fact is about, either of which may hold a JSON null.
         /// </summary>
         /// <remarks>
