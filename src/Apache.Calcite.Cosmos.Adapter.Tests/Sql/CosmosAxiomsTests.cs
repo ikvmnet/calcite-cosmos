@@ -243,7 +243,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
                 (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
                 (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
-                (PredicateAtom.FieldForm, PredicateAtom.RaisesReader), (PredicateAtom.ItemForm, PredicateAtom.RaisesReader), (PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader) });
+                (PredicateAtom.FieldForm, PredicateAtom.RaisesReader), (PredicateAtom.ItemForm, PredicateAtom.RaisesReader), (PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader),
+                (PredicateAtom.TextCastForm, PredicateAtom.RaisesReader) });
 
             var parse = PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader);
             CosmosAxiomRows.ReadCalciteReadings(all).Should().HaveCount(30).And.Contain((parse, Class.String, CosmosCalciteReading.Parses))

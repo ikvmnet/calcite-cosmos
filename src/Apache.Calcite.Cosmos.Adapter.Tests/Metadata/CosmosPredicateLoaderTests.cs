@@ -249,6 +249,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Load(Call(CosmosOperators.IsString, JsonValue("label"))).Conjuncts.Should().ContainSingle().Which.Should().BeOfType<SqlPredicate.TypeTest>();
         }
 
+        /// <summary>
+        /// A one-place test over a cast of the text to <c>VARCHAR</c> is asked over the cast written apart as its form, whose
+        /// <c>testreads</c> row says the body raises (review 3), the schema's own <c>IS_DEFINED</c> and a type test alike; a
+        /// comparison over the same cast reads it as the text it renders.
+        /// </summary>
+        [Fact]
+        public void ATestOverACastOfTheTextIsAskedOverTheCastWrittenApart()
+        {
+            var cast = _rex.makeAbstractCast(Sql(SqlTypeName.VARCHAR), JsonValue("label"), false);
+            var apart = new SqlValue.Text(Label) { Form = PredicateAtom.TextCastForm };
+            Load(Call(CosmosOperators.IsDefined, cast)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.IsDefined(apart));
+            Load(Call(CosmosOperators.IsString, cast)).Conjuncts.Should().ContainSingle().Which.Should().Be(new SqlPredicate.TypeTest("IS_STRING", apart));
+            Load(Call(SqlStdOperatorTable.EQUALS, cast, Str("x"))).Conjuncts.Should().ContainSingle().Which.Should().Be(Eq(Text(Label), "x"));
+        }
+
         [Fact]
         public void ANumericCastIsACastOfTheReadingItConverts()
         {
