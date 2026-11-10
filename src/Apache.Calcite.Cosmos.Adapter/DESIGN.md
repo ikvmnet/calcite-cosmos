@@ -10347,10 +10347,13 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   value. Calcite holds what `RETURNING VARIANT` reads in no box, so it equals no value cast to `VARIANT`, a string, a
   `BIGINT`, an `INTEGER` and a `BOOLEAN` among them: `=` is false and `<>` true wherever the path holds a scalar, and
   both are null where it holds an object, a JSON null or nothing, where a `VARIANT` column holding the same value equals
-  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). The loader now writes
-  it as a `RETURNING` of `VARIANT`, `typed:VARIANT`, a reading no row measures, so S proves nothing over it and Calcite
-  compares it (`CosmosPlannerTests.AReturningVariantIsComparedByCalcite`, over a path and an element, `=` and `<>`). No
-  corpus statement reads one, so no digest line moves for it.
+  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). Its null test was sent
+  as the raw value's too, `NOT IS_DEFINED(c.category) OR IS_NULL(c.category)`, where Calcite's is TRUE over an object as
+  well. The loader now writes it as a `RETURNING` of `VARIANT`, `typed:VARIANT`, whose value no row measures (a type
+  test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over
+  it and Calcite evaluates every filter over it, a comparison, a null test and a type test
+  (`CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`, over a path and an element). No corpus statement reads
+  one, so no digest line moves for it.
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
   (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no

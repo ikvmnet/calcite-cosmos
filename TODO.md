@@ -2694,11 +2694,12 @@ across documents* and *A join of a container to itself* is the record.
 - **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
   in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
   `c.pk = 42` is unchecked.
-- **`RETURNING VARIANT` is compared in process** — *small.* The loader reads `JSON_VALUE … RETURNING VARIANT` as a
-  `RETURNING` of `VARIANT` (`typed:VARIANT`), which no row measures, so S proves nothing over it and Calcite compares
-  it. Calcite holds what it reads in no box: it equals no value cast to `VARIANT`, `=` false and `<>` true where the
-  path holds a scalar and null where it holds none, and its null test is the path holding no scalar
-  (`Calcite.VariantEqualsOnlyItsOwnBox`). No rule reads those cells; rows of its own would let S send them.
+- **A filter over `RETURNING VARIANT` runs in process** — *small; RU, never rows.* The loader reads `JSON_VALUE …
+  RETURNING VARIANT` as a `RETURNING` of `VARIANT` (`typed:VARIANT`), whose value no row measures, so S proves nothing
+  over it and Calcite evaluates every filter over it: a comparison, a null test and a type test. Calcite holds what it
+  reads in no box: it equals no value cast to `VARIANT`, `=` false and `<>` true where the path holds a scalar and null
+  where it holds none, and its null test is the path holding no scalar (`Calcite.VariantEqualsOnlyItsOwnBox`). No rule
+  reads those cells; rows of its own would let S send the null test and the type tests.
 - **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
   `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,
   `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as

@@ -3024,26 +3024,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// <c>RETURNING VARIANT</c> holds what it reads in no box, so its equality with a string is FALSE and its inequality
-        /// TRUE wherever the path holds the string, and the comparison is Calcite's, of a path and of an element alike.
+        /// <c>RETURNING VARIANT</c> holds what it reads in no box, so its equality with a string is FALSE and its
+        /// inequality TRUE wherever the path holds the string, and its null test TRUE where the path holds an object:
+        /// every filter over it is Calcite's, a comparison, a null test and a type test, of a path and of an element
+        /// alike.
         /// </summary>
         /// <remarks>
-        /// The loader read the accessor typed <c>VARIANT</c> as the raw value, as it reads the one re-typed <c>ANY</c>, so the
-        /// equality was sent exactly, <c>WHERE (c.category = @p0)</c>, keeping the bikes Calcite drops, and the inequality
-        /// dropped the documents Calcite keeps; once an element's raw value was read as a path's, an element's was sent so
-        /// too. It is a <c>RETURNING</c> of its own type, which no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
+        /// The loader read the accessor typed <c>VARIANT</c> as the raw value, as it reads the one re-typed <c>ANY</c>,
+        /// so the equality was sent exactly, <c>WHERE (c.category = @p0)</c>, keeping the bikes Calcite drops, and the
+        /// inequality dropped the documents Calcite keeps; the null test was sent as the raw value's, <c>NOT
+        /// IS_DEFINED(c.category) OR IS_NULL(c.category)</c>, dropping a document holding an object there, which
+        /// Calcite keeps; once an element's raw value was read as a path's, an element's was sent so too. It is a
+        /// <c>RETURNING</c> of its own type, whose value no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
         /// </remarks>
         [Theory]
-        [InlineData("$.category", "=")]
-        [InlineData("$.category", "<>")]
-        [InlineData("$.tags[0]", "=")]
-        [InlineData("$.tags[0]", "<>")]
-        public void AReturningVariantIsComparedByCalcite(string path, string op)
+        [InlineData("$.category", "{0} = 'bikes'")]
+        [InlineData("$.category", "{0} <> 'bikes'")]
+        [InlineData("$.category", "{0} IS NULL")]
+        [InlineData("$.category", "{0} IS NOT NULL")]
+        [InlineData("$.category", "IS_STRING({0})")]
+        [InlineData("$.tags[0]", "{0} = 'bikes'")]
+        [InlineData("$.tags[0]", "{0} <> 'bikes'")]
+        [InlineData("$.tags[0]", "{0} IS NULL")]
+        [InlineData("$.tags[0]", "{0} IS NOT NULL")]
+        [InlineData("$.tags[0]", "IS_STRING({0})")]
+        public void AFilterOverAReturningVariantIsCalcites(string path, string filter)
         {
-            var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '{path}' RETURNING VARIANT) {op} 'bikes'");
+            var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE " + string.Format(filter, $"JSON_VALUE(c.\"DOC\", '{path}' RETURNING VARIANT)"));
 
             Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c", "no reading of the path is sent: " + Plan(best));
-            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter", "the filter is Calcite's to evaluate: " + Plan(best));
         }
 
         /// <summary>
