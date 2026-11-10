@@ -3627,13 +3627,13 @@ across documents* and *A join of a container to itself* is the record.
   2410, whose weakening sends the category's test since h15b beside the same concatenation
   (`reports/stage3-3A/h15b/line13-gate.txt`). 1909's six were read there as tests over an element's raw value, which the
   filter beneath declined; since that raw value is measured as a path's it reads 3,561, none over the element reading,
-  and fails on the same four (`reports/stage3-element/fix1/tests/line13-gate.txt`). It reads 130 fewer, 198 weakenings
-  gone and 68 new, each in a statement that reads an element: S now sends whole a conjunct that tests an element beside
-  other tests, which it had weakened by dropping the element's tests, and under `Emulator` weakens one that orders an
-  element against a string, which it had kept in process (DESIGN.md, *An element's raw value is a path's*). 2395, 2396,
-  2688 and 2689 are judged, each holding a type test the builder now writes over the accessor re-typed `ANY`. Line 13's
-  leg is the pull request's size, where it passes. The fix is to judge in process any conjunct IrEval measures on no
-  document, and to claim as the filter beneath does.
+  and fails on the same four. It reads 130 fewer, 198 weakenings gone and 68 new, each in a statement that reads an
+  element: S now sends whole a conjunct that tests an element beside other tests, which it had weakened by dropping the
+  element's tests, and under `Emulator` weakens one that orders an element against a string, which it had kept in
+  process (DESIGN.md, *An element's raw value is a path's*). 2395, 2396, 2688 and 2689 are judged, each holding a type
+  test the builder now writes over the accessor re-typed `ANY`. Line 13's leg is the pull request's size, where it
+  passes. The fix is to judge in process any conjunct IrEval measures on no document, and to claim as the filter beneath
+  does.
 - **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
   Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.

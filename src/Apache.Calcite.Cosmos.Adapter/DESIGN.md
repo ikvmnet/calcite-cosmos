@@ -10348,13 +10348,6 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   eight: S has 202 rules and F 77, where 13fd800 had 201 and 76.
   `PredicateVocabularyTests.AnElementsAccessorIsAPathsWhereAnIndexReadsItSo` reads each accessor of an element under the
   registry's cell and under one naming nothing, and a column's under the registry's and under one naming it.
-- **`RETURNING VARIANT` is a reading of its own.** The loader read `JSON_VALUE … RETURNING VARIANT` as the raw value, as
-  it reads the accessor re-typed `ANY`, so the box rules read `= CAST('bikes' AS VARIANT)` over it as the raw value's
-  equality and sent it exactly: `c.category = @p0` already at 13fd800, and `c.tags[0] = @p0` once the cell named the raw
-  value. Calcite holds what `RETURNING VARIANT` reads in no box, so it equals no value cast to `VARIANT`, a string, a
-  `BIGINT`, an `INTEGER` and a `BOOLEAN` among them: `=` is false and `<>` true wherever the path holds a scalar, and
-  both are null where it holds an object, a JSON null or nothing, where a `VARIANT` column holding the same value equals
-  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). Its null test was sent
 - **Characters read the cell too.** F's rules of a value's characters read the same `reads`: the text, the raw value, a
   column's reading and a cast to text of one hold the path's characters where they read the path, and a reading written
   apart holds its reading's where it reads what its reading reads. Before, they matched the accessor's term, so an
@@ -10364,6 +10357,13 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   (`PredicateRules.CharacterSaturation`). Under the registry's cell an element's text and raw value hold what they held;
   its column reading, field, item and cast to `ANY` hold nothing, as they read nothing measured
   (`ComputedCharactersTests.AnElementsCharactersAreItsPathsWhereAnIndexReadsItSo`).
+- **`RETURNING VARIANT` is a reading of its own.** The loader read `JSON_VALUE … RETURNING VARIANT` as the raw value, as
+  it reads the accessor re-typed `ANY`, so the box rules read `= CAST('bikes' AS VARIANT)` over it as the raw value's
+  equality and sent it exactly: `c.category = @p0` already at 13fd800, and `c.tags[0] = @p0` once the cell named the raw
+  value. Calcite holds what `RETURNING VARIANT` reads in no box, so it equals no value cast to `VARIANT`, a string, a
+  `BIGINT`, an `INTEGER` and a `BOOLEAN` among them: `=` is false and `<>` true wherever the path holds a scalar, and
+  both are null where it holds an object, a JSON null or nothing, where a `VARIANT` column holding the same value equals
+  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`, measured in `AVariantEqualsOnlyItsOwnBox`). Its null test was sent
   as the raw value's too, `NOT IS_DEFINED(c.category) OR IS_NULL(c.category)`, where Calcite's is TRUE over an object as
   well. The loader now writes it as a `RETURNING` of `VARIANT`, `typed:VARIANT`, whose value no row measures (a type
   test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over
@@ -10377,9 +10377,9 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
 
 **What it moved.** Against 13fd800's digests (`92d62c75…` under `Production` and `7fc46555…` under `Emulator`), this
 branch's (`b761612a…` and `fdcd03b8…`, net10.0 and net8.0 byte-equal) move 49 statements under `Production` and 53 under
-`Emulator`: 29 and 33 gains, 18 and 20 tighter and 2 and 0 respelled, none looser and none incomparable
-(`reports/stage3-element/fix1/listing-13fd800.tsv`). The listing's comparator is h15b's with the documents a random draw
-seldom makes added: the one lacking every path, each path alone, and each drawn document lacking each path in turn.
+`Emulator`: 29 and 33 gains, 18 and 20 tighter and 2 and 0 respelled, none looser and none incomparable. The listing's
+comparator is h15b's with the documents a random draw seldom makes added: the one lacking every path, each path alone,
+and each drawn document lacking each path in turn.
 h15b's draw alone had read six of these lines as respelled, partitions 488 under each set and 999, 1908, 1909 and 2435
 under `Emulator`; each sends a test of an element's presence, which only a document lacking it tells apart. Read against
 h15's, every one of h15b's 40 and 42 looser lines sends h15's documents again or fewer: 8 and 19 byte-equal, 31 and 22
@@ -10406,9 +10406,8 @@ whole and leaves no weakening to check: 60 fewer at the pull request's size, 30 
 and 489 and differential 356, six statements each), and 198 at the gate's. Under `Emulator` a conjunct ordering an
 element against a string, alone or beside other tests, which 13fd800's S kept in process whole, is weakened now by the
 element's type test, where `Production` sends it exactly: 50 more at the pull request's size, all but one under
-`Emulator` (differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. The lists are
-diffed in `reports/stage3-element/fix1/line13-weakenings-*.txt`. Line 1c at the gate's size judges 498 opaque weakenings
-over 26,067 documents and loses no row.
+`Emulator` (differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. Line 1c at
+the gate's size judges 498 opaque weakenings over 26,067 documents and loses no row.
 
 ## Differential testing
 
