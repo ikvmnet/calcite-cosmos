@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -20,8 +21,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// S's generations: each defined off the planning thread, a spent one answering until its successor is ready and serving
-    /// its bundles after, one a bundle found out of ids or epochs retired at once, and a bundle the engine failed declining
-    /// rather than throwing.
+    /// its bundles after, one a bundle found out of ids or epochs retired at once, a build over where it publishes or fails
+    /// rather than where its task finishes, and a bundle the engine failed declining rather than throwing.
     /// </summary>
     public sealed class RenderingGraphTests
     {
@@ -96,21 +97,133 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// A successor's build that throws, the definition having built once, is no row's fault: S stays available and the
-        /// current answers; the next is started after the retry, and swapped in.
+        /// current answers; the first question past the retry starts the next, and it is swapped in. The failed build is
+        /// held where it recorded its failure, its task unfinished, while that question is asked: it is over there.
         /// </summary>
         [Fact]
         public void ASuccessorsFailureLeavesTheCurrentAnswering()
         {
-            var (forced, defined) = (false, 0);
-            var graph = new RenderingGraph(() => Interlocked.Increment(ref defined) == 2 ? throw new OutOfMemoryException("planted") : Measured, _ => forced, retry: TimeSpan.Zero);
-            var first = graph.Current();
-            forced = true;
-            graph.Current();
-            SpinWait.SpinUntil(() => graph.SuccessorFailures == 1, TimeSpan.FromMinutes(1)).Should().BeTrue();
-            (graph.Available, ReferenceEquals(graph.Current(), first)).Should().Be((true, true));
-            SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue();
-            forced = false;
-            (ReferenceEquals(graph.Current(), first), graph.SuccessorFailures, graph.Available).Should().Be((false, 1, true));
+            var (forced, defined, failing, release) = (false, 0, 0, new ManualResetEventSlim(false));
+            var graph = new RenderingGraph(() =>
+            {
+                if (Interlocked.Increment(ref defined) != 2)
+                    return Measured;
+
+                Volatile.Write(ref failing, Environment.CurrentManagedThreadId);
+                throw new OutOfMemoryException("planted");
+            }, _ => forced, retry: TimeSpan.Zero, recorded: () =>
+            {
+                if (Environment.CurrentManagedThreadId == Volatile.Read(ref failing))
+                    release.Wait(TimeSpan.FromMinutes(1));
+            });
+
+            try
+            {
+                var first = graph.Current();
+                forced = true;
+                graph.Current();
+                SpinWait.SpinUntil(() => graph.SuccessorFailures == 1, TimeSpan.FromMinutes(1)).Should().BeTrue();
+                (graph.Available, ReferenceEquals(graph.Current(), first)).Should().Be((true, true));
+                SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue("the question past the retry started the next");
+                forced = false;
+                (ReferenceEquals(graph.Current(), first), graph.SuccessorFailures, graph.Available).Should().Be((false, 1, true));
+            }
+            finally
+            {
+                release.Set();
+            }
+        }
+
+        /// <summary>
+        /// A build is over where it publishes its generation, not where its task finishes: a question that finds the
+        /// generation ageing starts its successor, and it is swapped in, while the build that published it is held short of
+        /// finishing.
+        /// </summary>
+        [Fact]
+        public void AGenerationAgeingAsItIsPublishedStartsItsSuccessor()
+        {
+            var (forced, defined, holding, release) = (false, 0, 0, new ManualResetEventSlim(false));
+            var graph = new RenderingGraph(() =>
+            {
+                if (Interlocked.Increment(ref defined) == 1)
+                    Volatile.Write(ref holding, Environment.CurrentManagedThreadId);
+
+                return Measured;
+            }, _ => forced, recorded: () =>
+            {
+                if (Environment.CurrentManagedThreadId == Volatile.Read(ref holding))
+                    release.Wait(TimeSpan.FromMinutes(1));
+            });
+
+            try
+            {
+                graph.Warm();
+                SpinWait.SpinUntil(() => graph.Generations == 1, TimeSpan.FromMinutes(1)).Should().BeTrue();
+                forced = true;
+                var first = graph.Current();
+                forced = false;
+                SpinWait.SpinUntil(() => graph.Generations == 2, TimeSpan.FromMinutes(1)).Should().BeTrue("the question started the successor");
+                (ReferenceEquals(graph.Current(), first), graph.Ready.IsCompleted).Should().Be((false, false), "the successor answers while the first build's task is unfinished");
+            }
+            finally
+            {
+                release.Set();
+            }
+        }
+
+        /// <summary>
+        /// A build is over where it publishes, not where its task finishes: a question whose wait for the build runs out
+        /// between the two answers from what it published rather than declining.
+        /// </summary>
+        [Fact]
+        public void AWaitThatRunsOutAfterTheBuildPublishedAnswers()
+        {
+            // The publish must land well inside the question's wait for the question to tell anything: a machine that stalls
+            // the build, or this thread, past that is tried again on a fresh graph, and one that stalls them every time tells
+            // nothing.
+            for (var attempt = 0; attempt < 3; attempt++)
+                if (AskedAsTheBuildPublishes(TimeSpan.FromSeconds(3)) is { } told)
+                {
+                    told.Should().Be((true, true, 1));
+                    return;
+                }
+
+            Assert.Skip("The build published too late in the question's wait, three times.");
+        }
+
+        /// <summary>
+        /// Holds a first build short of publishing until a question waits on it, then lets it publish and holds its task
+        /// unfinished past the question's wait: what the question told, or none where the publish landed too late in it.
+        /// </summary>
+        static (bool Answered, bool Current, int Generations)? AskedAsTheBuildPublishes(TimeSpan wait)
+        {
+            var (held, publish, finish) = (new ManualResetEventSlim(false), new ManualResetEventSlim(false), new ManualResetEventSlim(false));
+            var graph = new RenderingGraph(() => Measured, exercised: (_, _) =>
+            {
+                held.Set();
+                publish.Wait(TimeSpan.FromMinutes(1));
+            }, recorded: () => finish.Wait(TimeSpan.FromMinutes(1)));
+
+            try
+            {
+                graph.Warm();
+                held.Wait(TimeSpan.FromMinutes(1)).Should().BeTrue();
+
+                var (answered, theory, since) = (false, (RenderingTheory?)null, Stopwatch.GetTimestamp());
+                var asker = new Thread(() => answered = graph.TryCurrent(wait, out theory));
+                asker.Start();
+                SpinWait.SpinUntil(() => (asker.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0 || asker.IsAlive == false, TimeSpan.FromMinutes(1)).Should().BeTrue();
+                publish.Set();
+                SpinWait.SpinUntil(() => graph.Generations == 1, TimeSpan.FromMinutes(1)).Should().BeTrue();
+                var early = Stopwatch.GetElapsedTime(since) < wait - TimeSpan.FromSeconds(0.5);
+                asker.Join(TimeSpan.FromMinutes(1)).Should().BeTrue();
+                return early ? (answered, ReferenceEquals(theory, graph.Current()), graph.Generations) : null;
+            }
+            finally
+            {
+                publish.Set();
+                finish.Set();
+            }
         }
 
         /// <summary>

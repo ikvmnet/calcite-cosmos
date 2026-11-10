@@ -37,6 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         readonly Func<GraphUsage, bool> _ageing;
         readonly TimeSpan _retry;
         readonly Action<SqlPredicate, RenderingAnswer>? _exercised;
+        readonly Action? _recorded;
         readonly object _starting = new();
         volatile RenderingTheory? _current;
         volatile Exception? _failure;
@@ -52,12 +53,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// Told the warm-up question and its answer on the build's thread, which production prints so that its printer is
         /// warm too; what it throws fails the generation, as the question's own failure does.
         /// </param>
-        public RenderingGraph(Func<RenderingDefinition> define, Func<GraphUsage, bool>? ageing = null, TimeSpan? retry = null, Action<SqlPredicate, RenderingAnswer>? exercised = null)
+        /// <param name="recorded">
+        /// Told on the build's thread once the build has published its generation or recorded its failure, before its task
+        /// finishes; a test holds a build there, where an asker must find it over. <see cref="Ready"/>, where this is the
+        /// first build, and a question waiting on this build since before it published or failed, end only once it
+        /// returns, or once the question's wait runs out; a question asked after that does not wait on it. It must not
+        /// throw: its task would fault, and every wait on it would throw.
+        /// </param>
+        public RenderingGraph(Func<RenderingDefinition> define, Func<GraphUsage, bool>? ageing = null, TimeSpan? retry = null, Action<SqlPredicate, RenderingAnswer>? exercised = null, Action? recorded = null)
         {
             _define = define;
             _ageing = ageing ?? (usage => usage.FractionUsed >= SuccessorUsed || usage.InternedValues >= SuccessorInterned);
             _retry = retry ?? DefaultRetry;
             _exercised = exercised;
+            _recorded = recorded;
         }
 
         /// <summary>
@@ -81,7 +90,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Whether the first generation's build was started: warmed, awaited or asked.</summary>
         internal bool Started => Volatile.Read(ref _first) is not null;
 
-        /// <summary>The first generation's build, started where it was not: done once a generation answers or the definition threw.</summary>
+        /// <summary>
+        /// The first generation's build, started where it was not: done once its task finishes, a moment after its generation
+        /// is published or its failure recorded.
+        /// </summary>
         public Task Ready
         {
             get
@@ -126,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// The generation a bundle opened now would be a child of, read without a lock, and its successor started where it
         /// is ageing. Where none answers — none built yet, or the current ran out — waits for the build at most
         /// <paramref name="wait"/> from when a question first waited on it, so that a plan of many questions waits once;
-        /// <c>false</c> past it, or where the first definition threw.
+        /// <c>false</c> where none answers once it has waited, or where the first definition threw.
         /// </summary>
         internal bool TryCurrent(TimeSpan wait, [NotNullWhen(true)] out RenderingTheory? theory)
         {
@@ -144,7 +156,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             var (build, since) = Start(theory, waiting: true);
             var left = wait == Timeout.InfiniteTimeSpan ? wait : wait - Stopwatch.GetElapsedTime(since);
-            theory = build.Wait(left == Timeout.InfiniteTimeSpan || left > TimeSpan.Zero ? left : TimeSpan.Zero) ? _current : null;
+            build.Wait(left == Timeout.InfiniteTimeSpan || left > TimeSpan.Zero ? left : TimeSpan.Zero);
+
+            // Read whether or not the wait ran out: a build is over where it publishes, before its task finishes.
+            theory = _current;
             return theory is { RanOut: false };
         }
 
@@ -194,22 +209,32 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var digest = RenderingAnswerMemo.DigestOf(theory);
                 Exercise(theory);
 
-                // Published under the lock builds start under, so that an asker holding the generation it replaces starts none.
+                // Published under the lock builds start under, so that an asker holding the generation it replaces starts none,
+                // and counted there; and the build is over there, not once its task finishes, so that an asker after it may start
+                // the next.
                 lock (_starting)
-                    (_current, _digest) = (theory, digest);
-
-                Interlocked.Increment(ref _generations);
+                {
+                    (_current, _digest, _building) = (theory, digest, null);
+                    Interlocked.Increment(ref _generations);
+                }
             }
             catch (Exception e)
             {
-                // A successor is the definition that built once, so its failure is no row's: the current answers on, and the
-                // next is started after the retry.
+                // A successor is the definition that built once, so its failure is no row's: the current answers on where it has
+                // not run out, and the next is started by the first asker past the retry, though this build's task may not have
+                // finished.
                 lock (_starting)
+                {
                     if (_current is null)
                         _failure = e;
                     else
                         (_successorFailures, _retryAt) = (_successorFailures + 1, Stopwatch.GetTimestamp() + (long)(_retry.TotalSeconds * Stopwatch.Frequency));
+
+                    _building = null;
+                }
             }
+
+            _recorded?.Invoke();
         }
 
         /// <summary>
