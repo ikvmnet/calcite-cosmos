@@ -234,8 +234,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>
         /// The case-insensitive affix S says a <c>LIKE</c> over a fold answers as (<c>foldedas</c>, G6): the <c>LIKE</c> written,
         /// each path and call in it imported as the asker's facts hold them, run, and read. What the translator writes such a
-        /// <c>LIKE</c> as, until S writes the <c>WHERE</c> (h16); <c>null</c> where S says none, with why. Asked, counted and
-        /// remembered as every bridge question is (<see cref="Bridged"/>).
+        /// <c>LIKE</c> as in a conjunct S does not own (a parameter's, until 3B, or an opaque term's) and in a column (until
+        /// h37); <c>null</c> where S says none, with why. Asked, counted and remembered as every bridge question is
+        /// (<see cref="Bridged"/>).
         /// </summary>
         /// <param name="set">The set the statement is planned under.</param>
         /// <param name="like">The <c>LIKE</c> as the loader that reads places reads it.</param>

@@ -896,18 +896,8 @@ namespace Apache.Calcite.Cosmos.Adapter
             if (input is not CosmosRel rel)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
 
-            // Branch-only, the Stage 3 census's (deleted at h16): the subtree's root, the first node this implementor visits.
-            if (_planned == false)
-            {
-                _planned = true;
-                if (CosmosRenderingCapture.Armed)
-                    CosmosRenderingCapture.Observer?.Planned(input, _container);
-            }
-
             rel.Implement(this);
         }
-
-        bool _planned;
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.

@@ -403,10 +403,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (_compared?.Count > 0)
                     _parameters.Recheck(Recheck(expanded) ?? throw new CosmosTranslationException("A comparison whose parameter decides its exactness sits where the reader cannot recheck its conjunct."));
 
-                // Branch-only, the Stage 3 census's (deleted at h16).
-                if (Metadata.CosmosRenderingCapture.Armed)
-                    Metadata.CosmosRenderingCapture.Observer?.Translated(conjunct ? "conjunct" : value ? "value" : "predicate", node, builder.ToString());
-
                 return builder.ToString();
             }
             finally
@@ -2149,10 +2145,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (reading == CosmosReading.Typed && Client.CosmosJson.CanRead(node.getType()) == false)
                 throw new CosmosTranslationException(
                     $"A projection typed '{node.getType()}' has no Cosmos JSON reading, so pushing it would render a column that cannot be read back.");
-
-            // Branch-only, the Stage 3 census's (deleted at h16).
-            if (Metadata.CosmosRenderingCapture.Armed)
-                Metadata.CosmosRenderingCapture.Observer?.Translated("column", node, expression);
 
             return expression;
         }
@@ -4527,18 +4519,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // REPLACE's search is matched against the subject, a compared position (_spelled); its replacement is not.
             WriteFunctionCall(builder, call, mapping.Name, name == "REPLACE" ? 1 : -1);
-        }
-
-        /// <summary>
-        /// Looks through the casts Calcite types a literal operand with: a literal one changes is integral or text only
-        /// where it changes nothing, and is otherwise read as no literal by its reader.
-        /// </summary>
-        static RexNode StripCast(RexNode node)
-        {
-            while (node is RexCall cast && KindOf(cast) == nameof(SqlKind.__Enum.CAST) && cast.getOperands().size() == 1)
-                node = Operand(cast, 0);
-
-            return node;
         }
 
         /// <summary>

@@ -6406,12 +6406,12 @@ fails it, where the translator pushed it whole and the service answered. An orde
 Calcite compiles none of, is one; a one-place test whose in-process body raises over its reading, as over a field, an
 item, a cast and a call, is another, its atom carrying the raise over a field and a call, and over an item, a cast to
 `ANY` and a field read as text or as a scalar type since h15b, which writes each apart (*A test carries its reading's
-raise (raises)*, *Elements, forms apart and the emulator's `LIKE` (h15b)*). The census declines each by name under the
-owner's reason (`OwnerDecisions`, `owner 2026-11-08: Calcite fails on every row`), and the production path reads them so
-from the switch, where it reads places. A weakening is none of them: Calcite never evaluates one, the service applying
-it before Calcite applies the whole filter, so the 127 pushes the raises step named, each a weakening the Rex builder
-wrote over a declared field, were not the owner's to decide, and since h15b the builder writes such a test over the
-path's accessor re-typed `ANY`.
+raise (raises)*, *Elements, forms apart and the emulator's `LIKE` (h15b)*). The census declined each by name under the
+owner's reason (`OwnerDecisions`, `owner 2026-11-08: Calcite fails on every row`) until h16 removed both, and the
+production path reads them so from the switch, where it reads places. A weakening is none of them: Calcite never
+evaluates one, the service applying it before Calcite applies the whole filter, so the 127 pushes the raises step named,
+each a weakening the Rex builder wrote over a declared field, were not the owner's to decide, and since h15b the builder
+writes such a test over the path's accessor re-typed `ANY`.
 
 **What the evaluation fills is held to one value a key.** `partition`, which cuts at the reader's edges, `svc` and
 `outcomes` have no lattice: each is computed once for each match of its rule, and a key two matches reach — a part two
@@ -9670,6 +9670,40 @@ form, 180 with a `CASE` (20 declined beneath), 17 not pushed and 35 over an elem
 the gate's size it reads 3,691 and judges four on nothing (`TODO.md`, *Line 13 judges four of the gate's weakenings on
 nothing*).
 
+### The deletions (h16)
+
+The census is gone, and with it every line the branch carried for it alone: `CosmosRenderingCapture.Census` and its
+tee, the observer's `Planned`, `Translated` and `Rewritten` hooks and their calls in `CosmosImplementor`,
+`CosmosRexTranslator` and `CosmosFactRewriter`; and among the tests `TranslatorCensus`, `WhereTriage`, `OwnerDecisions`
+and the test reader's syntax half (`CosmosSqlFormReader.ReadSyntax`, which read the translator's whole expression).
+What the census decided stays in its reports (`reports/stage3-3A`) and in the branch's history before h16. Two members
+nothing reached went beside them: `CosmosRexTranslator.StripCast`, unused since G6, and `ReadingRows.AnswersOf`, unused
+since G7. No line under `src` is marked as the branch's alone, which h16's grep checks.
+
+**What did not go, and why.** Site W's clause and `RenderingFamily.Owns`' refusing arm went with the switch (h15), and
+no `RenderingSentTests` assertion is voided by it: each counts or judges what is sent, S's or the translator's. The
+translator's predicate writers stay whole. The spec sized their `WHERE` share at −150 to −350 lines, but every writer
+the `WHERE` reaches is still reached from a conjunct S does not own, a parameter's until PR 3B (h22) or an opaque
+term's until h42, and from a column through `TranslateValue` until h37: `WriteLike`'s refusals, the stored spelling's
+operand choice (`Sent`, `WriteCompared`, `WriteFunctionCall`), `FoldsAlike` and `TryCaseInsensitiveMatch`, and
+`CosmosParameterList.Add`'s plan-time refusal among them. So production moves −87 lines here, not −160 to −360, and the
+rest goes with the conjuncts that reach it. The test reader's `Read` keeps what it grew to read S's printed forms (type
+tests, `?:`, `LIKE`, calls and `[]`): lines 4, 12, 13 and 14 read them back, so it is not the census's.
+
+**The refusals are S's or the loader's.** Before a deletion commit a test plans one statement for each refusal in the
+translator that a parameterless `WHERE` reaches, over the differential's containers and under both targets. Every
+conjunct of every statement its filter reads must be declined or admitted in a form S proved, never pushed by the
+translator (`RenderingRefusalTests`, spec Appendix E). Of its 29 statements, 12 read an opaque term the translator
+declines by its own refusal: `SIMILAR TO`, decimal arithmetic, two casts, `LIKE` with `ESCAPE` or a computed pattern,
+an `ITEM` with a computed subscript, `CARDINALITY` over a map, `SOUNDEX`, `SUBSTRING` without a length, `POSITION`
+with a start and `TRIM` of another character. S declines 10 under `Production` and 11 under `Emulator`, and proves the
+rest: the text's equality as its alternatives, the text's ordering under `Production` alone, an integer `RETURNING`'s
+equality and ordering, a truth test, `IS NULL` over a predicate, and a bracket `LIKE` affix as `STARTSWITH`, whose
+argument the service reads literally. h16's deleted members hold none of the translator's refusals.
+
+**The plans do not move.** The eight digests are h15b's byte for byte (`Production` `92d62c75…`, `Emulator`
+`7fc46555…`, net10.0 and net8.0 equal), and S's theory is unchanged: 201 rules, F's 76 and `Exactness`' 9.
+
 ### The foundation's rows: refinements and operand keys (F1, F2)
 
 The audit's plan gives the rows the shape the later families read before any of them moves (§3, the foundation). f12
@@ -10254,9 +10288,11 @@ plan digests and the census are byte-equal to the parent's.
 **What did not move.** Which test a `LIKE` is proposed as, and `JSON_QUERY` under a null test, which changed four
 census lines, moved with h15's first commit, and F's own verdict over `readsexactly`, rules over a conjunct's atoms in
 place of `RenderingFamily.ReadExactly`'s walk, with the switch (*The switch (h15)*). The translator writer's choice of
-which operand it sends in the stored spelling goes with the writer, `WHERE` at h16 and columns at h37; S's printer
-already spells every literal by its set. `ReaderEdgesTable`'s cast keys were hand-written beside `measuredcast`'s
-rows, `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts` holding them equal, and moved with the loader's cast
+which operand it sends in the stored spelling goes with the writer: h16 found it still reached from a parameter's
+conjunct (until h22), an opaque term's (until h42) and a column (until h37), so it goes with the last of them (*The
+deletions (h16)*); S's printer already spells every literal by its set. `ReaderEdgesTable`'s cast keys were
+hand-written beside `measuredcast`'s rows, `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts` holding them
+equal, and moved with the loader's cast
 targets at h15b, where the table derives them from the rows (*Elements, forms apart and the emulator's `LIKE` (h15b)*).
 
 ## Differential testing

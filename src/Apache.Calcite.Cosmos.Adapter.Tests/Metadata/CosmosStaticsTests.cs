@@ -121,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosPredicateLoader.RexBuilderHolder", ["Value"], Infra, Builder),
             ("Adapter.Metadata.CosmosReasoning", ["Rows", "Stored"], StaticFact, "the rows of what the service stores of a string written in a class and what each type test is true of, read once from the measured registry; every schema's generations hand them their graphs"),
             ("Adapter.Metadata.CosmosRendering", ["Defined", "Spelled"], StaticFact, "S's definition, read once from the measured registry and CosmosStrictness, and the sets S defined from it derives are sent the stored spelling; every schema's S is defined from it"),
-            ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Census", "Current"], TestArm, "the observer a test arms for its flow, and the census's for every flow (branch-only, h16)"),
+            ("Adapter.Metadata.CosmosRenderingCapture", ["Armed", "Current"], TestArm, "the observer a test arms for its flow"),
             ("Adapter.Metadata.CosmosRenderingCost", ["Armed", "Clock", "Flow"], TestArm, "what a test measures of its flow: the samples S's questions cost, and the thread's clock it hands"),
             ("Adapter.Metadata.CosmosRowFacts", ["Decided"], PlanScoped, "keyed weakly on a plan's node, which reaches the table whose container it remembers; internal, asked by the planner alone"),
             ("Adapter.Metadata.CosmosSchemaRecognition", ["Cosmos"], StaticFact, "the recognisers of Cosmos DB's schema keywords"),

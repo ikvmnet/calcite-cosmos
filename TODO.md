@@ -3072,11 +3072,16 @@ across documents* and *A join of a container to itself* is the record.
   tests +1,546 / −882 against `9bf56e6`, the steps between the review answers and the switch the rest. So the estimate
   above no longer stands, and the checkpoint and §11's cuts are the owner's to read again before 3A opens. At h15b
   production is +12,071 / −1,918, net +10,153, and tests +13,745 / −1,337, net +12,408: h15b itself +412 / −234 (net
-  +178) and tests +370 / −273 (net +97) against the switch (`0902996`).
-- **Every branch-only line goes at h16, checked by a grep** — *h16.* `CosmosRenderingCapture.Census` and its tee, the
-  `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one in
-  `CosmosFactRewriter` (73 net production lines), `TranslatorCensus` and the test reader's census half go together, and
-  h16's gate is `git grep -n -i "branch-only" -- src` finding nothing.
+  +178) and tests +370 / −273 (net +97) against the switch (`0902996`). At h16 production is +11,988 / −1,927, net
+  +10,061, and tests +12,263 / −1,342, net +10,921: h16 itself +6 / −93 (net −87, where §11 sized −160 to −360, the
+  translator's predicate writers staying with the conjuncts that still reach them) and tests +99 / −1,943 (net −1,844,
+  the census's branch-only tests among them) against run 4 (`a2b742c`). h16 took none of §11's named cuts: the
+  constant accessor, the parameter writer, the recheck's walk and V2 rest on parameters and columns (3B, 3C), and the
+  moved readers serve the translator until h37, so 3A opens at that net and the checkpoint is the owner's there.
+- **Every branch-only line goes at h16, checked by a grep** — *done at h16.* `CosmosRenderingCapture.Census` and its
+  tee, the `Planned` hook in `CosmosImplementor`, the `Translated` hook in `CosmosRexTranslator` and the `Rewritten` one
+  in `CosmosFactRewriter`, `TranslatorCensus`, `WhereTriage`, `OwnerDecisions` and the test reader's syntax half went
+  together, and `git grep -n -i "branch-only" -- src` finds nothing (DESIGN.md, *The deletions (h16)*).
 - **A weakening's test over a declared field is not pushed** — *done at h15b.* The owner decided on 2026-11-08 that a
   filter Calcite fails on every row fails as Calcite fails it (DESIGN.md, *Vacuity is a table*); since the raises step S
   reads it so, a test carrying its reading's raise, and since the switch (h15) the production path reads one reading S
@@ -3237,25 +3242,28 @@ across documents* and *A join of a container to itself* is the record.
   `Fails` and `Differs` there, as they did while a literal shared their key, worse than measured. Read as measured, a
   concatenation over a path that may hold either would push on the emulator and move its digests, so it waited for the
   switch (h15), and is a step of its own now: the emulator's digests move with it.
-- **The translator's writer names the operands it sends in the stored spelling** — *h16 and h37, with the writer.*
+- **The translator's writer names the operands it sends in the stored spelling** — *h22, h37 and h42, with the writer.*
   Under a set S says stores a spelling, `CosmosRexTranslator` sends `REPLACE`'s search, `POSITION`'s needle, a
   comparison's value and a `LIKE`'s affix argument as `EmulatorStoredText.Of`, by function name and ordinal, and refuses
   an escaped constant anywhere else (`WriteCompared`, `Sent`, `WriteNamedFunction`, `WriteFunctionCall`). S's printer
   spells every literal by its set (`RenderingPrinter.Place`) and its operand-keyed rows refuse the rest, so where both
-  admit a call they spell it alike. It goes with the writer, the `WHERE` share at h16 and the column bridge at h37.
+  admit a call they spell it alike. It goes with the writer, which h16 found still reached from a parameter's conjunct
+  (until h22), an opaque term's (until h42) and a column (until h37), so no share of it went at h16.
 - **The bridge still refuses a containment over U+0000 on the emulator** — *h37 to h42.* The translator's
   `CosmosFunctionSpellings.Refusals` refuses a containment `LIKE` over a path that may hold U+0000 on the emulator as on
   Azure, which no emulator row says, `Service.EmulatorContainsReadsPastNul` measuring it read past U+0000 there (rows2); reading the rows would push such a `LIKE` there and move the digests. It reads
   `StoresSpelled` as S derives it since G1, and goes with the translator bridge's other copies of G1's decisions
   (`Refusals`' case-mapped, searched and stored records, `LikeRefusal`, `IsPrefix`'s stored branch) at h37 to h42, S
   carrying each.
-- **S's generate mode has no folded affix** — *small, h16.* S answers which case-insensitive affix a `LIKE` over a fold
-  is (`foldedas`), and the translator writes it (`RenderingOracle.FoldOf`), a bridge question of its own; S's affix
-  printer offers no such candidate yet. Since the switch (h15) a filter's `LIKE` over a fold is S's, so where the fold is
-  proved it is sent as the test over the fold's call, `CONTAINS(UPPER(c.a), @p0)`, where the translator sent
-  `CONTAINS(c.a, @p0, true)` (`ALikeOverAPathDeclaredAStringPushesExactly`): the same rows, the fold computed at the
-  service and no index read for it, a respelling no digested statement holds. The candidate, its form read off `foldedas`, lands with the printer (h16), and
-  the bridge's question goes with the bridge (h37).
+- **S's generate mode has no folded affix** — *small, a step of its own after h16; the owner's to place.* S answers
+  which case-insensitive affix a `LIKE` over a fold is (`foldedas`), and the translator writes it
+  (`RenderingOracle.FoldOf`), a bridge question of its own; S's affix printer offers no such candidate yet. Since the
+  switch (h15) a filter's `LIKE` over a fold is S's, so where the fold is proved it is sent as the test over the fold's
+  call, `CONTAINS(UPPER(c.a), @p0)`, where the translator sent `CONTAINS(c.a, @p0, true)`
+  (`ALikeOverAPathDeclaredAStringPushesExactly`): the same rows, the fold computed at the service and no index read for
+  it, a respelling no digested statement holds. The candidate, its form read off `foldedas`, is a new form rather than a
+  deletion, so h16, which deletes, left it: it lands as a step of its own, and the bridge's question goes with the
+  bridge (h37).
 - **The Rex builder writes no comparison of two paths** — *small, with the first weakening that holds one.*
   `RenderingRexGrammar` holds no `ComparePaths`, so a pair's form is exact or nothing, never implied, and a weakening
   holding one is not built. S owns a pair since the switch (h15), and none of the pull request's 915 weakenings holds

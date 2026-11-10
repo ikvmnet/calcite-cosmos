@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     public sealed class RenderingValuedTests
     {
 
-        static readonly JsonDocumentPath NamePath = JsonDocumentPath.Root.Property("name"), NPath = JsonDocumentPath.Root.Property("n");
+        static readonly JsonDocumentPath NamePath = JsonDocumentPath.Root.Property("name");
 
         static readonly CosmosPredicateLoader.Loading Loading = new(Fields, Readings, CosmosImplementor.DefaultRootAlias);
 

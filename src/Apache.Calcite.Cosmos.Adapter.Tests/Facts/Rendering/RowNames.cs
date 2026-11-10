@@ -7,9 +7,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The name the function rows file a call of an operator at a SQL type under, read off a definition's names by the tests
-    /// that read the rows apart from S: <see cref="CosmosEval"/>'s service answer, independent of S by design, and the
-    /// census triage's test of a place no row names. S keys a call by its own rules (<c>callkey</c>, G6), which
-    /// <c>RenderingValuedTests.SKeysACallByTheNameItsRowsGiveIt</c> holds to these names; production reads no copy of them.
+    /// that read the rows apart from S: <see cref="CosmosEval"/>'s service answer, independent of S by design. S keys a call
+    /// by its own rules (<c>callkey</c>, G6), which <c>RenderingValuedTests.SKeysACallByTheNameItsRowsGiveIt</c> holds to
+    /// these names; production reads no copy of them.
     /// </summary>
     internal static class RowNames
     {

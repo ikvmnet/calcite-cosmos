@@ -57,9 +57,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             return new(a.Reads.Union(b.Reads), a.Bands.Union(b.Bands), aliases, a.Whole.Union(b.Whole), a.Compared.Union(b.Compared), a.Cites.Union(b.Cites));
         }
 
-        /// <summary>What it reads a class as: every row's answer for it, none where no row names it.</summary>
-        public ValueSet<string> AnswersOf(CosmosValueClass kind) => ValueSet.From(Reads.AsEnumerable().Where(r => r.Kind == kind).Select(r => r.Answer));
-
         /// <summary>Whether a row reads the class as the answer.</summary>
         public bool ReadsAs(CosmosValueClass kind, string answer) => Reads.Contains(new ClassRead(kind, answer));
 
