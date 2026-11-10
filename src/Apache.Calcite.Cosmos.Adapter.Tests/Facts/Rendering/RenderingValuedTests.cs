@@ -218,9 +218,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// S writes a <c>LIKE</c> over a fold as the case-insensitive affix its rows say matches alike over the fold's subject
-        /// (G6's <c>foldedas</c>): of each affix that says the pattern, the cheapest, of an argument the fold leaves as it is, where nothing the
-        /// facts hold of the subject parts; and none for an argument the fold changes or beyond ASCII, a subject that may hold
-        /// a character beyond it, a pattern no affix says, a call that folds nothing, or rows that say nothing of the match.
+        /// (G6's <c>foldedas</c>): of each affix that says the pattern, the cheapest, of an argument the fold leaves as it is,
+        /// where nothing the facts hold of the subject parts; and none for an argument the fold changes or beyond ASCII, a
+        /// subject that may hold a character beyond it, a pattern no affix says, a call that folds nothing, or rows that say
+        /// nothing of the match.
         /// </summary>
         [Fact]
         public void SWritesALikeOverAFoldAsTheCaseInsensitiveAffixItsRowsMatchAlike()
