@@ -496,7 +496,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// held to the round trip under its set, at the import of the bundle it was read from, a string's characters as
         /// <see cref="Ordered"/> keeps them, and printed as the filter beneath prints it (line 13, h15). One holding a test
         /// of a path written over a field or a call, read back as that node's test, which S declines beneath, is counted apart:
-        /// production does not push it; and one read back over an element's raw value, which S declines beneath (h15b).
+        /// production does not push it; and one read back over a reading of an element the readings of an index do not name as
+        /// of a path, which S declines beneath (h15b).
         /// </summary>
         internal static (int Weakenings, int Exact, int Guarded, int Own, int Cased, List<string> Declined, List<string> Fields, List<string> Elements, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null, bool first = false)
         {
@@ -516,8 +517,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     continue;
                 }
 
-                // A weakening read back over an element's raw value, the element reading no row measured (h15b): S proves no form
-                // of it beneath, and the split rule drops what that filter declines, RU, never rows.
+                // A weakening read back over the element reading, which no row measured (h15b): S proves no form of it beneath, and
+                // the split rule drops what that filter declines, RU, never rows.
                 if (built(w.Mine!) is { } over && loading.Read(over) is var back && ReadsTheElementReading(back) && Sent(back, w.Set, w.Claim?.Imports, Ordered(w.Set)) is null)
                 {
                     elements.Add(shown);
@@ -559,8 +560,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Whether a predicate reads a value the shared vocabulary reads as the element reading (h15b): a raw value of a path
-        /// holding an element, however written, or a reading written apart of one.
+        /// Whether the shared vocabulary reads an atom of a predicate as the element reading (h15b), asked of its rules over the
+        /// registry's rows rather than restated: which accessors of an element it reads so is the readings of an index's
+        /// (<c>asofapath</c>), and a reading written apart of one always. Only a value of a path holding an element can.
         /// </summary>
         static bool ReadsTheElementReading(SqlPredicate read) => read.Subterms.SelectMany(term => term switch
         {
@@ -571,7 +573,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             SqlPredicate.TypeTest t => [t.Value],
             SqlPredicate.Affix a => [a.Value],
             _ => Array.Empty<SqlValue>(),
-        }).Any(v => v.PathRead is { HasElement: true } && (v is SqlValue.Raw || v.Form is not null));
+        }).Any(v => v.PathRead is { HasElement: true }) && PredicateVocabularyTests.AtomsIn(read).Any(a => a.Reader == PredicateAtom.ElementReader);
 
         /// <summary>
         /// Source A for a conjunct holding an opaque term, as line 1c judges one (<see cref="RenderingSoundnessTests.NoOpaqueWeakeningHasAWitnessInProcess"/>):
@@ -617,13 +619,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (weakenings, exact, guarded, own, cased, declined, fields, elements, problems) = Pushed();
             TestContext.Current.TestOutputHelper?.WriteLine($"{weakenings} weakenings: {exact} printed and read back as themselves, {guarded} sent as S's form of what Calcite "
                 + $"reads of them, {cased} with a CASE ({declined.Count} of them declined beneath), {fields.Count} holding a test of a path over a field or a call, declined beneath, "
-                + $"{elements.Count} read beneath over an element's raw value, which S declines; {own} comparisons the conjunct's own");
+                + $"{elements.Count} read beneath over the element reading, which S declines; {own} comparisons the conjunct's own");
             foreach (var weakening in declined)
                 TestContext.Current.TestOutputHelper?.WriteLine($"declined beneath: {weakening}");
             foreach (var weakening in fields)
                 TestContext.Current.TestOutputHelper?.WriteLine($"a test of a path over a field or a call: {weakening}");
             foreach (var weakening in elements)
-                TestContext.Current.TestOutputHelper?.WriteLine($"over an element's raw value: {weakening}");
+                TestContext.Current.TestOutputHelper?.WriteLine($"over the element reading: {weakening}");
             foreach (var problem in problems)
                 TestContext.Current.TestOutputHelper?.WriteLine(problem);
 

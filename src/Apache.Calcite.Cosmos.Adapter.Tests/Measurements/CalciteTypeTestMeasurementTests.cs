@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var read = TestReadings();
             read.Where(r => r.Value != (rows.Where(t => t.Reader == r.Key.Reader || t.Reader == PredicateAtom.TypedReaders && r.Key.Reader.StartsWith(PredicateAtom.TypedReaders + ":", StringComparison.Ordinal))
                 .Select(t => t.As).SingleOrDefault() ?? "raises")).Select(r => $"{r.Key.Test} over {r.Key.Reader} reads {r.Value}").Should().BeEmpty();
-            read.Where(r => r.Value == PredicateAtom.RawReader).Select(r => r.Key.Reader).Distinct().Should().HaveCount(7, "the text, five RETURNINGs and a JSON_QUERY read the raw value");
+            read.Where(r => r.Value == PredicateAtom.RawReader).Select(r => r.Key.Reader).Distinct().Should().HaveCount(12, "the text, a RETURNING of each of ten types and a JSON_QUERY read the raw value");
             rows.Where(t => PredicateAtom.ColumnOf(t.Reader) != null || t.Reader == PredicateAtom.CallReaders).Should()
                 .HaveCount(PredicateAtom.Columns.Count() + 1).And.OnlyContain(t => t.As == PredicateAtom.RaisesReader, "the body raises over a field of every column and a call, each a row of its own");
 
@@ -82,11 +82,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static readonly (string Reader, string Sql, SqlTypeName? Column)[] Readings =
         [
             (PredicateAtom.TextReader, "JSON_VALUE(\"d\", '$.v')", null),
-            (PredicateAtom.TypedReader("INTEGER"), "JSON_VALUE(\"d\", '$.v' RETURNING INTEGER)", null),
-            (PredicateAtom.TypedReader("BIGINT"), "JSON_VALUE(\"d\", '$.v' RETURNING BIGINT)", null),
-            (PredicateAtom.TypedReader("DOUBLE"), "JSON_VALUE(\"d\", '$.v' RETURNING DOUBLE)", null),
-            (PredicateAtom.TypedReader("DECIMAL"), "JSON_VALUE(\"d\", '$.v' RETURNING DECIMAL)", null),
-            (PredicateAtom.TypedReader("BOOLEAN"), "JSON_VALUE(\"d\", '$.v' RETURNING BOOLEAN)", null),
+            // A RETURNING of each type the loader reads one of, VARIANT's among them, which holds no box.
+            .. CalciteItemMeasurementTests.Returnings
+                .Select(t => (PredicateAtom.TypedReader(t), $"JSON_VALUE(\"d\", '$.v' RETURNING {t})", (SqlTypeName?)null)),
             (PredicateAtom.CastReader("ANY", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS ANY)", null),
             (PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader), "CAST(JSON_VALUE(\"d\", '$.v') AS VARCHAR)", null),
             (PredicateAtom.QueryReader, "JSON_QUERY(\"d\", '$.v')", null),
@@ -128,7 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 var item = reader.StartsWith("item:", StringComparison.Ordinal);
                 var table = new MaterialisedTable(column is { } type ? [("v", type)] : [],
                     [.. witnesses.Select(w => (w.Json is null ? "{}" : $"{{\"v\":{w.Json}}}", column is null ? Array.Empty<string?>() : [item ? (w.Json is null ? "{}" : $"{{\"x\":{w.Json}}}") : w.Json]))]);
-                var reading = table.Values(connection, sql);
+                // Where the reading raises, as Calcite evaluates it: its null test, which a client reading no box of a VARIANT
+                // does not touch.
+                var reading = table.Values(connection, $"({sql}) IS NULL");
                 foreach (var (test, name) in ReadTests)
                 {
                     // The test reads the raw value where it answers each witness the reading answers as the row says of the

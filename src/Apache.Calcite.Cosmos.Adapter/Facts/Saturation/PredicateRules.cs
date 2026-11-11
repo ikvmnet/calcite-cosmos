@@ -113,8 +113,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             DefineCharacters();
 
             // A question of a value's characters is asked in a context made for it, which assumes nothing: it reads the
-            // paths the value reads, as the rules of JSON derive them beneath the context, and the value's own term.
-            CharacterSaturation = Schedule.Saturate(json.Json, json.JsonSchema, Characters);
+            // paths the value reads, as the rules of JSON derive them beneath the context, the value's own term, and
+            // what each reading in it reads (the analysis), which the rules of characters join.
+            CharacterSaturation = Schedule.Saturate(json.Json, json.JsonSchema, Analyse, Characters);
 
             ScheduleWith(ByArm);
         }
@@ -217,8 +218,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Ruleset Characters { get; }
 
         /// <summary>
-        /// What a context made for a question of a value's characters runs: the rules of JSON and of JSON Schema over the
-        /// paths it reads, and the rules of characters.
+        /// What a context made for a question of a value's characters runs: the rules of JSON and of JSON Schema over
+        /// the paths it reads, the analysis of what each reading in it reads, and the rules of characters.
         /// </summary>
         public Schedule CharacterSaturation { get; }
 
@@ -371,11 +372,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds the
-        /// path's, through its column too, as does its cast to text where the path holds a kind the cast's row names
-        /// (<see cref="JsonRules.CastsToText"/>); a literal its own; and a call what it draws from its operands, by the rows
-        /// of <see cref="StringCalls"/> the root holds (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>).
-        /// A parameter and a call of a function no row names hold anything: no row is stated of them.
+        /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds
+        /// the path's where it reads the path (<see cref="PredicateVocabulary.Reads"/>, of an element where the
+        /// readings an index reads as of a path name it), through its column too, as does its cast to text where the
+        /// path holds a kind the cast's row names (<see cref="JsonRules.CastsToText"/>); a literal its own; and a call
+        /// what it draws from its operands, by the rows of <see cref="StringCalls"/> the root holds
+        /// (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>). A parameter and a call of a function
+        /// no row names hold anything: no row is stated of them.
         /// </summary>
         /// <remarks>
         /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
@@ -389,27 +392,32 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var json = Json;
             var ir = Ir;
 
+            // A reading holds its path's characters where it reads its path as it accesses it (reads): of a path
+            // holding an element, where the readings an index reads as of a path name it (asofapath). One they do not
+            // name reads the element reading, which no rule here reads, so nothing is said of what it holds.
             Characters.DefineRule("a reading of a path as text holds the path's characters", r =>
             {
                 // The text of a number or a boolean is digits, signs and letters, which hold no class.
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
-                r.When(v.Is(ir.Text.Of(p)), c.Is(json.Chars.Of(p)));
+                r.When(v.Is(ir.Text.Of(p)), ir.Reads.Of(v, p, PredicateAtom.TextReader), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
             Characters.DefineRule("the value a path holds holds the path's characters", r =>
             {
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
-                r.When(v.Is(ir.Raw.Of(p)), c.Is(json.Chars.Of(p)));
+                r.When(v.Is(ir.Raw.Of(p)), ir.Reads.Of(v, p, PredicateAtom.RawReader), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
 
-            // A reading written apart, a field's, an item's, a cast's to ANY, is the value its reading is (h15b).
+            // A reading written apart, a field's, an item's, a cast's to ANY, is the value its reading is (h15b), where
+            // it reads what its reading reads: of a path holding an element it reads the element reading, whatever its
+            // reading reads.
             Characters.DefineRule("a reading written apart holds its reading's characters", r =>
             {
-                var (v, w) = r.Vars<Val, Val>("v", "w");
-                var f = r.Var<string>("f");
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (f, k) = r.Vars<string, string>("f", "k");
                 var c = r.Var<ValueSet<string>>("c");
-                r.When(v.Is(ir.Apart.Of(f, w)), c.Is(ValueChars.Of(w)));
+                r.When(v.Is(ir.Apart.Of(f, w)), ir.Reads.Of(v, p, k), ir.Reads.Of(w, p, k), c.Is(ValueChars.Of(w)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
 
@@ -418,8 +426,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Characters.DefineRule("the value a path holds, read through its column, holds the path's characters", r =>
             {
                 var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
-                var n = r.Var<string>("n");
-                r.When(v.Is(ir.RawIn.Of(p, n)), c.Is(json.Chars.Of(p)));
+                var (n, k) = r.Vars<string, string>("n", "k");
+                r.When(v.Is(ir.RawIn.Of(p, n)), k.Is(Compute.Of(n, PredicateAtom.RawIn)), ir.Reads.Of(v, p, k), c.Is(json.Chars.Of(p)));
                 r.Then(ValueChars.Of(v).Is(c));
             });
 
@@ -429,7 +437,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
                 var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
-                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.Raw.Of(p)), ir.Reads.Of(w, p, PredicateAtom.RawReader), s.Is(json.CastsToText.Of(t)),
+                    c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
                 r.Then(ValueChars.Of(v).Is(c));
             });
@@ -437,8 +446,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
                 var (t, c, k, s) = r.Vars<string, ValueSet<string>, ValueSet<string>, ValueSet<string>>("t", "c", "k", "s");
-                var n = r.Var<string>("n");
-                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.RawIn.Of(p, n)), s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                var (n, rd) = r.Vars<string, string>("n", "rd");
+                r.When(v.Is(ir.Cast.Of(t, w)), w.Is(ir.RawIn.Of(p, n)), rd.Is(Compute.Of(n, PredicateAtom.RawIn)), ir.Reads.Of(w, p, rd),
+                    s.Is(json.CastsToText.Of(t)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(k, s));
                 r.Then(ValueChars.Of(v).Is(c));
             });

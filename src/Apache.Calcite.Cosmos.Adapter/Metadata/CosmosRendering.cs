@@ -64,6 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             TestKinds = CosmosAxiomRows.ReadTestKinds(CosmosAxioms.All),
             TestReads = CosmosAxiomRows.ReadTestReads(CosmosAxioms.All),
             ExactReadings = CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All),
+            AsOfAPath = CosmosAxiomRows.ReadAsOfAPath(CosmosAxioms.All),
             Templates = RenderingTemplateRows.Templates,
         };
 

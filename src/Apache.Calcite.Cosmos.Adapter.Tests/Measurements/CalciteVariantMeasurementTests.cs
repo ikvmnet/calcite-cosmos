@@ -187,7 +187,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// the integer cast to <c>BIGINT</c> first and nothing else, a fraction, boxed <c>DOUBLE</c>, a <c>DOUBLE</c>, a boolean,
         /// boxed <c>BOOLEAN</c>, <c>TRUE</c>, and a string a string, the <c>CHAR</c> literal <c>'42'</c> among them; so an
         /// <c>IN</c> of a number and its spelling keeps each in its own box alone. A text cast to
-        /// <c>VARIANT</c> is a string box, compared and tested for null as the text.
+        /// <c>VARIANT</c> is a string box, compared and tested for null as the text. <c>RETURNING VARIANT</c> holds what it
+        /// reads in no box, unequal to every boxed value.
         /// </summary>
         [Fact, CosmosPins("Calcite.VariantEqualsOnlyItsOwnBox")]
         public void AVariantEqualsOnlyItsOwnBox()
@@ -213,6 +214,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
 
             CosmosAxioms.Get("Calcite.VariantEqualsOnlyItsOwnBox").NullThrough.Should().HaveCount(6);
+
+            // RETURNING VARIANT holds what it reads in no box, where a VARIANT column holding the same is boxed: so it is no raw
+            // value, and the loader reads it as a RETURNING of its own type.
+            string[] boxes = ["CAST('bikes' AS VARIANT)", "CAST(CAST(42 AS BIGINT) AS VARIANT)", "CAST(42 AS VARIANT)", "CAST(TRUE AS VARIANT)"];
+            var returned = MaterialisedTable.Of(["{\"v\":\"bikes\"}", "{\"v\":42}", "{\"v\":true}", "{\"v\":{\"a\":1}}", "{\"v\":null}", "{}"]);
+            returned.Ask(connection, [.. boxes.SelectMany(boxed => new[] { $"JSON_VALUE(\"d\", '$.v' RETURNING VARIANT) = {boxed}", $"JSON_VALUE(\"d\", '$.v' RETURNING VARIANT) <> {boxed}" })])
+                .Should().Equal("FFFUUU", "TTTUUU", "FFFUUU", "TTTUUU", "FFFUUU", "TTTUUU", "FFFUUU", "TTTUUU");
+            returned.Ask(connection, "JSON_VALUE(\"d\", '$.v' RETURNING VARIANT) IS NULL").Should().Equal("FFFTTT");
+            MaterialisedTable.Of(SqlTypeName.VARIANT, ["\"bikes\"", "42", "true"]).Ask(connection, [.. new[] { boxes[0], boxes[1], boxes[3] }.Select(boxed => "\"v\" = " + boxed)])
+                .Should().Equal("TFF", "FTF", "FFT");
         }
 
         /// <summary>

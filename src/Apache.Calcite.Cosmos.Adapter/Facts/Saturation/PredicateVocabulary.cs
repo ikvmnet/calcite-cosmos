@@ -67,6 +67,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             Point = graph.DefineRelation<Pred, string>("point", analysis);
             Reads = graph.DefineRelation<Val, JPath, string>("reads", analysis);
+            Accesses = graph.DefineRelation<Val, JPath, string, string>("accesses", analysis);
             Atom = graph.DefineRelation<Pred, JPath, PredicateAtom>("atom", analysis);
             TestRead = graph.DefineRelation<Val, JPath, string>("testread", analysis);
             Denotes = graph.DefineRelation<Val, string, bool>("denotes", analysis);
@@ -197,6 +198,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>The path a value reads, and how: an analysis of terms alone.</summary>
         public Relation<Val, JPath, string> Reads { get; }
 
+        /// <summary>
+        /// The path an accessor reads, the reading it is, and the name the readings of an index read as of a path key it by
+        /// (<c>asofapath</c>): the reading itself, and every <c>RETURNING</c>'s <see cref="PredicateAtom.TypedReaders"/>. What
+        /// it reads is <see cref="Reads"/>: the reading, or of a path holding an element the element reading where that set
+        /// does not name it.
+        /// </summary>
+        public Relation<Val, JPath, string, string> Accesses { get; }
+
         /// <summary>A predicate over one path, as the atom that says what it means: an analysis of terms alone.</summary>
         public Relation<Pred, JPath, PredicateAtom> Atom { get; }
 
@@ -232,42 +241,70 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             DefineElements();
 
-            Analyse.DefineRule("text reads its path", r =>
+            // What each accessor reads of its path, and the name the readings of an index key it by (asofapath): the reading
+            // itself, but a RETURNING's, which every RETURNING is measured under.
+            Analyse.DefineRule("text accesses its path as the text", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
                 r.When(v.Is(Text.Of(p)));
-                r.Then(Reads.Of(v, p, PredicateAtom.TextReader));
+                r.Then(Accesses.Of(v, p, PredicateAtom.TextReader, PredicateAtom.TextReader));
             });
-            Analyse.DefineRule("a raw value reads its path", r =>
+            Analyse.DefineRule("a raw value accesses its path as the raw value", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)), NoElement.Of(p));
-                r.Then(Reads.Of(v, p, PredicateAtom.RawReader));
+                r.When(v.Is(Raw.Of(p)));
+                r.Then(Accesses.Of(v, p, PredicateAtom.RawReader, PredicateAtom.RawReader));
             });
             // A declared field, read through its column (rawtyped).
-            Analyse.DefineRule("a raw value in a column reads its path through the column", r =>
+            Analyse.DefineRule("a raw value in a column accesses its path through the column", r =>
             {
-                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
-                r.When(v.Is(RawIn.Of(p, c)), NoElement.Of(p));
-                r.Then(Reads.Of(v, p, Compute.Of(c, PredicateAtom.RawIn)));
+                var (v, p, c, k) = r.Vars<Val, JPath, string, string>("v", "p", "c", "k");
+                r.When(v.Is(RawIn.Of(p, c)), k.Is(Compute.Of(c, PredicateAtom.RawIn)));
+                r.Then(Accesses.Of(v, p, k, k));
             });
-            // An element's raw value, however written, which no row measured as of a path holding it as the text, a RETURNING
-            // and JSON_QUERY are (Calcite.ReadingsOfAnIndexAreAsOfAPath): the element reading, which reads its rows alone, a
-            // row no run measured as anything and a raise (Calcite.ItemIsNullWhereNoElementIs, h15b).
-            Analyse.DefineRule("a raw value of a path holding an element reads the element reading", r =>
+            Analyse.DefineRule("a returning accesses its path as its type", r =>
+            {
+                var (v, p, t) = r.Vars<Val, JPath, string>("v", "p", "t");
+                r.When(v.Is(Typed.Of(p, t)));
+                r.Then(Accesses.Of(v, p, Compute.Of(t, PredicateAtom.TypedReader), PredicateAtom.TypedReaders));
+            });
+            Analyse.DefineRule("a JSON_QUERY accesses its path as its own reading", r =>
             {
                 var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Raw.Of(p)), HasElement.Of(p));
-                r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+                r.When(v.Is(Query.Of(p)));
+                r.Then(Accesses.Of(v, p, PredicateAtom.QueryReader, PredicateAtom.QueryReader));
             });
-            Analyse.DefineRule("a raw value in a column of a path holding an element reads the element reading", r =>
+            // An accessor reads its path as it accesses it where the path holds no element, and where it holds one and the
+            // readings an index reads as of a path name it (asofapath, Calcite.ReadingsOfAnIndexAreAsOfAPath). One they do not
+            // name reads the element reading, which reads its rows alone, a row no run measured as anything and a raise (h15b):
+            // a column's reading of an element, which no run measured, among them.
+            Analyse.DefineRule("an accessor of a path holding no element reads its path", r =>
             {
-                var (v, p, c) = r.Vars<Val, JPath, string>("v", "p", "c");
-                r.When(v.Is(RawIn.Of(p, c)), HasElement.Of(p));
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, n) = r.Vars<string, string>("k", "n");
+                r.When(Accesses.Of(v, p, k, n), NoElement.Of(p));
+                r.Then(Reads.Of(v, p, k));
+            });
+            Analyse.DefineRule("an accessor of a path holding an element reads its path where an index reads it as of a path", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, n) = r.Vars<string, string>("k", "n");
+                var s = r.Var<ValueSet<string>>("s");
+                r.When(Accesses.Of(v, p, k, n), HasElement.Of(p), s.Is(Readings.AsOfAPath.Of()));
+                r.Where(Primitives.Contains<string>().Of(s, n));
+                r.Then(Reads.Of(v, p, k));
+            });
+            Analyse.DefineRule("an accessor of a path holding an element reads the element reading where an index does not read it as of a path", r =>
+            {
+                var (v, p) = r.Vars<Val, JPath>("v", "p");
+                var (k, n) = r.Vars<string, string>("k", "n");
+                var (s, named) = r.Vars<ValueSet<string>, bool>("s", "named");
+                r.When(Accesses.Of(v, p, k, n), HasElement.Of(p), s.Is(Readings.AsOfAPath.Of()), named.Is(Primitives.Contains<string>().Of(s, n)), named.Is(false));
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
             // A reading written apart, a field's, an item's, a cast's to ANY, reads what its reading reads (h15b); of a path
-            // holding an element, which no row measured of a field, the element reading.
+            // holding an element, the element reading, whatever its reading reads: no run measured a form of an element, and an
+            // item of one is no path's (Calcite.ItemIsNullWhereNoElementIs).
             Analyse.DefineRule("a reading written apart reads what its reading reads where its path holds no element", r =>
             {
                 var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
@@ -281,18 +318,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (f, k) = r.Vars<string, string>("f", "k");
                 r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), HasElement.Of(p));
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
-            });
-            Analyse.DefineRule("a returning reads its path as its type", r =>
-            {
-                var (v, p, t) = r.Vars<Val, JPath, string>("v", "p", "t");
-                r.When(v.Is(Typed.Of(p, t)));
-                r.Then(Reads.Of(v, p, Compute.Of(t, PredicateAtom.TypedReader)));
-            });
-            Analyse.DefineRule("a JSON_QUERY reads its path as its own reading", r =>
-            {
-                var (v, p) = r.Vars<Val, JPath>("v", "p");
-                r.When(v.Is(Query.Of(p)));
-                r.Then(Reads.Of(v, p, PredicateAtom.QueryReader));
             });
             // A cast is a reading where a row measured it, keyed by the reading it converts, its column apart (h15b): what a
             // column's cast reads is the column's own rows. One no row names reads nothing, so no atom rests on it: over an ANY

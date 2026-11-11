@@ -169,13 +169,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>A fact of the theory, of a value as of a path.</b> A reading of a path holds the path's characters, read as
-        /// <see cref="CharactersOf(JsonDocumentPath)"/> reads them, and a literal its own, read by the theory's reader of a
-        /// value. A call — a concatenation, a case mapping, a window over a computed string — the theory derives, from
-        /// what its function draws from each operand (<c>StringCalls</c>) and what each operand holds, in a context made
-        /// for the question beneath this one; nothing here combines one operand's with another's. So it derives a cast to
-        /// text of the value a path holds, where the path holds scalars alone. A parameter, and a call of a function the
-        /// theory does not read, may hold anything.
+        /// <b>A fact of the theory, of every value alike</b>, derived in a context made for the question beneath this
+        /// one. A reading of a path holds the path's characters where it reads the path, as the analysis says: of a
+        /// path holding an element, where the readings an index reads as of a path name it
+        /// (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>). A literal holds its own. A call — a concatenation, a case
+        /// mapping, a window over a computed string — holds what its function draws from each operand
+        /// (<c>StringCalls</c>) and what each operand holds; nothing here combines one operand's with another's. So it
+        /// derives a cast to text of the value a path holds, where the path holds scalars alone. A parameter, a reading
+        /// of an element the cell does not name, and a call of a function the theory does not read, may hold anything.
         /// </para>
         /// <para>
         /// Silent, as a path's are, about whether a string is there.
@@ -183,13 +184,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="value">The value, as the loader reads one.</param>
         /// <returns>The classes.</returns>
-        internal JsonCharacterBand CharactersOf(SqlValue value) => value switch
-        {
-            SqlValue.Text or SqlValue.Raw => CharactersOf(value.PathRead!.Value),
-            SqlValue.Literal literal => JsonFactEncoding.Bands(Saturation.JsonValues.CharactersOf(literal.Value)),
-            SqlValue.Parameter => JsonCharacterBand.Any,
-            _ => Read(JsonCharacterBand.Any, t => t.TryValueChars(value, out var classes) ? JsonFactEncoding.Bands(classes) : JsonCharacterBand.Any),
-        };
+        internal JsonCharacterBand CharactersOf(SqlValue value) =>
+            Read(JsonCharacterBand.Any, t => t.TryValueChars(value, out var classes) ? JsonFactEncoding.Bands(classes) : JsonCharacterBand.Any);
 
         /// <summary>
         /// Returns what a path may hold, as one value, where the context holds it: what it proved of the path's kinds, its

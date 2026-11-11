@@ -188,9 +188,8 @@ disagree about: the comparison and the `LIKE` are sent as written, nothing is re
 travels with them. A comparison over an array's element, `$.tags[0]`, is decided as one over a property
 nothing declares, whatever the container declares: a declaration states what a property holds, and none
 reaches an element. An equality with text only a string renders as is sent exactly, and so is an ordering
-the other kinds' renderings settle; any other ordering runs in process, since what is sent beside one
-tests the element's kind, and what Calcite makes of an element's own value has not been measured
-(Chapter 11.3).
+the other kinds' renderings settle; any other ordering sends a weakening that tests the element's kind, as
+a property's does, and is rechecked (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string**, and a function
 that counts, maps case or trims unless its characters are proved too (Appendix B.2). `UPPER`,
@@ -225,6 +224,13 @@ WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 This is the spelling to use for numbers that are stored as numbers. **Except `RETURNING DECIMAL`**,
 which parses a stored string — `"2"` is 2 to it (Chapter 7) — as the cast to a number below does: only
 the property's presence is sent, and the comparison rechecked in process.
+
+**And except `RETURNING VARIANT`.** Calcite does not wrap the value it reads in a `VARIANT` box, so it
+equals no value cast to `VARIANT`: `JSON_VALUE(c."DOC", '$.category' RETURNING VARIANT) = 'bikes'` is
+false even where the category is `"bikes"`, where the service's `c.category = "bikes"` is true. Its
+`IS NULL` is true where the property holds an object, which the service's null test is not. So every
+filter over it runs in process, a comparison, a null test and a type test such as `IS_STRING` alike, and
+the answer is Calcite's. Nothing is sent for it; the other conditions of the filter still are.
 
 ### `CAST` to text: exact
 
@@ -557,6 +563,7 @@ documents it has to read.
 | `LIKE` with a `_`, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2) |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| `JSON_VALUE(… RETURNING VARIANT)` in any filter: a comparison, a null test or a type test | Calcite holds its value in no `VARIANT` box, so it equals no value cast to one, and its null test is true over an object, where the service compares and tests the stored value (8.3) |
 | a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |

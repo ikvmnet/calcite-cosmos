@@ -76,9 +76,10 @@ one over a property nothing declares — `5` renders as `'5'`, which is below `'
 at all to Cosmos (Chapter 8.3). An equality with text no other value renders as is sent exactly, and so
 is an ordering whose answer the other kinds' renderings settle: every number's text sorts below `'BIKES'`
 and `'true'` and `'false'` above it, so `> 'BIKES'` is the string's comparison or a boolean. Any other
-ordering is not sent: what would be sent for it tests the element's kind, and what Calcite makes of an
-element's own value, and of a test of it, has not been measured, so it runs in process over every
-document:
+ordering sends a weakening, as one over a property does: the string's comparison beside a test of the
+element's kind, which keeps every number and boolean, and the ordering is rechecked in process. Calcite
+answers a test of an element as it answers one of a property holding the same value, and as one of a
+missing property where the array is shorter or is no array at all, so the test is read as a property's:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.tags[0]') = 'x'
@@ -88,7 +89,7 @@ WHERE JSON_VALUE(c."DOC", '$.tags[0]') > 'BIKES'
 → WHERE ((c.tags[0] > @p0) OR IS_BOOL(c.tags[0]))
 
 WHERE JSON_VALUE(c."DOC", '$.tags[0]') < 'm'
-→ (nothing sent; the ordering runs in process)
+→ WHERE (IS_DEFINED(c.tags[0]) AND ((c.tags[0] < @p0) OR NOT IS_STRING(c.tags[0])))   -- then rechecked
 ```
 
 ## 11.4 Array functions

@@ -23,6 +23,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// reader applies last, and whether they take one a cast that drops scale moved, each citing its row (G8).</param>
     /// <param name="StrictOperators">Each operator by its name in the IR, and whether Calcite answers null for it over a null operand.</param>
     /// <param name="Casts">Each cast a row measured, by its target and the reading cast, its column apart, citing the row (h15b).</param>
+    /// <param name="AsOfAPath">The readings an index reads as of a path holding the element, a test's body over each among it.</param>
     internal sealed record CalciteRows(
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> Reads,
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> Bands,
@@ -38,11 +39,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<string> NullThrough,
         IReadOnlyList<(string Reading, bool Moved, string Row)> Comparands,
         IReadOnlyList<(string Name, bool Strict)> StrictOperators,
-        IReadOnlyList<(string Target, string Reader, string Row)> Casts)
+        IReadOnlyList<(string Target, string Reader, string Row)> Casts,
+        IReadOnlyList<string> AsOfAPath)
     {
 
         /// <summary>No row.</summary>
-        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], []);
+        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []);
 
     }
 

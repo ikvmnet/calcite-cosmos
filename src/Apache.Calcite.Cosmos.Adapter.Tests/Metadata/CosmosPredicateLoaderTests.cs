@@ -334,6 +334,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             One(Call(SqlStdOperatorTable.EQUALS, raw, Str("x"))).Should().Be(Eq(Raw(Label), "x"));
         }
 
+        /// <summary>
+        /// <c>RETURNING VARIANT</c> is a <c>RETURNING</c> of its own type, not the raw value: it holds what it reads in no box
+        /// (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), so beside a boxed literal it is no comparison the box rules read, an
+        /// element's as a path's.
+        /// </summary>
+        [Fact]
+        public void AReturningVariantIsATypedReadingAndNoRawValue()
+        {
+            var boxed = _rex.makeCast(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), true), Str("bikes"));
+            foreach (var (path, read) in new[] { ("$.label", Label), ("$.tags[0]", P("tags").Element(0)) })
+            {
+                var returned = _rex.makeCall(_types.createTypeWithNullability(Sql(SqlTypeName.VARIANT), true), SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str(path)));
+                One(Call(SqlStdOperatorTable.EQUALS, returned, boxed)).Should().Be(Cmp(Typed(read, "VARIANT"), "=", new SqlValue.Box("CHAR", Lit("bikes"))), path);
+            }
+        }
+
+        /// <summary>
+        /// Every type <c>JSON_VALUE</c> may be typed whose accessor the loader reads as the text, a <c>RETURNING</c> or
+        /// the raw value is one the in-process measurement of an index asks so, and every one it asks the loader reads
+        /// so: the cell names the text, every <c>RETURNING</c> and the raw value under one name each, so a type read and
+        /// not measured would be named unmeasured.
+        /// </summary>
+        [Fact]
+        public void EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder()
+        {
+            var (texts, returnings, raws) = (new HashSet<string>(), new HashSet<string>(), new HashSet<string>());
+            foreach (var type in SqlTypeName.values())
+            {
+                org.apache.calcite.rel.type.RelDataType typed;
+                try
+                {
+                    typed = _types.createTypeWithNullability(Sql(type), true);
+                }
+                catch (System.Exception)
+                {
+                    continue;
+                }
+
+                var accessor = _rex.makeCall(typed, SqlStdOperatorTable.JSON_VALUE, Nodes(Doc, Str("$.tags[0]")));
+                foreach (var read in Load(Call(SqlStdOperatorTable.IS_NULL, accessor)).Conjuncts.OfType<SqlPredicate.IsNull>().Select(n => n.Value))
+                {
+                    if (read is SqlValue.Text)
+                        texts.Add(type.getName());
+                    else if (read is SqlValue.Typed returning)
+                        returnings.Add(returning.Type);
+                    else if (read is SqlValue.Raw { Form: null, Column: null })
+                        raws.Add(type.getName());
+                }
+            }
+
+            texts.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Characters.Select(c => c.Type.getName()).Distinct());
+            returnings.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Returnings);
+            raws.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Raws.Select(t => t.getName()), "the types the measurement executes as the raw value");
+        }
+
         [Fact]
         public void AFieldReadAsTextIsTheRendering()
         {

@@ -85,9 +85,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string FieldForm = "field", ItemForm = "item", AnyCastForm = "cast:ANY", TextCastForm = "cast:VARCHAR";
 
         /// <summary>
-        /// A raw value, or any reading of a field, of a path holding an element, which no row measured as of a path holding
-        /// it (h15b): it reads its rows alone, which the cells read (<c>calcitereads</c>), a row no run measured as anything
-        /// and a raise (<c>Calcite.ItemIsNullWhereNoElementIs</c>).
+        /// A reading of a path holding an element that no row measured as of a path holding it: an accessor the readings of an
+        /// index do not name (<c>asofapath</c>), and any reading written apart (h15b). It reads its rows alone, which the cells
+        /// read (<c>calcitereads</c>), a row no run measured as anything and a raise (<c>Calcite.ItemIsNullWhereNoElementIs</c>).
         /// </summary>
         public const string ElementReader = "element";
 
