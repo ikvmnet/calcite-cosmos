@@ -24,8 +24,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <returns>The reasoning.</returns>
         public CosmosReasoning Make()
         {
-            var reasoning = new CosmosReasoning();
-            reasoning.Rendering.Ready.Wait();
+            var reasoning = TestReasoning.Own();
             lock (_made)
                 _made.Add(reasoning);
 

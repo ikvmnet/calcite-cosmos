@@ -262,8 +262,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 CaseSensitive = true,
             }.ConnectionString;
 
+            // Each data source's schema reasons in a reasoning of its own, made as it opens: its S build is awaited before
+            // anything plans, since a first question that waited past its bound would decline and keep the views'
+            // equalities in process above the scan the lookup is planned over.
             var connection = new CalciteDataSourceBuilder(connectionString).Build().CreateConnection();
             await connection.OpenAsync();
+            await TestReasoning.Ready(connection, "COSMOS", "links");
             return connection;
         }
 

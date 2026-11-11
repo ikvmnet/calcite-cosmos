@@ -91,12 +91,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static void Unchanged(Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements)
         {
             var (recorder, probe) = (new RenderingRecorder(), new RenderingProbeCounter());
+
+            // Its S build awaited, as the unarmed pass's is: a question that waited past its bound would decline, and change
+            // this pass's digests alone, or, every question declined, open no bundle for the probe to count.
+            var armed = new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(CosmosReasoning.Rows), probe: probe);
+            armed.Rendering.Ready.Wait();
             PlanDigests.Unchanged(recorder.Arm, statements, _ =>
             {
                 recorder.Records.Should().NotBeEmpty("the capture was armed");
                 TestContext.Current.TestOutputHelper?.WriteLine($"the probe: {probe.Opened} bundles opened");
                 probe.Opened.Should().BePositive("S was asked at admission");
-            }, new CosmosReasoning(new Cosmos.Facts.JsonFactGenerations(CosmosReasoning.Rows), probe: probe));
+            }, armed);
         }
 
     }
