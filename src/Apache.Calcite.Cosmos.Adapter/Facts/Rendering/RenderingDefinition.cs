@@ -87,9 +87,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(string Function, long Spelling, long Ordinal, FunctionValueClass Class)> CallSpellings { get; init; } = [];
 
         /// <summary>
-        /// What each raw column states, one fact a field (<c>CosmosAxiomRows.ReadColumns</c>), from which S's rules say what it
-        /// answers on each key and take the union across columns (h12, G5). None in a definition that names none, where a raw
-        /// reading's cells read anything and a raise.
+        /// What each raw column states, one fact a field (<c>CosmosAxiomRows.ReadColumns</c>), from which the readings
+        /// vocabulary's rules say what it answers on each key and take the union across columns (h12, G5), handed to it in
+        /// <see cref="Calcite"/>. None in a definition that names none, where a raw reading's cells read anything and a raise.
         /// </summary>
         public RawColumnRows Columns { get; init; } = RawColumnRows.None;
 
@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public IReadOnlyList<(CosmosServiceTest Test, string Read, Truths Truths)> ReadTruths { get; init; } = KleeneTables.Reads;
 
-        /// <summary>The JSON type of each class of value (<see cref="CosmosValueClasses.Types"/>): S's <c>classtype</c>, which says two are of one type.</summary>
+        /// <summary>The JSON type of each class of value (<see cref="CosmosValueClasses.Types"/>): the readings vocabulary's <c>classtype</c>, which says two are of one type, handed to it in <see cref="Calcite"/>.</summary>
         public IReadOnlyList<(CosmosValueClass Class, string Type)> ClassTypes { get; init; } = CosmosValueClasses.Types;
 
         /// <summary>
@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
         public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
-            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath);
+            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath, Columns, ClassTypes);
 
         /// <summary>
         /// The readings an index reads as of a path holding the element, a test's body over each among it

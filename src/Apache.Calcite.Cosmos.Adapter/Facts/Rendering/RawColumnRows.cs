@@ -8,7 +8,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// The raw columns as a <c>Calcite</c> row states them, one fact a field (h12, G5): a reading through a column, <c>raw</c>
-    /// or its cast to text, by the column's name. S's <c>raw</c> rules read them into each key's answer; none is a law.
+    /// or its cast to text, by the column's name. The readings vocabulary's rules read them into each key's answer, in both
+    /// graphs; none is a law.
     /// </summary>
     /// <param name="Reads">What a column's reading reads a stored value of each kind as (<see cref="CalciteRead"/>).</param>
     /// <param name="Beside">The literal classes a column's reading is compared beside.</param>

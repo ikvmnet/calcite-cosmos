@@ -10,9 +10,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// The raw columns' answers, key by key: what Calcite may answer for a raw reading's test over a value of a kind, the
-    /// truths S's rules state whole and those a comparison on the cell decides (<see cref="RawAnswer"/>, h12, G5). S's
-    /// <c>rawunion</c> holds it, each column's answer joined in by <see cref="Union"/>, so the union across columns is
-    /// Eggnog's join; a primitive reads the cell's key in it.
+    /// truths the rules state whole and those a comparison on the cell decides (<see cref="RawAnswer"/>, h12, G5). The
+    /// readings vocabulary's <c>rawunion</c> holds it, in both graphs, each column's answer joined in by <see cref="Union"/>,
+    /// so the union across columns is Eggnog's join; a primitive reads the cell's key in it.
     /// </summary>
     internal sealed class RawTruths : IEquatable<RawTruths>
     {
@@ -47,6 +47,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static RawTruths Of(RawKey key, string column, RawAnswer answer) =>
             new(ImmutableSortedDictionary<RawKey, RawAnswer>.Empty.Add(key, answer).Add(key.In(column), answer), HashOf(key, answer) + HashOf(key.In(column), answer));
+
+        /// <summary>
+        /// One column's answer on a key, joined in under the key a comparison asks beside a parameter (<see cref="RawKey.Parameter"/>),
+        /// the union's and the reading's through that column, as <see cref="Of(RawKey, string, RawAnswer)"/> joins a literal's.
+        /// </summary>
+        public static RawTruths OfParameter(RawKey key, string column, RawAnswer answer) => Of(key.Parameter, column, answer);
 
         /// <summary>The answer on a key; the lattice's top, anything and a raise, where no column answers for it.</summary>
         public RawAnswer this[RawKey key] => _truths.TryGetValue(key, out var answer) ? answer : RawAnswer.Unanswered;

@@ -212,21 +212,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             LikeTargets = Graph.DefineFunction<RenderingSet, LikeUnit, string, ValueSet<RenderingTarget>>("liketargets", ValueLattice.Union<RenderingTarget>());
             LikesOf = Graph.DefineFunction<RenderingSet, ValueSet<(LikeUnit, string)>>("likesof", ValueLattice.Union<(LikeUnit, string)>());
 
-            // The raw columns as their rows state them, one fact a field, raw at the frozen root; what a test answers of a value
-            // read as null or raised on, and each class's JSON type; each column's answer on a key, the rules', and their union,
-            // which Eggnog's join takes (h12, G5).
-            RawReads = Graph.DefineFunction<string, string, CosmosValueClass, string>("rawreads");
-            RawBeside = Graph.DefineRelation<string, string, CosmosValueClass>("rawbeside");
-            RawCompiles = Graph.DefineFunction<string, string, CosmosServiceTest, bool>("rawcompiles");
-            RawAsType = Graph.DefineFunction<string, string, bool>("rawastype");
-            RawAcross = Graph.DefineFunction<string, string, CosmosServiceTest, Truths>("rawacross");
+            // The raw columns as their rows state them, what a test answers of a value read as null or raised on, each class's
+            // JSON type, each column's answer on a key and their union (h12, G5): the readings vocabulary's, which the facts
+            // graph derives too, seeded with the rest of its rows at the frozen root.
+            RawReads = Calcite.RawReads;
+            RawBeside = Calcite.RawBeside;
+            RawCompiles = Calcite.RawCompiles;
+            RawAsType = Calcite.RawAsType;
+            RawAcross = Calcite.RawAcross;
             ReadTruths = Calcite.ReadTruths;
-            ClassType = Graph.DefineFunction<CosmosValueClass, string>("classtype");
-            RawColumn = Graph.DefineFunction<RawKey, string, RawAnswer>("rawcolumn");
-            RawUnion = Graph.DefineFunction<RawTruths>("rawunion", RawTruths.Union);
-            // Rows at the frozen root, read beside the terms by the rule that gives such a column's reading the union's order, so
-            // held as an analysis, as readerorder is.
-            UnionColumn = Graph.DefineRelation<string>("unioncolumn", new TableOptions { Role = TableRole.Analysis });
+            ClassType = Calcite.ClassType;
+            RawColumn = Calcite.RawColumn;
+            RawUnion = Calcite.RawUnion;
+            UnionColumn = Calcite.UnionColumn;
             // Which raw column refines the text over every class the text reads, and so reads as it over a function's rows (G5).
             ReadsClasses = Graph.DefineFunction<string, ValueSet<CosmosValueClass>>("readsclasses", ValueLattice.Union<CosmosValueClass>());
             RefinesText = Graph.DefineFunction<string, ValueSet<CosmosValueClass>>("refinestext", ValueLattice.Union<CosmosValueClass>());
@@ -505,10 +503,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The JSON type of each class of value, constant data (G5).</summary>
         public Function<CosmosValueClass, string> ClassType { get; }
 
-        /// <summary>What one raw column answers on a key, as S's raw rules derive it from the column's rows; no lattice, so two disagreeing conflict.</summary>
+        /// <summary>What one raw column answers on a key, as the readings vocabulary's raw rules derive it from the column's rows; no lattice, so two disagreeing conflict.</summary>
         public Function<RawKey, string, RawAnswer> RawColumn { get; }
 
-        /// <summary>The raw columns' answers, joined key by key from every column's: what a raw reading's cells read.</summary>
+        /// <summary>The raw columns' answers, joined key by key from every column's: what a raw reading's cells read, the vocabulary's.</summary>
         public Function<RawTruths> RawUnion { get; }
 
         /// <summary>A column a raw value is read through that no row measured, read as the measured columns' union (<see cref="PredicateAtom.UnionColumns"/>).</summary>
@@ -999,9 +997,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             values.Register<Refutation>("refutation");
             values.Register<MeasuredKey>("measured key");
             values.Register<FunctionKey>("function key");
-            values.Register<RawKey>("raw key");
-            values.Register<RawAnswer>("raw answer");
-            values.Register<RawTruths>("raw truths");
             values.Register<ClassRead>("class read");
             values.Register<ReadingTable>("reading table");
             values.Register<LikeUnit>("like unit");
@@ -2517,98 +2512,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A unit of a set's pattern and the row it is read by, as <see cref="LikesOf"/> holds it.</summary>
         static (LikeUnit, string) LikeRead(LikeUnit unit, string row) => (unit, row);
 
-        // The raw columns (h12, G5): what each column answers on a key, from its rows alone. A null test is what the column
-        // reads the class as means to it; a comparison it compiles, over a class it reads as null or raises on, what that
-        // read means; over a value of the literal's type, the comparison as the type, and over its cast's text, the text
-        // compared, both of which the cell decides; across types, what the column says; one it does not compile fails the
-        // statement. The union joins the columns, each column's reading keeping its own (rawtyped). Beside them, which raw
-        // column reads as the text over a function's rows: one that, over every class the text reads, reads it as the text
-        // does or raises.
+        // Which raw column reads as the text over a function's rows (G5): one that, over every class the text reads, reads it
+        // as the text does or raises. What each column answers on a key, and their union, are the readings vocabulary's rules,
+        // which the facts graph runs too (ReadingVocabulary.DefineRaw).
         void DefineRaw(Ruleset raw, Ruleset readas)
         {
-            raw.DefineRule("a raw reading's null test over a class is what its column reads the class as means to it", r =>
-            {
-                var (rd, c, a) = r.Vars<string, string, string>("rd", "c", "a");
-                var k = r.Var<CosmosValueClass>("k");
-                var t = r.Var<Truths>("t");
-                r.When(a.Is(RawReads.Of(rd, c, k)), t.Is(ReadTruths.Of(CosmosServiceTest.IsNull, a)));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, (x, y) => RawKey.Of(x, y, CosmosServiceTest.IsNull, CosmosValueClass.None)), c).Is(Compute.Of(t, RawAnswer.Stated)));
-            });
-
-            raw.DefineRule("a raw reading's comparison over a class its column reads as null or raises on is what that read means to it", r =>
-            {
-                var (rd, c, a) = r.Vars<string, string, string>("rd", "c", "a");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var (t, tr) = r.Vars<CosmosServiceTest, Truths>("t", "tr");
-                r.When(a.Is(RawReads.Of(rd, c, k)), RawCompiles.Of(rd, c, t).Is(true), RawBeside.Of(rd, c, o), tr.Is(ReadTruths.Of(t, a)));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(Compute.Of(tr, RawAnswer.Stated)));
-            });
-
-            raw.DefineRule("a raw reading's comparison of a value with a literal of its type is the comparison as the type, which the cell decides", r =>
-            {
-                var (rd, c, ty) = r.Vars<string, string, string>("rd", "c", "ty");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var t = r.Var<CosmosServiceTest>("t");
-                r.When(RawReads.Of(rd, c, k).Is(CalciteRead.Itself), RawAsType.Of(rd, c).Is(true), RawCompiles.Of(rd, c, t).Is(true), RawBeside.Of(rd, c, o),
-                    ty.Is(ClassType.Of(k)), ty.Is(ClassType.Of(o)));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(RawAnswer.OnTheCell));
-            });
-
-            raw.DefineRule("a raw reading's comparison of a value with a literal of another type is what its column answers across types", r =>
-            {
-                var (rd, c) = r.Vars<string, string>("rd", "c");
-                var (tk, to) = r.Vars<string, string>("tk", "to");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var (t, tr) = r.Vars<CosmosServiceTest, Truths>("t", "tr");
-                r.When(RawReads.Of(rd, c, k).Is(CalciteRead.Itself), RawAsType.Of(rd, c).Is(true), RawCompiles.Of(rd, c, t).Is(true), RawBeside.Of(rd, c, o),
-                    tk.Is(ClassType.Of(k)), to.Is(ClassType.Of(o)), tk.IsNot(to), tr.Is(RawAcross.Of(rd, c, t)));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(Compute.Of(tr, RawAnswer.Stated)));
-            });
-
-            raw.DefineRule("a cast of a raw value compares a value it reads as itself as itself, which the cell decides", r =>
-            {
-                var (rd, c) = r.Vars<string, string>("rd", "c");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var t = r.Var<CosmosServiceTest>("t");
-                r.When(RawReads.Of(rd, c, k).Is(CalciteRead.Itself), RawAsType.Of(rd, c).Is(false), RawCompiles.Of(rd, c, t).Is(true), RawBeside.Of(rd, c, o));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(RawAnswer.OnTheCell));
-            });
-
-            raw.DefineRule("a cast of a raw value compares the text it renders a value as, which the cell decides", r =>
-            {
-                var (rd, c) = r.Vars<string, string>("rd", "c");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var t = r.Var<CosmosServiceTest>("t");
-                r.When(RawReads.Of(rd, c, k).Is(CalciteRead.Renders), RawAsType.Of(rd, c).Is(false), RawCompiles.Of(rd, c, t).Is(true), RawBeside.Of(rd, c, o));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(RawAnswer.OnTheCell));
-            });
-
-            raw.DefineRule("a raw reading's comparison its column does not compile fails the statement", r =>
-            {
-                var (rd, c, a) = r.Vars<string, string, string>("rd", "c", "a");
-                var (k, o) = r.Vars<CosmosValueClass, CosmosValueClass>("k", "o");
-                var t = r.Var<CosmosServiceTest>("t");
-                r.When(a.Is(RawReads.Of(rd, c, k)), RawCompiles.Of(rd, c, t).Is(false), RawBeside.Of(rd, c, o));
-                r.Then(RawColumn.Of(Compute.Of(rd, k, t, o, RawKey.Of), c).Is(RawAnswer.Fails));
-            });
-
-            raw.DefineRule("a raw reading's answer on a key is the union of its columns', and a column's reading's its own", r =>
-            {
-                var (k, c, t) = r.Vars<RawKey, string, RawAnswer>("k", "c", "t");
-                r.When(t.Is(RawColumn.Of(k, c)));
-                r.Then(RawUnion.Of().Is(Compute.Of(k, c, t, RawTruths.Of)));
-            });
-
-            // A column no row measured, a CHAR's, answers each key as the union does until a row measures it: every measured
-            // column's answer joined under its key, as under the union's.
-            raw.DefineRule("a raw column no row measured answers each key as the union of those that were", r =>
-            {
-                var (k, c, u) = r.Vars<RawKey, string, string>("k", "c", "u");
-                var t = r.Var<RawAnswer>("t");
-                r.When(t.Is(RawColumn.Of(k, c)), UnionColumn.Of(u));
-                r.Then(RawUnion.Of().Is(Compute.Of(k, u, t, RawTruths.Of)));
-            });
-
             raw.DefineRule("a reading reads the classes its rows name", r =>
             {
                 var (rd, a) = r.Vars<string, string>("rd", "a");
@@ -2655,8 +2563,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         // What each reading reads each class as, from its rows (G7, DESIGN.md "Calcite's readings as rows"): the readings
-        // vocabulary's rules, which the facts graph runs too, and a raw column's reading through its column and through
-        // every column, S's alone, which reads the raw columns' rows.
+        // vocabulary's rules, which the facts graph runs too, the raw columns' answers and their union among them; and a raw
+        // column's reading's rows through its column and through every column, S's alone, which read the raw columns' rows.
         void DefineReadings(Ruleset reads)
         {
             Calcite.Define(reads);
@@ -3140,9 +3048,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (constant, negation) in KleeneTables.Negations)
                     w.Assume(Negates.Of(constant, negation));
 
-                foreach (var column in PredicateAtom.UnionColumns)
-                    w.Assume(UnionColumn.Of(column));
-
                 // What reads each test's entry, how a comparator reads a whole number (G2); what a failing side stands for (G4);
                 // the kinds a pair's side holds, and each set's pair table, empty until a row reads one (G3).
                 foreach (var (test, operand, answer) in definition.Means.ReadBy.AsEnumerable())
@@ -3217,27 +3122,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var set in definition.Serves.Keys)
                     foreach (var function in keys.Select(k => k.Function).Distinct())
                         w.Assume(DisagreeingKeys.Of(set, function).Is(ValueSet<FunctionKey>.Empty));
-
-                // The columns' rows, one fact a field; the union starts empty, so an atom is paired on its cells where no column is named.
-                foreach (var (reading, column, kind, answer) in definition.Columns.Reads)
-                    w.Assume(RawReads.Of(reading, column, kind).Is(answer));
-
-                foreach (var (reading, column, operand) in definition.Columns.Beside)
-                    w.Assume(RawBeside.Of(reading, column, operand));
-
-                foreach (var (reading, column, test, compiles) in definition.Columns.Compiles)
-                    w.Assume(RawCompiles.Of(reading, column, test).Is(compiles));
-
-                foreach (var (reading, column, asType) in definition.Columns.AsType)
-                    w.Assume(RawAsType.Of(reading, column).Is(asType));
-
-                foreach (var (reading, column, test, truths) in definition.Columns.Across)
-                    w.Assume(RawAcross.Of(reading, column, test).Is(truths));
-
-                foreach (var (@class, type) in definition.ClassTypes)
-                    w.Assume(ClassType.Of(@class).Is(type));
-
-                w.Assume(RawUnion.Of().Is(RawTruths.Empty));
 
                 w.Assume(Means.Of().Is(definition.Means), ReaderClasses.Of().Is(ValueSet<(CosmosServiceTest, CosmosValueClass)>.Empty), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated),
                     Rewriting.Of().Is(ValueSet<CosmosAnswer>.Empty), RexGrammar.Of().Is(RenderingRexGrammar.Written), UnknownClasses.Of().Is(ValueSet<CellClass>.Empty));

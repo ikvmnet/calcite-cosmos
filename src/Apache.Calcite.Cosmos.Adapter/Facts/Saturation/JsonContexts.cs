@@ -39,7 +39,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             foreach (var (target, kinds) in StringCalls.TextCasts)
                 root.Assume(Rules.CastsToText.Of(target).Is(kinds));
 
-            // What Calcite makes of each reading, as S's rules say from the same rows (G7), settled before the root freezes.
+            // What Calcite makes of each reading, as S's rules say from the same rows (G7), the raw columns' answers and their
+            // union among it, settled before the root freezes.
             root.Assume([.. Rules.Readings.Facts(rows.Calcite, Rendering.KleeneTables.Reads, Rendering.KleeneTables.Compares)]);
             root.Run(Schedule.Saturate(Rules.ReadingRules));
 

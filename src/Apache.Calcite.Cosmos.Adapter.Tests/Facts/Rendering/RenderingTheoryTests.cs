@@ -45,9 +45,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// parts stand, regrouped and folded by the same laws (G4); each set's table
         /// as the leaves read it; and what a computed call is keyed by, what Calcite answers over each key and the service
         /// alone defines, the images a call's rows license, and the case-insensitive affix a LIKE over a fold is written as
-        /// (G6); and what Calcite makes of each reading, <c>LIKE</c>'s units and what each type test is TRUE of, the readings
-        /// vocabulary's, which the facts graph runs too (G7). No count bounds them: what the rules cost is judged at the
-        /// end-of-plan evaluation.
+        /// (G6); and what Calcite makes of each reading, <c>LIKE</c>'s units, what each type test is TRUE of, and what each raw
+        /// column answers on a key, beside a parameter too, and their union, the readings vocabulary's, which the facts graph
+        /// runs too (G7). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -156,15 +156,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ],
                 ["raw"] =
                 [
-                    "a raw reading's null test over a class is what its column reads the class as means to it",
-                    "a raw reading's comparison over a class its column reads as null or raises on is what that read means to it",
-                    "a raw reading's comparison of a value with a literal of its type is the comparison as the type, which the cell decides",
-                    "a raw reading's comparison of a value with a literal of another type is what its column answers across types",
-                    "a cast of a raw value compares a value it reads as itself as itself, which the cell decides",
-                    "a cast of a raw value compares the text it renders a value as, which the cell decides",
-                    "a raw reading's comparison its column does not compile fails the statement",
-                    "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
-                    "a raw column no row measured answers each key as the union of those that were",
                     "a reading reads the classes its rows name",
                     "a raw column raising over a class refines the text over it",
                     "a raw column reading a class as the text reads it refines the text over it",
@@ -186,6 +177,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "LIKE reads each unit of its pattern as its row says",
                     "a type test is TRUE, by its name, of the JSON kinds of each class its row says",
                     "a reading whose test is its operand's rests on its operand's rows",
+                    "a raw reading's null test over a class is what its column reads the class as means to it",
+                    "a raw reading's comparison over a class its column reads as null or raises on is what that read means to it",
+                    "a raw reading's comparison of a value with a literal of its type is the comparison as the type, which the cell decides",
+                    "a raw reading's comparison of a value with a literal of another type is what its column answers across types",
+                    "a cast of a raw value compares a value it reads as itself as itself, which the cell decides",
+                    "a cast of a raw value compares the text it renders a value as, which the cell decides",
+                    "a raw reading's comparison its column does not compile fails the statement",
+                    "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
+                    "a raw column no row measured answers each key as the union of those that were",
+                    "a raw reading's comparison with a parameter over a class answers what its column answers beside any class",
+                    "a raw column no row measured answers a parameter as the union of those that were",
                     "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
                     "a raw column no row measured reads each class as the union of those that were",
                     "a raw column no row measured is null over an absent path where the union's reading is",
@@ -384,7 +386,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(202);
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(204, "the raw columns' nine rules moved into the readings vocabulary, and its two that give a comparison with a parameter its column's answer");
         }
 
         /// <summary>
