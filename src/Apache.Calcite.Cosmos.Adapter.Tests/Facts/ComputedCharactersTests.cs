@@ -165,8 +165,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// A reading of a path holding an element holds the path's characters where the readings an index reads as of a
-        /// path name it (<c>asofapath</c>), and nothing is said of one they do not name, which reads the element
+        /// The text and the raw value of a path holding an element hold the path's characters where the readings an
+        /// index reads as of a path name them (<c>asofapath</c>), and so do the raw value cast to <c>VARCHAR</c> and
+        /// <c>REVERSE</c> of the text; nothing is said of a reading the cell does not name, which reads the element
         /// reading: the cell decides, as it decides what the reading is an atom of. A field, an item or a cast to
         /// <c>ANY</c> of an element reads the element reading whatever the cell names. A path holding no element holds
         /// its characters whatever the cell names.

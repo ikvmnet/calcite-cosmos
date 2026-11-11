@@ -121,9 +121,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <para>
         /// <b>Asked in a context made for the question</b>, as a path the context was never told of is
         /// (<see cref="Told"/>): a child that mentions the paths the value reads, makes the value's term, and runs the
-        /// rules of JSON and of a value's characters (<see cref="PredicateRules.CharacterSaturation"/>). It assumes
-        /// nothing, so it narrows no document the context admits; it is released once read, and the answer is remembered
-        /// by the value.
+        /// rules of JSON and JSON Schema, the analysis and the rules of a value's characters
+        /// (<see cref="PredicateRules.CharacterSaturation"/>). It assumes nothing, so it narrows no document the
+        /// context admits; it is released once read, and the answer is remembered by the value.
         /// </para>
         /// <para>
         /// A run that does not complete, or a context that cannot be opened, answers nothing, which loses a fact and

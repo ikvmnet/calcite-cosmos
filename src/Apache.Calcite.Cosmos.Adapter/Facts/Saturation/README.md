@@ -391,22 +391,28 @@ run does not complete. Every statement is rooted there, or at the context where 
 the declaration's own fact set, and a stratum's `possible` meets `D0`'s, which is no narrower, so no verdict or plan
 changes (`DESIGN.md`, *The declaration's `possible` rows: `D0`*).
 
-**What a computed string's characters are** (13 rules, ruleset `characters`), asked by a string function's rule of its
+**What a computed string's characters are** (14 rules, ruleset `characters`), asked by a string function's rule of its
 argument (`JsonFactSet.CharactersOf`), in a context made for the question beneath the one the facts are read from:
 - a reading of a path as text, and the value a path holds, plainly or through its column (`raw in`, what S's computed
-  places and the translator's bridge ask F of), hold the path's `chars`; the cast to text of that value holds them where
-  the path holds a kind the cast's root row names (`castsToText`, from `StringCalls.TextCasts`: `VARCHAR` and `CHAR`,
-  of scalars alone), an object cast to text being the JSON of whatever it holds;
+  places and the translator's bridge ask F of), hold the path's `chars` where they read the path (`reads`, which the
+  analysis derives: of a path holding an element, only where `asofapath` names the reading); the cast to text of that
+  value holds them where the value reads the path and the path holds a kind the cast's root row names (`castsToText`,
+  from `StringCalls.TextCasts`: `VARCHAR` and `CHAR`, of scalars alone), an object cast to text being the JSON of
+  whatever it holds;
+- a reading written apart (a field's, an item's, a cast's to `ANY`) holds its reading's characters where it reads what
+  its reading reads;
 - a literal holds its own characters;
 - a call walks its operands from the first, its shape alone, and a call of a function a `StringCalls` row names draws
   from the last, joining the root's rows by its name (`callDraws`, `callMaps`): from an operand the row names, by its
   ordinal or as every one (`FunctionKey.Every`), the image of that operand's classes — its own, and for `UPPER` from
   U+E000 also those below U+D800, U+FB13 upper-casing to Armenian — and nothing from one it names not; a call holds
-  what it draws. A parameter, and a call of a function no row names, are given no row: they may hold anything.
+  what it draws. A parameter, a reading no rule here reads (`JSON_QUERY`, and a `RETURNING` of a type that is not a
+  character type), and a call of a function no row names are given nothing: they may hold anything.
 
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
-then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the
-verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value's characters, for a question of one.
+then the verdicts. `Answer`, for a context that assumes nothing, runs JSON, JSON Schema and analysis without a split,
+then the verdicts. `CharacterSaturation` runs JSON, JSON Schema, analysis and the rules of a value's characters, for a
+question of one.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`

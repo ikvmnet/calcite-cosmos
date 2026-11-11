@@ -245,8 +245,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Schedule Saturation { get; private set; } = null!;
 
         /// <summary>
-        /// What a context that assumes nothing runs: the rules of JSON and of analysis over its new terms, without a
-        /// split, then the verdicts. A question asked of a frozen context is answered in one.
+        /// What a context that assumes nothing runs: the rules of JSON, of JSON Schema and of analysis over its new
+        /// terms, without a split, then the verdicts. A question asked of a frozen context is answered in one.
         /// </summary>
         public Schedule Answer { get; private set; } = null!;
 
@@ -372,13 +372,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds
-        /// the path's where it reads the path (<see cref="PredicateVocabulary.Reads"/>, of an element where the
-        /// readings an index reads as of a path name it), through its column too, as does its cast to text where the
-        /// path holds a kind the cast's row names (<see cref="JsonRules.CastsToText"/>); a literal its own; and a call
-        /// what it draws from its operands, by the rows of <see cref="StringCalls"/> the root holds
-        /// (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>). A parameter and a call of a function
-        /// no row names hold anything: no row is stated of them.
+        /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): the text and the raw value
+        /// of a path hold the path's where they read the path (<see cref="PredicateVocabulary.Reads"/>, of an element
+        /// where the readings an index reads as of a path name it), through its column too, as does its cast to text
+        /// where the path holds a kind the cast's row names (<see cref="JsonRules.CastsToText"/>); a literal its own;
+        /// and a call what it draws from its operands, by the rows of <see cref="StringCalls"/> the root holds
+        /// (<see cref="JsonRules.CallDraws"/>, <see cref="JsonRules.CallMaps"/>). A parameter, a reading no rule here
+        /// reads (<c>JSON_QUERY</c>, and a <c>RETURNING</c> of a type that is not a character type) and a call of a
+        /// function no row names hold anything: nothing is stated of them.
         /// </summary>
         /// <remarks>
         /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
@@ -392,9 +393,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var json = Json;
             var ir = Ir;
 
-            // A reading holds its path's characters where it reads its path as it accesses it (reads): of a path
-            // holding an element, where the readings an index reads as of a path name it (asofapath). One they do not
-            // name reads the element reading, which no rule here reads, so nothing is said of what it holds.
+            // The text and the raw value hold their path's characters where they read their path as they access it
+            // (reads): of a path holding an element, where the readings an index reads as of a path name them
+            // (asofapath). One asofapath does not name reads the element reading, which no rule here reads, so nothing
+            // is said of what it holds. JSON_QUERY and a RETURNING of a type that is not a character type read their
+            // path too, but no rule here reads their characters.
             Characters.DefineRule("a reading of a path as text holds the path's characters", r =>
             {
                 // The text of a number or a boolean is digits, signs and letters, which hold no class.
