@@ -3744,19 +3744,25 @@ it gives back six sorts and a page that a `LIKE 'a%'` beside them kept in proces
 **What an argument holds is the theory's, a computed one's too.** The argument is read by the one reader of a
 `RexNode` into the theory's terms (`CosmosPredicateLoader.Loading.ReadValue`): a path's reading, a literal, a
 parameter, or a call — the operator's name and its operands, a `TRIM`'s flag spelled in the name, a `CASE` read as its
-arms. The fact set answers what classes it may hold (`JsonFactSet.CharactersOf(SqlValue)`): a path its `chars`, a
-literal its own, and a call what the theory derives in a context made for the question beneath the licensed one, which
-mentions the paths the call reads, makes its term and runs the rules of a value's characters
-(`PredicateRules.Characters`). There a reading of a path holds the path's `chars`, the value read through its column
-(rawtyped) too, the cast to text of the value a path holds them where the path holds a kind the cast's row names
-(`StringCalls.TextCasts`, the root's `castsToText`: `VARCHAR` and `CHAR`, of scalars alone), and a call of a function
-`StringCalls` names draws from each operand it
-reads the image of that operand's classes: its own for a concatenation, a window, a reversal, a repetition, a trim, a
-replacement's subject and replacement and a conditional's arms; for `UPPER` also N where it was given H, Java's full
-mapping taking U+FB13 to Armenian letters below U+D800, the one class any case mapping adds over every code point. A
-parameter, and a call of a function the table does not name — a conversion such as `ToString` — hold anything. Before,
-C# asked each operand in turn through a table of its own and called that a conjunction of questions; it was the theory's
-join over the operands, written beside the theory, and the oracle and population D never saw it.
+arms. The fact set answers what classes it may hold (`JsonFactSet.CharactersOf(SqlValue)`) of every value alike, a
+path's reading and a literal as well as a call: what the theory derives in a context made for the question beneath the
+licensed one, which mentions the paths the value reads, makes its term and runs the analysis beside the rules of a
+value's characters (`PredicateRules.CharacterSaturation`). There the text and the raw value of a path hold the path's
+`chars` where they read the path — of a path holding an element, where `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the
+reading (*An element's raw value is a path's*) — and so does the value read through its column (rawtyped), a literal
+holds its own, the cast to text of the value a path holds holds the path's `chars` where it reads the path and the path
+holds a kind the cast's row names (`StringCalls.TextCasts`, the root's `castsToText`: `VARCHAR` and `CHAR`, of scalars
+alone), and a call of a function `StringCalls` names draws from each operand it reads the image of that operand's
+classes: its own for a concatenation, a window, a reversal, a repetition, a trim, a replacement's subject and
+replacement and a conditional's arms; for `UPPER` also N where it was given H, Java's full mapping taking U+FB13 to
+Armenian letters below U+D800, the one class any case mapping adds over every code point. A parameter, a reading no rule
+of characters reads (`JSON_QUERY`, and a `RETURNING` of a type that is not a character type, a character one being read
+as the text), a reading of an element the cell does not name, and a call of a function the table does not name — a
+conversion such as `ToString` — hold anything. So does every value, a literal among them, under the empty set
+(`JsonFactSet.Empty`), which reads no context, and under a stratum that admits no document: a literal holds its own only
+where the question's run completes beneath a context that admits one. Before, C# asked each operand in turn through a
+table of its own and called that a conjunction of questions; it was the theory's join over the operands, written beside
+the theory, and the oracle and population D never saw it.
 
 **And what is not a character is asked by the function's writer.** `SUBSTRING` is shifted alone only where its start
 is proved at least one — a literal, or a path the facts bound there — and is otherwise written with Calcite's clip, from
@@ -9589,7 +9595,8 @@ alike, and S's emulator `LIKE` and the Rex builder's type test are settled besid
   raw value, is declined by the filter beneath and dropped by the split rule, RU and never rows. At the switch that test
   was opaque beneath and the translator wrote it back, its meaning in process resting on `CosmosFunctionBodiesTests`
   rather than on S (34 of the pull request's 915 weakenings, line 13). The pull request after 3A measured the raw value
-  of an index, and a test's body over it, and gave the test back (*An element's raw value is a path's*).
+  of an index, and a test's body over it, and gave the test back (*An element's raw value is a path's*), and the one
+  after it stopped asking `JSON_EXISTS`, which no rule reads.
 - **A cast is a reading where a row measured it.** `Cast`'s `INTEGER`, `BIGINT`, `DOUBLE` and `BOOLEAN` arms,
   `CosmosRexShapes.TryNumericCastOperand` and `Value`'s `RETURNING DECIMAL` arm are gone. The loader writes any
   conversion of the text or a raw value as `cast(T, v)` by its target type and `RETURNING DECIMAL` as `typed(p,
@@ -10332,18 +10339,21 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
 
 - **The measurement.** `CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath` runs in process and calls no service.
   At four paths, an index, a later index, a property of an element and an element of an element, it reads documents
-  holding each kind of value at the element and documents holding none there (past the end, over a scalar, an object or
-  a null, or with no array at all), each beside a document holding the same value at `$.g`, or nothing. Over each it
-  asks every accessor the loader reads as a reading of a path: the text accessor, plain and `RETURNING VARCHAR(3)` and
-  `CHAR(8)`, which the loader reads as the text; a `RETURNING` of each type the loader reads one of, `TINYINT`,
-  `SMALLINT`, `INTEGER`, `BIGINT`, `FLOAT`, `REAL`, `DOUBLE`, `DECIMAL`, `BOOLEAN` and `VARIANT`; `JSON_QUERY`; and the
-  accessor re-typed `ANY`, the only typing the loader reads as the raw value; and each of the eight type tests' bodies
-  over every one of them. No SQL text spells the re-typed accessor, so Calcite's executor compiles it over a record
-  (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING VARIANT`'s value there alone, which the client reads
-  in no box. `JSON_EXISTS`, which no rule reads, is asked at the first index alone. Every reading answers at the element
-  what it answers at `$.g`, a raise where it raises, so where there is no element it answers as over an absent path. The
-  test fails if the cell names a reading that does not answer so, or leaves out one that does; a reading that raises on
-  every document measures nothing, so it never counts as answering so.
+  holding a value at the element and documents holding none there (past the end, over a scalar, an object or a null, or
+  with no array at all), each beside a document holding the same value at `$.g`, or nothing. Every kind of value is read
+  at the first index, a number, a string, an object, a null, a boolean and an array, so each type test meets the kind it
+  tests there, and a selection of them at the other three: a number, a string, a boolean and an object at the later
+  index, a number, a string, a null and an array at the property, and a number, a string and an object at the element of
+  an element. Over each it asks every accessor the loader reads as a reading of a path: the text accessor, plain and
+  `RETURNING VARCHAR(3)` and `CHAR(8)`, which the loader reads as the text; a `RETURNING` of each type the loader reads
+  one of, `TINYINT`, `SMALLINT`, `INTEGER`, `BIGINT`, `FLOAT`, `REAL`, `DOUBLE`, `DECIMAL`, `BOOLEAN` and `VARIANT`;
+  `JSON_QUERY`; and the accessor re-typed `ANY`, the only typing the loader reads as the raw value; and each of the
+  eight type tests' bodies over every one of them. No SQL text spells the re-typed accessor, so Calcite's executor
+  compiles it over a record (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING VARIANT`'s value there
+  alone, which the client reads in no box. Every reading answers at the element what it answers at `$.g`, a raise where
+  it raises, so where there is no element it answers as over an absent path. The test fails if the cell names a reading
+  that does not answer so, or leaves out one that does; a reading that raises on every document measures nothing, so it
+  never counts as answering so.
 - **Its witnesses.** Each path holds a whole number beyond an int's range and a fraction beside 30, since `RETURNING
   BIGINT`, `FLOAT` and `DOUBLE` raise over 30 and answer a value over those; the test holds that every `RETURNING`
   answers a value at some element but `TINYINT`, `SMALLINT` and `REAL`, which answer none anywhere: Calcite casts the
@@ -10405,11 +10415,11 @@ the same documents in S's spelling, and partitions 707 tighter under each, its s
 nothing for. The three h15b traded an element's weakening for a declared field's test (partitions 1608, 1660 and 1948)
 now send both, tighter than h15. The 1 and 4 respelled lines that dropped an element's test send h15's documents
 (partitions 488 under each set, and 999 and 1908 under `Emulator`, the same documents and 2435 byte-equal), and
-partitions 1909 under `Emulator`, which h15b sent tighter than h15, is tighter than h15b too. The rest go past h15:
-partitions 261, 1600 and 1947 under each set send a `WHERE`, or a tighter one, where h15 sent less, S reading an
+partitions 1909 under `Emulator`, which h15b sent tighter than h15, is tighter than h15b too. Of the rest, partitions
+261, 1600 and 1947 under each set go past h15, sending a `WHERE`, or a tighter one, where h15 sent less, S reading an
 element's raw value inside a `CASE`'s condition, as `JSON_VALUE(…, '$.tags[0]') IS NULL` or the presence a function of
-it needs, and partitions 1908 and 1909 under `Production` send h15's documents in S's spelling, an element's presence
-beside a branch no row reaches.
+it needs; partitions 1908 and 1909 under `Production`, the two lines respelled against 13fd800, send h15's documents in
+S's spelling, an element's presence beside a branch no row reaches.
 
 **Floors and gates.** `EachInputSendsAtLeastItsFloor` passes at both sizes. Sent exactly at the pull request's size,
 13fd800 to now, under `Production` the corpus 93 to 93, the differential 929 to 974, the partitions 1,019 to 1,048 and

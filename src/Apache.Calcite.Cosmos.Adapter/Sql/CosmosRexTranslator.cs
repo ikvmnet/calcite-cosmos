@@ -636,14 +636,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>The expression is read as the oracle reads a value, and its characters are the theory's.</b> The one reader of
         /// a <see cref="RexNode"/> into the theory's terms reads it (<see cref="Metadata.CosmosPredicateLoader.Loading.ReadValue"/>),
-        /// and the licensed facts answer what classes it may hold (<see cref="JsonFactSet.CharactersOf(SqlValue)"/>): a
-        /// path its <c>chars</c>, a literal its own, and a computed value what the theory derives from what its function
-        /// draws from each operand — a concatenation's sides, a window's string, a replacement's subject and replacement, a
-        /// conditional's arms. Nothing is derived or combined here.
+        /// and the licensed facts answer what classes it may hold (<see cref="JsonFactSet.CharactersOf(SqlValue)"/>). Where
+        /// the question's run completes beneath a context of theirs that admits a document, the text or the raw value
+        /// of a path holds its <c>chars</c> where it reads the path (of an element, where the cell
+        /// <c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c> names the reading), a literal its own, and a computed value
+        /// what the theory derives from what its function draws from each operand — a concatenation's sides, a window's
+        /// string, a replacement's subject and replacement, a conditional's arms. Nothing is derived or combined here.
+        /// Facts that read no context (<see cref="JsonFactSet.Empty"/>), which a translator built without a container
+        /// is handed among others, and those of a stratum that admits no document, answer that every value may hold any
+        /// class, so a literal read under them is reported here as unproved.
         /// </para>
         /// <para>
-        /// A parameter may hold anything until it is bound, and so may what the loader does not read, and a call of a
-        /// function the theory does not: a conversion such as <c>ToString</c> may make characters of its own.
+        /// A parameter may hold anything until it is bound, and so may a reading of an element the cell does not name,
+        /// a reading no rule of characters reads (<c>JSON_QUERY</c>, and a <c>RETURNING</c> of a type that is not a
+        /// character type), what the loader does not read, and a call of a function the theory does not: a conversion
+        /// such as <c>ToString</c> may make characters of its own.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>

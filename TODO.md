@@ -3165,7 +3165,8 @@ across documents* and *A join of a container to itself* is the record.
   declines it, its body's raise a row (`testreads`), so the split rule drops it (DESIGN.md, *The switch (h15)*). Against h15's digests every line h15 listed as declined for this entry (20 under `Production`, 29
   under `Emulator`) or for the owner's reason (20 and 21; 3 and 3 for both) sends the field's test again, each a
   weakening (`reports/stage3-3A/h15b/listing.tsv`): 106 and 122 moved lines give one back, 57 and 64 a `WHERE` where
-  none was sent, 14 and 21 a tighter one, 32 and 34 the same documents and 3 and 3 in place of an element's weakening,
+  none was sent, 14 and 21 a tighter one, 32 and 34 the same documents and 3 and 3 in place of an element's weakening
+  (each sends both since an element's raw value is read as a path's: DESIGN.md, *An element's raw value is a path's*),
   and 20 and 16 more hold it in the plan's weakening beside a statement sent as before. Line 13's 17 that test `label`
   above a projection, whose input holds no document column (differential 41, 42, 44, 45 and 62), are still not pushed
   there; each statement sends its test beneath the projection, as at h15.
@@ -3785,13 +3786,15 @@ across documents* and *A join of a container to itself* is the record.
   comparison into a string one from the declared stored form before any statement is built, so S proves forms for the
   lowered conjunct and the lowering itself is C#'s. Line 33 checks it against S meanwhile (`RenderingRewriteTests`).
   Stage 3 makes the lowering templates over the declaration's stored-form facts and deletes the rewrite before the split.
-- **A weakening's test of an element is declined beneath** — *done after 3A.* The accessor re-typed `ANY` of an index,
-  and each type test's body over it, are measured in process to answer as over a path holding the element, and as over
-  an absent path where there is none (`CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath`, no service run).
-  `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the raw reading among those an index reads as of a path, and the
-  vocabulary's element rules read an element's raw value as a path's where it does. Every one of h15b's 40 and 42
-  looser lines sends h15's documents again or fewer, none looser against 13fd800 (DESIGN.md, *An element's raw value is
-  a path's*).
+- **A weakening's test of an element is declined beneath** — *done after 3A.* Every accessor the loader reads of an
+  index, the text, each `RETURNING`, `JSON_QUERY` and the accessor re-typed `ANY`, and each type test's body over each,
+  are measured in process to answer as over a path holding the element, and as over an absent path where there is none
+  (`CalciteItemMeasurementTests.AReadingOfAnIndexIsAsOfAPath`, no service run). `Calcite.ReadingsOfAnIndexAreAsOfAPath`
+  names the readings an index reads as of a path (the text, every `RETURNING`, `JSON_QUERY` and the raw value), the
+  vocabulary reads every accessor of an element through it, and the facts graph's rules of characters read the
+  characters of its text and raw value through those readings. Every one of h15b's 40 and 42 looser lines sends h15's
+  documents again or fewer, the three it traded an element's weakening for a declared field's test send both, and none
+  is looser against 13fd800 (DESIGN.md, *An element's raw value is a path's*).
 - **Lines 6 and 13b read the listing until g17** — *done at g17.* Line 6 is floors per input, each the conjuncts the
   input sent exactly at the switch under each asserted set (`RenderingSentTests.EachInputSendsAtLeastItsFloor`); line
   13b retired with the shadow. The mutation and gate-fault plants plan with S writing, their losses read against the
