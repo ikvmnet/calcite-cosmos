@@ -31,6 +31,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// comparison over an absent path keeps no row, and neither does its negation.
     /// </para>
     /// <para>
+    /// <b>A fourth asks of raises, apart from the verdicts.</b> <see cref="RaiseRules"/> runs only in a gated node, before
+    /// anything is assumed (<see cref="Reduction"/>), and derives <see cref="NeverRaises"/>; <see cref="Establish"/>'s gate
+    /// assumes what the node gates only where the WHERE never raises, so the node is contradictory only where no admitted
+    /// document makes the WHERE TRUE and none makes it raise.
+    /// </para>
+    /// <para>
     /// <b>A verdict holds in every context beneath the one it was reached in.</b> Each condition a verdict rule reads
     /// only narrows as facts are added, so what holds of every document a context admits holds of every document a
     /// narrower one admits.
@@ -99,18 +105,24 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ValueChars = graph.DefineFunction<Val, ValueSet<string>>("value chars", ValueLattice.Intersect<string>());
             Walk = graph.DefineRelation<Val, long, Args>("walk", analysis);
             Drawn = graph.DefineFunction<Val, Args, ValueSet<string>>("drawn", ValueLattice.Intersect<string>());
+
+            // The reduce's question: asserted by the gated nodes alone, settled before anything is assumed, never lifted.
+            Gated = graph.DefineRelation<Pred, Pred>("gated", local);
+            NeverRaises = graph.DefineRelation<Pred>("never raises", local);
             _writer = new PredicateWriter(Ir, path => JsonFactEncoding.Path(path).ToTerm(json));
 
             Establish = graph.DefineRuleset("establish");
             Decide = graph.DefineRuleset("decide");
             Exactness = graph.DefineRuleset("exactness");
             Characters = graph.DefineRuleset("characters");
+            RaiseRules = graph.DefineRuleset("raises");
 
             DefineEstablish();
             DefineSplit();
             DefineDecide();
             DefineExactness();
             DefineCharacters();
+            DefineRaises();
 
             // A question of a value's characters is asked in a context made for it, which assumes nothing: it reads the
             // paths the value reads, as the rules of JSON derive them beneath the context, the value's own term, and
@@ -143,6 +155,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             // A context that assumes nothing learns nothing a split could prove that its parent's split has not lifted:
             // it reads its new terms, the paths they mention, and the verdicts.
             Answer = Schedule.Sequence(Schedule.Saturate(json.Json, json.JsonSchema, Analyse), Schedule.Saturate(Decide, Exactness));
+
+            // A gated node judges raises over what the declaration alone allows, before anything is assumed, then runs as
+            // any node does, its gate assuming what the WHERE gates where the WHERE never raises. The raises ruleset never
+            // runs again, so nothing assumed reaches what it derived.
+            var unassumed = Schedule.Sequence(Answer, Schedule.Saturate(RaiseRules));
+            Reduction = Schedule.Sequence(unassumed, Saturation);
         }
 
         public EGraph Graph { get; }
@@ -185,6 +203,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>The paths a declaration mentions: defined in every graph, with rows only in its <c>D0</c>.</summary>
         public Relation<JPath> Declared { get; }
+
+        /// <summary>
+        /// Assume the first predicate where the WHERE, the second, raises on no row the context admits
+        /// (<see cref="NeverRaises"/>). Asserted only by a gated node: the reduce's, of the WHERE itself, and the never-read
+        /// arm's, of what the arm's question assumes. Never lifted.
+        /// </summary>
+        public Relation<Pred, Pred> Gated { get; }
+
+        /// <summary>
+        /// Calcite raises on no document the context admits, nor fails to compile: judged by <see cref="RaiseRules"/>
+        /// before anything is assumed, read by the gate alone and by no verdict. Never lifted.
+        /// </summary>
+        public Relation<Pred> NeverRaises { get; }
 
         /// <summary>The predicate is TRUE of every row the context admits.</summary>
         public Relation<Pred> AlwaysTrue { get; }
@@ -232,6 +263,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Which predicates hold an atom read otherwise than Calcite reads it (<see cref="Inexact"/>), run beside <see cref="Decide"/>.</summary>
         public Ruleset Exactness { get; }
 
+        /// <summary>
+        /// Which predicates raise on nothing the context admits (<see cref="NeverRaises"/>): an atom by the cells of every
+        /// state its path may hold, and each connective whose operands all never raise. Run only in
+        /// <see cref="Reduction"/>'s unassumed stage, never in a split.
+        /// </summary>
+        public Ruleset RaiseRules { get; }
+
         /// <summary>The split over the arms of a junction that takes the truth value its arms decide.</summary>
         public SplitRule ByArm { get; private set; } = null!;
 
@@ -250,9 +288,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public Schedule Answer { get; private set; } = null!;
 
+        /// <summary>
+        /// What a gated node runs: <see cref="Answer"/> and <see cref="RaiseRules"/> before anything is assumed, then
+        /// <see cref="Saturation"/>, whose gate assumes what the WHERE gates where the WHERE never raises. Contradictory only
+        /// where the declaration admits no document, or the gate fired and what it assumed contradicts the declaration.
+        /// </summary>
+        public Schedule Reduction { get; private set; } = null!;
+
         void DefineEstablish()
         {
             var json = Json;
+
+            // The gate: what a gated node assumes holds only where the WHERE raises on no row, which the unassumed stage
+            // settled (Reduction); every other node asserts no gated row, so the rule is silent there.
+            Establish.DefineRule("an assumption the WHERE gates holds where the WHERE raises on no row", r =>
+            {
+                var (e, w) = r.Vars<Pred, Pred>("e", "w");
+                r.When(Gated.Of(e, w), NeverRaises.Of(w));
+                r.Then(Holds.Of(e, true));
+            });
 
             Establish.DefineRule("a conjunction that holds holds on both sides", r =>
             {
@@ -737,6 +791,62 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     r.When(e.Is(Ir.Case.Of(c, t, f)), Inexact.Of(part switch { 0 => c, 1 => t, _ => f }));
                     r.Then(Inexact.Of(e));
                 });
+        }
+
+        /// <summary>
+        /// Defines which predicates raise on nothing the context admits (<see cref="NeverRaises"/>), bottom-up: an atom by
+        /// <see cref="PredicateAtom.RaisesOver"/>, which reads the cells of every state its path may hold, the facts graph's
+        /// reading rows and the raw columns' answers, and counts an undecided answer as a raise; then each connective,
+        /// since Calcite raises in one only where an operand raises (<c>Calcite.ConnectivesAreKleene</c>). An opaque term,
+        /// a comparison no atom reads and any other constructor get no row, so a WHERE holding one may raise.
+        /// </summary>
+        /// <remarks>
+        /// An <c>atom</c> row is its predicate's whole reading, as the verdict rules rest on too. Read where only
+        /// <see cref="Answer"/> has run, so <see cref="Possible"/> is what the declaration alone allows.
+        /// </remarks>
+        void DefineRaises()
+        {
+            var json = Json;
+
+            RaiseRules.DefineRule("an atom that raises on nothing its path may hold never raises", r =>
+            {
+                var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
+                var w = r.Var<ReadingTable>("w");
+                var u = r.Var<RawTruths>("u");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()), u.Is(json.Readings.RawUnion.Of()));
+                r.Where(a, x, u, w, (atom, values, columns, table) => atom.RaisesOver(values, columns, table) == false);
+                r.Then(NeverRaises.Of(e));
+            });
+            RaiseRules.DefineRule("a truth value never raises", r =>
+            {
+                var (e, s) = r.Vars<Pred, string>("e", "s");
+                r.When(e.Is(Ir.Truth.Of(s)));
+                r.Then(NeverRaises.Of(e));
+            });
+            RaiseRules.DefineRule("a negation raises nowhere its operand raises nowhere", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                r.When(e.Is(Not.Of(a)), NeverRaises.Of(a));
+                r.Then(NeverRaises.Of(e));
+            });
+            RaiseRules.DefineRule("a conjunction raises nowhere both its sides raise nowhere", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(And.Of(a, b)), NeverRaises.Of(a), NeverRaises.Of(b));
+                r.Then(NeverRaises.Of(e));
+            });
+            RaiseRules.DefineRule("a disjunction raises nowhere both its sides raise nowhere", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(Or.Of(a, b)), NeverRaises.Of(a), NeverRaises.Of(b));
+                r.Then(NeverRaises.Of(e));
+            });
+            RaiseRules.DefineRule("a CASE raises nowhere its condition and both its arms raise nowhere", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                r.When(e.Is(Ir.Case.Of(c, t, f)), NeverRaises.Of(c), NeverRaises.Of(t), NeverRaises.Of(f));
+                r.Then(NeverRaises.Of(e));
+            });
         }
 
         /// <summary>

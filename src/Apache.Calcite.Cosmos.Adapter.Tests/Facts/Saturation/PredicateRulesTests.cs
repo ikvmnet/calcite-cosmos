@@ -62,11 +62,91 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Box, rules.Ir.Query, rules.Ir.Apart, rules.Ir.Null, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(77,
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(78,
                 "the vocabulary's thirteen of G8, which both graphs read since h15, h15b's ten of the element and the readings written apart among them, "
-                + "and each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not");
+                + "each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not, "
+                + "and the gate that assumes what a gated node gates where the WHERE raises on no row");
+            rules.Establish.Rules.Count(rule => rule.Name == "an assumption the WHERE gates holds where the WHERE raises on no row").Should().Be(1);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
             rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
+            rules.RaiseRules.Rules.Select(rule => rule.Name).Should().BeEquivalentTo(new[]
+            {
+                "an atom that raises on nothing its path may hold never raises",
+                "a truth value never raises",
+                "a negation raises nowhere its operand raises nowhere",
+                "a conjunction raises nowhere both its sides raise nowhere",
+                "a disjunction raises nowhere both its sides raise nowhere",
+                "a CASE raises nowhere its condition and both its arms raise nowhere",
+            }, "an atom, a truth value and each connective; an opaque term or any other constructor may raise");
+
+            // What a gated node assumes, and what it judged before assuming anything, are that node's alone, as what a
+            // case chose is: none is lifted.
+            new Eggnog.TableHandle[] { rules.Gated, rules.NeverRaises, rules.Holds }.Should().OnlyContain(table => table.Lift == false);
+        }
+
+        // The reduce's rules, in a node gated by hand as the reduce's is: what the WHERE assumes holds only where the
+        // stage before anything is assumed found that the WHERE raises on no row.
+
+        /// <summary>
+        /// Opens a child of the declaration's <c>D0</c> holding the WHERE's term, mentioning the paths it reads, asserts
+        /// <c>gated(W, W)</c> where <paramref name="gated"/> is set and no <c>holds</c> row, runs
+        /// <see cref="PredicateRules.Reduction"/>, and returns whether it is contradictory and whether the WHERE never raises.
+        /// </summary>
+        static (bool Contradictory, bool NeverRaises) Reduced(JsonFactTheory theory, SqlPredicate where, bool gated = true)
+        {
+            var terms = Declared(theory, where).Terms;
+            var rules = terms.Rules!;
+            var json = rules.Json;
+            var writer = new PredicateWriter(rules.Ir, path => JsonFactEncoding.Path(path).ToTerm(json), (junction, truth, arms) =>
+                new Eggnog.Fact[] { rules.Arms.Of(junction, truth).Is(Eggnog.ValueSet.From(Enumerable.Range(0, arms.Count).Select(m => (long)m))) }
+                    .Concat(arms.Select((arm, m) => (Eggnog.Fact)rules.Arm.Of(junction, truth, (long)m, arm))));
+
+            using var scope = terms.Root.Scope!.CreateChild();
+            var specs = where.Paths.Select(JsonFactEncoding.Path).ToArray();
+            JsonContexts.Mention(json, scope, specs);
+
+            var facts = specs.Select(spec => (Eggnog.Fact)json.Mentioned.Of(spec.ToTerm(json))).ToList();
+            var w = writer.Term(where, facts);
+            scope.Make(w);
+            if (gated)
+                facts.Add(rules.Gated.Of(w, w));
+
+            scope.Assume(facts.ToArray());
+            var report = scope.Run(rules.Reduction, new Eggnog.RunOptions { StopOnContradiction = true });
+            var contradictory = report.StopReason == Eggnog.RunStopReason.Contradiction || scope.IsContradictory;
+            var never = contradictory == false && scope.Check(rules.NeverRaises.Of(w));
+            System.GC.KeepAlive(terms);
+            return (contradictory, never);
+        }
+
+        /// <summary>
+        /// The gate fires only where the WHERE raises on no document the declaration admits: a text comparison, its
+        /// negation and a CASE of such raise nowhere, so a contradiction stands; the first design's counterexample, a cast
+        /// to <c>DOUBLE</c> of a path that may hold a string, may raise, and so may an opaque term, so the node assumes
+        /// nothing and is not contradictory, while the node that assumes every conjunct still is. Ungated, a node assumes
+        /// nothing whatever the WHERE says.
+        /// </summary>
+        [Fact]
+        public void AGatedNodeAssumesTheWhereOnlyWhereItRaisesOnNoRow()
+        {
+            var kindA = Theory(Outright(Kind, Present), Outright(Kind, Enum("a")), Outright(N, Present), Outright(N, Enum(30m, "x")));
+            var text = Eq(Text(Kind), "z");
+
+            Reduced(kindA, text, gated: false).Should().Be((false, true), "an ungated node assumes nothing, and a text comparison raises on no row");
+            Reduced(kindA, text).Contradictory.Should().BeTrue("the gate assumes the WHERE, which no document the declaration admits makes TRUE");
+            Reduced(kindA, Not(Eq(Text(Kind), "a"))).Contradictory.Should().BeTrue("a negation raises nowhere its operand raises nowhere");
+            Reduced(kindA, Or(text, Eq(Text(Kind), "y"))).Contradictory.Should().BeTrue("a disjunction raises nowhere both its sides raise nowhere");
+
+            var guarded = new SqlPredicate.Case(Eq(Text(Kind), "a"), text, new SqlPredicate.Constant(false));
+            Reduced(kindA, guarded, gated: false).NeverRaises.Should().BeTrue("a CASE of text comparisons and a truth value raises nowhere");
+
+            var cast = And(Cmp(Cast("DOUBLE", Text(N)), ">", Lit(0m)), text);
+            Declared(kindA, cast).IsContradictory(OracleLicence.Kept).Should().BeTrue("assuming every conjunct contradicts the declaration");
+            Reduced(kindA, cast).Should().Be((false, false), "the cast raises on the string n may hold, so the gate does not fire");
+
+            var opaque = And(Opaque(1), text);
+            Declared(kindA, opaque).IsContradictory(OracleLicence.Kept).Should().BeTrue();
+            Reduced(kindA, opaque).Should().Be((false, false), "no rule says an opaque term never raises");
         }
 
         // What a predicate that holds establishes.
